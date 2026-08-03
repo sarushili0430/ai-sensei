@@ -1,18 +1,20 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { fixtureNames, fixturePath, fixtureSchemas } from "./fixtures.ts";
 import {
   completeSessionRequestSchema,
   createSessionResponseSchema,
   karteDraftSchema,
   karteSchema,
 } from "./index.ts";
-import { fixtureNames, fixturePath, fixtureSchemas } from "./fixtures.ts";
 
 const repoRoot = resolve(import.meta.dirname, "..", "..", "..");
 
 function loadFixture(name: string): unknown {
-  return JSON.parse(readFileSync(resolve(repoRoot, `packages/contract/fixtures/${name}.json`), "utf8"));
+  return JSON.parse(
+    readFileSync(resolve(repoRoot, `packages/contract/fixtures/${name}.json`), "utf8"),
+  );
 }
 
 describe("fixture", () => {
@@ -70,9 +72,9 @@ describe("カルテのスキーマ", () => {
 describe("APIスキーマ", () => {
   it("detected_topics が空のセッション作成レスポンスは無効", () => {
     const response = loadFixture("create-session-response") as Record<string, unknown>;
-    expect(createSessionResponseSchema.safeParse({ ...response, detected_topics: [] }).success).toBe(
-      false,
-    );
+    expect(
+      createSessionResponseSchema.safeParse({ ...response, detected_topics: [] }).success,
+    ).toBe(false);
   });
 
   it("transcriptのroleは assistant / user のみ", () => {
