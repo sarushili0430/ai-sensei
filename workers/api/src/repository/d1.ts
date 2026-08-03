@@ -92,6 +92,21 @@ export class D1Repository implements Repository {
       .run();
   }
 
+  async updateSessionTopics(input: {
+    sessionId: string;
+    topicIds: string[];
+    photoKey: string | null;
+  }): Promise<void> {
+    await this.db
+      .prepare("UPDATE sessions SET topic_ids = ?, photo_key = ? WHERE id = ?")
+      .bind(JSON.stringify(input.topicIds), input.photoKey, input.sessionId)
+      .run();
+  }
+
+  async deleteSession(sessionId: string): Promise<void> {
+    await this.db.prepare("DELETE FROM sessions WHERE id = ?").bind(sessionId).run();
+  }
+
   async getSession(sessionId: string): Promise<SessionRecord | null> {
     const row = await this.db
       .prepare("SELECT * FROM sessions WHERE id = ?")
@@ -186,6 +201,16 @@ export class D1Repository implements Repository {
       },
       holes: holes.results.map(toHole),
     };
+  }
+
+  async getKarteBySession(
+    sessionId: string,
+  ): Promise<{ karte: KarteRecord; holes: HoleRecord[] } | null> {
+    const row = await this.db
+      .prepare("SELECT id FROM kartes WHERE session_id = ?")
+      .bind(sessionId)
+      .first<{ id: string }>();
+    return row ? this.getKarte(row.id) : null;
   }
 
   async listHoles(deviceId: string): Promise<HoleRecord[]> {

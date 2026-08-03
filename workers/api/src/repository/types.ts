@@ -73,6 +73,14 @@ export type Repository = {
 
   countSessionsOnDate(deviceId: string, localDate: string): Promise<number>;
   createSession(session: SessionRecord): Promise<void>;
+  /** 写真解析のあとに、確定した単元と写真キーを書き戻す。 */
+  updateSessionTopics(input: {
+    sessionId: string;
+    topicIds: string[];
+    photoKey: string | null;
+  }): Promise<void>;
+  /** 解析に失敗したときに予約を取り消す(無料枠を無駄に消費させないため)。 */
+  deleteSession(sessionId: string): Promise<void>;
   getSession(sessionId: string): Promise<SessionRecord | null>;
   completeSession(input: {
     sessionId: string;
@@ -84,6 +92,8 @@ export type Repository = {
 
   insertKarte(karte: KarteRecord, holes: HoleRecord[]): Promise<void>;
   getKarte(karteId: string): Promise<{ karte: KarteRecord; holes: HoleRecord[] } | null>;
+  /** セッションに紐づくカルテ。/complete の再送判定と、アプリの結果取得に使う。 */
+  getKarteBySession(sessionId: string): Promise<{ karte: KarteRecord; holes: HoleRecord[] } | null>;
 
   listHoles(deviceId: string): Promise<HoleRecord[]>;
   getHole(holeId: string): Promise<HoleRecord | null>;
