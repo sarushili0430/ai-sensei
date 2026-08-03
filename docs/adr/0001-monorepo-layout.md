@@ -20,8 +20,8 @@ Shipaton 2026 の Next Gen Award は **リポジトリ単体でプロジェク�
 
 ## 決定
 
-1. **単一リポジトリ**に `apps/mobile`・`workers/api`・`agent`・`packages/*` を同居させる。
-2. TypeScript側(`workers/*`・`agent`・`packages/*`)は **pnpm workspaces** で束ねる。
+1. **単一リポジトリ**に `apps/mobile`・`backend/*`・`packages/*` を同居させる。
+2. TypeScript側(`backend/*`・`packages/*`)は **pnpm workspaces** で束ねる。
    当初はnpmにしていた(Node同梱で環境差が最小、という理由)が、**Codemagicのビルド対象は
    `apps/mobile` だけ**であり、TypeScript側はGitHub ActionsとLiveKitへのデプロイでしか
    動かない。「どこでも入っている」ことの利点が効かないので、依存解決が速く、
@@ -45,5 +45,29 @@ Shipaton 2026 の Next Gen Award は **リポジトリ単体でプロジェク�
   (`package.json` の `packageManager` フィールドでバージョンを固定してある)。
   `apps/mobile` はワークスペースに含めないので、Codemagic側にpnpmは不要。
 - 悪い点: CIが素朴に組むと全体が毎回走る。GitHub Actions側でpathフィルタを効かせて分担する
-  (`apps/mobile` → Codemagic、`workers/**` → wrangler deploy、`agent/**` → LiveKitへ)。
+  (`apps/mobile` → Codemagic、`backend/api/**` → wrangler deploy、`backend/agent/**` → LiveKitへ)。
 - 悪い点: TypeScriptとDartでスキーマ定義が二重になる。fixture検証テストで担保する。
+
+## 追記(2026-08-03): backend/ にまとめ直した
+
+当初は `workers/api` と `agent` をリポジトリ直下に並べていたが、**デプロイ単位でまとめる**
+形に変えた。
+
+```
+apps/mobile/     Flutter        → Codemagic → TestFlight
+backend/api/     Workers        → wrangler deploy
+backend/agent/   LiveKit Agents → LiveKit へ
+packages/*/      共有(どこにもデプロイしない)
+```
+
+`apps/mobile` がワークスペースの外に出た時点で「アプリ / バックエンド / 共有」の3層が
+はっきりしたので、直下の並びもそれに合わせた。効果は2つ:
+
+- **pathフィルタが素直に書ける。** `backend/api/**` と `backend/agent/**` で
+  デプロイ先が一意に決まる。以前は `agent` がトップレベルにあり、他のディレクトリと
+  同じ高さに並んでいて、CIの意図が読み取りにくかった。
+- **どこにデプロイされるコードなのかが、パスから分かる。** `packages/*` は
+  どこにもデプロイされない、が構造で言える。
+
+パッケージ名(`@ai-sensei/api` / `@ai-sensei/agent`)は変えていないので、
+import文への影響はない。

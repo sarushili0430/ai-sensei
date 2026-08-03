@@ -8,7 +8,7 @@ import '../features/karte/domain/karte.dart';
 import '../features/session/domain/session.dart';
 import 'device_id.dart';
 
-/// workers/api との通信。
+/// backend/api との通信。
 ///
 /// 認証は匿名デバイスID(`X-Device-Id`)だけ。アカウント作成を要求しない。
 class ApiClient {

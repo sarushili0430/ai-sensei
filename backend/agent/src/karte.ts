@@ -10,7 +10,7 @@ import type { SessionContext } from "./context.ts";
 import { renderTranscript } from "./transcript.ts";
 
 /**
- * セッション終了時に、transcript全体からカルテを作って workers/api へ送る。
+ * セッション終了時に、transcript全体からカルテを作って backend/api へ送る。
  * ここはLiveKitに依存しないので、単体でテストできる。
  */
 

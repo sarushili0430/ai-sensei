@@ -21,20 +21,20 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.20.1)
 
-  agent:
+  backend/agent:
     dependencies:
       '@ai-sensei/contract':
         specifier: workspace:*
-        version: link:../packages/contract
+        version: link:../../packages/contract
       '@ai-sensei/curriculum':
         specifier: workspace:*
-        version: link:../packages/curriculum
+        version: link:../../packages/curriculum
       '@ai-sensei/guardrail':
         specifier: workspace:*
-        version: link:../packages/guardrail
+        version: link:../../packages/guardrail
       '@ai-sensei/prompts':
         specifier: workspace:*
-        version: link:../packages/prompts
+        version: link:../../packages/prompts
       '@livekit/agents':
         specifier: ^1.6.1
         version: 1.6.1(@livekit/rtc-node@0.13.33)(@types/node@22.20.1)(typescript@5.9.3)(zod@3.25.76)
@@ -54,30 +54,7 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
 
-  packages/contract:
-    dependencies:
-      zod:
-        specifier: ^3.24.1
-        version: 3.25.76
-      zod-to-json-schema:
-        specifier: ^3.24.1
-        version: 3.25.2(zod@3.25.76)
-
-  packages/curriculum:
-    dependencies:
-      zod:
-        specifier: ^3.24.1
-        version: 3.25.76
-
-  packages/guardrail:
-    dependencies:
-      '@ai-sensei/curriculum':
-        specifier: workspace:*
-        version: link:../curriculum
-
-  packages/prompts: {}
-
-  workers/api:
+  backend/api:
     dependencies:
       '@ai-sensei/contract':
         specifier: workspace:*
@@ -101,6 +78,29 @@ importers:
       wrangler:
         specifier: ^3.99.0
         version: 3.114.17
+
+  packages/contract:
+    dependencies:
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+      zod-to-json-schema:
+        specifier: ^3.24.1
+        version: 3.25.2(zod@3.25.76)
+
+  packages/curriculum:
+    dependencies:
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+
+  packages/guardrail:
+    dependencies:
+      '@ai-sensei/curriculum':
+        specifier: workspace:*
+        version: link:../curriculum
+
+  packages/prompts: {}
 
 packages:
 

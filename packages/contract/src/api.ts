@@ -8,7 +8,7 @@ import {
 } from "./karte.ts";
 
 /**
- * workers/api ↔ apps/mobile ↔ agent の契約。
+ * backend/api ↔ apps/mobile ↔ agent の契約。
  * ここを変えたら fixtures/ も更新する(fixtureはFlutter側のテストからも読まれる)。
  */
 

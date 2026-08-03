@@ -20,8 +20,8 @@
 
 ```
 apps/mobile/        Flutter (iOS先行) + Riverpod 3 + livekit_client
-workers/api/        Cloudflare Workers + Hono — セッション作成 / カルテ保存 / 課金webhook
-agent/              LiveKit Agents — VAD・STT・LLM・TTSの会話パイプライン(後輩キャラ)
+backend/api/        Cloudflare Workers + Hono — セッション作成 / カルテ保存 / 課金webhook
+backend/agent/      LiveKit Agents — VAD・STT・LLM・TTSの会話パイプライン(後輩キャラ)
 packages/contract/  APIとカルテのスキーマ + fixture(モバイル/サーバ双方で契約を検証)
 packages/curriculum/高校数学カリキュラムマップ(純JSON。質問生成の許可リスト兼、穴のタグ)
 packages/guardrail/ topic_idホワイトリスト照合・数式音声の正規化などの純関数
@@ -30,7 +30,7 @@ docs/               企画資料・ワイヤーフレーム・ADR
 scripts/            リポジトリ全体の検証スクリプト
 ```
 
-TypeScript側(`workers/`・`agent/`・`packages/`)は pnpm workspaces でひとつに束ねています。
+TypeScript側(`backend/`・`packages/`)は pnpm workspaces でひとつに束ねています。
 Flutter側は `apps/mobile` で完結し、両者は `packages/contract` のスキーマとfixtureで接続します。
 
 ## セットアップ
@@ -39,7 +39,7 @@ Flutter側は `apps/mobile` で完結し、両者は `packages/contract` のス�
 
 | ツール          | バージョン | 用途                     |
 | --------------- | ---------- | ------------------------ |
-| Node.js         | 22 以上    | workers / agent / packages |
+| Node.js         | 22.6 以上  | backend / packages       |
 | pnpm            | 10 以上    | 同上(`corepack enable` で入る) |
 | Flutter         | 3.27 以上  | apps/mobile              |
 | Xcode           | 16 以上    | iOSビルド(macOSのみ)   |
@@ -58,8 +58,8 @@ pnpm install         # TypeScript側をまとめて解決
 テンプレートは [`.env.example`](.env.example) にあります。
 
 ```bash
-cp .env.example workers/api/.dev.vars   # wrangler dev が読む
-cp .env.example agent/.env              # LiveKit Agents が読む
+cp .env.example backend/api/.dev.vars   # wrangler dev が読む
+cp .env.example backend/agent/.env      # LiveKit Agents が読む
 ```
 
 本番の秘匿値は `wrangler secret put <NAME>` とLiveKit側の環境設定に登録します。
@@ -72,8 +72,8 @@ pnpm run verify:secrets
 ### 3. 開発サーバ
 
 ```bash
-pnpm --filter @ai-sensei/api dev     # workers/api  → http://localhost:8787
-pnpm --filter @ai-sensei/agent dev   # agent (LiveKitのルームに接続して待機)
+pnpm --filter @ai-sensei/api dev     # backend/api  → http://localhost:8787
+pnpm --filter @ai-sensei/agent dev   # backend/agent (LiveKitのルームに接続して待機)
 
 cd apps/mobile
 flutter pub get
@@ -107,13 +107,13 @@ E2Eは書かず、TestFlightでの手動確認に割り切っています。
 ## アーキテクチャ
 
 ```
-Flutter app ──HTTPS──▶ workers/api ──▶ LiveKit room 作成 + agent 起動
+Flutter app ──HTTPS──▶ backend/api ──▶ LiveKit room 作成 + agent 起動
      │                    │  写真をVision LLMで解析し、単元判定と質問方針を作る
      │                    │  ストレージ: R2(写真) / DB: D1 / メータリング: KV
      └──WebRTC────────▶ agent
                           VAD → 日本語ストリーミングSTT → LLM(後輩ペルソナ)
                           → TTS。割り込み対応。終了時にtranscriptからカルテを生成し
-                          workers/api の /v1/sessions/{id}/complete へPOST
+                          backend/api の /v1/sessions/{id}/complete へPOST
                           → OneSignalで翌日/3日後/7日後の再説明プッシュを予約
 ```
 

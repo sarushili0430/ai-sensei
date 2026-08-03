@@ -23,11 +23,11 @@ pnpm --filter @ai-sensei/agent download-files   # Silero VADのモデルを取�
 pnpm --filter @ai-sensei/agent dev              # ルームを待ち受ける
 ```
 
-`workers/api` が `/v1/sessions` でルームを作ると、このワーカーがジョブを受け取る。
+`backend/api` が `/v1/sessions` でルームを作ると、このワーカーがジョブを受け取る。
 
 ## 会話文脈はトークン経由で来る
 
-`workers/api` が LiveKitトークンの `metadata` に、写真の解釈・許可トピック・
+`backend/api` が LiveKitトークンの `metadata` に、写真の解釈・許可トピック・
 質問の種・残り秒数をJSONで載せている。別チャネルで渡すと、
 トークンと文脈がずれたセッションが生まれうるため。
 

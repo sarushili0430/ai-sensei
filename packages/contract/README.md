@@ -1,6 +1,6 @@
 # @ai-sensei/contract
 
-`apps/mobile`(Dart)・`workers/api`(TS)・`agent`(TS)の3者をつなぐ契約。
+`apps/mobile`(Dart)・`backend/api`(TS)・`agent`(TS)の3者をつなぐ契約。
 言語をまたぐので「型」ではなく **スキーマとfixture** を正とする。
 
 ```
