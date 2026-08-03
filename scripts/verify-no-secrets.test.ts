@@ -31,6 +31,22 @@ describe("scanContent", () => {
     expect(leaks.map((l) => l.rule)).toContain("private-key-block");
   });
 
+  it("暗号化された秘密鍵ブロック(PKCS#8)も検出する", () => {
+    const leaks = scanContent("key.key", "-----BEGIN ENCRYPTED PRIVATE KEY-----");
+    expect(leaks.map((l) => l.rule)).toContain("private-key-block");
+  });
+
+  // 実際の .dev.vars は `LIVEKIT_API_KEY=API...` の形。手がかりの語が値の前に来る
+  it("LiveKitの鍵を、変数名が値の前にある形でも検出する", () => {
+    const content = `LIVEKIT_API_KEY=${fake("API", "k".repeat(16))}`;
+    expect(scanContent(".dev.vars", content).map((l) => l.rule)).toContain("livekit-api-key");
+  });
+
+  it("LiveKitの鍵を、手がかりの語が値の後ろにある形でも検出する", () => {
+    const content = `const key = "${fake("API", "k".repeat(16))}" // livekit`;
+    expect(scanContent("worker.ts", content).map((l) => l.rule)).toContain("livekit-api-key");
+  });
+
   it("allowlistプラグマの行は無視する", () => {
     const content = `token = "${fake("ghp_", "C".repeat(36))}" // pragma: allowlist secret`;
     expect(scanContent("fixture.ts", content)).toEqual([]);

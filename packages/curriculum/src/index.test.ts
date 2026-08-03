@@ -34,6 +34,18 @@ describe("カリキュラムデータの整合性", () => {
       expect(topic.keywords.length, topic.id).toBeGreaterThan(0);
     }
   });
+
+  // 技能目標(「因数分解できる」)だけのトピックがあると、そこから作れる質問が
+  // 「解けますか?」になってしまう。各トピックに説明を問える目標を最低1つ持たせる。
+  it("すべてのトピックに、説明を問える到達目標が最低1つある", () => {
+    const explainable = /説明できる|使い分け|導ける|判断/;
+    for (const topic of topics) {
+      expect(
+        topic.goals.some((goal) => explainable.test(goal)),
+        topic.id,
+      ).toBe(true);
+    }
+  });
 });
 
 // 新課程(2022年度〜)の要注意点。旧課程の知識で書き足すと必ずここで落ちる。
@@ -85,6 +97,12 @@ describe("prerequisitesOf", () => {
     expect(ids).toContain("M2-ZUKEI-TENTO-KYORI");
   });
 
+  it("微分の深掘りで、微分する対象の関数の定義まで戻れる", () => {
+    const ids = prerequisitesOf("M3-BIBUN-KOSEI").map((topic) => topic.id);
+    expect(ids).toContain("M2-SANKAKU-KAHO");
+    expect(ids).toContain("M2-SHISU-TAISU-KIHON");
+  });
+
   it("depthを増やすと前提の前提までたどる", () => {
     const shallow = prerequisitesOf("M2-ZUKEI-ENCHOKU", 1).map((t) => t.id);
     const deep = prerequisitesOf("M2-ZUKEI-ENCHOKU", 3).map((t) => t.id);
@@ -110,6 +128,21 @@ describe("suggestTopics", () => {
 
   it("数学と無関係なテキストでは候補を返さない", () => {
     expect(suggestTopics("今日の献立はカレーです")).toEqual([]);
+  });
+
+  // `constant` の tan、`since` の sin、`biology` の log を数学の証拠にしない。
+  // ここが緩いと、数学以外の写真が「範囲内」として通ってしまう。
+  it("英単語に埋もれた sin/tan/log を拾わない", () => {
+    expect(suggestTopics("constant biology since")).toEqual([]);
+  });
+
+  it("語として書かれた sin は拾う", () => {
+    expect(suggestTopics("sin θ の値を求める").map((t) => t.id)).toContain("M1-KEIRYO-SANKAKUHI");
+  });
+
+  it("limitが0以下でも空を返す", () => {
+    expect(suggestTopics("判別式", 0)).toEqual([]);
+    expect(suggestTopics("判別式", -3)).toEqual([]);
   });
 
   it("limitを超えない", () => {
