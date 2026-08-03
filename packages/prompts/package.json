@@ -1,0 +1,15 @@
+{
+  "name": "@ai-sensei/prompts",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "prompts/*.md の読み込みと穴埋め(Workers/agentから使う)",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": ["src"],
+  "scripts": {
+    "generate": "node --experimental-strip-types src/generate.ts"
+  }
+}
