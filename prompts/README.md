@@ -4,7 +4,7 @@
 
 | ファイル | 使う場所 | 役割 |
 | --- | --- | --- |
-| `photo_analysis.ja.md` | workers/api(Vision LLM) | ノート写真 → 単元検出・質問の種 |
+| `photo_analysis.ja.md` | backend/api(Vision LLM) | ノート写真 → 単元検出・質問の種 |
 | `kohai_conversation.ja.md` | agent(会話LLM) | 後輩ペルソナ + 会話中のガードレール |
 | `question_types.few_shot.ja.md` | agent | 質問4型の文体をそろえるfew-shot |
 | `karte_generation.ja.md` | agent(セッション終了時) | transcript → カルテJSON |

@@ -1,7 +1,6 @@
 packages:
   - "packages/*"
-  - "workers/*"
-  - "agent"
+  - "backend/*"
 
 # apps/mobile は Flutter なので、このワークスペースには入れない。
 

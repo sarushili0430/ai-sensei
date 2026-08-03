@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   typescript:
-    name: TypeScript (workers / agent / packages)
+    name: TypeScript (backend / packages)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -4,7 +4,7 @@ Flutter(iOS先行)。Riverpod 3 + go_router。
 
 ```
 lib/src/
-  api/             workers/api との通信・匿名デバイスID
+  api/             backend/api との通信・匿名デバイスID
   common_widgets/  蛍光マーカー・厚みのあるボタン・後輩の表情
   features/        ドメイン単位(画面単位ではない)
     onboarding/
@@ -31,7 +31,7 @@ flutter run --dart-define=API_BASE_URL=http://localhost:8787
 
 | 名前 | 用途 |
 | --- | --- |
-| `API_BASE_URL` | workers/api のURL |
+| `API_BASE_URL` | backend/api のURL |
 | `REVENUECAT_IOS_PUBLIC_SDK_KEY` | RevenueCat(iOS) |
 | `REVENUECAT_ANDROID_PUBLIC_SDK_KEY` | RevenueCat(Android) |
 

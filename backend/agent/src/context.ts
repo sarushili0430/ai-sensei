@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /**
- * workers/api が LiveKit トークンの metadata に載せた会話文脈。
+ * backend/api が LiveKit トークンの metadata に載せた会話文脈。
  *
  * 「写真の解釈」と「触れてよいトピック」がここに入っている。
  * 別チャネルで渡すと、トークンと文脈がずれたセッションが生まれうるので、
