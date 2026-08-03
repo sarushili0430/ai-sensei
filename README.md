@@ -99,6 +99,10 @@ cd apps/mobile && fvm flutter test   # 契約fixture + ウィジェット + gold
 CIワークフローのテンプレートは [`docs/ci/`](docs/ci/README.md) にあります
 (GitHub Appは `.github/workflows/` へpushできないため、初回だけ手元でコピーが必要です)。
 
+Claude Code on the web で開くときは、`.claude/hooks/session-start.sh` が
+セッション開始時に走り、pnpm・Flutter SDK(`.fvmrc` のバージョン)・
+コード生成までを済ませます。**開いた時点で lint とテストが通る状態**になります。
+
 Biomeがlintと整形の両方を担当します(ESLint + Prettierは入れていません)。
 
 テスト方針は「①純関数ユニット(ガードレール照合・数式正規化・間隔反復スケジューラ・
