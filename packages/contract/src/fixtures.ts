@@ -1,12 +1,12 @@
 import type { ZodTypeAny } from "zod";
 import {
+  apiErrorSchema,
   completeSessionRequestSchema,
   completeSessionResponseSchema,
   createSessionRequestSchema,
   createSessionResponseSchema,
   progressResponseSchema,
   reviewQueueResponseSchema,
-  apiErrorSchema,
 } from "./api.ts";
 import { karteSchema } from "./karte.ts";
 
@@ -22,7 +22,7 @@ export const fixtureSchemas = {
   "create-session-response": createSessionResponseSchema,
   "complete-session-request": completeSessionRequestSchema,
   "complete-session-response": completeSessionResponseSchema,
-  "karte": karteSchema,
+  karte: karteSchema,
   "review-queue-response": reviewQueueResponseSchema,
   "progress-response": progressResponseSchema,
   "api-error": apiErrorSchema,

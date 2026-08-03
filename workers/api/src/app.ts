@@ -20,7 +20,10 @@ export type CreateAppOptions = {
 export function createApp(options: CreateAppOptions = {}) {
   const app = new Hono<AppEnv>();
 
-  app.use("*", cors({ origin: "*", allowHeaders: ["content-type", "authorization", "x-device-id"] }));
+  app.use(
+    "*",
+    cors({ origin: "*", allowHeaders: ["content-type", "authorization", "x-device-id"] }),
+  );
 
   app.use("*", async (c, next) => {
     c.set("services", options.services?.(c.env) ?? defaultServices(c.env));

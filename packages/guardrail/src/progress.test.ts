@@ -92,9 +92,7 @@ describe("celebrationHeadline", () => {
   });
 
   it("埋まらなくても継続を認める", () => {
-    expect(celebrationHeadline({ ...base, streak_days: 4 }, 0)).toBe(
-      "4日つづけて説明できています",
-    );
+    expect(celebrationHeadline({ ...base, streak_days: 4 }, 0)).toBe("4日つづけて説明できています");
   });
 
   it("初日は説明したこと自体をねぎらう", () => {

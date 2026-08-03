@@ -19,8 +19,8 @@ Cloudflare Workers + Hono。セッション作成・カルテ保存・課金webh
 
 ```bash
 cp ../../.env.example .dev.vars
-npm run -w @ai-sensei/api migrate:local   # D1にスキーマを流す
-npm run -w @ai-sensei/api dev             # http://localhost:8787
+pnpm --filter @ai-sensei/api migrate:local   # D1にスキーマを流す
+pnpm --filter @ai-sensei/api dev             # http://localhost:8787
 ```
 
 D1/R2/KVのIDは `wrangler.toml` にプレースホルダが入っているので、
@@ -28,7 +28,7 @@ D1/R2/KVのIDは `wrangler.toml` にプレースホルダが入っているの�
 
 ## テスト
 
-`npm test`(vitest)。**miniflareを起こさずにルートの振る舞いを確かめられる**ように、
+`pnpm test`(vitest)。**miniflareを起こさずにルートの振る舞いを確かめられる**ように、
 永続化・写真解析・通知の3つを差し替え可能にしてある。
 
 ```ts

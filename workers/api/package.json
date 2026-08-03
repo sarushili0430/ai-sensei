@@ -13,10 +13,10 @@
     "migrate:remote": "wrangler d1 migrations apply ai-sensei --remote"
   },
   "dependencies": {
-    "@ai-sensei/contract": "*",
-    "@ai-sensei/curriculum": "*",
-    "@ai-sensei/guardrail": "*",
-    "@ai-sensei/prompts": "*",
+    "@ai-sensei/contract": "workspace:*",
+    "@ai-sensei/curriculum": "workspace:*",
+    "@ai-sensei/guardrail": "workspace:*",
+    "@ai-sensei/prompts": "workspace:*",
     "hono": "^4.6.14",
     "zod": "^3.24.1"
   },

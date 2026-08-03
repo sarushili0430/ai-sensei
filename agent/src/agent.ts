@@ -1,17 +1,12 @@
-import {
-  type JobContext,
-  type JobProcess,
-  defineAgent,
-  voice,
-} from "@livekit/agents";
+import type { CompleteSessionRequest } from "@ai-sensei/contract";
+import { conversationSystemPrompt } from "@ai-sensei/prompts";
+import { type JobContext, type JobProcess, defineAgent, voice } from "@livekit/agents";
 import * as anthropic from "@livekit/agents-plugin-anthropic";
 import * as deepgram from "@livekit/agents-plugin-deepgram";
 import * as elevenlabs from "@livekit/agents-plugin-elevenlabs";
 import * as silero from "@livekit/agents-plugin-silero";
-import { conversationSystemPrompt } from "@ai-sensei/prompts";
-import type { CompleteSessionRequest } from "@ai-sensei/contract";
 import { loadConfig } from "./config.ts";
-import { readSessionContext, remainingSeconds, type SessionContext } from "./context.ts";
+import { type SessionContext, readSessionContext, remainingSeconds } from "./context.ts";
 import { buildKarte, createAnthropicClient, emptyKarte, postComplete } from "./karte.ts";
 import { TranscriptCollector } from "./transcript.ts";
 
@@ -112,9 +107,9 @@ export default defineAgent({
 
     if (collector.answerLeaks.length > 0) {
       // プロンプト調整の材料。会話中に差し止めることはできないので記録に残す。
+      const leaks = collector.answerLeaks.join(" / ");
       console.warn(
-        `[guardrail] session=${context.session_id} 後輩が答えを漏らした可能性のある発話: ` +
-          collector.answerLeaks.join(" / "),
+        `[guardrail] session=${context.session_id} 後輩が答えを漏らした可能性のある発話: ${leaks}`,
       );
     }
 

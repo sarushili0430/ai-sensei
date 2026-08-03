@@ -121,9 +121,7 @@ export function formatBullets(items: readonly string[], emptyText = "(なし)"):
 }
 
 /** transcriptをカルテ生成プロンプトに貼れる形にする。 */
-export function formatTranscript(
-  messages: readonly { role: string; text: string }[],
-): string {
+export function formatTranscript(messages: readonly { role: string; text: string }[]): string {
   if (messages.length === 0) return "(発話なし)";
   return messages
     .map((message) => `${message.role === "assistant" ? "後輩" : "ユーザー"}: ${message.text}`)

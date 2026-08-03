@@ -1,7 +1,7 @@
-import type { Bindings, Services } from "./env.ts";
 import type { D1Database, KVNamespace, R2Bucket } from "./cloudflare.ts";
-import type { PhotoAnalysis, PhotoAnalyzer } from "./lib/photo-analysis.ts";
+import type { Bindings, Services } from "./env.ts";
 import type { NotificationScheduler } from "./lib/notifications.ts";
+import type { PhotoAnalysis, PhotoAnalyzer } from "./lib/photo-analysis.ts";
 import { MemoryRepository } from "./repository/memory.ts";
 
 /**
@@ -22,7 +22,11 @@ export const analysisFixture: PhotoAnalysis = {
 };
 
 export function stubAnalyzer(analysis: PhotoAnalysis = analysisFixture): PhotoAnalyzer {
-  return { async analyze() { return analysis; } };
+  return {
+    async analyze() {
+      return analysis;
+    },
+  };
 }
 
 export class RecordingScheduler implements NotificationScheduler {
@@ -124,7 +128,11 @@ export function testServices(options: { now?: Date; analysis?: PhotoAnalysis } =
     analyzer: stubAnalyzer(options.analysis),
     scheduler: new RecordingScheduler(),
     now: () => options.now ?? new Date("2026-08-03T13:24:07.000Z"),
-    newId: (prefix) => `${prefix}_${(counter += 1)}`,
+    // テストで安定したIDにする(ses_1, kar_2, ...)
+    newId: (prefix) => {
+      counter += 1;
+      return `${prefix}_${counter}`;
+    },
   };
 }
 

@@ -1,6 +1,6 @@
 import type { D1Database, KVNamespace, R2Bucket } from "./cloudflare.ts";
-import type { PhotoAnalyzer } from "./lib/photo-analysis.ts";
 import type { NotificationScheduler } from "./lib/notifications.ts";
+import type { PhotoAnalyzer } from "./lib/photo-analysis.ts";
 import type { Repository } from "./repository/types.ts";
 
 /** wrangler.toml のバインディングと secret。 */

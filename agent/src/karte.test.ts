@@ -1,17 +1,17 @@
 import {
+  type CompleteSessionRequest,
   completeSessionRequestSchema,
   karteDraftSchema,
-  type CompleteSessionRequest,
 } from "@ai-sensei/contract";
 import { describe, expect, it, vi } from "vitest";
 import { readSessionContext } from "./context.ts";
 import {
+  type LlmClient,
   applyGuardrails,
   buildKarte,
   emptyKarte,
   extractJson,
   postComplete,
-  type LlmClient,
 } from "./karte.ts";
 
 const context = readSessionContext(
@@ -68,7 +68,7 @@ describe("buildKarte", () => {
     const karte = await buildKarte({
       context,
       transcript: [],
-      llm: stubLlm("```json\n" + JSON.stringify(validKarte) + "\n```"),
+      llm: stubLlm(`\`\`\`json\n${JSON.stringify(validKarte)}\n\`\`\``),
     });
     expect(karte.holes).toHaveLength(1);
   });
@@ -115,7 +115,9 @@ describe("applyGuardrails", () => {
   });
 
   it("無料ユーザーにはあと追い質問を作らない", () => {
-    expect(applyGuardrails(karteDraftSchema.parse(validKarte), context).followup_question).toBeNull();
+    expect(
+      applyGuardrails(karteDraftSchema.parse(validKarte), context).followup_question,
+    ).toBeNull();
   });
 
   it("Premiumにはあと追い質問を残す", () => {

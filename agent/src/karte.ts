@@ -1,8 +1,8 @@
 import {
-  karteDraftSchema,
   type CompleteSessionRequest,
   type KarteDraft,
   type TranscriptMessage,
+  karteDraftSchema,
 } from "@ai-sensei/contract";
 import { buildAllowedTopics, filterHoleTopicIds } from "@ai-sensei/guardrail";
 import { karteSystemPrompt } from "@ai-sensei/prompts";

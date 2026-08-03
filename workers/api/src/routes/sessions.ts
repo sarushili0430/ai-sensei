@@ -1,9 +1,6 @@
-import {
-  createSessionRequestSchema,
-  type CreateSessionResponse,
-} from "@ai-sensei/contract";
+import { type CreateSessionResponse, createSessionRequestSchema } from "@ai-sensei/contract";
 import { allowedTopicList, buildAllowedTopics, toLocalDate } from "@ai-sensei/guardrail";
-import { formatBullets, formatAllowedTopics } from "@ai-sensei/prompts";
+import { formatAllowedTopics, formatBullets } from "@ai-sensei/prompts";
 import { Hono } from "hono";
 import type { AppEnv } from "../env.ts";
 import { readLimits } from "../env.ts";
