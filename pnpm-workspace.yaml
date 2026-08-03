@@ -11,3 +11,6 @@ onlyBuiltDependencies:
   - "@biomejs/biome" # lint/format のネイティブバイナリを取得する
   - esbuild # wrangler が同梱するバンドラ
   - workerd # wrangler dev のランタイム
+  - "@livekit/local-inference" # turn detection のネイティブ推論
+  - onnxruntime-node # Silero VAD のONNXランタイム
+  - sharp # LiveKit Agents が画像処理に使う
