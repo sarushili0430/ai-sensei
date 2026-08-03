@@ -36,6 +36,14 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
 
+  packages/guardrail:
+    dependencies:
+      '@ai-sensei/curriculum':
+        specifier: workspace:*
+        version: link:../curriculum
+
+  packages/prompts: {}
+
 packages:
 
   '@biomejs/biome@1.9.4':
