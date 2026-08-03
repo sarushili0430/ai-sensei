@@ -98,8 +98,18 @@ export const rules: NormalizationRule[] = [
   { name: "equal", pattern: /(?:イコール|いこーる)/gu, replacement: "=" },
   { name: "plus", pattern: /(?:プラス|ぷらす)/gu, replacement: "+" },
   { name: "minus", pattern: /(?:マイナス|まいなす)/gu, replacement: "-" },
-  { name: "times", pattern: /(?:かける|掛ける)/gu, replacement: "×" },
-  { name: "divide", pattern: /(?:わる|割る)(?![い])/gu, replacement: "÷" },
+  // 「かける」「わる」は日常語でもある(「時間をかける」)。
+  // 数と数のあいだに挟まれているときだけ演算子とみなす。
+  {
+    name: "times",
+    pattern: /(?<=[0-9０-９a-zA-Zxyzθπ)）])\s*(?:かける|掛ける)\s*(?=[0-9０-９a-zA-Zxyzθπ(（])/gu,
+    replacement: "×",
+  },
+  {
+    name: "divide",
+    pattern: /(?<=[0-9０-９a-zA-Zxyzθπ)）])\s*(?:わる|割る)\s*(?=[0-9０-９a-zA-Zxyzθπ(（])/gu,
+    replacement: "÷",
+  },
   { name: "greater", pattern: /(?:大なり|だいなり)/gu, replacement: ">" },
   { name: "less", pattern: /(?:小なり|しょうなり)/gu, replacement: "<" },
   // 「かっこ」は式の読み上げでよく出るが、閉じ位置が曖昧なので触らない

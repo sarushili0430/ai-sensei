@@ -31,7 +31,8 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "minLength": 1
+                "minLength": 1,
+                "maxLength": 200
               },
               "maxItems": 10
             },
@@ -105,7 +106,8 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "minLength": 1
+                "minLength": 1,
+                "maxLength": 200
               },
               "maxItems": 5
             },
@@ -113,6 +115,7 @@
               "anyOf": [
                 {
                   "type": "string",
+                  "minLength": 1,
                   "maxLength": 200
                 },
                 {
