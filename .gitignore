@@ -42,3 +42,9 @@ apps/mobile/test/golden/failures/
 .vscode/*
 !.vscode/extensions.json
 .DS_Store
+
+# --- 環境変数の実値(テンプレートは *.example) ---
+backend/api/.dev.vars
+backend/agent/.env
+apps/mobile/dart_defines.env
+backend/api/.wrangler/

@@ -34,13 +34,16 @@ fvm flutter run --dart-define=API_BASE_URL=http://localhost:8787
 
 fvmを使わない場合は 3.44.8 を手で入れてください(`flutter --version` で確認)。
 
-`--dart-define` で渡す値(公開鍵なので秘匿不要):
+### 環境変数
 
-| 名前 | 用途 |
-| --- | --- |
-| `API_BASE_URL` | backend/api のURL |
-| `REVENUECAT_IOS_PUBLIC_SDK_KEY` | RevenueCat(iOS) |
-| `REVENUECAT_ANDROID_PUBLIC_SDK_KEY` | RevenueCat(Android) |
+```bash
+cp dart_defines.example.env dart_defines.env
+fvm flutter run --dart-define-from-file=dart_defines.env
+```
+
+ここに入るのは **公開値だけ** です(APIのURL・RevenueCat公開鍵・OneSignal App ID・
+Sentry DSN)。`--dart-define` の値はビルド成果物に埋め込まれ、逆アセンブルで読めるので、
+**秘密鍵は置かないでください**。秘密鍵はすべて `backend/` 側にあります。
 
 ## コード生成
 

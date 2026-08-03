@@ -19,7 +19,7 @@ Cloudflare Workers + Hono。セッション作成・カルテ保存・課金webh
 ## ローカル開発
 
 ```bash
-cp ../../.env.example .dev.vars
+cp .dev.vars.example .dev.vars
 pnpm --filter @ai-sensei/api migrate:local   # D1にスキーマを流す
 pnpm --filter @ai-sensei/api dev             # http://localhost:8787
 ```
