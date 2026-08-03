@@ -1,0 +1,13 @@
+{
+  "progress": {
+    "streak_days": 3,
+    "filled_holes": 4,
+    "open_holes": 1,
+    "last_session_date": "2026-08-03"
+  },
+  "is_premium": false,
+  "limits": {
+    "max_seconds": 300,
+    "remaining_sessions_today": 1
+  }
+}

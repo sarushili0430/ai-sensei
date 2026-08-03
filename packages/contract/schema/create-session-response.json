@@ -1,0 +1,116 @@
+{
+  "$ref": "#/definitions/create-session-response",
+  "definitions": {
+    "create-session-response": {
+      "type": "object",
+      "properties": {
+        "session_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "new",
+            "review"
+          ]
+        },
+        "livekit": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "token": {
+              "type": "string",
+              "minLength": 1
+            },
+            "room": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "url",
+            "token",
+            "room"
+          ],
+          "additionalProperties": false
+        },
+        "detected_topics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "topic_id": {
+                "type": "string",
+                "pattern": "^(M1|MA|M2|MB|M3|MC)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+              },
+              "course": {
+                "type": "string",
+                "minLength": 1
+              },
+              "unit": {
+                "type": "string",
+                "minLength": 1
+              },
+              "topic": {
+                "type": "string",
+                "minLength": 1
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "topic_id",
+              "course",
+              "unit",
+              "topic",
+              "confidence"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "limits": {
+          "type": "object",
+          "properties": {
+            "max_seconds": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "remaining_sessions_today": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "max_seconds",
+            "remaining_sessions_today"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "session_id",
+        "kind",
+        "livekit",
+        "detected_topics",
+        "limits"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

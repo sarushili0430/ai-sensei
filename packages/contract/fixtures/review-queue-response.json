@@ -1,0 +1,33 @@
+{
+  "items": [
+    {
+      "hole": {
+        "id": "hol_01J8W2A3BC4D5E6F7G8H9J0K1L",
+        "topic_id": "M1-NIJI-GURAFU",
+        "desc": "平方完成を「なぜ」するのか、で説明が止まった",
+        "severity": "high",
+        "status": "open",
+        "created_at": "2026-07-31T12:10:00.000Z",
+        "filled_at": null
+      },
+      "topic_id": "M1-NIJI-GURAFU",
+      "days_since": 3,
+      "prompt": "3日前の「平方完成のなぜ」、いまなら説明できますか?"
+    },
+    {
+      "hole": {
+        "id": "hol_01J8Z9M4RT9H8I7J6K5L4M3N2P",
+        "topic_id": "M1-NIJI-HANBETSU",
+        "desc": "判別式を「なぜ」使うのか、で説明が止まった",
+        "severity": "medium",
+        "status": "open",
+        "created_at": "2026-08-02T13:24:07.000Z",
+        "filled_at": null
+      },
+      "topic_id": "M1-NIJI-HANBETSU",
+      "days_since": 1,
+      "prompt": "きのうの「判別式の意味」、もう一度きいてもいいですか?"
+    }
+  ],
+  "requires_premium": false
+}

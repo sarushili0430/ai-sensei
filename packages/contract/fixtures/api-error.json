@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "free_limit_reached",
+    "message": "今日のセッションはここまでです。また明日、続きを聞かせてください。",
+    "retry_after_seconds": 41520
+  }
+}
