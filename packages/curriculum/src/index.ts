@@ -71,31 +71,54 @@ export function prerequisitesOf(id: string, depth = 1): Topic[] {
 
 /**
  * 写真解析で得たテキスト(単元名・用語・式の断片)から候補トピックを引く。
- * 完全一致の単元名 > トピック名 > キーワード の順に重みを付けた素朴なスコアリング。
+ *
+ * スコアの重みは トピック名(5) > 単元名(3) > キーワード(2)。
+ * 一致は部分一致だが、`sin` `tan` `log` のようなラテン文字の短い語は
+ * **語境界でのみ**照合する(`constant` の中の `tan` を三角比と見なさないため)。
+ *
  * ここで拾った候補が、後輩AIに渡す「触れてよい話題」の初期集合になる。
  */
 export function suggestTopics(text: string, limit = 5): Topic[] {
   const haystack = normalizeForMatch(text);
   if (haystack.length === 0) return [];
 
+  // 負数や小数を渡されても、slice(0, limit) の妙な挙動に落ちないようにする
+  const take = Math.max(0, Math.floor(limit));
+  if (take === 0) return [];
+
   const scored = topics
     .map((topic) => ({ topic, score: scoreTopic(topic, haystack) }))
     .filter((entry) => entry.score > 0)
     .sort((a, b) => b.score - a.score || a.topic.id.localeCompare(b.topic.id));
 
-  return scored.slice(0, limit).map((entry) => entry.topic);
+  return scored.slice(0, take).map((entry) => entry.topic);
 }
 
 function scoreTopic(topic: Topic, haystack: string): number {
   let score = 0;
-  if (haystack.includes(normalizeForMatch(topic.unit))) score += 3;
-  if (haystack.includes(normalizeForMatch(topic.topic))) score += 5;
+  if (matches(haystack, topic.unit)) score += 3;
+  if (matches(haystack, topic.topic)) score += 5;
   for (const keyword of topic.keywords) {
-    const normalized = normalizeForMatch(keyword);
     // 1文字キーワードは事故のもとなので数えない
-    if (normalized.length >= 2 && haystack.includes(normalized)) score += 2;
+    if (keyword.length >= 2 && matches(haystack, keyword)) score += 2;
   }
   return score;
+}
+
+/** ラテン文字だけで書かれた語(sin / tan / log / x など)。 */
+const LATIN_ONLY = /^[a-z0-9^/+*=<>().-]+$/;
+
+function matches(haystack: string, needle: string): boolean {
+  const normalized = normalizeForMatch(needle);
+  if (normalized.length === 0) return false;
+
+  // 日本語の語はそのまま部分一致でよい(「判別式」が別語に埋もれることはない)。
+  if (!LATIN_ONLY.test(normalized)) return haystack.includes(normalized);
+
+  // ラテン文字の語は前後を語境界に限る。`constant` の `tan`、`since` の `sin`、
+  // `biology` の `log` を数学の証拠と見なすと、数学以外の写真が範囲を通ってしまう。
+  const escaped = normalized.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![a-z0-9])${escaped}(?![a-z0-9])`, "u").test(haystack);
 }
 
 function normalizeForMatch(value: string): string {
