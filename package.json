@@ -1,0 +1,27 @@
+{
+  "name": "ai-sensei",
+  "private": true,
+  "version": "0.0.0",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*",
+    "workers/*",
+    "agent"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json",
+    "verify:secrets": "node --experimental-strip-types scripts/verify-no-secrets.ts",
+    "verify": "npm run typecheck && npm run verify:secrets && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
