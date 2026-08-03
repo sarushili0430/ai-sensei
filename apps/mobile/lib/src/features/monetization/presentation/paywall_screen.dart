@@ -45,12 +45,27 @@ class PaywallScreen extends ConsumerWidget {
                 onPressed: package == null
                     ? null
                     : () async {
-                        await ref
-                            .read(entitlementControllerProvider.notifier)
-                            .purchase(package);
-                        if (context.mounted) context.go(AppRoute.home.path);
+                        await ref.read(entitlementControllerProvider.notifier).purchase(package);
+                        // キャンセルやストアのエラーでも purchase() は正常に返る。
+                        // entitlementを見てから閉じないと、失敗を隠したまま
+                        // ホームへ戻してしまう。
+                        final bool isPremium = ref
+                                .read(entitlementControllerProvider)
+                                .valueOrNull
+                                ?.isPremium ??
+                            false;
+                        if (isPremium && context.mounted) context.go(AppRoute.home.path);
                       },
               ),
+              if (entitlement.hasError)
+                Padding(
+                  padding: const EdgeInsets.only(top: AppSpacing.sm),
+                  child: Text(
+                    strings.errorGeneric,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
               // 無料継続の導線は隠さない。押しても損をしないことが分かる文言にする。
               GhostButton(
                 label: strings.paywallDismiss,

@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../api/device_id.dart';
+
 import '../features/capture/presentation/capture_screen.dart';
 import '../features/karte/presentation/home_screen.dart';
 import '../features/karte/presentation/karte_screen.dart';
@@ -17,8 +19,11 @@ import 'routes.dart';
 ///   カルテ → ペイウォール(初回のみ) → ホーム
 ///   プッシュ通知 → 復習 → 会話
 final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((Ref ref) {
+  // 初回起動はオンボーディングから。約束(答えは教えない)を先に伝えたい。
+  final bool onboarded = ref.watch(onboardedProvider);
+
   return GoRouter(
-    initialLocation: AppRoute.home.path,
+    initialLocation: onboarded ? AppRoute.home.path : AppRoute.onboarding.path,
     routes: <RouteBase>[
       GoRoute(
         path: AppRoute.onboarding.path,

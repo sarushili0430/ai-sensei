@@ -108,7 +108,21 @@ class _TopicConfirm extends ConsumerWidget {
         const Spacer(),
         ChunkyButton(
           label: strings.captureStart,
-          onPressed: state.canStart ? () => context.go(AppRoute.session.path) : null,
+          onPressed: state.canStart
+              ? () async {
+                  // 外した単元を反映してから始める。ここを飛ばすと、サーバ側の
+                  // セッションとトークンは解析時のままで、外した単元を
+                  // 後輩が聞けてしまう。
+                  final SessionStart? session = await ref
+                      .read(captureControllerProvider.notifier)
+                      .confirmAndStart(
+                        locale: Localizations.localeOf(context).languageCode,
+                      );
+                  if (session != null && context.mounted) {
+                    context.go(AppRoute.session.path);
+                  }
+                }
+              : null,
         ),
       ],
     );

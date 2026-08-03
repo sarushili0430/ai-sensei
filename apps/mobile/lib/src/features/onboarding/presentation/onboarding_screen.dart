@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../api/device_id.dart';
 import '../../../common_widgets/chunky_button.dart';
 import '../../../common_widgets/kohai_face.dart';
 import '../../../l10n/strings.dart';
@@ -11,11 +13,11 @@ import '../../../theme/tokens.dart';
 ///
 /// 最初に伝えるのは機能ではなく**約束**。
 /// 「答えは教えません」を先に言い切ることで、既存の写真×数学アプリとの違いが立つ。
-class OnboardingScreen extends StatelessWidget {
+class OnboardingScreen extends ConsumerWidget {
   const OnboardingScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final AppStrings strings = AppStrings.of(context);
     return Scaffold(
       body: SafeArea(
@@ -41,7 +43,10 @@ class OnboardingScreen extends StatelessWidget {
               const Spacer(),
               ChunkyButton(
                 label: strings.onboardingCta,
-                onPressed: () => context.go(AppRoute.home.path),
+                onPressed: () async {
+                  await markOnboardingSeen(ref.read(preferencesProvider));
+                  if (context.mounted) context.go(AppRoute.home.path);
+                },
               ),
             ],
           ),

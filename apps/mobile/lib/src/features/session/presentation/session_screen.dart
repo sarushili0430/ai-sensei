@@ -66,6 +66,7 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
                   SessionPhase.connecting => KohaiMood.neutral,
                   SessionPhase.listening => KohaiMood.listening,
                   SessionPhase.kohaiSpeaking => KohaiMood.neutral,
+                  SessionPhase.summarizing => KohaiMood.neutral,
                   SessionPhase.finished => KohaiMood.delighted,
                   SessionPhase.failed => KohaiMood.puzzled,
                 },
@@ -74,7 +75,9 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
               const SizedBox(height: AppSpacing.lg),
               // 字幕。声を聞き取れない場所でも会話の流れを追えるようにする。
               Text(
-                state.lastKohaiText ?? strings.sessionListening,
+                state.phase == SessionPhase.summarizing
+                    ? strings.sessionThinking
+                    : state.lastKohaiText ?? strings.sessionListening,
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyLarge,
               ),

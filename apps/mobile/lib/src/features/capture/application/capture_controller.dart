@@ -90,6 +90,80 @@ class CaptureController extends Notifier<CaptureState> {
       );
     } on ApiException catch (error) {
       state = state.copyWith(isSubmitting: false, error: error);
+    } catch (_) {
+      // 圏外・タイムアウト・プロキシのHTML応答など。ここを拾わないと
+      // isSubmitting が立ったままスピナーで固まり、撮り直しの導線も消える。
+      state = state.copyWith(
+        isSubmitting: false,
+        error: const ApiException(
+          code: 'internal_error',
+          message: 'うまく送れませんでした。電波の届くところで、もう一度お願いします。',
+        ),
+      );
+    }
+  }
+
+  /// 単元の確認を反映してからセッションを始める。
+  ///
+  /// チップを外しただけでは、サーバ側のセッションとLiveKitトークンは
+  /// 解析時の単元のままになる。**外した単元を後輩が聞けてしまう**ので、
+  /// 選択が変わっていればセッションを作り直す。
+  Future<SessionStart?> confirmAndStart({String locale = 'ja'}) async {
+    final SessionStart? current = state.session;
+    if (current == null) return null;
+    if (state.excludedTopicIds.isEmpty) return current;
+
+    state = state.copyWith(isSubmitting: true, clearError: true);
+    try {
+      final SessionStart session = await ref.read(apiClientProvider).createSession(
+            photo: state.photo,
+            locale: locale,
+            topicIds: state.selectedTopicIds,
+          );
+      state = state.copyWith(
+        session: session,
+        isSubmitting: false,
+        excludedTopicIds: <String>{},
+      );
+      return session;
+    } on ApiException catch (error) {
+      state = state.copyWith(isSubmitting: false, error: error);
+      return null;
+    } catch (_) {
+      state = state.copyWith(
+        isSubmitting: false,
+        error: const ApiException(
+          code: 'internal_error',
+          message: 'うまく送れませんでした。電波の届くところで、もう一度お願いします。',
+        ),
+      );
+      return null;
+    }
+  }
+
+  /// 復習(プッシュ起点)。写真は送らず、埋めにいく穴を指定する。
+  Future<SessionStart?> startReview(String holeId, {String locale = 'ja'}) async {
+    state = const CaptureState(isSubmitting: true);
+    try {
+      final SessionStart session = await ref.read(apiClientProvider).createSession(
+            kind: 'review',
+            holeId: holeId,
+            locale: locale,
+          );
+      state = state.copyWith(session: session, isSubmitting: false);
+      return session;
+    } on ApiException catch (error) {
+      state = state.copyWith(isSubmitting: false, error: error);
+      return null;
+    } catch (_) {
+      state = state.copyWith(
+        isSubmitting: false,
+        error: const ApiException(
+          code: 'internal_error',
+          message: 'うまく送れませんでした。電波の届くところで、もう一度お願いします。',
+        ),
+      );
+      return null;
     }
   }
 

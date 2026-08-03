@@ -22,6 +22,8 @@ class CelebrationScreen extends ConsumerWidget {
     final AppStrings strings = AppStrings.of(context);
     final Progress progress = ref.watch(progressControllerProvider).valueOrNull ?? Progress.empty;
     final Karte? karte = ref.watch(latestKarteProvider);
+    // ペイウォールを出す位置はサーバが決める(初回カルテで穴が見えた直後の1回だけ)
+    final bool showPaywall = ref.watch(sessionOutcomeProvider).showPaywall;
     final int filledThisSession = karte == null
         ? 0
         : karte.holes.where((Hole it) => it.status == HoleStatus.filled).length;
@@ -53,6 +55,15 @@ class CelebrationScreen extends ConsumerWidget {
                 label: strings.karteTitle,
                 onPressed: () => context.go(AppRoute.karte.path),
               ),
+              if (showPaywall)
+                Padding(
+                  padding: const EdgeInsets.only(top: AppSpacing.sm),
+                  child: Text(
+                    strings.paywallPrice,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
             ],
           ),
         ),

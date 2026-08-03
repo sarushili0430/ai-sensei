@@ -48,6 +48,31 @@ class ApiClient {
     return SessionStart.fromJson(_decode(response));
   }
 
+  /// 会話後の結果を取りに行く。カルテ生成が終わるまでサーバは202を返すので、
+  /// 生成中は null を返して呼び出し側に待たせる。
+  Future<SessionResult?> fetchSessionResult(String sessionId) async {
+    final http.Response response = await _client.get(
+      Uri.parse('$baseUrl/v1/sessions/$sessionId/result'),
+      headers: _headers,
+    );
+    if (response.statusCode == 202) return null;
+    return SessionResult.fromJson(_decode(response));
+  }
+
+  /// カルテができるまで待つ。会話の直後は数秒かかる。
+  Future<SessionResult?> awaitSessionResult(
+    String sessionId, {
+    Duration interval = const Duration(seconds: 2),
+    int attempts = 15,
+  }) async {
+    for (int i = 0; i < attempts; i++) {
+      final SessionResult? result = await fetchSessionResult(sessionId);
+      if (result != null) return result;
+      await Future<void>.delayed(interval);
+    }
+    return null;
+  }
+
   Future<Progress> fetchProgress() async {
     final http.Response response = await _client.get(
       Uri.parse('$baseUrl/v1/me/progress'),

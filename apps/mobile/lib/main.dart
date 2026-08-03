@@ -15,10 +15,15 @@ Future<void> main() async {
   // 匿名デバイスIDは起動時に確定させる(アカウント作成は要求しない)
   final SharedPreferences preferences = await SharedPreferences.getInstance();
   final String deviceId = await loadOrCreateDeviceId(preferences);
+  final bool onboarded = await hasSeenOnboarding(preferences);
 
   runApp(
     ProviderScope(
-      overrides: <Override>[deviceIdProvider.overrideWithValue(deviceId)],
+      overrides: <Override>[
+        deviceIdProvider.overrideWithValue(deviceId),
+        preferencesProvider.overrideWithValue(preferences),
+        onboardedProvider.overrideWithValue(onboarded),
+      ],
       child: const AiSenseiApp(),
     ),
   );

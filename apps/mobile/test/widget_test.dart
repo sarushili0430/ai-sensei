@@ -1,6 +1,7 @@
 import 'package:ai_sensei/src/common_widgets/chunky_button.dart';
 import 'package:ai_sensei/src/common_widgets/kohai_face.dart';
 import 'package:ai_sensei/src/common_widgets/marker_text.dart';
+import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
 import 'package:ai_sensei/src/features/karte/domain/karte.dart';
 import 'package:ai_sensei/src/features/monetization/presentation/paywall_screen.dart';
 import 'package:ai_sensei/src/l10n/strings.dart';
@@ -74,6 +75,21 @@ void main() {
 
       expect(find.text('無料のまま続ける'), findsOneWidget);
       expect(find.text('いつでも解約できます'), findsOneWidget);
+    });
+  });
+
+  group('セッションの結果', () {
+    // レビュー指摘: 会話画面はAutoDisposeなので、祝福・カルテに着いた時点で
+    // 破棄されている。ペイウォールの判断(サーバ由来)はここに持ち回る。
+    test('既定ではペイウォールを出さない', () {
+      const SessionOutcome outcome = SessionOutcome();
+      expect(outcome.showPaywall, isFalse);
+      expect(outcome.resultMissing, isFalse);
+    });
+
+    test('サーバがtrueを返したときだけ出す', () {
+      const SessionOutcome outcome = SessionOutcome(showPaywall: true);
+      expect(outcome.showPaywall, isTrue);
     });
   });
 

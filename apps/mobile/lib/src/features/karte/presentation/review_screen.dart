@@ -6,6 +6,8 @@ import '../../../common_widgets/chunky_button.dart';
 import '../../../l10n/strings.dart';
 import '../../../routing/routes.dart';
 import '../../../theme/tokens.dart';
+import '../../capture/application/capture_controller.dart';
+import '../../session/domain/session.dart';
 import '../application/karte_controllers.dart';
 import '../domain/karte.dart';
 
@@ -47,13 +49,13 @@ class ReviewScreen extends ConsumerWidget {
   }
 }
 
-class _ReviewCard extends StatelessWidget {
+class _ReviewCard extends ConsumerWidget {
   const _ReviewCard({required this.item});
 
   final ReviewQueueItem item;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final AppStrings strings = AppStrings.of(context);
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
@@ -72,7 +74,18 @@ class _ReviewCard extends StatelessWidget {
           const SizedBox(height: AppSpacing.md),
           ChunkyButton(
             label: strings.reviewStart,
-            onPressed: () => context.go('${AppRoute.session.path}?hole=${item.hole.id}'),
+            onPressed: () async {
+              // 復習は写真を使わず、この穴を起点にサーバ側でセッションを作る。
+              final SessionStart? session = await ref
+                  .read(captureControllerProvider.notifier)
+                  .startReview(
+                    item.hole.id,
+                    locale: Localizations.localeOf(context).languageCode,
+                  );
+              if (session != null && context.mounted) {
+                context.go(AppRoute.session.path);
+              }
+            },
           ),
         ],
       ),

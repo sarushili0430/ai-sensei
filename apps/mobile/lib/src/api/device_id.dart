@@ -21,3 +21,19 @@ Future<String> loadOrCreateDeviceId(SharedPreferences preferences) async {
 final Provider<String> deviceIdProvider = Provider<String>((Ref ref) {
   throw UnimplementedError('deviceIdProvider は main() で override してください');
 });
+
+const String _onboardedKey = 'ai_sensei.onboarded';
+
+Future<bool> hasSeenOnboarding(SharedPreferences preferences) async =>
+    preferences.getBool(_onboardedKey) ?? false;
+
+Future<void> markOnboardingSeen(SharedPreferences preferences) =>
+    preferences.setBool(_onboardedKey, true);
+
+/// 初回起動かどうか。main() でoverrideする。
+final Provider<bool> onboardedProvider = Provider<bool>((Ref ref) => true);
+
+/// オンボーディングを見せたあと、以後スキップするためのフラグ書き込み。
+final Provider<SharedPreferences> preferencesProvider = Provider<SharedPreferences>((Ref ref) {
+  throw UnimplementedError('preferencesProvider は main() で override してください');
+});

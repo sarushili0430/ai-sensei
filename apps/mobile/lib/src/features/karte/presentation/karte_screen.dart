@@ -22,6 +22,7 @@ class KarteScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final AppStrings strings = AppStrings.of(context);
     final Karte? karte = ref.watch(latestKarteProvider);
+    final bool showPaywall = ref.watch(sessionOutcomeProvider).showPaywall;
 
     if (karte == null) {
       return Scaffold(
@@ -86,7 +87,11 @@ class KarteScreen extends ConsumerWidget {
               ),
             GhostButton(
               label: strings.karteDone,
-              onPressed: () => context.go(AppRoute.home.path),
+              // 初回カルテで穴が見えた直後だけ、ここでペイウォールを挟む。
+              // 出す/出さないの判断はサーバが持つ(煽らないため2回目以降は出さない)。
+              onPressed: () => context.go(
+                showPaywall ? AppRoute.paywall.path : AppRoute.home.path,
+              ),
             ),
           ],
         ),

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../api/api_client.dart';
@@ -35,6 +36,34 @@ class ReviewController extends AsyncNotifier<ReviewQueue> {
 
 final AsyncNotifierProvider<ReviewController, ReviewQueue> reviewControllerProvider =
     AsyncNotifierProvider<ReviewController, ReviewQueue>(ReviewController.new);
+
+/// セッションの結果のうち、画面をまたいで持ち回るもの。
+///
+/// 会話画面は AutoDispose なので、祝福・カルテ画面に着いたときには
+/// もう破棄されている。ペイウォールを出すかどうかは**サーバの判断**なので、
+/// 会話画面の寿命と切り離して保持する。
+class SessionOutcomeController extends Notifier<SessionOutcome> {
+  @override
+  SessionOutcome build() => const SessionOutcome();
+
+  void set(SessionOutcome outcome) => state = outcome;
+
+  void clear() => state = const SessionOutcome();
+}
+
+@immutable
+class SessionOutcome {
+  const SessionOutcome({this.showPaywall = false, this.resultMissing = false});
+
+  /// 初回カルテで穴が見えた直後だけ true。
+  final bool showPaywall;
+
+  /// カルテの生成を待ちきれなかった。
+  final bool resultMissing;
+}
+
+final NotifierProvider<SessionOutcomeController, SessionOutcome> sessionOutcomeProvider =
+    NotifierProvider<SessionOutcomeController, SessionOutcome>(SessionOutcomeController.new);
 
 /// 直近のカルテ。セッション完了時に置かれ、カルテ画面が読む。
 final NotifierProvider<LatestKarteController, Karte?> latestKarteProvider =
