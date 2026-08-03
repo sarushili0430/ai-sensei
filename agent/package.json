@@ -1,0 +1,26 @@
+{
+  "name": "@ai-sensei/agent",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "LiveKit Agents の会話パイプライン(後輩AI)",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "node --experimental-strip-types --env-file=.env src/index.ts dev",
+    "start": "node --experimental-strip-types src/index.ts start",
+    "download-files": "node --experimental-strip-types src/index.ts download-files"
+  },
+  "dependencies": {
+    "@ai-sensei/contract": "*",
+    "@ai-sensei/curriculum": "*",
+    "@ai-sensei/guardrail": "*",
+    "@ai-sensei/prompts": "*",
+    "@livekit/agents": "^1.6.1",
+    "@livekit/agents-plugin-anthropic": "^1.6.1",
+    "@livekit/agents-plugin-deepgram": "^1.6.1",
+    "@livekit/agents-plugin-elevenlabs": "^1.6.1",
+    "@livekit/agents-plugin-silero": "^1.6.1",
+    "zod": "^3.24.1"
+  }
+}
