@@ -21,8 +21,13 @@ Shipaton 2026 の Next Gen Award は **リポジトリ単体でプロジェク�
 ## 決定
 
 1. **単一リポジトリ**に `apps/mobile`・`workers/api`・`agent`・`packages/*` を同居させる。
-2. TypeScript側(`workers/*`・`agent`・`packages/*`)は **npm workspaces** で束ねる。
-   pnpm/yarnではなくnpmにするのは、Node同梱でCI・Codemagic・新規参加者の環境差が最小になるため。
+2. TypeScript側(`workers/*`・`agent`・`packages/*`)は **pnpm workspaces** で束ねる。
+   当初はnpmにしていた(Node同梱で環境差が最小、という理由)が、**Codemagicのビルド対象は
+   `apps/mobile` だけ**であり、TypeScript側はGitHub ActionsとLiveKitへのデプロイでしか
+   動かない。「どこでも入っている」ことの利点が効かないので、依存解決が速く、
+   ワークスペース間の依存を `workspace:*` で明示できるpnpmを採る。
+   ファントム依存(宣言していないパッケージがimportできてしまう)を構造的に防げるのも、
+   共有パッケージが多いこの構成では効く。
 3. パッケージスコープは **`@ai-sensei/*`** とする。プロダクト名(カタルテ / セツメイト /
    ときがたり)は未確定であり、確定前に名前をimport文へ焼き付けると全ファイルの改名が必要になる。
    リポジトリ名は変わらないので、スコープはリポジトリ名に合わせる。
@@ -35,7 +40,10 @@ Shipaton 2026 の Next Gen Award は **リポジトリ単体でプロジェク�
 ## 結果
 
 - 良い点: 1PRでAPI・エージェント・アプリの整合を取れる。提出物がリポジトリ1つで完結する。
-- 良い点: `.env.example` 方式と `npm run verify:secrets` をリポジトリ全体に一度だけ用意すればよい。
+- 良い点: `.env.example` 方式と `pnpm run verify:secrets` をリポジトリ全体に一度だけ用意すればよい。
+- 注意: pnpmを使うので、CIとCodemagicには `pnpm/action-setup` などでpnpmを入れる必要がある
+  (`package.json` の `packageManager` フィールドでバージョンを固定してある)。
+  `apps/mobile` はワークスペースに含めないので、Codemagic側にpnpmは不要。
 - 悪い点: CIが素朴に組むと全体が毎回走る。GitHub Actions側でpathフィルタを効かせて分担する
   (`apps/mobile` → Codemagic、`workers/**` → wrangler deploy、`agent/**` → LiveKitへ)。
 - 悪い点: TypeScriptとDartでスキーマ定義が二重になる。fixture検証テストで担保する。

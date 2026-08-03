@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { holeSchema, karteDraftSchema, karteSchema, progressSchema, topicIdSchema } from "./karte.ts";
+import {
+  holeSchema,
+  karteDraftSchema,
+  karteSchema,
+  progressSchema,
+  topicIdSchema,
+} from "./karte.ts";
 
 /**
  * workers/api ↔ apps/mobile ↔ agent の契約。

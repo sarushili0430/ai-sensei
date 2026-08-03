@@ -38,7 +38,7 @@ prerequisitesOf("M2-ZUKEI-ENCHOKU"); // → [M1-NIJI-HANBETSU, M2-ZUKEI-TENTO-KY
 }
 ```
 
-チェックは `npm test` の中で回る:
+チェックは `pnpm test` の中で回る:
 
 - スキーマ(zod)— 未知フィールドは `strict()` で弾く
 - ID重複 / 未定義の前提 / 自己参照 / 循環
@@ -52,4 +52,4 @@ prerequisitesOf("M2-ZUKEI-ENCHOKU"); // → [M1-NIJI-HANBETSU, M2-ZUKEI-TENTO-KY
 到達目標は「解ける」ではなく **「説明できる」** で書く。このアプリが測るのは説明であり、
 正誤ではないため。
 
-拡充の手順は、LLMで下書き → 人手レビュー → JSONに追記 → `npm test`。
+拡充の手順は、LLMで下書き → 人手レビュー → JSONに追記 → `pnpm test`。

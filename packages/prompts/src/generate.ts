@@ -1,12 +1,12 @@
 /**
  * prompts/*.md → src/generated.ts
  *
- *   npm run -w @ai-sensei/prompts generate
+ *   pnpm --filter @ai-sensei/prompts generate
  *
  * Workers/agentはファイルシステムを前提にできないので、Markdownを文字列定数に
  * 焼き込む。生成物はコミットし、ずれていればテストが落ちる。
  */
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 export const promptsDir = resolve(import.meta.dirname, "..", "..", "..", "prompts");
@@ -26,7 +26,7 @@ export function buildGeneratedSource(): string {
   return [
     "// このファイルは自動生成です。編集しないでください。",
     "// 生成元: prompts/*.md",
-    "// 再生成: npm run -w @ai-sensei/prompts generate",
+    "// 再生成: pnpm --filter @ai-sensei/prompts generate",
     "",
     "export const promptSources: Record<string, string> = {",
     ...entries,

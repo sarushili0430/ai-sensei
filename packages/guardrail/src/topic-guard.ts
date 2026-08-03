@@ -1,9 +1,9 @@
 import {
+  type Topic,
   findTopic,
   isKnownTopicId,
   isWellFormedTopicId,
   prerequisitesOf,
-  type Topic,
 } from "@ai-sensei/curriculum";
 
 /**
@@ -83,9 +83,7 @@ export type GeneratedQuestion = {
   text: string;
 };
 
-export type GuardVerdict =
-  | { ok: true }
-  | { ok: false; reason: RejectionReason; detail: string };
+export type GuardVerdict = { ok: true } | { ok: false; reason: RejectionReason; detail: string };
 
 /**
  * 高校数学の外側を指す語。写真にたまたま大学範囲のメモが写っていても、

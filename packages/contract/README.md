@@ -18,8 +18,8 @@ schema/      zodから生成したJSON Schema(Dart実装時の参照用。コミ
 zodを変えたら:
 
 ```bash
-npm run -w @ai-sensei/contract generate:schema   # schema/*.json を再生成
-npm test                                          # fixtureとの整合を確認
+pnpm --filter @ai-sensei/contract generate:schema   # schema/*.json を再生成
+pnpm test                                          # fixtureとの整合を確認
 ```
 
 fixtureに新しい形が必要になったら、**fixtureを先に書いてからスキーマを直す**。
