@@ -92,6 +92,9 @@ npm test              # vitest のみ
 cd apps/mobile && flutter test    # 純関数ユニット + golden test
 ```
 
+CIワークフローのテンプレートは [`docs/ci/`](docs/ci/README.md) にあります
+(GitHub Appは `.github/workflows/` へpushできないため、初回だけ手元でコピーが必要です)。
+
 テスト方針は「①純関数ユニット(ガードレール照合・数式正規化・間隔反復スケジューラ・
 穴/連続日数の集計・contract fixtureのパース)」と「②主要画面のgolden test」の2本立てです。
 E2Eは書かず、TestFlightでの手動確認に割り切っています。
