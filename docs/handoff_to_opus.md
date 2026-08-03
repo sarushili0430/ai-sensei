@@ -59,8 +59,8 @@
 **やる(数学特化・コアループ1周)**
 
 1. ノート撮影 → 単元検出(修正可能なチップUI)
-2. 後輩AIの質問 2〜3問(TTS読み上げ付き)
-3. push-to-talk録音(1問60秒上限)→ STT → 評価
+2. 後輩AIとのリアルタイム音声会話(LiveKit): 後輩が2〜3問きき、相づち・割り込みのある対話で説明する(1セッション5分目安)
+3. 会話transcriptからのカルテ生成(セッション終了時にルーブリック評価)
 4. カルテ画面: 言えたこと / 穴 / 用語メモ(**点数は出さない**)
 5. 穴の保存 + 翌日・3日後・7日後のプッシュ(OneSignal)→ 再説明フロー
 6. RevenueCat課金(Free/Premium)+ 初回カルテ直後のペイウォール
@@ -71,10 +71,11 @@
 
 - 解答・解説の生成(コンセプトの根幹として教えない)
 - 数学以外の教科
-- リアルタイム音声会話(v1.1候補。MVPは一問一答)
+- 録音アップロード式の一問一答UI(会話型を主軸に変更。W2末のGo/No-Goで品質未達の場合のみフォールバックとして復活 — §8)
 - Android公開(提出後)
 - ソーシャル機能、ランキング
 - XP・リーグ・クエスト等のフルゲーミフィケーション(数えるのは連続日数と「埋めた穴」だけ)
+- **WebRTCの自前実装**(LiveKitのSFU/SDKに乗る。こちらで書くのはトークン発行とAgentsのパイプライン定義だけ)
 
 ## 4. AIに事前に渡すデータ(質問生成のガードレール)
 
@@ -153,41 +154,74 @@ v0はまず頻出30〜40トピックを手で書き、残りはLLMで下書き�
 
 ## 5. アーキテクチャ
 
-### 全体
+### モノレポ構成(確定・8/3追記、同日Cloudflare/LiveKit採用で改訂)
+
+アプリ・バックエンド・共有データを1リポジトリに統合(**Next Genの提出単位=このrepoそのもの**になる利点も)。当初の全Dart案(Dart Frog+Cloud Run)は、Cloudflare採用とLiveKit Agents(Node/Python)採用に伴い撤回。型共有は`packages/contract`のスキーマ+フィクスチャ方式に切り替える。
+
+```
+/                       # MIT LICENSE・README(mobile/workers/agentのセットアップ手順)
+├── apps/mobile/        # Flutter + Riverpod 3 + livekit_client
+├── workers/api/        # TypeScript + Hono(Cloudflare Workers)
+│                       #   /sessions(写真解析・ルーム作成・トークン発行)
+│                       #   /webhooks/revenuecat・無料枠メータリング・OneSignal予約
+├── agent/              # LiveKit Agents(Node/Python — スパイク時に確定)
+│                       #   VAD・turn detection・STT→Claude→ElevenLabsの会話パイプライン
+├── packages/
+│   ├── contract/       # APIとカルテのJSON Schema + fixtureサンプル
+│   │                   #   Flutter(freezed)とWorkers(zod)の両側でfixture検証テストを
+│   │                   #   回し、契約ドリフトをCIで検知する
+│   └── curriculum/     # カリキュラムマップ(純JSON=言語中立)+ 検証用データ
+├── prompts/            # システムプロンプト・few-shot(バージョン管理して差分レビュー)
+├── docs/               # 本資料・wireframe・design_direction・ADR
+├── .github/workflows/  # workers: wrangler deploy / agent: LiveKitへ / 全体: test
+└── .env.example        # 秘匿情報はコードに入れない(public repo前提)
+```
+
+- pathフィルタでビルド分担: apps/mobile→Codemagic、workers→GitHub Actions(wrangler)、agent→LiveKitデプロイ
+- ガードレール(topic_idホワイトリスト照合)はcurriculumの純JSONを正として、workers(セッション作成時)とagent(会話中の質問生成時)の両方で照合する
+
+### 全体(リアルタイム会話版)
 
 ```
 Flutter app (iOS先行)
-  ├ camera / audio recorder / ローカルDB(穴・履歴キャッシュ)
-  ├ purchases_flutter (RevenueCat)
-  ├ OneSignal SDK
-  └ HTTPS → Backend API (APIキー秘匿のため必須)
+  ├ camera / livekit_client(会話) / ローカルキャッシュ(穴・履歴)
+  ├ purchases_flutter (RevenueCat) / OneSignal SDK
+  └ HTTPS → workers/api
 
-Backend (AI呼び出しエンドポイント)
+workers/api (Cloudflare Workers + Hono)
   ├ POST /v1/sessions
-  │    body: 画像 / res: { session_id, detected_topics[], questions[{id, text, topic_id, tts_url}] }
-  │    処理: Vision LLMで内容抽出+単元判定 → 質問生成 → ガード照合 → ElevenLabsでTTS生成
-  ├ POST /v1/sessions/{id}/answers
-  │    body: 音声(m4a) + question_id / res: { transcript, feedback(ルーブリックJSON) }
-  │    処理: Whisper STT → 数式正規化 → 評価LLM(写真文脈込み)
-  ├ POST /v1/sessions/{id}/complete
-  │    処理: 穴をDB保存 → OneSignal APIで 1日/3日/7日後の通知スケジュール
-  ├ POST /v1/webhooks/revenuecat  (entitlement同期)
-  └ 無料枠制御(1日1セッション)はサーバ側でカウント(クライアント改竄対策)
+  │    body: 画像 / 処理: Vision LLMで内容抽出+単元判定+質問方針の生成 → ガード照合
+  │    → LiveKitルーム作成+エージェント起動(写真の解釈・topic許可リスト・質問方針をメタデータで渡す)
+  │    → res: { session_id, livekit_token, detected_topics[] }
+  ├ POST /v1/sessions/{id}/complete   ※agentが呼ぶ
+  │    body: transcript(messages[]) + カルテJSON / 処理: D1保存 → OneSignalで1日/3日/7日後を予約
+  ├ POST /v1/webhooks/revenuecat      (entitlement同期)
+  └ 無料枠制御(1日1セッション・最長5分)はサーバ側でカウント(クライアント改竄対策)
+  ストレージ: R2(写真) / DB: D1
+
+agent (LiveKit Agents)
+  会話ループ: VAD+turn detection → streaming STT(日本語) → Claude(写真文脈+ガードレール+後輩ペルソナ)
+  → ElevenLabs TTS(後輩ボイス)。割り込み対応。数式の聞き取り補正は写真文脈を持つClaude側で行う。
+  セッション終了時にtranscript全体からカルテを生成し /complete へPOST
 ```
 
-**会話拡張を見据えたデータ設計(確定: 一問一答で出し、v1.1で会話型へ)**: セッションはサーバ側で `messages[]`(assistant=質問・あと追い、user=説明の書き起こし)として保持する。一問一答はその上の「見せ方」にすぎない構造にしておけば、会話型への拡張はUIの変更とレイテンシ改善だけで済み、データ移行が発生しない。`/answers` に任意の `followup` を持たせてあるのはこの布石。
+**データ設計**: 会話のtranscriptがそのまま `messages[]`(assistant=後輩の発話、user=説明)。一問一答時代に布石として置いた構造が、リアルタイム化でそのまま本体になった。カルテはセッション終了時にtranscript全体から生成する。
 
 ### 技術選定
 
-- **アプリ: Flutter**(確定。Expo/RNとも比較したが、カスタム描画中心のデザイン方向・Rive対応・必要SDKの公式Flutter対応・開発者本人の習熟からFlutterが最適)。CI/CDは**Codemagic**(スポンサー・Flutter最強手): TestFlight自動配信まで組む
-- **OTA修正: Shorebird**(Flutter向けcode push)をW5以降に導入検討。App Storeの審査待ちを挟まずDartコードのパッチを配れる(ガイドライン準拠の設計)。9月の改善レースで効く
-- **STT: サーバ側Whisper推奨**。理由: 数式語彙の補正を写真文脈と同じ場所(LLM)でやるため。端末内speech_to_textはオフライン用フォールバック候補
-- **LLM: Claude(vision+評価)**。OpenRouter経由も可(スポンサー特典のクレジット次第)
-- **TTS: ElevenLabs**(スポンサー)。後輩の声を1ボイス固定で作る
-- **ホスティング: 未決**(Cloud Run vs Supabase Edge Functions vs Firebase。§9)。要件: 画像/音声アップロード、Postgres程度のDB、cron不要(通知はOneSignal側スケジュール)
+- **アプリ: Flutter**(確定。カスタム描画中心のデザイン方向・Rive対応・必要SDKの公式対応・本人の習熟)
+- **状態管理/DI: Riverpod 3系(確定)**。`@riverpod`アノテーション+codegenで統一し、riverpod_lintを入れる。※現行メジャーは3系(2025年9月stable)。docs-v2.riverpod.devは2系のアーカイブドキュメントなので、参照はriverpod.devの3系ドキュメントに揃えること(v2の`XxxRef`型は3系で`Ref`に統合済み等、記法差がある)
+- **apps/mobile内の構成: Feature-first + Riverpod App Architecture**(codewithandrea方式・ユーザー提供記事より)。featureは画面単位ではなく**ドメイン単位**で切る: `capture`(撮影・単元確認)/ `session`(会話・祝福)/ `karte`(カルテ・穴・復習・streak — 同一ドメインなので1つのfeatureにまとめる)/ `monetization`(entitlement・ペイウォール)。各featureの中を presentation / application / domain / data のレイヤで分割。共通は `routing`(go_router)・`common_widgets`(マーカーテキスト・厚みボタン・キャラ)・`theme`(§7のトークン)・`l10n`。Controller=`@riverpod class`のAsyncNotifier、RepositoryをSSOTに。※参考記事のサンプルコードはv2期の記法なので3系に読み替えること
+- **リアルタイム会話: LiveKit(確定)**。生のWebRTCは書かず、**LiveKit Agents**フレームワーク(VAD・turn detection・割り込みが同梱、STT/LLM/TTSはプラグイン差し込み)で会話パイプラインを定義。ElevenLabsプラグインがあるのでスポンサー連携も維持。エージェントのデプロイはLiveKit Cloudのエージェントホスティングを第一候補に(可否は§9で確認、不可ならコンテナ常駐)
+- **STT: streaming対応の日本語STT**(Agentsのプラグインから選定。Deepgram等)。数式語彙の補正は写真文脈を持つClaude側で行う(§4(d)の正規化辞書はプロンプトに同梱)
+- **LLM: Claude**(会話+カルテ生成。OpenRouter経由も可、スポンサー特典のクレジット次第)/ **TTS: ElevenLabs**(後輩の声を1ボイス固定)
+- **インフラ: Cloudflareに寄せる(確定)**: Workers(TS+Hono)+ R2(写真)+ D1(DB)+ KV(メータリング)。cron不要(通知はOneSignal側スケジュール)
+- **CI: Codemagic(確定)**= apps/mobile→TestFlight。workersはGitHub Actions+wrangler、agentはLiveKitへデプロイ
+- **テスト方針(確定)**: ①**純関数ユニット**: ガードレール照合・数式正規化・間隔反復スケジューラ・streak/穴カウンタ・contract fixtureのパース ②**golden test**: ホーム/会話/祝福/カルテ/ペイウォールの主要5画面。フォントをテストセットアップで読み込み、goldenの生成はCI環境を正としてプラットフォーム差分を回避(alchemist採用を検討)。E2Eは書かず、TestFlightでの手動確認に割り切る
+- **OTA修正: Shorebird**(Flutter向けcode push)をW5以降に導入検討。審査待ちを挟まずDartパッチを配れる
 - **認証: 匿名(デバイスID)で開始**。アカウント作成を要求しない→App Reviewの「アカウント削除」要件も回避。Sign in with Appleはv1.1
 - **監視: Sentry**(スポンサー)
-- コスト試算の前提: 無料1セッション = vision 1回 + STT 3回 + 評価 3回 + TTS 3回。無料枠1日1回ならユーザーあたり月数十円オーダーで収まる想定。Premium価格でカバー
+- コスト試算の前提: 会話1分あたりstreaming STT+LLM+TTSで数円〜十数円オーダー。無料枠(1日1回・最長5分)なら維持可能。LiveKit Cloudは開発者向け無料枠から開始
 
 ### App Review 注意点
 
@@ -197,7 +231,7 @@ Backend (AI呼び出しエンドポイント)
 
 ## 6. 収益設計(RevenueCat必須要件 + HAMM対応)
 
-- **Free**: 1日1セッション、当日のカルテ閲覧まで
+- **Free**: 1日1セッション(会話は最長5分)、当日のカルテ閲覧まで
 - **Premium ¥580/月(仮)・7日間無料トライアル**: セッション無制限 / 穴の復習と履歴 / 後輩のあと追い質問(深掘り)
 - ペイウォール表示位置: **初回カルテで穴が見えた直後**(価値実感の瞬間)。「無料のまま続ける」を明示し、煽り文言なし・解約可能明記(HAMMは誠実さを見る)
 - 日本の高校生はコンビニのiTunesカード・キャリア決済で課金する文化が既にある。学習系は親が払う構図も訴求可
@@ -228,15 +262,15 @@ Backend (AI呼び出しエンドポイント)
 
 ## 8. 8週間ロードマップ
 
-| 週          | やること                                                                                                                                                          |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| W1 (8/3〜)  | Devpost登録・Ship Kit・Apple Developer申請 / **publicリポジトリ(MIT)作成** / Flutterプロジェクト+backend雛形 / コアループ縦切り(写真→質問→録音→STT→評価が1回通る) |
-| W2          | カリキュラムJSON v0(30〜40トピック) / ガードレール実装 / カルテ画面                                                                                               |
-| W3          | RevenueCat+ペイウォール(サンドボックス購入まで) / OneSignal+復習フロー / TestFlight配布開始                                                                       |
-| W4 (〜8/末) | 磨き込み・英語ロケール・アイコン/スクショ / **App Store審査へ提出**                                                                                               |
-| W5〜6       | 公開・実ユーザー獲得(勉強垢文化への種まき: X/TikTok) / #BuildInPublic週次投稿 / 改善イテレーション                                                                |
-| W7          | 数値集め(DL/継続/転換) / デモ動画撮影(2分・英語字幕)                                                                                                              |
-| W8 (〜9/30) | 提出物一式を英語で作成 / **9/25目安で早期提出**                                                                                                                   |
+| 週          | やること                                                                                                                                                                                                                                            |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| W1 (8/3〜)  | Devpost登録・Ship Kit・Apple Developer申請 / **publicモノレポ(MIT)作成** / **LiveKitスパイク最優先**: 写真文脈を持ったエージェントと日本語で1往復会話できるまで(UIは仮でよい)                                                                       |
+| W2          | 会話パイプライン仕上げ(割り込み・数式補正・カルテ生成)/ カリキュラムJSON v0(30〜40トピック)とガードレール / **W2末: Go/No-Goゲート** — 日本語数学会話の遅延・誤認識が基準未達なら録音式一問一答にフォールバック(UIとカルテは共通なので切替コスト小) |
+| W3          | RevenueCat+ペイウォール(サンドボックス購入まで) / OneSignal+復習フロー / TestFlight配布開始                                                                                                                                                         |
+| W4 (〜8/末) | 磨き込み・英語ロケール・アイコン/スクショ / **App Store審査へ提出**                                                                                                                                                                                 |
+| W5〜6       | 公開・実ユーザー獲得(勉強垢文化への種まき: X/TikTok) / #BuildInPublic週次投稿 / 改善イテレーション                                                                                                                                                  |
+| W7          | 数値集め(DL/継続/転換) / デモ動画撮影(2分・英語字幕)                                                                                                                                                                                                |
+| W8 (〜9/30) | 提出物一式を英語で作成 / **9/25目安で早期提出**                                                                                                                                                                                                     |
 
 **ソロ運用の割り切りルール**: 機能追加はW4で凍結し、W5以降はグロースと磨きだけにあてる。遅延したら落とす順は ①後輩のあと追い質問(Premium訴求は復習機能だけでも立つ)→ ②間隔反復を3段階から翌日のみに縮小 → ③英語ロケールを全画面から主要画面のみに(残りは動画の英語字幕で補う)。TTSとカルテはデモの核なので落とさない。
 
@@ -246,16 +280,18 @@ Backend (AI呼び出しエンドポイント)
 
 1. **Next Gen併願する**(学生メールあり)→ リポジトリは初日からpublic+MIT(§2の要件参照)
 2. **ソロ開発** → §8の割り切りルールで運用
-3. **音声UXは一問一答で出し、v1.1で会話型に拡張** → §5のmessages[]設計が布石
+3. **方針変更(同日): 最初からリアルタイム会話形式(LiveKit)で出す**。ただし§8のW2末Go/No-Goゲート付き。布石だったmessages[]設計はtranscriptとしてそのまま本体化
+4. **モノレポで実装**(§5の構成。WebRTCは自前実装しない)
+5. **インフラ: Cloudflareに寄せる**(Workers+R2+D1)/ **CI: Codemagic** / **テスト: golden+純関数**(§5)/ **DI・状態管理: Riverpod 3系**
 
-**Opusと詰める(残り)** 4. バックエンドのホスティング(ユーザーの経験・好みを聞くこと) 5. Apple Developer登録の現状確認(未ならW1初日) 6. アプリ名の確定(カタルテ / セツメイト / ときがたり / 新案) 7. キャラ設計(名前・口調・ビジュアル。ソロなので簡素な自作から始めて磨く) 8. Premium価格の最終決定(¥480/¥580/¥780) 9. 声を出せない環境向けテキスト入力フォールバックの要否10. パレット・キャラ表情の最終確定(design_direction_v0.htmlを叩き台に調整)
+**Opusと詰める(残り)** 6. エージェントのデプロイ先確認(LiveKit Cloudのエージェントホスティング可否 → 不可ならコンテナ常駐)。あわせてagentの言語(Node/Python)をスパイクで確定7. Apple Developer登録の現状確認(未ならW1初日) 8. アプリ名の確定(カタルテ / セツメイト / ときがたり / 新案) 9. キャラ設計(名前・口調・ビジュアル。ソロなので簡素な自作から始めて磨く) 10. Premium価格の最終決定(¥480/¥580/¥780) 11. 声を出せない環境向けテキスト入力フォールバックの要否(常時会話型になったぶん重要度アップ) 12. パレット・キャラ表情の最終確定 + 会話画面のUI(wireframeの03/04を1枚に統合)
 
 ## 10. Opusへの最初の依頼
 
 この資料とwireframe_v0.htmlを前提に、以下の順で着手してほしい:
 
-1. §9「Opusと詰める」の6項目をユーザーと確定(まずホスティングとアプリ名)
-2. public GitHubリポジトリ(MIT・`.env.example`方式)を作り、Flutterプロジェクト雛形(画面骨格8枚・ルーティング・状態管理の選定)
-3. Backend雛形(§5のエンドポイント3本をモックで立てる)
+1. §9「Opusと詰める」の7項目をユーザーと確定(まずエージェントのデプロイ先とアプリ名)
+2. public GitHubモノレポ(MIT・`.env.example`方式)を§5の構成でブートストラップ: apps/mobile(Flutter+Riverpod 3・画面骨格9枚)+ workers/api(Hono)+ agent(LiveKit Agents)+ packages/contract + packages/curriculum
+3. **LiveKitスパイク(W1の最重要タスク)**: 写真文脈を持ったエージェントと日本語で1往復会話が通る最小構成。UIは仮でよい。agentの言語(Node/Python)もここで確定
 4. カリキュラムマップJSON v0の生成(§4(a)のスキーマで、まず数I・数IIの頻出トピックから。人手レビュー前提の下書き)
-5. 質問生成プロンプト+ガードレール照合の実装とテスト(意地悪な写真=範囲外・大学数学・数学以外で範囲逸脱しないか)
+5. 質問生成プロンプト+ガードレール照合の実装とテスト(意地悪な写真=範囲外・大学数学・数学以外で範囲逸脱しないか)+ 純関数テストとgoldenの雛形整備
