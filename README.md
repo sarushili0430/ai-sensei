@@ -77,12 +77,11 @@ pnpm --filter @ai-sensei/agent dev   # agent (LiveKitのルームに接続して
 
 cd apps/mobile
 flutter pub get
-dart run build_runner build --delete-conflicting-outputs   # Riverpod/freezed のcodegen
 flutter run --dart-define=API_BASE_URL=http://localhost:8787
 ```
 
-> 各ワークスペースは対応するPRで順次追加されます。まだ存在しないディレクトリの
-> コマンドはスキップしてください。
+> `apps/mobile` は codegen なしで動きます(`build_runner` は現時点では不要)。
+> 理由と、codegenへ寄せる場合の置き換え方は `apps/mobile/README.md` にあります。
 
 ## テスト
 
@@ -92,7 +91,7 @@ pnpm run lint         # Biome(lint + format検査)のみ
 pnpm run format       # Biomeで整形する(--write)
 pnpm test             # vitest のみ
 
-cd apps/mobile && flutter test    # 純関数ユニット + golden test
+cd apps/mobile && flutter test    # 契約fixtureの検証 + ウィジェットテスト
 ```
 
 CIワークフローのテンプレートは [`docs/ci/`](docs/ci/README.md) にあります
@@ -102,6 +101,7 @@ Biomeがlintと整形の両方を担当します(ESLint + Prettierは入れて�
 
 テスト方針は「①純関数ユニット(ガードレール照合・数式正規化・間隔反復スケジューラ・
 穴/連続日数の集計・contract fixtureのパース)」と「②主要画面のgolden test」の2本立てです。
+golden testはフォント配置後に入れます(`apps/mobile/README.md`)。
 E2Eは書かず、TestFlightでの手動確認に割り切っています。
 
 ## アーキテクチャ
