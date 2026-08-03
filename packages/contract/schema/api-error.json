@@ -1,0 +1,46 @@
+{
+  "$ref": "#/definitions/api-error",
+  "definitions": {
+    "api-error": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string",
+              "enum": [
+                "unauthorized",
+                "free_limit_reached",
+                "premium_required",
+                "photo_unreadable",
+                "out_of_scope",
+                "session_not_found",
+                "rate_limited",
+                "internal_error"
+              ]
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            },
+            "retry_after_seconds": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "error"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

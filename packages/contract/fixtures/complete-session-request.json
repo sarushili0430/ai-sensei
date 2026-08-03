@@ -1,0 +1,55 @@
+{
+  "transcript": [
+    {
+      "role": "assistant",
+      "text": "この問題、円と直線が2点で交わるかどうかを聞かれてるやつですよね。最初の一歩、なんでそれにしたんですか?",
+      "at_ms": 1200,
+      "topic_id": "M2-ZUKEI-ENCHOKU"
+    },
+    {
+      "role": "user",
+      "text": "えっと、円の中心から直線までの距離を出して、半径と比べました。距離のほうが小さければ2点で交わるので。",
+      "at_ms": 9800
+    },
+    {
+      "role": "assistant",
+      "text": "距離と半径を比べるんですね。でも(2)ではいきなり判別式を使ってましたよね。なんで途中で方法を変えたんですか?",
+      "at_ms": 15400,
+      "topic_id": "M1-NIJI-HANBETSU"
+    },
+    {
+      "role": "user",
+      "text": "あー、そこは……なんとなくです。連立したら二次式になったので、たぶん判別式かなと。",
+      "at_ms": 24100
+    },
+    {
+      "role": "assistant",
+      "text": "なるほど。じゃあ判別式って、そもそも何がわかるものなんですか?",
+      "at_ms": 29000,
+      "topic_id": "M1-NIJI-HANBETSU"
+    },
+    {
+      "role": "user",
+      "text": "解の公式の……ルートの中の部分で、それが正なら解が2つ、みたいな。すみません、うまく言えないです。",
+      "at_ms": 41500
+    }
+  ],
+  "karte": {
+    "said_well": [
+      "中心と直線の距離dと半径rを比べて位置関係を判定する方針を、理由つきで説明できた",
+      "d < r なら2点で交わる、と対応づけて言えた"
+    ],
+    "holes": [
+      {
+        "topic_id": "M1-NIJI-HANBETSU",
+        "desc": "判別式を「なぜ」使うのか、で説明が止まった",
+        "severity": "medium",
+        "evidence": "そこは……なんとなくです"
+      }
+    ],
+    "term_notes": ["「解の公式」と「判別式」が混ざっていた"],
+    "followup_question": null
+  },
+  "duration_seconds": 268,
+  "ended_reason": "completed"
+}

@@ -1,0 +1,21 @@
+{
+  "name": "@ai-sensei/contract",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "workers/api ↔ apps/mobile ↔ agent の契約(zodスキーマ + JSON Schema + fixture)",
+  "exports": {
+    ".": "./src/index.ts",
+    "./fixtures/*": "./fixtures/*.json",
+    "./schema/*": "./schema/*.json"
+  },
+  "files": ["src", "fixtures", "schema"],
+  "scripts": {
+    "generate:schema": "node --experimental-strip-types src/generate-json-schema.ts"
+  },
+  "dependencies": {
+    "zod": "^3.24.1",
+    "zod-to-json-schema": "^3.24.1"
+  }
+}
