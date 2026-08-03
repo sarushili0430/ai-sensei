@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../app.ts";
-import { testBindings, testDeviceId, testServices, type TestServices } from "../test-support.ts";
+import { type TestServices, testBindings, testDeviceId, testServices } from "../test-support.ts";
 
 let services: TestServices;
 const app = createApp({ services: () => services });
@@ -47,7 +47,11 @@ describe("POST /v1/webhooks/revenuecat", () => {
 
   // 払ったぶんは最後まで使える、が誠実さ(HAMM)の最低線
   it("解約予約(CANCELLATION)では、期限までPremiumのままにする", async () => {
-    await postWebhook({ type: "INITIAL_PURCHASE", app_user_id: testDeviceId, expiration_at_ms: null });
+    await postWebhook({
+      type: "INITIAL_PURCHASE",
+      app_user_id: testDeviceId,
+      expiration_at_ms: null,
+    });
     await postWebhook({
       type: "CANCELLATION",
       app_user_id: testDeviceId,
@@ -60,21 +64,32 @@ describe("POST /v1/webhooks/revenuecat", () => {
   });
 
   it("期限切れでPremiumを外す", async () => {
-    await postWebhook({ type: "INITIAL_PURCHASE", app_user_id: testDeviceId, expiration_at_ms: null });
+    await postWebhook({
+      type: "INITIAL_PURCHASE",
+      app_user_id: testDeviceId,
+      expiration_at_ms: null,
+    });
     await postWebhook({ type: "EXPIRATION", app_user_id: testDeviceId });
 
     expect((await services.repository.getUser(testDeviceId))?.is_premium).toBe(false);
   });
 
   it("返金でも即座にPremiumを外す", async () => {
-    await postWebhook({ type: "INITIAL_PURCHASE", app_user_id: testDeviceId, expiration_at_ms: null });
+    await postWebhook({
+      type: "INITIAL_PURCHASE",
+      app_user_id: testDeviceId,
+      expiration_at_ms: null,
+    });
     await postWebhook({ type: "REFUND", app_user_id: testDeviceId });
 
     expect((await services.repository.getUser(testDeviceId))?.is_premium).toBe(false);
   });
 
   it("認証が合わなければ401", async () => {
-    const response = await postWebhook({ type: "INITIAL_PURCHASE", app_user_id: testDeviceId }, "wrong");
+    const response = await postWebhook(
+      { type: "INITIAL_PURCHASE", app_user_id: testDeviceId },
+      "wrong",
+    );
     expect(response.status).toBe(401);
     expect(await services.repository.getUser(testDeviceId)).toBeNull();
   });

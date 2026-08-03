@@ -50,7 +50,9 @@ export async function createLiveKitToken(input: TokenInput): Promise<string> {
 }
 
 export async function signJwt(payload: Record<string, unknown>, secret: string): Promise<string> {
-  const header = base64UrlEncode(new TextEncoder().encode(JSON.stringify({ alg: "HS256", typ: "JWT" })));
+  const header = base64UrlEncode(
+    new TextEncoder().encode(JSON.stringify({ alg: "HS256", typ: "JWT" })),
+  );
   const body = base64UrlEncode(new TextEncoder().encode(JSON.stringify(payload)));
   const signingInput = `${header}.${body}`;
 

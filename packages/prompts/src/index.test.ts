@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { buildGeneratedSource, promptFiles, promptsDir } from "./generate.ts";
 import {
+  PromptRenderError,
   allPrompts,
   conversationSystemPrompt,
   formatAllowedTopics,
@@ -11,16 +13,14 @@ import {
   karteSystemPrompt,
   parsePrompt,
   promptIds,
-  PromptRenderError,
   renderPrompt,
 } from "./index.ts";
-import { buildGeneratedSource, promptFiles, promptsDir } from "./generate.ts";
 
 describe("generated.ts", () => {
   // .mdを直して再生成を忘れると、実行時のプロンプトだけ古いまま残る
   it("prompts/*.md と一致している", () => {
     const committed = readFileSync(resolve(import.meta.dirname, "generated.ts"), "utf8");
-    expect(committed, "npm run -w @ai-sensei/prompts generate を実行してください").toBe(
+    expect(committed, "pnpm --filter @ai-sensei/prompts generate を実行してください").toBe(
       buildGeneratedSource(),
     );
   });
@@ -62,7 +62,9 @@ describe("renderPrompt", () => {
   });
 
   it("未展開のプレースホルダが残ったらエラー", () => {
-    const broken = parsePrompt(["---", "id: broken", "variables: [a]", "---", "{{a}} {{z}}"].join("\n"));
+    const broken = parsePrompt(
+      ["---", "id: broken", "variables: [a]", "---", "{{a}} {{z}}"].join("\n"),
+    );
     expect(() => renderPrompt(broken, { a: "1" })).toThrow(/未展開/);
   });
 });

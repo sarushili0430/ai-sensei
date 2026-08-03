@@ -16,7 +16,7 @@ Workers/agentはファイルシステムを前提にできないため、Markdow
 `packages/prompts/src/generated.ts` を経由します。**手で編集しないこと。**
 
 ```bash
-npm run -w @ai-sensei/prompts generate   # .md → generated.ts
+pnpm --filter @ai-sensei/prompts generate   # .md → generated.ts
 ```
 
 `.md` を編集して再生成を忘れると `packages/prompts/src/generated.test.ts` が落ちます。

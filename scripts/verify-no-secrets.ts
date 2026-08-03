@@ -5,7 +5,7 @@
  * コミットされるとgit履歴の掃除が必要になる。CIとpre-commitの両方から
  * 呼べるように、走査ロジック(純関数)とCLIを分けている。
  *
- *   npm run verify:secrets
+ *   pnpm run verify:secrets
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
@@ -43,10 +43,7 @@ export const RULES: Rule[] = [
 ];
 
 /** 走査対象から外すパス(自分自身とテストは検出パターンの文字列を含むため)。 */
-export const DEFAULT_IGNORE = [
-  "scripts/verify-no-secrets.ts",
-  "scripts/verify-no-secrets.test.ts",
-];
+export const DEFAULT_IGNORE = ["scripts/verify-no-secrets.ts", "scripts/verify-no-secrets.test.ts"];
 
 const BINARY_EXTENSIONS =
   /\.(png|jpe?g|gif|webp|ico|pdf|zip|gz|mp3|mp4|wav|ttf|otf|woff2?|riv|keystore|jks)$/i;

@@ -4,11 +4,11 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../app.ts";
 import { verifyJwt } from "../lib/livekit.ts";
 import {
+  type TestServices,
   createSessionForm,
   testBindings,
   testDeviceId,
   testServices,
-  type TestServices,
 } from "../test-support.ts";
 
 let services: TestServices;
@@ -106,7 +106,9 @@ describe("POST /v1/sessions", () => {
     });
     const response = await post(createSessionForm());
     expect(response.status).toBe(422);
-    expect(((await response.json()) as { error: { code: string } }).error.code).toBe("out_of_scope");
+    expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+      "out_of_scope",
+    );
   });
 
   it("単元を1つも特定できなければセッションを作らない", async () => {

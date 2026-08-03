@@ -1,5 +1,5 @@
 import { zodToJsonSchema } from "zod-to-json-schema";
-import { fixtureSchemas, type FixtureName } from "./fixtures.ts";
+import { type FixtureName, fixtureSchemas } from "./fixtures.ts";
 
 /**
  * zodスキーマからJSON Schemaを起こす。

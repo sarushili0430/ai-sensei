@@ -4,11 +4,6 @@
   "compilerOptions": {
     "noEmit": true
   },
-  "include": [
-    "scripts/**/*",
-    "packages/*/src/**/*",
-    "workers/*/src/**/*",
-    "agent/src/**/*"
-  ],
+  "include": ["scripts/**/*", "packages/*/src/**/*", "workers/*/src/**/*", "agent/src/**/*"],
   "exclude": ["**/node_modules", "**/dist"]
 }

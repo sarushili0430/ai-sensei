@@ -1,7 +1,7 @@
 /**
  * zodスキーマ → packages/contract/schema/*.json を再生成する。
  *
- *   npm run -w @ai-sensei/contract generate:schema
+ *   pnpm --filter @ai-sensei/contract generate:schema
  *
  * 生成物はコミットする。ずれているとテストが落ちる。
  */

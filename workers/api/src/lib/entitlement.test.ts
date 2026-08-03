@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
+import type { UserRecord } from "../repository/types.ts";
 import {
   checkSessionAllowance,
   isPremiumNow,
   secondsUntilLocalMidnight,
   shouldShowPaywall,
 } from "./entitlement.ts";
-import type { UserRecord } from "../repository/types.ts";
 
 const limits = { freeSessionsPerDay: 1, freeSessionMaxSeconds: 300, premiumSessionMaxSeconds: 900 };
 const now = new Date("2026-08-03T13:24:07.000Z"); // 22:24 JST

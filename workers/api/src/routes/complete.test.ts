@@ -3,12 +3,12 @@ import { completeSessionResponseSchema } from "@ai-sensei/contract";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../app.ts";
 import {
+  type TestServices,
   createSessionForm,
   internalToken,
   testBindings,
   testDeviceId,
   testServices,
-  type TestServices,
 } from "../test-support.ts";
 
 let services: TestServices;

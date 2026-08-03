@@ -113,6 +113,8 @@ describe("suggestTopics", () => {
   });
 
   it("limitを超えない", () => {
-    expect(suggestTopics("関数 グラフ 微分 積分 数列 ベクトル 確率", 3).length).toBeLessThanOrEqual(3);
+    expect(suggestTopics("関数 グラフ 微分 積分 数列 ベクトル 確率", 3).length).toBeLessThanOrEqual(
+      3,
+    );
   });
 });
