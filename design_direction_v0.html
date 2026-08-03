@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>デザイン方向 v0.1 — 蛍光マーカー × Duolingoの文法</title>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#33323D; --mut:#8A8D99; --bg:#EEF1F6; --card:#FFFFFF;
+    --blue:#0EA5E9; --blue-d:#0284C7; --blue-l:#CDEFFF;
+    --yellow:#FFD93B; --yellow-d:#E8B90C;
+    --pink:#FF7AA8; --pink-d:#F4517F; --pink-l:#FFD3E1;
+    --orange:#FF9F1C; --orange-d:#E5820A; --orange-l:#FFE8CC;
+    --green:#3ED598; --green-d:#22B67D;
+    --line:#E4E7EE;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);line-height:1.6;
+    font-family:"Zen Maru Gothic","Hiragino Maru Gothic ProN","Hiragino Sans",system-ui,sans-serif}
+  .wrap{max-width:1240px;margin:0 auto;padding:36px 20px 72px}
+  .eyebrow{font-family:ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:.14em;color:var(--mut)}
+  h1{font-size:27px;margin:6px 0 4px;font-weight:900}
+  .lede{font-size:14px;color:var(--mut);max-width:640px;margin:0 0 22px}
+
+  /* principles */
+  .prin{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:24px}
+  .prin div{flex:1;min-width:240px;background:var(--card);border:2px solid var(--line);
+    border-radius:16px;padding:14px 16px}
+  .prin b{display:block;font-size:14px;font-weight:900;margin-bottom:3px}
+  .prin span{font-size:12.5px;color:var(--mut)}
+
+  /* palette */
+  .pal{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:22px}
+  .sw{width:150px;background:var(--card);border:2px solid var(--line);border-radius:14px;overflow:hidden}
+  .sw i{display:block;height:44px}
+  .sw p{margin:0;padding:7px 10px;font-size:11px;line-height:1.45}
+  .sw p b{display:block;font-size:12px}
+  .sw p code{font-family:ui-monospace,Menlo,monospace;color:var(--mut);font-size:10px}
+
+  /* borrow table */
+  .bor{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:34px}
+  .bor section{flex:1;min-width:280px;background:var(--card);border:2px solid var(--line);
+    border-radius:16px;padding:13px 16px;font-size:12.5px}
+  .bor h3{margin:0 0 6px;font-size:13px;font-weight:900}
+  .bor ul{margin:0;padding-left:1.2em}
+  .bor li{margin-bottom:3px}
+  .ok h3{color:var(--blue-d)} .ng h3{color:var(--pink-d)}
+
+  /* frames */
+  .flow{display:flex;flex-wrap:wrap;gap:30px}
+  .step{width:292px}
+  .stephead{display:flex;align-items:baseline;gap:8px;margin-bottom:8px}
+  .num{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:var(--ink);
+    color:#fff;border-radius:6px;padding:1px 8px}
+  .sname{font-size:14px;font-weight:900}
+  .sway{font-size:11px;color:var(--mut)}
+  .phone{background:#fff;border:2.5px solid var(--ink);border-radius:28px;height:580px;
+    padding:14px 13px;display:flex;flex-direction:column;gap:10px;overflow:hidden;position:relative}
+  .phone.calm{background:#F8FAFC}
+
+  .row{display:flex;align-items:center;gap:8px}
+  .between{justify-content:space-between}
+  .small{font-size:11px;color:var(--mut)}
+  .spacer{flex:1}
+
+  /* progress */
+  .prog{flex:1;height:14px;background:#E9ECF3;border-radius:99px;overflow:hidden}
+  .prog i{display:block;height:100%;width:66%;border-radius:99px;
+    background:linear-gradient(#54C8F4,var(--blue))}
+
+  /* character */
+  .chara{width:78px;height:78px;flex:none}
+  .chara.big{width:120px;height:120px;margin:4px auto 0}
+
+  /* bubble */
+  .bub{border:2.5px solid var(--ink);border-radius:16px;border-top-left-radius:4px;
+    padding:10px 12px;font-size:13.5px;font-weight:700;background:#fff}
+  .voice{align-self:flex-start;background:var(--blue-l);color:var(--blue-d);font-size:10.5px;
+    font-weight:900;border-radius:99px;padding:2px 10px}
+
+  /* duolingo-style buttons */
+  .db{border-radius:16px;padding:14px 10px;text-align:center;font-weight:900;font-size:14px;
+    color:#fff;background:var(--blue);box-shadow:0 5px 0 var(--blue-d)}
+  .db.ghosty{background:#fff;color:var(--mut);box-shadow:0 4px 0 var(--line);border:2px solid var(--line)}
+  .mic{width:118px;height:118px;border-radius:50%;background:var(--blue);color:#fff;
+    margin:0 auto;display:flex;align-items:center;justify-content:center;text-align:center;
+    font-size:13px;font-weight:900;line-height:1.35;box-shadow:0 7px 0 var(--blue-d)}
+
+  /* chips */
+  .chip{display:inline-flex;align-items:center;gap:5px;border-radius:99px;
+    padding:5px 12px;font-size:12px;font-weight:900}
+  .chip.or{background:var(--orange-l);color:var(--orange-d)}
+  .chip.pk{background:var(--pink-l);color:var(--pink-d)}
+
+  /* marker strokes = signature */
+  .mk{padding:0 3px;background:linear-gradient(transparent 50%,rgba(255,224,72,.92) 50% 94%,transparent 94%)}
+  .mkp{padding:0 3px;background:linear-gradient(transparent 50%,rgba(255,148,184,.8) 50% 94%,transparent 94%)}
+
+  /* karte card */
+  .kcard{background:#fff;border:2px solid var(--line);border-radius:16px;padding:12px 13px}
+  .kcard .k{font-size:11px;font-weight:900;color:var(--mut);margin-bottom:4px}
+  .kcard .v{font-size:12.5px;font-weight:700;line-height:1.9}
+  .toggle{width:38px;height:22px;border-radius:99px;background:var(--blue);position:relative;flex:none}
+  .toggle::after{content:"";position:absolute;right:3px;top:3px;width:16px;height:16px;border-radius:50%;background:#fff}
+
+  /* confetti */
+  .cf{position:absolute;border-radius:3px;opacity:.9}
+
+  /* notes */
+  .notes{margin-top:11px}
+  .note{display:flex;gap:7px;margin-top:7px;font-size:11.5px;line-height:1.5}
+  .tag{font-family:ui-monospace,Menlo,monospace;font-size:10px;border:1.5px solid;
+    border-radius:4px;padding:0 5px;line-height:1.7;flex:none;height:fit-content;font-weight:700}
+  .tag.ux{color:#C2402A;border-color:#C2402A}
+  .tag.biz{color:#5747B8;border-color:#5747B8}
+
+  .impl{margin-top:36px;background:var(--card);border:2px solid var(--line);border-radius:16px;
+    padding:14px 18px;font-size:13px;max-width:760px}
+  .impl b{font-weight:900}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">DESIGN DIRECTION v0.1 / たたき台(色・キャラは差し替え前提)</div>
+  <h1>蛍光マーカー × Duolingoの文法</h1>
+  <p class="lede">続けさせる仕組みは借りる。見た目の語彙は、高校生のノートとマーカーから作る。</p>
+
+  <div class="prin">
+    <div><b>数えるのは努力だけ</b><span>正誤やXPは数えない。連続日数と「埋めた穴」だけを数える。点数を出さない原則と両立。</span></div>
+    <div><b>騒がしい / 静かを分ける</b><span>行動する画面(セッション・祝福)はにぎやかに。内省する画面(カルテ)は静かに。信頼感を守る。</span></div>
+    <div><b>最大の報酬は後輩の表情</b><span>説明が伝わると顔が輝く。ご褒美とコンセプト(教える)を一致させる。</span></div>
+  </div>
+
+  <div class="pal">
+    <div class="sw"><i style="background:var(--blue)"></i><p><b>ブルー</b>主役・行動・後輩<code>#0EA5E9</code></p></div>
+    <div class="sw"><i style="background:var(--yellow)"></i><p><b>黄マーカー</b>言えたこと<code>#FFD93B</code></p></div>
+    <div class="sw"><i style="background:var(--pink)"></i><p><b>ピンクマーカー</b>穴<code>#FF7AA8</code></p></div>
+    <div class="sw"><i style="background:var(--orange)"></i><p><b>オレンジ</b>連続日数・祝福<code>#FF9F1C</code></p></div>
+    <div class="sw"><i style="background:var(--ink)"></i><p><b>インク</b>文字・輪郭<code>#33323D</code></p></div>
+  </div>
+
+  <div class="bor">
+    <section class="ok"><h3>Duolingoから借りるもの</h3>
+      <ul><li>ストリーク(連続日数)</li><li>厚みのあるボタンと押した触感(ハプティクス)</li><li>キャラの感情リアクション</li><li>セッション完了の祝福画面</li><li>効果音(2〜3種まで)</li></ul>
+    </section>
+    <section class="ng"><h3>借りないもの</h3>
+      <ul><li>XP・リーグ・クエスト(ソロ開発のスコープ外+方針違い)</li><li>正誤スコア</li><li>緑フクロウ的なトレードドレス(寄せすぎない)</li><li>罪悪感で煽る通知文</li></ul>
+    </section>
+  </div>
+</header>
+
+<div class="flow">
+
+  <!-- A session -->
+  <div class="step">
+    <div class="stephead"><span class="num">A</span><span class="sname">セッション — 質問</span><span class="sway">にぎやか側</span></div>
+    <div class="phone">
+      <div class="row"><span class="small" style="font-weight:900;color:var(--ink)">Q2/3</span><div class="prog"><i></i></div></div>
+      <div class="row" style="align-items:flex-start">
+        <svg class="chara" viewBox="0 0 80 80">
+          <circle cx="40" cy="42" r="32" fill="var(--blue-l)" stroke="var(--blue)" stroke-width="4"/>
+          <circle cx="30" cy="38" r="4" fill="#33323D"/><circle cx="50" cy="38" r="4" fill="#33323D"/>
+          <path d="M33 51 Q40 56 47 51" stroke="#33323D" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+          <circle cx="21" cy="47" r="4.5" fill="var(--pink-l)"/><circle cx="59" cy="47" r="4.5" fill="var(--pink-l)"/>
+        </svg>
+        <div class="bub">え、(2)っていきなり判別式ですけど、なんでですか?</div>
+      </div>
+      <span class="voice">読み上げ中…</span>
+      <div class="spacer"></div>
+      <div class="mic">長押しで<br>説明する</div>
+      <div class="spacer"></div>
+      <div class="db ghosty">まだ説明できない(パス)</div>
+    </div>
+    <div class="notes">
+      <div class="note"><span class="tag ux">UX</span>長押し中、キャラが小さくうなずき続ける(聞いてもらえてる感)。</div>
+      <div class="note"><span class="tag ux">UX</span>ボタンは厚み+押下で沈む+弱ハプティクス。Duolingoの触感文法。</div>
+    </div>
+  </div>
+
+  <!-- B celebration -->
+  <div class="step">
+    <div class="stephead"><span class="num">B</span><span class="sname">祝福(新設)</span><span class="sway">いちばん騒がしい</span></div>
+    <div class="phone">
+      <i class="cf" style="width:9px;height:9px;background:var(--yellow);left:22px;top:56px;transform:rotate(18deg)"></i>
+      <i class="cf" style="width:8px;height:8px;background:var(--pink);right:30px;top:44px;transform:rotate(-24deg)"></i>
+      <i class="cf" style="width:10px;height:10px;background:var(--blue);left:52px;top:118px;transform:rotate(40deg)"></i>
+      <i class="cf" style="width:7px;height:7px;background:var(--orange);right:56px;top:132px;transform:rotate(12deg)"></i>
+      <i class="cf" style="width:8px;height:8px;background:var(--green);left:30px;top:186px;transform:rotate(-30deg)"></i>
+      <i class="cf" style="width:9px;height:9px;background:var(--pink);right:24px;top:210px;transform:rotate(28deg)"></i>
+      <div class="spacer"></div>
+      <svg class="chara big" viewBox="0 0 80 80">
+        <circle cx="40" cy="42" r="32" fill="var(--blue-l)" stroke="var(--blue)" stroke-width="4"/>
+        <path d="M25 38 Q30 32 35 38" stroke="#33323D" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+        <path d="M45 38 Q50 32 55 38" stroke="#33323D" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+        <ellipse cx="40" cy="52" rx="7" ry="6" fill="#33323D"/>
+        <circle cx="21" cy="47" r="4.5" fill="var(--pink-l)"/><circle cx="59" cy="47" r="4.5" fill="var(--pink-l)"/>
+        <path d="M8 20 l4 4 M12 20 l-4 4" stroke="var(--orange)" stroke-width="2.5" stroke-linecap="round"/>
+        <path d="M68 16 l4 4 M72 16 l-4 4" stroke="var(--yellow-d)" stroke-width="2.5" stroke-linecap="round"/>
+      </svg>
+      <div style="text-align:center;font-size:19px;font-weight:900">なるほど〜!!</div>
+      <p class="small" style="text-align:center;margin:0">きょうのセッション完了。説明、届きました。</p>
+      <div class="row" style="justify-content:center;gap:8px;margin-top:4px">
+        <span class="chip or">連続 5日</span>
+        <span class="chip pk">埋めた穴 4</span>
+      </div>
+      <div class="spacer"></div>
+      <div class="db">カルテを見る</div>
+    </div>
+    <div class="notes">
+      <div class="note"><span class="tag ux">UX</span>祝うのは「説明したこと」。正解率はここでも出さない。</div>
+      <div class="note"><span class="tag biz">賞</span>「埋めた穴」カウンターがこのアプリ固有のスコア。共有スクショ映えも狙える。</div>
+    </div>
+  </div>
+
+  <!-- C karte -->
+  <div class="step">
+    <div class="stephead"><span class="num">C</span><span class="sname">カルテ</span><span class="sway">静か側</span></div>
+    <div class="phone calm">
+      <div class="row between">
+        <div style="font-size:16px;font-weight:900">今日のカルテ</div>
+        <span class="small">円と直線</span>
+      </div>
+      <div class="kcard">
+        <div class="k">言えたこと</div>
+        <div class="v"><span class="mk">中心と直線の距離dと半径rの比較</span><br><span class="mk">d&lt;r ⇔ 2点で交わる</span></div>
+      </div>
+      <div class="kcard">
+        <div class="k">穴 — 1つ</div>
+        <div class="v"><span class="mkp">判別式を「なぜ」使うか</span>で説明が止まった</div>
+      </div>
+      <div class="kcard">
+        <div class="k">用語メモ</div>
+        <div class="v" style="font-weight:500">「解の公式」と「判別式」が混ざっていた</div>
+      </div>
+      <div class="spacer"></div>
+      <div class="kcard row between">
+        <span style="font-size:12px;font-weight:700">あしたの夜、後輩がもう一度ききます</span>
+        <div class="toggle"></div>
+      </div>
+      <div class="db">言い直してみる</div>
+      <div class="db ghosty">今日はここまで</div>
+    </div>
+    <div class="notes">
+      <div class="note"><span class="tag ux">UX</span>内省の画面は静かに。色を持つのはマーカーだけ。</div>
+      <div class="note"><span class="tag ux">UX</span>黄=言えた、ピンク=穴。ノートのマーカー文化と同じ意味論。</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="impl">
+  <b>実装メモ(ソロ前提)</b><br>
+  キャラは表情差分3〜5枚(通常・聞いてる・なるほど・うーん・祝福)+Flutterの暗黙アニメーションから始めて、v1.1でRiveのステートマシンに移行。効果音は「送信ポン」「祝福ファンファーレ」「穴が埋まる音」の3つまで。フォントはZen Maru Gothic(丸ゴ)で友好さを、数字だけ太めに。
+</div>
+
+</div>
+</body>
+</html>
