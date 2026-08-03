@@ -1,0 +1,35 @@
+name = "ai-sensei-api"
+main = "src/index.ts"
+compatibility_date = "2026-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# 無料枠と会話上限はサーバ側で強制する(クライアント改竄対策)
+[vars]
+FREE_SESSIONS_PER_DAY = "1"
+FREE_SESSION_MAX_SECONDS = "300"
+PREMIUM_SESSION_MAX_SECONDS = "900"
+LLM_PROVIDER = "anthropic"
+LLM_MODEL_VISION = "claude-sonnet-5"
+REVENUECAT_ENTITLEMENT_ID = "premium"
+
+# 秘匿値は wrangler secret put で登録する(.dev.vars はローカル専用・gitignore済み)
+#   LIVEKIT_API_KEY / LIVEKIT_API_SECRET / LIVEKIT_URL
+#   ANTHROPIC_API_KEY / ONESIGNAL_APP_ID / ONESIGNAL_REST_API_KEY
+#   REVENUECAT_WEBHOOK_AUTH / INTERNAL_API_TOKEN
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ai-sensei"
+database_id = "00000000-0000-0000-0000-000000000000" # 作成後に差し替える
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "ai-sensei-photos"
+
+[[kv_namespaces]]
+binding = "METER"
+id = "00000000000000000000000000000000" # 作成後に差し替える
+
+[observability]
+enabled = true
