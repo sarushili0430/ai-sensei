@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typescript:
+    name: TypeScript (workers / agent / packages)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # packageManager フィールド(package.json)のバージョンで入る
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # 失敗しても後続を止めない。lintで落ちたついでにtestの結果も見たいため。
+      - name: Lint (Biome)
+        run: pnpm run lint
+
+      - name: Typecheck
+        if: ${{ !cancelled() }}
+        run: pnpm run typecheck
+
+      - name: Unit tests
+        if: ${{ !cancelled() }}
+        run: pnpm test
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # publicリポジトリなので、鍵の混入は1コミットでも致命傷になる。
+      # 依存のインストールなしで走らせたいため pnpm install は挟まない。
+      - name: Scan tracked files for secrets
+        run: node --experimental-strip-types scripts/verify-no-secrets.ts
