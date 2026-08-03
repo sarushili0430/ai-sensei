@@ -7,7 +7,9 @@ const fake = (prefix: string, body: string) => `${prefix}${body}`;
 
 describe("scanContent", () => {
   it("プレースホルダだけの.env.exampleは検出しない", () => {
-    const content = ["ANTHROPIC_API_KEY=", "LIVEKIT_URL=wss://example.livekit.cloud", ""].join("\n");
+    const content = ["ANTHROPIC_API_KEY=", "LIVEKIT_URL=wss://example.livekit.cloud", ""].join(
+      "\n",
+    );
     expect(scanContent(".env.example", content)).toEqual([]);
   });
 
