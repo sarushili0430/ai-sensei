@@ -191,6 +191,14 @@ describe("POST /v1/sessions/{id}/complete", () => {
     const holeId = firstBody.karte.holes[0]?.id;
     expect(holeId).toBeDefined();
 
+    // 復習はPremium機能
+    await services.repository.setPremium({
+      deviceId: testDeviceId,
+      isPremium: true,
+      expiresAt: null,
+      rcAppUserId: null,
+    });
+
     // 2日目: 復習セッション(写真なしでも kind=review で入る)
     services.now = () => new Date("2026-08-04T13:00:00.000Z");
     const review = await startSession({ kind: "review", hole_id: holeId });
@@ -221,5 +229,62 @@ describe("POST /v1/sessions/{id}/complete", () => {
     const sessionId = await startSession();
     const response = await complete(sessionId, { ended_reason: "gave_up" });
     expect(response.status).toBe(400);
+  });
+});
+
+// レビュー指摘: agentのタイムアウト再送で、カルテも穴も通知も二重にできていた
+describe("再送(冪等性)", () => {
+  it("同じセッションを2度completeしても、カルテは1つだけ", async () => {
+    const sessionId = await startSession();
+    const first = (await (await complete(sessionId)).json()) as CompleteSessionResponse;
+
+    const retry = await complete(sessionId);
+    expect(retry.status).toBe(200);
+    const second = (await retry.json()) as CompleteSessionResponse;
+
+    expect(second.karte.id).toBe(first.karte.id);
+    expect(services.repository.kartes.size).toBe(1);
+    expect(services.repository.holes.size).toBe(1);
+    // 通知も増えない
+    expect(services.scheduler.scheduled).toHaveLength(3);
+  });
+});
+
+describe("GET /v1/sessions/{id}/result", () => {
+  it("カルテができる前は202を返す(アプリは待って聞き直す)", async () => {
+    const sessionId = await startSession();
+    const response = await app.request(
+      `/v1/sessions/${sessionId}/result`,
+      { headers: { "x-device-id": testDeviceId } },
+      bindings,
+    );
+    expect(response.status).toBe(202);
+  });
+
+  it("できていればカルテと進捗を返す", async () => {
+    const sessionId = await startSession();
+    await complete(sessionId);
+
+    const response = await app.request(
+      `/v1/sessions/${sessionId}/result`,
+      { headers: { "x-device-id": testDeviceId } },
+      bindings,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as CompleteSessionResponse;
+    expect(body.karte.holes).toHaveLength(1);
+    expect(body.progress.streak_days).toBe(1);
+  });
+
+  it("他人のセッションは見せない", async () => {
+    const sessionId = await startSession();
+    await complete(sessionId);
+
+    const response = await app.request(
+      `/v1/sessions/${sessionId}/result`,
+      { headers: { "x-device-id": "11111111-2222-3333-4444-555555555555" } },
+      bindings,
+    );
+    expect(response.status).toBe(404);
   });
 });

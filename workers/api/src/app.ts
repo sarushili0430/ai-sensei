@@ -56,6 +56,7 @@ export function createApp(options: CreateAppOptions = {}) {
 
 const deviceAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
   // agentからの /complete は内部トークンで入るため、デバイスIDを持たない
+  // (/result はアプリが呼ぶので、デバイスIDが要る)
   if (c.req.path.endsWith("/complete")) return next();
 
   const deviceId = c.req.header("x-device-id");

@@ -14,7 +14,13 @@ import { Hono } from "hono";
 import type { AppEnv } from "../env.ts";
 import { isPremiumNow, shouldShowPaywall } from "../lib/entitlement.ts";
 import { apiError } from "../lib/errors.ts";
-import type { HoleRecord, KarteRecord, ReviewScheduleRecord } from "../repository/types.ts";
+import type {
+  HoleRecord,
+  KarteRecord,
+  Repository,
+  ReviewScheduleRecord,
+  SessionRecord,
+} from "../repository/types.ts";
 
 export const completeRoute = new Hono<AppEnv>();
 
@@ -37,6 +43,13 @@ completeRoute.post("/:sessionId/complete", async (c) => {
 
   const session = await repository.getSession(c.req.param("sessionId"));
   if (!session) throw apiError("session_not_found");
+
+  // agentがタイムアウトで再送してくることがある。素通しすると、カルテも穴も
+  // 通知予約も二重に作られて進捗が壊れるので、既にあるものをそのまま返す。
+  const existing = await repository.getKarteBySession(session.id);
+  if (existing) {
+    return c.json(await buildResponse({ repository, at, session, stored: existing }), 200);
+  }
 
   const parsed = completeSessionRequestSchema.safeParse(await c.req.json());
   if (!parsed.success) {
@@ -96,7 +109,8 @@ completeRoute.post("/:sessionId/complete", async (c) => {
   let filledThisSession = 0;
   if (session.kind === "review" && session.hole_id) {
     const target = await repository.getHole(session.hole_id);
-    if (target && target.status === "open") {
+    // 他人の穴を埋めてしまわないよう、セッションの持ち主と突き合わせる
+    if (target && target.device_id === session.device_id && target.status === "open") {
       await repository.markHoleFilled(target.id, at.toISOString());
       filledThisSession += 1;
       const cancelled = await repository.cancelReviewSchedules(target.id);
@@ -188,3 +202,68 @@ function toHolePayload(hole: HoleRecord): Hole {
     filled_at: hole.filled_at,
   };
 }
+
+/**
+ * 保存済みのカルテからレスポンスを組み立て直す。
+ *
+ * - agentからの再送(/complete が二度呼ばれた場合)
+ * - アプリからの結果取得(GET /v1/sessions/{id}/result)
+ *
+ * の両方で使う。会話が終わってからカルテができるまでには数秒かかるので、
+ * アプリは完了後にこのエンドポイントを見に来る。
+ */
+export async function buildResponse(input: {
+  repository: Repository;
+  at: Date;
+  session: SessionRecord;
+  stored: { karte: KarteRecord; holes: HoleRecord[] };
+}): Promise<CompleteSessionResponse> {
+  const { repository, at, session, stored } = input;
+
+  const [sessionDates, allHoles, user] = await Promise.all([
+    repository.sessionDates(session.device_id),
+    repository.listHoles(session.device_id),
+    repository.getUser(session.device_id),
+  ]);
+
+  return {
+    karte: {
+      id: stored.karte.id,
+      session_id: stored.karte.session_id,
+      created_at: stored.karte.created_at,
+      topic_ids: stored.karte.topic_ids,
+      said_well: stored.karte.said_well,
+      holes: stored.holes.map(toHolePayload),
+      term_notes: stored.karte.term_notes,
+      followup_question: stored.karte.followup_question,
+    },
+    review_schedule: [],
+    progress: computeProgress(sessionDates, allHoles, toLocalDate(at)),
+    show_paywall: shouldShowPaywall({
+      isPremium: isPremiumNow(user, at),
+      completedSessionCount: sessionDates.length,
+      holesFound: stored.holes.length,
+    }),
+  };
+}
+
+/**
+ * GET /v1/sessions/{id}/result — アプリが会話後に結果を取りに来る。
+ * まだカルテができていなければ 202 を返し、アプリはしばらく待って再度たずねる。
+ */
+completeRoute.get("/:sessionId/result", async (c) => {
+  const { repository, now } = c.get("services");
+  const deviceId = c.get("deviceId");
+  const at = now();
+
+  const session = await repository.getSession(c.req.param("sessionId"));
+  if (!session || session.device_id !== deviceId) throw apiError("session_not_found");
+
+  const stored = await repository.getKarteBySession(session.id);
+  if (!stored) {
+    // カルテ生成中。アプリはこの状態を「まだ」として扱い、少し待って聞き直す。
+    return c.json({ status: "pending" }, 202);
+  }
+
+  return c.json(await buildResponse({ repository, at, session, stored }), 200);
+});

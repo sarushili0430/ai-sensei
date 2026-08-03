@@ -62,6 +62,24 @@ export class MemoryRepository implements Repository {
     this.sessions.set(session.id, session);
   }
 
+  async updateSessionTopics(input: {
+    sessionId: string;
+    topicIds: string[];
+    photoKey: string | null;
+  }): Promise<void> {
+    const session = this.sessions.get(input.sessionId);
+    if (!session) return;
+    this.sessions.set(input.sessionId, {
+      ...session,
+      topic_ids: input.topicIds,
+      photo_key: input.photoKey,
+    });
+  }
+
+  async deleteSession(sessionId: string): Promise<void> {
+    this.sessions.delete(sessionId);
+  }
+
   async getSession(sessionId: string): Promise<SessionRecord | null> {
     return this.sessions.get(sessionId) ?? null;
   }
@@ -98,6 +116,13 @@ export class MemoryRepository implements Repository {
     if (!karte) return null;
     const holes = [...this.holes.values()].filter((hole) => hole.karte_id === karteId);
     return { karte, holes };
+  }
+
+  async getKarteBySession(
+    sessionId: string,
+  ): Promise<{ karte: KarteRecord; holes: HoleRecord[] } | null> {
+    const karte = [...this.kartes.values()].find((entry) => entry.session_id === sessionId);
+    return karte ? this.getKarte(karte.id) : null;
   }
 
   async listHoles(deviceId: string): Promise<HoleRecord[]> {

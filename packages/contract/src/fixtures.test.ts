@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { fixtureNames, fixturePath, fixtureSchemas } from "./fixtures.ts";
 import {
   completeSessionRequestSchema,
+  createSessionRequestSchema,
   createSessionResponseSchema,
   karteDraftSchema,
   karteSchema,
@@ -63,6 +64,26 @@ describe("カルテのスキーマ", () => {
     expect(karteDraftSchema.safeParse(draft).success).toBe(false);
   });
 
+  // status と filled_at がずれると、復習キューと埋めた穴カウンターが
+  // 食い違った数字を出す
+  it("open な穴に filled_at が入っていたら弾く", () => {
+    const karte = loadFixture("karte") as { holes: Record<string, unknown>[] };
+    const broken = {
+      ...karte,
+      holes: [{ ...karte.holes[0], status: "open", filled_at: "2026-08-04T11:00:00.000Z" }],
+    };
+    expect(karteSchema.safeParse(broken).success).toBe(false);
+  });
+
+  it("filled な穴に filled_at がなければ弾く", () => {
+    const karte = loadFixture("karte") as { holes: Record<string, unknown>[] };
+    const broken = {
+      ...karte,
+      holes: [{ ...karte.holes[0], status: "filled", filled_at: null }],
+    };
+    expect(karteSchema.safeParse(broken).success).toBe(false);
+  });
+
   it("followup_question は省略可(無料ユーザーには生成しない)", () => {
     const draft = { said_well: [], holes: [], term_notes: [] };
     expect(karteDraftSchema.parse(draft).followup_question).toBeUndefined();
@@ -70,6 +91,19 @@ describe("カルテのスキーマ", () => {
 });
 
 describe("APIスキーマ", () => {
+  it("kind=review には hole_id が要る(復習は穴が起点)", () => {
+    expect(createSessionRequestSchema.safeParse({ kind: "review" }).success).toBe(false);
+    expect(createSessionRequestSchema.safeParse({ kind: "review", hole_id: "hol_1" }).success).toBe(
+      true,
+    );
+  });
+
+  it("kind と locale は省略できる(既定は new / ja)", () => {
+    const parsed = createSessionRequestSchema.parse({});
+    expect(parsed.kind).toBe("new");
+    expect(parsed.locale).toBe("ja");
+  });
+
   it("detected_topics が空のセッション作成レスポンスは無効", () => {
     const response = loadFixture("create-session-response") as Record<string, unknown>;
     expect(

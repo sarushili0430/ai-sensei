@@ -150,3 +150,51 @@ describe("filterHoleTopicIds", () => {
     expect(result.rejected[0]?.reason).toBe("topic_not_allowed");
   });
 });
+
+// レビュー指摘: topic_idはLLMの自己申告なので、IDだけを信用すると
+// 「許可されたIDを付けたまま別の単元を聞く」が通ってしまう
+describe("質問文と単元の突き合わせ", () => {
+  it("許可されたIDを付けていても、本文が別単元なら弾く", () => {
+    const verdict = checkQuestion(
+      { topic_id: "M2-ZUKEI-ENCHOKU", text: "数列の和はどう出すんですか?" },
+      allowed,
+    );
+    expect(verdict).toMatchObject({ ok: false, reason: "text_topic_mismatch" });
+  });
+
+  it("単元を推定できない一般的な問いは通す", () => {
+    const verdict = checkQuestion(
+      { topic_id: "M2-ZUKEI-ENCHOKU", text: "最初の一歩をそれにしたのはどうしてですか?" },
+      allowed,
+    );
+    expect(verdict.ok).toBe(true);
+  });
+
+  it("許可単元の語を含む質問は通す", () => {
+    const verdict = checkQuestion(
+      { topic_id: "M2-ZUKEI-ENCHOKU", text: "中心と直線の距離は何のために出したんですか?" },
+      allowed,
+    );
+    expect(verdict.ok).toBe(true);
+  });
+});
+
+// レビュー指摘: 疑問符が付いていても中身が答えなら質問ではない
+describe("確認の形をした答え", () => {
+  it.each([
+    "x=2ですよね?",
+    "2点で交わるんですよね?",
+    "答えは3ですよね?",
+    "最大値は5になりますよね?",
+  ])("弾く: %s", (text) => {
+    expect(containsAnswerLeak(text)).toBe(true);
+  });
+
+  it.each([
+    "なんでそこで判別式を使ったんですか?",
+    "この方法を選んだ理由ってなんですか?",
+    "どこから話すか迷ってます?",
+  ])("ふつうの質問は通す: %s", (text) => {
+    expect(containsAnswerLeak(text)).toBe(false);
+  });
+});
