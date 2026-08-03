@@ -1,0 +1,57 @@
+name: ai_sensei
+description: 数学の「わかったつもり」を、声に出して説明させて見つけるアプリ。
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.6.0 <4.0.0"
+  flutter: ">=3.27.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # 状態管理 / DI (handoff §5)
+  flutter_riverpod: ^3.0.0
+  riverpod_annotation: ^3.0.0
+
+  # 画面遷移
+  go_router: ^14.6.2
+
+  # 撮影
+  camera: ^0.11.0+2
+  image_picker: ^1.1.2
+
+  # リアルタイム会話
+  livekit_client: ^2.3.5
+  permission_handler: ^11.3.1
+
+  # 課金 / 通知 / 監視
+  purchases_flutter: ^8.4.0
+  onesignal_flutter: ^5.2.6
+  sentry_flutter: ^8.12.0
+
+  http: ^1.2.2
+  shared_preferences: ^2.3.3
+  uuid: ^4.5.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  riverpod_lint: ^3.0.0
+  custom_lint: ^0.7.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/kohai/
+  fonts:
+    # 丸ゴシック(handoff §7)。ライセンス確認のうえ配置する。
+    - family: ZenMaruGothic
+      fonts:
+        - asset: assets/fonts/ZenMaruGothic-Regular.ttf
+        - asset: assets/fonts/ZenMaruGothic-Bold.ttf
+          weight: 700

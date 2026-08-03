@@ -29,6 +29,29 @@ jobs:
       - name: Unit tests
         run: npm test
 
+  flutter:
+    name: Flutter (apps/mobile)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.27.x"
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+        working-directory: apps/mobile
+
+      - run: flutter analyze
+        working-directory: apps/mobile
+
+      # contract_fixture_test.dart が packages/contract/fixtures を読むので、
+      # TypeScript側と同じ契約で通ることをここで確かめる
+      - run: flutter test
+        working-directory: apps/mobile
+
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest
