@@ -33,7 +33,10 @@ export const topicSchema = z
     course: z.enum(courseNames),
     unit: z.string().min(1),
     topic: z.string().min(1),
-    /** 到達目標。質問生成のネタ元であり、カルテの「言えたこと」の判定軸でもある。 */
+    /**
+     * 到達目標。質問生成のネタ元であり、カルテの「言えたこと」の判定軸でもある。
+     * 技能だけで終わらせず、最低1つは説明を問える形(「〜の理由を説明できる」)にする。
+     */
     goals: z.array(z.string().min(1)).min(1),
     /** 穴の深掘りに使う(「そもそも判別式って何のためにある?」)。 */
     prerequisites: z.array(topicIdSchema),
