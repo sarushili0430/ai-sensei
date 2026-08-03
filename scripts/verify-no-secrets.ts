@@ -36,9 +36,15 @@ export const RULES: Rule[] = [
   { name: "github-token", pattern: /\bgh[pousr]_[A-Za-z0-9]{36,}\b/ },
   { name: "slack-token", pattern: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/ },
   { name: "aws-access-key-id", pattern: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/ },
-  { name: "livekit-api-key", pattern: /\bAPI[A-Za-z0-9]{10,}\b(?=.*livekit)/i },
+  // LiveKitの鍵は `LIVEKIT_API_KEY=API...` の形で書かれるので、
+  // 手がかりの語は値の**前**にも後ろにも来る。両方向を見る。
+  { name: "livekit-api-key", pattern: /livekit[^\n]*?\bAPI[A-Za-z0-9]{10,}\b/i },
+  { name: "livekit-api-key", pattern: /\bAPI[A-Za-z0-9]{10,}\b[^\n]*?livekit/i },
   { name: "revenuecat-secret-key", pattern: /\bsk_[A-Za-z0-9]{24,}\b/ },
-  { name: "private-key-block", pattern: /-----BEGIN (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----/ },
+  {
+    name: "private-key-block",
+    pattern: /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY-----/,
+  },
   { name: "jwt", pattern: /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/ },
 ];
 

@@ -50,13 +50,28 @@ export const createSessionRequestSchema = z
   .object({
     kind: sessionKindSchema.default("new"),
     locale: localeSchema.default("ja"),
-    /** kind="review" のとき、埋めにいく穴。 */
+    /** kind="review" のとき、埋めにいく穴。復習は穴が起点なので必須。 */
     hole_id: z.string().min(1).optional(),
     /** ユーザーがチップUIで単元を直した場合の指定。空なら写真解析に任せる。 */
     topic_ids: z.array(topicIdSchema).max(5).optional(),
   })
-  .strict();
+  .strict()
+  .refine((request) => request.kind !== "review" || request.hole_id !== undefined, {
+    message: "kind=review には hole_id が必要です",
+    path: ["hole_id"],
+  });
+
+/**
+ * パース**後**の型。`kind`/`locale` は default が効くので必ず入っている。
+ * サーバ側の処理はこちらを使う。
+ */
 export type CreateSessionRequest = z.infer<typeof createSessionRequestSchema>;
+
+/**
+ * パース**前**(ワイヤー上)の型。`kind`/`locale` は省略できる。
+ * クライアントがリクエストを組み立てるときはこちらを使う。
+ */
+export type CreateSessionRequestInput = z.input<typeof createSessionRequestSchema>;
 
 export const liveKitConnectionSchema = z
   .object({

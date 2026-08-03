@@ -5,6 +5,7 @@ import { createApp } from "../app.ts";
 import { verifyJwt } from "../lib/livekit.ts";
 import {
   type TestServices,
+  analysisFixture,
   createSessionForm,
   testBindings,
   testDeviceId,
@@ -157,5 +158,130 @@ describe("POST /v1/sessions", () => {
     const body = (await response.json()) as CreateSessionResponse;
     const session = await services.repository.getSession(body.session_id);
     expect(session?.photo_key).toBe(`photos/${testDeviceId}/${body.session_id}`);
+  });
+});
+
+// レビュー指摘: 復習はPremium機能なのに、hole_idを直接渡せば無料でも通っていた
+describe("復習セッション", () => {
+  async function seedHole(deviceId = testDeviceId): Promise<string> {
+    await services.repository.insertKarte(
+      {
+        id: "kar_seed",
+        session_id: "ses_seed",
+        device_id: deviceId,
+        created_at: "2026-08-01T11:00:00.000Z",
+        topic_ids: ["M1-NIJI-GURAFU"],
+        said_well: [],
+        term_notes: [],
+        followup_question: null,
+      },
+      [
+        {
+          id: "hol_seed",
+          device_id: deviceId,
+          karte_id: "kar_seed",
+          topic_id: "M1-NIJI-GURAFU",
+          desc: "平方完成のなぜで説明が止まった",
+          severity: "high",
+          evidence: null,
+          status: "open",
+          created_at: "2026-08-01T11:00:00.000Z",
+          filled_at: null,
+        },
+      ],
+    );
+    return "hol_seed";
+  }
+
+  async function makePremium(): Promise<void> {
+    await services.repository.ensureUser(testDeviceId, new Date());
+    await services.repository.setPremium({
+      deviceId: testDeviceId,
+      isPremium: true,
+      expiresAt: null,
+      rcAppUserId: null,
+    });
+  }
+
+  function reviewForm(holeId: string): FormData {
+    const form = new FormData();
+    form.set("meta", JSON.stringify({ kind: "review", locale: "ja", hole_id: holeId }));
+    return form;
+  }
+
+  it("無料ユーザーは hole_id を直接渡しても始められない", async () => {
+    const holeId = await seedHole();
+    const response = await post(reviewForm(holeId));
+    expect(response.status).toBe(402);
+    expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+      "premium_required",
+    );
+  });
+
+  it("Premiumは写真なしで復習セッションを始められる", async () => {
+    await makePremium();
+    const holeId = await seedHole();
+
+    const response = await post(reviewForm(holeId));
+    expect(response.status).toBe(201);
+
+    const body = (await response.json()) as CreateSessionResponse;
+    expect(body.kind).toBe("review");
+    // 写真がなくても、穴から単元を引く
+    expect(body.detected_topics.map((topic) => topic.topic_id)).toEqual(["M1-NIJI-GURAFU"]);
+  });
+
+  it("他人の穴IDでは始められない", async () => {
+    await makePremium();
+    const holeId = await seedHole("99999999-8888-7777-6666-555555555555");
+
+    const response = await post(reviewForm(holeId));
+    expect(response.status).toBe(404);
+  });
+});
+
+describe("検出単元の確信度", () => {
+  it("解析器が返した確信度をそのまま渡す", async () => {
+    const response = await post(createSessionForm());
+    const body = (await response.json()) as CreateSessionResponse;
+
+    const primary = body.detected_topics.find((t) => t.topic_id === "M2-ZUKEI-ENCHOKU");
+    expect(primary?.confidence).toBe(0.92);
+  });
+});
+
+// レビュー指摘: 無料枠の判定と行の作成が離れていると、同時投稿で二重に通る
+describe("無料枠の押さえ方", () => {
+  it("解析に失敗したら、その日の1回を消費しない", async () => {
+    services = testServices({
+      analysis: {
+        is_math_note: false,
+        summary: "英語の単語帳",
+        visible_work: [],
+        topics: [],
+        unreadable: [],
+        question_seeds: [],
+      },
+    });
+    expect((await post(createSessionForm())).status).toBe(422);
+    expect(services.repository.sessions.size).toBe(0);
+
+    // 撮り直せば、その日のうちにまだ始められる
+    services.analyzer = testServices().analyzer;
+    expect((await post(createSessionForm())).status).toBe(201);
+  });
+
+  it("解析の前に行を作って枠を押さえる", async () => {
+    let sessionsDuringAnalysis = -1;
+    services.analyzer = {
+      async analyze() {
+        sessionsDuringAnalysis = services.repository.sessions.size;
+        return analysisFixture;
+      },
+    };
+
+    await post(createSessionForm());
+    // 解析中にはもう行がある = 同時に来た2本目は無料枠に弾かれる
+    expect(sessionsDuringAnalysis).toBe(1);
   });
 });
