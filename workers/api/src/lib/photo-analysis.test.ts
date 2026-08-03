@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { analysisFixture } from "../test-support.ts";
 import {
   curriculumDigest,
   extractJson,
@@ -7,7 +8,6 @@ import {
   resolveDetectedTopics,
   toDetectedTopicPayload,
 } from "./photo-analysis.ts";
-import { analysisFixture } from "../test-support.ts";
 
 describe("photoAnalysisPrompt", () => {
   it("カリキュラムマップを埋め込む", () => {

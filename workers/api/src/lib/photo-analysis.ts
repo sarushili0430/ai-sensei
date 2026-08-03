@@ -54,7 +54,9 @@ export function resolveDetectedTopics(analysis: PhotoAnalysis): {
   }
 
   if (topicIds.length === 0 && analysis.is_math_note) {
-    const haystack = [analysis.summary, ...analysis.visible_work, ...analysis.question_seeds].join(" ");
+    const haystack = [analysis.summary, ...analysis.visible_work, ...analysis.question_seeds].join(
+      " ",
+    );
     topicIds.push(...suggestTopics(haystack, 3).map((topic) => topic.id));
   }
 
@@ -65,7 +67,9 @@ export function toDetectedTopicPayload(
   topicIds: readonly string[],
   analysis: PhotoAnalysis,
 ): { topic_id: string; course: string; unit: string; topic: string; confidence: number }[] {
-  const confidenceById = new Map(analysis.topics.map((entry) => [entry.topic_id, entry.confidence]));
+  const confidenceById = new Map(
+    analysis.topics.map((entry) => [entry.topic_id, entry.confidence]),
+  );
   return topicIds.flatMap((topicId) => {
     const topic = findTopic(topicId);
     if (!topic) return [];

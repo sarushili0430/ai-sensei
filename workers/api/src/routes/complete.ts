@@ -1,7 +1,7 @@
 import {
-  completeSessionRequestSchema,
   type CompleteSessionResponse,
   type Hole,
+  completeSessionRequestSchema,
 } from "@ai-sensei/contract";
 import {
   buildAllowedTopics,
@@ -56,9 +56,9 @@ completeRoute.post("/:sessionId/complete", async (c) => {
   const allowed = buildAllowedTopics(session.topic_ids);
   const { accepted: acceptedHoles, rejected } = filterHoleTopicIds(body.karte.holes, allowed);
   if (rejected.length > 0) {
+    const dropped = rejected.map((entry) => `${entry.hole.topic_id}(${entry.reason})`).join(", ");
     console.warn(
-      `[guardrail] session=${session.id} 許可外のtopic_idが付いた穴を落としました: ` +
-        rejected.map((entry) => `${entry.hole.topic_id}(${entry.reason})`).join(", "),
+      `[guardrail] session=${session.id} 許可外のtopic_idが付いた穴を落としました: ${dropped}`,
     );
   }
 

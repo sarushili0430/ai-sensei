@@ -76,7 +76,11 @@ meRoute.get("/reviews", async (c) => {
       };
     })
     // 古い穴 → 深い穴の順。放置されたものから声をかける。
-    .sort((a, b) => b.days_since - a.days_since || severityRank(b.hole.severity) - severityRank(a.hole.severity));
+    .sort(
+      (a, b) =>
+        b.days_since - a.days_since ||
+        severityRank(b.hole.severity) - severityRank(a.hole.severity),
+    );
 
   const response: ReviewQueueResponse = { items, requires_premium: false };
   return c.json(response);

@@ -1,7 +1,7 @@
 import rawCurriculum from "../data/curriculum.v0.json" with { type: "json" };
 import {
-  type Curriculum,
   type CourseName,
+  type Curriculum,
   type Topic,
   courseCodeByName,
   curriculumSchema,
@@ -103,7 +103,12 @@ function normalizeForMatch(value: string): string {
 }
 
 export type IntegrityIssue = {
-  kind: "duplicate-id" | "unknown-prerequisite" | "self-prerequisite" | "id-course-mismatch" | "cycle";
+  kind:
+    | "duplicate-id"
+    | "unknown-prerequisite"
+    | "self-prerequisite"
+    | "id-course-mismatch"
+    | "cycle";
   topicId: string;
   detail: string;
 };

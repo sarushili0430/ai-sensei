@@ -1,5 +1,5 @@
 import { promptSources } from "./generated.ts";
-import { parsePrompt, renderPrompt, type PromptTemplate } from "./render.ts";
+import { type PromptTemplate, parsePrompt, renderPrompt } from "./render.ts";
 
 export * from "./render.ts";
 

@@ -19,8 +19,8 @@ VAD(Silero) → 日本語ストリーミングSTT(Deepgram) → Claude(後輩ペ
 
 ```bash
 cp ../.env.example .env
-npm run -w @ai-sensei/agent download-files   # Silero VADのモデルを取得
-npm run -w @ai-sensei/agent dev              # ルームを待ち受ける
+pnpm --filter @ai-sensei/agent download-files   # Silero VADのモデルを取得
+pnpm --filter @ai-sensei/agent dev              # ルームを待ち受ける
 ```
 
 `workers/api` が `/v1/sessions` でルームを作ると、このワーカーがジョブを受け取る。

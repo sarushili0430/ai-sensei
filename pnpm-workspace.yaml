@@ -1,0 +1,13 @@
+packages:
+  - "packages/*"
+  - "workers/*"
+  - "agent"
+
+# apps/mobile は Flutter なので、このワークスペースには入れない。
+
+# ビルドスクリプトの実行を許可する依存(pnpm 10 は既定でブロックする)。
+# 追加するときは、なぜ必要かを1行添えること。
+onlyBuiltDependencies:
+  - "@biomejs/biome" # lint/format のネイティブバイナリを取得する
+  - esbuild # wrangler が同梱するバンドラ
+  - workerd # wrangler dev のランタイム

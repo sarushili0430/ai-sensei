@@ -2,8 +2,8 @@ import type { ProgressResponse, ReviewQueueResponse } from "@ai-sensei/contract"
 import { progressResponseSchema, reviewQueueResponseSchema } from "@ai-sensei/contract";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../app.ts";
-import { testBindings, testDeviceId, testServices, type TestServices } from "../test-support.ts";
 import type { HoleRecord, KarteRecord } from "../repository/types.ts";
+import { type TestServices, testBindings, testDeviceId, testServices } from "../test-support.ts";
 
 let services: TestServices;
 const app = createApp({ services: () => services });

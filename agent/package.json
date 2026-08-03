@@ -12,10 +12,10 @@
     "download-files": "node --experimental-strip-types src/index.ts download-files"
   },
   "dependencies": {
-    "@ai-sensei/contract": "*",
-    "@ai-sensei/curriculum": "*",
-    "@ai-sensei/guardrail": "*",
-    "@ai-sensei/prompts": "*",
+    "@ai-sensei/contract": "workspace:*",
+    "@ai-sensei/curriculum": "workspace:*",
+    "@ai-sensei/guardrail": "workspace:*",
+    "@ai-sensei/prompts": "workspace:*",
     "@livekit/agents": "^1.6.1",
     "@livekit/agents-plugin-anthropic": "^1.6.1",
     "@livekit/agents-plugin-deepgram": "^1.6.1",

@@ -30,7 +30,7 @@ docs/               企画資料・ワイヤーフレーム・ADR
 scripts/            リポジトリ全体の検証スクリプト
 ```
 
-TypeScript側(`workers/`・`agent/`・`packages/`)は npm workspaces でひとつに束ねています。
+TypeScript側(`workers/`・`agent/`・`packages/`)は pnpm workspaces でひとつに束ねています。
 Flutter側は `apps/mobile` で完結し、両者は `packages/contract` のスキーマとfixtureで接続します。
 
 ## セットアップ
@@ -40,6 +40,7 @@ Flutter側は `apps/mobile` で完結し、両者は `packages/contract` のス�
 | ツール          | バージョン | 用途                     |
 | --------------- | ---------- | ------------------------ |
 | Node.js         | 22 以上    | workers / agent / packages |
+| pnpm            | 10 以上    | 同上(`corepack enable` で入る) |
 | Flutter         | 3.27 以上  | apps/mobile              |
 | Xcode           | 16 以上    | iOSビルド(macOSのみ)   |
 
@@ -48,7 +49,7 @@ Flutter側は `apps/mobile` で完結し、両者は `packages/contract` のス�
 ```bash
 git clone https://github.com/sarushili0430/ai-sensei.git
 cd ai-sensei
-npm install          # TypeScript側をまとめて解決
+pnpm install         # TypeScript側をまとめて解決
 ```
 
 ### 2. 環境変数
@@ -65,14 +66,14 @@ cp .env.example agent/.env              # LiveKit Agents が読む
 コミット前に走査するには:
 
 ```bash
-npm run verify:secrets
+pnpm run verify:secrets
 ```
 
 ### 3. 開発サーバ
 
 ```bash
-npm run -w @ai-sensei/api dev     # workers/api  → http://localhost:8787
-npm run -w @ai-sensei/agent dev   # agent (LiveKitのルームに接続して待機)
+pnpm --filter @ai-sensei/api dev     # workers/api  → http://localhost:8787
+pnpm --filter @ai-sensei/agent dev   # agent (LiveKitのルームに接続して待機)
 
 cd apps/mobile
 flutter pub get
@@ -85,14 +86,18 @@ flutter run --dart-define=API_BASE_URL=http://localhost:8787
 ## テスト
 
 ```bash
-npm run verify        # typecheck + シークレット走査 + ユニットテスト(TypeScript側)
-npm test              # vitest のみ
+pnpm run verify       # lint + typecheck + シークレット走査 + ユニットテスト
+pnpm run lint         # Biome(lint + format検査)のみ
+pnpm run format       # Biomeで整形する(--write)
+pnpm test             # vitest のみ
 
 cd apps/mobile && flutter test    # 契約fixtureの検証 + ウィジェットテスト
 ```
 
 CIワークフローのテンプレートは [`docs/ci/`](docs/ci/README.md) にあります
 (GitHub Appは `.github/workflows/` へpushできないため、初回だけ手元でコピーが必要です)。
+
+Biomeがlintと整形の両方を担当します(ESLint + Prettierは入れていません)。
 
 テスト方針は「①純関数ユニット(ガードレール照合・数式正規化・間隔反復スケジューラ・
 穴/連続日数の集計・contract fixtureのパース)」と「②主要画面のgolden test」の2本立てです。

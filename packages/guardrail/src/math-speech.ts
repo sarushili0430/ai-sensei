@@ -137,6 +137,8 @@ export function normalizeUserUtterances<T extends { role: string; text: string }
   messages: readonly T[],
 ): T[] {
   return messages.map((message) =>
-    message.role === "user" ? { ...message, text: normalizeMathSpeech(message.text).text } : message,
+    message.role === "user"
+      ? { ...message, text: normalizeMathSpeech(message.text).text }
+      : message,
   );
 }
