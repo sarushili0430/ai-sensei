@@ -37,7 +37,13 @@ export type HoleDraft = z.infer<typeof holeDraftSchema>;
 export const holeStatuses = ["open", "filled"] as const;
 export const holeStatusSchema = z.enum(holeStatuses);
 
-/** 保存後の穴。復習フローの単位。 */
+/**
+ * 保存後の穴。復習フローの単位。
+ *
+ * `status` と `filled_at` は必ず対で動く。片方だけ立っていると、
+ * 復習キュー(statusで絞る)と埋めた穴カウンター(filled_atが根拠)が
+ * 食い違った数字を出すので、スキーマで組み合わせを縛る。
+ */
 export const holeSchema = holeDraftSchema
   .extend({
     id: z.string().min(1),
@@ -46,7 +52,11 @@ export const holeSchema = holeDraftSchema
     /** 再説明で埋まった日時。埋めた穴カウンターの元データ。 */
     filled_at: z.string().datetime().nullable(),
   })
-  .strict();
+  .strict()
+  .refine((hole) => (hole.status === "filled") === (hole.filled_at !== null), {
+    message: "status=filled のときだけ filled_at を入れてください",
+    path: ["filled_at"],
+  });
 export type Hole = z.infer<typeof holeSchema>;
 
 /** agentがtranscript全体から生成する、保存前のカルテ。 */
@@ -71,10 +81,12 @@ export const karteSchema = z
     created_at: z.string().datetime(),
     /** そのセッションで扱った単元。カルテ画面のヘッダに出す。 */
     topic_ids: z.array(topicIdSchema).min(1),
-    said_well: z.array(z.string().min(1)).max(10),
+    // 長さの制約はドラフトと揃える。保存後だけ緩いと、fixtureとJSON Schemaで
+    // 許容範囲が食い違う(片側だけ空文字や長文を通してしまう)。
+    said_well: z.array(z.string().min(1).max(200)).max(10),
     holes: z.array(holeSchema).max(5),
-    term_notes: z.array(z.string().min(1)).max(5),
-    followup_question: z.string().max(200).nullable(),
+    term_notes: z.array(z.string().min(1).max(200)).max(5),
+    followup_question: z.string().min(1).max(200).nullable(),
   })
   .strict();
 export type Karte = z.infer<typeof karteSchema>;
