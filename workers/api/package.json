@@ -1,0 +1,26 @@
+{
+  "name": "@ai-sensei/api",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Cloudflare Workers + Hono のAPI(セッション作成・カルテ保存・課金webhook)",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "migrate:local": "wrangler d1 migrations apply ai-sensei --local",
+    "migrate:remote": "wrangler d1 migrations apply ai-sensei --remote"
+  },
+  "dependencies": {
+    "@ai-sensei/contract": "*",
+    "@ai-sensei/curriculum": "*",
+    "@ai-sensei/guardrail": "*",
+    "@ai-sensei/prompts": "*",
+    "hono": "^4.6.14",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "wrangler": "^3.99.0"
+  }
+}
