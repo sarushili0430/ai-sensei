@@ -19,7 +19,8 @@ Future<void> main() async {
 
   runApp(
     ProviderScope(
-      overrides: <Override>[
+      // 起動時に確定する値を差し込む(型は ProviderScope から推論される)
+      overrides: [
         deviceIdProvider.overrideWithValue(deviceId),
         preferencesProvider.overrideWithValue(preferences),
         onboardedProvider.overrideWithValue(onboarded),

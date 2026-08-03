@@ -23,7 +23,7 @@ class PaywallScreen extends ConsumerWidget {
     final AppStrings strings = AppStrings.of(context);
     final AsyncValue<Entitlement> entitlement = ref.watch(entitlementControllerProvider);
     final List<Package> packages =
-        entitlement.valueOrNull?.offering?.availablePackages ?? const <Package>[];
+        entitlement.value?.offering?.availablePackages ?? const <Package>[];
     final Package? package = packages.isEmpty ? null : packages.first;
 
     return Scaffold(
@@ -51,7 +51,7 @@ class PaywallScreen extends ConsumerWidget {
                         // ホームへ戻してしまう。
                         final bool isPremium = ref
                                 .read(entitlementControllerProvider)
-                                .valueOrNull
+                                .value
                                 ?.isPremium ??
                             false;
                         if (isPremium && context.mounted) context.go(AppRoute.home.path);

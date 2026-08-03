@@ -41,7 +41,7 @@ Flutter側は `apps/mobile` で完結し、両者は `packages/contract` のス�
 | --------------- | ---------- | ------------------------ |
 | Node.js         | 22.6 以上  | backend / packages       |
 | pnpm            | 10 以上    | 同上(`corepack enable` で入る) |
-| Flutter         | 3.27 以上  | apps/mobile              |
+| Flutter         | 3.44.8     | apps/mobile(`.fvmrc` で固定。fvm推奨) |
 | Xcode           | 16 以上    | iOSビルド(macOSのみ)   |
 
 ### 1. 依存のインストール
@@ -76,12 +76,14 @@ pnpm --filter @ai-sensei/api dev     # backend/api  → http://localhost:8787
 pnpm --filter @ai-sensei/agent dev   # backend/agent (LiveKitのルームに接続して待機)
 
 cd apps/mobile
-flutter pub get
-flutter run --dart-define=API_BASE_URL=http://localhost:8787
+fvm install                                # .fvmrc のバージョンを取得
+fvm flutter pub get
+fvm dart run build_runner build            # freezed / riverpod の生成物
+fvm flutter run --dart-define=API_BASE_URL=http://localhost:8787
 ```
 
-> `apps/mobile` は codegen なしで動きます(`build_runner` は現時点では不要)。
-> 理由と、codegenへ寄せる場合の置き換え方は `apps/mobile/README.md` にあります。
+> 生成物(`*.freezed.dart` / `*.g.dart`)はコミットしません。
+> クローン直後は `build_runner build` を一度回してください。
 
 ## テスト
 
@@ -91,18 +93,27 @@ pnpm run lint         # Biome(lint + format検査)のみ
 pnpm run format       # Biomeで整形する(--write)
 pnpm test             # vitest のみ
 
-cd apps/mobile && flutter test    # 契約fixtureの検証 + ウィジェットテスト
+cd apps/mobile && fvm flutter test   # 契約fixture + ウィジェット + golden
 ```
 
 CIワークフローのテンプレートは [`docs/ci/`](docs/ci/README.md) にあります
 (GitHub Appは `.github/workflows/` へpushできないため、初回だけ手元でコピーが必要です)。
 
+Claude Code on the web で開くときは、`.claude/hooks/session-start.sh` が
+セッション開始時に走り、pnpm・Flutter SDK(`.fvmrc` のバージョン)・
+コード生成までを済ませます。**開いた時点で lint とテストが通る状態**になります。
+
 Biomeがlintと整形の両方を担当します(ESLint + Prettierは入れていません)。
 
 テスト方針は「①純関数ユニット(ガードレール照合・数式正規化・間隔反復スケジューラ・
 穴/連続日数の集計・contract fixtureのパース)」と「②主要画面のgolden test」の2本立てです。
-golden testはフォント配置後に入れます(`apps/mobile/README.md`)。
+golden testは主要6画面ぶんあり、**Linuxのラスタライズを正**として
+CIで生成します(`apps/mobile/test/golden/README.md`)。
 E2Eは書かず、TestFlightでの手動確認に割り切っています。
+
+依存の更新は Renovate(`renovate.json`)。ソロ開発なので週1にまとめ、
+同時に開くPRを3本までに絞っています。FlutterのSDK更新だけは
+ダッシュボードでの承認制です(提出直前に上がってこないように)。
 
 ## アーキテクチャ
 

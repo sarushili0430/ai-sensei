@@ -21,8 +21,8 @@ class KarteScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AppStrings strings = AppStrings.of(context);
-    final Karte? karte = ref.watch(latestKarteProvider);
-    final bool showPaywall = ref.watch(sessionOutcomeProvider).showPaywall;
+    final Karte? karte = ref.watch(latestKarteControllerProvider);
+    final bool showPaywall = ref.watch(sessionOutcomeControllerProvider).showPaywall;
 
     if (karte == null) {
       return Scaffold(

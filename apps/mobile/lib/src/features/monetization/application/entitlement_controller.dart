@@ -1,8 +1,10 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../api/device_id.dart';
+
+part 'entitlement_controller.g.dart';
 
 /// RevenueCat の entitlement。
 ///
@@ -24,7 +26,8 @@ class Entitlement {
   static const Entitlement free = Entitlement(isPremium: false);
 }
 
-class EntitlementController extends AsyncNotifier<Entitlement> {
+@Riverpod(keepAlive: true)
+class EntitlementController extends _$EntitlementController {
   @override
   Future<Entitlement> build() async {
     final String deviceId = ref.read(deviceIdProvider);
@@ -48,7 +51,7 @@ class EntitlementController extends AsyncNotifier<Entitlement> {
   Future<void> purchase(Package package) async {
     state = const AsyncValue<Entitlement>.loading();
     state = await AsyncValue.guard(() async {
-      await Purchases.purchasePackage(package);
+      await Purchases.purchase(PurchaseParams.package(package));
       return _read();
     });
   }
@@ -62,5 +65,3 @@ class EntitlementController extends AsyncNotifier<Entitlement> {
   }
 }
 
-final AsyncNotifierProvider<EntitlementController, Entitlement> entitlementControllerProvider =
-    AsyncNotifierProvider<EntitlementController, Entitlement>(EntitlementController.new);

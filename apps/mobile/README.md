@@ -22,10 +22,17 @@ lib/src/
 
 ## セットアップ
 
+Flutterのバージョンは **fvm** で固定しています(`.fvmrc` = 3.44.8)。
+CIも同じファイルを読むので、手元とCIでSDKがずれません。
+
 ```bash
-flutter pub get
-flutter run --dart-define=API_BASE_URL=http://localhost:8787
+dart pub global activate fvm      # 初回だけ
+fvm install                       # .fvmrc のバージョンを取得
+fvm flutter pub get
+fvm flutter run --dart-define=API_BASE_URL=http://localhost:8787
 ```
+
+fvmを使わない場合は 3.44.8 を手で入れてください(`flutter --version` で確認)。
 
 `--dart-define` で渡す値(公開鍵なので秘匿不要):
 
@@ -35,10 +42,24 @@ flutter run --dart-define=API_BASE_URL=http://localhost:8787
 | `REVENUECAT_IOS_PUBLIC_SDK_KEY` | RevenueCat(iOS) |
 | `REVENUECAT_ANDROID_PUBLIC_SDK_KEY` | RevenueCat(Android) |
 
+## コード生成
+
+freezed / json_serializable / riverpod_generator を使っています。
+**生成物(`*.freezed.dart` / `*.g.dart`)はコミットしません。**
+diffが生成物で埋まるとレビューが読めなくなるためです。
+
+```bash
+fvm dart run build_runner build            # 一度だけ
+fvm dart run build_runner watch            # 開発中
+```
+
+クローン直後は `pub get` → `build_runner build` → `flutter test` の順です。
+CIも同じ順で走ります。
+
 ## テスト
 
 ```bash
-flutter test
+fvm flutter test
 ```
 
 - `test/contract_fixture_test.dart` — **契約ドリフトの検知**。
@@ -48,35 +69,13 @@ flutter test
 - `test/widget_test.dart` — 設計上の約束が画面から消えていないかを構造で確かめる
   (ペイウォールの「無料のまま続ける」と「いつでも解約できます」など)。
 
-### golden test について
+### golden test
 
-handoff §5 のテスト方針では主要5画面のgolden testを置くことになっているが、
-**このPRの時点ではまだ入れていない**。goldenは丸ゴシックのフォントファイルを
-`assets/fonts/` に置いてからでないと、フォント差分で不安定になるため。
+`test/golden/` に主要6画面(オンボーディング / ホーム / 祝福 / カルテ / 復習 /
+ペイウォール)。詳しくは [`test/golden/README.md`](test/golden/README.md)。
 
-フォント配置後の手順:
-
-```bash
-flutter test --update-goldens   # CI環境を正として生成する
-```
-
-生成はCI(Codemagic)を正とし、ローカルの差分はコミットしない。
-
-## コード生成について(handoff §5からの変更)
-
-handoff は `@riverpod` アノテーション + codegen で統一する方針だったが、
-**このPRでは codegen なしのProvider定義と、手書きのモデルにしている**。
-
-理由は、Next Gen Award の要件「リポジトリ単体でプロジェクトが動くこと」に対して、
-`dart run build_runner build` を挟まないと `flutter test` すら通らない状態を避けたかったため。
-契約ドリフトの検知テストは、クローン直後に走ることに価値がある。
-
-codegenへ寄せる場合、置き換えは機械的:
-
-- `NotifierProvider<X, T>(X.new)` → `@riverpod class X extends _$X`
-- 手書き `fromJson` → freezed + json_serializable
-
-判断が要るところなので、方針を戻すなら言ってください。
+丸ゴシック(SIL OFL 1.1)を `assets/fonts/` に置き、テスト側で読み込んでから
+描画しています。読み込まないとAhem(四角)で描画され、字形の崩れに気づけません。
 
 ## 会話が終わったあとの流れ
 

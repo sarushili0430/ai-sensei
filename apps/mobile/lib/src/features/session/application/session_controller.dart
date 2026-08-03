@@ -1,12 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:livekit_client/livekit_client.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../api/api_client.dart';
 import '../../karte/application/karte_controllers.dart';
 import '../domain/session.dart';
+
+part 'session_controller.g.dart';
 
 /// 会話セッションの進行状態。
 ///
@@ -70,7 +72,9 @@ class SessionState {
 ///
 /// WebRTCは書かない(livekit_clientに任せる)。ここでやるのは
 /// 接続・マイク公開・残り時間のカウントダウン・切断だけ。
-class SessionController extends AutoDisposeNotifier<SessionState> {
+/// 会話の寿命に合わせて破棄する(画面を離れたら接続も状態も残さない)。
+@riverpod
+class SessionController extends _$SessionController {
   Room? _room;
   Timer? _ticker;
   String? _sessionId;
@@ -149,7 +153,7 @@ class SessionController extends AutoDisposeNotifier<SessionState> {
         return;
       }
 
-      ref.read(latestKarteProvider.notifier).set(result.karte);
+      ref.read(latestKarteControllerProvider.notifier).set(result.karte);
       ref.read(progressControllerProvider.notifier).applyFromSession(result.progress);
       _publish(SessionOutcome(showPaywall: result.showPaywall));
       state = state.copyWith(
@@ -168,7 +172,7 @@ class SessionController extends AutoDisposeNotifier<SessionState> {
 
   /// 会話画面(AutoDispose)の寿命を超えて持ち回る結果を置く。
   void _publish(SessionOutcome outcome) {
-    ref.read(sessionOutcomeProvider.notifier).set(outcome);
+    ref.read(sessionOutcomeControllerProvider.notifier).set(outcome);
   }
 
   Future<void> _teardown() async {
@@ -180,5 +184,3 @@ class SessionController extends AutoDisposeNotifier<SessionState> {
   }
 }
 
-final AutoDisposeNotifierProvider<SessionController, SessionState> sessionControllerProvider =
-    AutoDisposeNotifierProvider<SessionController, SessionState>(SessionController.new);
