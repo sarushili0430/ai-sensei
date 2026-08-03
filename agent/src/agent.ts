@@ -5,6 +5,7 @@ import * as anthropic from "@livekit/agents-plugin-anthropic";
 import * as deepgram from "@livekit/agents-plugin-deepgram";
 import * as elevenlabs from "@livekit/agents-plugin-elevenlabs";
 import * as silero from "@livekit/agents-plugin-silero";
+import { closingGraceMs, isClosingUtterance } from "./closing.ts";
 import { loadConfig } from "./config.ts";
 import { type SessionContext, readSessionContext, remainingSeconds } from "./context.ts";
 import { buildKarte, createAnthropicClient, emptyKarte, postComplete } from "./karte.ts";
@@ -46,7 +47,13 @@ export default defineAgent({
 
     const session = new voice.AgentSession({
       vad: ctx.proc.userData["vad"] as never,
-      stt: new deepgram.STT({ model: "nova-2-general", language: "ja", interimResults: true }),
+      // localeはAPIが受け付ける値なので、STTの言語もそれに合わせる。
+      // 日本語のモデルのまま英語を流すと、認識が崩れて会話が成立しない。
+      stt: new deepgram.STT({
+        model: "nova-2-general",
+        language: context.locale,
+        interimResults: true,
+      }),
       llm: new anthropic.LLM({
         apiKey: config.ANTHROPIC_API_KEY,
         model: config.LLM_MODEL_CONVERSATION,
@@ -61,34 +68,50 @@ export default defineAgent({
       }),
     });
 
+    // 会話が自然に終わったことを、後輩の締めの発話で見る。
+    // これがないと、うまく終わった会話も上限時間まで部屋が空回りする。
+    let onClosing: (() => void) | undefined;
+
     session.on(voice.AgentSessionEventTypes.ConversationItemAdded, (event) => {
       const item = event.item;
       if (!("role" in item)) return;
       const role = item.role === "assistant" ? "assistant" : "user";
-      collector.add({ role, text: textOf(item), at: new Date() });
+      const text = textOf(item);
+      collector.add({ role, text, at: new Date() });
+      if (role === "assistant" && isClosingUtterance(text)) onClosing?.();
+    });
+
+    const instructions = conversationSystemPrompt({
+      photo_summary: context.photo_summary,
+      visible_work: context.visible_work,
+      allowed_topics: context.allowed_topics,
+      question_seeds: context.question_seeds,
+      remaining_seconds: context.max_seconds,
     });
 
     const agent = new voice.Agent({
-      instructions: conversationSystemPrompt({
-        photo_summary: context.photo_summary,
-        visible_work: context.visible_work,
-        allowed_topics: context.allowed_topics,
-        question_seeds: context.question_seeds,
-        remaining_seconds: context.max_seconds,
-      }),
+      // プロンプト本体は日本語のまま。英語ロケールでは応答言語だけを切り替える
+      // (審査員向けの英語対応。プロンプトの英訳はW4の磨き込みで行う)
+      instructions:
+        context.locale === "en"
+          ? `${instructions}\n\n---\n\nRespond in English. Keep the same persona and the same rules.`
+          : instructions,
     });
 
     await session.start({ agent, room: ctx.room });
 
     // 最初の一言は後輩から。ノートを見せてもらった側なので、確認から入る。
-    session.say(
-      context.kind === "review"
-        ? "この前わからなかったところ、もう一度きいてもいいですか?"
-        : "ノート見せてもらいますね。ここ、ちょっと聞いてもいいですか?",
-    );
+    session.say(greeting(context));
 
     // 上限秒数はサーバが決める。クライアントにもエージェントにも延ばさせない。
-    const endedReason = await waitForEnd(session, context, startedAt);
+    const endedReason = await waitForEnd(session, context, startedAt, (handler) => {
+      onClosing = handler;
+    });
+
+    // 会話はここで終わり。カルテ生成(数秒かかる)を待たせないよう、
+    // 先に部屋を閉じる。開けたままだと上限時間を超えて話し続けられてしまう。
+    const endedAt = new Date();
+    await session.close().catch(() => undefined);
 
     const transcript = collector.all;
     const karte = collector.hasUserSpeech
@@ -116,7 +139,9 @@ export default defineAgent({
     const body: CompleteSessionRequest = {
       transcript,
       karte,
-      duration_seconds: Math.floor((Date.now() - startedAt.getTime()) / 1000),
+      // 会話が終わった時刻で測る。カルテ生成のレイテンシを混ぜると、
+      // 上限5分のセッションが6分と記録されてしまう。
+      duration_seconds: Math.floor((endedAt.getTime() - startedAt.getTime()) / 1000),
       ended_reason: endedReason,
     };
 
@@ -130,10 +155,19 @@ export default defineAgent({
     } catch (error) {
       console.error("[agent] /complete の送信に失敗しました", error);
     }
-
-    await session.close();
   },
 });
+
+function greeting(context: SessionContext): string {
+  if (context.locale === "en") {
+    return context.kind === "review"
+      ? "Can I ask you again about the part we got stuck on?"
+      : "Let me look at your notes. Can I ask you something?";
+  }
+  return context.kind === "review"
+    ? "この前わからなかったところ、もう一度きいてもいいですか?"
+    : "ノート見せてもらいますね。ここ、ちょっと聞いてもいいですか?";
+}
 
 type EndedReason = CompleteSessionRequest["ended_reason"];
 
@@ -145,13 +179,17 @@ function waitForEnd(
   session: voice.AgentSession,
   context: SessionContext,
   startedAt: Date,
+  registerClosing: (handler: () => void) => void,
 ): Promise<EndedReason> {
   return new Promise<EndedReason>((resolve) => {
     let settled = false;
+    let graceTimer: ReturnType<typeof setTimeout> | undefined;
+
     const finish = (reason: EndedReason) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      clearTimeout(graceTimer);
       resolve(reason);
     };
 
@@ -159,6 +197,12 @@ function waitForEnd(
       () => finish("timeout"),
       remainingSeconds(context, startedAt, new Date()) * 1000,
     );
+
+    // 後輩が締めの言葉を言ったら、読み上げが終わる余白だけ待って閉じる
+    registerClosing(() => {
+      if (settled || graceTimer) return;
+      graceTimer = setTimeout(() => finish("completed"), closingGraceMs);
+    });
 
     session.on(voice.AgentSessionEventTypes.Close, () => finish("user_left"));
     session.on(voice.AgentSessionEventTypes.Error, () => finish("error"));
