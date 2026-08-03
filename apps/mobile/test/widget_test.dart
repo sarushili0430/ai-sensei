@@ -4,33 +4,21 @@ import 'package:ai_sensei/src/common_widgets/marker_text.dart';
 import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
 import 'package:ai_sensei/src/features/karte/domain/karte.dart';
 import 'package:ai_sensei/src/features/monetization/presentation/paywall_screen.dart';
-import 'package:ai_sensei/src/l10n/strings.dart';
-import 'package:ai_sensei/src/theme/app_theme.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// golden test の追加はフォント配置後に行う(README参照)。
-/// ここでは、設計上の約束が画面から消えていないかを構造で確かめる。
-Widget wrap(Widget child) {
-  return ProviderScope(
-    child: MaterialApp(
-      theme: AppTheme.light(),
-      locale: const Locale('ja'),
-      localizationsDelegates: const <LocalizationsDelegate<dynamic>>[AppStringsDelegate()],
-      supportedLocales: AppStrings.supportedLocales,
-      home: Scaffold(body: child),
-    ),
-  );
-}
+import 'support/harness.dart';
+
+/// 設計上の約束が画面から消えていないかを構造で確かめる。
+/// 見た目そのものは test/golden/ が見る。
+Future<void> pump(WidgetTester tester, Widget child) =>
+    pumpApp(tester, Scaffold(body: child));
 
 void main() {
   group('ChunkyButton', () {
     testWidgets('押すとコールバックが呼ばれる', (WidgetTester tester) async {
       int taps = 0;
-      await tester.pumpWidget(
-        wrap(ChunkyButton(label: 'はじめる', onPressed: () => taps++)),
-      );
+      await pump(tester, ChunkyButton(label: 'はじめる', onPressed: () => taps++));
 
       await tester.tap(find.text('はじめる'));
       expect(taps, 1);
@@ -44,14 +32,13 @@ void main() {
 
   group('MarkerText', () {
     testWidgets('言えたことは黄、穴はピンクのマーカーで示す', (WidgetTester tester) async {
-      await tester.pumpWidget(
-        wrap(
-          const Column(
-            children: <Widget>[
-              MarkerText('中心と直線の距離で判定した', marker: MarkerColor.said),
-              MarkerText('判別式のなぜで説明が止まった', marker: MarkerColor.hole),
-            ],
-          ),
+      await pump(
+        tester,
+        const Column(
+          children: <Widget>[
+            MarkerText('中心と直線の距離で判定した', marker: MarkerColor.said),
+            MarkerText('判別式のなぜで説明が止まった', marker: MarkerColor.hole),
+          ],
         ),
       );
 
@@ -62,7 +49,7 @@ void main() {
 
   group('KohaiFace', () {
     testWidgets('表情ごとに読み上げラベルを持つ', (WidgetTester tester) async {
-      await tester.pumpWidget(wrap(const KohaiFace(mood: KohaiMood.delighted)));
+      await pump(tester, const KohaiFace(mood: KohaiMood.delighted));
       expect(find.bySemanticsLabel('後輩が納得しています'), findsOneWidget);
     });
   });
@@ -70,8 +57,7 @@ void main() {
   group('ペイウォール', () {
     // HAMMは誠実さを見る。無料継続の導線と解約可能の明記を消させない。
     testWidgets('無料のまま続ける導線と、解約できる旨を同じ画面に置く', (WidgetTester tester) async {
-      await tester.pumpWidget(wrap(const PaywallScreen()));
-      await tester.pump();
+      await pumpApp(tester, const PaywallScreen());
 
       expect(find.text('無料のまま続ける'), findsOneWidget);
       expect(find.text('いつでも解約できます'), findsOneWidget);

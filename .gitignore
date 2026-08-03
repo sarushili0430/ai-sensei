@@ -20,6 +20,8 @@ __pycache__/
 .venv/
 
 # --- flutter / dart ---
+# fvm がSDKを置く場所。バージョンの指定は .fvmrc(コミットする)
+apps/mobile/.fvm/
 apps/mobile/.dart_tool/
 apps/mobile/.flutter-plugins
 apps/mobile/.flutter-plugins-dependencies
@@ -32,7 +34,7 @@ apps/mobile/ios/Flutter/Flutter.podspec
 apps/mobile/ios/Flutter/ephemeral/
 apps/mobile/android/.gradle/
 apps/mobile/android/local.properties
-apps/mobile/**/failures/
+apps/mobile/test/golden/failures/
 *.iml
 
 # --- editors / os ---

@@ -20,10 +20,10 @@ class CelebrationScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AppStrings strings = AppStrings.of(context);
-    final Progress progress = ref.watch(progressControllerProvider).valueOrNull ?? Progress.empty;
-    final Karte? karte = ref.watch(latestKarteProvider);
+    final Progress progress = ref.watch(progressControllerProvider).value ?? Progress.empty;
+    final Karte? karte = ref.watch(latestKarteControllerProvider);
     // ペイウォールを出す位置はサーバが決める(初回カルテで穴が見えた直後の1回だけ)
-    final bool showPaywall = ref.watch(sessionOutcomeProvider).showPaywall;
+    final bool showPaywall = ref.watch(sessionOutcomeControllerProvider).showPaywall;
     final int filledThisSession = karte == null
         ? 0
         : karte.holes.where((Hole it) => it.status == HoleStatus.filled).length;

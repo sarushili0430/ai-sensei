@@ -1,115 +1,82 @@
-import 'package:flutter/foundation.dart';
+import 'package:freezed_annotation/freezed_annotation.dart';
 
 import '../../karte/domain/karte.dart';
 
+part 'session.freezed.dart';
+part 'session.g.dart';
+
 /// セッション関連のモデル。正は `packages/contract`。
 
-@immutable
-class DetectedTopic {
-  const DetectedTopic({
-    required this.topicId,
-    required this.course,
-    required this.unit,
-    required this.topic,
-    required this.confidence,
-  });
+@freezed
+abstract class DetectedTopic with _$DetectedTopic {
+  const DetectedTopic._();
 
-  factory DetectedTopic.fromJson(Map<String, dynamic> json) => DetectedTopic(
-        topicId: json['topic_id'] as String,
-        course: json['course'] as String,
-        unit: json['unit'] as String,
-        topic: json['topic'] as String,
-        confidence: (json['confidence'] as num).toDouble(),
-      );
+  const factory DetectedTopic({
+    @JsonKey(name: 'topic_id') required String topicId,
+    required String course,
+    required String unit,
+    required String topic,
 
-  final String topicId;
-  final String course;
-  final String unit;
-  final String topic;
+    /// 0..1。低いものは選択済みにせず、候補として並べるだけにする。
+    required double confidence,
+  }) = _DetectedTopic;
 
-  /// 0..1。低いものは選択済みにせず、候補として並べるだけにする。
-  final double confidence;
+  factory DetectedTopic.fromJson(Map<String, dynamic> json) => _$DetectedTopicFromJson(json);
 
   bool get isConfident => confidence >= 0.5;
 }
 
-@immutable
-class LiveKitConnection {
-  const LiveKitConnection({required this.url, required this.token, required this.room});
+@freezed
+abstract class LiveKitConnection with _$LiveKitConnection {
+  const factory LiveKitConnection({
+    required String url,
+    required String token,
+    required String room,
+  }) = _LiveKitConnection;
 
-  factory LiveKitConnection.fromJson(Map<String, dynamic> json) => LiveKitConnection(
-        url: json['url'] as String,
-        token: json['token'] as String,
-        room: json['room'] as String,
-      );
-
-  final String url;
-  final String token;
-  final String room;
+  factory LiveKitConnection.fromJson(Map<String, dynamic> json) =>
+      _$LiveKitConnectionFromJson(json);
 }
 
-@immutable
-class SessionLimits {
-  const SessionLimits({required this.maxSeconds, this.remainingSessionsToday});
+@freezed
+abstract class SessionLimits with _$SessionLimits {
+  const SessionLimits._();
 
-  factory SessionLimits.fromJson(Map<String, dynamic> json) => SessionLimits(
-        maxSeconds: json['max_seconds'] as int,
-        remainingSessionsToday: json['remaining_sessions_today'] as int?,
-      );
+  const factory SessionLimits({
+    @JsonKey(name: 'max_seconds') required int maxSeconds,
 
-  final int maxSeconds;
+    /// Premiumはnull(無制限)。
+    @JsonKey(name: 'remaining_sessions_today') int? remainingSessionsToday,
+  }) = _SessionLimits;
 
-  /// Premiumはnull(無制限)。
-  final int? remainingSessionsToday;
+  factory SessionLimits.fromJson(Map<String, dynamic> json) => _$SessionLimitsFromJson(json);
 
   bool get isUnlimited => remainingSessionsToday == null;
 }
 
-@immutable
-class SessionStart {
-  const SessionStart({
-    required this.sessionId,
-    required this.kind,
-    required this.livekit,
-    required this.detectedTopics,
-    required this.limits,
-  });
+@freezed
+abstract class SessionStart with _$SessionStart {
+  const factory SessionStart({
+    @JsonKey(name: 'session_id') required String sessionId,
+    required String kind,
+    required LiveKitConnection livekit,
+    @JsonKey(name: 'detected_topics') required List<DetectedTopic> detectedTopics,
+    required SessionLimits limits,
+  }) = _SessionStart;
 
-  factory SessionStart.fromJson(Map<String, dynamic> json) => SessionStart(
-        sessionId: json['session_id'] as String,
-        kind: json['kind'] as String,
-        livekit: LiveKitConnection.fromJson(json['livekit'] as Map<String, dynamic>),
-        detectedTopics: (json['detected_topics'] as List<dynamic>)
-            .map((dynamic it) => DetectedTopic.fromJson(it as Map<String, dynamic>))
-            .toList(growable: false),
-        limits: SessionLimits.fromJson(json['limits'] as Map<String, dynamic>),
-      );
-
-  final String sessionId;
-  final String kind;
-  final LiveKitConnection livekit;
-  final List<DetectedTopic> detectedTopics;
-  final SessionLimits limits;
+  factory SessionStart.fromJson(Map<String, dynamic> json) => _$SessionStartFromJson(json);
 }
 
 /// セッション終了後に受け取る結果。
-@immutable
-class SessionResult {
-  const SessionResult({
-    required this.karte,
-    required this.progress,
-    required this.showPaywall,
-  });
+@freezed
+abstract class SessionResult with _$SessionResult {
+  const factory SessionResult({
+    required Karte karte,
+    required Progress progress,
 
-  factory SessionResult.fromJson(Map<String, dynamic> json) => SessionResult(
-        karte: Karte.fromJson(json['karte'] as Map<String, dynamic>),
-        progress: Progress.fromJson(json['progress'] as Map<String, dynamic>),
-        showPaywall: json['show_paywall'] as bool,
-      );
+    /// 初回カルテで穴が見えた直後だけ true。
+    @JsonKey(name: 'show_paywall') required bool showPaywall,
+  }) = _SessionResult;
 
-  final Karte karte;
-  final Progress progress;
-
-  /// 初回カルテで穴が見えた直後だけ true。
-  final bool showPaywall;
+  factory SessionResult.fromJson(Map<String, dynamic> json) => _$SessionResultFromJson(json);
 }

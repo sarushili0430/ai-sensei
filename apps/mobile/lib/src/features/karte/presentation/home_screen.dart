@@ -27,7 +27,7 @@ class HomeScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              _CounterRow(progress: progress.valueOrNull ?? Progress.empty),
+              _CounterRow(progress: progress.value ?? Progress.empty),
               const Spacer(),
               const Center(child: KohaiFace(mood: KohaiMood.neutral, size: 140)),
               const SizedBox(height: AppSpacing.lg),

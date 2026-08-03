@@ -1,0 +1,69 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":semanticCommits", ":dependencyDashboard"],
+  "timezone": "Asia/Tokyo",
+
+  "//": "ソロ開発なので、PRが溜まって読まれなくなるのがいちばん怖い。週1にまとめ、同時に開くPRを絞る。",
+  "schedule": ["before 7am on monday"],
+  "prConcurrentLimit": 3,
+  "prHourlyLimit": 2,
+  "rangeStrategy": "bump",
+
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 7am on the first day of the month"]
+  },
+
+  "packageRules": [
+    {
+      "description": "パッチ・マイナーはまとめて1本に。個別に読む価値が薄い。",
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "minor & patch",
+      "groupSlug": "minor-patch"
+    },
+    {
+      "description": "メジャーは1本ずつ。移行手順を読む必要がある。",
+      "matchUpdateTypes": ["major"],
+      "groupName": null,
+      "labels": ["dependencies", "major"]
+    },
+    {
+      "description": "LiveKit Agents はAPIが動きやすいので、まとめて上げて一度に確認する。",
+      "matchPackagePatterns": ["^@livekit/"],
+      "groupName": "livekit"
+    },
+    {
+      "description": "Riverpod は本体・codegen・lintのバージョンを揃える必要がある。",
+      "matchPackageNames": [
+        "flutter_riverpod",
+        "riverpod_annotation",
+        "riverpod_generator",
+        "riverpod_lint"
+      ],
+      "groupName": "riverpod"
+    },
+    {
+      "description": "freezed と json_serializable も生成物が絡むのでまとめる。",
+      "matchPackageNames": [
+        "freezed",
+        "freezed_annotation",
+        "json_serializable",
+        "json_annotation",
+        "build_runner"
+      ],
+      "groupName": "dart codegen"
+    },
+    {
+      "description": "FlutterのSDK自体(.fvmrc)は提出直前に上げたくないので、手で判断する。",
+      "matchManagers": ["fvm"],
+      "dependencyDashboardApproval": true,
+      "labels": ["flutter-sdk"]
+    }
+  ],
+
+  "vulnerabilityAlerts": {
+    "description": "脆弱性だけはスケジュールを無視して即出す。publicリポジトリなので。",
+    "schedule": ["at any time"],
+    "labels": ["security"]
+  }
+}

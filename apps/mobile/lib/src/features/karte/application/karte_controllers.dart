@@ -1,11 +1,14 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../api/api_client.dart';
 import '../domain/karte.dart';
 
+part 'karte_controllers.g.dart';
+
 /// ホーム画面のカウンター。連続日数と埋めた穴だけを持つ。
-class ProgressController extends AsyncNotifier<Progress> {
+@Riverpod(keepAlive: true)
+class ProgressController extends _$ProgressController {
   @override
   Future<Progress> build() => ref.read(apiClientProvider).fetchProgress();
 
@@ -20,11 +23,9 @@ class ProgressController extends AsyncNotifier<Progress> {
   }
 }
 
-final AsyncNotifierProvider<ProgressController, Progress> progressControllerProvider =
-    AsyncNotifierProvider<ProgressController, Progress>(ProgressController.new);
-
 /// 復習キュー(プッシュ起点)。無料ユーザーには空で返る。
-class ReviewController extends AsyncNotifier<ReviewQueue> {
+@Riverpod(keepAlive: true)
+class ReviewController extends _$ReviewController {
   @override
   Future<ReviewQueue> build() => ref.read(apiClientProvider).fetchReviews();
 
@@ -34,15 +35,13 @@ class ReviewController extends AsyncNotifier<ReviewQueue> {
   }
 }
 
-final AsyncNotifierProvider<ReviewController, ReviewQueue> reviewControllerProvider =
-    AsyncNotifierProvider<ReviewController, ReviewQueue>(ReviewController.new);
-
 /// セッションの結果のうち、画面をまたいで持ち回るもの。
 ///
 /// 会話画面は AutoDispose なので、祝福・カルテ画面に着いたときには
 /// もう破棄されている。ペイウォールを出すかどうかは**サーバの判断**なので、
 /// 会話画面の寿命と切り離して保持する。
-class SessionOutcomeController extends Notifier<SessionOutcome> {
+@Riverpod(keepAlive: true)
+class SessionOutcomeController extends _$SessionOutcomeController {
   @override
   SessionOutcome build() => const SessionOutcome();
 
@@ -62,14 +61,9 @@ class SessionOutcome {
   final bool resultMissing;
 }
 
-final NotifierProvider<SessionOutcomeController, SessionOutcome> sessionOutcomeProvider =
-    NotifierProvider<SessionOutcomeController, SessionOutcome>(SessionOutcomeController.new);
-
 /// 直近のカルテ。セッション完了時に置かれ、カルテ画面が読む。
-final NotifierProvider<LatestKarteController, Karte?> latestKarteProvider =
-    NotifierProvider<LatestKarteController, Karte?>(LatestKarteController.new);
-
-class LatestKarteController extends Notifier<Karte?> {
+@Riverpod(keepAlive: true)
+class LatestKarteController extends _$LatestKarteController {
   @override
   Karte? build() => null;
 

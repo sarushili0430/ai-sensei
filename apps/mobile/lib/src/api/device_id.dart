@@ -1,6 +1,8 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+
+part 'device_id.g.dart';
 
 /// 匿名デバイスID(handoff §5)。
 ///
@@ -18,9 +20,10 @@ Future<String> loadOrCreateDeviceId(SharedPreferences preferences) async {
 }
 
 /// main() でoverrideする。起動時に確定しているので同期で読める。
-final Provider<String> deviceIdProvider = Provider<String>((Ref ref) {
+@Riverpod(keepAlive: true)
+String deviceId(Ref ref) {
   throw UnimplementedError('deviceIdProvider は main() で override してください');
-});
+}
 
 const String _onboardedKey = 'ai_sensei.onboarded';
 
@@ -31,9 +34,11 @@ Future<void> markOnboardingSeen(SharedPreferences preferences) =>
     preferences.setBool(_onboardedKey, true);
 
 /// 初回起動かどうか。main() でoverrideする。
-final Provider<bool> onboardedProvider = Provider<bool>((Ref ref) => true);
+@Riverpod(keepAlive: true)
+bool onboarded(Ref ref) => true;
 
-/// オンボーディングを見せたあと、以後スキップするためのフラグ書き込み。
-final Provider<SharedPreferences> preferencesProvider = Provider<SharedPreferences>((Ref ref) {
+/// オンボーディングの既読を書き込むために持つ。main() でoverrideする。
+@Riverpod(keepAlive: true)
+SharedPreferences preferences(Ref ref) {
   throw UnimplementedError('preferencesProvider は main() で override してください');
-});
+}

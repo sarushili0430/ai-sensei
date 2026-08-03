@@ -38,7 +38,7 @@ class ReviewScreen extends ConsumerWidget {
             return ListView.separated(
               padding: const EdgeInsets.all(AppSpacing.lg),
               itemCount: data.items.length,
-              separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.md),
+              separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.md),
               itemBuilder: (BuildContext context, int index) =>
                   _ReviewCard(item: data.items[index]),
             );

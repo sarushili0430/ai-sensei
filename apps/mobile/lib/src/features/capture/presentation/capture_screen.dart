@@ -40,9 +40,11 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
       if (mounted) context.go(AppRoute.home.path);
       return;
     }
+    if (!mounted) return;
+    final String locale = Localizations.localeOf(context).languageCode;
     final CaptureController controller = ref.read(captureControllerProvider.notifier);
     controller.setPhoto(File(picked.path));
-    await controller.analyze(locale: Localizations.localeOf(context).languageCode);
+    await controller.analyze(locale: locale);
   }
 
   @override

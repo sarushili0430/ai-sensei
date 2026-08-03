@@ -44,22 +44,35 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # バージョンは apps/mobile/.fvmrc(fvmと同じファイル)から読む
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.27.x"
-          channel: stable
+          flutter-version-file: apps/mobile/.fvmrc
           cache: true
 
       - run: flutter pub get
+        working-directory: apps/mobile
+
+      # 生成物(.freezed.dart / .g.dart)はコミットしないのでここで作る
+      - run: dart run build_runner build
         working-directory: apps/mobile
 
       - run: flutter analyze
         working-directory: apps/mobile
 
       # contract_fixture_test.dart が packages/contract/fixtures を読むので、
-      # TypeScript側と同じ契約で通ることをここで確かめる
+      # TypeScript側と同じ契約で通ることをここで確かめる。
+      # golden test もここが正(Linuxのラスタライズを基準にする)。
       - run: flutter test
         working-directory: apps/mobile
+
+      # goldenが落ちたとき、差分画像を見られるようにする
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: golden-failures
+          path: apps/mobile/test/golden/failures/
+          if-no-files-found: ignore
 
   secrets:
     name: Secret scan

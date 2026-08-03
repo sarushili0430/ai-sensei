@@ -1,12 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
+import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../features/karte/domain/karte.dart';
 import '../features/session/domain/session.dart';
 import 'device_id.dart';
+
+part 'api_client.g.dart';
 
 /// backend/api との通信。
 ///
@@ -35,7 +37,8 @@ class ApiClient {
           ..fields['meta'] = jsonEncode(<String, dynamic>{
             'kind': kind,
             'locale': locale,
-            if (holeId != null) 'hole_id': holeId,
+            // 値が null なら要素ごと落ちる(Dart 3.12 の null-aware element)
+            'hole_id': ?holeId,
             if (topicIds != null && topicIds.isNotEmpty) 'topic_ids': topicIds,
           });
 
@@ -124,7 +127,7 @@ class ApiException implements Exception {
 const String apiBaseUrl =
     String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:8787');
 
-final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((Ref ref) {
-  final String deviceId = ref.watch(deviceIdProvider);
-  return ApiClient(baseUrl: apiBaseUrl, deviceId: deviceId);
-});
+@Riverpod(keepAlive: true)
+ApiClient apiClient(Ref ref) {
+  return ApiClient(baseUrl: apiBaseUrl, deviceId: ref.watch(deviceIdProvider));
+}

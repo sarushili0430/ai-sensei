@@ -18,7 +18,10 @@ git add .github/workflows/ci.yml && git commit -m "ci: enable CI workflow"
 
 | ファイル | トリガ | 内容 |
 | -------- | ------ | ---- |
-| `ci.yml` | `develop`/`main` へのpush、全PR | `pnpm run lint`(Biome)/ `pnpm run typecheck` / `pnpm test` / シークレット走査 |
+| `ci.yml` | `develop`/`main` へのpush、全PR | `pnpm run lint`(Biome)/ `pnpm run typecheck` / `pnpm test` / Flutter(analyze + test)/ シークレット走査 |
+
+Flutterのバージョンは `apps/mobile/.fvmrc` から読みます(手元のfvmとCIで同じ値を使う)。
+golden test は **Linuxのラスタライズを正** とするので、生成もCIで行います。
 
 lint・typecheck・test は `if: !cancelled()` で連ねてあるので、
 lintが落ちても後続が走ります(1回のCIで直すべき箇所をまとめて見られるように)。

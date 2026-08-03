@@ -1,10 +1,12 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../api/api_client.dart';
 import '../../session/domain/session.dart';
+
+part 'capture_controller.g.dart';
 
 /// 撮影 → 単元確認 → セッション開始。
 ///
@@ -56,7 +58,8 @@ class CaptureState {
   }
 }
 
-class CaptureController extends Notifier<CaptureState> {
+@Riverpod(keepAlive: true)
+class CaptureController extends _$CaptureController {
   @override
   CaptureState build() => const CaptureState();
 
@@ -170,5 +173,3 @@ class CaptureController extends Notifier<CaptureState> {
   void reset() => state = const CaptureState();
 }
 
-final NotifierProvider<CaptureController, CaptureState> captureControllerProvider =
-    NotifierProvider<CaptureController, CaptureState>(CaptureController.new);
