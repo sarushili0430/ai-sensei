@@ -62,12 +62,12 @@ jobs:
 
       # プレースホルダのまま deploy すると、Cloudflare からは
       # 「そんなリソースは無い」という分かりにくいエラーが返る。手前で落とす。
+      #
+      # 見るのは**対象環境のセクションだけ**。develop を先に立ち上げて production は
+      # あとから作る、という順番はふつうにあるので、production が未設定なことを
+      # 理由に develop のデプロイを止めない(ファイル全体をgrepしない理由)。
       - name: Check bindings are filled in
-        run: |
-          if grep -n "REPLACE_ME" backend/api/wrangler.toml; then
-            echo "::error file=backend/api/wrangler.toml::D1/KV のIDが未設定です。docs/deploy.md の手順で差し替えてください。"
-            exit 1
-          fi
+        run: pnpm run verify:bindings "$TARGET"
 
       # CIワークフローと重複するが、デプロイは単体で完結させる。
       # 「CIは緑だったが、その後のpushで壊れたものが出ていった」を防ぐため。
