@@ -58,7 +58,7 @@ APIキーを登録する。名前は `codemagic.yaml` に書いてある
 - 権限は **App Manager** 以上
 
 署名自体は `codemagic.yaml` の `ios_signing` が自動で取りに行く
-(`distribution_type: app_store` / `bundle_identifier: jp.co.emobi.aiSensei`)。
+(`distribution_type: app_store` / `bundle_identifier: jp.co.aiSensei`)。
 証明書やプロファイルを手で作る必要はない。
 
 前提として App Store Connect 側に **同じバンドルIDのアプリレコード**が要る。

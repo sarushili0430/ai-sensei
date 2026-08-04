@@ -1,4 +1,4 @@
-package jp.co.emobi.ai_sensei
+package jp.co.aiSensei
 
 import io.flutter.embedding.android.FlutterActivity
 

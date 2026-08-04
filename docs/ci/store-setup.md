@@ -5,8 +5,8 @@ Codemagic 側の設定は [`codemagic.md`](./codemagic.md)。
 
 | | 識別子 |
 | --- | --- |
-| iOS | `jp.co.emobi.aiSensei` |
-| Android | `jp.co.emobi.ai_sensei` |
+| iOS | `jp.co.aiSensei` |
+| Android | `jp.co.aiSensei` |
 
 ---
 
@@ -62,7 +62,7 @@ Organization で取るなら**ここが律速**なので最初に着手する。
 
 ### 1-2. Certificates, Identifiers & Profiles → Identifiers
 
-**Identifiers > + > App IDs > App** で `jp.co.emobi.aiSensei` を Explicit で作る。
+**Identifiers > + > App IDs > App** で `jp.co.aiSensei` を Explicit で作る。
 
 Capabilities のうち、このアプリで**触るもの**:
 
@@ -111,7 +111,7 @@ Apple Pay — いずれも未使用。
 | プラットフォーム | iOS |
 | 名前 | ストア表示名(30字以内、日本語可) |
 | プライマリ言語 | 日本語 |
-| バンドルID | `jp.co.emobi.aiSensei`(1-2 で作ったもの) |
+| バンドルID | `jp.co.aiSensei`(1-2 で作ったもの) |
 | SKU | 任意の内部ID(例 `ai-sensei-ios`) |
 
 **これを作らないと Codemagic のアップロードが落ちる**
@@ -132,7 +132,7 @@ Apple Pay — いずれも未使用。
 
 1. サブスクリプショングループを作る(例 `ai-sensei Premium`)
 2. その中に自動更新サブスクリプションを作る
-   - 商品ID(例 `jp.co.emobi.aisensei.premium.monthly`)— **後から変更できない**
+   - 商品ID(例 `jp.co.aisensei.premium.monthly`)— **後から変更できない**
    - 期間・価格
    - 表示名と説明(ローカライズ。日本語は必須)
 3. **審査用スクリーンショット**(ペイウォール画面)を添付 — 無いと審査で弾かれる
@@ -238,7 +238,7 @@ Apple Pay — いずれも未使用。
 
 > **有料→無料の変更はできない。** 定期購入は「無料アプリ + アプリ内購入」で作る。
 
-パッケージ名 `jp.co.emobi.ai_sensei` は**最初のAABをアップロードした時点で確定**し、
+パッケージ名 `jp.co.aiSensei` は**最初のAABをアップロードした時点で確定**し、
 以後変えられない。
 
 ### 2-3. 署名(Play App Signing)

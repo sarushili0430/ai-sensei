@@ -79,12 +79,12 @@ fvm flutter test
 
 ## ビルドと配布
 
-`ios/` と `android/` はコミットしています(`flutter create --org jp.co.emobi` 生成)。
+`ios/` と `android/` はコミットしています。
 
 | | 識別子 |
 | --- | --- |
-| iOS | `jp.co.emobi.aiSensei` |
-| Android | `jp.co.emobi.ai_sensei` |
+| iOS | `jp.co.aiSensei`(App Store Connect に登録済み) |
+| Android | `jp.co.aiSensei`(初回AABのアップロードまでは変更可) |
 
 配布は Codemagic(リポジトリ直下の `codemagic.yaml`)。
 `develop` へのpushで TestFlight に上がります。設定手順は
