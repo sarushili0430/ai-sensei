@@ -48,7 +48,7 @@ GUI で設定した「Build for platforms」「Run build on」などは、以降
 
 **Integrations > Apple Developer Portal > App Store Connect** で
 APIキーを登録する。名前は `codemagic.yaml` に書いてある
-**`ai-sensei-asc`** に揃えること(名前で参照している)。
+**`aisenseidist`** に揃えること(名前で参照している)。
 
 必要なもの(App Store Connect > ユーザーとアクセス > 統合 で発行):
 
