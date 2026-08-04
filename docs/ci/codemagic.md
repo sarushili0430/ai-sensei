@@ -28,21 +28,36 @@ GUI で設定した「Build for platforms」「Run build on」などは、以降
 
 ### `mobile-dart-defines`(両workflowが使う)
 
-| 変数 | 例 | 秘匿 |
-| --- | --- | --- |
-| `API_BASE_URL` | `https://api.example.workers.dev` | 不要 |
-| `REVENUECAT_IOS_PUBLIC_SDK_KEY` | `appl_xxx` | 不要(公開鍵) |
-| `REVENUECAT_ANDROID_PUBLIC_SDK_KEY` | `goog_xxx` | 不要(公開鍵) |
+| 変数 | 例 | 要否 | 秘匿 |
+| --- | --- | --- | --- |
+| `API_BASE_URL` | `https://api.example.workers.dev` | 必須 | 不要 |
+| `REVENUECAT_IOS_PUBLIC_SDK_KEY` | `appl_xxx` | ストアに商品を作ったら | 不要(公開鍵) |
+| `REVENUECAT_ANDROID_PUBLIC_SDK_KEY` | `goog_xxx` | ストアに商品を作ったら | 不要(公開鍵) |
+| `REVENUECAT_SDK_KEY` | `test_xxx` | 上が無い間の代わり | 不要(公開鍵) |
+| `REVENUECAT_ENTITLEMENT_ID` | `premium` | 任意(既定 `premium`) | 不要 |
+| `REVENUECAT_OFFERING_ID` | | 任意(空なら current) | 不要 |
 
-3つとも `lib/` 側が `String.fromEnvironment` で読む値。
+いずれも `lib/` 側が `String.fromEnvironment` で読む値。
 アプリのバイナリに入るものなので、秘密鍵は**絶対にここに入れない**
 (LiveKitやLLMのキーはサーバ側 = `wrangler secret` の担当)。
+
+**ストアに商品を作る前でも配布できる。** `appl_` / `goog_` の鍵が発行できるのは
+App Store Connect / Play Console に商品を作ったあとなので、それまでは
+Test Store の鍵(`REVENUECAT_SDK_KEY`)だけ入れておけばビルドは通る。
+アプリ側もプラットフォーム別の鍵が空なら Test Store の鍵に落ちる
+(`revenuecat_config.dart` の `apiKeyFor`)。そのビルドは実売ではないので、
+1ステップ目のログに警告が出る。
 
 **グループ名は `mobile-dart-defines` と完全一致させ、アプリに紐づけること。**
 どちらかを外すと変数が渡らず、ビルドの1ステップ目
 「dart-define に渡す環境変数が揃っているか」で落ちる
 (そのチェックが無かった頃は、10分以上進んだ最後の
 `flutter build` で `API_BASE_URL: unbound variable` になっていた)。
+
+このチェックは**そのworkflowが作る成果物のプラットフォームの鍵だけ**を見る
+(iOS workflow なら `appl_`、Android workflow なら `goog_`)。判定には
+`codemagic.yaml` の `environment.vars.TARGET_PLATFORM` を使っているので、
+workflow を足すときはこの変数も一緒に設定すること。
 
 ### `google-play`(Androidのみ)
 
