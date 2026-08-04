@@ -9,6 +9,9 @@ export type Bindings = {
   PHOTOS: R2Bucket;
   METER: KVNamespace;
 
+  /** "local" | "develop" | "production"。/health が返すので、デプロイ先の取り違えに気づける。 */
+  ENVIRONMENT?: string;
+
   LIVEKIT_URL: string;
   LIVEKIT_API_KEY: string;
   LIVEKIT_API_SECRET: string;

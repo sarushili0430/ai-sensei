@@ -1,10 +1,33 @@
+# =============================================================================
+# backend/api — Cloudflare Workers
+# =============================================================================
+# 環境は develop / production の2本。手順書は docs/deploy.md。
+#
+#   pnpm --filter @ai-sensei/api deploy:develop      # develop ブランチ相当
+#   pnpm --filter @ai-sensei/api deploy:production   # main ブランチ相当
+#
+# **デプロイは必ず `--env` を付ける。** 付け忘れるとトップレベルの名前
+# (ai-sensei-api)で3本目のワーカーができてしまうので、package.json の
+# `deploy` スクリプトは付け忘れを検出して落とすようにしてある。
+#
+# D1/R2/KV は環境ごとに別リソース。develop の事故が本番のカルテを壊さないように、
+# バインディング名(DB / PHOTOS / METER)だけを揃えて実体を分けている。
+# =============================================================================
+
 name = "ai-sensei-api"
 main = "src/index.ts"
 compatibility_date = "2026-01-01"
 compatibility_flags = ["nodejs_compat"]
 
-# 無料枠と会話上限はサーバ側で強制する(クライアント改竄対策)
+# -----------------------------------------------------------------------------
+# トップレベル = `wrangler dev`(ローカル)専用。
+#
+# ローカルではD1/R2/KVをminiflareが偽物で用意するので、ここのidは使われない。
+# `wrangler dev --remote` で本物に当てたいときは `--env develop` を付けること。
+# -----------------------------------------------------------------------------
 [vars]
+ENVIRONMENT = "local"
+# 無料枠と会話上限はサーバ側で強制する(クライアント改竄対策)
 FREE_SESSIONS_PER_DAY = "1"
 FREE_SESSION_MAX_SECONDS = "300"
 PREMIUM_SESSION_MAX_SECONDS = "900"
@@ -12,24 +35,98 @@ LLM_PROVIDER = "anthropic"
 LLM_MODEL_VISION = "claude-sonnet-5"
 REVENUECAT_ENTITLEMENT_ID = "premium"
 
-# 秘匿値は wrangler secret put で登録する(.dev.vars はローカル専用・gitignore済み)
-#   LIVEKIT_API_KEY / LIVEKIT_API_SECRET / LIVEKIT_URL
-#   ANTHROPIC_API_KEY / ONESIGNAL_APP_ID / ONESIGNAL_REST_API_KEY
-#   REVENUECAT_WEBHOOK_AUTH / INTERNAL_API_TOKEN
-
 [[d1_databases]]
 binding = "DB"
-database_name = "ai-sensei"
-database_id = "00000000-0000-0000-0000-000000000000" # 作成後に差し替える
+database_name = "ai-sensei-local"
+database_id = "local"          # ローカルでは参照されない
 migrations_dir = "migrations"
 
 [[r2_buckets]]
 binding = "PHOTOS"
-bucket_name = "ai-sensei-photos"
+bucket_name = "ai-sensei-photos-local"
 
 [[kv_namespaces]]
 binding = "METER"
-id = "00000000000000000000000000000000" # 作成後に差し替える
+id = "local"                   # ローカルでは参照されない
 
 [observability]
 enabled = true
+
+# =============================================================================
+# develop — develop ブランチへのpushで自動デプロイ
+# =============================================================================
+[env.develop]
+name = "ai-sensei-api-develop"
+workers_dev = true             # https://ai-sensei-api-develop.<subdomain>.workers.dev
+
+[env.develop.vars]
+ENVIRONMENT = "develop"
+FREE_SESSIONS_PER_DAY = "1"
+FREE_SESSION_MAX_SECONDS = "300"
+PREMIUM_SESSION_MAX_SECONDS = "900"
+LLM_PROVIDER = "anthropic"
+LLM_MODEL_VISION = "claude-sonnet-5"
+REVENUECAT_ENTITLEMENT_ID = "premium"
+
+[[env.develop.d1_databases]]
+binding = "DB"
+database_name = "ai-sensei-develop"
+database_id = "REPLACE_ME"     # `wrangler d1 create` の出力で差し替える(docs/deploy.md)
+migrations_dir = "migrations"
+
+[[env.develop.r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "ai-sensei-photos-develop"
+
+[[env.develop.kv_namespaces]]
+binding = "METER"
+id = "REPLACE_ME"              # `wrangler kv namespace create` の出力で差し替える(docs/deploy.md)
+
+[env.develop.observability]
+enabled = true
+
+# =============================================================================
+# production — main ブランチへのpushで自動デプロイ
+# =============================================================================
+[env.production]
+name = "ai-sensei-api-production"
+# 独自ドメインを当てたら false にして [[env.production.routes]] を足す
+# (workers.dev のURLを残すと、そちらが野良のエンドポイントとして生き続けるため)
+workers_dev = true
+
+[env.production.vars]
+ENVIRONMENT = "production"
+FREE_SESSIONS_PER_DAY = "1"
+FREE_SESSION_MAX_SECONDS = "300"
+PREMIUM_SESSION_MAX_SECONDS = "900"
+LLM_PROVIDER = "anthropic"
+LLM_MODEL_VISION = "claude-sonnet-5"
+REVENUECAT_ENTITLEMENT_ID = "premium"
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "ai-sensei-production"
+database_id = "REPLACE_ME"     # `wrangler d1 create` の出力で差し替える(docs/deploy.md)
+migrations_dir = "migrations"
+
+[[env.production.r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "ai-sensei-photos-production"
+
+[[env.production.kv_namespaces]]
+binding = "METER"
+id = "REPLACE_ME"              # `wrangler kv namespace create` の出力で差し替える(docs/deploy.md)
+
+[env.production.observability]
+enabled = true
+
+# =============================================================================
+# 秘匿値は [vars] ではなく `wrangler secret put <NAME> --env <develop|production>`。
+# 環境ごとに別々に登録する(develop に本番の鍵を入れない)。
+#
+#   LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET
+#   ANTHROPIC_API_KEY / ONESIGNAL_APP_ID / ONESIGNAL_REST_API_KEY
+#   REVENUECAT_WEBHOOK_AUTH / INTERNAL_API_TOKEN
+#
+# ローカルは .dev.vars(gitignore済み)。テンプレートは .dev.vars.example。
+# =============================================================================
