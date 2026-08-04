@@ -116,29 +116,24 @@ workflows:
       - *analyze
       - *test
 
-      - name: 署名ファイルを取得する(無ければ作る)
-        # APIキーの3点は integrations.app_store_connect から
-        # APP_STORE_CONNECT_ISSUER_ID / _KEY_IDENTIFIER / _PRIVATE_KEY として
-        # 渡ってくるので、ここで渡し直す必要はない。
-        #
-        # environment.ios_signing を入れた後もこのステップは残してある。
-        # 短縮記法は既存のプロファイルを**探すだけ**で、無いときに作らないため。
-        # 作り直しが要る状況(証明書の失効・App IDの追加)で
-        # No matching profiles found ... に当たったら、ios_signing を一時的に
-        # 外してこのステップだけで回す。
-        script: |
-          set -euo pipefail
-          keychain initialize
-          # --create: 配布証明書とプロビジョニングプロファイルが無ければ作る。
-          # 作れなかったときは理由(権限不足・App ID未登録・証明書の枠)がログに出る。
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --type IOS_APP_STORE \
-            --create
-          keychain add-certificates
-
-      - name: プロビジョニングプロファイルをXcodeプロジェクトに適用
-        script: xcode-project use-profiles
-        working_directory: apps/mobile
+      # 署名は environment.ios_signing に任せている。
+      # キーチェーンの初期化・証明書の取得・プロファイルの適用・
+      # /Users/builder/export_options.plist の生成まで、
+      # scripts が始まる前に Codemagic の組み込みステップが済ませる。
+      #
+      # 以前はここで keychain initialize + fetch-signing-files --create を
+      # 手で叩いていたが、自動署名と併用すると壊れる:
+      # keychain initialize が自動署名の入れた証明書を消し、そのあと
+      # --create が Developer Portal にある既存の配布証明書を拾ってきても
+      # **その秘密鍵はこのマシンに無い**ので
+      #   Cannot save Signing Certificates without certificate private key
+      # で落ちる。
+      #
+      # 証明書を作り直す必要が出たときは、使い回す秘密鍵を
+      # 環境変数 CERTIFICATE_PRIVATE_KEY に入れたうえで
+      #   app-store-connect fetch-signing-files "$BUNDLE_ID" \
+      #     --type IOS_APP_STORE --certificate-key=@env:CERTIFICATE_PRIVATE_KEY --create
+      # を一時的に足す。鍵を渡さないと毎ビルド新しい証明書を作って上限に当たる。
 
       - name: IPA をビルド
         working_directory: apps/mobile
