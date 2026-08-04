@@ -62,9 +62,68 @@ APIキーを登録する。名前は `codemagic.yaml` に書いてある
 に画面単位で書いてある。**Apple Developer 側の Keys ではなく
 App Store Connect 側**という点だけ注意。
 
-署名自体は `codemagic.yaml` の `ios_signing` が自動で取りに行く
-(`distribution_type: app_store` / `bundle_identifier: jp.co.aiSensei`)。
-証明書やプロファイルを手で作る必要はない。
+証明書とプロビジョニングプロファイルを手で作る必要はない。
+`codemagic.yaml` の「署名ファイルを取得する(無ければ作る)」ステップが
+`app-store-connect fetch-signing-files --create` で発行・更新する。
+
+### 手で作らないこと
+
+Developer Portal の **Generate a Provisioning Profile を手で回さない。**
+理由が3つある。
+
+- **配布証明書の秘密鍵が手元に残ってしまう。**
+  Mac で作った配布証明書の秘密鍵はそのMacのキーチェーンの中にあり、
+  Codemagic からは使えない。`--create` は鍵ごと自分で作るので、
+  Codemagic が署名できる状態になる。
+- **配布証明書の枠を無駄に食う。** チームで持てる Distribution 証明書には
+  上限がある。手で1枚作ってから `--create` させると2枚消費し、
+  上限に当たると発行そのものが失敗する。
+- **種類を間違えやすい。** 必要なのは
+  **Distribution > App Store Connect** のプロファイル。
+  Development を選ぶと Select Certificates に開発用証明書しか出ず、
+  そのまま作っても `app_store` 配布には使えない。
+
+> **「端末(Device)がリストに無い」は問題ではない。**
+> 端末の登録が要るのは Development と Ad Hoc のプロファイルだけで、
+> **App Store 配布用のプロファイルは端末を持たない**。
+> CIのMacをデバイス登録する必要はない。
+
+### Codemagic UI の「Code signing identities」も使わない
+
+Codemagic UI の
+**Available provisioning profiles / Code signing certificates**(iOS側)は、
+**手で用意したファイルをアップロードして使う手動署名のための場所**。
+`codemagic.yaml` はそちらを参照していないので、ここに何か置いても使われない。
+
+**`--create` が作ったものはこの画面には出てこない。**
+プロファイルと証明書は
+「Appleの Developer Portal に作られ、ビルドマシンにダウンロードされる」
+だけで、Codemagic に保存されるわけではないため。
+
+確認するならこの2か所:
+
+- ビルドログの **「署名ファイルを取得する(無ければ作る)」ステップ**
+  — 何を見つけ、何を作ったかが出る
+- **[developer.apple.com](https://developer.apple.com) >
+  Certificates, Identifiers & Profiles > Profiles**
+  — ビルド後に `jp.co.aiSensei` の App Store プロファイルが増えている
+
+> Android の keystore(`ai-sensei-upload-keystore`)は逆で、
+> **Codemagic UI に置いたものを使う**。iOS だけAPI経由という非対称になっている。
+
+### 動作確認のためにビルドを回すとき
+
+`ios-testflight` の自動トリガは **`develop` へのpush** だけ。
+PRブランチに置いた変更を試したいときは、Codemagic UI の
+**Start new build** でブランチと workflow を選んで手動で回す
+(`codemagic.yaml` は選んだブランチのものが読まれる)。
+
+> **`environment.ios_signing` の短縮記法は使っていない。**
+> あれは登録済みのプロファイルを**探すだけ**で、無いときに作ってくれない。
+> App ID を登録して APIキーに App Manager を与えても
+> `No matching profiles found for bundle identifier ...` で落ちる。
+> しかもスクリプトより前の段階で落ちるため、ログから理由が追えない。
+> `--create` を明示的に叩く形にしてある。
 
 前提として App Store Connect 側に **同じバンドルIDのアプリレコード**が要る。
 無いと `flutter build ipa` は通るがアップロードで落ちる。
@@ -132,8 +191,69 @@ golden の正となる実行は GitHub Actions(ubuntu-latest)。
 - **`codemagic.yaml` が無視される** → 手順0のYAML切り替えをしていない。
 - **`Provisioning profile ... doesn't include signing certificate`**
   → App Store Connect のAPIキーの権限が App Manager 未満。
-- **`No matching profiles found`**
-  → App Store Connect にバンドルIDのアプリレコードが無い。
+- **`No matching profiles found for bundle identifier "..." and distribution type "app_store"`**
+  → 下の「プロファイルが見つからないとき」を参照。
 - **AABがPlayに弾かれる(`not signed`)**
   → keystore の参照名が `ai-sensei-upload-keystore` と一致していない。
     一致しないと `key.properties` が書けず、debug署名にフォールバックする。
+
+## プロファイルが見つからないとき
+
+```
+No matching profiles found for bundle identifier "jp.co.aiSensei"
+and distribution type "app_store"
+```
+
+Codemagic が App Store Connect に「`jp.co.aiSensei` の配布用プロファイルをくれ」と
+聞いて、Appleが**何も返さなかった**という意味。
+
+**いまの `codemagic.yaml` では出ないはず。**
+このエラーは `environment.ios_signing` の短縮記法を使ったときのもので、
+あれは登録済みのプロファイルを**探すだけ**だった。
+現在は `fetch-signing-files --create` を明示的に叩く形にしてあるので、
+無ければその場で作られる。
+
+それでも出る場合、`--create` が**作れなかった**ということなので、
+確認する順に:
+
+### 1. Identifier が登録されているか(いちばん多い)
+
+**[developer.apple.com](https://developer.apple.com) > Certificates, Identifiers &
+Profiles > Identifiers** に `jp.co.aiSensei` があるか見る。
+
+- **大文字小文字が区別される。** `jp.co.aisensei` は別物として扱われ、一致しない
+- **Explicit で登録されていること。** ワイルドカード(`jp.co.*`)では
+  `app_store` 配布のプロファイルに使えない
+
+> **App Store Connect で「アプリを作成」したことと、
+> Developer Portal に Identifier を登録することは別の作業。**
+> 手順としては Identifier が先で、アプリレコードはそれを選んで作る。
+> アプリレコードだけあって Identifier が無い、という状態にはならないが、
+> **どちらも作っていない**場合はここから。
+
+### 2. APIキーとIdentifierのチームが同じか
+
+Apple IDが複数のチームに属している場合、**Issuer ID がチームを決める**。
+別チームで Identifier を作っていると、APIキーからは見えないので一致しない。
+Identifier のページで所属チームを確認する。
+
+### 3. APIキーの役割
+
+**App Manager 以上**であること。Developer だと読めても**作れない**ので、
+同じ「見つからない」エラーになる。役割は後から変更できる。
+
+### 4. 配布証明書の枠
+
+チームの Distribution 証明書が上限に達していると、証明書が作れず失敗する。
+Certificates で使っていないものを失効させる。
+
+### ログの読みどころ
+
+「署名ファイルを取得する(無ければ作る)」ステップのログに、
+`fetch-signing-files` が
+**何を見つけて・何を作ろうとして・なぜ失敗したか**が出る。
+上の1〜4はここに理由が出るので、当てずっぽうで潰す必要はない。
+
+`Not enough permissions` のような文言なら 3、
+`Bundle ID ... not found` なら 1、
+証明書の上限に触れていれば 4。
