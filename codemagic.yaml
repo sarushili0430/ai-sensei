@@ -72,9 +72,12 @@ workflows:
     max_build_duration: 60
 
     integrations:
-      # Codemagic UI > Integrations > Apple Developer Portal で登録した
+      # Codemagic UI > Settings > Integrations > Developer Portal で登録した
       # App Store Connect APIキーの「名前」。
-      app_store_connect: ai-sensei-asc
+      # ファイル名と同じ文字列だが無関係。Code signing identities に置いた
+      # 証明書の名前(aisenseidist)でもない —— 書くと
+      # App Store Connect integration "..." does not exist で落ちる。
+      app_store_connect: codemagic
 
     environment:
       flutter: *flutter_version

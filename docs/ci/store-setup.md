@@ -164,14 +164,23 @@ Apple Pay — いずれも未使用。
 
    | 項目 | 値 |
    | --- | --- |
-   | **名前** | **`ai-sensei-asc`** |
+   | **名前** | **`codemagic`** |
    | Issuer ID | 1-3-1 で控えたUUID |
    | Key ID | 1-3-1 で控えた10文字 |
    | API key | `AuthKey_XXXXXXXXXX.p8` をアップロード |
 
-> **名前は `ai-sensei-asc` にすること。**
-> `codemagic.yaml` の `integrations.app_store_connect: ai-sensei-asc` が
+> **名前は `codemagic` にすること。**
+> `codemagic.yaml` の `integrations.app_store_connect: codemagic` が
 > この名前で参照している。違う名前にするなら yaml 側も直す。
+>
+> **ファイル名と同じ文字列だが別物。** ここで言う `codemagic` は
+> 「このAPIキーに付けた表示名」であって、`codemagic.yaml` のことではない。
+>
+> **Code signing identities の証明書名とも別物。**
+> あちらは手でアップロードした証明書ファイルの名前で、
+> `integrations.app_store_connect` からは参照できない。
+> 証明書名(`aisenseidist` など)を書くと
+> `App Store Connect integration "..." does not exist` で落ちる。
 
 登録できていれば、証明書(Certificates)とプロビジョニングプロファイルを
 **手で作る必要はない**。`codemagic.yaml` の `ios_signing` が
