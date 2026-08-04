@@ -72,7 +72,8 @@ cp apps/mobile/dart_defines.example.env apps/mobile/dart_defines.env    # --dart
 `--dart-define` の値はビルド成果物に埋め込まれ、逆アセンブルで読めます。
 **秘密鍵はモバイル側に置かないでください。**
 
-本番の秘匿値は `wrangler secret put <NAME>` とLiveKit側の環境設定に登録します。
+本番の秘匿値は `wrangler secret put <NAME> --env <develop|production>` と
+LiveKit側の環境設定に、**環境ごとに別々**で登録します([`docs/deploy.md`](docs/deploy.md))。
 コミット前に走査するには:
 
 ```bash
@@ -106,7 +107,7 @@ pnpm test             # vitest のみ
 cd apps/mobile && fvm flutter test   # 契約fixture + ウィジェット + golden
 ```
 
-CIワークフローのテンプレートは [`docs/ci/`](docs/ci/README.md) にあります
+CIとデプロイのワークフローのテンプレートは [`docs/ci/`](docs/ci/README.md) にあります
 (GitHub Appは `.github/workflows/` へpushできないため、初回だけ手元でコピーが必要です)。
 
 Claude Code on the web で開くときは、`.claude/hooks/session-start.sh` が
@@ -124,6 +125,28 @@ E2Eは書かず、TestFlightでの手動確認に割り切っています。
 依存の更新は Renovate(`renovate.json`)。ソロ開発なので週1にまとめ、
 同時に開くPRを3本までに絞っています。FlutterのSDK更新だけは
 ダッシュボードでの承認制です(提出直前に上がってこないように)。
+
+## デプロイ
+
+`backend/api` は Cloudflare Workers に **develop / production の2本**で載せます。
+
+| | develop | production |
+| --- | --- | --- |
+| ブランチ | `develop` | `main` |
+| ワーカー | `ai-sensei-api-develop` | `ai-sensei-api-production` |
+| D1 / R2 / KV | 専用のリソース | 専用のリソース |
+
+バインディング名(`DB`/`PHOTOS`/`METER`)だけを揃えて実体を分けているので、
+コードは環境を意識しません。`develop`/`main` へのpushでGitHub Actionsが
+マイグレーション → デプロイ → `/health` の確認まで行います。
+
+リソースの作成・secretの登録・APIトークンの権限は [`docs/deploy.md`](docs/deploy.md)。
+`apps/mobile` の配布は Codemagic 側です([`docs/ci/codemagic.md`](docs/ci/codemagic.md))。
+
+> `backend/agent`(LiveKit Agents)の稼働先は
+> [ADR 0002](docs/adr/0002-agent-runtime.md) のとおりまだ保留です。
+> ただし **LiveKitのプロジェクトは環境ごとに分けます**(同じプロジェクトを共有すると
+> 開発用のagentが本番のルームのジョブを拾いうるため)。
 
 ## アーキテクチャ
 
