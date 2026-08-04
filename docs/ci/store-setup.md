@@ -80,27 +80,107 @@ Apple Pay — いずれも未使用。
 > Background Modes は App ID の Capability ではなく Info.plist / Xcode 側の設定。
 > 1-9 を参照。
 
-### 1-3. Keys(2種類つくる)
+### 1-3. 鍵は3種類ある(まず違いを押さえる)
 
-**Certificates, Identifiers & Profiles > Keys > +**
+`.p8` という同じ拡張子のファイルが3つ出てくるうえ、**発行する場所がそれぞれ違う**。
+ここを取り違えるのが一番よくある事故なので、先に整理しておく。
 
-| 鍵 | 用途 | 渡す先 |
+| 鍵 | どこで作る | 用途 | 渡す先 |
+| --- | --- | --- | --- |
+| **App Store Connect API Key** | App Store Connect > ユーザーとアクセス > 統合 | ビルドの署名とアップロード | Codemagic |
+| In-App Purchase Key | 同上(別タブ) | 課金レシートの検証 | RevenueCat(1-10) |
+| APNs Auth Key | **Apple Developer**(別サイト)> Keys | プッシュ通知 | OneSignal |
+
+いま要るのは**一番上の App Store Connect API Key** だけ。
+
+> **よくある間違い**: Apple Developer(developer.apple.com)の
+> 「Certificates, Identifiers & Profiles > Keys」で作れるのは APNs の鍵などで、
+> **App Store Connect API Key はここには無い**。
+> 別サイトの App Store Connect(appstoreconnect.apple.com)で作る。
+
+### 1-3-1. App Store Connect API Key を発行する
+
+#### 手順
+
+1. **[appstoreconnect.apple.com](https://appstoreconnect.apple.com)** にサインインする
+2. 上部の **「ユーザーとアクセス」**(Users and Access)を開く
+3. タブの **「統合」**(Integrations)を選ぶ
+4. 左のリストで **「App Store Connect API」** を選ぶ
+5. **「チームキー」**(Team Keys)タブにいることを確認する
+   - 「個別キー」(Individual Keys)は個人に紐づく鍵。
+     **CIには使わない**(その人がチームを抜けると鍵ごと死ぬ)
+6. **「+」** ボタンを押す
+7. 入力する
+
+   | 項目 | 値 |
+   | --- | --- |
+   | 名前 | `Codemagic` など、後で見て分かるもの(自由) |
+   | アクセス(役割) | **App Manager** |
+
+8. **「生成」**(Generate)を押す
+
+#### 控えるもの(3点セット)
+
+生成後の一覧画面から、以下の3つを取る。**Codemagic にはこの3つを入れる。**
+
+| | どこにあるか | 形 |
 | --- | --- | --- |
-| App Store Connect API Key | Codemagic の署名・アップロード | Codemagic の Integration `ai-sensei-asc` |
-| APNs Auth Key | プッシュ通知 | OneSignal ダッシュボード |
+| **Issuer ID** | ページ**上部**に1行で表示(キーの一覧の外) | `6a7b...` のようなUUID |
+| **Key ID** | 作った鍵の行 | 10文字の英数字 |
+| **APIキー(.p8)** | 行の右端「APIキーをダウンロード」 | `AuthKey_XXXXXXXXXX.p8` |
 
-- **App Store Connect API Key** は Keys ではなく
-  **App Store Connect > Users and Access > Integrations > App Store Connect API** で作る。
-  権限は **App Manager 以上**(これ未満だと Codemagic が
-  `Provisioning profile ... doesn't include signing certificate` で落ちる)。
-  Issuer ID / Key ID / `AuthKey_XXXXXXXX.p8` の3点を控える。
-- **APNs Auth Key** は Developer Portal の Keys で
-  「Apple Push Notifications service (APNs)」にチェックして作る。
-  `.p8` は**再ダウンロードできない**ので、その場で保管する。
-  OneSignal には `.p8` + Key ID + Team ID + Bundle ID を入れる。
+> **`.p8` は一度しかダウンロードできない。**
+> 閉じると二度と取れないので、その場でパスワードマネージャ等に保管する。
+> 無くしたら失効させて作り直す(作り直し自体は何度でもできる)。
 
-証明書(Certificates)とプロビジョニングプロファイルを手で作る必要はない。
-`codemagic.yaml` の `ios_signing` が APIキー経由で自動発行する。
+> **Issuer ID を取り忘れやすい。** 鍵ごとではなくチームに1つで、
+> 一覧の上に小さく出ているだけなので見落としやすい。
+
+#### 詰まったら
+
+- **「統合」タブが無い / 「+」が押せない**
+  → 権限不足。**Admin または Account Holder** でサインインする必要がある。
+- **初回だけ「アクセスをリクエスト」ボタンしか出ない**
+  → チームキーの利用開始は **Account Holder 本人**が押す必要がある。
+    別の人が Account Holder なら、その人に踏んでもらう。
+- **役割を Developer にしてしまった**
+  → Codemagic のビルドが
+    `Provisioning profile ... doesn't include signing certificate` で落ちる。
+    役割は後から変更できるので、**App Manager** に上げる。
+
+### 1-3-2. Codemagic に登録する
+
+1. Codemagic の **Settings**(または左下の Account settings)>
+   **Integrations** > **Developer Portal** を開く
+2. **Manage keys / Add key** から新規登録
+3. 入力する
+
+   | 項目 | 値 |
+   | --- | --- |
+   | **名前** | **`ai-sensei-asc`** |
+   | Issuer ID | 1-3-1 で控えたUUID |
+   | Key ID | 1-3-1 で控えた10文字 |
+   | API key | `AuthKey_XXXXXXXXXX.p8` をアップロード |
+
+> **名前は `ai-sensei-asc` にすること。**
+> `codemagic.yaml` の `integrations.app_store_connect: ai-sensei-asc` が
+> この名前で参照している。違う名前にするなら yaml 側も直す。
+
+登録できていれば、証明書(Certificates)とプロビジョニングプロファイルを
+**手で作る必要はない**。`codemagic.yaml` の `ios_signing` が
+このAPIキー経由で自動発行・自動更新する。
+
+### 1-3-3. APNs Auth Key(プッシュを配線するときだけ)
+
+いまは OneSignal が未実装なので後回しでよい。
+
+**[developer.apple.com](https://developer.apple.com) > Certificates, Identifiers &
+Profiles > Keys > +** で、
+「**Apple Push Notifications service (APNs)**」にチェックして作る。
+こちらの `.p8` も再ダウンロード不可。
+
+OneSignal には `.p8` + **Key ID** + **Team ID** + **Bundle ID**(`jp.co.aiSensei`)を入れる。
+Team ID は Apple Developer の右上、またはメンバーシップのページで確認できる。
 
 ### 1-4. App Store Connect にアプリを作る
 

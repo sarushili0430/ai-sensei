@@ -50,12 +50,17 @@ GUI で設定した「Build for platforms」「Run build on」などは、以降
 APIキーを登録する。名前は `codemagic.yaml` に書いてある
 **`ai-sensei-asc`** に揃えること(名前で参照している)。
 
-必要なもの(App Store Connect > Users and Access > Integrations で発行):
+必要なもの(App Store Connect > ユーザーとアクセス > 統合 で発行):
 
 - Issuer ID
 - Key ID
 - `AuthKey_XXXXXXXX.p8`
 - 権限は **App Manager** 以上
+
+発行の手順は
+[`store-setup.md` の 1-3-1](./store-setup.md#1-3-1-app-store-connect-api-key-を発行する)
+に画面単位で書いてある。**Apple Developer 側の Keys ではなく
+App Store Connect 側**という点だけ注意。
 
 署名自体は `codemagic.yaml` の `ios_signing` が自動で取りに行く
 (`distribution_type: app_store` / `bundle_identifier: jp.co.aiSensei`)。
