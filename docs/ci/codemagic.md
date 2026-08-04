@@ -118,12 +118,15 @@ PRブランチに置いた変更を試したいときは、Codemagic UI の
 **Start new build** でブランチと workflow を選んで手動で回す
 (`codemagic.yaml` は選んだブランチのものが読まれる)。
 
-> **`environment.ios_signing` の短縮記法は使っていない。**
-> あれは登録済みのプロファイルを**探すだけ**で、無いときに作ってくれない。
-> App ID を登録して APIキーに App Manager を与えても
-> `No matching profiles found for bundle identifier ...` で落ちる。
-> しかもスクリプトより前の段階で落ちるため、ログから理由が追えない。
-> `--create` を明示的に叩く形にしてある。
+> **`environment.ios_signing` の短縮記法と `--create` を併用している。**
+> 短縮記法(`distribution_type: app_store` / `bundle_identifier`)は
+> 登録済みのプロファイルを**探すだけ**で、無いときに作ってくれない。
+> App ID を登録して APIキーに App Manager を与えても、プロファイルが
+> 未作成なら `No matching profiles found for bundle identifier ...` で落ちる
+> (しかもスクリプトより前の段階なので、ログから理由が追えない)。
+> そのため `fetch-signing-files --create` のステップは残してある。
+> プロファイルを作り直す必要が出てこのエラーに当たったら、
+> `ios_signing` を一時的に外して `--create` のステップだけで回すこと。
 
 前提として App Store Connect 側に **同じバンドルIDのアプリレコード**が要る。
 無いと `flutter build ipa` は通るがアップロードで落ちる。
@@ -207,14 +210,14 @@ and distribution type "app_store"
 Codemagic が App Store Connect に「`jp.co.aiSensei` の配布用プロファイルをくれ」と
 聞いて、Appleが**何も返さなかった**という意味。
 
-**いまの `codemagic.yaml` では出ないはず。**
-このエラーは `environment.ios_signing` の短縮記法を使ったときのもので、
-あれは登録済みのプロファイルを**探すだけ**だった。
-現在は `fetch-signing-files --create` を明示的に叩く形にしてあるので、
-無ければその場で作られる。
+このエラーを出しているのは `environment.ios_signing` の短縮記法で、
+あれは登録済みのプロファイルを**探すだけ**。作りはしない。
+プロファイルが1度も作られていない状態でこれが出たら、
+`environment.ios_signing` を一時的にコメントアウトして回す
+—— 後段の `fetch-signing-files --create` がその場で作るので、
+1回通れば以降は短縮記法でも見つかるようになる。
 
-それでも出る場合、`--create` が**作れなかった**ということなので、
-確認する順に:
+`--create` を通しても**作れなかった**場合、確認する順に:
 
 ### 1. Identifier が登録されているか(いちばん多い)
 

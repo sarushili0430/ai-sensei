@@ -87,12 +87,14 @@ workflows:
         - mobile-dart-defines
       vars:
         BUNDLE_ID: jp.co.aiSensei
-      # environment.ios_signing の短縮記法は使わない。
-      # あれは登録済みのプロファイルを**探すだけ**で、無いときに作ってくれない。
-      # App ID を登録し、APIキーに App Manager を与えても
-      #   No matching profiles found for bundle identifier "..."
-      # で落ちる(しかもスクリプトより前の段階なので、ログから理由が追えない)。
-      # 下の署名ステップで fetch-signing-files --create を明示的に叩く。
+      ios_signing:
+        # 自動コードサイニング。上の integrations.app_store_connect のAPIキーで
+        # プロファイルと証明書を取得し、Xcodeプロジェクトに適用するところまでを
+        # スクリプトより前にCodemagicがやる。
+        distribution_type: app_store
+        # ここは環境変数の展開が効かないので BUNDLE_ID とは別に直書きする。
+        # 変えるときは vars.BUNDLE_ID と一緒に直すこと。
+        bundle_identifier: jp.co.aiSensei
 
     triggering:
       events:
@@ -115,6 +117,12 @@ workflows:
         # APIキーの3点は integrations.app_store_connect から
         # APP_STORE_CONNECT_ISSUER_ID / _KEY_IDENTIFIER / _PRIVATE_KEY として
         # 渡ってくるので、ここで渡し直す必要はない。
+        #
+        # environment.ios_signing を入れた後もこのステップは残してある。
+        # 短縮記法は既存のプロファイルを**探すだけ**で、無いときに作らないため。
+        # 作り直しが要る状況(証明書の失効・App IDの追加)で
+        # No matching profiles found ... に当たったら、ios_signing を一時的に
+        # 外してこのステップだけで回す。
         script: |
           set -euo pipefail
           keychain initialize
