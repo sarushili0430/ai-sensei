@@ -76,8 +76,17 @@ R2はバケット名で引くのでIDの差し替えは要らない。
 `develop` を `production` に読み替えて同じ3つを作り、
 `[[env.production.*]]` の `REPLACE_ME` を埋める。
 
-**`REPLACE_ME` が1つでも残っているとデプロイは走らない**
-(GitHub Actions の `Check bindings are filled in` で落とす)。
+埋まっているかは、環境ごとに手元で確かめられる。
+
+```bash
+pnpm run verify:bindings develop
+# ✔ [env.develop] のバインディングは設定済み
+```
+
+**`REPLACE_ME` が残っている環境へはデプロイできない**(GitHub Actions の
+`Check bindings are filled in` が同じチェックで落とす)。見るのは
+**対象環境のセクションだけ**なので、**develop を先に立ち上げて production は
+あとから作る、という順番で問題ない。**
 
 ---
 
@@ -196,7 +205,7 @@ Settings > Environments > `production` > **Required reviewers** に自分を入�
 
 ### ワークフローがやること
 
-1. `REPLACE_ME` が残っていないか確認する
+1. デプロイ先の環境のバインディングが埋まっているか確認する(`verify:bindings`)
 2. `pnpm run verify`(lint / typecheck / シークレット走査 / テスト)
 3. `wrangler d1 migrations apply --remote`
 4. `wrangler deploy --env <target>`
