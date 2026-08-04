@@ -12,9 +12,16 @@ Cloudflare Workers + Hono。セッション作成・カルテ保存・課金webh
 | GET | `/v1/me/progress` | `X-Device-Id` | 連続日数と埋めた穴 |
 | GET | `/v1/me/reviews` | `X-Device-Id` | 復習キュー(無料は空 + `requires_premium`) |
 | POST | `/v1/webhooks/revenuecat` | 共有シークレット | entitlement同期 |
+| GET | `/health` | なし | 死活確認。どの環境かを名乗る(`{"ok":true,"environment":"production"}`) |
 
 認証は**匿名デバイスID**(handoff §5)。アカウント作成を要求しないので、
 クライアントが生成したUUIDを `X-Device-Id` で送るだけ。
+
+`/complete` だけは agent が呼ぶ内部エンドポイントで、共有シークレット1本
+(`INTERNAL_API_TOKEN`)で通している。**これは静的・無期限・スコープ無しなので、
+セッションスコープの短命トークンに移す予定**。当面このままにする判断と、
+素直に見えて成立しない経路(LiveKitトークンの `metadata` はアプリから読める)は
+[ADR 0003](../../docs/adr/0003-internal-api-auth.md) に書いてある。
 
 ## ローカル開発
 
@@ -24,8 +31,33 @@ pnpm --filter @ai-sensei/api migrate:local   # D1にスキーマを流す
 pnpm --filter @ai-sensei/api dev             # http://localhost:8787
 ```
 
-D1/R2/KVのIDは `wrangler.toml` にプレースホルダが入っているので、
-`wrangler d1 create ai-sensei` などで作ってから差し替える。
+ローカルではD1/R2/KVをminiflareが偽物で用意するので、**IDの差し替えは要らない**
+(`wrangler.toml` のトップレベルが `wrangler dev` 専用の設定になっている)。
+
+## デプロイ
+
+環境は **develop / production の2本**。手順は [`docs/deploy.md`](../../docs/deploy.md)。
+
+```bash
+pnpm run deploy:develop      # develop ブランチ相当
+pnpm run deploy:production   # main ブランチ相当
+
+pnpm run migrate:develop     # D1のマイグレーション(--remote)
+pnpm run migrate:production
+
+pnpm run secret:develop LIVEKIT_API_KEY   # secretは環境ごとに登録する
+pnpm run tail:develop                     # ログを流し見る
+```
+
+`develop`/`main` へのpushでGitHub Actionsが同じことをやる
+([`docs/ci/deploy.yml`](../../docs/ci/deploy.yml))。
+
+**`--env` を付けない `wrangler deploy` は使わない。** トップレベルの名前
+(`ai-sensei-api`)で3本目のワーカーができてしまうので、`pnpm run deploy` は
+付け忘れとみなして落ちるようにしてある。
+
+`GET /health` は `{"ok":true,"environment":"develop"}` のように環境名を返す。
+2本のワーカーは見た目が同じなので、URLの取り違えにこれで気づける。
 
 ## テスト
 

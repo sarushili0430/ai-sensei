@@ -30,7 +30,9 @@ export function createApp(options: CreateAppOptions = {}) {
     await next();
   });
 
-  app.get("/health", (c) => c.json({ ok: true }));
+  // develop と production は見た目が同じなので、どちらに当たったかを返す
+  // (デプロイ直後のスモークで、URLの取り違えに気づけるようにする)。
+  app.get("/health", (c) => c.json({ ok: true, environment: c.env?.ENVIRONMENT ?? "unknown" }));
 
   // 匿名デバイスID(handoff §5: アカウント作成を要求しない)。
   // webhookはRevenueCatから来るので、この認証の対象外。
