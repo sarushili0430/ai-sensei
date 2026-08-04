@@ -69,6 +69,11 @@ cp apps/mobile/dart_defines.example.env apps/mobile/dart_defines.env    # --dart
 | `backend/agent/.env.example` | LiveKit / 会話・カルテのLLM / STT / TTS / 内部トークン |
 | `apps/mobile/dart_defines.example.env` | **公開値のみ**(APIのURL・RevenueCat公開鍵・OneSignal App ID・Sentry DSN) |
 
+課金まわりのダッシュボード設定とアプリ側の噛み合わせは
+[`docs/revenuecat.md`](docs/revenuecat.md) にまとめてあります。
+鍵を渡さないビルドでは課金機能ごと無効になるので、`flutter test` と CI は
+RevenueCat の設定なしで通ります。
+
 `--dart-define` の値はビルド成果物に埋め込まれ、逆アセンブルで読めます。
 **秘密鍵はモバイル側に置かないでください。**
 

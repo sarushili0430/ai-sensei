@@ -36,6 +36,9 @@ dependencies:
 
   # 課金 / 通知 / 監視
   purchases_flutter: ^10.7.0
+  # RevenueCatのペイウォールとCustomer Center。
+  # コアと同じバージョンで揃える(片方だけ上げるとネイティブ側が食い違う)。
+  purchases_ui_flutter: ^10.7.0
   onesignal_flutter: ^5.2.6
   sentry_flutter: ^8.12.0
 

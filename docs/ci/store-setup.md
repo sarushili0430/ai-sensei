@@ -293,14 +293,18 @@ Team ID は Apple Developer の右上、またはメンバーシップのペー�
 3. **App Store Server Notifications V2** の URL に RevenueCat のURLを設定
    (App Store Connect > アプリ > 一般情報)
 4. Products に 1-6 の商品IDを登録
-5. **Entitlements に `premium` を作る** — `entitlement_controller.dart:14` が
-   `entitlementId = 'premium'` を決め打ちしている。名前が違うと課金しても
-   プレミアムにならない
-6. **Offerings で `current` を設定する** — 同ファイルが `offerings.current` を読む。
+5. **Entitlements に `premium` を作る**(identifier のほう。表示名は自由)。
+   アプリ側の既定値は `revenuecat_config.dart` の `entitlementId`。違う名前に
+   したいときは `--dart-define=REVENUECAT_ENTITLEMENT_ID=...` で合わせる。
+   ずれると**課金は成立するのに何も解放されない**
+6. **Offerings で `current` を設定し、パッケージを 週/月/年 の3つ入れる** —
+   識別子は RevenueCat の定型(`$rc_weekly` / `$rc_monthly` / `$rc_annual`)。
    current が空だとペイウォールに商品が出ない
-7. 公開SDKキー(`appl_...`)を Codemagic の変数グループ `mobile-dart-defines` の
+7. **Paywalls でペイウォールを作る**(Offering に紐づく)。作らないと
+   アプリは自前のペイウォールに落ちる — 詳細は [`docs/revenuecat.md`](../revenuecat.md)
+8. 公開SDKキー(`appl_...`)を Codemagic の変数グループ `mobile-dart-defines` の
    `REVENUECAT_IOS_PUBLIC_SDK_KEY` に入れる
-8. Webhook を `https://<api>/v1/webhooks/revenuecat` に向け、
+9. Webhook を `https://<api>/v1/webhooks/revenuecat` に向け、
    Authorization ヘッダに `REVENUECAT_WEBHOOK_AUTH` と同じ値を設定
    (`backend/api/src/routes/webhooks.ts:41`)
 
@@ -472,6 +476,7 @@ Play Console にAABを上げたあとなら
    RevenueCat が発行する Pub/Sub トピックを設定
 4. Products に 2-7 の商品IDを登録
 5. **Entitlement は `premium`、Offering は `current`**(1-10 の 5・6 と同じ理由で必須)
+   — Entitlement と Offering は**プロジェクト共通**なので、Apple側で作ってあれば作り直さない
 6. 公開SDKキー(`goog_...`)を `REVENUECAT_ANDROID_PUBLIC_SDK_KEY` へ
 
 ---
