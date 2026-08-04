@@ -99,6 +99,17 @@ done
 (`--env` の付け忘れを防ぐためのショートカット)。
 中身の説明は [`backend/api/.dev.vars.example`](../backend/api/.dev.vars.example)。
 
+**値は引数では渡せない。** `wrangler secret put` の positional は `<key>` だけで、
+値はプロンプト(stdin)から入れる。CLIに書くとシェル履歴に残るための設計なので、
+基本は聞かれてから貼る。5個まとめて入れたいときは
+`wrangler secret bulk <file>.json --env develop`(平文なのでリポジトリの外に置き、
+使ったら消す)。
+
+初回は **「There doesn't seem to be a Worker called "ai-sensei-api-develop".
+Do you want to create a new Worker with that name...?」** と聞かれる。**yes でよい。**
+secretの置き場所としてワーカーの箱が先に作られ、あとで `deploy:develop` が
+そこへコードを載せる。secretはデプロイをまたいで残るので入れ直しは要らない。
+
 いくつか注意:
 
 - **`REVENUECAT_WEBHOOK_AUTH` を空のままにするとwebhookは全部拒否される。**
