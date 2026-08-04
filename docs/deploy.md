@@ -123,8 +123,11 @@ secretの置き場所としてワーカーの箱が先に作られ、あとで `
 
 - **`REVENUECAT_WEBHOOK_AUTH` を空のままにするとwebhookは全部拒否される。**
   空文字で認可しないための仕様なので、未設定=閉じている、で正しい。
-- **`INTERNAL_API_TOKEN` は agent 側と同じ値**にする。環境ごとに別の値にすること
-  (develop の agent が本番の `/complete` を叩けてしまうため)。
+- **`INTERNAL_API_TOKEN` は agent 側と同じ値**にする。**環境ごとに必ず別の値にすること**
+  (develop の agent が本番の `/complete` を叩けてしまうため)。この値は静的で
+  スコープが無く、持っていれば任意のセッションにカルテを書ける。
+  セッションスコープの短命トークンへ移す予定と、その理由は
+  [ADR 0003](adr/0003-internal-api-auth.md)。
 - `ONESIGNAL_*` は未設定でも動く(プッシュの予約をスキップする)。
   develop では入れない、という運用もできる。
 

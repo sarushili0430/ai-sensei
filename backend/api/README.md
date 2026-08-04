@@ -17,6 +17,12 @@ Cloudflare Workers + Hono。セッション作成・カルテ保存・課金webh
 認証は**匿名デバイスID**(handoff §5)。アカウント作成を要求しないので、
 クライアントが生成したUUIDを `X-Device-Id` で送るだけ。
 
+`/complete` だけは agent が呼ぶ内部エンドポイントで、共有シークレット1本
+(`INTERNAL_API_TOKEN`)で通している。**これは静的・無期限・スコープ無しなので、
+セッションスコープの短命トークンに移す予定**。当面このままにする判断と、
+素直に見えて成立しない経路(LiveKitトークンの `metadata` はアプリから読める)は
+[ADR 0003](../../docs/adr/0003-internal-api-auth.md) に書いてある。
+
 ## ローカル開発
 
 ```bash
