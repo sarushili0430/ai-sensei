@@ -94,7 +94,84 @@ class AppStrings {
   String get paywallTodayOnly => _pick('当日のみ', 'Today only');
   String get paywallHistory => _pick('穴の復習と履歴', 'Review and history');
 
+  /// 比較表の「あり」。`✓`(U+2713)は ZenMaruGothic に字形が無く、
+  /// golden で空欄に見えていた。フォントが持っている字だけで書く。
+  String get paywallIncluded => _pick('○', 'Yes');
+
+  // --- プラン(RevenueCatのpackageから作る) ---
+  String get planWeekly => _pick('1週間', 'Weekly');
+  String get planMonthly => _pick('1か月', 'Monthly');
+  String get planYearly => _pick('1年', 'Yearly');
+  String planPerMonth(String price) => _pick('月あたり $price', '$price / month');
+
+  /// 「おすすめ」ではなく計算した事実として出す(煽らない)。
+  String get planBestValue => _pick('月あたりがいちばん安い', 'Lowest monthly price');
+  String planFreeTrial(int days) =>
+      _pick('はじめの$days日間は無料', 'First $days days free');
+
+  // --- 購入の復元・契約の管理 ---
+  String get paywallRestore => _pick('購入を復元する', 'Restore purchases');
+  String get paywallRestored => _pick('購入を復元しました', 'Your purchase was restored');
+  String get paywallRestoredNothing => _pick(
+    'このアカウントに、復元できる購入は見つかりませんでした',
+    'No previous purchases were found for this account',
+  );
+  String get manageSubscription => _pick('契約の管理', 'Manage subscription');
+  String premiumUntil(String date) => _pick('$date まで有効です', 'Active until $date');
+  String premiumEndsOn(String date) => _pick(
+    '$date に終わります。それまではこのまま使えます',
+    'Ends on $date. Everything stays available until then',
+  );
+
+  /// Test Store で動いているビルドの表示。実売と取り違えないための注記。
+  String get testStoreNotice =>
+      _pick('テストストアです(実際の請求は発生しません)', 'Test Store — you will not be charged');
+
   // --- エラー ---
+  /// 購入が通ったのに entitlement が付かなかった。ダッシュボードの設定漏れ。
+  String get purchaseErrorNotEntitled => _pick(
+    '購入は完了しましたが、まだ反映されていません。'
+    '少し時間をおいて「購入を復元する」を試してみてください。',
+    'Your purchase went through but has not unlocked yet. '
+        'Please wait a moment and tap "Restore purchases".',
+  );
+  String get purchaseErrorNetwork => _pick(
+    '通信が届きませんでした。電波のいいところで、もう一度試してみてください。',
+    "We couldn't reach the store. Please try again with a better connection.",
+  );
+  String get purchaseErrorStore => _pick(
+    'ストア側で問題が起きています。少し時間をおいて試してみてください。',
+    'The store is having trouble right now. Please try again shortly.',
+  );
+  String get purchaseErrorNotAllowed => _pick(
+    'この端末では購入できない設定になっています。',
+    'This device is not allowed to make purchases.',
+  );
+  String get purchaseErrorAlreadyOwned => _pick(
+    'すでに契約があります。「購入を復元する」から戻せます。',
+    'You already have a subscription. Tap "Restore purchases" to bring it back.',
+  );
+  String get purchaseErrorPending => _pick(
+    '支払いの確認を待っています。完了すると自動で使えるようになります。',
+    'Waiting for your payment to be confirmed. It will unlock automatically.',
+  );
+  String get purchaseErrorConfiguration => _pick(
+    'いま購入できない状態です。直しますので、少し待ってください。',
+    'Purchases are unavailable right now. We are looking into it.',
+  );
+
+  /// 「◯年◯月◯日」。intl を直接の依存に足さずに済ませるための最小の整形。
+  String date(DateTime value) => _pick(
+    '${value.year}年${value.month}月${value.day}日',
+    '${_monthNames[value.month - 1]} ${value.day}, ${value.year}',
+  );
+
+  static const List<String> _monthNames = <String>[
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
+
   String get errorGeneric =>
       _pick('うまくいきませんでした。少し時間をおいて試してみてください。',
           'Something went wrong. Please try again shortly.');

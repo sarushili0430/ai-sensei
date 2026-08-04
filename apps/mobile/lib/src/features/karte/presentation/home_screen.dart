@@ -7,6 +7,7 @@ import '../../../common_widgets/kohai_face.dart';
 import '../../../l10n/strings.dart';
 import '../../../routing/routes.dart';
 import '../../../theme/tokens.dart';
+import '../../monetization/presentation/manage_subscription_button.dart';
 import '../application/karte_controllers.dart';
 import '../domain/karte.dart';
 
@@ -46,6 +47,8 @@ class HomeScreen extends ConsumerWidget {
                 label: strings.reviewTitle,
                 onPressed: () => context.go(AppRoute.review.path),
               ),
+              // 契約がある人にだけ出る。無料のあいだは何も増えない。
+              const Center(child: ManageSubscriptionButton()),
             ],
           ),
         ),

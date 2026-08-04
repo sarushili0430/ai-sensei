@@ -175,6 +175,7 @@ workflows:
             --dart-define=API_BASE_URL="$API_BASE_URL" \
             --dart-define=REVENUECAT_IOS_PUBLIC_SDK_KEY="$REVENUECAT_IOS_PUBLIC_SDK_KEY" \
             --dart-define=REVENUECAT_ANDROID_PUBLIC_SDK_KEY="$REVENUECAT_ANDROID_PUBLIC_SDK_KEY" \
+            --dart-define=REVENUECAT_ENTITLEMENT_ID="${REVENUECAT_ENTITLEMENT_ID:-premium}" \
             --export-options-plist=/Users/builder/export_options.plist
 
     artifacts:
@@ -260,7 +261,8 @@ workflows:
             --build-number="$PROJECT_BUILD_NUMBER" \
             --dart-define=API_BASE_URL="$API_BASE_URL" \
             --dart-define=REVENUECAT_IOS_PUBLIC_SDK_KEY="$REVENUECAT_IOS_PUBLIC_SDK_KEY" \
-            --dart-define=REVENUECAT_ANDROID_PUBLIC_SDK_KEY="$REVENUECAT_ANDROID_PUBLIC_SDK_KEY"
+            --dart-define=REVENUECAT_ANDROID_PUBLIC_SDK_KEY="$REVENUECAT_ANDROID_PUBLIC_SDK_KEY" \
+            --dart-define=REVENUECAT_ENTITLEMENT_ID="${REVENUECAT_ENTITLEMENT_ID:-premium}"
 
     artifacts:
       - apps/mobile/build/app/outputs/bundle/release/*.aab
