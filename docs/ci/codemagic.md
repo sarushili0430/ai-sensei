@@ -132,8 +132,71 @@ golden の正となる実行は GitHub Actions(ubuntu-latest)。
 - **`codemagic.yaml` が無視される** → 手順0のYAML切り替えをしていない。
 - **`Provisioning profile ... doesn't include signing certificate`**
   → App Store Connect のAPIキーの権限が App Manager 未満。
-- **`No matching profiles found`**
-  → App Store Connect にバンドルIDのアプリレコードが無い。
+- **`No matching profiles found for bundle identifier "..." and distribution type "app_store"`**
+  → 下の「プロファイルが見つからないとき」を参照。
 - **AABがPlayに弾かれる(`not signed`)**
   → keystore の参照名が `ai-sensei-upload-keystore` と一致していない。
     一致しないと `key.properties` が書けず、debug署名にフォールバックする。
+
+## プロファイルが見つからないとき
+
+```
+No matching profiles found for bundle identifier "jp.co.aiSensei"
+and distribution type "app_store"
+```
+
+Codemagic が App Store Connect に「`jp.co.aiSensei` の配布用プロファイルをくれ」と
+聞いて、Appleが**何も返さなかった**という意味。
+
+`ios_signing` の自動署名はプロファイルと証明書を**作れる**が、
+**Identifier(App ID)の登録まではやってくれない**。
+登録済みのApp IDが無いと、作る対象が無いのでこのエラーになる。
+
+確認する順に:
+
+### 1. Identifier が登録されているか(いちばん多い)
+
+**[developer.apple.com](https://developer.apple.com) > Certificates, Identifiers &
+Profiles > Identifiers** に `jp.co.aiSensei` があるか見る。
+
+- **大文字小文字が区別される。** `jp.co.aisensei` は別物として扱われ、一致しない
+- **Explicit で登録されていること。** ワイルドカード(`jp.co.*`)では
+  `app_store` 配布のプロファイルに使えない
+
+> **App Store Connect で「アプリを作成」したことと、
+> Developer Portal に Identifier を登録することは別の作業。**
+> 手順としては Identifier が先で、アプリレコードはそれを選んで作る。
+> アプリレコードだけあって Identifier が無い、という状態にはならないが、
+> **どちらも作っていない**場合はここから。
+
+### 2. APIキーとIdentifierのチームが同じか
+
+Apple IDが複数のチームに属している場合、**Issuer ID がチームを決める**。
+別チームで Identifier を作っていると、APIキーからは見えないので一致しない。
+Identifier のページで所属チームを確認する。
+
+### 3. APIキーの役割
+
+**App Manager 以上**であること。Developer だと読めても**作れない**ので、
+同じ「見つからない」エラーになる。役割は後から変更できる。
+
+### 4. 配布証明書の枠
+
+チームの Distribution 証明書が上限に達していると、証明書が作れず失敗する。
+Certificates で使っていないものを失効させる。
+
+### それでも切り分かないとき
+
+`codemagic.yaml` の iOS workflow の `xcode-project use-profiles` の**前**に、
+一時的にこのステップを足すと、Appleが何を返しているかが出る。
+
+```yaml
+      - name: 署名ファイルの取得を明示的に走らせる(切り分け用)
+        script: |
+          app-store-connect fetch-signing-files "jp.co.aiSensei" \
+            --type IOS_APP_STORE \
+            --create
+```
+
+`--create` は足りないプロファイル・証明書を作りに行くので、
+**作れない理由**(権限不足なのか、App IDが無いのか)がログに出る。

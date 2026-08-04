@@ -62,7 +62,14 @@ Organization で取るなら**ここが律速**なので最初に着手する。
 
 ### 1-2. Certificates, Identifiers & Profiles → Identifiers
 
-**Identifiers > + > App IDs > App** で `jp.co.aiSensei` を Explicit で作る。
+**Identifiers > + > App IDs > App** で `jp.co.aiSensei` を **Explicit** で作る。
+
+> **これは 1-4 の「アプリを作成」とは別の作業で、こちらが先。**
+> Identifier が無いと Codemagic の署名が
+> `No matching profiles found for bundle identifier ...` で落ちる。
+> 自動署名はプロファイルと証明書を作れるが、**Identifier の登録はしてくれない**。
+> 大文字小文字も区別されるので、`jp.co.aisensei` ではなく
+> `jp.co.aiSensei` で登録すること。
 
 Capabilities のうち、このアプリで**触るもの**:
 
