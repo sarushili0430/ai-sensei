@@ -198,7 +198,7 @@ workflows:
           # assert_dart_defines で先に見ており、ここは素通しでよい。
           flutter build ipa --release \
             --build-number="$PROJECT_BUILD_NUMBER" \
-            --dart-define=API_BASE_URL="$API_BASE_URL" \
+            --dart-define=API_BASE_URL="${API_BASE_URL:?変数グループ mobile-dart-defines がこのビルドに渡っていない。Codemagic UI > このアプリ > Environment variables でグループ名と紐づけを確認すること}" \
             --dart-define=REVENUECAT_IOS_PUBLIC_SDK_KEY="${REVENUECAT_IOS_PUBLIC_SDK_KEY:-}" \
             --dart-define=REVENUECAT_ANDROID_PUBLIC_SDK_KEY="${REVENUECAT_ANDROID_PUBLIC_SDK_KEY:-}" \
             --dart-define=REVENUECAT_SDK_KEY="${REVENUECAT_SDK_KEY:-}" \
@@ -290,7 +290,7 @@ workflows:
           set -euo pipefail
           flutter build appbundle --release \
             --build-number="$PROJECT_BUILD_NUMBER" \
-            --dart-define=API_BASE_URL="$API_BASE_URL" \
+            --dart-define=API_BASE_URL="${API_BASE_URL:?変数グループ mobile-dart-defines がこのビルドに渡っていない。Codemagic UI > このアプリ > Environment variables でグループ名と紐づけを確認すること}" \
             --dart-define=REVENUECAT_IOS_PUBLIC_SDK_KEY="${REVENUECAT_IOS_PUBLIC_SDK_KEY:-}" \
             --dart-define=REVENUECAT_ANDROID_PUBLIC_SDK_KEY="${REVENUECAT_ANDROID_PUBLIC_SDK_KEY:-}" \
             --dart-define=REVENUECAT_SDK_KEY="${REVENUECAT_SDK_KEY:-}" \
