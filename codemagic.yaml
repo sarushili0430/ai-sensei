@@ -46,11 +46,6 @@ definitions:
       script: dart run build_runner build --delete-conflicting-outputs
       working_directory: apps/mobile
 
-    - &analyze
-      name: flutter analyze
-      script: flutter analyze
-      working_directory: apps/mobile
-
     - &test
       name: flutter test (golden以外)
       # golden は Linux のラスタライズを正とするので(test/golden/README.md)、
@@ -85,14 +80,15 @@ workflows:
         # REVENUECAT_ANDROID_PUBLIC_SDK_KEY を入れておく変数グループ。
         # いずれも公開鍵・公開URLなので秘匿は不要(環境ごとに差し替えたいだけ)。
         - mobile-dart-defines
-      vars:
-        BUNDLE_ID: jp.co.aiSensei
-      # environment.ios_signing の短縮記法は使わない。
-      # あれは登録済みのプロファイルを**探すだけ**で、無いときに作ってくれない。
-      # App ID を登録し、APIキーに App Manager を与えても
-      #   No matching profiles found for bundle identifier "..."
-      # で落ちる(しかもスクリプトより前の段階なので、ログから理由が追えない)。
-      # 下の署名ステップで fetch-signing-files --create を明示的に叩く。
+      # 配布証明書とプロビジョニングプロファイルは初回ビルドの
+      # fetch-signing-files --create で発行済みなので、以降は
+      # 公式docsの自動署名(automatic code signing)に任せる。
+      # https://docs.codemagic.io/yaml-code-signing/signing-ios/
+      # 上の integrations.app_store_connect のAPIキーで取得され、
+      # ビルドマシンのキーチェーンに入るところまでCodemagicがやる。
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: jp.co.aiSensei
 
     triggering:
       events:
@@ -108,23 +104,11 @@ workflows:
       - *assert_flutter_version
       - *pub_get
       - *build_runner
-      - *analyze
       - *test
 
-      - name: 署名ファイルを取得する(無ければ作る)
-        # APIキーの3点は integrations.app_store_connect から
-        # APP_STORE_CONNECT_ISSUER_ID / _KEY_IDENTIFIER / _PRIVATE_KEY として
-        # 渡ってくるので、ここで渡し直す必要はない。
-        script: |
-          set -euo pipefail
-          keychain initialize
-          # --create: 配布証明書とプロビジョニングプロファイルが無ければ作る。
-          # 作れなかったときは理由(権限不足・App ID未登録・証明書の枠)がログに出る。
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --type IOS_APP_STORE \
-            --create
-          keychain add-certificates
-
+      # environment.ios_signing が取得したプロファイルを Xcode プロジェクトに書き込み、
+      # 下の --export-options-plist が読む /Users/builder/export_options.plist を作る。
+      # 自動署名でもこのステップは要る(公式のFlutterサンプルにも入っている)。
       - name: プロビジョニングプロファイルをXcodeプロジェクトに適用
         script: xcode-project use-profiles
         working_directory: apps/mobile
@@ -196,7 +180,6 @@ workflows:
       - *assert_flutter_version
       - *pub_get
       - *build_runner
-      - *analyze
       - *test
 
       - name: key.properties を書き出す

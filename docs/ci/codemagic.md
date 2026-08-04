@@ -47,8 +47,9 @@ GUI で設定した「Build for platforms」「Run build on」などは、以降
 ## 2. iOS の署名
 
 **Integrations > Apple Developer Portal > App Store Connect** で
-APIキーを登録する。名前は `codemagic.yaml` に書いてある
-**`ai-sensei-asc`** に揃えること(名前で参照している)。
+APIキーを登録する。名前は `codemagic.yaml` の
+`integrations.app_store_connect` に書いてある **`codemagic`** に揃えること
+(名前で参照している)。
 
 必要なもの(App Store Connect > ユーザーとアクセス > 統合 で発行):
 
@@ -63,8 +64,29 @@ APIキーを登録する。名前は `codemagic.yaml` に書いてある
 App Store Connect 側**という点だけ注意。
 
 証明書とプロビジョニングプロファイルを手で作る必要はない。
-`codemagic.yaml` の「署名ファイルを取得する(無ければ作る)」ステップが
-`app-store-connect fetch-signing-files --create` で発行・更新する。
+初回ビルドで `app-store-connect fetch-signing-files --create` を叩いて発行済みなので、
+現在は Codemagic 公式の**自動署名**(`environment.ios_signing`)に任せている。
+
+```yaml
+integrations:
+  app_store_connect: codemagic
+environment:
+  ios_signing:
+    distribution_type: app_store
+    bundle_identifier: jp.co.aiSensei
+```
+
+これで Codemagic が APIキー経由で証明書とプロファイルを取得し、
+ビルドマシンのキーチェーンに入れるところまでやる
+([Signing iOS apps](https://docs.codemagic.io/yaml-code-signing/signing-ios/))。
+`keychain initialize` / `fetch-signing-files` / `keychain add-certificates` を
+自分で書く必要はない。
+
+`xcode-project use-profiles` のステップだけは残してある。
+取得したプロファイルを Xcode プロジェクトに書き込むのと、
+`flutter build ipa --export-options-plist` が読む
+`/Users/builder/export_options.plist` を作るのがこのコマンドのため
+(公式の Flutter サンプルでも自動署名と併用している)。
 
 ### 手で作らないこと
 
@@ -95,15 +117,15 @@ Codemagic UI の
 **手で用意したファイルをアップロードして使う手動署名のための場所**。
 `codemagic.yaml` はそちらを参照していないので、ここに何か置いても使われない。
 
-**`--create` が作ったものはこの画面には出てこない。**
+**自動署名が使うものはこの画面には出てこない。**
 プロファイルと証明書は
-「Appleの Developer Portal に作られ、ビルドマシンにダウンロードされる」
+「Appleの Developer Portal にあり、ビルドマシンにダウンロードされる」
 だけで、Codemagic に保存されるわけではないため。
 
 確認するならこの2か所:
 
-- ビルドログの **「署名ファイルを取得する(無ければ作る)」ステップ**
-  — 何を見つけ、何を作ったかが出る
+- ビルドログの **コード署名のセットアップ**(ビルド開始直後、`scripts` より前)
+  — どのプロファイルと証明書を取得したかが出る
 - **[developer.apple.com](https://developer.apple.com) >
   Certificates, Identifiers & Profiles > Profiles**
   — ビルド後に `jp.co.aiSensei` の App Store プロファイルが増えている
@@ -118,12 +140,12 @@ PRブランチに置いた変更を試したいときは、Codemagic UI の
 **Start new build** でブランチと workflow を選んで手動で回す
 (`codemagic.yaml` は選んだブランチのものが読まれる)。
 
-> **`environment.ios_signing` の短縮記法は使っていない。**
-> あれは登録済みのプロファイルを**探すだけ**で、無いときに作ってくれない。
-> App ID を登録して APIキーに App Manager を与えても
-> `No matching profiles found for bundle identifier ...` で落ちる。
-> しかもスクリプトより前の段階で落ちるため、ログから理由が追えない。
-> `--create` を明示的に叩く形にしてある。
+> **`environment.ios_signing` は署名ファイルが**すでにある**前提のもの。**
+> 探して見つからなければ `No matching profiles found for bundle identifier ...`
+> で落ちる。しかも `scripts` より前の段階なので、ログから理由が追いにくい。
+> いまは初回に `--create` で発行済みなので成立している。
+> 失効させた・バンドルIDを変えたなどで無くなったときは、
+> 下の「プロファイルが見つからないとき」を参照。
 
 前提として App Store Connect 側に **同じバンドルIDのアプリレコード**が要る。
 無いと `flutter build ipa` は通るがアップロードで落ちる。
@@ -175,7 +197,15 @@ Codemagic は環境変数やファイルからSDKのバージョンを決めら�
 ビルドが落ちるので、気づかないまま別バージョンで配布することはない。
 `.fvmrc` を上げたら `codemagic.yaml` も一緒に上げること。
 
-## 7. golden test を Codemagic では走らせない理由
+## 7. Codemagic で走らせる検査
+
+mac インスタンスは従量課金なので、Actions と同じ検査を二重に回さない。
+`flutter analyze` は Actions が同じコミットで実行済みなので Codemagic では走らせない。
+残してあるのは `flutter test --exclude-tags golden` だけで、
+これは `contract_fixture_test` — TypeScript側との契約がズレたまま
+配布するのを止めるための最後の1枚。
+
+## 8. golden test を Codemagic では走らせない理由
 
 golden は **Linuxのラスタライズを正**としている
 ([`apps/mobile/test/golden/README.md`](../../apps/mobile/test/golden/README.md))。
@@ -207,14 +237,26 @@ and distribution type "app_store"
 Codemagic が App Store Connect に「`jp.co.aiSensei` の配布用プロファイルをくれ」と
 聞いて、Appleが**何も返さなかった**という意味。
 
-**いまの `codemagic.yaml` では出ないはず。**
-このエラーは `environment.ios_signing` の短縮記法を使ったときのもので、
-あれは登録済みのプロファイルを**探すだけ**だった。
-現在は `fetch-signing-files --create` を明示的に叩く形にしてあるので、
-無ければその場で作られる。
+いまの `codemagic.yaml` は `environment.ios_signing` で**探すだけ**なので、
+発行済みのプロファイルが消えている(失効した・別チームで作った・
+バンドルIDを変えた)とこれが出る。
 
-それでも出る場合、`--create` が**作れなかった**ということなので、
-確認する順に:
+まず下の1〜4を確認する。原因が分からない、あるいは作り直しが要るときは、
+`scripts` の先頭に**一時的に**発行ステップを足して1回だけ回す
+(通ったら消す。毎回叩く必要はない):
+
+```yaml
+- name: 署名ファイルを取得する(無ければ作る)
+  script: |
+    set -euo pipefail
+    keychain initialize
+    app-store-connect fetch-signing-files "jp.co.aiSensei" \
+      --type IOS_APP_STORE \
+      --create
+    keychain add-certificates
+```
+
+`--create` でも作れないなら、確認する順に:
 
 ### 1. Identifier が登録されているか(いちばん多い)
 
@@ -249,10 +291,10 @@ Certificates で使っていないものを失効させる。
 
 ### ログの読みどころ
 
-「署名ファイルを取得する(無ければ作る)」ステップのログに、
-`fetch-signing-files` が
-**何を見つけて・何を作ろうとして・なぜ失敗したか**が出る。
+上の一時ステップを足して回すと、`fetch-signing-files` が
+**何を見つけて・何を作ろうとして・なぜ失敗したか**がログに出る。
 上の1〜4はここに理由が出るので、当てずっぽうで潰す必要はない。
+(自動署名だけのときは `scripts` より前で落ちるため、ここまで細かい理由は出ない。)
 
 `Not enough permissions` のような文言なら 3、
 `Bundle ID ... not found` なら 1、
