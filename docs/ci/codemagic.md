@@ -6,6 +6,10 @@
 
 設定の実体はリポジトリ直下の [`codemagic.yaml`](../../codemagic.yaml)。
 
+このページは **Codemagic 側**の設定。受け取る側(App Store Connect / Play Console)で
+やること — App ID の Capability、権限、プライバシー申告、定期購入、RevenueCat連携 —
+は [`store-setup.md`](./store-setup.md) にまとめてある。
+
 ## 0. まず Workflow Editor から YAML に切り替える
 
 Codemagic の初期状態は GUI の Workflow Editor になっている。
@@ -46,15 +50,20 @@ GUI で設定した「Build for platforms」「Run build on」などは、以降
 APIキーを登録する。名前は `codemagic.yaml` に書いてある
 **`ai-sensei-asc`** に揃えること(名前で参照している)。
 
-必要なもの(App Store Connect > Users and Access > Integrations で発行):
+必要なもの(App Store Connect > ユーザーとアクセス > 統合 で発行):
 
 - Issuer ID
 - Key ID
 - `AuthKey_XXXXXXXX.p8`
 - 権限は **App Manager** 以上
 
+発行の手順は
+[`store-setup.md` の 1-3-1](./store-setup.md#1-3-1-app-store-connect-api-key-を発行する)
+に画面単位で書いてある。**Apple Developer 側の Keys ではなく
+App Store Connect 側**という点だけ注意。
+
 署名自体は `codemagic.yaml` の `ios_signing` が自動で取りに行く
-(`distribution_type: app_store` / `bundle_identifier: jp.co.emobi.aiSensei`)。
+(`distribution_type: app_store` / `bundle_identifier: jp.co.aiSensei`)。
 証明書やプロファイルを手で作る必要はない。
 
 前提として App Store Connect 側に **同じバンドルIDのアプリレコード**が要る。

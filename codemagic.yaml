@@ -87,7 +87,7 @@ workflows:
         - mobile-dart-defines
       ios_signing:
         distribution_type: app_store
-        bundle_identifier: jp.co.emobi.aiSensei
+        bundle_identifier: jp.co.aiSensei
 
     triggering:
       events:
