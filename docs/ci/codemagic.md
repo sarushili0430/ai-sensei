@@ -38,6 +38,12 @@ GUI で設定した「Build for platforms」「Run build on」などは、以降
 アプリのバイナリに入るものなので、秘密鍵は**絶対にここに入れない**
 (LiveKitやLLMのキーはサーバ側 = `wrangler secret` の担当)。
 
+**グループ名は `mobile-dart-defines` と完全一致させ、アプリに紐づけること。**
+どちらかを外すと変数が渡らず、ビルドの1ステップ目
+「dart-define に渡す環境変数が揃っているか」で落ちる
+(そのチェックが無かった頃は、10分以上進んだ最後の
+`flutter build` で `API_BASE_URL: unbound variable` になっていた)。
+
 ### `google-play`(Androidのみ)
 
 | 変数 | 中身 | Secure |
@@ -48,7 +54,9 @@ GUI で設定した「Build for platforms」「Run build on」などは、以降
 
 **Integrations > Apple Developer Portal > App Store Connect** で
 APIキーを登録する。名前は `codemagic.yaml` に書いてある
-**`ai-sensei-asc`** に揃えること(名前で参照している)。
+**`codemagic`** に揃えること(名前で参照している)。
+このファイル名と同じ文字列なので紛らわしいが、
+指しているのは**APIキーに付けた表示名**のほう。
 
 必要なもの(App Store Connect > ユーザーとアクセス > 統合 で発行):
 
@@ -63,8 +71,11 @@ APIキーを登録する。名前は `codemagic.yaml` に書いてある
 App Store Connect 側**という点だけ注意。
 
 証明書とプロビジョニングプロファイルを手で作る必要はない。
-`codemagic.yaml` の「署名ファイルを取得する(無ければ作る)」ステップが
-`app-store-connect fetch-signing-files --create` で発行・更新する。
+`codemagic.yaml` の `environment.ios_signing` を見て、
+**scripts が始まる前に Codemagic の組み込みステップ**が
+このAPIキー経由で取得し、キーチェーンとXcodeプロジェクトに適用する
+(`/Users/builder/export_options.plist` もそこで作られる)。
+`codemagic.yaml` の scripts に署名のステップは無い。
 
 ### 手で作らないこと
 
@@ -73,10 +84,11 @@ Developer Portal の **Generate a Provisioning Profile を手で回さない。*
 
 - **配布証明書の秘密鍵が手元に残ってしまう。**
   Mac で作った配布証明書の秘密鍵はそのMacのキーチェーンの中にあり、
-  Codemagic からは使えない。`--create` は鍵ごと自分で作るので、
-  Codemagic が署名できる状態になる。
+  Codemagic からは使えない。ビルドマシンは証明書本体をダウンロードできても
+  鍵が無いので、`Cannot save Signing Certificates without certificate
+  private key` で落ちる。
 - **配布証明書の枠を無駄に食う。** チームで持てる Distribution 証明書には
-  上限がある。手で1枚作ってから `--create` させると2枚消費し、
+  上限がある。手で1枚作ってから CI にも作らせると2枚消費し、
   上限に当たると発行そのものが失敗する。
 - **種類を間違えやすい。** 必要なのは
   **Distribution > App Store Connect** のプロファイル。
@@ -95,15 +107,15 @@ Codemagic UI の
 **手で用意したファイルをアップロードして使う手動署名のための場所**。
 `codemagic.yaml` はそちらを参照していないので、ここに何か置いても使われない。
 
-**`--create` が作ったものはこの画面には出てこない。**
+**自動署名が使ったものはこの画面には出てこない。**
 プロファイルと証明書は
-「Appleの Developer Portal に作られ、ビルドマシンにダウンロードされる」
+「Appleの Developer Portal から取得され、ビルドマシンにダウンロードされる」
 だけで、Codemagic に保存されるわけではないため。
 
 確認するならこの2か所:
 
-- ビルドログの **「署名ファイルを取得する(無ければ作る)」ステップ**
-  — 何を見つけ、何を作ったかが出る
+- ビルドログの **scripts より前にある署名ステップ**
+  — 何を見つけ、キーチェーンに何を入れたかが出る
 - **[developer.apple.com](https://developer.apple.com) >
   Certificates, Identifiers & Profiles > Profiles**
   — ビルド後に `jp.co.aiSensei` の App Store プロファイルが増えている
@@ -118,12 +130,14 @@ PRブランチに置いた変更を試したいときは、Codemagic UI の
 **Start new build** でブランチと workflow を選んで手動で回す
 (`codemagic.yaml` は選んだブランチのものが読まれる)。
 
-> **`environment.ios_signing` の短縮記法は使っていない。**
-> あれは登録済みのプロファイルを**探すだけ**で、無いときに作ってくれない。
-> App ID を登録して APIキーに App Manager を与えても
-> `No matching profiles found for bundle identifier ...` で落ちる。
-> しかもスクリプトより前の段階で落ちるため、ログから理由が追えない。
-> `--create` を明示的に叩く形にしてある。
+> **署名は `environment.ios_signing` の短縮記法だけでやっている。**
+> 以前は `fetch-signing-files --create` を手で叩くステップも併用していたが、
+> 両方あると壊れる。手動ステップ先頭の `keychain initialize` が
+> 自動署名の入れた証明書を消してしまい、そのあと `--create` が
+> Developer Portal の既存の配布証明書を拾ってきても
+> **その秘密鍵はビルドマシンに無い**ため
+> `Cannot save Signing Certificates without certificate private key`
+> で落ちる。手動ステップは削除済み。
 
 前提として App Store Connect 側に **同じバンドルIDのアプリレコード**が要る。
 無いと `flutter build ipa` は通るがアップロードで落ちる。
@@ -207,13 +221,6 @@ and distribution type "app_store"
 Codemagic が App Store Connect に「`jp.co.aiSensei` の配布用プロファイルをくれ」と
 聞いて、Appleが**何も返さなかった**という意味。
 
-**いまの `codemagic.yaml` では出ないはず。**
-このエラーは `environment.ios_signing` の短縮記法を使ったときのもので、
-あれは登録済みのプロファイルを**探すだけ**だった。
-現在は `fetch-signing-files --create` を明示的に叩く形にしてあるので、
-無ければその場で作られる。
-
-それでも出る場合、`--create` が**作れなかった**ということなので、
 確認する順に:
 
 ### 1. Identifier が登録されているか(いちばん多い)
@@ -249,11 +256,41 @@ Certificates で使っていないものを失効させる。
 
 ### ログの読みどころ
 
-「署名ファイルを取得する(無ければ作る)」ステップのログに、
-`fetch-signing-files` が
-**何を見つけて・何を作ろうとして・なぜ失敗したか**が出る。
+scripts より前の署名ステップのログに、Codemagic が
+**何を見つけて・何を取ろうとして・なぜ失敗したか**が出る。
 上の1〜4はここに理由が出るので、当てずっぽうで潰す必要はない。
 
 `Not enough permissions` のような文言なら 3、
 `Bundle ID ... not found` なら 1、
 証明書の上限に触れていれば 4。
+
+### プロファイルを作り直したいとき
+
+自動署名は**あるものを取ってくるだけ**で、無いものを作らない。
+新規に作らせたいときだけ `codemagic.yaml` に一時的にステップを足す:
+
+```yaml
+- name: 署名ファイルを作る(一時的に足す)
+  script: |
+    app-store-connect fetch-signing-files "$BUNDLE_ID" \
+      --type IOS_APP_STORE \
+      --certificate-key=@env:CERTIFICATE_PRIVATE_KEY \
+      --create
+```
+
+**`--certificate-key` を省かないこと。** 省くと2つの落とし方をする。
+
+- 既存の配布証明書が Developer Portal にある場合、それを拾うが
+  秘密鍵が無いので `Cannot save Signing Certificates without
+  certificate private key` で落ちる
+- 既存が無い場合は毎ビルド新しい鍵で証明書を作り、
+  すぐ枠の上限(4番)に当たる
+
+鍵は1度作って Codemagic の secure な環境変数
+`CERTIFICATE_PRIVATE_KEY` に入れ、使い回す:
+
+```
+ssh-keygen -t rsa -b 2048 -m PEM -f cert_key -q -N ""
+```
+
+作り終わったらこのステップは消す。
