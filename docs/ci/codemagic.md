@@ -66,6 +66,28 @@ App Store Connect 側**という点だけ注意。
 `codemagic.yaml` の「署名ファイルを取得する(無ければ作る)」ステップが
 `app-store-connect fetch-signing-files --create` で発行・更新する。
 
+### 手で作らないこと
+
+Developer Portal の **Generate a Provisioning Profile を手で回さない。**
+理由が3つある。
+
+- **配布証明書の秘密鍵が手元に残ってしまう。**
+  Mac で作った配布証明書の秘密鍵はそのMacのキーチェーンの中にあり、
+  Codemagic からは使えない。`--create` は鍵ごと自分で作るので、
+  Codemagic が署名できる状態になる。
+- **配布証明書の枠を無駄に食う。** チームで持てる Distribution 証明書には
+  上限がある。手で1枚作ってから `--create` させると2枚消費し、
+  上限に当たると発行そのものが失敗する。
+- **種類を間違えやすい。** 必要なのは
+  **Distribution > App Store Connect** のプロファイル。
+  Development を選ぶと Select Certificates に開発用証明書しか出ず、
+  そのまま作っても `app_store` 配布には使えない。
+
+> **「端末(Device)がリストに無い」は問題ではない。**
+> 端末の登録が要るのは Development と Ad Hoc のプロファイルだけで、
+> **App Store 配布用のプロファイルは端末を持たない**。
+> CIのMacをデバイス登録する必要はない。
+
 > **`environment.ios_signing` の短縮記法は使っていない。**
 > あれは登録済みのプロファイルを**探すだけ**で、無いときに作ってくれない。
 > App ID を登録して APIキーに App Manager を与えても
