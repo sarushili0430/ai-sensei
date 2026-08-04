@@ -29,7 +29,9 @@ lintが落ちても後続が走ります(1回のCIで直すべき箇所をまと
 `apps/mobile` のビルドとTestFlight配布は Codemagic 側(リポジトリ直下の
 `codemagic.yaml`)で行うため、GitHub Actions では扱いません。
 Codemagic側でやる設定(YAMLへの切り替え・APIキー・keystore・変数グループ)は
-[`codemagic.md`](./codemagic.md) にまとめてあります。
+[`codemagic.md`](./codemagic.md)、
+ビルドを受け取る側(App Store Connect / Play Console)の設定は
+[`store-setup.md`](./store-setup.md) にまとめてあります。
 
 golden test の正となる実行はこちら(ubuntu-latest)です。Codemagicはmacなので、
 `golden` タグを付けて `--exclude-tags golden` で外しています。

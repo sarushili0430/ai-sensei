@@ -6,6 +6,10 @@
 
 設定の実体はリポジトリ直下の [`codemagic.yaml`](../../codemagic.yaml)。
 
+このページは **Codemagic 側**の設定。受け取る側(App Store Connect / Play Console)で
+やること — App ID の Capability、権限、プライバシー申告、定期購入、RevenueCat連携 —
+は [`store-setup.md`](./store-setup.md) にまとめてある。
+
 ## 0. まず Workflow Editor から YAML に切り替える
 
 Codemagic の初期状態は GUI の Workflow Editor になっている。
