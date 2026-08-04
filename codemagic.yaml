@@ -1,0 +1,225 @@
+# =============================================================================
+# ai-sensei — Codemagic
+# =============================================================================
+# 役割分担:
+#   GitHub Actions (.github/workflows/ci.yml)
+#     … lint / typecheck / test / flutter analyze / golden test / シークレット走査
+#   Codemagic (このファイル)
+#     … 実機向けビルドと配布(TestFlight / Google Play)
+#
+# 検査をActions側に寄せているのは、Codemagicのmacインスタンスが従量課金だから。
+# ここでは「壊れたものを配布しない」ために要る分だけを走らせる。
+#
+# Codemagic UI 側でやる設定(APIキー・keystore・変数グループ)は
+# docs/ci/codemagic.md にまとめてある。
+# このファイルを使うには Workflow Editor の "Switch to YAML configuration" が要る。
+# =============================================================================
+
+definitions:
+  # Flutterのバージョンは apps/mobile/.fvmrc を正とする。
+  # Codemagicは環境変数やファイルからSDKのバージョンを決められないので
+  # ここは手で書き、ズレたら assert_flutter_version で落とす。
+  flutter_version: &flutter_version 3.44.8
+
+  scripts:
+    - &assert_flutter_version
+      name: .fvmrc とSDKのバージョンが一致しているか
+      script: |
+        set -euo pipefail
+        pinned="$(python3 -c "import json;print(json.load(open('apps/mobile/.fvmrc'))['flutter'])")"
+        actual="$(flutter --version --machine | python3 -c "import json,sys;print(json.load(sys.stdin)['frameworkVersion'])")"
+        if [ "$pinned" != "$actual" ]; then
+          echo "apps/mobile/.fvmrc は ${pinned} だが、このビルドは ${actual} で走っている。"
+          echo "codemagic.yaml の definitions.flutter_version を ${pinned} に合わせること。"
+          exit 1
+        fi
+        echo "Flutter ${actual} (.fvmrc と一致)"
+
+    - &pub_get
+      name: 依存の取得
+      script: flutter pub get
+      working_directory: apps/mobile
+
+    - &build_runner
+      name: コード生成 (freezed / json_serializable / riverpod)
+      # 生成物(*.freezed.dart / *.g.dart)はコミットしないのでここで作る
+      script: dart run build_runner build --delete-conflicting-outputs
+      working_directory: apps/mobile
+
+    - &analyze
+      name: flutter analyze
+      script: flutter analyze
+      working_directory: apps/mobile
+
+    - &test
+      name: flutter test (golden以外)
+      # golden は Linux のラスタライズを正とするので(test/golden/README.md)、
+      # macインスタンスでは必ず落ちる。ここで見たいのは contract_fixture_test —
+      # TypeScript側との契約がズレたまま配布するのを止めたい。
+      script: flutter test --exclude-tags golden
+      working_directory: apps/mobile
+
+workflows:
+  # ---------------------------------------------------------------------------
+  # iOS → TestFlight
+  #
+  # develop に入ったものを内部テスターに配る。READMEのとおりiOS先行なので、
+  # 自動で回すのはこのworkflowだけ。
+  # ---------------------------------------------------------------------------
+  ios-testflight:
+    name: iOS — TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+
+    integrations:
+      # Codemagic UI > Integrations > Apple Developer Portal で登録した
+      # App Store Connect APIキーの「名前」。
+      app_store_connect: ai-sensei-asc
+
+    environment:
+      flutter: *flutter_version
+      xcode: latest
+      cocoapods: default
+      groups:
+        # API_BASE_URL / REVENUECAT_IOS_PUBLIC_SDK_KEY /
+        # REVENUECAT_ANDROID_PUBLIC_SDK_KEY を入れておく変数グループ。
+        # いずれも公開鍵・公開URLなので秘匿は不要(環境ごとに差し替えたいだけ)。
+        - mobile-dart-defines
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: jp.co.emobi.aiSensei
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: develop
+          include: true
+          source: true
+      # 連続pushで古いビルドを走らせ続けない(macの時間を食うだけなので)
+      cancel_previous_builds: true
+
+    scripts:
+      - *assert_flutter_version
+      - *pub_get
+      - *build_runner
+      - *analyze
+      - *test
+
+      - name: プロビジョニングプロファイルをXcodeプロジェクトに適用
+        script: xcode-project use-profiles
+        working_directory: apps/mobile
+
+      - name: IPA をビルド
+        working_directory: apps/mobile
+        script: |
+          set -euo pipefail
+          # バージョン名(1.2.3の側)は pubspec.yaml の version が正。
+          # ビルド番号だけ Codemagic の連番で上書きする
+          # (TestFlightは同じビルド番号の再アップロードを受け付けないため)。
+          flutter build ipa --release \
+            --build-number="$PROJECT_BUILD_NUMBER" \
+            --dart-define=API_BASE_URL="$API_BASE_URL" \
+            --dart-define=REVENUECAT_IOS_PUBLIC_SDK_KEY="$REVENUECAT_IOS_PUBLIC_SDK_KEY" \
+            --dart-define=REVENUECAT_ANDROID_PUBLIC_SDK_KEY="$REVENUECAT_ANDROID_PUBLIC_SDK_KEY" \
+            --export-options-plist=/Users/builder/export_options.plist
+
+    artifacts:
+      - apps/mobile/build/ios/ipa/*.ipa
+      # クラッシュのシンボル化(Sentry)に要る
+      - apps/mobile/build/ios/archive/Runner.xcarchive/dSYMs/**
+      - /tmp/xcodebuild_logs/*.log
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        # 審査に出すかどうかは人が決める
+        submit_to_app_store: false
+      email:
+        recipients:
+          - k.fuke@emobi.co.jp
+        notify:
+          # 成功は TestFlight の通知が来るので二重にしない
+          success: false
+          failure: true
+
+  # ---------------------------------------------------------------------------
+  # Android → Google Play (internal track)
+  #
+  # iOS先行なので自動トリガは付けない。v* タグを打ったときか、
+  # Codemagic UI の "Start new build" のときだけ走る。
+  # ---------------------------------------------------------------------------
+  android-internal:
+    name: Android — Play internal
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+
+    environment:
+      flutter: *flutter_version
+      java: 17
+      groups:
+        - mobile-dart-defines
+        # GCLOUD_SERVICE_ACCOUNT_CREDENTIALS(Play Consoleのサービスアカウント)
+        - google-play
+      android_signing:
+        # Codemagic UI > Code signing identities に登録した keystore の「名前」
+        - ai-sensei-upload-keystore
+
+    triggering:
+      events:
+        - tag
+      tag_patterns:
+        - pattern: "v*"
+          include: true
+
+    scripts:
+      - *assert_flutter_version
+      - *pub_get
+      - *build_runner
+      - *analyze
+      - *test
+
+      - name: key.properties を書き出す
+        working_directory: apps/mobile/android
+        # android/app/build.gradle.kts がこのファイルを読んでリリース署名に使う。
+        # 無いときは debug 署名にフォールバックする作りなので、書き損ねると
+        # 「ビルドは通るがPlayに弾かれる」になる。先にここで落とす。
+        script: |
+          set -euo pipefail
+          if [ -z "${CM_KEYSTORE_PATH:-}" ]; then
+            echo "keystore が渡っていない。Codemagic の code signing identity を確認すること。"
+            exit 1
+          fi
+          cat > key.properties <<EOF
+          storeFile=$CM_KEYSTORE_PATH
+          storePassword=$CM_KEYSTORE_PASSWORD
+          keyAlias=$CM_KEY_ALIAS
+          keyPassword=$CM_KEY_PASSWORD
+          EOF
+
+      - name: AAB をビルド
+        working_directory: apps/mobile
+        script: |
+          set -euo pipefail
+          flutter build appbundle --release \
+            --build-number="$PROJECT_BUILD_NUMBER" \
+            --dart-define=API_BASE_URL="$API_BASE_URL" \
+            --dart-define=REVENUECAT_IOS_PUBLIC_SDK_KEY="$REVENUECAT_IOS_PUBLIC_SDK_KEY" \
+            --dart-define=REVENUECAT_ANDROID_PUBLIC_SDK_KEY="$REVENUECAT_ANDROID_PUBLIC_SDK_KEY"
+
+    artifacts:
+      - apps/mobile/build/app/outputs/bundle/release/*.aab
+      - apps/mobile/build/app/outputs/**/mapping.txt
+
+    publishing:
+      google_play:
+        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        track: internal
+        submit_as_draft: true
+      email:
+        recipients:
+          - k.fuke@emobi.co.jp
+        notify:
+          success: false
+          failure: true

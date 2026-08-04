@@ -26,5 +26,10 @@ golden test は **Linuxのラスタライズを正** とするので、生成も
 lint・typecheck・test は `if: !cancelled()` で連ねてあるので、
 lintが落ちても後続が走ります(1回のCIで直すべき箇所をまとめて見られるように)。
 
-`apps/mobile` のビルドとTestFlight配布は Codemagic 側(`codemagic.yaml`)で行うため、
-GitHub Actions では扱いません。
+`apps/mobile` のビルドとTestFlight配布は Codemagic 側(リポジトリ直下の
+`codemagic.yaml`)で行うため、GitHub Actions では扱いません。
+Codemagic側でやる設定(YAMLへの切り替え・APIキー・keystore・変数グループ)は
+[`codemagic.md`](./codemagic.md) にまとめてあります。
+
+golden test の正となる実行はこちら(ubuntu-latest)です。Codemagicはmacなので、
+`golden` タグを付けて `--exclude-tags golden` で外しています。
