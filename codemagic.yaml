@@ -74,7 +74,7 @@ workflows:
     integrations:
       # Codemagic UI > Integrations > Apple Developer Portal で登録した
       # App Store Connect APIキーの「名前」。
-      app_store_connect: aisenseidist
+      app_store_connect: ai-sensei-asc
 
     environment:
       flutter: *flutter_version

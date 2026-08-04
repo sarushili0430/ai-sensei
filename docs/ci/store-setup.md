@@ -164,13 +164,13 @@ Apple Pay — いずれも未使用。
 
    | 項目 | 値 |
    | --- | --- |
-   | **名前** | **`aisenseidist`** |
+   | **名前** | **`ai-sensei-asc`** |
    | Issuer ID | 1-3-1 で控えたUUID |
    | Key ID | 1-3-1 で控えた10文字 |
    | API key | `AuthKey_XXXXXXXXXX.p8` をアップロード |
 
-> **名前は `aisenseidist` にすること。**
-> `codemagic.yaml` の `integrations.app_store_connect: aisenseidist` が
+> **名前は `ai-sensei-asc` にすること。**
+> `codemagic.yaml` の `integrations.app_store_connect: ai-sensei-asc` が
 > この名前で参照している。違う名前にするなら yaml 側も直す。
 
 登録できていれば、証明書(Certificates)とプロビジョニングプロファイルを
