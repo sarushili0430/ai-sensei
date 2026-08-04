@@ -88,6 +88,36 @@ Developer Portal の **Generate a Provisioning Profile を手で回さない。*
 > **App Store 配布用のプロファイルは端末を持たない**。
 > CIのMacをデバイス登録する必要はない。
 
+### Codemagic UI の「Code signing identities」も使わない
+
+Codemagic UI の
+**Available provisioning profiles / Code signing certificates**(iOS側)は、
+**手で用意したファイルをアップロードして使う手動署名のための場所**。
+`codemagic.yaml` はそちらを参照していないので、ここに何か置いても使われない。
+
+**`--create` が作ったものはこの画面には出てこない。**
+プロファイルと証明書は
+「Appleの Developer Portal に作られ、ビルドマシンにダウンロードされる」
+だけで、Codemagic に保存されるわけではないため。
+
+確認するならこの2か所:
+
+- ビルドログの **「署名ファイルを取得する(無ければ作る)」ステップ**
+  — 何を見つけ、何を作ったかが出る
+- **[developer.apple.com](https://developer.apple.com) >
+  Certificates, Identifiers & Profiles > Profiles**
+  — ビルド後に `jp.co.aiSensei` の App Store プロファイルが増えている
+
+> Android の keystore(`ai-sensei-upload-keystore`)は逆で、
+> **Codemagic UI に置いたものを使う**。iOS だけAPI経由という非対称になっている。
+
+### 動作確認のためにビルドを回すとき
+
+`ios-testflight` の自動トリガは **`develop` へのpush** だけ。
+PRブランチに置いた変更を試したいときは、Codemagic UI の
+**Start new build** でブランチと workflow を選んで手動で回す
+(`codemagic.yaml` は選んだブランチのものが読まれる)。
+
 > **`environment.ios_signing` の短縮記法は使っていない。**
 > あれは登録済みのプロファイルを**探すだけ**で、無いときに作ってくれない。
 > App ID を登録して APIキーに App Manager を与えても
