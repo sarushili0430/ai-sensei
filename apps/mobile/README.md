@@ -80,6 +80,26 @@ fvm flutter test
 丸ゴシック(SIL OFL 1.1)を `assets/fonts/` に置き、テスト側で読み込んでから
 描画しています。読み込まないとAhem(四角)で描画され、字形の崩れに気づけません。
 
+## ビルドと配布
+
+`ios/` と `android/` はコミットしています(`flutter create --org jp.co.emobi` 生成)。
+
+| | 識別子 |
+| --- | --- |
+| iOS | `jp.co.emobi.aiSensei` |
+| Android | `jp.co.emobi.ai_sensei` |
+
+配布は Codemagic(リポジトリ直下の `codemagic.yaml`)。
+`develop` へのpushで TestFlight に上がります。設定手順は
+[`docs/ci/codemagic.md`](../../docs/ci/codemagic.md)。
+
+バージョン名は `pubspec.yaml` の `version` が正で、ビルド番号はCIが振ります。
+
+権限の説明文は `ios/Runner/Info.plist`(カメラ・マイク・写真)と
+`android/app/src/main/AndroidManifest.xml` に入れてあります。
+リリース署名は `android/key.properties` から読みます(コミットしない。
+無ければdebug署名にフォールバックするので `flutter run --release` は動きます)。
+
 ## 会話が終わったあとの流れ
 
 カルテを作るのはエージェント(サーバ側)なので、アプリは会話が終わったら

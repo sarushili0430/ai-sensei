@@ -1,3 +1,6 @@
+@Tags(<String>['golden'])
+library;
+
 import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
 import 'package:ai_sensei/src/features/karte/domain/karte.dart';
 import 'package:ai_sensei/src/features/karte/presentation/home_screen.dart';
