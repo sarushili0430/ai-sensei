@@ -85,9 +85,14 @@ workflows:
         # REVENUECAT_ANDROID_PUBLIC_SDK_KEY を入れておく変数グループ。
         # いずれも公開鍵・公開URLなので秘匿は不要(環境ごとに差し替えたいだけ)。
         - mobile-dart-defines
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: jp.co.aiSensei
+      vars:
+        BUNDLE_ID: jp.co.aiSensei
+      # environment.ios_signing の短縮記法は使わない。
+      # あれは登録済みのプロファイルを**探すだけ**で、無いときに作ってくれない。
+      # App ID を登録し、APIキーに App Manager を与えても
+      #   No matching profiles found for bundle identifier "..."
+      # で落ちる(しかもスクリプトより前の段階なので、ログから理由が追えない)。
+      # 下の署名ステップで fetch-signing-files --create を明示的に叩く。
 
     triggering:
       events:
@@ -105,6 +110,20 @@ workflows:
       - *build_runner
       - *analyze
       - *test
+
+      - name: 署名ファイルを取得する(無ければ作る)
+        # APIキーの3点は integrations.app_store_connect から
+        # APP_STORE_CONNECT_ISSUER_ID / _KEY_IDENTIFIER / _PRIVATE_KEY として
+        # 渡ってくるので、ここで渡し直す必要はない。
+        script: |
+          set -euo pipefail
+          keychain initialize
+          # --create: 配布証明書とプロビジョニングプロファイルが無ければ作る。
+          # 作れなかったときは理由(権限不足・App ID未登録・証明書の枠)がログに出る。
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+          keychain add-certificates
 
       - name: プロビジョニングプロファイルをXcodeプロジェクトに適用
         script: xcode-project use-profiles

@@ -62,9 +62,16 @@ APIキーを登録する。名前は `codemagic.yaml` に書いてある
 に画面単位で書いてある。**Apple Developer 側の Keys ではなく
 App Store Connect 側**という点だけ注意。
 
-署名自体は `codemagic.yaml` の `ios_signing` が自動で取りに行く
-(`distribution_type: app_store` / `bundle_identifier: jp.co.aiSensei`)。
-証明書やプロファイルを手で作る必要はない。
+証明書とプロビジョニングプロファイルを手で作る必要はない。
+`codemagic.yaml` の「署名ファイルを取得する(無ければ作る)」ステップが
+`app-store-connect fetch-signing-files --create` で発行・更新する。
+
+> **`environment.ios_signing` の短縮記法は使っていない。**
+> あれは登録済みのプロファイルを**探すだけ**で、無いときに作ってくれない。
+> App ID を登録して APIキーに App Manager を与えても
+> `No matching profiles found for bundle identifier ...` で落ちる。
+> しかもスクリプトより前の段階で落ちるため、ログから理由が追えない。
+> `--create` を明示的に叩く形にしてある。
 
 前提として App Store Connect 側に **同じバンドルIDのアプリレコード**が要る。
 無いと `flutter build ipa` は通るがアップロードで落ちる。
@@ -148,10 +155,13 @@ and distribution type "app_store"
 Codemagic が App Store Connect に「`jp.co.aiSensei` の配布用プロファイルをくれ」と
 聞いて、Appleが**何も返さなかった**という意味。
 
-`ios_signing` の自動署名はプロファイルと証明書を**作れる**が、
-**Identifier(App ID)の登録まではやってくれない**。
-登録済みのApp IDが無いと、作る対象が無いのでこのエラーになる。
+**いまの `codemagic.yaml` では出ないはず。**
+このエラーは `environment.ios_signing` の短縮記法を使ったときのもので、
+あれは登録済みのプロファイルを**探すだけ**だった。
+現在は `fetch-signing-files --create` を明示的に叩く形にしてあるので、
+無ければその場で作られる。
 
+それでも出る場合、`--create` が**作れなかった**ということなので、
 確認する順に:
 
 ### 1. Identifier が登録されているか(いちばん多い)
@@ -185,18 +195,13 @@ Identifier のページで所属チームを確認する。
 チームの Distribution 証明書が上限に達していると、証明書が作れず失敗する。
 Certificates で使っていないものを失効させる。
 
-### それでも切り分かないとき
+### ログの読みどころ
 
-`codemagic.yaml` の iOS workflow の `xcode-project use-profiles` の**前**に、
-一時的にこのステップを足すと、Appleが何を返しているかが出る。
+「署名ファイルを取得する(無ければ作る)」ステップのログに、
+`fetch-signing-files` が
+**何を見つけて・何を作ろうとして・なぜ失敗したか**が出る。
+上の1〜4はここに理由が出るので、当てずっぽうで潰す必要はない。
 
-```yaml
-      - name: 署名ファイルの取得を明示的に走らせる(切り分け用)
-        script: |
-          app-store-connect fetch-signing-files "jp.co.aiSensei" \
-            --type IOS_APP_STORE \
-            --create
-```
-
-`--create` は足りないプロファイル・証明書を作りに行くので、
-**作れない理由**(権限不足なのか、App IDが無いのか)がログに出る。
+`Not enough permissions` のような文言なら 3、
+`Bundle ID ... not found` なら 1、
+証明書の上限に触れていれば 4。
