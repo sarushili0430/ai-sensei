@@ -106,7 +106,7 @@ REVENUECAT_ENTITLEMENT_ID = "premium"
 [[env.production.d1_databases]]
 binding = "DB"
 database_name = "ai-sensei-production"
-database_id = "REPLACE_ME"     # `wrangler d1 create` の出力で差し替える(docs/deploy.md)
+database_id = "932a1d92-2ffa-4d28-aba0-2db4bb9eca22"     # `wrangler d1 create` の出力で差し替える(docs/deploy.md)
 migrations_dir = "migrations"
 
 [[env.production.r2_buckets]]
@@ -115,7 +115,7 @@ bucket_name = "ai-sensei-photos-production"
 
 [[env.production.kv_namespaces]]
 binding = "METER"
-id = "REPLACE_ME"              # `wrangler kv namespace create` の出力で差し替える(docs/deploy.md)
+id = "415965b503fa46778624b51f31d44ef4"              # `wrangler kv namespace create` の出力で差し替える(docs/deploy.md)
 
 [env.production.observability]
 enabled = true
