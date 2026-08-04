@@ -85,6 +85,101 @@ describe("POST /v1/webhooks/revenuecat", () => {
     expect((await services.repository.getUser(testDeviceId))?.is_premium).toBe(false);
   });
 
+  // 機種変更・再インストール後の「購入を復元する」。
+  // 匿名デバイスIDは作り直されるので、RevenueCat は購入を付け替えて
+  // TRANSFER を送ってくる。ここを落とすと、アプリは「復元しました」と言うのに
+  // サーバは無料のまま = 復習も履歴も開かない。
+  describe("TRANSFER(復元によるIDの付け替え)", () => {
+    const newDeviceId = "dev_after_reinstall";
+
+    it("移行先にPremiumを付け、移行元から外す", async () => {
+      await postWebhook({
+        type: "INITIAL_PURCHASE",
+        app_user_id: testDeviceId,
+        expiration_at_ms: Date.parse("2026-09-03T00:00:00.000Z"),
+      });
+
+      const response = await postWebhook({
+        type: "TRANSFER",
+        transferred_from: [testDeviceId],
+        transferred_to: [newDeviceId],
+      });
+      expect(response.status).toBe(200);
+
+      const moved = await services.repository.getUser(newDeviceId);
+      expect(moved?.is_premium).toBe(true);
+      // TRANSFER は expiration_at_ms を持たないので、期限は移行元から引き継ぐ
+      expect(moved?.premium_expires_at).toBe("2026-09-03T00:00:00.000Z");
+
+      expect((await services.repository.getUser(testDeviceId))?.is_premium).toBe(false);
+    });
+
+    // app_user_id が無いのがこのイベントの特徴。required にしていたころは
+    // ここで400を返し、RevenueCat が諦めるまで再送していた。
+    it("app_user_id が無くても400にしない", async () => {
+      const response = await postWebhook({
+        type: "TRANSFER",
+        transferred_from: [testDeviceId],
+        transferred_to: [newDeviceId],
+      });
+      expect(response.status).toBe(200);
+    });
+
+    // 復元だけで永久Premiumが作れてしまわないようにする。
+    it("移行元にPremiumの記録が無ければ、移行先に付けない", async () => {
+      await postWebhook({
+        type: "TRANSFER",
+        transferred_from: [testDeviceId],
+        transferred_to: [newDeviceId],
+      });
+
+      // 付けないので行も作らない(その端末が初めてAPIを叩いたときに作られる)
+      const moved = await services.repository.getUser(newDeviceId);
+      expect(moved?.is_premium ?? false).toBe(false);
+    });
+
+    it("無期限のPremiumはそのまま無期限で引き継ぐ", async () => {
+      await postWebhook({
+        type: "INITIAL_PURCHASE",
+        app_user_id: testDeviceId,
+        expiration_at_ms: null,
+      });
+      await postWebhook({
+        type: "TRANSFER",
+        transferred_from: [testDeviceId],
+        transferred_to: [newDeviceId],
+      });
+
+      const moved = await services.repository.getUser(newDeviceId);
+      expect(moved?.is_premium).toBe(true);
+      expect(moved?.premium_expires_at).toBeNull();
+    });
+
+    it("移行元が複数あればいちばん長い期限を引き継ぐ", async () => {
+      const other = "dev_other";
+      await postWebhook({
+        type: "INITIAL_PURCHASE",
+        app_user_id: testDeviceId,
+        expiration_at_ms: Date.parse("2026-09-03T00:00:00.000Z"),
+      });
+      await postWebhook({
+        type: "INITIAL_PURCHASE",
+        app_user_id: other,
+        expiration_at_ms: Date.parse("2026-12-03T00:00:00.000Z"),
+      });
+
+      await postWebhook({
+        type: "TRANSFER",
+        transferred_from: [testDeviceId, other],
+        transferred_to: [newDeviceId],
+      });
+
+      expect((await services.repository.getUser(newDeviceId))?.premium_expires_at).toBe(
+        "2026-12-03T00:00:00.000Z",
+      );
+    });
+  });
+
   it("認証が合わなければ401", async () => {
     const response = await postWebhook(
       { type: "INITIAL_PURCHASE", app_user_id: testDeviceId },

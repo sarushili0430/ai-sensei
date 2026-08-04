@@ -198,9 +198,12 @@ class _ManualPaywallState extends ConsumerState<_ManualPaywall> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
                   ChunkyButton(
+                    // トライアルの有無は Offering を読むまで分からない。
+                    // 分かっているときだけ「無料」と書く。無い商品に
+                    // 「7日間無料でためす」と出すと、押した瞬間に課金される。
                     label: selected != null && selected.hasFreeTrial
                         ? strings.planFreeTrial(selected.freeTrialDays)
-                        : strings.paywallCta,
+                        : strings.paywallSubscribe,
                     // 買えないときは押せなくする。押しても何も起きないボタンは置かない。
                     onPressed: selected == null || _busy ? null : () => _purchase(selected),
                   ),

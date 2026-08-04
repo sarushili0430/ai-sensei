@@ -81,7 +81,12 @@ class AppStrings {
   String get paywallTitle => _pick('穴を、埋めきる。', 'Fill every gap.');
   String get paywallPrice =>
       _pick('Premium ¥580/月 ・ はじめの7日間は無料', 'Premium ¥580/month · First 7 days free');
-  String get paywallCta => _pick('7日間無料でためす', 'Try 7 days free');
+  /// ペイウォールを**開く**ボタン(復習画面など)。ここで無料日数を約束しない。
+  /// ストアの商品にトライアルが付いているかは、Offering を読むまで分からない。
+  String get paywallCta => _pick('Premiumをみる', 'See Premium');
+
+  /// 購入ボタン。トライアルがあるときは [planFreeTrial] に差し替わる。
+  String get paywallSubscribe => _pick('このプランではじめる', 'Start with this plan');
   String get paywallDismiss => _pick('無料のまま続ける', 'Keep using the free version');
   String get paywallCancelNote => _pick('いつでも解約できます', 'Cancel anytime');
   String get paywallFree => _pick('無料', 'Free');

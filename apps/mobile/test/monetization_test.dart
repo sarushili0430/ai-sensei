@@ -1,9 +1,10 @@
-import 'package:ai_sensei/src/features/monetization/data/revenuecat_config.dart';
-import 'package:ai_sensei/src/features/monetization/domain/entitlement.dart';
-import 'package:ai_sensei/src/features/monetization/domain/purchase_outcome.dart';
+import 'package:ai_sensei/src/features/monetization/application/entitlement_controller.dart';
+import 'package:ai_sensei/src/features/monetization/presentation/paywall_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+
+import 'support/harness.dart';
 
 /// 課金まわりの純関数ユニット(テスト方針①)。
 ///
@@ -278,4 +279,69 @@ void main() {
       expect((outcome as RestoreFailed).failure, PurchaseFailure.network);
     });
   });
+
+  // 押した瞬間に課金されるのに「無料でためす」と書いてある、を防ぐ。
+  group('ペイウォールの購入ボタン', () {
+    Future<void> pumpPaywall(WidgetTester tester, Offering offering) => pumpApp(
+      tester,
+      const PaywallScreen(),
+      overrides: <Object?>[
+        entitlementControllerProvider.overrideWith(
+          () => FakeEntitlementController(
+            Entitlement(isPremium: false, offering: offering),
+          ),
+        ),
+      ],
+    );
+
+    Offering offeringWith(IntroductoryPrice? intro) => Offering(
+      'default',
+      '',
+      const <String, Object>{},
+      <Package>[
+        _package(
+          '\$rc_monthly',
+          PackageType.monthly,
+          _product('m', price: 580, intro: intro),
+        ),
+      ],
+    );
+
+    testWidgets('無料トライアルがある商品なら日数を出す', (WidgetTester tester) async {
+      await pumpPaywall(
+        tester,
+        offeringWith(const IntroductoryPrice(0, '¥0', 'P1W', 1, PeriodUnit.week, 1)),
+      );
+
+      expect(find.text('はじめの7日間は無料'), findsWidgets);
+    });
+
+    testWidgets('トライアルが無い商品に「無料」と書かない', (WidgetTester tester) async {
+      await pumpPaywall(tester, offeringWith(null));
+
+      expect(find.text('このプランではじめる'), findsOneWidget);
+      expect(find.textContaining('無料でためす'), findsNothing);
+      expect(find.textContaining('日間は無料'), findsNothing);
+    });
+
+    // 0円でない導入価格は割引であって無料ではない。
+    testWidgets('割引価格の商品にも「無料」と書かない', (WidgetTester tester) async {
+      await pumpPaywall(
+        tester,
+        offeringWith(const IntroductoryPrice(100, '¥100', 'P1M', 1, PeriodUnit.month, 1)),
+      );
+
+      expect(find.text('このプランではじめる'), findsOneWidget);
+      expect(find.textContaining('日間は無料'), findsNothing);
+    });
+  });
+}
+
+class FakeEntitlementController extends EntitlementController {
+  FakeEntitlementController(this._entitlement);
+
+  final Entitlement _entitlement;
+
+  @override
+  Future<Entitlement> build() async => _entitlement;
 }

@@ -147,7 +147,35 @@ fvm flutter run --dart-define-from-file=dart_defines.env
 
 ---
 
-## 5. 状態はSDKから push される
+## 5. 復元と、サーバ側の付け替え(TRANSFER)
+
+匿名デバイスIDはアンインストールで消え、機種変更でも変わる。
+つまり**復元するときの app_user_id は、買ったときのものと違う**。
+
+ダッシュボードの **Restore Behavior** をどちらにしているかで挙動が分かれる。
+
+| 設定 | 起きること |
+| --- | --- |
+| Transfer to new App User ID | RevenueCat が購入を付け替え、`TRANSFER` webhook を送る |
+| Keep with original App User ID | 付け替わらない。アプリは「復元できる購入は見つかりませんでした」と出す |
+
+前者のとき、`TRANSFER` を取りこぼすと**アプリは「復元しました」と言うのに
+サーバ側は無料のまま**になる(復習も履歴も開かない)。
+サーバ側の判定が正なので、食い違うと利用者からは「直らない不具合」に見える。
+
+`backend/api/src/routes/webhooks.ts` がこれを処理する。TRANSFER だけ形が違う:
+
+- `app_user_id` が**無い**。代わりに `transferred_from` / `transferred_to`(配列)
+- `expiration_at_ms` も `entitlement_ids` も**無い**(商品単位ではなく全部の付け替えなので)
+
+期限が payload に無いので、**移行元のレコードから引き継ぐ**。
+移行元にPremiumの記録が無ければ付けない — 期限なしで付けると、
+復元するだけで無期限Premiumが作れてしまうため。その場合は次の
+`RENEWAL` / `EXPIRATION` が新しいIDで届いて正しい期限に揃う。
+
+---
+
+## 6. 状態はSDKから push される
 
 `Purchases.addCustomerInfoUpdateListener` を
 `PurchasesRepository.customerInfoChanges()` でStreamに包み、
@@ -158,7 +186,7 @@ fvm flutter run --dart-define-from-file=dart_defines.env
 
 ---
 
-## 6. 失敗の扱い
+## 7. 失敗の扱い
 
 SDKは失敗を `PlatformException` で投げる。**利用者が自分で閉じた場合も例外**なので、
 そのまま画面に流すと「やめただけ」の人にエラーを見せることになる。
@@ -180,7 +208,7 @@ SDKは失敗を `PlatformException` で投げる。**利用者が自分で閉じ
 
 ---
 
-## 7. テスト
+## 8. テスト
 
 ```bash
 cd apps/mobile
