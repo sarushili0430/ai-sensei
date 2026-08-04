@@ -1,0 +1,39 @@
+# =============================================================================
+# backend/api — 環境変数テンプレート(Cloudflare Workers)
+# =============================================================================
+# ローカル: cp .dev.vars.example .dev.vars   (wrangler dev が読む)
+# 本番:     wrangler secret put <NAME>       (.dev.vars は本番では読まれない)
+#
+# このリポジトリはpublicです。実値は絶対にコミットしないでください。
+# 秘匿でない設定(無料枠の数値・モデル名など)は wrangler.toml の [vars] にあります。
+# =============================================================================
+
+# --- LiveKit (ルーム作成とトークン発行) ---------------------------------------
+# LiveKit Cloud のプロジェクト設定から取得
+LIVEKIT_URL=wss://example-project.livekit.cloud
+LIVEKIT_API_KEY=
+LIVEKIT_API_SECRET=
+
+# --- LLM (ノート写真の解析 / Vision) ------------------------------------------
+# 会話とカルテ生成のモデルは agent 側で設定する(このワーカーは写真解析だけ)
+ANTHROPIC_API_KEY=
+# OpenRouter経由にする場合(スポンサー特典のクレジット次第)
+OPENROUTER_API_KEY=
+
+# --- OneSignal (間隔反復プッシュ: 翌日 / 3日後 / 7日後) ------------------------
+# 未設定ならプッシュの予約をスキップして動く(ローカル開発用)
+ONESIGNAL_APP_ID=
+ONESIGNAL_REST_API_KEY=
+
+# --- RevenueCat (課金webhook) --------------------------------------------------
+# RevenueCat側のwebhook設定に入れる Authorization ヘッダの値。
+# **空のままだと全webhookを拒否します**(空文字で認可しないための仕様)。
+REVENUECAT_WEBHOOK_AUTH=
+
+# --- 内部API ------------------------------------------------------------------
+# agent が /v1/sessions/{id}/complete を叩くときの共有シークレット。
+# backend/agent/.env の INTERNAL_API_TOKEN と同じ値にすること。
+INTERNAL_API_TOKEN=
+
+# --- 監視 ---------------------------------------------------------------------
+SENTRY_DSN=

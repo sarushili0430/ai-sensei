@@ -10,7 +10,7 @@
 
 - [ ] `npm run verify`(typecheck + シークレット走査 + ユニットテスト)
 - [ ] `cd apps/mobile && flutter test`(モバイルに変更がある場合)
-- [ ] 秘匿情報を含めていない(`.env.example` のみ更新)
+- [ ] 秘匿情報を含めていない(更新するのは `*.example` のテンプレートだけ)
 
 ## 設計上の約束の再確認
 

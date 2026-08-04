@@ -38,6 +38,12 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm test
 
+      # テストは Vitest/Node で通っても、Workers のバンドラ(esbuild)で落ちることがある。
+      # 実際に JSON の import 属性で本番ビルドだけ壊れていたので、ここで必ず組む。
+      - name: Worker build (dry-run)
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @ai-sensei/api build:check
+
   flutter:
     name: Flutter (apps/mobile)
     runs-on: ubuntu-latest

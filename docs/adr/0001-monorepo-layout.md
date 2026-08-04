@@ -40,7 +40,7 @@ Shipaton 2026 の Next Gen Award は **リポジトリ単体でプロジェク�
 ## 結果
 
 - 良い点: 1PRでAPI・エージェント・アプリの整合を取れる。提出物がリポジトリ1つで完結する。
-- 良い点: `.env.example` 方式と `pnpm run verify:secrets` をリポジトリ全体に一度だけ用意すればよい。
+- 良い点: 環境変数テンプレート方式と `pnpm run verify:secrets` をリポジトリ全体に一度だけ用意すればよい。
 - 注意: pnpmを使うので、CIとCodemagicには `pnpm/action-setup` などでpnpmを入れる必要がある
   (`package.json` の `packageManager` フィールドでバージョンを固定してある)。
   `apps/mobile` はワークスペースに含めないので、Codemagic側にpnpmは不要。

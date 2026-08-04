@@ -55,12 +55,22 @@ pnpm install         # TypeScript側をまとめて解決
 ### 2. 環境変数
 
 **このリポジトリはpublicです。実際の鍵は絶対にコミットしないでください。**
-テンプレートは [`.env.example`](.env.example) にあります。
+テンプレートは**デプロイ単位ごと**に分かれています。
 
 ```bash
-cp .env.example backend/api/.dev.vars   # wrangler dev が読む
-cp .env.example backend/agent/.env      # LiveKit Agents が読む
+cp backend/api/.dev.vars.example        backend/api/.dev.vars           # wrangler dev が読む
+cp backend/agent/.env.example           backend/agent/.env              # LiveKit Agents が読む
+cp apps/mobile/dart_defines.example.env apps/mobile/dart_defines.env    # --dart-define-from-file
 ```
+
+| テンプレート | 中身 |
+| --- | --- |
+| `backend/api/.dev.vars.example` | LiveKit / Vision LLM / OneSignal / RevenueCat webhook / 内部トークン |
+| `backend/agent/.env.example` | LiveKit / 会話・カルテのLLM / STT / TTS / 内部トークン |
+| `apps/mobile/dart_defines.example.env` | **公開値のみ**(APIのURL・RevenueCat公開鍵・OneSignal App ID・Sentry DSN) |
+
+`--dart-define` の値はビルド成果物に埋め込まれ、逆アセンブルで読めます。
+**秘密鍵はモバイル側に置かないでください。**
 
 本番の秘匿値は `wrangler secret put <NAME>` とLiveKit側の環境設定に登録します。
 コミット前に走査するには:

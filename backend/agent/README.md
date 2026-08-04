@@ -18,7 +18,7 @@ VAD(Silero) → 日本語ストリーミングSTT(Deepgram) → Claude(後輩ペ
 ## 起動
 
 ```bash
-cp ../.env.example .env
+cp .env.example .env
 pnpm --filter @ai-sensei/agent download-files   # Silero VADのモデルを取得
 pnpm --filter @ai-sensei/agent dev              # ルームを待ち受ける
 ```
