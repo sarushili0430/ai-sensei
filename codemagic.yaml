@@ -32,20 +32,42 @@ definitions:
         set -euo pipefail
         missing=""
         [ -n "${API_BASE_URL:-}" ] || missing="$missing API_BASE_URL"
-        [ -n "${REVENUECAT_IOS_PUBLIC_SDK_KEY:-}" ] || missing="$missing REVENUECAT_IOS_PUBLIC_SDK_KEY"
-        [ -n "${REVENUECAT_ANDROID_PUBLIC_SDK_KEY:-}" ] || missing="$missing REVENUECAT_ANDROID_PUBLIC_SDK_KEY"
+
+        # RevenueCat の鍵は、そのworkflowが作る成果物のプラットフォームのものだけ見る。
+        # ストアに商品を作る前は appl_ / goog_ の鍵がまだ無いので、
+        # Test Store の鍵(REVENUECAT_SDK_KEY)でも通す —— アプリ側も
+        # プラットフォーム別の鍵が空なら Test Store の鍵に落ちる作りになっている
+        # (lib/src/features/monetization/data/revenuecat_config.dart の apiKeyFor)。
+        case "${TARGET_PLATFORM:-}" in
+          ios)     platform_key_name=REVENUECAT_IOS_PUBLIC_SDK_KEY;     platform_key="${REVENUECAT_IOS_PUBLIC_SDK_KEY:-}" ;;
+          android) platform_key_name=REVENUECAT_ANDROID_PUBLIC_SDK_KEY; platform_key="${REVENUECAT_ANDROID_PUBLIC_SDK_KEY:-}" ;;
+          *)
+            echo "TARGET_PLATFORM が ios / android のどちらでもない: '${TARGET_PLATFORM:-}'"
+            echo "codemagic.yaml の environment.vars で設定すること。"
+            exit 1
+            ;;
+        esac
+        if [ -z "$platform_key" ] && [ -z "${REVENUECAT_SDK_KEY:-}" ]; then
+          missing="$missing ${platform_key_name}(または REVENUECAT_SDK_KEY)"
+        fi
+
         if [ -n "$missing" ]; then
           echo "次の環境変数がビルドマシンに渡っていない:$missing"
           echo
           echo "Codemagic UI > このアプリ > Environment variables を開き、"
           echo "  - グループ名が mobile-dart-defines になっているか"
           echo "    (codemagic.yaml の environment.groups と完全一致が要る)"
-          echo "  - 3つの変数がそのグループに入っているか"
+          echo "  - 変数がそのグループに入っているか"
           echo "  - グループがこのアプリに紐づいているか"
           echo "を確認すること。"
           echo
           echo "いずれも公開鍵・公開URLなので secure にする必要はない。"
           exit 1
+        fi
+
+        if [ -z "$platform_key" ]; then
+          echo "警告: ${platform_key_name} が空。Test Store の鍵で配布する。"
+          echo "実売のビルドではない(アプリ内にもその旨が出る)。"
         fi
         echo "dart-define 用の環境変数は揃っている"
 
@@ -117,6 +139,8 @@ workflows:
         - mobile-dart-defines
       vars:
         BUNDLE_ID: jp.co.aiSensei
+        # assert_dart_defines が、どちらのRevenueCat鍵を要求するかの判定に使う
+        TARGET_PLATFORM: ios
       ios_signing:
         # 自動コードサイニング。上の integrations.app_store_connect のAPIキーで
         # プロファイルと証明書を取得し、Xcodeプロジェクトに適用するところまでを
@@ -170,12 +194,16 @@ workflows:
           # バージョン名(1.2.3の側)は pubspec.yaml の version が正。
           # ビルド番号だけ Codemagic の連番で上書きする
           # (TestFlightは同じビルド番号の再アップロードを受け付けないため)。
+          # 未設定の変数があっても set -u で落とさない。何が要るかは
+          # assert_dart_defines で先に見ており、ここは素通しでよい。
           flutter build ipa --release \
             --build-number="$PROJECT_BUILD_NUMBER" \
-            --dart-define=API_BASE_URL="$API_BASE_URL" \
-            --dart-define=REVENUECAT_IOS_PUBLIC_SDK_KEY="$REVENUECAT_IOS_PUBLIC_SDK_KEY" \
-            --dart-define=REVENUECAT_ANDROID_PUBLIC_SDK_KEY="$REVENUECAT_ANDROID_PUBLIC_SDK_KEY" \
+            --dart-define=API_BASE_URL="${API_BASE_URL:?変数グループ mobile-dart-defines がこのビルドに渡っていない。Codemagic UI > このアプリ > Environment variables でグループ名と紐づけを確認すること}" \
+            --dart-define=REVENUECAT_IOS_PUBLIC_SDK_KEY="${REVENUECAT_IOS_PUBLIC_SDK_KEY:-}" \
+            --dart-define=REVENUECAT_ANDROID_PUBLIC_SDK_KEY="${REVENUECAT_ANDROID_PUBLIC_SDK_KEY:-}" \
+            --dart-define=REVENUECAT_SDK_KEY="${REVENUECAT_SDK_KEY:-}" \
             --dart-define=REVENUECAT_ENTITLEMENT_ID="${REVENUECAT_ENTITLEMENT_ID:-premium}" \
+            --dart-define=REVENUECAT_OFFERING_ID="${REVENUECAT_OFFERING_ID:-}" \
             --export-options-plist=/Users/builder/export_options.plist
 
     artifacts:
@@ -216,6 +244,9 @@ workflows:
         - mobile-dart-defines
         # GCLOUD_SERVICE_ACCOUNT_CREDENTIALS(Play Consoleのサービスアカウント)
         - google-play
+      vars:
+        # assert_dart_defines が、どちらのRevenueCat鍵を要求するかの判定に使う
+        TARGET_PLATFORM: android
       android_signing:
         # Codemagic UI > Code signing identities に登録した keystore の「名前」
         - ai-sensei-upload-keystore
@@ -259,10 +290,12 @@ workflows:
           set -euo pipefail
           flutter build appbundle --release \
             --build-number="$PROJECT_BUILD_NUMBER" \
-            --dart-define=API_BASE_URL="$API_BASE_URL" \
-            --dart-define=REVENUECAT_IOS_PUBLIC_SDK_KEY="$REVENUECAT_IOS_PUBLIC_SDK_KEY" \
-            --dart-define=REVENUECAT_ANDROID_PUBLIC_SDK_KEY="$REVENUECAT_ANDROID_PUBLIC_SDK_KEY" \
-            --dart-define=REVENUECAT_ENTITLEMENT_ID="${REVENUECAT_ENTITLEMENT_ID:-premium}"
+            --dart-define=API_BASE_URL="${API_BASE_URL:?変数グループ mobile-dart-defines がこのビルドに渡っていない。Codemagic UI > このアプリ > Environment variables でグループ名と紐づけを確認すること}" \
+            --dart-define=REVENUECAT_IOS_PUBLIC_SDK_KEY="${REVENUECAT_IOS_PUBLIC_SDK_KEY:-}" \
+            --dart-define=REVENUECAT_ANDROID_PUBLIC_SDK_KEY="${REVENUECAT_ANDROID_PUBLIC_SDK_KEY:-}" \
+            --dart-define=REVENUECAT_SDK_KEY="${REVENUECAT_SDK_KEY:-}" \
+            --dart-define=REVENUECAT_ENTITLEMENT_ID="${REVENUECAT_ENTITLEMENT_ID:-premium}" \
+            --dart-define=REVENUECAT_OFFERING_ID="${REVENUECAT_OFFERING_ID:-}"
 
     artifacts:
       - apps/mobile/build/app/outputs/bundle/release/*.aab
