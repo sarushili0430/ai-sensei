@@ -187,6 +187,36 @@ workflows:
       #     --type IOS_APP_STORE --certificate-key=@env:CERTIFICATE_PRIVATE_KEY --create
       # を一時的に足す。鍵を渡さないと毎ビルド新しい証明書を作って上限に当たる。
 
+      - name: プロファイルを Xcode プロジェクトに適用する
+        working_directory: apps/mobile
+        # 組み込みの署名ステップが落としてきたプロビジョニングプロファイルを
+        # Runner.xcodeproj に紐づけ、/Users/builder/export_options.plist を書く。
+        # 次のステップの --export-options-plist はこのファイルを指している。
+        #
+        # 組み込みステップだけでこれが出来ているビルドもあるが、出来ていないと
+        #   "/Users/builder/export_options.plist" property list does not exist.
+        # で、10分以上進んだ最後の flutter build ipa が落ちる。
+        # use-profiles は冪等なので、既に適用済みでも安全に流せる。
+        #
+        # keychain initialize は**やらない**。自動署名が入れた証明書を消してしまう
+        # (上のコメント参照)。use-profiles はキーチェーンに触らない。
+        script: |
+          set -euo pipefail
+          xcode-project use-profiles
+
+          if [ ! -f /Users/builder/export_options.plist ]; then
+            echo "export_options.plist が作られなかった。"
+            echo "プロビジョニングプロファイルが1つも降りてきていない。"
+            echo
+            echo "  - App Store Connect にバンドルID ${BUNDLE_ID} のアプリレコードがあるか"
+            echo "  - Developer Portal > Identifiers に ${BUNDLE_ID} が登録されているか"
+            echo "  - integrations.app_store_connect の名前(codemagic)のAPIキーが"
+            echo "    Codemagic UI > Settings > Integrations に登録されていて、"
+            echo "    権限が App Manager 以上か"
+            echo "を確認すること。詳しくは docs/ci/codemagic.md の「2. iOS の署名」。"
+            exit 1
+          fi
+
       - name: IPA をビルド
         working_directory: apps/mobile
         script: |

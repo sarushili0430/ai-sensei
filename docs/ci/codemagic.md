@@ -88,9 +88,30 @@ App Store Connect 側**という点だけ注意。
 証明書とプロビジョニングプロファイルを手で作る必要はない。
 `codemagic.yaml` の `environment.ios_signing` を見て、
 **scripts が始まる前に Codemagic の組み込みステップ**が
-このAPIキー経由で取得し、キーチェーンとXcodeプロジェクトに適用する
-(`/Users/builder/export_options.plist` もそこで作られる)。
-`codemagic.yaml` の scripts に署名のステップは無い。
+このAPIキー経由で取得し、キーチェーンに入れる。
+
+そのうえで、`flutter build ipa` の直前に
+**`プロファイルを Xcode プロジェクトに適用する`**(`xcode-project use-profiles`)
+を置いている。降りてきたプロファイルを `Runner.xcodeproj` に紐づけ、
+`/Users/builder/export_options.plist` を書き出すのがこのコマンド。
+
+> **これが無いと何が起きるか。**
+> 組み込みステップだけで plist が出来ているビルドもあるが、出来ていないと
+> `"/Users/builder/export_options.plist" property list does not exist.`
+> で**最後の `flutter build ipa` が落ちる**。署名の問題なのに、
+> 落ちるのが10分以上あとのビルドステップなので原因が見えにくい。
+> `use-profiles` は冪等なので、既に適用済みでも安全に流せる。
+
+このステップが「プロファイルが1つも降りてきていない」で止まる場合は、
+署名そのものが成立していない。次を順に確認する。
+
+- App Store Connect に **バンドルID `jp.co.aiSensei` のアプリレコード**があるか
+- Developer Portal > Identifiers に `jp.co.aiSensei` が登録されているか
+- `integrations.app_store_connect` の名前(`codemagic`)のAPIキーが
+  Codemagic UI に登録されていて、権限が **App Manager 以上**か
+
+なお **`keychain initialize` は足さないこと。** 自動署名が入れた証明書を
+消してしまう(次節)。`use-profiles` はキーチェーンには触らない。
 
 ### 手で作らないこと
 
