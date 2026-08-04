@@ -22,6 +22,33 @@ definitions:
   flutter_version: &flutter_version 3.44.8
 
   scripts:
+    # 最初に置いてある。ここで見ているのは変数グループ mobile-dart-defines の
+    # 中身で、渡っていないことに気づけるのが最後の flutter build 時
+    #   API_BASE_URL: unbound variable
+    # だと、macの課金時間を10分以上使ってから落ちることになるため。
+    - &assert_dart_defines
+      name: dart-define に渡す環境変数が揃っているか
+      script: |
+        set -euo pipefail
+        missing=""
+        [ -n "${API_BASE_URL:-}" ] || missing="$missing API_BASE_URL"
+        [ -n "${REVENUECAT_IOS_PUBLIC_SDK_KEY:-}" ] || missing="$missing REVENUECAT_IOS_PUBLIC_SDK_KEY"
+        [ -n "${REVENUECAT_ANDROID_PUBLIC_SDK_KEY:-}" ] || missing="$missing REVENUECAT_ANDROID_PUBLIC_SDK_KEY"
+        if [ -n "$missing" ]; then
+          echo "次の環境変数がビルドマシンに渡っていない:$missing"
+          echo
+          echo "Codemagic UI > このアプリ > Environment variables を開き、"
+          echo "  - グループ名が mobile-dart-defines になっているか"
+          echo "    (codemagic.yaml の environment.groups と完全一致が要る)"
+          echo "  - 3つの変数がそのグループに入っているか"
+          echo "  - グループがこのアプリに紐づいているか"
+          echo "を確認すること。"
+          echo
+          echo "いずれも公開鍵・公開URLなので secure にする必要はない。"
+          exit 1
+        fi
+        echo "dart-define 用の環境変数は揃っている"
+
     - &assert_flutter_version
       name: .fvmrc とSDKのバージョンが一致しているか
       script: |
@@ -110,6 +137,7 @@ workflows:
       cancel_previous_builds: true
 
     scripts:
+      - *assert_dart_defines
       - *assert_flutter_version
       - *pub_get
       - *build_runner
@@ -199,6 +227,7 @@ workflows:
           include: true
 
     scripts:
+      - *assert_dart_defines
       - *assert_flutter_version
       - *pub_get
       - *build_runner

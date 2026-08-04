@@ -38,6 +38,12 @@ GUI で設定した「Build for platforms」「Run build on」などは、以降
 アプリのバイナリに入るものなので、秘密鍵は**絶対にここに入れない**
 (LiveKitやLLMのキーはサーバ側 = `wrangler secret` の担当)。
 
+**グループ名は `mobile-dart-defines` と完全一致させ、アプリに紐づけること。**
+どちらかを外すと変数が渡らず、ビルドの1ステップ目
+「dart-define に渡す環境変数が揃っているか」で落ちる
+(そのチェックが無かった頃は、10分以上進んだ最後の
+`flutter build` で `API_BASE_URL: unbound variable` になっていた)。
+
 ### `google-play`(Androidのみ)
 
 | 変数 | 中身 | Secure |
