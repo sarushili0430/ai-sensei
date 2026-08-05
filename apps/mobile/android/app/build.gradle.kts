@@ -17,7 +17,10 @@ val keystoreProperties = Properties().apply {
 
 android {
     namespace = "jp.co.aiSensei"
-    compileSdk = flutter.compileSdkVersion
+    // permission_handler_android 14 が compileSdk 37 を要求する。
+    // Flutter 3.44.8 の flutter.compileSdkVersion はまだ 36 なので、
+    // SDKが追いつくまではここで明示的に上書きする。
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

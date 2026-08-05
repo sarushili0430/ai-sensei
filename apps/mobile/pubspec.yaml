@@ -17,22 +17,22 @@ dependencies:
 
   # 状態管理 / DI (handoff §5)
   flutter_riverpod: ^3.0.0
-  riverpod_annotation: ^3.0.0
+  riverpod_annotation: ^4.0.0
 
   # モデル定義(freezed + json_serializable)
   freezed_annotation: ^3.0.0
-  json_annotation: ^4.9.0
+  json_annotation: ^4.11.0
 
   # 画面遷移
-  go_router: ^14.6.2
+  go_router: ^17.4.0
 
   # 撮影
-  camera: ^0.11.0+2
+  camera: ^0.12.0
   image_picker: ^1.1.2
 
   # リアルタイム会話
   livekit_client: ^2.3.5
-  permission_handler: ^11.3.1
+  permission_handler: ^13.0.0
 
   # 課金 / 通知 / 監視
   purchases_flutter: ^10.7.0
@@ -40,7 +40,9 @@ dependencies:
   # コアと同じバージョンで揃える(片方だけ上げるとネイティブ側が食い違う)。
   purchases_ui_flutter: ^10.7.0
   onesignal_flutter: ^5.2.6
-  sentry_flutter: ^8.12.0
+  # 8.x はSPM経由だとsentry-cocoaを上限なしで解決してビルドが壊れる。
+  # 9.x はcocoaを exact 指定しているのでそれ以降に上げる。
+  sentry_flutter: ^9.26.0
 
   http: ^1.2.2
   shared_preferences: ^2.3.3
@@ -53,12 +55,14 @@ dev_dependencies:
 
   # コード生成
   build_runner: ^2.4.13
-  freezed: ^3.0.0
+  # 3.2.6 はまだ dev プレリリースしか無い。安定版だけを使いたいので上限を切る。
+  freezed: ">=3.0.0 <3.2.6"
   json_serializable: ^6.9.0
-  riverpod_generator: ^3.0.0
+  riverpod_generator: ^4.0.0
 
-  riverpod_lint: ^3.0.0
-  custom_lint: ^0.8.0
+  # riverpod_lint 3.1 で custom_lint から analysis_server_plugin に移行したので
+  # custom_lint は不要。残しておくと analyzer 8 系に固定されて他が上げられない。
+  riverpod_lint: ^3.1.0
 
 flutter:
   uses-material-design: true
