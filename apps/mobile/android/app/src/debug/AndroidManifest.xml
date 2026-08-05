@@ -4,4 +4,10 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- ローカルのbackend(http://10.0.2.2:8787)に当てるため。
+         Android 9以降は平文HTTPが既定で禁止で、これが無いとエミュレータから
+         母艦のAPIに接続できない。**debugビルドのマニフェストにしか書かない**ので、
+         releaseビルド(src/main)には混ざらない。 -->
+    <application android:usesCleartextTraffic="true"/>
 </manifest>

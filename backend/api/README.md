@@ -25,11 +25,19 @@ Cloudflare Workers + Hono。セッション作成・カルテ保存・課金webh
 
 ## ローカル開発
 
+リポジトリのルートで `docker compose up` すると、マイグレーションまで込みで
+`http://localhost:8787` に上がる([`docs/local-dev.md`](../../docs/local-dev.md))。
+
+母艦のNodeで直接動かすなら:
+
 ```bash
 cp .dev.vars.example .dev.vars
 pnpm --filter @ai-sensei/api migrate:local   # D1にスキーマを流す
 pnpm --filter @ai-sensei/api dev             # http://localhost:8787
 ```
+
+`wrangler dev` は既定でlocalhostにしか出ない。実機から母艦を叩くときは
+`--ip 0.0.0.0` を足す(コンテナ側では最初から付けてある)。
 
 ローカルではD1/R2/KVをminiflareが偽物で用意するので、**IDの差し替えは要らない**
 (`wrangler.toml` のトップレベルが `wrangler dev` 専用の設定になっている)。

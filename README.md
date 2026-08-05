@@ -31,6 +31,7 @@ packages/guardrail/ topic_idホワイトリスト照合・数式音声の正規�
 prompts/            システムプロンプトとfew-shot(差分レビューできるようにバージョン管理)
 docs/               企画資料・ワイヤーフレーム・ADR
 scripts/            リポジトリ全体の検証スクリプト
+docker/             ローカル開発用のNodeイメージ(本番のデプロイには使わない)
 ```
 
 TypeScript側(`backend/`・`packages/`)は pnpm workspaces でひとつに束ねています。
@@ -42,17 +43,17 @@ Flutter側は `apps/mobile` で完結し、両者は `packages/contract` のス�
 
 | ツール          | バージョン | 用途                     |
 | --------------- | ---------- | ------------------------ |
-| Node.js         | 22.6 以上  | backend / packages       |
-| pnpm            | 10 以上    | 同上(`corepack enable` で入る) |
+| Docker          | Compose v2 | backend(api / agent)の起動 |
 | Flutter         | 3.44.8     | apps/mobile(`.fvmrc` で固定。fvm推奨) |
 | Xcode           | 16 以上    | iOSビルド(macOSのみ)   |
+| Node.js / pnpm  | 22.6 / 10 以上 | **任意。** エディタの補完と、backendを母艦で直接動かす場合(`corepack enable` で入る) |
 
 ### 1. 依存のインストール
 
 ```bash
 git clone https://github.com/sarushili0430/ai-sensei.git
 cd ai-sensei
-pnpm install         # TypeScript側をまとめて解決
+pnpm install         # 任意: エディタの補完用。コンテナ側の依存はDockerが別に解決する
 ```
 
 ### 2. 環境変数
@@ -88,21 +89,58 @@ LiveKit側の環境設定に、**環境ごとに別々**で登録します([`doc
 pnpm run verify:secrets
 ```
 
-### 3. 開発サーバ
+### 3. 開発サーバ(Docker + Flutter)
+
+**backendはDocker、アプリは母艦のFlutter**で動かします。
+iOSシミュレータもXcodeもコンテナからは触れないので、Flutterだけ母艦に残す形です。
 
 ```bash
-pnpm --filter @ai-sensei/api dev     # backend/api  → http://localhost:8787
-pnpm --filter @ai-sensei/agent dev   # backend/agent (LiveKitのルームに接続して待機)
+docker compose up                    # backend/api → http://localhost:8787
+docker compose --profile agent up    # + backend/agent(会話まで通すとき)
+docker compose down                  # 停止
+docker compose down --volumes        # ローカルD1のデータごと捨てる
+```
 
+母艦にpnpmを入れているなら `pnpm run dev` / `dev:agent` / `dev:down` / `dev:reset`
+でも同じことができます。
+
+初回はイメージのビルドと依存の解決で数分、2回目以降は数秒で上がります。
+D1のマイグレーションは**起動のたびに流れる**(適用済みは飛ばされる)ので、
+`migrate:local` を手で叩く必要はありません。
+
+```bash
+curl http://localhost:8787/health     # {"ok":true,"environment":"local"} なら準備完了
+```
+
+鍵が無くてもbackendは起動します。`/health` と `/v1/me/*` はそのまま触れますが、
+`POST /v1/sessions`(写真解析とルーム作成)と会話には鍵が要ります。
+
+アプリは母艦から、debugモードで起動します。
+
+```bash
 cd apps/mobile
-fvm install                                # .fvmrc のバージョンを取得
+fvm install                                # 初回だけ(.fvmrc のバージョンを取得)
 fvm flutter pub get
 fvm dart run build_runner build            # freezed / riverpod の生成物
-fvm flutter run --dart-define=API_BASE_URL=http://localhost:8787
+fvm flutter run --debug --dart-define-from-file=dart_defines.env
 ```
+
+`flutter run` は既定でdebugモードなので `--debug` は明示のためのものです。
+起動したら `r` ホットリロード / `R` ホットリスタート / `q` 終了。
+
+**`API_BASE_URL` は「アプリをどこで動かすか」で変わります。**
+
+| アプリの実行先 | `dart_defines.env` の `API_BASE_URL` | なぜ |
+| --- | --- | --- |
+| iOSシミュレータ | `http://localhost:8787` | 母艦のlocalhostがそのまま見える |
+| Androidエミュレータ | `http://10.0.2.2:8787` | `10.0.2.2` がエミュレータから見た母艦 |
+| 実機(iOS/Android) | `http://<母艦のLAN IP>:8787` | 母艦と同じWi-Fiに繋ぐ(コンテナは `0.0.0.0:8787` に出している) |
 
 > 生成物(`*.freezed.dart` / `*.g.dart`)はコミットしません。
 > クローン直後は `build_runner build` を一度回してください。
+
+コンテナの中で何が起きているか、Dockerを挟まず母艦のNodeで動かす手順、
+よくあるハマりどころは [`docs/local-dev.md`](docs/local-dev.md) にまとめてあります。
 
 ## テスト
 

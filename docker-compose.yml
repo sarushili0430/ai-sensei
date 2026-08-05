@@ -1,0 +1,137 @@
+# =============================================================================
+# ローカル開発 — backend だけをコンテナで動かす
+# =============================================================================
+#   docker compose up                    # backend/api → http://localhost:8787
+#   docker compose --profile agent up    # + backend/agent(会話まで通すとき)
+#   docker compose down                  # 停止
+#   docker compose down --volumes        # ローカルD1のデータごと捨てる
+#
+# **Flutterはコンテナに入れません。** iOSシミュレータもXcodeも母艦にしか無いので、
+# アプリは母艦から `flutter run --debug` で起動して、ここのAPIに当てます。
+# 手順は README の「3. 開発サーバ」を見てください。
+#
+# 本番のデプロイとは無関係です(api は wrangler が直接Cloudflareに上げる)。
+# =============================================================================
+
+name: ai-sensei
+
+# api / agent / deps で共通の設定。
+# サービス側で同じキーを書くと**上書き**になります(YAMLのマージは配列を結合しない)ので、
+# 共有したいvolumeはすべてここに置いてあります。
+x-node-dev: &node-dev
+  build:
+    context: ./docker
+    dockerfile: node.Dockerfile
+  # 3サービスで同じイメージを指しておくと、ビルドが1回で済む。
+  image: ai-sensei-dev-node
+  # PID 1 を init にする。付けないと Ctrl-C が wrangler / agent に届かず、
+  # 停止のたびにSIGKILL待ちの10秒を取られる。
+  init: true
+  volumes:
+    # ソースは bind mount。保存すると wrangler のリロードがそのまま効く。
+    - .:/workspace
+    # node_modules はコンテナ側に隔離する(母艦のdarwin版native依存を持ち込まない)。
+    # pnpmはパッケージごとに node_modules を作るので、ワークスペースの数だけ要る。
+    # 依存の無い packages/prompts も最初から載せておく — あとで依存が増えたときに
+    # 「なぜかコンテナだけ解決できない」で悩まないため。
+    - node-modules-root:/workspace/node_modules
+    - node-modules-api:/workspace/backend/api/node_modules
+    - node-modules-agent:/workspace/backend/agent/node_modules
+    - node-modules-contract:/workspace/packages/contract/node_modules
+    - node-modules-curriculum:/workspace/packages/curriculum/node_modules
+    - node-modules-guardrail:/workspace/packages/guardrail/node_modules
+    - node-modules-prompts:/workspace/packages/prompts/node_modules
+    # pnpmのストア。残しておくと2回目以降の install が数秒で終わる。
+    - pnpm-store:/pnpm-store
+    # ローカルのD1/R2/KVの実体(api だけが使う)。bind mountにするとSQLiteを
+    # VirtioFS越しに触ることになり、ロックが不安定になるのでvolumeに置く。
+    # 中身を捨てたいときは `docker compose down --volumes`。
+    - wrangler-state:/workspace/backend/api/.wrangler
+
+services:
+  # ---------------------------------------------------------------------------
+  # 依存の解決。api と agent の前に1回だけ走る。
+  #
+  # 両方のサービスに install させると、同じvolumeへ同時に書いて壊れる。
+  # 「先に完了していること」を条件にして、入口を1本にしてある。
+  # ---------------------------------------------------------------------------
+  deps:
+    <<: *node-dev
+    # --frozen-lockfile: コンテナに母艦の pnpm-lock.yaml を書き換えさせない。
+    # ここで落ちたら lockfile がずれているので、母艦で `pnpm install` を回す。
+    command: pnpm install --frozen-lockfile
+
+  # ---------------------------------------------------------------------------
+  # backend/api — Cloudflare Workers(wrangler dev = workerd + miniflare)
+  # ---------------------------------------------------------------------------
+  api:
+    <<: *node-dev
+    working_dir: /workspace/backend/api
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+    ports:
+      # 0.0.0.0 に公開する。実機からLAN越しに母艦を叩くために要る。
+      - "8787:8787"
+    environment:
+      # 非対話であることを wrangler に伝える(マイグレーションの確認待ちで止まらない)。
+      CI: "true"
+      WRANGLER_SEND_METRICS: "false"
+    # マイグレーションは毎回流す(適用済みは飛ばされるので、スキーマを足した日に
+    # 「なぜかテーブルが無い」で悩まなくて済む)。
+    # .dev.vars は bind mount 越しに wrangler が自分で読む。
+    command:
+      - sh
+      - -c
+      - |
+        pnpm exec wrangler d1 migrations apply ai-sensei-local --local &&
+        pnpm exec wrangler dev --ip 0.0.0.0 --port 8787
+    healthcheck:
+      # /health は {"ok":true,"environment":"local"} を返す。
+      # agent はこれが通ってから起動する。
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8787/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      # 初回はイメージのビルドと install のぶん時間がかかる。
+      start_period: 60s
+
+  # ---------------------------------------------------------------------------
+  # backend/agent — LiveKit Agents(会話パイプライン)
+  #
+  # 既定では起動しません(`--profile agent` で入る)。会話にはLiveKit・Deepgram・
+  # ElevenLabsの鍵が要り、無いと起動時に落ちるので、画面まわりだけ触りたい日に
+  # 赤いログを出さないための切り分けです。
+  # ---------------------------------------------------------------------------
+  agent:
+    <<: *node-dev
+    working_dir: /workspace/backend/agent
+    profiles: ["agent"]
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+      api:
+        condition: service_healthy
+    environment:
+      # .env の API_BASE_URL は母艦向けの http://localhost:8787 なので、
+      # コンテナから見た宛先で上書きする(localhostはagent自身を指してしまう)。
+      # node --env-file は既にある環境変数を上書きしないので、こちらが勝つ。
+      API_BASE_URL: http://api:8787
+    # .env(backend/agent/.env)は dev スクリプトの --env-file が読む。
+    # 無いとここで落ちるが、それは母艦で動かしたときと同じ落ち方。
+    command: pnpm run dev
+
+volumes:
+  node-modules-root:
+  node-modules-api:
+  node-modules-agent:
+  node-modules-contract:
+  node-modules-curriculum:
+  node-modules-guardrail:
+  node-modules-prompts:
+  pnpm-store:
+  wrangler-state:
