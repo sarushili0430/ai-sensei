@@ -4,6 +4,7 @@ import type {
   KarteRecord,
   Repository,
   ReviewScheduleRecord,
+  SessionContext,
   SessionRecord,
   UserRecord,
 } from "./types.ts";
@@ -16,7 +17,10 @@ type UserRow = {
   rc_app_user_id: string | null;
 };
 
-type SessionRow = Omit<SessionRecord, "topic_ids"> & { topic_ids: string };
+type SessionRow = Omit<SessionRecord, "topic_ids" | "context"> & {
+  topic_ids: string;
+  context: string | null;
+};
 type KarteRow = Omit<KarteRecord, "topic_ids" | "said_well" | "term_notes"> & {
   topic_ids: string;
   said_well: string;
@@ -73,8 +77,8 @@ export class D1Repository implements Repository {
       .prepare(
         `INSERT INTO sessions
            (id, device_id, kind, status, created_at, completed_at, local_date,
-            photo_key, topic_ids, hole_id, duration_seconds)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            photo_key, topic_ids, hole_id, duration_seconds, context)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         session.id,
@@ -88,6 +92,7 @@ export class D1Repository implements Repository {
         JSON.stringify(session.topic_ids),
         session.hole_id,
         session.duration_seconds,
+        session.context ? JSON.stringify(session.context) : null,
       )
       .run();
   }
@@ -96,10 +101,16 @@ export class D1Repository implements Repository {
     sessionId: string;
     topicIds: string[];
     photoKey: string | null;
+    context: SessionContext | null;
   }): Promise<void> {
     await this.db
-      .prepare("UPDATE sessions SET topic_ids = ?, photo_key = ? WHERE id = ?")
-      .bind(JSON.stringify(input.topicIds), input.photoKey, input.sessionId)
+      .prepare("UPDATE sessions SET topic_ids = ?, photo_key = ?, context = ? WHERE id = ?")
+      .bind(
+        JSON.stringify(input.topicIds),
+        input.photoKey,
+        input.context ? JSON.stringify(input.context) : null,
+        input.sessionId,
+      )
       .run();
   }
 
@@ -112,7 +123,9 @@ export class D1Repository implements Repository {
       .prepare("SELECT * FROM sessions WHERE id = ?")
       .bind(sessionId)
       .first<SessionRow>();
-    return row ? { ...row, topic_ids: parseJsonArray(row.topic_ids) } : null;
+    return row
+      ? { ...row, topic_ids: parseJsonArray(row.topic_ids), context: parseContext(row.context) }
+      : null;
   }
 
   async completeSession(input: {
@@ -269,6 +282,17 @@ function toHole(row: HoleRow): HoleRecord {
 
 function toUser(row: UserRow): UserRecord {
   return { ...row, is_premium: row.is_premium === 1 };
+}
+
+/** 0002以前に作られた行では null。読めない値も null 扱いにして落とさない。 */
+function parseContext(value: string | null): SessionContext | null {
+  if (!value) return null;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? (parsed as SessionContext) : null;
+  } catch {
+    return null;
+  }
 }
 
 function parseJsonArray(value: string | null): string[] {

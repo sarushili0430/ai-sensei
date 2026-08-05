@@ -61,6 +61,27 @@ class ApiClient {
     return SessionStart.fromJson(_decode(response));
   }
 
+  /// チップUIで外した単元をサーバへ反映する。
+  ///
+  /// セッションは作り直さない。作り直すと同じ写真で2回目のセッションになり、
+  /// 無料枠(1日1回)を使い切って、会話を始める瞬間に「今日はここまで」と
+  /// 返されてしまう。
+  Future<SessionStart> updateSessionTopics({
+    required String sessionId,
+    required List<String> topicIds,
+    String locale = 'ja',
+  }) async {
+    final http.Response response = await _client.patch(
+      Uri.parse('$baseUrl/v1/sessions/$sessionId/topics'),
+      headers: <String, String>{
+        ..._headers,
+        'content-type': 'application/json; charset=utf-8',
+      },
+      body: jsonEncode(<String, dynamic>{'locale': locale, 'topic_ids': topicIds}),
+    );
+    return SessionStart.fromJson(_decode(response));
+  }
+
   /// 会話後の結果を取りに行く。カルテ生成が終わるまでサーバは202を返すので、
   /// 生成中は null を返して呼び出し側に待たせる。
   Future<SessionResult?> fetchSessionResult(String sessionId) async {

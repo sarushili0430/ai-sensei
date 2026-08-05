@@ -8,6 +8,20 @@ export type UserRecord = {
   rc_app_user_id: string | null;
 };
 
+/**
+ * 会話の文脈。LiveKitトークンの metadata に載せる分だけを持つ。
+ *
+ * 単元を絞り込んだあとにトークンを出し直すとき、写真をもう一度
+ * 解析しないで済むように、解析の結果をセッションに残しておく。
+ */
+export type SessionContext = {
+  summary: string;
+  visible_work: string[];
+  question_seeds: string[];
+  /** 検出時の確信度。チップUIの表示を、単元を絞ったあとも同じに保つ。 */
+  topics: { topic_id: string; confidence: number }[];
+};
+
 export type SessionRecord = {
   id: string;
   device_id: string;
@@ -20,6 +34,8 @@ export type SessionRecord = {
   topic_ids: string[];
   hole_id: string | null;
   duration_seconds: number | null;
+  /** 解析前・復習セッションでは null。 */
+  context: SessionContext | null;
 };
 
 export type HoleRecord = {
@@ -73,11 +89,12 @@ export type Repository = {
 
   countSessionsOnDate(deviceId: string, localDate: string): Promise<number>;
   createSession(session: SessionRecord): Promise<void>;
-  /** 写真解析のあとに、確定した単元と写真キーを書き戻す。 */
+  /** 写真解析のあとに、確定した単元と写真キー、会話の文脈を書き戻す。 */
   updateSessionTopics(input: {
     sessionId: string;
     topicIds: string[];
     photoKey: string | null;
+    context: SessionContext | null;
   }): Promise<void>;
   /** 解析に失敗したときに予約を取り消す(無料枠を無駄に消費させないため)。 */
   deleteSession(sessionId: string): Promise<void>;

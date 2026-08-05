@@ -14,6 +14,7 @@ import {
 
 export const apiPaths = {
   createSession: "/v1/sessions",
+  updateSessionTopics: (sessionId: string) => `/v1/sessions/${sessionId}/topics`,
   completeSession: (sessionId: string) => `/v1/sessions/${sessionId}/complete`,
   progress: "/v1/me/progress",
   reviewQueue: "/v1/me/reviews",
@@ -101,6 +102,26 @@ export const createSessionResponseSchema = z
   })
   .strict();
 export type CreateSessionResponse = z.infer<typeof createSessionResponseSchema>;
+
+/**
+ * PATCH /v1/sessions/{id}/topics のリクエスト。
+ *
+ * チップUIで外した単元を、**セッションを作り直さずに**反映する。
+ * 作り直すと無料枠(1日1回)をもう1回消費してしまい、単元を確認して
+ * 会話を始めた瞬間に「今日のセッションはここまで」と言われてしまう。
+ */
+export const updateSessionTopicsRequestSchema = z
+  .object({
+    locale: localeSchema.default("ja"),
+    /** 残す単元。解析で検出したものの部分集合でなければならない。 */
+    topic_ids: z.array(topicIdSchema).min(1).max(5),
+  })
+  .strict();
+export type UpdateSessionTopicsRequest = z.infer<typeof updateSessionTopicsRequestSchema>;
+export type UpdateSessionTopicsRequestInput = z.input<typeof updateSessionTopicsRequestSchema>;
+
+/** 返るものは作成時と同じ(session_idは変わらず、トークンだけ出し直す)。 */
+export type UpdateSessionTopicsResponse = CreateSessionResponse;
 
 /** 会話ログ。assistant=後輩の発話、user=ユーザーの説明。 */
 export const transcriptMessageSchema = z
