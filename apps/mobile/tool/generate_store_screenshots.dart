@@ -10,8 +10,14 @@
 /// golden test と同じ仕組みで本物のWidgetツリーを描いている。
 ///
 /// 出力(`docs/store/screenshots/`):
-///   plain/     1179x2556 端末フレームなしの素のまま。Shipaton提出用の指定サイズ
-///   captioned/ 1290x2796 App Store Connect の 6.9インチ必須サイズ。見出し付き
+///   plain/          1179x2556 端末フレームなしの素のまま。Shipaton提出用の指定サイズ
+///   captioned-6.9/  1290x2796 App Store Connect「6.9インチディスプレイ」枠。見出し付き
+///   captioned-6.5/  1284x2778 同「6.5インチディスプレイ」枠。見出し付き
+///
+/// **枠ごとに受け付ける寸法が違う**。6.9インチ枠に入るのは 1290x2796 か
+/// 1320x2868、6.5インチ枠は 1242x2688 か 1284x2778 だけで、
+/// 6.9用を6.5枠へ入れると「寸法が正しくありません」で弾かれる。
+/// どちらも 19.5:9 なので、同じ絵を解像度違いで出せば足りる。
 ///
 /// 並び順は inception-deck §3。①会話 ②祝福 ③カルテ ④連続日数 ⑤復習。
 library;
@@ -44,11 +50,27 @@ const String _outDir = '../../docs/store/screenshots';
 /// 素のスクショ。iPhone 15 Pro の論理サイズ。×3で 1179x2556 になる。
 const Size _plainLogical = Size(393, 852);
 
-/// 見出し付き。App Store Connect の 6.9インチ必須サイズ。
-const Size _captionedLogical = Size(430, 932);
-const Size _captionedPixels = Size(1290, 2796);
-
 const double _pixelRatio = 3;
+
+/// 見出し付きの出力先。App Store Connect の枠ごとに1つ。
+///
+/// `logical` は**その枠の端末の論理サイズ**にしてある。×3が `pixels` に
+/// 一致するので、実画面のレイアウトが伸び縮みせずそのまま入る。
+@immutable
+class _Frame {
+  const _Frame({required this.dir, required this.logical, required this.pixels});
+
+  final String dir;
+  final Size logical;
+  final Size pixels;
+}
+
+const List<_Frame> _frames = <_Frame>[
+  // 6.9インチ枠(iPhone 16 Pro Max 相当)。いま必須なのはこちら。
+  _Frame(dir: 'captioned-6.9', logical: Size(430, 932), pixels: Size(1290, 2796)),
+  // 6.5インチ枠(iPhone 12 Pro Max 相当)。枠が残っているあいだは埋めておく。
+  _Frame(dir: 'captioned-6.5', logical: Size(428, 926), pixels: Size(1284, 2778)),
+];
 
 void main() {
   setUpAll(loadAppFonts);
@@ -66,13 +88,15 @@ void main() {
           );
         });
 
-        final GlobalKey key = await _pump(tester, shot, copy.locale, _captionedLogical);
-        await tester.runAsync(() async {
-          _write(
-            '$_outDir/${copy.locale}/captioned/${shot.slug}.png',
-            await _png(await _compose(await _capture(key), copy)),
-          );
-        });
+        for (final _Frame frame in _frames) {
+          final GlobalKey key = await _pump(tester, shot, copy.locale, frame.logical);
+          await tester.runAsync(() async {
+            _write(
+              '$_outDir/${copy.locale}/${frame.dir}/${shot.slug}.png',
+              await _png(await _compose(await _capture(key), copy, frame)),
+            );
+          });
+        }
       });
     }
   }
@@ -118,11 +142,11 @@ Future<ui.Image> _capture(GlobalKey key) {
 const Color _canvasTop = Color(0xFFE6F4FE);
 const Color _canvasBottom = Color(0xFFFBFAF7);
 
-Future<ui.Image> _compose(ui.Image screen, _Copy copy) async {
+Future<ui.Image> _compose(ui.Image screen, _Copy copy, _Frame frame) async {
   final ui.PictureRecorder recorder = ui.PictureRecorder();
   final Canvas canvas = Canvas(recorder);
-  final double w = _captionedPixels.width;
-  final double h = _captionedPixels.height;
+  final double w = frame.pixels.width;
+  final double h = frame.pixels.height;
 
   canvas.drawRect(
     Rect.fromLTWH(0, 0, w, h),

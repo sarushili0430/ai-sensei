@@ -389,26 +389,40 @@ fvm flutter test tool/generate_store_screenshots.dart   # スクショ一式</di
   </p>
 
   <div class="shots">
-    <div class="shot"><img src="store/screenshots/ja/captioned/01-session.png" alt="会話画面">
+    <div class="shot"><img src="store/screenshots/ja/captioned-6.9/01-session.png" alt="会話画面">
       <p><b>① 会話</b>後輩が、答えを知らないまま聞いてくる。字幕つき。</p></div>
-    <div class="shot"><img src="store/screenshots/ja/captioned/02-celebration.png" alt="祝福画面">
+    <div class="shot"><img src="store/screenshots/ja/captioned-6.9/02-celebration.png" alt="祝福画面">
       <p><b>② 祝福</b>説明が伝わると顔が輝く。正解率は出さない。</p></div>
-    <div class="shot"><img src="store/screenshots/ja/captioned/03-karte.png" alt="カルテ画面">
+    <div class="shot"><img src="store/screenshots/ja/captioned-6.9/03-karte.png" alt="カルテ画面">
       <p><b>③ カルテ</b>黄=言えた / ピンク=穴。このアプリ固有の絵。</p></div>
-    <div class="shot"><img src="store/screenshots/ja/captioned/04-progress.png" alt="ホーム画面">
+    <div class="shot"><img src="store/screenshots/ja/captioned-6.9/04-progress.png" alt="ホーム画面">
       <p><b>④ 連続日数と埋めた穴</b>数えるのは努力だけ。</p></div>
-    <div class="shot"><img src="store/screenshots/ja/captioned/05-review.png" alt="復習画面">
+    <div class="shot"><img src="store/screenshots/ja/captioned-6.9/05-review.png" alt="復習画面">
       <p><b>⑤ 復習</b>翌日・3日後・7日後の再訪。OneSignal賞の根拠。</p></div>
   </div>
 
-  <h3>2種類ある</h3>
+  <h3>3種類ある — <span class="mkp">枠ごとに受け付ける寸法が違う</span></h3>
+  <div class="warn" style="margin-bottom:12px">
+    <b>App Store Connect は「6.9インチ」「6.5インチ」で別々の枠を持っていて、
+    受け付ける寸法が枠ごとに固定されている。</b>
+    6.9用の 1290×2796 を6.5枠に入れると
+    <b>「1個以上のスクリーンショットの寸法が正しくありません」</b>で弾かれる
+    (6.5枠が受けるのは 1242×2688 か 1284×2778 だけ)。
+    どちらの枠も 19.5:9 なので、同じ絵を解像度違いで出しておけば足りる。
+  </div>
   <table class="meta">
-    <tr><th>captioned / 1290×2796</th>
-      <td><code>docs/store/screenshots/{ja,en}/captioned/</code><br>
-        App Store Connect の<b>6.9インチ必須サイズ</b>。見出しつき。ここに貼ってあるのがこれ。</td></tr>
+    <tr><th>captioned-6.9 / 1290×2796</th>
+      <td><code>docs/store/screenshots/{ja,en}/captioned-6.9/</code><br>
+        ASC「<b>6.9インチディスプレイ</b>」枠へ。いま<b>必須</b>なのはこの枠。
+        受け付ける寸法は 1290×2796 か 1320×2868。ここに貼ってあるのがこれ。</td></tr>
+    <tr><th>captioned-6.5 / 1284×2778</th>
+      <td><code>docs/store/screenshots/{ja,en}/captioned-6.5/</code><br>
+        ASC「<b>6.5インチディスプレイ</b>」枠へ。受け付ける寸法は 1242×2688 か 1284×2778。
+        絵は6.9版と同じで、端末の論理サイズ(428×926)から描き直している。</td></tr>
     <tr><th>plain / 1179×2556</th>
       <td><code>docs/store/screenshots/{ja,en}/plain/</code><br>
-        <b>端末フレームなしの素のまま</b>。Shipaton提出要件の指定サイズ(handoff §2)。</td></tr>
+        <b>端末フレームなしの素のまま</b>。Shipaton提出要件の指定サイズ(handoff §2)。
+        <b>App Store Connect には入らない寸法</b>なので、ストアには上の2つを使う。</td></tr>
     <tr><th>ロケール</th>
       <td>日本語・英語の2組。英語版は米国配信とNext Gen審査のために要る(handoff §2)。
         画面内の文言もアプリのロケールを切り替えて描いているので、翻訳漏れがあればここに出る。</td></tr>
@@ -639,6 +653,17 @@ Review reminders after 1, 3 and 7 days, requested on the first karte screen.</di
     「いつでも解約できます」を<b>「登録は自動更新されます。いつでも解約できます」</b>に改めた。
     リンクのURLは <code>--dart-define</code>(<code>TERMS_URL</code> / <code>PRIVACY_POLICY_URL</code>)から入るので、
     <b>空のビルドではリンクごと消える</b>。提出ビルドでは必ず埋めること。
+  </div>
+
+  <div class="warn" style="margin-top:22px">
+    <b>次に詰まるのはたぶんiPad。</b>
+    <code>ios/Runner.xcodeproj</code> の <code>TARGETED_DEVICE_FAMILY</code> が <code>"1,2"</code>
+    のままなので、<b>iPad対応アプリとして提出することになる</b>。そうなると
+    App Store Connect が<b>iPad(13インチ)のスクリーンショットも要求</b>し、
+    App Review も iPad で動かして見る。画面は393pt幅の単一カラムで作ってあり、
+    iPadでの確認もしていない。<b>推奨は <code>TARGETED_DEVICE_FAMILY = "1"</code>(iPhoneのみ)へ変更</b> ——
+    「iPhone先行、Androidは提出後に追従」(handoff §2)という方針とも揃う。
+    iPadを出すと決めるなら、iPad用のレイアウトとスクショが別途要る。
   </div>
 
   <div class="todo" style="margin-top:22px">
