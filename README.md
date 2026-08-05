@@ -16,6 +16,10 @@
 画面設計と**画面遷移図**は [`docs/wireframe_v1.html`](docs/wireframe_v1.html)、ビジュアル方針は
 [`docs/design_direction_v0.html`](docs/design_direction_v0.html) を参照してください
 ([`wireframe_v0.html`](docs/wireframe_v0.html) は差分を追うために残してある旧版です)。
+アプリアイコン・ストア掲載スクリーンショット・App Store提出メタデータ(説明文・キーワード・審査メモ)も
+同じ `design_direction_v0.html` の後半にまとめてあります。スクショの実物は
+[`docs/store/screenshots/`](docs/store/screenshots)、生成はどちらも
+`apps/mobile/tool/` のスクリプトが行い、**絵の正はコード**です(画像を直接描き直さないこと)。
 
 ---
 
