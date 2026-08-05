@@ -136,10 +136,15 @@ export function testServices(options: { now?: Date; analysis?: PhotoAnalysis } =
   };
 }
 
+/** JPEGとして通るだけの最小のバイト列(SOIマーカー + APP0)。 */
+export const JPEG_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
+
 /** multipart/form-data のセッション作成リクエストを組み立てる。 */
 export function createSessionForm(meta: Record<string, unknown> = {}): FormData {
   const form = new FormData();
-  form.set("photo", new File([new Uint8Array([1, 2, 3])], "note.jpg", { type: "image/jpeg" }));
+  // 先頭はJPEGのマジックナンバー。中身で形式を判定するので、ここが
+  // ただのダミーバイトだと「読み取れない写真」として弾かれる。
+  form.set("photo", new File([JPEG_BYTES], "note.jpg", { type: "image/jpeg" }));
   form.set("meta", JSON.stringify({ kind: "new", locale: "ja", ...meta }));
   return form;
 }

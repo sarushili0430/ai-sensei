@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../app.ts";
 import { verifyJwt } from "../lib/livekit.ts";
 import {
+  JPEG_BYTES,
   type TestServices,
   analysisFixture,
   createSessionForm,
@@ -158,6 +159,59 @@ describe("POST /v1/sessions", () => {
     const body = (await response.json()) as CreateSessionResponse;
     const session = await services.repository.getSession(body.session_id);
     expect(session?.photo_key).toBe(`photos/${testDeviceId}/${body.session_id}`);
+  });
+
+  /**
+   * Flutterの MultipartFile は contentType を渡さないと
+   * application/octet-stream を送ってくる。申告をそのまま media_type にすると
+   * Vision APIが400を返し、アプリからの写真つきセッションが全部500になっていた。
+   */
+  it("申告が application/octet-stream でも、中身を見てJPEGとして解析にかける", async () => {
+    // 申告をそのまま渡していないことを見たいので、解析器が受け取った値を捕まえる
+    let received: string | undefined;
+    services = {
+      ...testServices(),
+      analyzer: {
+        async analyze({ contentType }) {
+          received = contentType;
+          return analysisFixture;
+        },
+      },
+    };
+
+    const form = new FormData();
+    form.set("photo", new File([JPEG_BYTES], "note", { type: "application/octet-stream" }));
+    form.set("meta", JSON.stringify({ kind: "new", locale: "ja" }));
+
+    const response = await post(form);
+    expect(response.status).toBe(201);
+    expect(received).toBe("image/jpeg");
+  });
+
+  it("画像でないものは422で返す(Vision APIに投げて500にしない)", async () => {
+    const form = new FormData();
+    form.set(
+      "photo",
+      new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], "note.pdf", {
+        type: "application/pdf",
+      }),
+    );
+    form.set("meta", JSON.stringify({ kind: "new", locale: "ja" }));
+
+    const response = await post(form);
+    expect(response.status).toBe(422);
+    const body = (await response.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("photo_unreadable");
+  });
+
+  it("読み取れない写真は今日の無料枠を消費しない", async () => {
+    const form = new FormData();
+    form.set("photo", new File([new Uint8Array([0, 1, 2, 3])], "note", { type: "image/heic" }));
+    form.set("meta", JSON.stringify({ kind: "new", locale: "ja" }));
+    expect((await post(form)).status).toBe(422);
+
+    // 押さえた枠が返っていれば、撮り直した1枚はちゃんと通る
+    expect((await post(createSessionForm())).status).toBe(201);
   });
 });
 

@@ -26,6 +26,69 @@ export type PhotoAnalyzer = {
   analyze(input: { image: ArrayBuffer; contentType: string }): Promise<PhotoAnalysis>;
 };
 
+/** Vision API(Anthropic Messages)が受け取れる画像形式。これ以外は400が返る。 */
+const SUPPORTED_MEDIA_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
+
+/**
+ * 画像の形式を決める。
+ *
+ * multipartの申告(`File.type`)は当てにならない。Flutterの MultipartFile は
+ * 既定で `application/octet-stream` を送ってくるので、それをそのまま
+ * media_type に流すと Vision API が400を返し、500として表に出てしまう。
+ *
+ * 中身の先頭バイトで判定し、決められないときだけ申告を見る(許可リストに
+ * 載っているものだけ)。どちらでも決まらなければ null を返し、呼び出し側で
+ * 「読み取れなかった写真」として扱う。
+ */
+export function detectImageMediaType(
+  image: ArrayBuffer,
+  declared?: string | null,
+): (typeof SUPPORTED_MEDIA_TYPES)[number] | null {
+  const bytes = new Uint8Array(image, 0, Math.min(image.byteLength, 12));
+
+  // JPEG: FF D8 FF
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return "image/jpeg";
+  }
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    bytes.length >= 8 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47
+  ) {
+    return "image/png";
+  }
+  // GIF: "GIF8"
+  if (
+    bytes.length >= 6 &&
+    bytes[0] === 0x47 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x38
+  ) {
+    return "image/gif";
+  }
+  // WebP: "RIFF" + 4バイトの長さ + "WEBP"
+  if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  ) {
+    return "image/webp";
+  }
+
+  const normalized = declared?.split(";")[0]?.trim().toLowerCase();
+  return SUPPORTED_MEDIA_TYPES.find((type) => type === normalized) ?? null;
+}
+
 /** カリキュラムマップをプロンプトに貼れる形に畳む(全52トピックの要約)。 */
 export function curriculumDigest(): string {
   return topics
