@@ -152,7 +152,7 @@ ssh-keygen -t rsa -b 2048 -m PEM -f ios_distribution_private_key -q -N ""
 ```
 
 できた `ios_distribution_private_key`(拡張子なしのほう)をテキストエディタで開き、
-`-----BEGIN RSA PRIVATE KEY-----` / `-----END RSA PRIVATE KEY-----` の行も含めて
+`-----BEGIN RSA PRIVATE KEY-----` / `-----END RSA PRIVATE KEY-----` の行も含めて <!-- pragma: allowlist secret -->
 **全文**を値として貼る。
 
 **渡し忘れると毎ビルド新しい配布証明書が作られる。**
