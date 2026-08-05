@@ -1,7 +1,7 @@
 # 事業方針メモ v0 — カタルテから「本」への道筋
 
 作成日: 2026-08-05 / 位置づけ: 事業方針の議論のたたき台(**9/30までの開発スコープは一切変えない**)
-前提資料: [`inception-deck.md`](inception-deck.md)・[`handoff_to_opus.md`](handoff_to_opus.md)
+前提資料: [`inception-deck.md`](../inception-deck.md)・[`handoff_to_opus.md`](../handoff_to_opus.md)
 
 この文書は「教育アプリとしての打ち出し」「PDFに質問できる環境」という2つのピボット案への回答。
 結論から書き、根拠を後ろに置く。インセプションデッキの「やらないことリスト」を動かすものではない —
