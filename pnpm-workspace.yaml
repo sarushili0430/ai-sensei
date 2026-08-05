@@ -8,6 +8,7 @@ packages:
 # 追加するときは、なぜ必要かを1行添えること。
 onlyBuiltDependencies:
   - "@biomejs/biome" # lint/format のネイティブバイナリを取得する
+  - lefthook # git hooks のネイティブバイナリを配置する
   - esbuild # wrangler が同梱するバンドラ
   - workerd # wrangler dev のランタイム
   - "@livekit/local-inference" # turn detection のネイティブ推論

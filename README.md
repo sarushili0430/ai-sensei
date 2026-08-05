@@ -115,6 +115,29 @@ pnpm test             # vitest のみ
 cd apps/mobile && fvm flutter test   # 契約fixture + ウィジェット + golden
 ```
 
+### コミット前のlint(lefthook)
+
+git hooks は [lefthook](https://lefthook.dev/) で管理していて、
+`pnpm install` を一度走らせれば入ります(`prepare` が `lefthook install` を呼ぶ)。
+設定は**見る対象ごとに分けて**置いてあり、ルートの `lefthook.yml` が読み込みます。
+
+| 設定ファイル | 走る条件 | 中身 |
+| --- | --- | --- |
+| `backend/lefthook.yml` | `backend/` 配下の `.ts/.js/.json` がステージされたとき | `biome ci <変更ファイル>` |
+| `apps/mobile/lefthook.yml` | `apps/mobile/` 配下の `.dart/.yaml` がステージされたとき | `flutter analyze` |
+
+**pre-commitで見るのはlintだけ**です。typecheck・テスト・ビルドはCIに任せています
+(コミットのたびに数十秒待たされると、hookを外す方向に力が働くため)。
+触っていない側は走りません。backendだけのコミットでFlutterは要りません。
+
+```bash
+pnpm exec lefthook run pre-commit    # 手動で走らせる
+LEFTHOOK=0 git commit ...            # 一時的に飛ばす
+```
+
+`apps/mobile` 側は `flutter analyze` なので、生成物(`*.g.dart` / `*.freezed.dart`)が
+無いと落ちます。クローン直後は先に `build_runner build` を回してください。
+
 CIとデプロイのワークフローのテンプレートは [`docs/ci/`](docs/ci/README.md) にあります
 (GitHub Appは `.github/workflows/` へpushできないため、初回だけ手元でコピーが必要です)。
 

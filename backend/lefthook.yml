@@ -1,0 +1,12 @@
+# backend/ の pre-commit。ルートの lefthook.yml から extends で読まれる。
+#
+# root: を切ってあるので、`backend/` 配下にステージされたファイルが1つも無ければ
+# このジョブはスキップされる。{staged_files} も backend/ からの相対パスになる。
+pre-commit:
+  jobs:
+    - name: backend-lint
+      root: "backend/"
+      glob: "*.{ts,tsx,js,mjs,cjs,json,jsonc}"
+      # ルートの `pnpm run lint`(= biome ci .)と同じチェックを、
+      # 触ったファイルにだけ掛ける。設定はルートの biome.json を拾う。
+      run: pnpm exec biome ci {staged_files}

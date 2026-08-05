@@ -59,6 +59,16 @@ fvm dart run build_runner watch            # 開発中
 クローン直後は `pub get` → `build_runner build` → `flutter test` の順です。
 CIも同じ順で走ります。
 
+## lint
+
+`analysis_options.yaml` が正。`lefthook.yml`(ルートの `lefthook.yml` から読まれる)で、
+**このディレクトリ配下の `.dart` / `.yaml` がステージされたコミットだけ**
+`flutter analyze` が走ります。生成物が無いと落ちるので、先に `build_runner build` を。
+
+```bash
+fvm flutter analyze
+```
+
 ## テスト
 
 ```bash

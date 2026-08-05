@@ -37,6 +37,12 @@ apps/mobile/android/local.properties
 apps/mobile/test/golden/failures/
 *.iml
 
+# --- git hooks (lefthook) ---
+# 手元だけの上書き設定。共有するものは lefthook.yml 側に書く。
+lefthook-local.yml
+.lefthook/
+.lefthook-local/
+
 # --- editors / os ---
 .idea/
 .vscode/*
