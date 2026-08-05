@@ -247,7 +247,6 @@ workflows:
             --dart-define=PRIVACY_POLICY_URL="${PRIVACY_POLICY_URL:-}" \
             --dart-define=TERMS_URL="${TERMS_URL:-}" \
             --dart-define=SUPPORT_EMAIL="${SUPPORT_EMAIL:-}" \
-            --export-options-plist=/Users/builder/export_options.plist
             --export-options-plist="$HOME/export_options.plist"
 
     artifacts:
