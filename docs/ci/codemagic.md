@@ -106,6 +106,30 @@ App Store Connect 側**という点だけ注意。
 **証明書とプロファイルの取得そのものは引き続き組み込みステップの仕事**で、
 scripts 側では一切やっていない(理由は下の囲み)。
 
+### プロファイルは中身まで検査してから使う
+
+同じステップで、`use-profiles` を叩く前に
+**プロファイルの Entitlements を読んで**次の2点を見ている。
+
+- 本体(`jp.co.aiSensei`)と **Notification Service Extension**
+  (`jp.co.aiSensei.OneSignalNotificationServiceExtension`)の
+  プロファイルが**両方**ダウンロードされているか
+- そのプロファイルが `Runner.entitlements` の要求する
+  **App Group** を許しているか
+
+拡張が入って以降、「プロファイルが1枚でもあればOK」では足りなくなったため。
+足りないまま進むと Xcode のアーカイブ(数分)を回しきったあとで
+
+```
+Provisioning profile "aisenseiprd" doesn't include the App Groups capability.
+Signing for "OneSignalNotificationServiceExtension" requires a development team.
+```
+
+になる。直す先は**このリポジトリではなく Developer Portal 側**なので、
+検査で落として何が足りないかをログに出すようにしてある。
+Portal 側の手順は
+[`store-setup.md` の 1-2-1](./store-setup.md#1-2-1-app-group-と拡張ぶんの-identifier)。
+
 ### 手で作らないこと
 
 Developer Portal の **Generate a Provisioning Profile を手で回さない。**
@@ -128,6 +152,13 @@ Developer Portal の **Generate a Provisioning Profile を手で回さない。*
 > 端末の登録が要るのは Development と Ad Hoc のプロファイルだけで、
 > **App Store 配布用のプロファイルは端末を持たない**。
 > CIのMacをデバイス登録する必要はない。
+
+**すでに手で作ってしまったプロファイル(例: `aisenseiprd`)は消す。**
+自動署名は条件の合う既存プロファイルがあればそれを使い回すので、
+残しておくと「Portal の App ID は直したのにビルドだけ落ち続ける」になる
+—— プロファイルは**作られた時点の Capability を焼き込んでいる**ため、
+App Groups をあとから足しても古いプロファイルには入らない。
+**Profiles から消せば**、次のビルドで自動署名が今の Capability で作り直す。
 
 ### Codemagic UI の「Code signing identities」も使わない
 

@@ -77,6 +77,7 @@ Capabilities のうち、このアプリで**触るもの**:
 | --- | --- | --- |
 | In-App Purchase | 有効(既定で有効) | `purchases_flutter` |
 | Push Notifications | **有効にする** | `onesignal_flutter`。既定はオフ |
+| App Groups | **有効にする** | OneSignal の Notification Service Extension と共有する(下の 1-2-1) |
 
 **触らないもの**(付けると審査で用途を聞かれるだけ損):
 
@@ -86,6 +87,52 @@ Apple Pay — いずれも未使用。
 
 > Background Modes は App ID の Capability ではなく Info.plist / Xcode 側の設定。
 > 1-9 を参照。
+
+### 1-2-1. App Group と、拡張ぶんの Identifier
+
+アプリには OneSignal の **Notification Service Extension**(`ios/OneSignalNotificationServiceExtension/`)
+が入っている。これは本体とは**別のバンドルID・別のプロファイルで署名される**ので、
+Identifier も別に要る。さらに両者は App Group 越しに値を受け渡すので、
+**登録するものが3つ**になる。
+
+登録は次の順でやる(順番が逆だと、割り当て先のグループが無い・
+グループを持てないIdentifierになる)。
+
+1. **Identifiers > + > App Groups** で `group.jp.co.aiSensei.onesignal` を作る
+2. **App ID `jp.co.aiSensei`** を開き、Capability の **App Groups** に
+   チェックを入れて `Edit` から 1 のグループを割り当てる
+3. **Identifiers > + > App IDs > App** で
+   `jp.co.aiSensei.OneSignalNotificationServiceExtension` を **Explicit** で作り、
+   同じく **App Groups** に 1 のグループを割り当てる
+   (こちらに Push Notifications / In-App Purchase は要らない)
+
+グループ名はリポジトリ側の2つの entitlements ファイルが正で、
+**3箇所が1文字でも違うと通らない**:
+
+- `apps/mobile/ios/Runner/Runner.entitlements`
+- `apps/mobile/ios/OneSignalNotificationServiceExtension/OneSignalNotificationServiceExtension.entitlements`
+- Developer Portal の App Group
+
+> **Capability を足したら、既存のプロビジョニングプロファイルは消すこと。**
+> プロファイルは作られた時点の Capability を焼き込んでいるので、
+> あとから App ID 側を直しても**既にあるプロファイルは古いまま**で、
+> Codemagic の自動署名はそれを使い回してしまう。結果、Portal は直っているのに
+> ビルドだけが
+> `Provisioning profile "..." doesn't include the App Groups capability`
+> で落ち続ける。**Profiles から消せば**、次のビルドで自動署名が作り直す。
+
+この3点が揃っていないと、`flutter build ipa` が Xcode のアーカイブを
+回しきったあとで落ちる:
+
+| ログに出るもの | 足りていないもの |
+| --- | --- |
+| `doesn't include the App Groups capability` | 2(App ID に App Groups が付いていない / プロファイルが古い) |
+| `doesn't support the group.jp.co.aiSensei.onesignal App Group` | 1(グループ未作成)または 2 の割り当て |
+| `Signing for "OneSignalNotificationServiceExtension" requires a development team` | 3(拡張の Identifier が無く、プロファイルが取れていない) |
+
+`codemagic.yaml` の署名ステップが**アーカイブの前に**同じことを検査して
+落とすようにしてあるので、実際にはこの表より早い段階で、
+上のどれが足りないかがログに出る。
 
 ### 1-3. 鍵は3種類ある(まず違いを押さえる)
 
@@ -490,7 +537,9 @@ Play Console にAABを上げたあとなら
 2. **有料App契約(1-5)**(経理・銀行待ち)
 3. **0-1 の年齢層の決定**(あとで変えるとSDKごと作り直し)
 4. **プライバシーポリシーのURL(0-2)**
-5. App ID とアプリレコードの作成(1-2 / 1-4 / 2-2)
+5. App ID とアプリレコードの作成(1-2 / **1-2-1** / 1-4 / 2-2)
+   —— 1-2-1(App Group と拡張ぶんの Identifier)を飛ばすと、
+   ここまで揃っていても iOS のビルドだけが署名で落ちる
 6. 鍵まわり(1-3 / 2-9)→ ここまで来ると Codemagic が回る
 7. 定期購入と RevenueCat(1-6 / 1-10 / 2-7 / 2-10)
 8. 申告類(1-7 / 1-8 / 2-5 / 2-6)
