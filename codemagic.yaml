@@ -241,7 +241,9 @@ workflows:
           with open("ios/Runner/Runner.entitlements", "rb") as f:
               wanted = set(plistlib.load(f).get("com.apple.security.application-groups", []))
 
-          # バンドルID → (プロファイル名, そのプロファイルが許す App Group)
+          # バンドルID → そのプロファイルの素性。
+          # 名前と App Group だけでは「Portal で消したはずのプロファイルが
+          # また降ってきた」ときに何も分からないので、素性まで控えておく。
           profiles = {}
           for path in sorted(glob.glob(os.path.join(profiles_dir, "*.mobileprovision"))):
               raw = subprocess.run(["security", "cms", "-D", "-i", path],
@@ -252,10 +254,13 @@ workflows:
               ent = parsed.get("Entitlements", {})
               # application-identifier は "TEAMID.jp.co.aiSensei" の形
               bundle = ent.get("application-identifier", "").split(".", 1)[-1]
-              profiles[bundle] = (
-                  parsed.get("Name", "?"),
-                  set(ent.get("com.apple.security.application-groups", [])),
-              )
+              profiles[bundle] = {
+                  "name": parsed.get("Name", "?"),
+                  "groups": set(ent.get("com.apple.security.application-groups", [])),
+                  "team": ", ".join(parsed.get("TeamIdentifier", [])) or "?",
+                  "created": str(parsed.get("CreationDate", "?"))[:19],
+                  "uuid": parsed.get("UUID", "?"),
+              }
 
           problems = []
           for target in (app_id, ext_id):
@@ -264,11 +269,10 @@ workflows:
                   # TEAMID.* のワイルドカードは App Groups を持てないので代用にならない
                   problems.append("%s のプロファイルが無い" % target)
                   continue
-              name, groups = hit
-              missing = wanted - groups
+              missing = wanted - hit["groups"]
               if missing:
                   problems.append('%s のプロファイル "%s" に App Group %s が入っていない'
-                                  % (target, name, ", ".join(sorted(missing))))
+                                  % (target, hit["name"], ", ".join(sorted(missing))))
 
           if not problems:
               print("プロファイルは本体・拡張ぶん揃っており、App Group も入っている")
@@ -288,9 +292,24 @@ workflows:
           print("     (このリポジトリはプロファイルを手で作らない運用 —— codemagic.md 参照)。")
           print("")
           print("このビルドが見たプロファイル:")
-          for bundle, (name, groups) in sorted(profiles.items()):
-              print("  %s -> \"%s\" App Groups: %s"
-                    % (bundle, name, ", ".join(sorted(groups)) or "(無し)"))
+          for bundle, info in sorted(profiles.items()):
+              print("  %s" % bundle)
+              print("      名前: %s" % info["name"])
+              print("      App Groups: %s"
+                    % (", ".join(sorted(info["groups"])) or "(無し)"))
+              print("      Team: %s / 作成: %s" % (info["team"], info["created"]))
+              print("      UUID: %s" % info["uuid"])
+          print("")
+          print("Portal で消したはずのプロファイルがまだ降ってくるときは、")
+          print("上の Team と作成日で取得元を突き止めること:")
+          print("  - 作成日が Portal で消した時刻より前 → 消えていない。")
+          print("    Profiles 画面のフィルタ(All / Development / Distribution)を疑う。")
+          print("    Codemagic UI > Code signing identities に手でアップロードした")
+          print("    プロファイルがあれば、それも消す(このリポジトリは手動署名を使わない)。")
+          print("  - Team が Portal の画面右上に出ているものと違う")
+          print("    → App Store Connect APIキー(integrations の 'codemagic')が")
+          print("      別チームのもの。そのチームには App Group も拡張のIdentifierも無いので、")
+          print("      何度直しても直らない。APIキーを作り直すこと。")
           sys.exit(1)
           PY
 
