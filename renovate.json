@@ -3,7 +3,7 @@
   "extends": ["config:recommended", ":semanticCommits", ":dependencyDashboard"],
   "timezone": "Asia/Tokyo",
 
-  "//": "ソロ開発なので、PRが溜まって読まれなくなるのがいちばん怖い。週1にまとめ、同時に開くPRを絞る。",
+  "description": "ソロ開発なので、PRが溜まって読まれなくなるのがいちばん怖い。週1にまとめ、同時に開くPRを絞る。",
   "schedule": ["before 7am on monday"],
   "prConcurrentLimit": 3,
   "prHourlyLimit": 2,
@@ -29,7 +29,7 @@
     },
     {
       "description": "LiveKit Agents はAPIが動きやすいので、まとめて上げて一度に確認する。",
-      "matchPackagePatterns": ["^@livekit/"],
+      "matchPackageNames": ["@livekit/**"],
       "groupName": "livekit"
     },
     {
