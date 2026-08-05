@@ -33,8 +33,19 @@ export function curriculumDigest(): string {
     .join("\n");
 }
 
+/**
+ * 解析プロンプト。カリキュラム52件を畳んだ結果は毎回同じなので、一度だけ組み立てる。
+ *
+ * ここが**バイト単位で毎回同じ**であることが、下のプロンプトキャッシュの前提。
+ * 日付や乱数を混ぜると、キャッシュが一度も当たらないまま書き込み料金だけ払うことになる。
+ */
+let renderedPrompt: string | undefined;
+
 export function photoAnalysisPrompt(): string {
-  return renderPrompt(getPrompt("photo_analysis"), { curriculum_digest: curriculumDigest() });
+  renderedPrompt ??= renderPrompt(getPrompt("photo_analysis"), {
+    curriculum_digest: curriculumDigest(),
+  });
+  return renderedPrompt;
 }
 
 /**
@@ -86,17 +97,39 @@ export function toDetectedTopicPayload(
   });
 }
 
+/**
+ * systemプロンプトのキャッシュ保持時間。
+ *
+ * 写真解析はセッション開始時に1回だけ走るので、既定の5分では次の解析が来る前に
+ * 期限切れになりやすい。切れたまま呼び続けると、書き込み割増(1.25倍)だけを
+ * 毎回払うことになって**かえって高くつく**。
+ *
+ * 1時間だと書き込みは2倍になるが、損益分岐は「1時間に3回」まで下がる。
+ * 解析が1時間に3回も来ないうちは "off" のほうが安い。
+ */
+export type PromptCacheTtl = "5m" | "1h" | "off";
+
 export type AnthropicAnalyzerOptions = {
   apiKey: string;
   model: string;
   baseUrl?: string;
   fetchImpl?: typeof fetch;
+  /** 既定は "1h"。 */
+  promptCache?: PromptCacheTtl;
 };
+
+/** systemブロックに付けるキャッシュ指定。5分はttlを省略した形が既定値。 */
+function cacheControlFor(ttl: PromptCacheTtl): Record<string, unknown> {
+  if (ttl === "off") return {};
+  if (ttl === "1h") return { cache_control: { type: "ephemeral", ttl: "1h" } };
+  return { cache_control: { type: "ephemeral" } };
+}
 
 /** Anthropic Messages API を叩くVision解析器。 */
 export function createAnthropicAnalyzer(options: AnthropicAnalyzerOptions): PhotoAnalyzer {
   const doFetch = options.fetchImpl ?? fetch;
   const baseUrl = options.baseUrl ?? "https://api.anthropic.com";
+  const promptCache = options.promptCache ?? "1h";
 
   return {
     async analyze({ image, contentType }) {
@@ -110,7 +143,16 @@ export function createAnthropicAnalyzer(options: AnthropicAnalyzerOptions): Phot
         body: JSON.stringify({
           model: options.model,
           max_tokens: 1500,
-          system: photoAnalysisPrompt(),
+          // キャッシュはプレフィックス一致なので、動かない側(system)を先に置き、
+          // 毎回変わる側(写真)はこのブロックより後ろ = messages に置く。
+          // ここに写真の要約や日時を混ぜた瞬間にキャッシュは当たらなくなる。
+          system: [
+            {
+              type: "text",
+              text: photoAnalysisPrompt(),
+              ...cacheControlFor(promptCache),
+            },
+          ],
           messages: [
             {
               role: "user",
@@ -130,7 +172,29 @@ export function createAnthropicAnalyzer(options: AnthropicAnalyzerOptions): Phot
         throw new Error(`vision APIが失敗しました: ${response.status}`);
       }
 
-      const payload = (await response.json()) as { content?: { type: string; text?: string }[] };
+      const payload = (await response.json()) as {
+        content?: { type: string; text?: string }[];
+        usage?: {
+          input_tokens?: number;
+          output_tokens?: number;
+          cache_creation_input_tokens?: number;
+          cache_read_input_tokens?: number;
+        };
+      };
+
+      // キャッシュが当たっているかは、この数字でしか分からない。
+      // cache_read が0のまま増えないなら、systemプロンプトが毎回変わっている。
+      const usage = payload.usage;
+      if (usage) {
+        console.log(
+          `[photo-analysis] cache=${promptCache}` +
+            ` in=${usage.input_tokens ?? 0}` +
+            ` cache_write=${usage.cache_creation_input_tokens ?? 0}` +
+            ` cache_read=${usage.cache_read_input_tokens ?? 0}` +
+            ` out=${usage.output_tokens ?? 0}`,
+        );
+      }
+
       const text = payload.content?.find((part) => part.type === "text")?.text ?? "";
       return photoAnalysisSchema.parse(extractJson(text));
     },
