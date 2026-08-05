@@ -88,9 +88,23 @@ App Store Connect 側**という点だけ注意。
 証明書とプロビジョニングプロファイルを手で作る必要はない。
 `codemagic.yaml` の `environment.ios_signing` を見て、
 **scripts が始まる前に Codemagic の組み込みステップ**が
-このAPIキー経由で取得し、キーチェーンとXcodeプロジェクトに適用する
-(`/Users/builder/export_options.plist` もそこで作られる)。
-`codemagic.yaml` の scripts に署名のステップは無い。
+このAPIキー経由で取得し、キーチェーンにインストールする。
+
+ただし**最後の「Xcodeプロジェクトへの適用」だけは当てにできない**。
+組み込みステップの `xcode-project use-profiles` は
+クローン先ルートからの `**/*.xcodeproj` でプロジェクトを探すが、
+このリポジトリは iOS プロジェクトが `apps/mobile/ios` にあるため、
+見つけられずに何も言わず素通りすることがある。
+その結果 `$HOME/export_options.plist` が作られず、
+最後の `flutter build ipa` が
+`"/Users/builder/export_options.plist" property list does not exist` で落ちる。
+
+そのため `codemagic.yaml` の scripts に
+**`署名をXcodeプロジェクトに適用し export_options.plist を作る`** を置き、
+`--project ios/Runner.xcodeproj` とパスを明示して自分で叩いている。
+`use-profiles` は冪等なので、組み込みステップが済ませていても実害はない。
+**証明書とプロファイルの取得そのものは引き続き組み込みステップの仕事**で、
+scripts 側では一切やっていない(理由は下の囲み)。
 
 ### 手で作らないこと
 
@@ -222,6 +236,14 @@ golden の正となる実行は GitHub Actions(ubuntu-latest)。
   → App Store Connect のAPIキーの権限が App Manager 未満。
 - **`No matching profiles found for bundle identifier "..." and distribution type "app_store"`**
   → 下の「プロファイルが見つからないとき」を参照。
+- **`"/Users/builder/export_options.plist" property list does not exist`**
+  → 組み込みの署名ステップが `apps/mobile/ios/Runner.xcodeproj` を見つけられず、
+    plist を作らないまま通った状態。scripts の
+    `署名をXcodeプロジェクトに適用し export_options.plist を作る` が
+    これを埋める(「2. iOS の署名」参照)。
+    そのステップが `プロビジョニングプロファイルが1つもダウンロードされていない`
+    で落ちるなら、原因は plist ではなく取得側 —— 下の
+    「プロファイルが見つからないとき」へ。
 - **AABがPlayに弾かれる(`not signed`)**
   → keystore の参照名が `ai-sensei-upload-keystore` と一致していない。
     一致しないと `key.properties` が書けず、debug署名にフォールバックする。
