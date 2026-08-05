@@ -23,6 +23,12 @@ pnpm --filter @ai-sensei/agent download-files   # Silero VADのモデルを取�
 pnpm --filter @ai-sensei/agent dev              # ルームを待ち受ける
 ```
 
+Dockerで動かすなら、リポジトリのルートで `docker compose --profile agent up`
+([`docs/local-dev.md`](../../docs/local-dev.md))。既定のプロファイルに入れていないのは、
+会話に要る鍵(LiveKit / Deepgram / ElevenLabs)が無いと起動時に落ちるため。
+コンテナでは `API_BASE_URL` を `http://api:8787` に上書きしている
+(`.env` の `localhost` はコンテナ自身を指してしまう)。
+
 `backend/api` が `/v1/sessions` でルームを作ると、このワーカーがジョブを受け取る。
 
 ## 会話文脈はトークン経由で来る
