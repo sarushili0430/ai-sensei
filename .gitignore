@@ -4,6 +4,7 @@
 !.env.example
 *.pem
 .dev.vars
+sshkeys
 
 # --- node ---
 node_modules/
