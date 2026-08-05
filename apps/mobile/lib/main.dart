@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'src/api/device_id.dart';
 import 'src/features/monetization/data/purchases_repository.dart';
 import 'src/features/notifications/application/push_controller.dart';
+import 'src/features/notifications/presentation/push_registration_gate.dart';
 import 'src/l10n/strings.dart';
 import 'src/routing/app_router.dart';
 import 'src/theme/app_theme.dart';
@@ -66,18 +67,23 @@ class AiSenseiApp extends ConsumerWidget {
       });
     }
 
-    return MaterialApp.router(
-      title: 'ai-sensei',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.light(),
-      routerConfig: router,
-      supportedLocales: AppStrings.supportedLocales,
-      localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
-        AppStringsDelegate(),
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
+    // 端末がOneSignalに登録できたことの確認ダイアログ(デバッグビルドのみ)。
+    // 画面は足さないので、包んでも画面遷移には影響しない。
+    return PushRegistrationGate(
+      navigatorKey: router.routerDelegate.navigatorKey,
+      child: MaterialApp.router(
+        title: 'ai-sensei',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light(),
+        routerConfig: router,
+        supportedLocales: AppStrings.supportedLocales,
+        localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+          AppStringsDelegate(),
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+      ),
     );
   }
 }

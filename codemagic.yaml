@@ -243,7 +243,7 @@ workflows:
             --dart-define=REVENUECAT_SDK_KEY="${REVENUECAT_SDK_KEY:-}" \
             --dart-define=REVENUECAT_ENTITLEMENT_ID="${REVENUECAT_ENTITLEMENT_ID:-premium}" \
             --dart-define=REVENUECAT_OFFERING_ID="${REVENUECAT_OFFERING_ID:-}" \
-            --dart-define=ONESIGNAL_APP_ID="${ONESIGNAL_APP_ID:-}" \
+            --dart-define=ONESIGNAL_APP_ID="${ONESIGNAL_APP_ID:-47044c5e-15eb-49ec-bdd4-e0ed2219a799}" \
             --dart-define=PRIVACY_POLICY_URL="${PRIVACY_POLICY_URL:-}" \
             --dart-define=TERMS_URL="${TERMS_URL:-}" \
             --dart-define=SUPPORT_EMAIL="${SUPPORT_EMAIL:-}" \
@@ -339,7 +339,7 @@ workflows:
             --dart-define=REVENUECAT_SDK_KEY="${REVENUECAT_SDK_KEY:-}" \
             --dart-define=REVENUECAT_ENTITLEMENT_ID="${REVENUECAT_ENTITLEMENT_ID:-premium}" \
             --dart-define=REVENUECAT_OFFERING_ID="${REVENUECAT_OFFERING_ID:-}" \
-            --dart-define=ONESIGNAL_APP_ID="${ONESIGNAL_APP_ID:-}" \
+            --dart-define=ONESIGNAL_APP_ID="${ONESIGNAL_APP_ID:-47044c5e-15eb-49ec-bdd4-e0ed2219a799}" \
             --dart-define=PRIVACY_POLICY_URL="${PRIVACY_POLICY_URL:-}" \
             --dart-define=TERMS_URL="${TERMS_URL:-}" \
             --dart-define=SUPPORT_EMAIL="${SUPPORT_EMAIL:-}"

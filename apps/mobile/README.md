@@ -132,7 +132,8 @@ fvm flutter test
 
 - カメラのプレビュー画面(いまは `image_picker` でOSのカメラを呼ぶだけ)
 - `resultMissing` のときにカルテを取り直す導線(いまは祝福で止まる)
-- OneSignal / Sentry の初期化(鍵が入ってから)
+- Sentry の初期化(鍵が入ってから)
+- iOS: APNs Auth Key を OneSignal に登録する(入れるまで実機に一通も届かない)
 - 会話中の字幕をLiveKitのデータチャネルから受け取る配線
 - 効果音・ハプティクス(いまは押下時の `HapticFeedback.lightImpact` のみ)
 - Riveによるキャラのステートマシン(v1.1)

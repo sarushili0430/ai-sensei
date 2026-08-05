@@ -6,6 +6,13 @@ import 'package:onesignal_flutter/onesignal_flutter.dart';
 /// App ID は公開値(受信端末を特定するだけの識別子)。
 /// REST API Key は backend/api 側にあり、ここには置かない。
 abstract final class PushConfig {
+  /// OneSignal ダッシュボードの App ID(`47044c5e-…`)。
+  ///
+  /// **ここに既定値を持たせてはいけない。** 値が入ると `isConfigured` が
+  /// テストでも true になり、カルテ画面の通知トグルが出て golden が動く。
+  /// 実ビルドに値を届けるのは呼び出し側の役目:
+  ///   - 手元 … `dart_defines.env`(`dart_defines.example.env` に記載)
+  ///   - CI  … `codemagic.yaml` の `--dart-define=ONESIGNAL_APP_ID=...`
   static const String appId = String.fromEnvironment('ONESIGNAL_APP_ID');
 
   /// App ID の無いビルド(`flutter test` / CI / 渡し忘れ)では通知ごと無効にする。
@@ -43,6 +50,29 @@ class PushRepository {
     if (!PushConfig.isConfigured) return false;
     return OneSignal.Notifications.requestPermission(true);
   }
+
+  /// いま端末に割り当たっている購読ID。まだなら null。
+  String? get pushSubscriptionId =>
+      PushConfig.isConfigured ? OneSignal.User.pushSubscription.id : null;
+
+  void addPushSubscriptionObserver(OnPushSubscriptionChangeObserver observer) {
+    if (!PushConfig.isConfigured) return;
+    OneSignal.User.pushSubscription.addObserver(observer);
+  }
+
+  void removePushSubscriptionObserver(OnPushSubscriptionChangeObserver observer) {
+    if (!PushConfig.isConfigured) return;
+    OneSignal.User.pushSubscription.removeObserver(observer);
+  }
+
+  /// サーバから本物の購読IDが降りてきたか。
+  ///
+  /// SDKは初期化直後に `local-...` という仮のIDを入れる。これは
+  /// 「まだ登録できていない」状態なので、登録済みと数えてはいけない。
+  static bool isRegistered(String? subscriptionId) =>
+      subscriptionId != null &&
+      subscriptionId.isNotEmpty &&
+      !subscriptionId.startsWith('local-');
 
   /// 通知タップの着地先を受け取る。
   ///

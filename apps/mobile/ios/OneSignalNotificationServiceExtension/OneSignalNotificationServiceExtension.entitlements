@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Runner 側(ios/Runner/Runner.entitlements)と**完全に同じ文字列**であること。
+	     App Group は本体のバンドルIDから作る決まりなので、
+	     拡張のバンドルID(.OneSignalNotificationServiceExtension)は入れない。 -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.jp.co.aiSensei.onesignal</string>
+	</array>
+</dict>
+</plist>
