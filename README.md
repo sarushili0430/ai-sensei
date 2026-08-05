@@ -10,6 +10,8 @@
 - 学習科学の背景: 自己説明効果(self-explanation effect)とプロテジェ効果(teachable agent)
 - [RevenueCat Shipaton 2026](https://shipaton.revenuecat.com/) 提出プロジェクト(Next Gen Award 併願のため初日からpublic + MIT)
 
+何を作っていて何を作らないかの合意は [`docs/inception-deck.md`](docs/inception-deck.md) にまとめてあります
+(エレベーターピッチ・やらないことリスト・トレードオフスライダー)。スプリントの入口で読んでください。
 企画・設計の一次情報は [`docs/handoff_to_opus.md`](docs/handoff_to_opus.md) にあります。
 画面設計は [`docs/wireframe_v0.html`](docs/wireframe_v0.html)、ビジュアル方針は
 [`docs/design_direction_v0.html`](docs/design_direction_v0.html) を参照してください。
