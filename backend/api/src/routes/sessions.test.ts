@@ -452,6 +452,50 @@ describe("PATCH /v1/sessions/{id}/topics", () => {
     expect(response.status).toBe(404);
   });
 
+  /**
+   * レビュー指摘: セッションは /complete が来るまで open のまま。
+   * PATCHの時刻を基準にトークンを出すと、放置した部屋に /topics を投げるだけで
+   * 会話時間を何度でも取り直せてしまう(無料枠の数え方も迂回できる)。
+   */
+  it("会話の持ち時間は、単元を選んでいた時間のぶん短くなる", async () => {
+    const createdAt = new Date("2026-08-03T13:24:07.000Z");
+    services.now = () => createdAt;
+    const session = await startSession();
+    expect(session.limits.max_seconds).toBe(300);
+
+    // 単元を確認するのに60秒かけた
+    const confirmedAt = new Date(createdAt.getTime() + 60_000);
+    services.now = () => confirmedAt;
+
+    const response = await patchTopics(session.session_id, {
+      topic_ids: ["M2-ZUKEI-ENCHOKU"],
+    });
+    const body = (await response.json()) as CreateSessionResponse;
+    expect(body.limits.max_seconds).toBe(240);
+
+    // トークンの有効期限も、作成時に出したものより延びない
+    const claims = await verifyJwt(body.livekit.token, bindings.LIVEKIT_API_SECRET);
+    const original = await verifyJwt(session.livekit.token, bindings.LIVEKIT_API_SECRET);
+    expect(Number(claims?.["exp"])).toBe(Number(original?.["exp"]));
+    expect((JSON.parse(String(claims?.["metadata"])) as { max_seconds: number }).max_seconds).toBe(
+      240,
+    );
+  });
+
+  it("枠を使い切った開きっぱなしのセッションでは始められない", async () => {
+    const createdAt = new Date("2026-08-03T13:24:07.000Z");
+    services.now = () => createdAt;
+    const session = await startSession();
+
+    // 会話をせずに放置して、翌日に単元だけ直しに来た
+    services.now = () => new Date(createdAt.getTime() + 24 * 60 * 60 * 1000);
+
+    const response = await patchTopics(session.session_id, {
+      topic_ids: ["M2-ZUKEI-ENCHOKU"],
+    });
+    expect(response.status).toBe(404);
+  });
+
   it("Premiumは会話時間の上限が長いまま", async () => {
     await services.repository.ensureUser(testDeviceId, new Date());
     await services.repository.setPremium({

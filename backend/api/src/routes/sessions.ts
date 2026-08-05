@@ -233,6 +233,14 @@ sessionsRoute.patch("/:sessionId/topics", async (c) => {
   const premium = isPremiumNow(user, at);
   const maxSeconds = premium ? limits.premiumSessionMaxSeconds : limits.freeSessionMaxSeconds;
 
+  // 会話の持ち時間は**セッションを作った時刻**が基準。ここをPATCHの時刻から
+  // 数え直すと、セッションは /complete が来るまで open のままなので、
+  // 会話を終えずに放置した部屋へ何時間後でも /topics を投げるだけで、
+  // 5分(Premiumは15分)の枠を何度でも取り直せてしまう。
+  const remainingSeconds = remainingSessionSeconds(session.created_at, at, maxSeconds);
+  // 枠を使い切ったセッションは、単元を直しても始められない。
+  if (remainingSeconds <= 0) throw apiError("session_not_found", { locale });
+
   const context: SessionContext = session.context ?? {
     summary: "",
     visible_work: [],
@@ -252,12 +260,12 @@ sessionsRoute.patch("/:sessionId/topics", async (c) => {
     apiSecret: c.env.LIVEKIT_API_SECRET,
     identity: deviceId,
     room: sessionId,
-    ttlSeconds: maxSeconds + 120,
+    ttlSeconds: remainingSeconds + 120,
     metadata: buildSessionMetadata({
       sessionId,
       locale,
       kind: session.kind,
-      maxSeconds,
+      maxSeconds: remainingSeconds,
       context,
       allowed,
       isPremium: user.is_premium,
@@ -274,7 +282,9 @@ sessionsRoute.patch("/:sessionId/topics", async (c) => {
     livekit: { url: c.env.LIVEKIT_URL, token, room: sessionId },
     detected_topics: buildDetectedTopics(allowed, context),
     limits: {
-      max_seconds: maxSeconds,
+      // 単元を選んでいた時間のぶんは短くなる。アプリのカウントダウンと
+      // エージェントの上限を、トークンの有効期限と揃える。
+      max_seconds: remainingSeconds,
       remaining_sessions_today: premium
         ? null
         : Math.max(0, limits.freeSessionsPerDay - sessionsToday),
@@ -283,6 +293,20 @@ sessionsRoute.patch("/:sessionId/topics", async (c) => {
 
   return c.json(response, 200);
 });
+
+/**
+ * セッションに残っている会話時間(秒)。
+ *
+ * 押さえた枠は作成時から動かないので、経過ぶんを引いて返す。
+ * 作成時刻が読めない行は、枠が残っていないものとして扱う(0を返す)。
+ */
+function remainingSessionSeconds(createdAt: string, now: Date, maxSeconds: number): number {
+  const startedAt = Date.parse(createdAt);
+  if (!Number.isFinite(startedAt)) return 0;
+  // 時計が巻き戻っても、上限より長い枠は出さない。
+  const elapsed = Math.max(0, Math.floor((now.getTime() - startedAt) / 1000));
+  return maxSeconds - elapsed;
+}
 
 /** エージェントがトークンから読む会話文脈。 */
 function buildSessionMetadata(input: {
