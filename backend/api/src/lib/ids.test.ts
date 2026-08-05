@@ -41,7 +41,8 @@ describe("newId", () => {
         if (this !== crypto) {
           throw new TypeError("Illegal invocation: function called with incorrect `this`");
         }
-        return originalGetRandomValues.call(crypto, array);
+        // 見たいのは呼び方(レシーバ)だけなので、中身は本物の乱数でなくていい
+        return array.fill(1);
       },
     });
 
