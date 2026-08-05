@@ -21,6 +21,12 @@ abstract final class RevenueCatConfig {
   /// App Store Connect / Play Console に商品を作る前でも購入フローを
   /// 最後まで通せる RevenueCat 側の疑似ストア。**iOS/Android で同じ値**を使う。
   /// プラットフォーム別の鍵が入っていればそちらが優先される。
+  ///
+  /// **debug ビルド専用。** ネイティブSDKが release 構成でのこの鍵を拒否する
+  /// ("Test Store API key used in Release build")ため、TestFlight や
+  /// ストア配布のビルドでは使えない。[apiKeyFor] が debug 以外でこの鍵を
+  /// 無視するので、release に渡ってしまっても起動時エラーにはならず
+  /// 「鍵なし = 課金機能オフ」に落ちる。
   static const String testStoreKey = String.fromEnvironment('REVENUECAT_SDK_KEY');
 
   /// ダッシュボードの Entitlement identifier。
@@ -41,7 +47,10 @@ abstract final class RevenueCatConfig {
       TargetPlatform.android => androidKey,
       _ => iosKey,
     };
-    return platformKey.isNotEmpty ? platformKey : testStoreKey;
+    if (platformKey.isNotEmpty) return platformKey;
+    // Test Store は debug 構成でしか動かない(SDKが release では configure を
+    // 拒否する)。profile も iOS 側は Release 構成の複製なので debug に限る。
+    return kDebugMode ? testStoreKey : '';
   }
 
   static String get apiKey => apiKeyFor(defaultTargetPlatform);

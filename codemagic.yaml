@@ -35,8 +35,10 @@ definitions:
 
         # RevenueCat の鍵は、そのworkflowが作る成果物のプラットフォームのものだけ見る。
         # ストアに商品を作る前は appl_ / goog_ の鍵がまだ無いので、
-        # Test Store の鍵(REVENUECAT_SDK_KEY)でも通す —— アプリ側も
-        # プラットフォーム別の鍵が空なら Test Store の鍵に落ちる作りになっている
+        # Test Store の鍵(REVENUECAT_SDK_KEY)でも通す。ただし Test Store は
+        # debug ビルド専用(SDKが release では configure を拒否する)なので、
+        # ここでビルドする release 成果物ではアプリ側が鍵を無視し、
+        # 課金機能ごと無効になる
         # (lib/src/features/monetization/data/revenuecat_config.dart の apiKeyFor)。
         case "${TARGET_PLATFORM:-}" in
           ios)     platform_key_name=REVENUECAT_IOS_PUBLIC_SDK_KEY;     platform_key="${REVENUECAT_IOS_PUBLIC_SDK_KEY:-}" ;;
@@ -66,8 +68,10 @@ definitions:
         fi
 
         if [ -z "$platform_key" ]; then
-          echo "警告: ${platform_key_name} が空。Test Store の鍵で配布する。"
-          echo "実売のビルドではない(アプリ内にもその旨が出る)。"
+          echo "警告: ${platform_key_name} が空。Test Store の鍵は release ビルドでは"
+          echo "使えないため、この成果物では課金機能ごと無効になる。"
+          echo "ペイウォールで購入を試すには、ストアに商品を作って"
+          echo "${platform_key_name} を変数グループに入れること。"
         fi
         echo "dart-define 用の環境変数は揃っている"
 

@@ -44,9 +44,11 @@ GUI で設定した「Build for platforms」「Run build on」などは、以降
 **ストアに商品を作る前でも配布できる。** `appl_` / `goog_` の鍵が発行できるのは
 App Store Connect / Play Console に商品を作ったあとなので、それまでは
 Test Store の鍵(`REVENUECAT_SDK_KEY`)だけ入れておけばビルドは通る。
-アプリ側もプラットフォーム別の鍵が空なら Test Store の鍵に落ちる
-(`revenuecat_config.dart` の `apiKeyFor`)。そのビルドは実売ではないので、
-1ステップ目のログに警告が出る。
+**ただし Test Store は debug ビルド専用**(SDKが release では configure を
+拒否する)。Codemagic が作るのは release 成果物なので、アプリ側が鍵を
+無視して**課金機能ごと無効**になる(`revenuecat_config.dart` の `apiKeyFor`)。
+1ステップ目のログにその旨の警告が出る。TestFlight でペイウォールの購入まで
+試したければ、ストアに商品を作って `appl_` の鍵を入れるところまでが必要。
 
 **グループ名は `mobile-dart-defines` と完全一致させ、アプリに紐づけること。**
 どちらかを外すと変数が渡らず、ビルドの1ステップ目
