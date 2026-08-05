@@ -278,7 +278,7 @@ workflows:
               print("NG: " + p)
           print("")
           print("Developer Portal (developer.apple.com) 側の設定が足りていない。")
-          print("docs/ci/store-setup.md の 1-2 のとおりに直すこと:")
+          print("docs/ci/store-setup.md の 1-2-1 のとおりに直すこと:")
           print("  1. Identifiers > App Groups に %s を作る" % ", ".join(sorted(wanted)))
           print("  2. App ID %s の Capability で App Groups を有効にし、上のグループを割り当てる" % app_id)
           print("  3. App ID %s を Explicit で作り、同じく App Groups を割り当てる" % ext_id)
