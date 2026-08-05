@@ -229,16 +229,29 @@ workflows:
           # 取得した証明書をキーチェーンに入れる
           keychain add-certificates
 
-          profiles_dir="$HOME/Library/MobileDevice/Provisioning Profiles"
-          if ! ls "$profiles_dir"/*.mobileprovision >/dev/null 2>&1; then
+          # プロファイルの保存先は cli-tools のバージョンで変わる
+          # (いまは Xcode 側のディレクトリに入る)。use-profiles が既定で見るのと
+          # **同じ2か所**をこちらも見ること。片方だけ見ていると、
+          # 取得は成功しているのに「1つもダウンロードされていない」と誤診する。
+          profile_dirs=(
+            "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+            "$HOME/Library/MobileDevice/Provisioning Profiles"
+          )
+          found=0
+          for d in "${profile_dirs[@]}"; do
+            if ls "$d"/*.mobileprovision >/dev/null 2>&1; then
+              found=1
+              echo "取得済みプロファイル ($d):"
+              ls -1 "$d"
+            fi
+          done
+          if [ "$found" -eq 0 ]; then
             echo "プロビジョニングプロファイルが1つもダウンロードされていない。"
             echo "よくある原因:"
             echo "  - Developer Portal に ${BUNDLE_ID} のIdentifierが無い"
             echo "  - App Store Connect APIキー(integrations の 'codemagic')の権限が App Manager 未満"
             exit 1
           fi
-          echo "取得済みプロファイル:"
-          ls -1 "$profiles_dir"
 
           # プロファイルの中身まで検める。
           # Notification Service Extension が入って以降、「1枚でもあればOK」では
@@ -247,10 +260,11 @@ workflows:
           #   Provisioning profile "..." doesn't include the App Groups capability
           #   Signing for "OneSignalNotificationServiceExtension" requires a development team
           # が出る。どちらも直すのは Developer Portal 側なので、先に落とす。
-          python3 - "$profiles_dir" "$BUNDLE_ID" "$EXTENSION_BUNDLE_ID" <<'PY'
+          python3 - "$BUNDLE_ID" "$EXTENSION_BUNDLE_ID" "${profile_dirs[@]}" <<'PY'
           import glob, os, plistlib, subprocess, sys
 
-          profiles_dir, app_id, ext_id = sys.argv[1:4]
+          app_id, ext_id = sys.argv[1:3]
+          profile_dirs = sys.argv[3:]
 
           # 要求している App Group は entitlements ファイルが正。
           # (NSE 側も同じ文字列を持つ決まりなので、本体のぶんだけ見れば足りる)
@@ -261,7 +275,10 @@ workflows:
           # 名前と App Group だけでは「Portal で消したはずのプロファイルが
           # また降ってきた」ときに何も分からないので、素性まで控えておく。
           profiles = {}
-          for path in sorted(glob.glob(os.path.join(profiles_dir, "*.mobileprovision"))):
+          paths = []
+          for d in profile_dirs:
+              paths += glob.glob(os.path.join(d, "*.mobileprovision"))
+          for path in sorted(paths):
               raw = subprocess.run(["security", "cms", "-D", "-i", path],
                                    capture_output=True).stdout
               if not raw:
