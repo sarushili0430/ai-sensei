@@ -29,6 +29,22 @@ function post(form: FormData, headers: Record<string, string> = {}) {
   );
 }
 
+function patchTopics(sessionId: string, body: unknown, headers: Record<string, string> = {}) {
+  return app.request(
+    `/v1/sessions/${sessionId}/topics`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(body),
+      headers: {
+        "content-type": "application/json",
+        "x-device-id": testDeviceId,
+        ...headers,
+      },
+    },
+    bindings,
+  );
+}
+
 describe("POST /v1/sessions", () => {
   it("写真から単元を検出し、LiveKitトークンを返す", async () => {
     const response = await post(createSessionForm());
@@ -337,5 +353,120 @@ describe("無料枠の押さえ方", () => {
     await post(createSessionForm());
     // 解析中にはもう行がある = 同時に来た2本目は無料枠に弾かれる
     expect(sessionsDuringAnalysis).toBe(1);
+  });
+});
+
+/**
+ * 不具合報告: 写真 → 分野選択 → 会話開始 で「今日のセッションは終わり」と出た。
+ * 単元を確認しただけでセッションを作り直していたため、無料枠を2回消費していた。
+ */
+describe("PATCH /v1/sessions/{id}/topics", () => {
+  async function startSession(): Promise<CreateSessionResponse> {
+    const response = await post(createSessionForm());
+    expect(response.status).toBe(201);
+    return (await response.json()) as CreateSessionResponse;
+  }
+
+  it("単元を絞っても、今日の無料枠を二重に消費しない", async () => {
+    const session = await startSession();
+
+    const response = await patchTopics(session.session_id, {
+      locale: "ja",
+      topic_ids: ["M2-ZUKEI-ENCHOKU"],
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as CreateSessionResponse;
+    expect(createSessionResponseSchema.safeParse(body).success).toBe(true);
+    // 同じセッションのまま。行が増えていなければ枠も増えない
+    expect(body.session_id).toBe(session.session_id);
+    expect(services.repository.sessions.size).toBe(1);
+    expect(body.limits.remaining_sessions_today).toBe(0);
+  });
+
+  it("外した単元は許可リストから消え、トークンも出し直す", async () => {
+    const session = await startSession();
+
+    const response = await patchTopics(session.session_id, {
+      topic_ids: ["M1-NIJI-HANBETSU"],
+    });
+    const body = (await response.json()) as CreateSessionResponse;
+
+    expect(body.detected_topics.map((topic) => topic.topic_id)).toEqual(["M1-NIJI-HANBETSU"]);
+    expect(body.livekit.token).not.toBe(session.livekit.token);
+
+    const claims = await verifyJwt(body.livekit.token, bindings.LIVEKIT_API_SECRET);
+    const metadata = JSON.parse(String(claims?.["metadata"])) as {
+      allowed_topic_ids: string[];
+      photo_summary: string;
+    };
+    expect(metadata.allowed_topic_ids).not.toContain("M2-ZUKEI-ENCHOKU");
+    // 写真をもう一度解析しなくても、会話の文脈は残っている
+    expect(metadata.photo_summary).toBe(analysisFixture.summary);
+  });
+
+  it("解析時の確信度をそのまま返す(チップの見た目が変わらない)", async () => {
+    const session = await startSession();
+
+    const response = await patchTopics(session.session_id, {
+      topic_ids: ["M2-ZUKEI-ENCHOKU"],
+    });
+    const body = (await response.json()) as CreateSessionResponse;
+    expect(body.detected_topics[0]?.confidence).toBe(0.92);
+  });
+
+  it("検出していない単元には差し替えられない", async () => {
+    const session = await startSession();
+
+    const response = await patchTopics(session.session_id, {
+      topic_ids: ["M1-NIJI-GURAFU"],
+    });
+    expect(response.status).toBe(422);
+    expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+      "photo_unreadable",
+    );
+  });
+
+  it("他人のセッションは触れない", async () => {
+    const session = await startSession();
+
+    const response = await patchTopics(
+      session.session_id,
+      { topic_ids: ["M2-ZUKEI-ENCHOKU"] },
+      { "x-device-id": "99999999-8888-7777-6666-555555555555" },
+    );
+    expect(response.status).toBe(404);
+  });
+
+  it("終わったセッションは触れない", async () => {
+    const session = await startSession();
+    await services.repository.completeSession({
+      sessionId: session.session_id,
+      completedAt: new Date().toISOString(),
+      durationSeconds: 300,
+    });
+
+    const response = await patchTopics(session.session_id, {
+      topic_ids: ["M2-ZUKEI-ENCHOKU"],
+    });
+    expect(response.status).toBe(404);
+  });
+
+  it("Premiumは会話時間の上限が長いまま", async () => {
+    await services.repository.ensureUser(testDeviceId, new Date());
+    await services.repository.setPremium({
+      deviceId: testDeviceId,
+      isPremium: true,
+      expiresAt: null,
+      rcAppUserId: "rc_1",
+    });
+    const session = await startSession();
+
+    const response = await patchTopics(session.session_id, {
+      topic_ids: ["M2-ZUKEI-ENCHOKU"],
+    });
+    const body = (await response.json()) as CreateSessionResponse;
+    expect(body.limits.max_seconds).toBe(900);
+    expect(body.limits.remaining_sessions_today).toBeNull();
   });
 });

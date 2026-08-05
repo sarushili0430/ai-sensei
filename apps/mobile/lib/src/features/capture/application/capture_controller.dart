@@ -110,7 +110,11 @@ class CaptureController extends _$CaptureController {
   ///
   /// チップを外しただけでは、サーバ側のセッションとLiveKitトークンは
   /// 解析時の単元のままになる。**外した単元を後輩が聞けてしまう**ので、
-  /// 選択が変わっていればセッションを作り直す。
+  /// 選択が変わっていればサーバへ反映する。
+  ///
+  /// ここでセッションを作り直してはいけない。写真の解析時点で今日の1回は
+  /// 押さえてあるので、作り直すと2回目扱いになり、会話を始める瞬間に
+  /// 「今日のセッションはここまで」と返ってしまう。
   Future<SessionStart?> confirmAndStart({String locale = 'ja'}) async {
     final SessionStart? current = state.session;
     if (current == null) return null;
@@ -118,10 +122,10 @@ class CaptureController extends _$CaptureController {
 
     state = state.copyWith(isSubmitting: true, clearError: true);
     try {
-      final SessionStart session = await ref.read(apiClientProvider).createSession(
-            photo: state.photo,
-            locale: locale,
+      final SessionStart session = await ref.read(apiClientProvider).updateSessionTopics(
+            sessionId: current.sessionId,
             topicIds: state.selectedTopicIds,
+            locale: locale,
           );
       state = state.copyWith(
         session: session,

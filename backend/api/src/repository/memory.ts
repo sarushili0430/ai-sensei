@@ -3,6 +3,7 @@ import type {
   KarteRecord,
   Repository,
   ReviewScheduleRecord,
+  SessionContext,
   SessionRecord,
   UserRecord,
 } from "./types.ts";
@@ -66,6 +67,7 @@ export class MemoryRepository implements Repository {
     sessionId: string;
     topicIds: string[];
     photoKey: string | null;
+    context: SessionContext | null;
   }): Promise<void> {
     const session = this.sessions.get(input.sessionId);
     if (!session) return;
@@ -73,6 +75,7 @@ export class MemoryRepository implements Repository {
       ...session,
       topic_ids: input.topicIds,
       photo_key: input.photoKey,
+      context: input.context,
     });
   }
 

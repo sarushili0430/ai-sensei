@@ -193,6 +193,9 @@ workers/api (Cloudflare Workers + Hono)
   │    body: 画像 / 処理: Vision LLMで内容抽出+単元判定+質問方針の生成 → ガード照合
   │    → LiveKitルーム作成+エージェント起動(写真の解釈・topic許可リスト・質問方針をメタデータで渡す)
   │    → res: { session_id, livekit_token, detected_topics[] }
+  ├ PATCH /v1/sessions/{id}/topics
+  │    body: { topic_ids[] } / 処理: チップUIで外した単元を反映してトークンを出し直す
+  │    ※セッションは作り直さない(作り直すと無料枠を二重に消費してしまう)
   ├ POST /v1/sessions/{id}/complete   ※agentが呼ぶ
   │    body: transcript(messages[]) + カルテJSON / 処理: D1保存 → OneSignalで1日/3日/7日後を予約
   ├ POST /v1/webhooks/revenuecat      (entitlement同期)
