@@ -316,6 +316,10 @@ Team ID は Apple Developer の右上、またはメンバーシップのペー�
 `ITSAppUsesNonExemptEncryption` を入れてあるので、
 アップロードのたびに輸出コンプライアンスを聞かれることはない。
 
+**ベータ版アプリ情報**(説明・フィードバックメールアドレス・ベータ版App Review情報)に
+貼るテキストは [`docs/testflight.md`](../testflight.md) に用意してある。
+フィードバック先は `SUPPORT_EMAIL` と同じアドレスにすること。
+
 ---
 
 ## 2. Google
