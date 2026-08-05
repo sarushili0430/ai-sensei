@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -15,6 +16,16 @@ import 'routes.dart';
 
 part 'app_router.g.dart';
 
+/// ルートの Navigator。
+///
+/// どの画面にも属さないダイアログ(プッシュ登録の確認など)を、
+/// `MaterialApp.router` の外側からでも出せるようにするために公開している。
+/// `MaterialApp.router` の `builder` は Router の**上**に入るので、
+/// そこの context からは Navigator を辿れない。
+@Riverpod(keepAlive: true)
+GlobalKey<NavigatorState> rootNavigatorKey(Ref ref) =>
+    GlobalKey<NavigatorState>(debugLabel: 'root');
+
 /// 画面遷移(wireframe_v0.html の「画面遷移」に対応)。
 ///
 ///   00 → 01 → 02 → 03(会話) → 祝福 → カルテ
@@ -26,6 +37,7 @@ GoRouter appRouter(Ref ref) {
   final bool onboarded = ref.watch(onboardedProvider);
 
   return GoRouter(
+    navigatorKey: ref.watch(rootNavigatorKeyProvider),
     initialLocation: onboarded ? AppRoute.home.path : AppRoute.onboarding.path,
     routes: <RouteBase>[
       GoRoute(

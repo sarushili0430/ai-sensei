@@ -188,7 +188,8 @@ Apple Pay — いずれも未使用。
 
 ### 1-3-3. APNs Auth Key(プッシュを配線するときだけ)
 
-いまは OneSignal が未実装なので後回しでよい。
+アプリ側の OneSignal 初期化は入っている(`lib/src/features/notifications/`)。
+**この鍵を OneSignal に入れるまで、iOSには通知が一通も届かない。**
 
 **[developer.apple.com](https://developer.apple.com) > Certificates, Identifiers &
 Profiles > Keys > +** で、

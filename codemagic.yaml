@@ -204,6 +204,7 @@ workflows:
             --dart-define=REVENUECAT_SDK_KEY="${REVENUECAT_SDK_KEY:-}" \
             --dart-define=REVENUECAT_ENTITLEMENT_ID="${REVENUECAT_ENTITLEMENT_ID:-premium}" \
             --dart-define=REVENUECAT_OFFERING_ID="${REVENUECAT_OFFERING_ID:-}" \
+            --dart-define=ONESIGNAL_APP_ID="${ONESIGNAL_APP_ID:-47044c5e-15eb-49ec-bdd4-e0ed2219a799}" \
             --export-options-plist=/Users/builder/export_options.plist
 
     artifacts:
@@ -295,7 +296,8 @@ workflows:
             --dart-define=REVENUECAT_ANDROID_PUBLIC_SDK_KEY="${REVENUECAT_ANDROID_PUBLIC_SDK_KEY:-}" \
             --dart-define=REVENUECAT_SDK_KEY="${REVENUECAT_SDK_KEY:-}" \
             --dart-define=REVENUECAT_ENTITLEMENT_ID="${REVENUECAT_ENTITLEMENT_ID:-premium}" \
-            --dart-define=REVENUECAT_OFFERING_ID="${REVENUECAT_OFFERING_ID:-}"
+            --dart-define=REVENUECAT_OFFERING_ID="${REVENUECAT_OFFERING_ID:-}" \
+            --dart-define=ONESIGNAL_APP_ID="${ONESIGNAL_APP_ID:-47044c5e-15eb-49ec-bdd4-e0ed2219a799}"
 
     artifacts:
       - apps/mobile/build/app/outputs/bundle/release/*.aab

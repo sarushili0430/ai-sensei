@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 開発ビルド用。TestFlight / App Store 配布では Xcode が
+	     署名時に production へ差し替える。 -->
+	<key>aps-environment</key>
+	<string>development</string>
+	<!-- Notification Service Extension と共有する App Group。
+	     ここが NSE 側と1文字でも違うと、到達確認・バッジ・画像が
+	     エラーも出さずに黙って効かなくなる。 -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.jp.co.aiSensei.onesignal</string>
+	</array>
+</dict>
+</plist>
