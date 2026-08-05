@@ -29,6 +29,24 @@ class AppStrings {
             'While explaining, you find the gaps you did not know you had.',
       );
   String get onboardingCta => _pick('はじめる', 'Get started');
+  String get onboardingNext => _pick('つぎへ', 'Next');
+
+  /// 2枚目。何をする4分間なのかを、先に絵で見せる。
+  String get onboardingHowTitle => _pick('やることは、これだけ。', 'This is all you do.');
+  String get onboardingStepCapture =>
+      _pick('今日やったノートを撮る', 'Photograph the notes you worked on today');
+  String get onboardingStepAsked =>
+      _pick('後輩が2〜3問きいてくる', 'Your kohai asks you two or three questions');
+  String get onboardingStepExplain =>
+      _pick('声に出して説明する(5分)', 'Explain it out loud (5 minutes)');
+  String get onboardingStepKarte =>
+      _pick('言えたことと穴が、カルテに残る', 'What you said and what stalled become your karte');
+
+  /// 権限は使う直前に聞く。ここでは予告だけして、初回離脱を作らない。
+  String get onboardingPermissionNote => _pick(
+        'カメラ・マイク・通知の許可は、使う直前にお願いします',
+        'We ask for camera, microphone and notification access only when they are needed',
+      );
 
   // --- ホーム ---
   String get homeGreeting => _pick('今日のノート、見せてください', 'Show me your notes today');
@@ -37,11 +55,35 @@ class AppStrings {
   String filledHoles(int count) => _pick('埋めた穴 $count', '$count gaps filled');
   String openHoles(int count) => _pick('残っている穴 $count', '$count gaps open');
 
+  /// ホームの復習カード。再訪の起点で、通知の着地先でもある。
+  String get homeOpenHoleLabel => _pick('埋めていない穴', 'A gap still open');
+  String homeOpenHoleMore(int count) =>
+      _pick('ほかに $count こ', '$count more');
+
+  /// 残りセッション。事実だけ淡々と(§6 煽らない)。
+  String remainingSessions(int count) =>
+      _pick('今日の無料セッション: 残り$count回', 'Free sessions left today: $count');
+  String get remainingSessionsNone =>
+      _pick('今日の無料セッションは使いきりました', 'You have used today\'s free session');
+  String get remainingSessionsUnlimited => _pick('セッションは無制限です', 'Unlimited sessions');
+  String get homeUnlock => _pick('無制限にする', 'Go unlimited');
+  String get homeFirstRun => _pick(
+        'まだ穴はありません。最初の1枚から始まります。',
+        'No gaps yet. It starts with your first photo.',
+      );
+
   // --- 撮影確認 ---
   String get captureConfirmTitle => _pick('この単元で合っていますか?', 'Is this the right topic?');
   String get captureConfirmHint =>
       _pick('ちがっていたらタップして外せます', 'Tap to remove anything that is wrong');
   String get captureStart => _pick('説明をはじめる', 'Start explaining');
+
+  /// カメラを断られたとき。黙ってホームに戻さない。
+  String get captureCameraDenied => _pick(
+        'カメラを使えませんでした。設定アプリから許可すると、ノートを撮れます。',
+        "We couldn't use the camera. Allow it in Settings to photograph your notes.",
+      );
+  String get captureOpenSettings => _pick('設定をひらく', 'Open Settings');
 
   // --- 会話 ---
   String get sessionListening => _pick('聞いています', 'Listening');
@@ -68,6 +110,14 @@ class AppStrings {
       _pick('今日は、止まらずに説明できました', 'You explained it all the way through today');
   String get karteReviewToggle =>
       _pick('あしたの夜、後輩がもう一度ききます', 'Your kohai will ask again tomorrow night');
+
+  /// 通知の許可を求める場所はここだけ。穴が見えた直後に、後輩からのお願いとして聞く。
+  String get karteReviewAsk =>
+      _pick('あしたの夜、もう一度きいてもいいですか?', 'May I ask you again tomorrow night?');
+  String get karteReviewDenied => _pick(
+        '通知が切れています。設定アプリから戻せます。',
+        'Notifications are off. You can turn them back on in Settings.',
+      );
   String get karteRetry => _pick('言い直してみる', 'Explain it again');
   String get karteDone => _pick('今日はここまで', "That's it for today");
 
@@ -76,6 +126,52 @@ class AppStrings {
   String get reviewStart => _pick('30秒で説明する', 'Explain in 30 seconds');
   String get reviewLocked =>
       _pick('穴の復習はPremiumの機能です', 'Reviewing past gaps is a Premium feature');
+
+  /// 埋めた穴のセクション。ペイウォールが謳う「履歴」はここで果たす。
+  String reviewFilledTitle(int count) => _pick('埋めた穴 — $count つ', 'Gaps filled — $count');
+  String get reviewFilledEmpty => _pick(
+        'ここに、埋めた穴がたまっていきます',
+        'The gaps you fill will collect here',
+      );
+  String reviewFilledDays(int days) => switch (days) {
+        0 => _pick('今日 埋めた', 'Filled today'),
+        1 => _pick('きのう 埋めた', 'Filled yesterday'),
+        _ => _pick('$days日前に埋めた', 'Filled $days days ago'),
+      };
+
+  /// 穴がひとつも無いとき。「何もない」ではなく「今は無い」として見せる。
+  String get reviewEmpty => _pick(
+        'いまは、埋めにいく穴がありません',
+        'There are no gaps waiting right now',
+      );
+  String get reviewBackHome => _pick('ホームにもどる', 'Back to home');
+
+  // --- 設定 ---
+  String get settingsTitle => _pick('設定', 'Settings');
+  String get settingsSectionAccount => _pick('契約', 'Subscription');
+  String get settingsSectionNotifications => _pick('通知', 'Notifications');
+  String get settingsSectionAbout => _pick('このアプリについて', 'About');
+  String get settingsNotifications => _pick('後輩からの再説明のお願い', 'Reminders from your kohai');
+  String get settingsNotificationsOn => _pick('届きます', 'On');
+  String get settingsNotificationsOff => _pick('届きません', 'Off');
+  String get settingsNotificationsOpenSettings =>
+      _pick('通知の設定をひらく', 'Open notification settings');
+  String get settingsPrivacy => _pick('プライバシーポリシー', 'Privacy policy');
+  String get settingsTerms => _pick('利用規約', 'Terms of use');
+
+  /// AI生成物の報告導線。App Review で見られる(handoff §5)。
+  String get settingsReport => _pick('気になる質問を報告する', 'Report a question that felt wrong');
+  String get settingsReportBody => _pick(
+        '後輩の質問が、ノートと関係ない・答えを教えてしまっている・不快だった場合に送ってください。',
+        'Tell us if your kohai asked something unrelated, gave away an answer, or felt wrong.',
+      );
+  String get settingsVersion => _pick('バージョン', 'Version');
+  String get settingsDeviceId => _pick('端末ID(問い合わせ用)', 'Device ID (for support)');
+  String get settingsCopied => _pick('コピーしました', 'Copied');
+  String get settingsOpenFailed => _pick(
+        'ひらけませんでした。あとで試してみてください。',
+        "We couldn't open that. Please try again later.",
+      );
 
   // --- ペイウォール ---
   String get paywallTitle => _pick('穴を、埋めきる。', 'Fill every gap.');

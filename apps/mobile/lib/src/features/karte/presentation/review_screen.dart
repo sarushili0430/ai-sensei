@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../common_widgets/chunky_button.dart';
+import '../../../common_widgets/marker_text.dart';
 import '../../../l10n/strings.dart';
 import '../../../routing/routes.dart';
 import '../../../theme/tokens.dart';
@@ -11,9 +12,14 @@ import '../../session/domain/session.dart';
 import '../application/karte_controllers.dart';
 import '../domain/karte.dart';
 
-/// 復習画面(プッシュ通知が起点)。
+/// 復習画面(ホームのカード、またはプッシュ通知が起点)。
 ///
-/// 無料ユーザーには「使えない」ではなく「まだ開いていない」として見せる。
+/// 出すものは2つ。**埋めにいく穴**(これからやること)と
+/// **埋めた穴**(やってきたこと)。後者がペイウォールの謳う「履歴」で、
+/// 別画面は作らない。
+///
+/// どの状態でも必ず出口を持たせる。ここは通知から直接着地しうる画面なので、
+/// 「読み込み中のまま」「文言だけ」で行き止まりにすると本当に戻れなくなる。
 class ReviewScreen extends ConsumerWidget {
   const ReviewScreen({super.key});
 
@@ -23,24 +29,51 @@ class ReviewScreen extends ConsumerWidget {
     final AsyncValue<ReviewQueue> queue = ref.watch(reviewControllerProvider);
 
     return Scaffold(
-      appBar: AppBar(title: Text(strings.reviewTitle)),
+      appBar: AppBar(
+        title: Text(strings.reviewTitle),
+        // 通知から直接来たときは戻る先が積まれていない。ホームへ逃がす。
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: context.closeOrGoHome,
+        ),
+      ),
       body: SafeArea(
         child: queue.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (Object error, StackTrace stack) => Center(child: Text(strings.errorGeneric)),
+          error: (Object error, StackTrace stack) => _Message(
+            text: strings.errorGeneric,
+            primaryLabel: strings.errorRetry,
+            onPrimary: () => ref.read(reviewControllerProvider.notifier).refresh(),
+          ),
           data: (ReviewQueue data) {
             if (data.requiresPremium) {
-              return _PremiumNotice(onTap: () => context.go(AppRoute.paywall.path));
+              return _Message(
+                text: strings.reviewLocked,
+                primaryLabel: strings.paywallCta,
+                onPrimary: () => context.push(AppRoute.paywall.path),
+              );
             }
-            if (data.items.isEmpty) {
-              return Center(child: Text(strings.karteNoHoles));
+            if (data.isEmpty) {
+              return _Message(text: strings.reviewEmpty);
             }
-            return ListView.separated(
+            return ListView(
               padding: const EdgeInsets.all(AppSpacing.lg),
-              itemCount: data.items.length,
-              separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.md),
-              itemBuilder: (BuildContext context, int index) =>
-                  _ReviewCard(item: data.items[index]),
+              children: <Widget>[
+                for (final ReviewQueueItem item in data.items) ...<Widget>[
+                  _ReviewCard(item: item),
+                  const SizedBox(height: AppSpacing.md),
+                ],
+                if (data.items.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                    child: Text(
+                      strings.reviewEmpty,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ),
+                const SizedBox(height: AppSpacing.lg),
+                _FilledSection(filled: data.filled),
+              ],
             );
           },
         ),
@@ -82,6 +115,7 @@ class _ReviewCard extends ConsumerWidget {
                     item.hole.id,
                     locale: Localizations.localeOf(context).languageCode,
                   );
+              // 会話は一方通行。戻る先を持たせない。
               if (session != null && context.mounted) {
                 context.go(AppRoute.session.path);
               }
@@ -93,26 +127,78 @@ class _ReviewCard extends ConsumerWidget {
   }
 }
 
-class _PremiumNotice extends StatelessWidget {
-  const _PremiumNotice({required this.onTap});
+/// 埋めた穴。ペイウォールが謳う Premium の「履歴」はここ。
+///
+/// 静かに置く。祝福画面のにぎやかさは持ち込まない(handoff §7)。
+class _FilledSection extends StatelessWidget {
+  const _FilledSection({required this.filled});
 
-  final VoidCallback onTap;
+  final List<FilledHole> filled;
 
   @override
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          strings.reviewFilledTitle(filled.length),
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        if (filled.isEmpty)
+          Text(strings.reviewFilledEmpty, style: Theme.of(context).textTheme.bodySmall)
+        else
+          for (final FilledHole it in filled)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.md),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  MarkerText(it.hole.description, marker: MarkerColor.said),
+                  Text(
+                    strings.reviewFilledDays(it.daysSinceFilled),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+      ],
+    );
+  }
+}
+
+/// 中身が出せないときの画面。**必ずホームに戻れる**ようにする。
+class _Message extends StatelessWidget {
+  const _Message({required this.text, this.primaryLabel, this.onPrimary});
+
+  final String text;
+  final String? primaryLabel;
+  final VoidCallback? onPrimary;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppStrings strings = AppStrings.of(context);
+    final String? label = primaryLabel;
+
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.lg),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: <Widget>[
           Text(
-            strings.reviewLocked,
+            text,
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyLarge,
           ),
           const SizedBox(height: AppSpacing.lg),
-          ChunkyButton(label: strings.paywallCta, onPressed: onTap),
+          if (label != null && onPrimary != null)
+            ChunkyButton(label: label, onPressed: onPrimary),
+          GhostButton(
+            label: strings.reviewBackHome,
+            onPressed: context.closeOrGoHome,
+          ),
         ],
       ),
     );
