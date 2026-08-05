@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../features/karte/domain/karte.dart';
@@ -43,7 +44,16 @@ class ApiClient {
           });
 
     if (photo != null) {
-      request.files.add(await http.MultipartFile.fromPath('photo', photo.path));
+      // Content-Type を渡さないと application/octet-stream で送られる。
+      // 撮った写真は image_picker が imageQuality を掛けた時点でJPEGなので、
+      // そう伝える(サーバ側は最終的に中身を見て判断する)。
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'photo',
+          photo.path,
+          contentType: MediaType('image', 'jpeg'),
+        ),
+      );
     }
 
     final http.Response response =

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { analysisFixture } from "../test-support.ts";
 import {
   curriculumDigest,
+  detectImageMediaType,
   extractJson,
   photoAnalysisPrompt,
   photoAnalysisSchema,
@@ -99,5 +100,51 @@ describe("photoAnalysisSchema", () => {
     const parsed = photoAnalysisSchema.parse({ is_math_note: true, summary: "円と直線" });
     expect(parsed.topics).toEqual([]);
     expect(parsed.question_seeds).toEqual([]);
+  });
+});
+
+describe("detectImageMediaType", () => {
+  function buffer(bytes: number[]): ArrayBuffer {
+    return new Uint8Array(bytes).buffer;
+  }
+
+  const jpeg = buffer([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+  const png = buffer([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const gif = buffer([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]);
+  const webp = buffer([0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50]);
+
+  it("中身から形式を見分ける", () => {
+    expect(detectImageMediaType(jpeg)).toBe("image/jpeg");
+    expect(detectImageMediaType(png)).toBe("image/png");
+    expect(detectImageMediaType(gif)).toBe("image/gif");
+    expect(detectImageMediaType(webp)).toBe("image/webp");
+  });
+
+  /**
+   * Flutterの MultipartFile は contentType を渡さないと
+   * application/octet-stream を送ってくる。これをそのまま media_type にすると
+   * Vision APIが400を返し、写真つきのセッション作成が全部500になる。
+   */
+  it("申告が application/octet-stream でも中身で判断する", () => {
+    expect(detectImageMediaType(jpeg, "application/octet-stream")).toBe("image/jpeg");
+  });
+
+  it("申告より中身を信じる", () => {
+    expect(detectImageMediaType(png, "image/jpeg")).toBe("image/png");
+  });
+
+  it("中身から決められないときは、許可リストにある申告だけ使う", () => {
+    const unknown = buffer([0x00, 0x01, 0x02, 0x03]);
+    expect(detectImageMediaType(unknown, "image/png")).toBe("image/png");
+    expect(detectImageMediaType(unknown, "image/jpeg; charset=binary")).toBe("image/jpeg");
+    expect(detectImageMediaType(unknown, "IMAGE/JPEG")).toBe("image/jpeg");
+  });
+
+  it("Vision APIが受け取れない形式は null にする(投げても400になるため)", () => {
+    const heic = buffer([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70]);
+    expect(detectImageMediaType(heic, "image/heic")).toBeNull();
+    expect(detectImageMediaType(heic, "application/octet-stream")).toBeNull();
+    expect(detectImageMediaType(heic)).toBeNull();
+    expect(detectImageMediaType(new ArrayBuffer(0), "application/pdf")).toBeNull();
   });
 });

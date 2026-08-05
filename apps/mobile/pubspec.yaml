@@ -45,6 +45,9 @@ dependencies:
   sentry_flutter: ^9.26.0
 
   http: ^1.2.2
+  # 写真を送るときの Content-Type を明示するため(MediaType)。
+  # http の推移的依存だが、直接使うので自分でも宣言しておく。
+  http_parser: ^4.1.2
   shared_preferences: ^2.3.3
   uuid: ^4.5.1
 

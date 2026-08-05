@@ -14,6 +14,7 @@ import { apiError } from "../lib/errors.ts";
 import { createLiveKitToken } from "../lib/livekit.ts";
 import {
   type PhotoAnalysis,
+  detectImageMediaType,
   resolveDetectedTopics,
   toDetectedTopicPayload,
 } from "../lib/photo-analysis.ts";
@@ -101,15 +102,19 @@ sessionsRoute.post("/", async (c) => {
   try {
     if (photo instanceof File) {
       const image = await photo.arrayBuffer();
+
+      // 形式はクライアントの申告ではなく中身で決める。決められないものを
+      // Vision APIに投げても400が返るだけなので、ここで「読み取れなかった」
+      // として返す(500にしない)。
+      const mediaType = detectImageMediaType(image, photo.type);
+      if (!mediaType) throw apiError("photo_unreadable", { locale });
+
       photoKey = `photos/${deviceId}/${sessionId}`;
       await c.env.PHOTOS.put(photoKey, image, {
-        httpMetadata: { contentType: photo.type || "image/jpeg" },
+        httpMetadata: { contentType: mediaType },
       });
 
-      analysis = await analyzer.analyze({
-        image,
-        contentType: photo.type || "image/jpeg",
-      });
+      analysis = await analyzer.analyze({ image, contentType: mediaType });
       if (!analysis.is_math_note) {
         throw apiError("out_of_scope", { locale });
       }
