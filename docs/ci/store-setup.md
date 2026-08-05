@@ -230,8 +230,14 @@ Identifier も別に要る。さらに両者は App Group 越しに値を受け�
 > `App Store Connect integration "..." does not exist` で落ちる。
 
 登録できていれば、証明書(Certificates)とプロビジョニングプロファイルを
-**手で作る必要はない**。`codemagic.yaml` の `ios_signing` が
-このAPIキー経由で自動発行・自動更新する。
+**手で作る必要はない**。`codemagic.yaml` の署名ステップが
+このAPIキー経由で `app-store-connect fetch-signing-files` を叩き、
+無ければ作る。
+
+> ただし**配布証明書に埋める秘密鍵だけは自分で用意する**。
+> 変数グループ `ios-code-signing` の `CERTIFICATE_PRIVATE_KEY` がそれで、
+> 渡し忘れると毎ビルド新しい証明書が作られて枚数の上限に当たる。
+> 作り方は [`codemagic.md`](./codemagic.md#certificate_private_key-が要る)。
 
 ### 1-3-3. APNs Auth Key(プッシュを配線するときだけ)
 

@@ -137,6 +137,10 @@ workflows:
         # REVENUECAT_ANDROID_PUBLIC_SDK_KEY を入れておく変数グループ。
         # いずれも公開鍵・公開URLなので秘匿は不要(環境ごとに差し替えたいだけ)。
         - mobile-dart-defines
+        # CERTIFICATE_PRIVATE_KEY(配布証明書に埋める秘密鍵)を入れておく変数グループ。
+        # これだけは本物の秘密鍵なので **Secure** で登録すること。
+        # 作り方と、なぜ要るかは docs/ci/codemagic.md の「2. iOS の署名」。
+        - ios-code-signing
       vars:
         BUNDLE_ID: jp.co.aiSensei
         # OneSignal の Notification Service Extension のバンドルID。
@@ -146,14 +150,25 @@ workflows:
         EXTENSION_BUNDLE_ID: jp.co.aiSensei.OneSignalNotificationServiceExtension
         # assert_dart_defines が、どちらのRevenueCat鍵を要求するかの判定に使う
         TARGET_PLATFORM: ios
-      ios_signing:
-        # 自動コードサイニング。上の integrations.app_store_connect のAPIキーで
-        # プロファイルと証明書を取得し、Xcodeプロジェクトに適用するところまでを
-        # スクリプトより前にCodemagicがやる。
-        distribution_type: app_store
-        # ここは環境変数の展開が効かないので BUNDLE_ID とは別に直書きする。
-        # 変えるときは vars.BUNDLE_ID と一緒に直すこと。
-        bundle_identifier: jp.co.aiSensei
+
+      # environment.ios_signing は **わざと書いていない**。
+      #
+      # あれは名前に反して自動署名の設定ではなく、
+      # 「**Codemagic UI にアップロード済みの**署名ファイルから、
+      # distribution_type と bundle_identifier に合うものを探して使う」指定
+      # (docs.codemagic.io/yaml-code-signing/signing-ios/ の "uploaded signing files")。
+      # つまり手動署名で、UIに置いたファイルが正になる。
+      #
+      # 書いてあった頃は、Codemagic UI に手で上げた aisenseiprd が使われていた。
+      # そのプロファイルは App Groups を持たないまま作られていたので、
+      # NSE が入ったあと
+      #   Provisioning profile "aisenseiprd" doesn't include the App Groups capability
+      # で落ち、Developer Portal 側をいくら直しても直らなかった
+      # (UIのファイルはPortalとは別物なので、Portalの変更が反映されない)。
+      #
+      # いまは下の scripts で app-store-connect fetch-signing-files を叩き、
+      # **Apple から取得・生成する**。ios_signing を書き足すと両方式が混ざり、
+      # No matching profiles found for bundle identifier ... で落ちるので足さないこと。
 
     triggering:
       events:
@@ -173,52 +188,53 @@ workflows:
       - *analyze
       - *test
 
-      # 署名は environment.ios_signing に任せている。
-      # キーチェーンの初期化・証明書の取得・プロファイルの適用・
-      # /Users/builder/export_options.plist の生成まで、
-      # scripts が始まる前に Codemagic の組み込みステップが済ませる。
-      #
-      # 以前はここで keychain initialize + fetch-signing-files --create を
-      # 手で叩いていたが、自動署名と併用すると壊れる:
-      # keychain initialize が自動署名の入れた証明書を消し、そのあと
-      # --create が Developer Portal にある既存の配布証明書を拾ってきても
-      # **その秘密鍵はこのマシンに無い**ので
-      #   Cannot save Signing Certificates without certificate private key
-      # で落ちる。
-      #
-      # 証明書を作り直す必要が出たときは、使い回す秘密鍵を
-      # 環境変数 CERTIFICATE_PRIVATE_KEY に入れたうえで
-      #   app-store-connect fetch-signing-files "$BUNDLE_ID" \
-      #     --type IOS_APP_STORE --certificate-key=@env:CERTIFICATE_PRIVATE_KEY --create
-      # を一時的に足す。鍵を渡さないと毎ビルド新しい証明書を作って上限に当たる。
+      # 署名は integrations.app_store_connect のAPIキーを使って、
+      # ここで Apple から取得・生成する(Codemagicのいう automatic code signing)。
+      # 組み込みステップに任せる書き方(environment.ios_signing)は
+      # UIにアップロードしたファイルを使う別物なので、上の囲みのとおり使わない。
 
-      - name: 署名をXcodeプロジェクトに適用し export_options.plist を作る
+      - name: 署名ファイルを Apple から取得し Xcode プロジェクトに適用する
         working_directory: apps/mobile
-        # 組み込みステップの最後(xcode-project use-profiles)がこれをやる —— はずだが、
-        # 探し方が「クローン先ルートからの **/*.xcodeproj」なので、
-        # このリポジトリのように iOS プロジェクトが apps/mobile/ios にある構成では
-        # 見つけられずに素通りすることがある。そのときは何も言わずに次へ進み、
-        # 最後の flutter build ipa が
-        #   "/Users/builder/export_options.plist" property list does not exist
-        # で落ちる —— macの課金時間を全部使いきったあとで。
-        #
-        # なのでプロジェクトのパスを明示して自分で叩く。
-        # use-profiles は冪等なので、組み込みステップが済ませていても実害はない。
         script: |
           set -euo pipefail
-          profiles_dir="$HOME/Library/MobileDevice/Provisioning Profiles"
 
-          # 組み込みの自動署名がプロファイルを取れていないと use-profiles は
-          # "Did not find any provisioning profiles" で落ちる。
-          # そのとき直すべきなのはこのステップではなく Developer Portal 側
-          # (バンドルIDの登録・APIキーの権限)なので、先に切り分けておく。
+          # 秘密鍵が無いと fetch-signing-files は **毎ビルド新しい配布証明書を作る**。
+          # Distribution 証明書はチームで持てる枚数に上限があるので、
+          # 数回のビルドで上限に当たり、そこから先は発行そのものが失敗する。
+          # 気づくのは上限に当たったあと —— なので先に見る。
+          if [ -z "${CERTIFICATE_PRIVATE_KEY:-}" ]; then
+            echo "CERTIFICATE_PRIVATE_KEY が渡っていない。"
+            echo "Codemagic UI > このアプリ > Environment variables で、"
+            echo "  - グループ名が ios-code-signing になっているか"
+            echo "  - そのグループがこのアプリに紐づいているか"
+            echo "  - 値が Secure で入っているか"
+            echo "を確認すること。作り方は docs/ci/codemagic.md の「2. iOS の署名」。"
+            exit 1
+          fi
+
+          # ビルドマシンのキーチェーンを作り、署名に使える状態にする
+          keychain initialize
+
+          # Apple から証明書とプロファイルを取り、無ければ作る。
+          # BUNDLE_ID は前方一致で照合されるので、
+          # jp.co.aiSensei を渡せば拡張(jp.co.aiSensei.OneSignalNotificationServiceExtension)
+          # のぶんも一緒に取れる —— ただし **Developer Portal にその Identifier がある場合だけ**。
+          # 無ければ黙って本体のぶんだけ取ってくるので、下の検査で落とす。
+          # (--strict-match-identifier を付けると本体だけになる。付けないこと)
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --certificate-key=@env:CERTIFICATE_PRIVATE_KEY \
+            --create
+
+          # 取得した証明書をキーチェーンに入れる
+          keychain add-certificates
+
+          profiles_dir="$HOME/Library/MobileDevice/Provisioning Profiles"
           if ! ls "$profiles_dir"/*.mobileprovision >/dev/null 2>&1; then
             echo "プロビジョニングプロファイルが1つもダウンロードされていない。"
-            echo "scripts より前にある Codemagic の署名ステップのログを見ること。"
             echo "よくある原因:"
             echo "  - Developer Portal に ${BUNDLE_ID} のIdentifierが無い"
             echo "  - App Store Connect APIキー(integrations の 'codemagic')の権限が App Manager 未満"
-            echo "  - environment.ios_signing.bundle_identifier がアプリのバンドルIDと違う"
             exit 1
           fi
           echo "取得済みプロファイル:"
@@ -286,10 +302,10 @@ workflows:
           print("  1. Identifiers > App Groups に %s を作る" % ", ".join(sorted(wanted)))
           print("  2. App ID %s の Capability で App Groups を有効にし、上のグループを割り当てる" % app_id)
           print("  3. App ID %s を Explicit で作り、同じく App Groups を割り当てる" % ext_id)
-          print("  4. 既存のプロファイルを消す。Capability を足しても既にある")
-          print("     プロファイルは古いままで、自動署名はそれを使い回すので直らない。")
-          print("     手で作った aisenseiprd のようなプロファイルもここで消す")
-          print("     (このリポジトリはプロファイルを手で作らない運用 —— codemagic.md 参照)。")
+          print("  4. Profiles に残っている古いプロファイルを消す。")
+          print("     fetch-signing-files は条件に合う既存のものがあればそれを使い、")
+          print("     無いときだけ作る(--create)。Capability を足しても")
+          print("     既存のプロファイルは古い内容のままなので、消さないと作り直されない。")
           print("")
           print("このビルドが見たプロファイル:")
           for bundle, info in sorted(profiles.items()):
@@ -302,10 +318,11 @@ workflows:
           print("")
           print("Portal で消したはずのプロファイルがまだ降ってくるときは、")
           print("上の Team と作成日で取得元を突き止めること:")
-          print("  - 作成日が Portal で消した時刻より前 → 消えていない。")
-          print("    Profiles 画面のフィルタ(All / Development / Distribution)を疑う。")
-          print("    Codemagic UI > Code signing identities に手でアップロードした")
-          print("    プロファイルがあれば、それも消す(このリポジトリは手動署名を使わない)。")
+          print("  - 作成日がこのビルドの時刻 → fetch-signing-files が作ったもの。")
+          print("    それでも App Groups が空なら、App ID 側の Capability が")
+          print("    保存されていない(Edit でグループを選んだあと Save したか)。")
+          print("  - 作成日がもっと前 → Portal に古いものが残っている。")
+          print("    Profiles 画面のフィルタ(All / Development / Distribution)も疑う。")
           print("  - Team が Portal の画面右上に出ているものと違う")
           print("    → App Store Connect APIキー(integrations の 'codemagic')が")
           print("      別チームのもの。そのチームには App Group も拡張のIdentifierも無いので、")
