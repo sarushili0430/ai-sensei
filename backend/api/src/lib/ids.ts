@@ -7,7 +7,11 @@ const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 export function newId(
   prefix: string,
   now: Date = new Date(),
-  random = crypto.getRandomValues,
+  // `crypto.getRandomValues` をそのまま既定値にすると、crypto から切り離された
+  // 関数として呼ばれる。workerd はレシーバを見るので実行時に
+  // 「Illegal invocation」で落ちる(Node のcryptoは通るため、テストでは出ない)。
+  // 必ず crypto をレシーバにしたまま呼ぶこと。
+  random: (array: Uint8Array) => Uint8Array = (array) => crypto.getRandomValues(array),
 ): string {
   const time = encodeTime(now.getTime(), 10);
   const bytes = random(new Uint8Array(10));
