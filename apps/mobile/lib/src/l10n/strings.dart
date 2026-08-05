@@ -85,6 +85,12 @@ class AppStrings {
       );
   String get captureOpenSettings => _pick('設定をひらく', 'Open Settings');
 
+  /// カメラを開けなかったとき(許可はあるが端末側の理由)。許可の話と混ぜない。
+  String get captureCameraFailed => _pick(
+        'カメラを開けませんでした。もう一度おためしください。',
+        "We couldn't open the camera. Please try again.",
+      );
+
   // --- 会話 ---
   String get sessionListening => _pick('聞いています', 'Listening');
   String get sessionThinking => _pick('考えています', 'Thinking');

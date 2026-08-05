@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
@@ -25,9 +26,22 @@ class CaptureScreen extends ConsumerStatefulWidget {
   ConsumerState<CaptureScreen> createState() => _CaptureScreenState();
 }
 
+/// 許可がないことを表す image_picker のエラーコード。
+///
+/// iOSは許可がないと **null を返さず例外を投げる**。撮影をやめたときと同じ
+/// 「nullが返る」前提でいると、この経路が丸ごと抜ける。
+const Set<String> _kPermissionErrorCodes = <String>{
+  'camera_access_denied',
+  'photo_access_denied',
+  'invalid_source',
+};
+
 class _CaptureScreenState extends ConsumerState<CaptureScreen> {
   /// カメラを断られた。閉じるのではなく、戻し方を出す。
   bool _cameraDenied = false;
+
+  /// 許可はあるのにカメラを開けなかった(端末側の理由)。撮り直しの導線を出す。
+  bool _cameraFailed = false;
 
   @override
   void initState() {
@@ -36,19 +50,44 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
   }
 
   Future<void> _pickPhoto() async {
-    setState(() => _cameraDenied = false);
+    setState(() {
+      _cameraDenied = false;
+      _cameraFailed = false;
+    });
 
-    final XFile? picked = await ImagePicker().pickImage(
-      source: ImageSource.camera,
-      imageQuality: 85,
-    );
+    final XFile? picked;
+    try {
+      picked = await ImagePicker().pickImage(
+        source: ImageSource.camera,
+        imageQuality: 85,
+      );
+    } on PlatformException catch (error, stack) {
+      // ここで拾わないと、initState の postFrameCallback から呼んでいるぶん
+      // 受け取り手がいないまま未処理例外になり、撮影画面ごと落ちる。
+      debugPrint('カメラを開けませんでした(${error.code}): ${error.message}\n$stack');
+      if (!mounted) return;
+      setState(() {
+        if (_kPermissionErrorCodes.contains(error.code)) {
+          _cameraDenied = true;
+        } else {
+          _cameraFailed = true;
+        }
+      });
+      return;
+    } on Object catch (error, stack) {
+      // プラグインの想定外(ファイルの読み出し失敗など)。落とさずに撮り直させる。
+      debugPrint('写真を取得できませんでした: $error\n$stack');
+      if (!mounted) return;
+      setState(() => _cameraFailed = true);
+      return;
+    }
 
     // 撮らずに帰ってきた。理由は2つあり、扱いが違う。
     //   - 許可がない  → 何度カメラを開いても同じなので、設定への行き方を出す
     //   - 撮るのをやめた → そのまま前の画面(ホーム)へ戻す
     if (picked == null) {
       if (!mounted) return;
-      final PermissionStatus status = await Permission.camera.status;
+      final PermissionStatus status = await _cameraStatus();
       if (!mounted) return;
       if (status.isDenied || status.isPermanentlyDenied || status.isRestricted) {
         setState(() => _cameraDenied = true);
@@ -63,6 +102,16 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     final CaptureController controller = ref.read(captureControllerProvider.notifier);
     controller.setPhoto(File(picked.path));
     await controller.analyze(locale: locale);
+  }
+
+  /// 許可の照会も失敗しうる。ここで落とすと、撮影をやめただけの人まで巻き込む。
+  Future<PermissionStatus> _cameraStatus() async {
+    try {
+      return await Permission.camera.status;
+    } on Object catch (error) {
+      debugPrint('カメラの許可を確認できませんでした: $error');
+      return PermissionStatus.granted; // 許可の問題と決めつけず、ホームへ戻す
+    }
   }
 
   @override
@@ -90,6 +139,10 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
         retryLabel: strings.captureOpenSettings,
         onRetry: openAppSettings,
       );
+    }
+
+    if (_cameraFailed) {
+      return _ErrorView(message: strings.captureCameraFailed, onRetry: _pickPhoto);
     }
 
     final ApiException? error = state.error;
