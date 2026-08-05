@@ -13,8 +13,9 @@
 何を作っていて何を作らないかの合意は [`docs/inception-deck.md`](docs/inception-deck.md) にまとめてあります
 (エレベーターピッチ・やらないことリスト・トレードオフスライダー)。スプリントの入口で読んでください。
 企画・設計の一次情報は [`docs/handoff_to_opus.md`](docs/handoff_to_opus.md) にあります。
-画面設計は [`docs/wireframe_v0.html`](docs/wireframe_v0.html)、ビジュアル方針は
-[`docs/design_direction_v0.html`](docs/design_direction_v0.html) を参照してください。
+画面設計と**画面遷移図**は [`docs/wireframe_v1.html`](docs/wireframe_v1.html)、ビジュアル方針は
+[`docs/design_direction_v0.html`](docs/design_direction_v0.html) を参照してください
+([`wireframe_v0.html`](docs/wireframe_v0.html) は差分を追うために残してある旧版です)。
 
 ---
 
@@ -69,7 +70,7 @@ cp apps/mobile/dart_defines.example.env apps/mobile/dart_defines.env    # --dart
 | --- | --- |
 | `backend/api/.dev.vars.example` | LiveKit / Vision LLM / OneSignal / RevenueCat webhook / 内部トークン |
 | `backend/agent/.env.example` | LiveKit / 会話・カルテのLLM / STT / TTS / 内部トークン |
-| `apps/mobile/dart_defines.example.env` | **公開値のみ**(APIのURL・RevenueCat公開鍵・OneSignal App ID・Sentry DSN) |
+| `apps/mobile/dart_defines.example.env` | **公開値のみ**(APIのURL・RevenueCat公開鍵・OneSignal App ID・Sentry DSN・規約URL・報告先メール) |
 
 課金まわりのダッシュボード設定とアプリ側の噛み合わせは
 [`docs/revenuecat.md`](docs/revenuecat.md) にまとめてあります。
@@ -125,7 +126,8 @@ Biomeがlintと整形の両方を担当します(ESLint + Prettierは入れて�
 
 テスト方針は「①純関数ユニット(ガードレール照合・数式正規化・間隔反復スケジューラ・
 穴/連続日数の集計・contract fixtureのパース)」と「②主要画面のgolden test」の2本立てです。
-golden testは主要6画面ぶんあり、**Linuxのラスタライズを正**として
+golden testは主要画面ぶん9枚あり(ホームと復習は状態違いを2枚ずつ撮る)、
+**Linuxのラスタライズを正**として
 CIで生成します(`apps/mobile/test/golden/README.md`)。
 E2Eは書かず、TestFlightでの手動確認に割り切っています。
 

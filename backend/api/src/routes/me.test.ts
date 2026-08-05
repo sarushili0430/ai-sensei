@@ -92,7 +92,7 @@ describe("GET /v1/me/reviews", () => {
 
     const body = (await response.json()) as ReviewQueueResponse;
     expect(reviewQueueResponseSchema.safeParse(body).success).toBe(true);
-    expect(body).toEqual({ items: [], requires_premium: true });
+    expect(body).toEqual({ items: [], filled: [], requires_premium: true });
   });
 
   it("Premiumには穴と後輩の一言を返す", async () => {
@@ -108,12 +108,58 @@ describe("GET /v1/me/reviews", () => {
     );
   });
 
-  it("埋まった穴は出さない", async () => {
+  it("埋まった穴は「埋めにいく穴」には出さず、「埋めた穴」に回す", async () => {
     await makePremium();
     await seedHole({ status: "filled", filled_at: "2026-08-01T11:00:00.000Z" });
 
     const body = (await (await get("/v1/me/reviews")).json()) as ReviewQueueResponse;
+    expect(reviewQueueResponseSchema.safeParse(body).success).toBe(true);
     expect(body.items).toEqual([]);
+    expect(body.filled).toHaveLength(1);
+    expect(body.filled[0]?.hole.id).toBe("hol_seed");
+    expect(body.filled[0]?.days_since_filled).toBe(2);
+  });
+
+  it("埋めた穴は、埋めたばかりのものを上に並べる", async () => {
+    await makePremium();
+    await seedHole({ status: "filled", filled_at: "2026-07-31T11:00:00.000Z" });
+    await services.repository.insertKarte(
+      {
+        id: "kar_3",
+        session_id: "ses_3",
+        device_id: testDeviceId,
+        created_at: "2026-08-02T11:00:00.000Z",
+        topic_ids: ["M1-NIJI-HANBETSU"],
+        said_well: [],
+        term_notes: [],
+        followup_question: null,
+      },
+      [
+        {
+          id: "hol_3",
+          device_id: testDeviceId,
+          karte_id: "kar_3",
+          topic_id: "M1-NIJI-HANBETSU",
+          desc: "判別式の意味で説明が止まった",
+          severity: "medium",
+          evidence: null,
+          status: "filled",
+          created_at: "2026-08-02T11:00:00.000Z",
+          filled_at: "2026-08-02T11:30:00.000Z",
+        },
+      ],
+    );
+
+    const body = (await (await get("/v1/me/reviews")).json()) as ReviewQueueResponse;
+    expect(body.filled.map((it) => it.hole.id)).toEqual(["hol_3", "hol_seed"]);
+  });
+
+  it("無料ユーザーには埋めた穴も出さない(復習ごとPremium)", async () => {
+    await seedHole({ status: "filled", filled_at: "2026-08-01T11:00:00.000Z" });
+
+    const body = (await (await get("/v1/me/reviews")).json()) as ReviewQueueResponse;
+    expect(body.filled).toEqual([]);
+    expect(body.requires_premium).toBe(true);
   });
 
   it("古い穴から順に並べる", async () => {

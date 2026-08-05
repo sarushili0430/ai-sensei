@@ -165,9 +165,31 @@ export const reviewQueueItemSchema = z
   .strict();
 export type ReviewQueueItem = z.infer<typeof reviewQueueItemSchema>;
 
+/**
+ * 埋まった穴。ペイウォールが謳う Premium の「履歴」はこれで果たす。
+ * 別画面の履歴は作らず、復習画面の下半分に置く(埋めにいく穴 ↔ 埋めた穴)。
+ */
+export const filledHoleSchema = z
+  .object({
+    hole: holeSchema,
+    topic_id: topicIdSchema,
+    /** 「きのう埋めた」の表示に使う。 */
+    days_since_filled: z.number().int().min(0),
+  })
+  .strict();
+export type FilledHole = z.infer<typeof filledHoleSchema>;
+
+/** 復習画面が一度に受け取る、埋めた穴の最大件数。 */
+export const filledHolesLimit = 30;
+
 export const reviewQueueResponseSchema = z
   .object({
     items: z.array(reviewQueueItemSchema),
+    /**
+     * 埋めた穴(新しい順)。通算の件数は progress.filled_holes のほうが正で、
+     * ここは直近 {@link filledHolesLimit} 件までしか載らない。
+     */
+    filled: z.array(filledHoleSchema).max(filledHolesLimit),
     /** 無料ユーザーには空配列を返し、これをtrueにする(復習はPremium)。 */
     requires_premium: z.boolean(),
   })

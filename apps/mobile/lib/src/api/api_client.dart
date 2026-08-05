@@ -76,12 +76,12 @@ class ApiClient {
     return null;
   }
 
-  Future<Progress> fetchProgress() async {
+  Future<ProgressSummary> fetchProgress() async {
     final http.Response response = await _client.get(
       Uri.parse('$baseUrl/v1/me/progress'),
       headers: _headers,
     );
-    return Progress.fromJson(_decode(response)['progress'] as Map<String, dynamic>);
+    return ProgressSummary.fromJson(_decode(response));
   }
 
   Future<ReviewQueue> fetchReviews() async {

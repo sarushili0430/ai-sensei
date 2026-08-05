@@ -29,5 +29,20 @@
       "prompt": "きのうの「判別式の意味」、もう一度きいてもいいですか?"
     }
   ],
+  "filled": [
+    {
+      "hole": {
+        "id": "hol_01J8Y0N5SU0I9J8K7L6M5N4P3Q",
+        "topic_id": "M2-ZUKEI-ENCHOKU",
+        "desc": "中心と直線の距離で判定する理由で説明が止まった",
+        "severity": "medium",
+        "status": "filled",
+        "created_at": "2026-07-29T12:10:00.000Z",
+        "filled_at": "2026-08-02T13:24:07.000Z"
+      },
+      "topic_id": "M2-ZUKEI-ENCHOKU",
+      "days_since_filled": 1
+    }
+  ],
   "requires_premium": false
 }

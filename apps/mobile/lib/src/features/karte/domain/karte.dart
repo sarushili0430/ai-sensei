@@ -81,6 +81,44 @@ abstract class Progress with _$Progress {
   static const Progress empty = Progress(streakDays: 0, filledHoles: 0, openHoles: 0);
 }
 
+/// サーバが強制する上限。クライアントは表示に使うだけで、判定はサーバが持つ。
+@freezed
+abstract class SessionLimits with _$SessionLimits {
+  const factory SessionLimits({
+    @JsonKey(name: 'max_seconds') required int maxSeconds,
+
+    /// その日に残っているセッション数。Premium は null(無制限)。
+    @JsonKey(name: 'remaining_sessions_today') required int? remainingSessionsToday,
+  }) = _SessionLimits;
+
+  factory SessionLimits.fromJson(Map<String, dynamic> json) => _$SessionLimitsFromJson(json);
+
+  static const SessionLimits unknown =
+      SessionLimits(maxSeconds: 300, remainingSessionsToday: null);
+}
+
+/// `GET /v1/me/progress` の全体。ホームが読む。
+///
+/// カウンターだけでなく残りセッション数も返ってきているので、
+/// 「今日はもう撮れない」をホームで先に伝えられる(撮ってから断らない)。
+@freezed
+abstract class ProgressSummary with _$ProgressSummary {
+  const factory ProgressSummary({
+    required Progress progress,
+    @JsonKey(name: 'is_premium') required bool isPremium,
+    required SessionLimits limits,
+  }) = _ProgressSummary;
+
+  factory ProgressSummary.fromJson(Map<String, dynamic> json) =>
+      _$ProgressSummaryFromJson(json);
+
+  static const ProgressSummary empty = ProgressSummary(
+    progress: Progress.empty,
+    isPremium: false,
+    limits: SessionLimits.unknown,
+  );
+}
+
 @freezed
 abstract class ReviewQueueItem with _$ReviewQueueItem {
   const factory ReviewQueueItem({
@@ -95,12 +133,35 @@ abstract class ReviewQueueItem with _$ReviewQueueItem {
       _$ReviewQueueItemFromJson(json);
 }
 
+/// 埋まった穴。ペイウォールが謳う Premium の「履歴」はこれ。
+/// 別画面は作らず、復習画面の下半分に置く。
+@freezed
+abstract class FilledHole with _$FilledHole {
+  const factory FilledHole({
+    required Hole hole,
+    @JsonKey(name: 'days_since_filled') required int daysSinceFilled,
+  }) = _FilledHole;
+
+  factory FilledHole.fromJson(Map<String, dynamic> json) => _$FilledHoleFromJson(json);
+}
+
 @freezed
 abstract class ReviewQueue with _$ReviewQueue {
+  const ReviewQueue._();
+
   const factory ReviewQueue({
     required List<ReviewQueueItem> items,
+
+    /// 埋めた穴(新しい順)。通算の件数はホームのカウンターのほうが正で、
+    /// ここには直近ぶんしか載らない。
+    @Default(<FilledHole>[]) List<FilledHole> filled,
     @JsonKey(name: 'requires_premium') required bool requiresPremium,
   }) = _ReviewQueue;
 
   factory ReviewQueue.fromJson(Map<String, dynamic> json) => _$ReviewQueueFromJson(json);
+
+  static const ReviewQueue locked = ReviewQueue(items: <ReviewQueueItem>[], requiresPremium: true);
+
+  /// 見せるものが何もない状態。空だと分かる文言を出すために使う。
+  bool get isEmpty => items.isEmpty && filled.isEmpty;
 }

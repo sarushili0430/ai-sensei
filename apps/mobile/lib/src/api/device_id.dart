@@ -34,8 +34,12 @@ Future<void> markOnboardingSeen(SharedPreferences preferences) =>
     preferences.setBool(_onboardedKey, true);
 
 /// 初回起動かどうか。main() でoverrideする。
+///
+/// 既定値を `true`(= 通過済み)にしない。override が外れたときに
+/// **黙ってオンボーディングを飛ばす**方向へ倒れると、
+/// 「答えは教えません」という約束を一度も見せないまま本編に入ってしまう。
 @Riverpod(keepAlive: true)
-bool onboarded(Ref ref) => true;
+bool onboarded(Ref ref) => false;
 
 /// オンボーディングの既読を書き込むために持つ。main() でoverrideする。
 @Riverpod(keepAlive: true)

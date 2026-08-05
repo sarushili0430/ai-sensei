@@ -243,6 +243,10 @@ workflows:
             --dart-define=REVENUECAT_SDK_KEY="${REVENUECAT_SDK_KEY:-}" \
             --dart-define=REVENUECAT_ENTITLEMENT_ID="${REVENUECAT_ENTITLEMENT_ID:-premium}" \
             --dart-define=REVENUECAT_OFFERING_ID="${REVENUECAT_OFFERING_ID:-}" \
+            --dart-define=ONESIGNAL_APP_ID="${ONESIGNAL_APP_ID:-}" \
+            --dart-define=PRIVACY_POLICY_URL="${PRIVACY_POLICY_URL:-}" \
+            --dart-define=TERMS_URL="${TERMS_URL:-}" \
+            --dart-define=SUPPORT_EMAIL="${SUPPORT_EMAIL:-}" \
             --export-options-plist="$HOME/export_options.plist"
 
     artifacts:
@@ -334,7 +338,11 @@ workflows:
             --dart-define=REVENUECAT_ANDROID_PUBLIC_SDK_KEY="${REVENUECAT_ANDROID_PUBLIC_SDK_KEY:-}" \
             --dart-define=REVENUECAT_SDK_KEY="${REVENUECAT_SDK_KEY:-}" \
             --dart-define=REVENUECAT_ENTITLEMENT_ID="${REVENUECAT_ENTITLEMENT_ID:-premium}" \
-            --dart-define=REVENUECAT_OFFERING_ID="${REVENUECAT_OFFERING_ID:-}"
+            --dart-define=REVENUECAT_OFFERING_ID="${REVENUECAT_OFFERING_ID:-}" \
+            --dart-define=ONESIGNAL_APP_ID="${ONESIGNAL_APP_ID:-}" \
+            --dart-define=PRIVACY_POLICY_URL="${PRIVACY_POLICY_URL:-}" \
+            --dart-define=TERMS_URL="${TERMS_URL:-}" \
+            --dart-define=SUPPORT_EMAIL="${SUPPORT_EMAIL:-}"
 
     artifacts:
       - apps/mobile/build/app/outputs/bundle/release/*.aab

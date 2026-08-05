@@ -48,6 +48,12 @@ dependencies:
   shared_preferences: ^2.3.3
   uuid: ^4.5.1
 
+  # 設定画面から外に出るための最小限。
+  # プライバシーポリシー・利用規約・不適切な質問の報告(mailto)を開く。
+  url_launcher: ^6.3.1
+  # 問い合わせのときに聞かれるので、設定画面にバージョンを出す。
+  package_info_plus: ^9.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

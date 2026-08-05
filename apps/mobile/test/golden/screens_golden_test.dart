@@ -1,6 +1,7 @@
 @Tags(<String>['golden'])
 library;
 
+import 'package:ai_sensei/src/api/device_id.dart';
 import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
 import 'package:ai_sensei/src/features/karte/domain/karte.dart';
 import 'package:ai_sensei/src/features/karte/presentation/home_screen.dart';
@@ -9,6 +10,7 @@ import 'package:ai_sensei/src/features/karte/presentation/review_screen.dart';
 import 'package:ai_sensei/src/features/monetization/presentation/paywall_screen.dart';
 import 'package:ai_sensei/src/features/onboarding/presentation/onboarding_screen.dart';
 import 'package:ai_sensei/src/features/session/presentation/celebration_screen.dart';
+import 'package:ai_sensei/src/features/settings/presentation/settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -53,6 +55,18 @@ void main() {
     );
   });
 
+  // 初回起動のホーム。押すもののない空白にせず、次の一歩を出しているか。
+  testWidgets('02b ホーム(初回起動)', (WidgetTester tester) async {
+    await expectGolden(
+      tester,
+      const HomeScreen(),
+      'home_first_run',
+      overrides: <Object?>[
+        progressControllerProvider.overrideWith(() => FakeProgressController(firstRunSummary)),
+      ],
+    );
+  });
+
   testWidgets('03 祝福', (WidgetTester tester) async {
     await expectGolden(
       tester,
@@ -82,6 +96,8 @@ void main() {
     );
   });
 
+  // 「埋めにいく穴」と「埋めた穴」が同じ画面に並んでいるか。
+  // 後者がペイウォールの謳う「履歴」で、別画面は作らない。
   testWidgets('05 復習(Premium)', (WidgetTester tester) async {
     await expectGolden(
       tester,
@@ -99,6 +115,7 @@ void main() {
                   prompt: '3日前の「判別式のなぜ」、いまなら説明できますか?',
                 ),
               ],
+              filled: <FilledHole>[sampleFilledHole],
             ),
           ),
         ),
@@ -106,7 +123,31 @@ void main() {
     );
   });
 
+  // 無料ユーザー。「使えない」ではなく「まだ開いていない」として見えているか。
+  // ホームへの出口が残っているかも、ここで見る。
+  testWidgets('05b 復習(無料)', (WidgetTester tester) async {
+    await expectGolden(
+      tester,
+      const ReviewScreen(),
+      'review_locked',
+      overrides: <Object?>[
+        reviewControllerProvider.overrideWith(() => FakeReviewController(ReviewQueue.locked)),
+      ],
+    );
+  });
+
   testWidgets('06 ペイウォール', (WidgetTester tester) async {
     await expectGolden(tester, const PaywallScreen(), 'paywall');
+  });
+
+  testWidgets('07 設定', (WidgetTester tester) async {
+    await expectGolden(
+      tester,
+      const SettingsScreen(),
+      'settings',
+      overrides: <Object?>[
+        deviceIdProvider.overrideWithValue('11111111-2222-3333-4444-555555555555'),
+      ],
+    );
   });
 }
