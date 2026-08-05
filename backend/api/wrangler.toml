@@ -34,6 +34,9 @@ PREMIUM_SESSION_MAX_SECONDS = "900"
 LLM_PROVIDER = "anthropic"
 LLM_MODEL_VISION = "claude-sonnet-5"
 REVENUECAT_ENTITLEMENT_ID = "premium"
+# サンドボックス購入(iOSのSandbox / Playのライセンステスター / Test Store)を
+# 本物として扱うか。テスト環境では true。手順は docs/revenuecat-testing.md。
+ALLOW_SANDBOX_PURCHASES = "true"
 
 [[d1_databases]]
 binding = "DB"
@@ -67,6 +70,8 @@ PREMIUM_SESSION_MAX_SECONDS = "900"
 LLM_PROVIDER = "anthropic"
 LLM_MODEL_VISION = "claude-sonnet-5"
 REVENUECAT_ENTITLEMENT_ID = "premium"
+# 実機の課金テストはここに当てる(docs/revenuecat-testing.md)
+ALLOW_SANDBOX_PURCHASES = "true"
 
 [[env.develop.d1_databases]]
 binding = "DB"
@@ -102,6 +107,10 @@ PREMIUM_SESSION_MAX_SECONDS = "900"
 LLM_PROVIDER = "anthropic"
 LLM_MODEL_VISION = "claude-sonnet-5"
 REVENUECAT_ENTITLEMENT_ID = "premium"
+# 本番では sandbox の webhook を無視する。RevenueCat は sandbox の購入も
+# **本番と同じURLに**送ってくるので、素通しにするとテスターが1人買うたびに
+# 本番のD1に有料の記録が残る。疎通確認で一時的に通したいときだけ true。
+ALLOW_SANDBOX_PURCHASES = "false"
 
 [[env.production.d1_databases]]
 binding = "DB"

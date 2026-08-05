@@ -28,6 +28,10 @@ ONESIGNAL_REST_API_KEY=
 # --- RevenueCat (課金webhook) --------------------------------------------------
 # RevenueCat側のwebhook設定に入れる Authorization ヘッダの値。
 # **空のままだと全webhookを拒否します**(空文字で認可しないための仕様)。
+#
+# 手元で叩いて経路を確かめる方法は docs/revenuecat-testing.md §5。
+# sandbox の購入を本物として扱うかは wrangler.toml の
+# ALLOW_SANDBOX_PURCHASES(本番だけ false)。
 REVENUECAT_WEBHOOK_AUTH=
 
 # --- 内部API ------------------------------------------------------------------

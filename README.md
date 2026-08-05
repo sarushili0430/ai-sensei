@@ -74,6 +74,9 @@ cp apps/mobile/dart_defines.example.env apps/mobile/dart_defines.env    # --dart
 
 課金まわりのダッシュボード設定とアプリ側の噛み合わせは
 [`docs/revenuecat.md`](docs/revenuecat.md) にまとめてあります。
+**実際に決済を通す手順**(Test Store・iOS Sandbox・Play のテストカード)と、
+本番でお金を受け取るために要るものの一覧は
+[`docs/revenuecat-testing.md`](docs/revenuecat-testing.md) にあります。
 鍵を渡さないビルドでは課金機能ごと無効になるので、`flutter test` と CI は
 RevenueCat の設定なしで通ります。
 

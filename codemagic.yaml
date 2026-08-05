@@ -65,9 +65,44 @@ definitions:
           exit 1
         fi
 
+        # 鍵の入れ違いは「ビルドは通るのに商品が1つも出ない」で表に出るので、
+        # 接頭辞で先に弾く。RevenueCat の公開SDKキーはプラットフォームごとに
+        # 接頭辞が決まっている(appl_ / goog_ / test_)。
+        case "${TARGET_PLATFORM}" in
+          ios)     expected_prefix=appl_ ;;
+          android) expected_prefix=goog_ ;;
+        esac
+        if [ -n "$platform_key" ]; then
+          case "$platform_key" in
+            "${expected_prefix}"*) ;;
+            test_*)
+              echo "${platform_key_name} に Test Store の鍵(test_)が入っている。"
+              echo "Test Store の鍵は REVENUECAT_SDK_KEY のほうに入れること"
+              echo "(このまま審査に出すと落ちる)。"
+              exit 1
+              ;;
+            *)
+              echo "${platform_key_name} が ${expected_prefix} で始まっていない。"
+              echo "iOS と Android の鍵を入れ違えていないか確認すること。"
+              exit 1
+              ;;
+          esac
+        fi
+        if [ -n "${REVENUECAT_SDK_KEY:-}" ]; then
+          case "${REVENUECAT_SDK_KEY}" in
+            test_*) ;;
+            *)
+              echo "REVENUECAT_SDK_KEY が test_ で始まっていない。"
+              echo "ここは Test Store 専用。実売の鍵は ${platform_key_name} に入れること。"
+              exit 1
+              ;;
+          esac
+        fi
+
         if [ -z "$platform_key" ]; then
           echo "警告: ${platform_key_name} が空。Test Store の鍵で配布する。"
           echo "実売のビルドではない(アプリ内にもその旨が出る)。"
+          echo "**このビルドは審査に出せない。** 提出前に ${platform_key_name} を入れること。"
         fi
         echo "dart-define 用の環境変数は揃っている"
 

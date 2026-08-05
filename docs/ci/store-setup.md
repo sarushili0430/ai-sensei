@@ -360,7 +360,11 @@ Team ID は Apple Developer の右上、またはメンバーシップのペー�
    `REVENUECAT_IOS_PUBLIC_SDK_KEY` に入れる
 9. Webhook を `https://<api>/v1/webhooks/revenuecat` に向け、
    Authorization ヘッダに `REVENUECAT_WEBHOOK_AUTH` と同じ値を設定
-   (`backend/api/src/routes/webhooks.ts:41`)
+   (`backend/api/src/routes/webhooks.ts`)
+
+ここまで済んだら **Sandbox Apple ID で実際に買ってみる** —— 手順と、
+サンドボックス特有の詰まりは [`docs/revenuecat-testing.md`](../revenuecat-testing.md) §2。
+ストアに商品を作る前に試したいなら、同 §1(Test Store)が速い。
 
 ### 1-11. TestFlight
 
@@ -532,6 +536,11 @@ Play Console にAABを上げたあとなら
 5. **Entitlement は `premium`、Offering は `current`**(1-10 の 5・6 と同じ理由で必須)
    — Entitlement と Offering は**プロジェクト共通**なので、Apple側で作ってあれば作り直さない
 6. 公開SDKキー(`goog_...`)を `REVENUECAT_ANDROID_PUBLIC_SDK_KEY` へ
+
+**買えるところまで来たら、Play Console > 設定 > ライセンステスト に
+テスターのGoogleアカウントを登録する。** これを飛ばすと、テスト購入で
+**本当に請求される**。テストカード(「常に承認」「常に拒否」「低速」)の
+使い分けは [`docs/revenuecat-testing.md`](../revenuecat-testing.md) §3。
 
 ---
 
