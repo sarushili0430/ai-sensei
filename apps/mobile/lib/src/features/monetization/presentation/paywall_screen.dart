@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:purchases_ui_flutter/purchases_ui_flutter.dart';
 
 import '../../../common_widgets/chunky_button.dart';
+import '../../../common_widgets/external_link.dart';
 import '../../../l10n/strings.dart';
 import '../../../routing/routes.dart';
 import '../../../theme/tokens.dart';
@@ -230,6 +231,8 @@ class _ManualPaywallState extends ConsumerState<_ManualPaywall> {
                     label: strings.paywallRestore,
                     onPressed: _busy ? null : _restore,
                   ),
+                  // 規約とプライバシーポリシーも同じく必須(Guideline 3.1.2)。
+                  const LegalLinks(),
                   const SizedBox(height: AppSpacing.sm),
                 ],
               ),

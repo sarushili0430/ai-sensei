@@ -3,9 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../api/device_id.dart';
+import '../../../common_widgets/external_link.dart';
 import '../../../l10n/strings.dart';
 import '../../../theme/tokens.dart';
 import '../../monetization/application/entitlement_controller.dart' show RevenueCatConfig;
@@ -109,7 +109,7 @@ class _ReportRow extends ConsumerWidget {
           version: '${info.version}+${info.buildNumber}',
         );
         if (!context.mounted) return;
-        await _open(context, mail);
+        await openExternalLink(context, mail);
       },
     );
   }
@@ -126,7 +126,7 @@ class _LinkRow extends StatelessWidget {
     return ListTile(
       title: Text(label),
       trailing: const Icon(Icons.open_in_new, size: 18, color: AppColors.inkMuted),
-      onTap: () => _open(context, url),
+      onTap: () => openExternalLink(context, url),
     );
   }
 }
@@ -198,10 +198,3 @@ class _Section extends StatelessWidget {
   }
 }
 
-Future<void> _open(BuildContext context, Uri url) async {
-  final bool opened = await launchUrl(url, mode: LaunchMode.externalApplication);
-  if (opened || !context.mounted) return;
-  // 黙って何も起きないのが一番わるいので伝える。
-  ScaffoldMessenger.of(context)
-      .showSnackBar(SnackBar(content: Text(AppStrings.of(context).settingsOpenFailed)));
-}

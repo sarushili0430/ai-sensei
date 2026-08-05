@@ -56,11 +56,13 @@ void main() {
 
   group('ペイウォール', () {
     // HAMMは誠実さを見る。無料継続の導線と解約可能の明記を消させない。
-    testWidgets('無料のまま続ける導線と、解約できる旨を同じ画面に置く', (WidgetTester tester) async {
+    // 「自動更新される」は Guideline 3.1.2 の必須表記。解約できることだけを
+    // 書いて更新に触れないのは、誠実さ(§6)の面でもリジェクトの面でもだめ。
+    testWidgets('無料のまま続ける導線と、自動更新・解約の明示を同じ画面に置く', (WidgetTester tester) async {
       await pumpApp(tester, const PaywallScreen());
 
       expect(find.text('無料のまま続ける'), findsOneWidget);
-      expect(find.text('いつでも解約できます'), findsOneWidget);
+      expect(find.text('登録は自動更新されます。いつでも解約できます'), findsOneWidget);
     });
   });
 

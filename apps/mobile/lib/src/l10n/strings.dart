@@ -190,7 +190,12 @@ class AppStrings {
   /// 購入ボタン。トライアルがあるときは [planFreeTrial] に差し替わる。
   String get paywallSubscribe => _pick('このプランではじめる', 'Start with this plan');
   String get paywallDismiss => _pick('無料のまま続ける', 'Keep using the free version');
-  String get paywallCancelNote => _pick('いつでも解約できます', 'Cancel anytime');
+  /// 自動更新であることは購入画面に書く義務がある(Guideline 3.1.2)。
+  /// 「解約できます」だけでは、更新されることを伝えたことにならない。
+  String get paywallCancelNote => _pick(
+        '登録は自動更新されます。いつでも解約できます',
+        'Your subscription renews automatically. Cancel anytime',
+      );
   String get paywallFree => _pick('無料', 'Free');
   String get paywallPremium => _pick('Premium', 'Premium');
   String get paywallRowSessions => _pick('セッション', 'Sessions');

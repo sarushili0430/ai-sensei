@@ -18,13 +18,17 @@ import 'package:flutter_test/flutter_test.dart';
 ///
 /// `overrides` を `List<Object?>` で受けているのは、Riverpod 3 が `Override` 型を
 /// 公開APIに出していないため。`cast()` の型は ProviderScope 側から推論される。
-Widget wrapApp(Widget child, {List<Object?> overrides = const <Object?>[]}) {
+Widget wrapApp(
+  Widget child, {
+  List<Object?> overrides = const <Object?>[],
+  Locale locale = const Locale('ja'),
+}) {
   return ProviderScope(
     overrides: overrides.cast(),
     child: MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
-      locale: const Locale('ja'),
+      locale: locale,
       supportedLocales: AppStrings.supportedLocales,
       localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
         AppStringsDelegate(),
