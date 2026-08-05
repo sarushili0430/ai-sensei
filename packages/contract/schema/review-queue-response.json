@@ -94,12 +94,98 @@
             "additionalProperties": false
           }
         },
+        "filled": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "hole": {
+                "type": "object",
+                "properties": {
+                  "topic_id": {
+                    "type": "string",
+                    "pattern": "^(M1|MA|M2|MB|M3|MC)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+                  },
+                  "desc": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "severity": {
+                    "type": "string",
+                    "enum": [
+                      "low",
+                      "medium",
+                      "high"
+                    ]
+                  },
+                  "evidence": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "open",
+                      "filled"
+                    ]
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "filled_at": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "topic_id",
+                  "desc",
+                  "severity",
+                  "id",
+                  "status",
+                  "created_at",
+                  "filled_at"
+                ],
+                "additionalProperties": false
+              },
+              "topic_id": {
+                "type": "string",
+                "pattern": "^(M1|MA|M2|MB|M3|MC)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+              },
+              "days_since_filled": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "hole",
+              "topic_id",
+              "days_since_filled"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 30
+        },
         "requires_premium": {
           "type": "boolean"
         }
       },
       "required": [
         "items",
+        "filled",
         "requires_premium"
       ],
       "additionalProperties": false

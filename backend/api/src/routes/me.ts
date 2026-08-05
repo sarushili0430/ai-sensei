@@ -1,9 +1,11 @@
 import type { ProgressResponse, ReviewQueueResponse } from "@ai-sensei/contract";
+import { filledHolesLimit } from "@ai-sensei/contract";
 import { buildReviewPrompt, computeProgress, daysBetween, toLocalDate } from "@ai-sensei/guardrail";
 import { Hono } from "hono";
 import type { AppEnv } from "../env.ts";
 import { readLimits } from "../env.ts";
 import { isPremiumNow } from "../lib/entitlement.ts";
+import type { HoleRecord } from "../repository/types.ts";
 
 export const meRoute = new Hono<AppEnv>();
 
@@ -39,6 +41,10 @@ meRoute.get("/progress", async (c) => {
 
 /**
  * GET /v1/me/reviews — 復習画面(プッシュ起点)。
+ *
+ * 返すのは2つ。「埋めにいく穴」(open)と「埋めた穴」(filled)。
+ * 後者がペイウォールの謳う Premium の「履歴」で、別画面は作らない。
+ *
  * 復習はPremium機能なので、無料ユーザーには空配列を返す。
  * エラーにはしない(「使えない」ではなく「まだ開いていない」として見せる)。
  */
@@ -49,7 +55,7 @@ meRoute.get("/reviews", async (c) => {
 
   const user = await repository.ensureUser(deviceId, at);
   if (!isPremiumNow(user, at)) {
-    const locked: ReviewQueueResponse = { items: [], requires_premium: true };
+    const locked: ReviewQueueResponse = { items: [], filled: [], requires_premium: true };
     return c.json(locked);
   }
 
@@ -60,16 +66,7 @@ meRoute.get("/reviews", async (c) => {
     .map((hole) => {
       const daysSince = daysBetween(toLocalDate(new Date(hole.created_at)), today);
       return {
-        hole: {
-          id: hole.id,
-          topic_id: hole.topic_id,
-          desc: hole.desc,
-          severity: hole.severity,
-          ...(hole.evidence ? { evidence: hole.evidence } : {}),
-          status: hole.status,
-          created_at: hole.created_at,
-          filled_at: hole.filled_at,
-        },
+        hole: toHole(hole),
         topic_id: hole.topic_id,
         days_since: daysSince,
         prompt: buildReviewPrompt({ desc: hole.desc, daysSince }),
@@ -82,9 +79,36 @@ meRoute.get("/reviews", async (c) => {
         severityRank(b.hole.severity) - severityRank(a.hole.severity),
     );
 
-  const response: ReviewQueueResponse = { items, requires_premium: false };
+  const filled = holes
+    .filter((hole) => hole.status === "filled" && hole.filled_at !== null)
+    .map((hole) => ({
+      hole: toHole(hole),
+      topic_id: hole.topic_id,
+      days_since_filled: daysBetween(toLocalDate(new Date(hole.filled_at as string)), today),
+    }))
+    // 埋めたばかりのものを上に。積み上がった手応えが先に目に入るように。
+    .sort((a, b) => a.days_since_filled - b.days_since_filled)
+    // 通算の件数はホームの「埋めた穴」カウンター(progress)のほうが正。
+    // ここは画面に出すぶんだけを載せる。
+    .slice(0, filledHolesLimit);
+
+  const response: ReviewQueueResponse = { items, filled, requires_premium: false };
   return c.json(response);
 });
+
+/** D1の行 → 契約の Hole。evidence は null を持たせず、キーごと落とす。 */
+function toHole(hole: HoleRecord) {
+  return {
+    id: hole.id,
+    topic_id: hole.topic_id,
+    desc: hole.desc,
+    severity: hole.severity,
+    ...(hole.evidence ? { evidence: hole.evidence } : {}),
+    status: hole.status,
+    created_at: hole.created_at,
+    filled_at: hole.filled_at,
+  };
+}
 
 function severityRank(severity: string): number {
   return severity === "high" ? 3 : severity === "medium" ? 2 : 1;

@@ -7,19 +7,27 @@ import '../../../common_widgets/kohai_face.dart';
 import '../../../l10n/strings.dart';
 import '../../../routing/routes.dart';
 import '../../../theme/tokens.dart';
-import '../../monetization/presentation/manage_subscription_button.dart';
 import '../application/karte_controllers.dart';
 import '../domain/karte.dart';
 
-/// ホーム。数えるのは連続日数と「埋めた穴」だけ(handoff §7)。
-/// XP・レベル・ランクは出さない。
+/// ホーム。
+///
+/// ここは**ハブ**であって、カメラの起動ボタンではない。置くのは3つだけ:
+///   - 数えているもの(連続日数と埋めた穴。XP・レベル・ランクは出さない — handoff §7)
+///   - 今日やること(撮る)と、きのうの続き(埋めていない穴)
+///   - 今日あと何回撮れるか(事実だけ。煽らない — §6)
+///
+/// タブバーは置かない。常設タブに値するのはこの画面だけで、カルテは
+/// セッション直後にだけ意味を持つ一過性の画面だから(タブにすると空タブになる)。
+/// 設定は右上に逃がす。
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AppStrings strings = AppStrings.of(context);
-    final AsyncValue<Progress> progress = ref.watch(progressControllerProvider);
+    final AsyncValue<ProgressSummary> summary = ref.watch(progressControllerProvider);
+    final ProgressSummary data = summary.value ?? ProgressSummary.empty;
 
     return Scaffold(
       body: SafeArea(
@@ -28,7 +36,7 @@ class HomeScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              _CounterRow(progress: progress.value ?? Progress.empty),
+              _TopRow(progress: data.progress),
               const Spacer(),
               const Center(child: KohaiFace(mood: KohaiMood.neutral, size: 140)),
               const SizedBox(height: AppSpacing.lg),
@@ -38,17 +46,14 @@ class HomeScreen extends ConsumerWidget {
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const Spacer(),
+              _OpenHolesCard(progress: data.progress),
+              const SizedBox(height: AppSpacing.md),
               ChunkyButton(
                 label: strings.homeCapture,
-                onPressed: () => context.go(AppRoute.capture.path),
+                onPressed: () => context.push(AppRoute.capture.path),
               ),
               const SizedBox(height: AppSpacing.sm),
-              GhostButton(
-                label: strings.reviewTitle,
-                onPressed: () => context.go(AppRoute.review.path),
-              ),
-              // 契約がある人にだけ出る。無料のあいだは何も増えない。
-              const Center(child: ManageSubscriptionButton()),
+              _RemainingLine(summary: data),
             ],
           ),
         ),
@@ -57,8 +62,8 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
-class _CounterRow extends StatelessWidget {
-  const _CounterRow({required this.progress});
+class _TopRow extends StatelessWidget {
+  const _TopRow({required this.progress});
 
   final Progress progress;
 
@@ -66,17 +71,117 @@ class _CounterRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: <Widget>[
         _Counter(
           value: progress.streakDays,
           label: strings.streakDays(progress.streakDays),
           color: AppColors.streak,
         ),
+        const SizedBox(width: AppSpacing.md),
         _Counter(
           value: progress.filledHoles,
           label: strings.filledHoles(progress.filledHoles),
           color: AppColors.blue,
+        ),
+        const Spacer(),
+        IconButton(
+          onPressed: () => context.push(AppRoute.settings.path),
+          icon: const Icon(Icons.settings_outlined, size: 22),
+          color: AppColors.inkMuted,
+          tooltip: strings.settingsTitle,
+        ),
+      ],
+    );
+  }
+}
+
+/// きのうの続き。再訪の起点で、通知の着地先でもある。
+///
+/// 穴がゼロのときは代わりに「最初の1枚から始まる」と書く。
+/// 初回起動のホームが、押すもののない空白にならないように。
+class _OpenHolesCard extends StatelessWidget {
+  const _OpenHolesCard({required this.progress});
+
+  final Progress progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppStrings strings = AppStrings.of(context);
+
+    if (progress.openHoles == 0) {
+      return Text(
+        strings.homeFirstRun,
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.bodySmall,
+      );
+    }
+
+    return GestureDetector(
+      onTap: () => context.push(AppRoute.review.path),
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.card),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: <Widget>[
+            Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(color: AppColors.hole, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(strings.reviewTitle, style: Theme.of(context).textTheme.titleMedium),
+                  Text(
+                    strings.openHoles(progress.openHoles),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: AppColors.inkMuted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 今日あと何回撮れるか。撮ってから断らないために、先に出しておく。
+class _RemainingLine extends StatelessWidget {
+  const _RemainingLine({required this.summary});
+
+  final ProgressSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppStrings strings = AppStrings.of(context);
+    final int? remaining = summary.limits.remainingSessionsToday;
+
+    // Premium は無制限。ここに何も足さない(契約の管理は設定にある)。
+    if (remaining == null) return const SizedBox(height: AppSpacing.md);
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: <Widget>[
+        Text(
+          remaining > 0 ? strings.remainingSessions(remaining) : strings.remainingSessionsNone,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        TextButton(
+          onPressed: () => context.push(AppRoute.paywall.path),
+          style: TextButton.styleFrom(
+            foregroundColor: AppColors.blue,
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+          ),
+          child: Text(strings.homeUnlock, style: Theme.of(context).textTheme.bodySmall),
         ),
       ],
     );

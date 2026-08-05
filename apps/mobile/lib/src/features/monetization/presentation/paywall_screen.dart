@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:purchases_ui_flutter/purchases_ui_flutter.dart';
 
 import '../../../common_widgets/chunky_button.dart';
@@ -51,11 +50,11 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       // 購入・復元できた。閉じてホームへ。
       case PaywallResult.purchased:
       case PaywallResult.restored:
-        context.go(AppRoute.home.path);
+        context.closeOrGoHome();
       // 閉じただけ。「無料のまま続ける」を押したのと同じ扱いにする。
       case PaywallResult.cancelled:
       case PaywallResult.notPresented:
-        context.go(AppRoute.home.path);
+        context.closeOrGoHome();
       // ダッシュボードにペイウォールが無い / OSが古い。
       // 下に敷いてある自前のペイウォールがそのまま残る。
       case PaywallResult.error:
@@ -108,7 +107,7 @@ class _ManualPaywallState extends ConsumerState<_ManualPaywall> {
 
     switch (outcome) {
       case PurchaseSucceeded():
-        context.go(AppRoute.home.path);
+        context.closeOrGoHome();
       // 自分で閉じただけ。エラーは出さないし、引き止めもしない。
       case PurchaseCancelled():
         break;
@@ -133,7 +132,7 @@ class _ManualPaywallState extends ConsumerState<_ManualPaywall> {
 
     switch (outcome) {
       case RestoreSucceeded():
-        context.go(AppRoute.home.path);
+        context.closeOrGoHome();
       // 「失敗」ではない。見つからなかった、と正直に出す。
       case RestoreFoundNothing():
         setState(() => _message = strings.paywallRestoredNothing);
@@ -219,7 +218,7 @@ class _ManualPaywallState extends ConsumerState<_ManualPaywall> {
                   // 無料継続の導線は隠さない。押しても損をしないことが分かる文言にする。
                   GhostButton(
                     label: strings.paywallDismiss,
-                    onPressed: _busy ? null : () => context.go(AppRoute.home.path),
+                    onPressed: _busy ? null : context.closeOrGoHome,
                   ),
                   Text(
                     strings.paywallCancelNote,

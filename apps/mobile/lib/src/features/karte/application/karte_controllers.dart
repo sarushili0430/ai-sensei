@@ -6,20 +6,34 @@ import '../domain/karte.dart';
 
 part 'karte_controllers.g.dart';
 
-/// ホーム画面のカウンター。連続日数と埋めた穴だけを持つ。
+/// ホーム画面が読む進捗。カウンター(連続日数・埋めた穴)と、
+/// 今日あと何回撮れるか。数えるのはこの2つだけで、点数は持たない。
 @Riverpod(keepAlive: true)
 class ProgressController extends _$ProgressController {
   @override
-  Future<Progress> build() => ref.read(apiClientProvider).fetchProgress();
+  Future<ProgressSummary> build() => ref.read(apiClientProvider).fetchProgress();
 
   Future<void> refresh() async {
-    state = const AsyncValue<Progress>.loading();
+    state = const AsyncValue<ProgressSummary>.loading();
     state = await AsyncValue.guard(() => ref.read(apiClientProvider).fetchProgress());
   }
 
   /// セッション直後は、サーバが返した進捗をそのまま反映する(再取得しない)。
+  ///
+  /// `/complete` のレスポンスに残セッション数は入っていないので、
+  /// 1回ぶん自分で減らす。ホームに戻った瞬間に古い数字が残らないようにするため
+  /// で、判定そのものはサーバが持っている(ここがずれても撮れる/撮れないは変わらない)。
   void applyFromSession(Progress progress) {
-    state = AsyncValue<Progress>.data(progress);
+    final ProgressSummary previous = state.value ?? ProgressSummary.empty;
+    final int? remaining = previous.limits.remainingSessionsToday;
+    state = AsyncValue<ProgressSummary>.data(
+      previous.copyWith(
+        progress: progress,
+        limits: previous.limits.copyWith(
+          remainingSessionsToday: remaining == null ? null : (remaining - 1).clamp(0, remaining),
+        ),
+      ),
+    );
   }
 }
 

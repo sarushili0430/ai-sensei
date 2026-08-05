@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../../api/api_client.dart';
 import '../../../common_widgets/chunky_button.dart';
@@ -25,6 +26,9 @@ class CaptureScreen extends ConsumerStatefulWidget {
 }
 
 class _CaptureScreenState extends ConsumerState<CaptureScreen> {
+  /// カメラを断られた。閉じるのではなく、戻し方を出す。
+  bool _cameraDenied = false;
+
   @override
   void initState() {
     super.initState();
@@ -32,14 +36,28 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
   }
 
   Future<void> _pickPhoto() async {
+    setState(() => _cameraDenied = false);
+
     final XFile? picked = await ImagePicker().pickImage(
       source: ImageSource.camera,
       imageQuality: 85,
     );
+
+    // 撮らずに帰ってきた。理由は2つあり、扱いが違う。
+    //   - 許可がない  → 何度カメラを開いても同じなので、設定への行き方を出す
+    //   - 撮るのをやめた → そのまま前の画面(ホーム)へ戻す
     if (picked == null) {
-      if (mounted) context.go(AppRoute.home.path);
+      if (!mounted) return;
+      final PermissionStatus status = await Permission.camera.status;
+      if (!mounted) return;
+      if (status.isDenied || status.isPermanentlyDenied || status.isRestricted) {
+        setState(() => _cameraDenied = true);
+      } else {
+        context.closeOrGoHome();
+      }
       return;
     }
+
     if (!mounted) return;
     final String locale = Localizations.localeOf(context).languageCode;
     final CaptureController controller = ref.read(captureControllerProvider.notifier);
@@ -64,6 +82,16 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
   }
 
   Widget _body(CaptureState state) {
+    final AppStrings strings = AppStrings.of(context);
+
+    if (_cameraDenied) {
+      return _ErrorView(
+        message: strings.captureCameraDenied,
+        retryLabel: strings.captureOpenSettings,
+        onRetry: openAppSettings,
+      );
+    }
+
     final ApiException? error = state.error;
     if (error != null) {
       return _ErrorView(
@@ -161,10 +189,11 @@ class _TopicChip extends StatelessWidget {
 }
 
 class _ErrorView extends StatelessWidget {
-  const _ErrorView({required this.message, this.onRetry});
+  const _ErrorView({required this.message, this.onRetry, this.retryLabel});
 
   final String message;
   final VoidCallback? onRetry;
+  final String? retryLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -175,11 +204,9 @@ class _ErrorView extends StatelessWidget {
         // サーバの文言をそのまま出す。煽らない文体で書かれている。
         Text(message, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyLarge),
         const SizedBox(height: AppSpacing.lg),
-        if (onRetry != null) ChunkyButton(label: strings.errorRetry, onPressed: onRetry),
-        GhostButton(
-          label: strings.karteDone,
-          onPressed: () => context.go(AppRoute.home.path),
-        ),
+        if (onRetry != null)
+          ChunkyButton(label: retryLabel ?? strings.errorRetry, onPressed: onRetry),
+        GhostButton(label: strings.karteDone, onPressed: context.closeOrGoHome),
       ],
     );
   }

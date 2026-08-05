@@ -2,11 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:permission_handler/permission_handler.dart';
+
 import '../../../common_widgets/chunky_button.dart';
 import '../../../common_widgets/marker_text.dart';
 import '../../../l10n/strings.dart';
 import '../../../routing/routes.dart';
 import '../../../theme/tokens.dart';
+import '../../notifications/application/push_controller.dart';
+import '../../notifications/data/push_repository.dart';
 import '../application/karte_controllers.dart';
 import '../domain/karte.dart';
 
@@ -24,10 +28,12 @@ class KarteScreen extends ConsumerWidget {
     final Karte? karte = ref.watch(latestKarteControllerProvider);
     final bool showPaywall = ref.watch(sessionOutcomeControllerProvider).showPaywall;
 
+    // 直近のカルテが無いときはルータがホームへ戻す(app_router.dart の redirect)。
+    // ここに来るのはその1フレームぶんなので、エラー文言は出さない。
     if (karte == null) {
       return Scaffold(
         appBar: AppBar(title: Text(strings.karteTitle)),
-        body: Center(child: Text(strings.errorGeneric)),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
@@ -66,24 +72,12 @@ class KarteScreen extends ConsumerWidget {
               _FollowupCard(question: karte.followupQuestion!),
             ],
             const SizedBox(height: AppSpacing.xl),
-            if (karte.holes.isNotEmpty)
-              Container(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(AppRadius.card),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Text(
-                  strings.karteReviewToggle,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ),
+            if (karte.holes.isNotEmpty) const _ReviewReminderCard(),
             const SizedBox(height: AppSpacing.lg),
             if (karte.holes.isNotEmpty)
               ChunkyButton(
                 label: strings.karteRetry,
-                onPressed: () => context.go(AppRoute.review.path),
+                onPressed: () => context.push(AppRoute.review.path),
               ),
             GhostButton(
               label: strings.karteDone,
@@ -119,6 +113,71 @@ class _Section extends StatelessWidget {
             child: Align(alignment: Alignment.centerLeft, child: child),
           ),
       ],
+    );
+  }
+}
+
+/// あしたの夜、もう一度きいてもいいか。
+///
+/// **通知の許可を求めるのはアプリ中でここだけ。** 初回起動では聞かない。
+/// 穴が見つかった直後、後輩からのお願いとして尋ねるほうが文脈が立つし、
+/// ここで断られても「翌日・3日後・7日後」の価値は伝わっている。
+///
+/// スイッチをアプリ側に持たないのは、OSの許可がそのまま状態だから。
+/// 二重に持つと「アプリではオンなのに届かない」が生まれる。
+class _ReviewReminderCard extends ConsumerWidget {
+  const _ReviewReminderCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AppStrings strings = AppStrings.of(context);
+    final PushPermission permission = ref.watch(pushPermissionControllerProvider);
+
+    // 通知を扱えないビルドでは、約束の文言だけを静かに出す。
+    final bool granted = permission.granted || !permission.available;
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Text(
+              granted ? strings.karteReviewToggle : strings.karteReviewAsk,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+          if (permission.available)
+            Switch(
+              value: permission.granted,
+              activeThumbColor: AppColors.blue,
+              onChanged: (bool wantsOn) async {
+                // 切るのは設定アプリで。アプリ側に別のスイッチを作らない。
+                if (!wantsOn) {
+                  await openAppSettings();
+                  return;
+                }
+                final bool ok =
+                    await ref.read(pushPermissionControllerProvider.notifier).request();
+                if (ok || !context.mounted) return;
+                // 一度断られると、iOSはもうダイアログを出さない。設定への行き方を伝える。
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(strings.karteReviewDenied),
+                    action: SnackBarAction(
+                      label: strings.settingsNotificationsOpenSettings,
+                      onPressed: openAppSettings,
+                    ),
+                  ),
+                );
+              },
+            ),
+        ],
+      ),
     );
   }
 }

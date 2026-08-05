@@ -187,6 +187,45 @@ workflows:
       #     --type IOS_APP_STORE --certificate-key=@env:CERTIFICATE_PRIVATE_KEY --create
       # を一時的に足す。鍵を渡さないと毎ビルド新しい証明書を作って上限に当たる。
 
+      - name: 署名をXcodeプロジェクトに適用し export_options.plist を作る
+        working_directory: apps/mobile
+        # 組み込みステップの最後(xcode-project use-profiles)がこれをやる —— はずだが、
+        # 探し方が「クローン先ルートからの **/*.xcodeproj」なので、
+        # このリポジトリのように iOS プロジェクトが apps/mobile/ios にある構成では
+        # 見つけられずに素通りすることがある。そのときは何も言わずに次へ進み、
+        # 最後の flutter build ipa が
+        #   "/Users/builder/export_options.plist" property list does not exist
+        # で落ちる —— macの課金時間を全部使いきったあとで。
+        #
+        # なのでプロジェクトのパスを明示して自分で叩く。
+        # use-profiles は冪等なので、組み込みステップが済ませていても実害はない。
+        script: |
+          set -euo pipefail
+          profiles_dir="$HOME/Library/MobileDevice/Provisioning Profiles"
+
+          # 組み込みの自動署名がプロファイルを取れていないと use-profiles は
+          # "Did not find any provisioning profiles" で落ちる。
+          # そのとき直すべきなのはこのステップではなく Developer Portal 側
+          # (バンドルIDの登録・APIキーの権限)なので、先に切り分けておく。
+          if ! ls "$profiles_dir"/*.mobileprovision >/dev/null 2>&1; then
+            echo "プロビジョニングプロファイルが1つもダウンロードされていない。"
+            echo "scripts より前にある Codemagic の署名ステップのログを見ること。"
+            echo "よくある原因:"
+            echo "  - Developer Portal に ${BUNDLE_ID} のIdentifierが無い"
+            echo "  - App Store Connect APIキー(integrations の 'codemagic')の権限が App Manager 未満"
+            echo "  - environment.ios_signing.bundle_identifier がアプリのバンドルIDと違う"
+            exit 1
+          fi
+          echo "取得済みプロファイル:"
+          ls -1 "$profiles_dir"
+
+          xcode-project use-profiles \
+            --project ios/Runner.xcodeproj \
+            --export-options-plist "$HOME/export_options.plist"
+
+          echo "--- $HOME/export_options.plist ---"
+          cat "$HOME/export_options.plist"
+
       - name: IPA をビルド
         working_directory: apps/mobile
         script: |
@@ -205,7 +244,10 @@ workflows:
             --dart-define=REVENUECAT_ENTITLEMENT_ID="${REVENUECAT_ENTITLEMENT_ID:-premium}" \
             --dart-define=REVENUECAT_OFFERING_ID="${REVENUECAT_OFFERING_ID:-}" \
             --dart-define=ONESIGNAL_APP_ID="${ONESIGNAL_APP_ID:-47044c5e-15eb-49ec-bdd4-e0ed2219a799}" \
-            --export-options-plist=/Users/builder/export_options.plist
+            --dart-define=PRIVACY_POLICY_URL="${PRIVACY_POLICY_URL:-}" \
+            --dart-define=TERMS_URL="${TERMS_URL:-}" \
+            --dart-define=SUPPORT_EMAIL="${SUPPORT_EMAIL:-}" \
+            --export-options-plist="$HOME/export_options.plist"
 
     artifacts:
       - apps/mobile/build/ios/ipa/*.ipa
@@ -297,7 +339,10 @@ workflows:
             --dart-define=REVENUECAT_SDK_KEY="${REVENUECAT_SDK_KEY:-}" \
             --dart-define=REVENUECAT_ENTITLEMENT_ID="${REVENUECAT_ENTITLEMENT_ID:-premium}" \
             --dart-define=REVENUECAT_OFFERING_ID="${REVENUECAT_OFFERING_ID:-}" \
-            --dart-define=ONESIGNAL_APP_ID="${ONESIGNAL_APP_ID:-47044c5e-15eb-49ec-bdd4-e0ed2219a799}"
+            --dart-define=ONESIGNAL_APP_ID="${ONESIGNAL_APP_ID:-47044c5e-15eb-49ec-bdd4-e0ed2219a799}" \
+            --dart-define=PRIVACY_POLICY_URL="${PRIVACY_POLICY_URL:-}" \
+            --dart-define=TERMS_URL="${TERMS_URL:-}" \
+            --dart-define=SUPPORT_EMAIL="${SUPPORT_EMAIL:-}"
 
     artifacts:
       - apps/mobile/build/app/outputs/bundle/release/*.aab

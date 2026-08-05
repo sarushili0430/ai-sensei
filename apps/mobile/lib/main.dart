@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'src/api/device_id.dart';
 import 'src/features/monetization/data/purchases_repository.dart';
-import 'src/features/notifications/data/onesignal_repository.dart';
+import 'src/features/notifications/application/push_controller.dart';
 import 'src/features/notifications/presentation/push_registration_gate.dart';
 import 'src/l10n/strings.dart';
 import 'src/routing/app_router.dart';
@@ -34,20 +34,6 @@ Future<void> main() async {
     debugPrint('RevenueCat の初期化に失敗しました(無料のまま起動します): $error\n$stack');
   }
 
-  // OneSignal も起動時に一度だけ。RevenueCat と同じ理由でここに置く。
-  //
-  // external_id にデバイスIDを渡すのが要点。backend/api は
-  // `include_aliases: { external_id: [deviceId] }` で復習プッシュを撃つので、
-  // ここがずれると予約は通るのに端末には一通も届かない。
-  //
-  // 通知の初期化に失敗してもアプリは起動させる。プッシュが無いだけで
-  // 説明の練習ができなくなるのは本末転倒なので。
-  try {
-    await const OneSignalRepository().configure(externalId: deviceId);
-  } on Object catch (error, stack) {
-    debugPrint('OneSignal の初期化に失敗しました(プッシュ無しで起動します): $error\n$stack');
-  }
-
   runApp(
     ProviderScope(
       // 起動時に確定する値を差し込む(型は ProviderScope から推論される)
@@ -68,9 +54,23 @@ class AiSenseiApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final GoRouter router = ref.watch(appRouterProvider);
 
-    // 端末がOneSignalに登録できたら確認ダイアログを一度だけ出す。
+    // 通知の配線(SDK初期化とexternal idの登録)。許可はここでは求めない。
+    ref.watch(pushSetupProvider);
+
+    // 通知タップの着地。コールドスタートではウィジェットツリーより先に
+    // クリックが届くので、ここまで運んでから遷移する。
+    // watch にしているのは、この build より前に置かれていた場合も拾うため。
+    if (ref.watch(pendingDeepLinkProvider) != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final String? path = ref.read(pendingDeepLinkProvider.notifier).take();
+        if (path != null) router.go(path);
+      });
+    }
+
+    // 端末がOneSignalに登録できたことの確認ダイアログ(デバッグビルドのみ)。
     // 画面は足さないので、包んでも画面遷移には影響しない。
     return PushRegistrationGate(
+      navigatorKey: router.routerDelegate.navigatorKey,
       child: MaterialApp.router(
         title: 'ai-sensei',
         debugShowCheckedModeBanner: false,

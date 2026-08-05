@@ -1,21 +1,34 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 
-import '../../../routing/app_router.dart';
-import '../data/onesignal_config.dart';
-import '../data/onesignal_repository.dart';
+import '../application/push_controller.dart';
+import '../data/push_repository.dart';
 
 /// OneSignal への端末登録を見張って、確認ダイアログを一度だけ出す。
+///
+/// OneSignal の統合手順が要求している「登録できたことを確かめる」ダイアログ。
+/// **デバッグビルドでのみ出す。** 本番で出さないのは、初回起動でいきなり
+/// 通知の許可を求めるのが、このアプリの設計(§6「煽らない」/ 許可を聞くのは
+/// カルテのトグル1箇所だけ)と噛み合わないため。文面も手順書指定の英語のままで、
+/// 日本語のユーザーに見せるものではない。
+///
+/// 本番でも出したくなったら [_enabled] を `true` に変える。
 ///
 /// アプリ全体を包むだけで画面は足さない([child] をそのまま返す)。
 /// 監視ハンドルは **State に持たせる** —— ローカル変数に入れただけだと
 /// 参照が消えて通知が来なくなる。
-///
-/// ダイアログは特定の画面に属さないので、`MaterialApp.router` の外側からでも
-/// 出せるように [rootNavigatorKeyProvider] の context を使う。
 class PushRegistrationGate extends ConsumerStatefulWidget {
-  const PushRegistrationGate({required this.child, super.key});
+  const PushRegistrationGate({
+    required this.navigatorKey,
+    required this.child,
+    super.key,
+  });
+
+  /// ダイアログを出すための Navigator。どの画面にも属さないダイアログなので、
+  /// `MaterialApp.router` の外側からでも辿れるようにキーを受け取る。
+  final GlobalKey<NavigatorState> navigatorKey;
 
   final Widget child;
 
@@ -24,16 +37,18 @@ class PushRegistrationGate extends ConsumerStatefulWidget {
 }
 
 class _PushRegistrationGateState extends ConsumerState<PushRegistrationGate> {
-  OneSignalRepository? _repository;
+  static const bool _enabled = kDebugMode;
+
+  PushRepository? _repository;
   OnPushSubscriptionChangeObserver? _observer;
   bool _dialogShown = false;
 
   @override
   void initState() {
     super.initState();
-    if (!OneSignalConfig.isConfigured) return;
+    if (!_enabled || !PushConfig.isConfigured) return;
 
-    final OneSignalRepository repository = ref.read(oneSignalRepositoryProvider);
+    final PushRepository repository = ref.read(pushRepositoryProvider);
     void observer(OSPushSubscriptionChangedState state) =>
         _maybeShowDialog(state.current.id);
 
@@ -60,10 +75,9 @@ class _PushRegistrationGateState extends ConsumerState<PushRegistrationGate> {
 
   void _maybeShowDialog(String? subscriptionId) {
     if (_dialogShown || !mounted) return;
-    if (!OneSignalRepository.isRegistered(subscriptionId)) return;
+    if (!PushRepository.isRegistered(subscriptionId)) return;
 
-    final BuildContext? navigatorContext =
-        ref.read(rootNavigatorKeyProvider).currentContext;
+    final BuildContext? navigatorContext = widget.navigatorKey.currentContext;
     if (navigatorContext == null) return;
 
     _dialogShown = true;
@@ -86,8 +100,6 @@ class _PushRegistrationGateState extends ConsumerState<PushRegistrationGate> {
           TextButton(
             onPressed: () {
               Navigator.pop(dialogContext);
-              // 通知の許可を求めるのはここだけ。起動直後に出すと、
-              // 何のアプリか分からないまま拒否されて二度と出せない。
               _repository?.requestPermission();
             },
             child: const Text('Got it'),
