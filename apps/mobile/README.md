@@ -29,21 +29,38 @@ CIも同じファイルを読むので、手元とCIでSDKがずれません。
 dart pub global activate fvm      # 初回だけ
 fvm install                       # .fvmrc のバージョンを取得
 fvm flutter pub get
-fvm flutter run --dart-define=API_BASE_URL=http://localhost:8787
+cp dart_defines/local.example.json dart_defines/local.json
+tool/run.sh                       # = tool/run.sh --debug --dart_define=local
 ```
 
 fvmを使わない場合は 3.44.8 を手で入れてください(`flutter --version` で確認)。
+`tool/run.sh` は `.fvmrc` と `fvm` があれば `fvm flutter`、無ければ素の `flutter` を使います。
 
-### 環境変数
+### 環境変数(dart-define)
+
+値は `dart_defines/*.json` に置き、`--dart-define-from-file` でそのまま渡します。
+キーごとの意味は [`dart_defines/README.md`](dart_defines/README.md)。
 
 ```bash
-cp dart_defines.example.env dart_defines.env
-fvm flutter run --dart-define-from-file=dart_defines.env
+tool/run.sh --debug   --dart_define=local
+tool/run.sh --release --dart_define=prod
+tool/run.sh --debug   --dart_define=dart_defines/staging.json
+tool/run.sh --debug   --dart_define=API_BASE_URL=http://192.168.1.10:8787   # 単発の上書き
+tool/run.sh --debug   --dart_define=local -d "iPhone 15"                    # 残りは flutter run に素通し
+```
+
+`--dart_define` は複数回書けて、後に書いたものが勝ちます(ファイルを読んでから
+1キーだけ上書き、ができる)。`--dart-define` / `--dart-define-from-file` と綴っても同じです。
+スクリプトを通さないなら中身はただの `flutter run`:
+
+```bash
+fvm flutter run --debug --dart-define-from-file=dart_defines/local.json
 ```
 
 ここに入るのは **公開値だけ** です(APIのURL・RevenueCat公開鍵・OneSignal App ID・
 Sentry DSN)。`--dart-define` の値はビルド成果物に埋め込まれ、逆アセンブルで読めるので、
 **秘密鍵は置かないでください**。秘密鍵はすべて `backend/` 側にあります。
+`*.example.json` 以外はコミットされません。
 
 ## コード生成
 
