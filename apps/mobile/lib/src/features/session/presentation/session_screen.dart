@@ -47,6 +47,12 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
       }
     });
 
+    // 会話が始まらなかったときは、顔と字幕のまま黙らない。
+    // 何が起きたのかと、次にできることを出す。
+    if (state.phase == SessionPhase.failed) {
+      return _SessionFailed(failure: state.failure);
+    }
+
     return Scaffold(
       body: SafeArea(
         child: Padding(
@@ -75,9 +81,11 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
               const SizedBox(height: AppSpacing.lg),
               // 字幕。声を聞き取れない場所でも会話の流れを追えるようにする。
               Text(
-                state.phase == SessionPhase.summarizing
-                    ? strings.sessionThinking
-                    : state.lastKohaiText ?? strings.sessionListening,
+                switch (state.phase) {
+                  SessionPhase.connecting => strings.sessionConnecting,
+                  SessionPhase.summarizing => strings.sessionThinking,
+                  _ => state.lastKohaiText ?? strings.sessionListening,
+                },
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyLarge,
               ),
@@ -85,13 +93,65 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
               // パスは恥ではない。穴の記録として価値がある(handoff §7)。
               GhostButton(
                 label: strings.sessionPass,
-                onPressed: () => ref.read(sessionControllerProvider.notifier).onUserTurn(),
+                onPressed: () => ref
+                    .read(sessionControllerProvider.notifier)
+                    .pass(strings.sessionPassMessage),
               ),
               ChunkyButton(
                 label: strings.sessionEnd,
                 color: AppColors.border,
                 foregroundColor: AppColors.ink,
                 onPressed: () => ref.read(sessionControllerProvider.notifier).finish(),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 会話が始まらなかった画面。
+///
+/// **理由を出して、出口を用意する。** 「聞いています」のまま止めておくと、
+/// ユーザーは自分の説明が悪いのだと思ってしまう。
+class _SessionFailed extends ConsumerWidget {
+  const _SessionFailed({required this.failure});
+
+  final SessionFailure? failure;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AppStrings strings = AppStrings.of(context);
+    final SessionStart? session = ref.watch(captureControllerProvider).session;
+
+    return Scaffold(
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              const KohaiFace(mood: KohaiMood.puzzled, size: 160),
+              const SizedBox(height: AppSpacing.xl),
+              Text(
+                switch (failure) {
+                  SessionFailure.kohaiUnavailable => strings.sessionKohaiUnavailable,
+                  SessionFailure.connection || null => strings.sessionConnectionFailed,
+                },
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              if (session != null)
+                ChunkyButton(
+                  label: strings.sessionRetry,
+                  onPressed: () =>
+                      ref.read(sessionControllerProvider.notifier).retry(session),
+                ),
+              GhostButton(
+                label: strings.sessionBackHome,
+                onPressed: () => context.go(AppRoute.home.path),
               ),
             ],
           ),

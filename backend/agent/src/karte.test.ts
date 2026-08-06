@@ -181,7 +181,45 @@ describe("postComplete", () => {
         sessionId: "ses_1",
         body,
         fetchImpl: fetchImpl as unknown as typeof fetch,
+        sleep: async () => undefined,
       }),
     ).rejects.toThrow(/500/);
+  });
+
+  // 一瞬の失敗でカルテが永久に表に出ないのを避ける(/complete は冪等)
+  it("5xxと通信エラーは送り直す", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("ECONNRESET"))
+      .mockResolvedValueOnce(new Response("boom", { status: 502 }))
+      .mockResolvedValueOnce(new Response("{}", { status: 201 }));
+
+    await postComplete({
+      apiBaseUrl: "https://api.example.com",
+      internalToken: "secret-token",
+      sessionId: "ses_1",
+      body,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      sleep: async () => undefined,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  // トークンずれ・契約違反は何度送っても同じ
+  it("4xxは送り直さない", async () => {
+    const fetchImpl = vi.fn(async () => new Response("unauthorized", { status: 401 }));
+
+    await expect(
+      postComplete({
+        apiBaseUrl: "https://api.example.com",
+        internalToken: "wrong-token",
+        sessionId: "ses_1",
+        body,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        sleep: async () => undefined,
+      }),
+    ).rejects.toThrow(/401/);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 });

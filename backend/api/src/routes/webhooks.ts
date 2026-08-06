@@ -109,14 +109,18 @@ async function handleTransfer(input: {
 
 webhooksRoute.post("/revenuecat", async (c) => {
   const { repository, now } = c.get("services");
+  const log = c.get("log");
 
   const authorization = c.req.header("authorization");
   if (!c.env.REVENUECAT_WEBHOOK_AUTH || authorization !== c.env.REVENUECAT_WEBHOOK_AUTH) {
+    // 設定を入れ替えたあとの拒否がここに出る。**課金だけ静かに壊れる**のを防ぐ。
+    log?.warn("webhook_unauthorized", { source: "revenuecat" });
     return c.json({ error: { code: "unauthorized", message: "invalid webhook auth" } }, 401);
   }
 
   const parsed = revenueCatEventSchema.safeParse(await c.req.json());
   if (!parsed.success) {
+    log?.error("webhook_invalid_payload", parsed.error, { source: "revenuecat" });
     return c.json({ error: { code: "internal_error", message: "unexpected payload" } }, 400);
   }
 

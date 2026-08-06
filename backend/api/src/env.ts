@@ -1,5 +1,6 @@
 import type { D1Database, KVNamespace, R2Bucket } from "./cloudflare.ts";
 import type { NotificationScheduler } from "./lib/notifications.ts";
+import type { RequestLogger } from "./lib/observability.ts";
 import type { PhotoAnalyzer } from "./lib/photo-analysis.ts";
 import type { Repository } from "./repository/types.ts";
 
@@ -15,6 +16,14 @@ export type Bindings = {
   LIVEKIT_URL: string;
   LIVEKIT_API_KEY: string;
   LIVEKIT_API_SECRET: string;
+  /**
+   * 後輩(agent)ワーカーの名前。**名前つきで動かしているときだけ**設定する。
+   *
+   * LiveKit Cloud のエージェントホスティングは `LIVEKIT_AGENT_NAME` を自動で入れる。
+   * 名前つきワーカーは自動ディスパッチの対象外なので、ここを空のままにすると
+   * 部屋に誰も来ない(アプリは「聞いています」のまま止まる)。
+   */
+  LIVEKIT_AGENT_NAME?: string;
 
   LLM_PROVIDER?: string;
   ANTHROPIC_API_KEY?: string;
@@ -28,6 +37,12 @@ export type Bindings = {
   REVENUECAT_ENTITLEMENT_ID?: string;
 
   INTERNAL_API_TOKEN: string;
+
+  /** 設定されていればエラーをSentryへ送る。無ければ構造化ログだけ(ローカル)。 */
+  SENTRY_DSN?: string;
+
+  /** `"error"` にすると全リクエストの1行を落として失敗だけ残す。既定は info。 */
+  LOG_LEVEL?: string;
 
   FREE_SESSIONS_PER_DAY?: string;
   FREE_SESSION_MAX_SECONDS?: string;
@@ -53,6 +68,9 @@ export type AppEnv = {
   Variables: {
     services: Services;
     deviceId: string;
+    /** リクエスト単位のロガー。全行に同じ trace_id が入る。 */
+    log: RequestLogger;
+    traceId: string;
   };
 };
 

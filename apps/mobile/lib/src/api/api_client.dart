@@ -93,11 +93,16 @@ class ApiClient {
     return SessionResult.fromJson(_decode(response));
   }
 
-  /// カルテができるまで待つ。会話の直後は数秒かかる。
+  /// カルテができるまで待つ。
+  ///
+  /// 会話が終わってから、エージェントがLLMでカルテを書いて `/complete` に送るまで
+  /// 数秒〜十数秒かかる。ここで待つのをやめるとカルテは表示されないので、
+  /// **祝福画面を見ている間ぶん**は待つ(60秒)。それでも来なければ、
+  /// 祝福だけ見せて、あとから取りに行けるようにする。
   Future<SessionResult?> awaitSessionResult(
     String sessionId, {
     Duration interval = const Duration(seconds: 2),
-    int attempts = 15,
+    int attempts = 30,
   }) async {
     for (int i = 0; i < attempts; i++) {
       final SessionResult? result = await fetchSessionResult(sessionId);

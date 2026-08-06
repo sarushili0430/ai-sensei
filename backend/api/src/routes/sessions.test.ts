@@ -72,6 +72,33 @@ describe("POST /v1/sessions", () => {
     expect(metadata.max_seconds).toBe(300);
   });
 
+  // 名前つきワーカーのときは、トークンでディスパッチしないと部屋に誰も来ない
+  it("LIVEKIT_AGENT_NAMEがあれば、トークンで後輩を呼ぶ", async () => {
+    const named = testBindings({ LIVEKIT_AGENT_NAME: "ai-sensei-kohai" });
+    const response = await app.request(
+      "/v1/sessions",
+      { method: "POST", body: createSessionForm(), headers: { "x-device-id": testDeviceId } },
+      named,
+    );
+    const body = (await response.json()) as CreateSessionResponse;
+
+    const claims = await verifyJwt(body.livekit.token, named.LIVEKIT_API_SECRET);
+    const roomConfig = claims?.["roomConfig"] as { agents: { agent_name: string }[] } | undefined;
+    expect(roomConfig?.agents[0]?.agent_name).toBe("ai-sensei-kohai");
+    // 文脈はジョブ側にも載せる(エージェントが参加者を待たずに読めるように)
+    const dispatched = JSON.parse(
+      String((roomConfig?.agents[0] as { metadata?: string } | undefined)?.metadata),
+    ) as { allowed_topic_ids: string[] };
+    expect(dispatched.allowed_topic_ids).toContain("M2-ZUKEI-ENCHOKU");
+  });
+
+  it("LIVEKIT_AGENT_NAMEが空なら自動ディスパッチに任せる", async () => {
+    const response = await post(createSessionForm());
+    const body = (await response.json()) as CreateSessionResponse;
+    const claims = await verifyJwt(body.livekit.token, bindings.LIVEKIT_API_SECRET);
+    expect(claims?.["roomConfig"]).toBeUndefined();
+  });
+
   it("デバイスIDがなければ401", async () => {
     const response = await app.request(
       "/v1/sessions",

@@ -7,8 +7,9 @@ import * as elevenlabs from "@livekit/agents-plugin-elevenlabs";
 import * as silero from "@livekit/agents-plugin-silero";
 import { closingGraceMs, isClosingUtterance } from "./closing.ts";
 import { loadConfig } from "./config.ts";
-import { type SessionContext, readSessionContext, remainingSeconds } from "./context.ts";
+import { type SessionContext, remainingSeconds, resolveSessionContext } from "./context.ts";
 import { buildKarte, createAnthropicClient, emptyKarte, postComplete } from "./karte.ts";
+import { JobLogger } from "./log.ts";
 import { TranscriptCollector } from "./transcript.ts";
 
 /**
@@ -28,20 +29,29 @@ export default defineAgent({
   entry: async (ctx: JobContext) => {
     const config = loadConfig();
     const startedAt = new Date();
+    let log = new JobLogger({ room: ctx.room.name, job_id: ctx.job.id });
+
+    // ここが出ていなければ、ディスパッチが届いていない(ワーカー名・自動/明示の
+    // 設定を疑う)。アプリからは「後輩が来ない」としか見えないので、必ず残す。
+    log.info("job_started");
 
     await ctx.connect();
     const participant = await ctx.waitForParticipant();
 
     let context: SessionContext;
     try {
-      context = readSessionContext(participant.metadata);
+      // 参加者metadata(自動ディスパッチ)とジョブmetadata(明示ディスパッチ)の
+      // どちらで来ても読めるようにする。
+      context = resolveSessionContext([participant.metadata, ctx.job.metadata]);
     } catch (error) {
       // 文脈なしで喋らせると、写真と関係ない一般論を聞き始めてしまう。
       // それくらいなら黙って終える。
-      console.error("[agent] セッション文脈を読めませんでした", error);
+      log.error("context_unreadable", error, { participant: participant.identity });
       await ctx.room.disconnect();
       return;
     }
+
+    log = log.child({ session_id: context.session_id });
 
     const collector = new TranscriptCollector(startedAt, context);
 
@@ -102,6 +112,12 @@ export default defineAgent({
 
     // 最初の一言は後輩から。ノートを見せてもらった側なので、確認から入る。
     session.say(greeting(context));
+    log.info("conversation_started", {
+      kind: context.kind,
+      locale: context.locale,
+      max_seconds: context.max_seconds,
+      topics: context.allowed_topic_ids.length,
+    });
 
     // 上限秒数はサーバが決める。クライアントにもエージェントにも延ばさせない。
     const endedReason = await waitForEnd(session, context, startedAt, (handler) => {
@@ -114,6 +130,14 @@ export default defineAgent({
     await session.close().catch(() => undefined);
 
     const transcript = collector.all;
+    log.info("conversation_ended", {
+      ended_reason: endedReason,
+      duration_seconds: Math.floor((endedAt.getTime() - startedAt.getTime()) / 1000),
+      turns: transcript.length,
+      user_spoke: collector.hasUserSpeech,
+    });
+
+    const karteStartedAt = Date.now();
     const karte = collector.hasUserSpeech
       ? await buildKarte({
           context,
@@ -122,18 +146,26 @@ export default defineAgent({
             apiKey: config.ANTHROPIC_API_KEY,
             model: config.LLM_MODEL_KARTE,
           }),
-        }).catch((error) => {
-          console.error("[agent] カルテ生成に失敗しました", error);
-          return emptyKarte();
         })
+          .then((draft) => {
+            log.info("karte_built", {
+              holes: draft.holes.length,
+              said_well: draft.said_well.length,
+              took_ms: Date.now() - karteStartedAt,
+            });
+            return draft;
+          })
+          .catch((error) => {
+            // 空のカルテでも会話は完了扱いにする。ここで投げると、
+            // 進捗も復習予約も残らない。
+            log.error("karte_failed", error, { took_ms: Date.now() - karteStartedAt });
+            return emptyKarte();
+          })
       : emptyKarte();
 
     if (collector.answerLeaks.length > 0) {
       // プロンプト調整の材料。会話中に差し止めることはできないので記録に残す。
-      const leaks = collector.answerLeaks.join(" / ");
-      console.warn(
-        `[guardrail] session=${context.session_id} 後輩が答えを漏らした可能性のある発話: ${leaks}`,
-      );
+      log.warn("answer_leak_suspected", { utterances: collector.answerLeaks });
     }
 
     const body: CompleteSessionRequest = {
@@ -152,8 +184,11 @@ export default defineAgent({
         sessionId: context.session_id,
         body,
       });
+      log.info("complete_posted", { holes: karte.holes.length });
     } catch (error) {
-      console.error("[agent] /complete の送信に失敗しました", error);
+      // ここで落ちると、会話は成立したのにカルテが存在しないことになる。
+      // アプリからは「カルテが出ない」としか見えないので、必ず表に出す。
+      log.error("complete_failed", error, { ended_reason: endedReason });
     }
   },
 });

@@ -127,6 +127,11 @@ enabled = true
 #   LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET
 #   ANTHROPIC_API_KEY / ONESIGNAL_APP_ID / ONESIGNAL_REST_API_KEY
 #   REVENUECAT_WEBHOOK_AUTH / INTERNAL_API_TOKEN
+#   SENTRY_DSN(任意。入れるとエラーがSentryへ飛ぶ)
+#
+# LIVEKIT_AGENT_NAME は秘匿値ではないが、**agentワーカーの登録の仕方で決まる**ので
+# ここには書かない(名前つきで動かすときだけ secret か vars に入れる)。
+# 詳細は backend/api/README.md「会話の相手(agent)をどう呼ぶか」。
 #
 # ローカルは .dev.vars(gitignore済み)。テンプレートは .dev.vars.example。
 # =============================================================================

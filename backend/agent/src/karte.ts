@@ -75,27 +75,60 @@ export type PostCompleteOptions = {
   sessionId: string;
   body: CompleteSessionRequest;
   fetchImpl?: typeof fetch;
+  /** 送り直す回数。1回きりだと、一瞬の失敗でカルテが永久に表に出ない。 */
+  attempts?: number;
+  /** 待ち時間(テストから0にする)。 */
+  sleep?: (ms: number) => Promise<void>;
 };
 
+/**
+ * カルテをAPIへ送る。
+ *
+ * **ここが通らないと、会話が成立していてもカルテは存在しないことになる。**
+ * アプリは `/result` を見に来るだけなので、送信の失敗は「カルテが出ない」
+ * としか見えない。`/complete` は冪等(既にあれば保存済みを返す)なので、
+ * 落ちたら送り直す。
+ *
+ * 4xx は送り直しても同じなので、すぐ諦める(トークンずれ・契約違反)。
+ */
 export async function postComplete({
   apiBaseUrl,
   internalToken,
   sessionId,
   body,
   fetchImpl = fetch,
+  attempts = 3,
+  sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
 }: PostCompleteOptions): Promise<void> {
-  const response = await fetchImpl(`${apiBaseUrl}/v1/sessions/${sessionId}/complete`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${internalToken}`,
-    },
-    body: JSON.stringify(body),
-  });
+  let lastError: unknown;
 
-  if (!response.ok) {
-    throw new Error(`/complete が失敗しました: ${response.status} ${await response.text()}`);
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetchImpl(`${apiBaseUrl}/v1/sessions/${sessionId}/complete`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${internalToken}`,
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (response.ok) return;
+
+      const detail = await response.text().catch(() => "");
+      const error = new Error(`/complete が失敗しました: ${response.status} ${detail}`);
+      if (response.status < 500) throw error;
+      lastError = error;
+    } catch (error) {
+      // 4xx はここで throw されたもの。送り直さない。
+      if (error instanceof Error && /失敗しました: 4/.test(error.message)) throw error;
+      lastError = error;
+    }
+
+    if (attempt < attempts) await sleep(attempt * 1000);
   }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 export function extractJson(text: string): unknown {

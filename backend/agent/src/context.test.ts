@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { InvalidSessionContextError, readSessionContext, remainingSeconds } from "./context.ts";
+import {
+  InvalidSessionContextError,
+  readSessionContext,
+  remainingSeconds,
+  resolveSessionContext,
+} from "./context.ts";
 
 const metadata = JSON.stringify({
   session_id: "ses_1",
@@ -45,6 +50,27 @@ describe("readSessionContext", () => {
   it("将来サーバが項目を足しても壊れない(passthrough)", () => {
     const extended = JSON.stringify({ ...JSON.parse(metadata), future_field: "x" });
     expect(readSessionContext(extended).session_id).toBe("ses_1");
+  });
+});
+
+describe("resolveSessionContext", () => {
+  it("参加者metadataが読めればそれを使う", () => {
+    expect(resolveSessionContext([metadata, undefined]).session_id).toBe("ses_1");
+  });
+
+  // 明示ディスパッチでは、文脈はジョブ側に載って来る
+  it("参加者metadataが空でも、ジョブmetadataから読める", () => {
+    expect(resolveSessionContext([undefined, metadata]).session_id).toBe("ses_1");
+    expect(resolveSessionContext(["", metadata]).session_id).toBe("ses_1");
+  });
+
+  it("壊れたmetadataは飛ばして、読めるほうを使う", () => {
+    expect(resolveSessionContext(["not json", metadata]).session_id).toBe("ses_1");
+  });
+
+  it("どこにも載っていなければ会話を始めない", () => {
+    expect(() => resolveSessionContext([undefined, null])).toThrow(InvalidSessionContextError);
+    expect(() => resolveSessionContext(["not json", ""])).toThrow(InvalidSessionContextError);
   });
 });
 

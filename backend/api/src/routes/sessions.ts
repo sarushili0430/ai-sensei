@@ -12,11 +12,12 @@ import {
 } from "@ai-sensei/guardrail";
 import { formatAllowedTopics, formatBullets } from "@ai-sensei/prompts";
 import { Hono } from "hono";
-import type { AppEnv } from "../env.ts";
+import { HTTPException } from "hono/http-exception";
+import type { AppEnv, Bindings } from "../env.ts";
 import { readLimits } from "../env.ts";
 import { checkSessionAllowance, isPremiumNow } from "../lib/entitlement.ts";
 import { apiError } from "../lib/errors.ts";
-import { createLiveKitToken } from "../lib/livekit.ts";
+import { type AgentDispatch, createLiveKitToken } from "../lib/livekit.ts";
 import {
   type PhotoAnalysis,
   detectImageMediaType,
@@ -35,6 +36,7 @@ export const sessionsRoute = new Hono<AppEnv>();
  */
 sessionsRoute.post("/", async (c) => {
   const { repository, analyzer, now, newId } = c.get("services");
+  const log = c.get("log");
   const deviceId = c.get("deviceId");
   const at = now();
   const limits = readLimits(c.env);
@@ -144,6 +146,14 @@ sessionsRoute.post("/", async (c) => {
   } catch (error) {
     // 押さえた枠を返す。読み取れなかった写真で今日の1回を失わせない。
     await repository.deleteSession(sessionId);
+
+    // 「写真が読めない」は想定内(ユーザーに文言が返る)。
+    // Vision APIが落ちている・鍵が切れているのは想定外で、直さないと誰も始められない。
+    if (error instanceof HTTPException) {
+      log?.warn("session_rejected", { session_id: sessionId, status: error.status });
+    } else {
+      log?.error("photo_analysis_failed", error, { session_id: sessionId, kind: meta.kind });
+    }
     throw error;
   }
 
@@ -163,23 +173,38 @@ sessionsRoute.post("/", async (c) => {
     context,
   });
 
+  // エージェントに渡す文脈。会話中のガードレールはこれを基準にする。
+  const metadata = buildSessionMetadata({
+    sessionId,
+    locale,
+    kind: meta.kind,
+    maxSeconds: allowance.maxSeconds,
+    context,
+    allowed,
+    isPremium: user.is_premium,
+  });
+
+  const dispatch = agentDispatch(c.env, metadata);
   const token = await createLiveKitToken({
     apiKey: c.env.LIVEKIT_API_KEY,
     apiSecret: c.env.LIVEKIT_API_SECRET,
     identity: deviceId,
     room: sessionId,
     ttlSeconds: allowance.maxSeconds + 120,
-    // エージェントに渡す文脈。会話中のガードレールはこれを基準にする。
-    metadata: buildSessionMetadata({
-      sessionId,
-      locale,
-      kind: meta.kind,
-      maxSeconds: allowance.maxSeconds,
-      context,
-      allowed,
-      isPremium: user.is_premium,
-    }),
+    metadata,
+    agent: dispatch,
     now: at,
+  });
+
+  // 会話が始まらないという報告は、ここから追う。
+  // ルームは作れているのか、後輩をどう呼んでいるのか(明示か自動か)が要る。
+  log?.info("session_created", {
+    session_id: sessionId,
+    kind: meta.kind,
+    locale,
+    topic_ids: [...allowed.primary],
+    max_seconds: allowance.maxSeconds,
+    agent_dispatch: dispatch ? "explicit" : "automatic",
   });
 
   const response: CreateSessionResponse = {
@@ -247,21 +272,24 @@ sessionsRoute.patch("/:sessionId/topics", async (c) => {
     context,
   });
 
+  const metadata = buildSessionMetadata({
+    sessionId,
+    locale,
+    kind: session.kind,
+    maxSeconds,
+    context,
+    allowed,
+    isPremium: user.is_premium,
+  });
+
   const token = await createLiveKitToken({
     apiKey: c.env.LIVEKIT_API_KEY,
     apiSecret: c.env.LIVEKIT_API_SECRET,
     identity: deviceId,
     room: sessionId,
     ttlSeconds: maxSeconds + 120,
-    metadata: buildSessionMetadata({
-      sessionId,
-      locale,
-      kind: session.kind,
-      maxSeconds,
-      context,
-      allowed,
-      isPremium: user.is_premium,
-    }),
+    metadata,
+    agent: agentDispatch(c.env, metadata),
     now: at,
   });
 
@@ -283,6 +311,24 @@ sessionsRoute.patch("/:sessionId/topics", async (c) => {
 
   return c.json(response, 200);
 });
+
+/**
+ * 後輩(agent)をこの部屋に呼ぶ指定。
+ *
+ * ワーカーが名前つきで動いているとき(LiveKit Cloud のエージェントホスティングは
+ * `LIVEKIT_AGENT_NAME` を自動で入れる)、自動ディスパッチは効かない。
+ * **トークンに載せて、部屋が作られる瞬間に呼ぶ。** ここが空だと、アプリは
+ * ルームに入れるのに誰も来ず、「聞いています」のまま上限時間まで止まる。
+ *
+ * 名前なしで動かしている(自動ディスパッチ)なら未設定でよい。
+ */
+function agentDispatch(env: Bindings, metadata: string): AgentDispatch | undefined {
+  const name = env.LIVEKIT_AGENT_NAME?.trim();
+  if (!name) return undefined;
+  // 参加者metadataと同じ内容をジョブにも渡す。ディスパッチが先に走っても、
+  // エージェントは参加者を待たずに文脈を読める。
+  return { name, metadata };
+}
 
 /** エージェントがトークンから読む会話文脈。 */
 function buildSessionMetadata(input: {
