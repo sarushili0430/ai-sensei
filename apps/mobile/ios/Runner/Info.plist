@@ -36,6 +36,18 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- ローカル開発のbackend/apiは平文HTTP(http://localhost:8787、
+	     実機からは http://<母艦のLAN IP>:8787)。ATSは既定で平文を止めるので、
+	     LAN内の宛先にだけ例外を開ける。
+	     **任意のHTTPを許すキー(NSAllowsArbitraryLoads)ではない**ので、
+	     本番のHTTPS通信の要件は変わらず、審査でも説明の対象にならない。
+	     これが無いと実機のローカル開発で送信が必ず失敗し、撮影画面には
+	     「うまく送れませんでした」としか出ない。 -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<!-- 権限の説明文。空だと審査でリジェクトされ、
 	     キーごと無いと該当APIを呼んだ瞬間にクラッシュする。 -->
 	<key>NSCameraUsageDescription</key>

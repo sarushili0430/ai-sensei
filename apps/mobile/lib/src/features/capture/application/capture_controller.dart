@@ -93,15 +93,10 @@ class CaptureController extends _$CaptureController {
       );
     } on ApiException catch (error) {
       state = state.copyWith(isSubmitting: false, error: error);
-    } catch (_) {
-      // 圏外・タイムアウト・プロキシのHTML応答など。ここを拾わないと
-      // isSubmitting が立ったままスピナーで固まり、撮り直しの導線も消える。
+    } catch (error, stackTrace) {
       state = state.copyWith(
         isSubmitting: false,
-        error: const ApiException(
-          code: 'internal_error',
-          message: 'うまく送れませんでした。電波の届くところで、もう一度お願いします。',
-        ),
+        error: _sendFailure('analyze', error, stackTrace),
       );
     }
   }
@@ -136,13 +131,10 @@ class CaptureController extends _$CaptureController {
     } on ApiException catch (error) {
       state = state.copyWith(isSubmitting: false, error: error);
       return null;
-    } catch (_) {
+    } catch (error, stackTrace) {
       state = state.copyWith(
         isSubmitting: false,
-        error: const ApiException(
-          code: 'internal_error',
-          message: 'うまく送れませんでした。電波の届くところで、もう一度お願いします。',
-        ),
+        error: _sendFailure('confirmAndStart', error, stackTrace),
       );
       return null;
     }
@@ -162,18 +154,33 @@ class CaptureController extends _$CaptureController {
     } on ApiException catch (error) {
       state = state.copyWith(isSubmitting: false, error: error);
       return null;
-    } catch (_) {
+    } catch (error, stackTrace) {
       state = state.copyWith(
         isSubmitting: false,
-        error: const ApiException(
-          code: 'internal_error',
-          message: 'うまく送れませんでした。電波の届くところで、もう一度お願いします。',
-        ),
+        error: _sendFailure('startReview', error, stackTrace),
       );
       return null;
     }
   }
 
   void reset() => state = const CaptureState();
+}
+
+/// APIまで届かなかった(= サーバのJSONエラーですらない)ときの表示。
+///
+/// 圏外・タイムアウト・接続拒否・プロキシのHTML応答など。ここを拾わないと
+/// isSubmitting が立ったままスピナーで固まり、撮り直しの導線も消える。
+///
+/// **握りつぶさずにログへ出す。** ユーザーに出す文言は変えられないので、
+/// 黙って捨てると「うまく送れませんでした」だけが残り、
+/// APIを起動し忘れたのか、URLが端末から見えていないのか
+/// (エミュレータは `localhost` ではなく `10.0.2.2`)、平文HTTPが
+/// OSに止められたのかが、開発者にも切り分けられなくなる。
+ApiException _sendFailure(String at, Object error, StackTrace stackTrace) {
+  if (kDebugMode) {
+    debugPrint('[capture.$at] send failed: $error');
+    debugPrintStack(stackTrace: stackTrace);
+  }
+  return const ApiException.unreachable();
 }
 

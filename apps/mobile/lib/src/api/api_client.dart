@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -15,8 +16,9 @@ part 'api_client.g.dart';
 ///
 /// 認証は匿名デバイスID(`X-Device-Id`)だけ。アカウント作成を要求しない。
 class ApiClient {
-  ApiClient({required this.baseUrl, required this.deviceId, http.Client? client})
-      : _client = client ?? http.Client();
+  ApiClient({required String baseUrl, required this.deviceId, http.Client? client})
+      : baseUrl = normalizeBaseUrl(baseUrl),
+        _client = client ?? http.Client();
 
   final String baseUrl;
   final String deviceId;
@@ -129,8 +131,35 @@ class ApiClient {
   }
 
   Map<String, dynamic> _decode(http.Response response) {
-    final Map<String, dynamic> body =
-        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final String text = utf8.decode(response.bodyBytes);
+    Map<String, dynamic>? body;
+    try {
+      body = jsonDecode(text) as Map<String, dynamic>;
+    } catch (_) {
+      body = null;
+    }
+
+    // JSONでないものが返るのは、APIの手前で終わっているとき。
+    // 典型は `API_BASE_URL` の取り違えで、Honoが `404 Not Found` を
+    // **text/plain**で返す(末尾に `/` を付けると `//v1/sessions` になり、
+    // どのルートにも当たらない)。ほかに社内プロキシのHTMLや、
+    // Cloudflareのエラーページもここに来る。
+    //
+    // 素通しすると FormatException になり、画面には
+    // 「うまく送れませんでした」としか出ない。原因を追えるように、
+    // 実際の宛先とステータスをデバッグビルドのログへ出す。
+    if (body == null) {
+      if (kDebugMode) {
+        final http.BaseRequest? request = response.request;
+        debugPrint(
+          '[api] ${request == null ? baseUrl : "${request.method} ${request.url}"} '
+          '-> ${response.statusCode} (${response.headers['content-type']}) '
+          '${text.trim()}',
+        );
+      }
+      throw const ApiException.unreachable();
+    }
+
     if (response.statusCode >= 400) {
       final Map<String, dynamic> error = body['error'] as Map<String, dynamic>? ?? const {};
       throw ApiException(
@@ -147,6 +176,17 @@ class ApiClient {
 class ApiException implements Exception {
   const ApiException({required this.code, required this.message, this.retryAfterSeconds});
 
+  /// APIまで届かなかった(圏外・接続拒否)か、返ってきたものがAPIの応答では
+  /// なかった(URLの取り違えによる404、プロキシのHTML)とき。
+  ///
+  /// サーバが返す `internal_error` とは文言を分けてある。
+  /// 「うまく**送れません**でした」なら手元の設定を、
+  /// 「うまくいきませんでした」ならサーバのログを見る、と切り分けられる。
+  const ApiException.unreachable()
+      : code = 'internal_error',
+        message = 'うまく送れませんでした。電波の届くところで、もう一度お願いします。',
+        retryAfterSeconds = null;
+
   final String code;
   final String message;
   final int? retryAfterSeconds;
@@ -162,6 +202,14 @@ class ApiException implements Exception {
 /// `--dart-define=API_BASE_URL=...` で差し替える。
 const String apiBaseUrl =
     String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:8787');
+
+/// 末尾の `/` と前後の空白を落とす。
+///
+/// 付いたまま `'$baseUrl/v1/sessions'` を組み立てると `//v1/sessions` になり、
+/// **どのルートにも当たらず 404 が text/plain で返る**。アプリからは
+/// 「うまく送れませんでした」としか見えず、URLが1文字違うだけだと気づけない。
+/// 設定ファイルにURLを書く以上ここは必ず踏むので、クライアント側で吸収する。
+String normalizeBaseUrl(String value) => value.trim().replaceAll(RegExp(r'/+$'), '');
 
 @Riverpod(keepAlive: true)
 ApiClient apiClient(Ref ref) {

@@ -102,8 +102,48 @@ cd apps/mobile
 fvm install                                # .fvmrc のバージョンを取得
 fvm flutter pub get
 fvm dart run build_runner build            # freezed / riverpod の生成物
-fvm flutter run --dart-define=API_BASE_URL=http://localhost:8787
+fvm flutter run --dart-define-from-file=dart_defines.env
 ```
+
+`API_BASE_URL` は**アプリをどこで動かすかで変わります**(既定値は
+`http://localhost:8787`)。エミュレータの `localhost` はエミュレータ自身を指すので、
+母艦のAPIには届きません。
+
+| 動かす場所 | `API_BASE_URL` |
+| --- | --- |
+| iOSシミュレータ | `http://localhost:8787` |
+| Androidエミュレータ | `http://10.0.2.2:8787` |
+| 実機(iOS / Android) | `http://<母艦のLAN IP>:8787` |
+
+実機の場合は母艦と同じWi-Fiに繋ぎ、APIをLANに開いて起動します
+(`wrangler dev` は既定でlocalhostにしか口を開けません)。
+
+```bash
+pnpm --filter @ai-sensei/api dev -- --ip 0.0.0.0
+```
+
+> ローカルAPIは平文HTTPなので、Android(9以降)もiOS(ATS)も既定では遮断します。
+> debug/profileのAndroidマニフェストと `Info.plist` の `NSAllowsLocalNetworking` で
+> 開けてありますが、**リリースビルドは平文を許可しません**。
+
+`API_BASE_URL` に**末尾の `/` を付けないでください**。アプリは
+`$API_BASE_URL/v1/sessions` を組み立てるので、`//v1/sessions` になって
+404(text/plain)が返り、JSONとして読めません
+(デプロイ済みのワーカーに当てるときに踏みやすい)。
+アプリ側でも落とすようにしてありますが、URLが当たっているかは
+`curl <URL>/health` が `{"ok":true,"environment":"develop"}` を返すかで確かめられます。
+
+送信に失敗したときは、**画面の文言で切り分けられます**。
+
+| 文言 | 起きていること | 見る場所 |
+| --- | --- | --- |
+| うまく送れませんでした… | APIまで届いていない(URL・APIの起動・平文の遮断) | `flutter run` のコンソール(失敗の中身が出ます) |
+| うまくいきませんでした… | APIには届き、サーバ側で落ちた | `wrangler dev` のログ(`unhandled_error` / `photo_analysis_failed`) |
+| 写真から数学のノートを…/範囲外みたい | 想定内の判定 | — |
+
+サーバ側で落ちるときの典型は、`.dev.vars` の `ANTHROPIC_API_KEY` が空
+(`photo_analysis_failed` に `vision APIが失敗しました: 401`)と、
+`migrate:local` を流していない(`no such table: users`)の2つです。
 
 > 生成物(`*.freezed.dart` / `*.g.dart`)はコミットしません。
 > クローン直後は `build_runner build` を一度回してください。

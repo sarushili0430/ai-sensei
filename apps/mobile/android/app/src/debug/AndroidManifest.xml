@@ -4,4 +4,15 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- ローカルのbackend/apiは http://10.0.2.2:8787(エミュレータ)や
+         http://<母艦のLAN IP>:8787(実機)で、いずれも平文HTTP。
+         Android 9以降は平文が既定で遮断され、送信は
+         「CLEARTEXT communication ... not permitted」で失敗する。
+         アプリからは通信エラーと見分けがつかず、撮影画面には
+         「うまく送れませんでした」としか出ないので、ここで開けておく。
+
+         **debug(と profile)のマニフェストにだけ書く。** リリースビルドの
+         マニフェストには入らないので、配布物は平文を許可しないままになる。 -->
+    <application android:usesCleartextTraffic="true"/>
 </manifest>

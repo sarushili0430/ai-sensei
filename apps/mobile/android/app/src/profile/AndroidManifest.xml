@@ -4,4 +4,8 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- profileビルドも手元のAPI(平文HTTP)に当てて計測することがあるので、
+         debugと同じく平文を許可する。リリースビルドには入らない。 -->
+    <application android:usesCleartextTraffic="true"/>
 </manifest>
