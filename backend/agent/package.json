@@ -21,6 +21,7 @@
     "@livekit/agents-plugin-deepgram": "^1.6.1",
     "@livekit/agents-plugin-elevenlabs": "^1.6.1",
     "@livekit/agents-plugin-silero": "^1.6.1",
+    "@sentry/node": "^10.69.0",
     "zod": "^3.24.1"
   }
 }

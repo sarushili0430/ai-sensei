@@ -190,7 +190,10 @@ export function createAnthropicAnalyzer(options: AnthropicAnalyzerOptions): Phot
       });
 
       if (!response.ok) {
-        throw new Error(`vision APIが失敗しました: ${response.status}`);
+        // 本文を捨てると「500だった」しか残らず、鍵切れ・過負荷・画像が大きすぎるの
+        // どれなのか分からなくなる。長さだけ切って、理由をエラーに載せる。
+        const detail = await response.text().catch(() => "");
+        throw new Error(`vision APIが失敗しました: ${response.status} ${detail.slice(0, 300)}`);
       }
 
       const payload = (await response.json()) as { content?: { type: string; text?: string }[] };

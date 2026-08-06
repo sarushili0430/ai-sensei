@@ -59,6 +59,51 @@ pnpm run tail:develop                     # ログを流し見る
 `GET /health` は `{"ok":true,"environment":"develop"}` のように環境名を返す。
 2本のワーカーは見た目が同じなので、URLの取り違えにこれで気づける。
 
+## 会話の相手(agent)をどう呼ぶか
+
+`POST /v1/sessions` はルーム作成とトークン発行までを行い、**後輩(agent)を
+呼ぶのはLiveKit側**。呼び方は2通りあり、ワーカーの登録の仕方で決まる。
+
+| ワーカー | 呼び方 | APIの設定 |
+| --- | --- | --- |
+| 名前なし | 自動ディスパッチ(全ルーム) | `LIVEKIT_AGENT_NAME` を設定しない |
+| 名前つき | 明示ディスパッチ | `LIVEKIT_AGENT_NAME` に同じ名前を入れる |
+
+**LiveKit Cloud のエージェントホスティングは `LIVEKIT_AGENT_NAME` を自動で入れる**
+ので、そこに載せたら名前つきになる。名前つきワーカーは自動ディスパッチの
+対象外なので、APIが `roomConfig` で呼ばないと**部屋は開くのに誰も来ない**
+(アプリは「聞いています」のまま止まり、会話もカルテも起きない)。
+
+どちらで動いているかは `session_created` ログの `agent_dispatch`
+(`explicit` / `automatic`)で分かる。
+
+## ログと監視
+
+Workers の Observability(`wrangler.toml` の `[observability]`)を有効にしてある。
+**すべてのログは1行1JSON**で、ダッシュボードでも `wrangler tail` でも
+フィールドで絞り込める。
+
+```bash
+pnpm run tail:develop
+```
+
+| event | いつ | 主なフィールド |
+| --- | --- | --- |
+| `http_request` | 全リクエストに1行 | `route` `status` `duration_ms` `error_code` |
+| `session_created` | セッションを作った | `session_id` `topic_ids` `agent_dispatch` |
+| `session_rejected` | 写真が読めない等(想定内) | `session_id` `status` |
+| `photo_analysis_failed` | Vision APIが落ちた(想定外) | `session_id` `error_message` |
+| `karte_stored` | カルテを保存した | `session_id` `ended_reason` `holes` `transcript_turns` |
+| `complete_unauthorized` | agentの内部トークンがずれている | `session_id` |
+| `unhandled_error` | 想定外。アプリには internal_error | `route` `error_stack` |
+
+全レスポンスに `x-trace-id` を返す。ユーザーからの報告とログを突き合わせるのは
+この値だけなので、問い合わせ対応ではまずこれを聞く。
+
+`SENTRY_DSN` を登録すると、`unhandled_error` と各 `*_failed` がSentryにも飛ぶ
+(未設定なら何も送らず、構造化ログだけ)。写真・カルテ・デバイスIDは送らない。
+リクエストの1行が邪魔なときは `LOG_LEVEL=error` で失敗だけに絞れる。
+
 ## テスト
 
 `pnpm test`(vitest)。**miniflareを起こさずにルートの振る舞いを確かめられる**ように、

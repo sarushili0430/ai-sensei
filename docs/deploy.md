@@ -104,6 +104,19 @@ for name in LIVEKIT_URL LIVEKIT_API_KEY LIVEKIT_API_SECRET \
 done
 ```
 
+任意で2つ。
+
+```bash
+pnpm exec wrangler secret put SENTRY_DSN --env develop          # エラーをSentryへ
+pnpm exec wrangler secret put LIVEKIT_AGENT_NAME --env develop  # agentが名前つきのとき
+```
+
+**`LIVEKIT_AGENT_NAME` は、agentワーカーを名前つきで動かしているときだけ**入れる
+(LiveKit Cloud のエージェントホスティングは自動で名前が付く)。名前つきワーカーは
+自動ディスパッチの対象外なので、ここが空だと部屋は作られるのに後輩が来ず、
+アプリは「聞いています」のまま止まる。詳細は
+[backend/api/README.md](../backend/api/README.md#会話の相手agentをどう呼ぶか)。
+
 `pnpm run secret:develop <NAME>` / `secret:production <NAME>` でも同じ
 (`--env` の付け忘れを防ぐためのショートカット)。
 中身の説明は [`backend/api/.dev.vars.example`](../backend/api/.dev.vars.example)。
@@ -262,14 +275,34 @@ APIを2環境に分けると、つながる側も2つ要る。
 
 ---
 
+## 7. 動かなくなったときに見るもの
+
+バックエンドは**静かに壊れる**(アプリ側には「聞いています」のまま止まる、
+「カルテが出ない」としか出ない)。ログは1行1JSONなので、フィールドで絞る。
+
+```bash
+pnpm --filter @ai-sensei/api tail:develop     # Workers Logs を流し見る
+```
+
+| 症状 | 見るもの |
+| --- | --- |
+| 写真を撮ったあと進まない | `session_created` が出ているか。無ければ `photo_analysis_failed` / `session_rejected` |
+| 会話が始まらない(後輩が来ない) | agent側の `job_started`。無ければディスパッチ(`session_created` の `agent_dispatch`)を疑う |
+| 会話はできたがカルテが出ない | agent側の `karte_failed` / `complete_failed`、API側の `complete_unauthorized` / `karte_stored` |
+| ユーザーからの問い合わせ | レスポンスの `x-trace-id`。この値でログを引く |
+
+`SENTRY_DSN` を入れてあれば、`unhandled_error` と各 `*_failed` はSentryにも届く。
+APIとagentは `session_id` を共通のキーにしているので、両方のログを並べられる。
+
+---
+
 ## まだやっていないこと
 
 - **独自ドメイン。** いまは両環境とも `*.workers.dev`。production に独自ドメインを
   当てたら `wrangler.toml` の `[env.production]` を `workers_dev = false` にして
   `[[env.production.routes]]` を足す(workers.dev のURLを残すと、そちらが
   野良のエンドポイントとして生き続ける)。
-- **Sentry。** `.dev.vars.example` に `SENTRY_DSN` の枠はあるが、Workers側の
-  初期化はまだ入っていない。いまの可観測性は `[observability]`(Workers Logs)と
-  `wrangler tail` だけ。
+- **トレース。** Sentryは入れたがエラーだけ(`tracesSampleRate: 0`)。
+  どこで時間を使っているかは、いまは `http_request` の `duration_ms` で見る。
 - **backend/agent の稼働先。** [ADR 0002](adr/0002-agent-runtime.md) のとおり保留。
   LiveKit Cloud のエージェントホスティングが第一候補で、不可ならNode 22のコンテナ常駐。

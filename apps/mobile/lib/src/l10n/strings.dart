@@ -148,8 +148,32 @@ class AppStrings {
   // --- 会話 ---
   String get sessionListening => _pick('聞いています', 'Listening');
   String get sessionThinking => _pick('考えています', 'Thinking');
+
+  /// つないでから後輩が入ってくるまで。無言の数秒を「止まっている」に見せない。
+  String get sessionConnecting => _pick('後輩を呼んでいます…', 'Getting your kohai…');
   String get sessionPass => _pick('うまく言えない', "I can't explain this yet");
+
+  /// パスは画面だけで完結させず、後輩にも伝える(聞き方を変えてもらう)。
+  String get sessionPassMessage => _pick(
+        'うまく言えません。ちがう聞き方をしてもらえますか?',
+        "I can't explain this yet. Could you ask it a different way?",
+      );
   String get sessionEnd => _pick('今日はここまで', "That's it for today");
+
+  /// つながらなかったとき。**「聞いています」のまま黙らせない。**
+  String get sessionConnectionFailed => _pick(
+        'つながりませんでした。電波のいいところで、もう一度おためしください。',
+        "We couldn't connect. Try again where the signal is better.",
+      );
+
+  /// ルームには入れたが、後輩が来なかった(エージェント側の問題)。
+  /// ユーザーのせいではないので、そう読める言い方にする。
+  String get sessionKohaiUnavailable => _pick(
+        '後輩が来られませんでした。少し時間をおいて、もう一度呼んでみてください。',
+        "Your kohai couldn't make it. Give it a moment and try again.",
+      );
+  String get sessionRetry => _pick('もう一度呼ぶ', 'Try again');
+  String get sessionBackHome => _pick('ホームにもどる', 'Back to home');
   String remaining(int seconds) {
     final String minutes = (seconds ~/ 60).toString();
     final String rest = (seconds % 60).toString().padLeft(2, '0');
@@ -177,6 +201,13 @@ class AppStrings {
   String get karteReviewDenied => _pick(
         '通知が切れています。設定アプリから戻せます。',
         'Notifications are off. You can turn them back on in Settings.',
+      );
+  /// カルテの生成が会話直後に間に合わなかったとき。作り直しではなく取りに行く。
+  String get karteRetrieve => _pick('カルテを取りに行く', 'Fetch my karte');
+  String get karteRetrieving => _pick('取りに行っています…', 'Fetching…');
+  String get karteStillCooking => _pick(
+        'まだ書いている途中でした。少しあとで、もう一度おためしください。',
+        "It's still being written. Please try again in a moment.",
       );
   String get karteRetry => _pick('言い直してみる', 'Explain it again');
   String get karteDone => _pick('今日はここまで', "That's it for today");

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../api/api_client.dart';
+import '../../session/domain/session.dart';
 import '../domain/karte.dart';
 
 part 'karte_controllers.g.dart';
@@ -62,17 +63,43 @@ class SessionOutcomeController extends _$SessionOutcomeController {
   void set(SessionOutcome outcome) => state = outcome;
 
   void clear() => state = const SessionOutcome();
+
+  /// 待ちきれなかったカルテを、あとから取りに行く。
+  ///
+  /// カルテ生成は会話のあとに数秒〜十数秒かかる。待ち切れずに祝福画面へ
+  /// 進んだあとも、**サーバにはできている**ことが多い。ここが無いと、
+  /// せっかく見つけた穴が二度と見られないまま消える。
+  Future<bool> retrieveKarte() async {
+    final String? sessionId = state.sessionId;
+    if (sessionId == null) return false;
+
+    final SessionResult? result =
+        await ref.read(apiClientProvider).fetchSessionResult(sessionId);
+    if (result == null) return false;
+
+    ref.read(latestKarteControllerProvider.notifier).set(result.karte);
+    ref.read(progressControllerProvider.notifier).applyFromSession(result.progress);
+    state = SessionOutcome(showPaywall: result.showPaywall, sessionId: sessionId);
+    return true;
+  }
 }
 
 @immutable
 class SessionOutcome {
-  const SessionOutcome({this.showPaywall = false, this.resultMissing = false});
+  const SessionOutcome({
+    this.showPaywall = false,
+    this.resultMissing = false,
+    this.sessionId,
+  });
 
   /// 初回カルテで穴が見えた直後だけ true。
   final bool showPaywall;
 
   /// カルテの生成を待ちきれなかった。
   final bool resultMissing;
+
+  /// あとからカルテを取りに行くためのセッションID。
+  final String? sessionId;
 }
 
 /// 直近のカルテ。セッション完了時に置かれ、カルテ画面が読む。
