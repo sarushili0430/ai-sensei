@@ -181,8 +181,16 @@ class AppStrings {
 
   // --- ペイウォール ---
   String get paywallTitle => _pick('穴を、埋めきる。', 'Fill every gap.');
-  String get paywallPrice =>
-      _pick('Premium ¥580/月 ・ はじめの7日間は無料', 'Premium ¥580/month · First 7 days free');
+  /// Offering が取れなかったときだけ出る据え置きの文言。
+  ///
+  /// 3プランの代表として月額だけを出す。**無料トライアルには触れない** —
+  /// 有無はストアの導入価格を読むまで分からないので、ここで「無料」と
+  /// 書くと、トライアルの無い商品に無料と言うことになりうる
+  /// (`SubscriptionPlan.freeTrialDays` が0円のときだけ無料と呼ぶのと同じ理由)。
+  String get paywallPrice => _pick(
+    'Premium ¥1,280/月 ・ 週・年のプランもあります',
+    'Premium ¥1,280/month · Weekly and yearly plans available',
+  );
   /// ペイウォールを**開く**ボタン(復習画面など)。ここで無料日数を約束しない。
   /// ストアの商品にトライアルが付いているかは、Offering を読むまで分からない。
   String get paywallCta => _pick('Premiumをみる', 'See Premium');
