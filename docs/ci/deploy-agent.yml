@@ -3,9 +3,8 @@
 #   develop ブランチ → develop 環境
 #   main    ブランチ → production 環境
 #
-# イメージは GitHub Container Registry へ push し、LiveKit Cloud には
-# **焼いたイメージの参照を渡す**(bring your own container)。ソースを送って
-# 向こうでビルドさせる方式は、workspace:* を跨ぐモノレポでは解決できない。
+# ソースを LiveKit Cloud へ送り、**ビルドは向こうで走る**。焼いたイメージを渡す道
+# (`lk agent deploy --image`)は Enterprise プラン限定なので使えない。
 # 手順とsecretの一覧は docs/deploy-agent.md。
 name: Deploy (backend/agent)
 
@@ -16,6 +15,8 @@ on:
       - "backend/agent/**"
       - "packages/**"
       - "prompts/**"
+      - "Dockerfile"
+      - ".dockerignore"
       - "pnpm-lock.yaml"
       - "package.json"
       - ".github/workflows/deploy-agent.yml"
@@ -39,16 +40,11 @@ jobs:
     name: ${{ inputs.environment || (github.ref_name == 'main' && 'production' || 'develop') }}
     runs-on: ubuntu-latest
 
-    permissions:
-      contents: read
-      packages: write
-
     environment:
       name: ${{ inputs.environment || (github.ref_name == 'main' && 'production' || 'develop') }}
 
     env:
       TARGET: ${{ inputs.environment || (github.ref_name == 'main' && 'production' || 'develop') }}
-      IMAGE: ghcr.io/${{ github.repository }}-agent
 
     steps:
       - uses: actions/checkout@v4
@@ -67,25 +63,15 @@ jobs:
       - name: Verify (lint / typecheck / secret scan / test)
         run: pnpm run verify
 
+      # LiveKit側のビルドは数分かかるうえ、失敗しても向こうのログを読みに行くことになる。
+      # 手前で焼いておくと、Dockerfileが壊れているだけのときにここで分かる。
+      # イメージは使わない(pushする先が無い)ので、キャッシュだけ効かせる。
       - uses: docker/setup-buildx-action@v3
-
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # 可変タグ(:develop)と不変タグ(:<sha>)の両方を押す。
-      # **ロールバックに要るのは後者**。可変タグだけだと戻す先が残らない。
-      - name: Build and push
+      - name: Build image (fail fast)
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: backend/agent/Dockerfile
-          push: true
-          tags: |
-            ${{ env.IMAGE }}:${{ env.TARGET }}
-            ${{ env.IMAGE }}:${{ github.sha }}
+          push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -95,8 +81,8 @@ jobs:
       # `lk` はまだ動きの変わりやすいCLI。フラグ名が合わなくなったら
       # `lk agent deploy --help` を見て直す(docs/deploy-agent.md にも同じ注意がある)。
       #
-      # イメージは**不変タグで渡す**。:develop で渡すと、いま何が動いているのかが
-      # あとから分からなくなる。
+      # 作業ディレクトリ(= リポジトリのルート)がそのままビルドコンテキストになり、
+      # 直下の Dockerfile が読まれる。何を送らないかは .dockerignore が決める。
       - name: Deploy to LiveKit Cloud
         env:
           LIVEKIT_URL: ${{ secrets.LIVEKIT_URL }}
@@ -109,7 +95,7 @@ jobs:
             echo "::error::LIVEKIT_AGENT_ID (Variables) が未設定です。初回は手元で lk agent create を流してください(docs/deploy-agent.md §2-2)"
             exit 1
           fi
-          lk agent deploy --id "$AGENT_ID" --image "${IMAGE}:${GITHUB_SHA}"
+          lk agent deploy --id "$AGENT_ID"
 
       # ワーカーがLiveKitに登録し直すまで少し待つ。status が拾えなくても
       # デプロイ自体は成功しているので、ここでは落とさない。

@@ -9,7 +9,6 @@
 | ブランチ | `develop` | `main` |
 | LiveKitプロジェクト | 開発用 | 本番用 |
 | agent名 | `ai-sensei-agent-develop` | `ai-sensei-agent-production` |
-| イメージのタグ | `:develop` | `:production` |
 | `API_BASE_URL` | develop のワーカーURL | production のワーカーURL |
 | `INTERNAL_API_TOKEN` | develop のsecretと同じ値 | production のsecretと同じ値 |
 
@@ -41,12 +40,16 @@ HTTPを受けるサーバではないので、ロードバランサもURLも要�
 
 ## 1. イメージを焼く
 
-Dockerfileは [`backend/agent/Dockerfile`](../backend/agent/Dockerfile)。
-**ビルドコンテキストはリポジトリのルート**にする。agentは `packages/*` を
-`workspace:*` で参照しているので、`backend/agent` だけを送ってもインストールが解けない。
+Dockerfileは**リポジトリのルート**([`Dockerfile`](../Dockerfile))。中身は
+`backend/agent` なのにルートにあるのは、動かせない理由が2つあるため:
+
+1. agentは `packages/*` を `workspace:*` で参照しているので、**ビルドコンテキストが
+   リポジトリのルートでないとインストールが解けない**。
+2. `lk agent create/deploy` は**作業ディレクトリをそのままビルドコンテキストにし、
+   その直下の `Dockerfile` を読む**。パスを指定するフラグが無い([§2](#2-livekit-cloud-のエージェントホスティングに載せる))。
 
 ```bash
-docker build -f backend/agent/Dockerfile -t ai-sensei-agent:local .
+docker build -t ai-sensei-agent:local .
 # 同じことをするショートカット
 pnpm --filter @ai-sensei/agent run docker:build
 ```
@@ -97,15 +100,23 @@ Dockerfileで効かせてあることのうち、外から見て分かりにく�
 
 第一候補。LiveKitのグローバル網の上で動き、スケールとログ転送が付いてくる。
 
-### 2-1. モノレポなので「自分で焼いたイメージ」を渡す
+### 2-1. ソースを送って、向こうでビルドさせる
 
-`lk agent create` / `lk agent deploy` にはソースを送って向こうでビルドさせる方式が
-あるが、**`package.json`・`Dockerfile`・ビルドコンテキストが同じディレクトリにある前提**で、
-`workspace:*` を跨ぐ構成は解決できない
-([livekit-cli#688](https://github.com/livekit/livekit-cli/issues/688))。
+**`lk` はリポジトリのルートから叩く。** CLIは作業ディレクトリをそのまま
+ビルドコンテキストにし、その直下の `Dockerfile` を読む。`Dockerfile` をルートに
+置いてあるのはこのため([§1](#1-イメージを焼く))。
 
-なので **bring your own container** を使う。イメージはこちらで焼き、
-`--image`(レジストリ参照)または `--image-tar`(OCI tar)で渡す。
+> ⚠️ **焼いたイメージを渡す道(`--image` / `--image-tar`)は使えない。**
+> あれは**手元のDockerデーモンのイメージをLiveKitのレジストリへpushする**フラグで、
+> その push 先が Enterprise プラン限定になっている。使うと
+> `Bring Your Own Container is only available for Enterprise projects` で断られる。
+>
+> ```
+> failed to get push target: push-target returned 403:
+> {"errors":[{"code":"PERMISSION_DENIED","message":"Bring Your Own Container is
+> only available for Enterprise projects. ..."}]}
+> ```
+
 `backend/agent` を切り出して別リポジトリにする案は取らない
 (`packages/guardrail` の二重実装を避けることがTypeScriptを選んだ理由そのものなので、
 デプロイの都合でそこを崩すと本末転倒になる)。
@@ -117,15 +128,15 @@ Dockerfileで効かせてあることのうち、外から見て分かりにく�
 curl -sSL https://get.livekit.io/cli | bash
 lk cloud auth
 
-# イメージを焼いてレジストリへ上げる(GitHub Container Registry の例)
-docker build -f backend/agent/Dockerfile -t ghcr.io/sarushili0430/ai-sensei-agent:develop .
-docker push ghcr.io/sarushili0430/ai-sensei-agent:develop
-
-# エージェントを登録する。secretは .env の形式のファイルから渡す
-lk agent create \
-  --image ghcr.io/sarushili0430/ai-sensei-agent:develop \
-  --secrets-file backend/agent/.env.develop
+# リポジトリのルートから。secretは .env の形式のファイルから渡す
+cd <リポジトリのルート>
+lk agent create --secrets-file <secretsファイル> --skip-sdk-check
 ```
+
+`--skip-sdk-check` が要るのは、CLIが**作業ディレクトリの `package.json` に
+`@livekit/agents` が入っているか**を見るため。ルートはワークスペースの器で、
+依存を持っているのは `backend/agent/package.json` のほうなので、素通しすると
+「SDKが無い」と言われる。**警告に落として先へ進めるだけ**で、ビルドには影響しない。
 
 成功すると **`livekit.toml` が書き出され、そこにagentのIDが入る**。
 IDは環境ごとに違うので、このファイルは**コミットしない**(`.gitignore` 済み)。
@@ -137,10 +148,12 @@ develop用のIDが乗ったまま `main` で deploy すると、本番のつも�
 ### 2-3. 2回目以降
 
 ```bash
-docker build -f backend/agent/Dockerfile -t ghcr.io/sarushili0430/ai-sensei-agent:develop .
-docker push ghcr.io/sarushili0430/ai-sensei-agent:develop
-lk agent deploy --image ghcr.io/sarushili0430/ai-sensei-agent:develop --id <agent-id>
+cd <リポジトリのルート>
+lk agent deploy --id <agent-id>
 ```
+
+ビルドは向こうで走る。**手元で `docker build` が通ることを先に確かめておく**と、
+向こうのビルドログを読む回数が減る([§1](#1-イメージを焼く))。
 
 ```bash
 lk agent status --id <agent-id>    # レプリカ数・CPU・状態
@@ -149,7 +162,7 @@ lk agent logs   --id <agent-id>    # 1行1JSONのログがそのまま出る
 
 ### 2-4. production
 
-`--id` と `--secrets-file` とイメージのタグを production のものに差し替えて、同じことを2回やる。
+`--id` と `--secrets-file` を production のものに差し替えて、同じことを2回やる。
 **`livekit.toml` を使い回さない**のがいちばんの事故防止になる。
 
 ---
@@ -229,8 +242,8 @@ develop と production を分けるなら、リポジトリ共通ではなく **
 | Secret | `LIVEKIT_URL` | 同上 |
 | Variable | `LIVEKIT_AGENT_ID` | `lk agent create` が返したID(`CA_...`) |
 
-イメージの置き場は GitHub Container Registry(`ghcr.io`)。`GITHUB_TOKEN` に
-`packages: write` を付けるだけで push できるので、追加のsecretは要らない。
+**イメージのレジストリは要らない。** ワークフローがやるのはソースを送ることだけで、
+ビルドはLiveKit側で走る。
 
 ---
 
@@ -282,6 +295,6 @@ agentは**静かに壊れる**。アプリからは「後輩が来ない」「�
   なれば通っている。
 - **オートスケールの調整。** いまは1レプリカ想定。同時セッション数が読めるのは
   W2のGo/No-Go以降なので、それまでは台数を手で決める。
-- **ロールバック。** イメージのタグを戻して deploy し直す以外の道を用意していない。
-  タグを `:develop` のような可変タグにしているので、**戻すときはコミットハッシュの
-  タグが要る**(`docs/ci/deploy-agent.yml` は両方を push している)。
+- **ロールバック。** LiveKit側でビルドするので、こちらにはイメージが残らない。
+  いまは**戻したいコミットを checkout して deploy し直す**しかない
+  (`lk agent rollback` があるかは未確認。`lk agent --help` で見ること)。
