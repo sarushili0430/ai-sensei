@@ -32,6 +32,10 @@ export const RULES: Rule[] = [
   { name: "openai-like-api-key", pattern: /\bsk-(?!ant-)[A-Za-z0-9]{32,}\b/ },
   { name: "openrouter-api-key", pattern: /sk-or-v1-[A-Za-z0-9]{32,}/ },
   { name: "elevenlabs-api-key", pattern: /\bsk_[a-f0-9]{40,}\b/ },
+  // Deepgramの鍵は40桁のhexで、それ自体はコミットSHAと見分けがつかない。
+  // 手がかりの語が値の前後どちらにも来るので、LiveKitと同じく両方向を見る。
+  { name: "deepgram-api-key", pattern: /deepgram[^\n]*?\b[a-f0-9]{40}\b/i },
+  { name: "deepgram-api-key", pattern: /\b[a-f0-9]{40}\b[^\n]*?deepgram/i },
   { name: "google-api-key", pattern: /\bAIza[0-9A-Za-z_-]{35}\b/ },
   { name: "github-token", pattern: /\bgh[pousr]_[A-Za-z0-9]{36,}\b/ },
   { name: "slack-token", pattern: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/ },

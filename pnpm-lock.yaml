@@ -47,9 +47,6 @@ importers:
       '@livekit/agents-plugin-deepgram':
         specifier: ^1.6.1
         version: 1.6.1(@livekit/agents@1.6.1(@livekit/rtc-node@0.13.33)(@types/node@22.20.1)(typescript@5.9.3)(zod@3.25.76))(@livekit/rtc-node@0.13.33)
-      '@livekit/agents-plugin-elevenlabs':
-        specifier: ^1.6.1
-        version: 1.6.1(@livekit/agents@1.6.1(@livekit/rtc-node@0.13.33)(@types/node@22.20.1)(typescript@5.9.3)(zod@3.25.76))(@livekit/rtc-node@0.13.33)
       '@livekit/agents-plugin-silero':
         specifier: ^1.6.1
         version: 1.6.1(@livekit/agents@1.6.1(@livekit/rtc-node@0.13.33)(@types/node@22.20.1)(typescript@5.9.3)(zod@3.25.76))(@livekit/rtc-node@0.13.33)
@@ -872,12 +869,6 @@ packages:
 
   '@livekit/agents-plugin-deepgram@1.6.1':
     resolution: {integrity: sha512-ePkUg747zCkLPapvSWACoUVCSMIZyMl2+x8m0f4UNbIo1KitdJyDqCUrjq7DsaleL8xZcORYpW4vT4fYJWy8uQ==}
-    peerDependencies:
-      '@livekit/agents': 1.6.1
-      '@livekit/rtc-node': ^0.13.33
-
-  '@livekit/agents-plugin-elevenlabs@1.6.1':
-    resolution: {integrity: sha512-gFTbSt1cEb3tjooWgUKUmlhOV8RhZNr/kiOG7eJkO5yekXUUP0vX4OYcPrz1QCdzDMm5x+OvGM57K8zMIQzlhQ==}
     peerDependencies:
       '@livekit/agents': 1.6.1
       '@livekit/rtc-node': ^0.13.33
@@ -2740,16 +2731,6 @@ snapshots:
   '@livekit/agents-plugin-deepgram@1.6.1(@livekit/agents@1.6.1(@livekit/rtc-node@0.13.33)(@types/node@22.20.1)(typescript@5.9.3)(zod@3.25.76))(@livekit/rtc-node@0.13.33)':
     dependencies:
       '@livekit/agents': 1.6.1(@livekit/rtc-node@0.13.33)(@types/node@22.20.1)(typescript@5.9.3)(zod@3.25.76)
-      '@livekit/rtc-node': 0.13.33
-      ws: 8.21.1
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-
-  '@livekit/agents-plugin-elevenlabs@1.6.1(@livekit/agents@1.6.1(@livekit/rtc-node@0.13.33)(@types/node@22.20.1)(typescript@5.9.3)(zod@3.25.76))(@livekit/rtc-node@0.13.33)':
-    dependencies:
-      '@livekit/agents': 1.6.1(@livekit/rtc-node@0.13.33)(@types/node@22.20.1)(typescript@5.9.3)(zod@3.25.76)
-      '@livekit/mutex': 1.1.1
       '@livekit/rtc-node': 0.13.33
       ws: 8.21.1
     transitivePeerDependencies:

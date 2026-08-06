@@ -4,7 +4,7 @@
 
 ```
 VAD(Silero) → 日本語ストリーミングSTT(Deepgram) → Claude(後輩ペルソナ)
-→ ElevenLabs TTS。割り込みと相づちはフレームワーク側。
+→ TTS(Deepgram Aura-2)。割り込みと相づちはフレームワーク側。
 ```
 
 **WebRTCは書かない。** ここで書くのは3つだけ:

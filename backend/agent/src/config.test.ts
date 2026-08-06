@@ -9,8 +9,7 @@ const complete = {
   LIVEKIT_API_SECRET: "secret",
   ANTHROPIC_API_KEY: "key",
   DEEPGRAM_API_KEY: "key",
-  ELEVENLABS_API_KEY: "key",
-  ELEVENLABS_VOICE_ID: "voice",
+  DEEPGRAM_TTS_MODEL_JA: "aura-2-example-ja",
 };
 
 describe("loadConfig", () => {
@@ -18,6 +17,14 @@ describe("loadConfig", () => {
     const config = loadConfig(complete);
     expect(config.LLM_MODEL_CONVERSATION).toBe("claude-haiku-4-5-20251001");
     expect(config.LLM_MODEL_KARTE).toBe("claude-sonnet-5");
+  });
+
+  // 英語ロケールは審査向けなので、選ばなくても動くところまでは既定値で埋める
+  it("英語の声には既定値があり、日本語の声には無い", () => {
+    expect(loadConfig(complete).DEEPGRAM_TTS_MODEL_EN).toBe("aura-2-andromeda-en");
+
+    const { DEEPGRAM_TTS_MODEL_JA, ...missing } = complete;
+    expect(() => loadConfig(missing)).toThrow(/DEEPGRAM_TTS_MODEL_JA/);
   });
 
   // 会話の途中で鍵が無いことに気づくのが最悪なので、起動時に落とす

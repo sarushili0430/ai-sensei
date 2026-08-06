@@ -13,10 +13,25 @@ const configSchema = z.object({
   LLM_MODEL_CONVERSATION: z.string().default("claude-haiku-4-5-20251001"),
   LLM_MODEL_KARTE: z.string().default("claude-sonnet-5"),
 
+  /** 聞く(STT)と喋る(TTS)は同じ鍵で通る。声のベンダーは1つに寄せてある(ADR 0003)。 */
   DEEPGRAM_API_KEY: z.string().min(1),
-  ELEVENLABS_API_KEY: z.string().min(1),
-  ELEVENLABS_VOICE_ID: z.string().min(1),
-  ELEVENLABS_MODEL_ID: z.string().default("eleven_flash_v2_5"),
+
+  /**
+   * 後輩の声(日本語)。`aura-2-<voice>-ja` の形で、Deepgramのボイス一覧から選ぶ。
+   *
+   * **既定値は置かない。** 声はキャラクターそのものなので、選ばないまま
+   * 適当なボイスで喋り出すより、起動時に「選べ」と言われるほうがいい。
+   */
+  DEEPGRAM_TTS_MODEL_JA: z.string().min(1),
+
+  /**
+   * 英語ロケールの声。
+   *
+   * Deepgramは**言語がモデル名に埋まっている**ので、日本語ボイスは英語を喋れない
+   * (1ボイスに言語を渡す作りではない)。`locale=en` はデモと審査向けなので、
+   * 既定のまま動けばよく、こだわるときだけ差し替える。
+   */
+  DEEPGRAM_TTS_MODEL_EN: z.string().default("aura-2-andromeda-en"),
 });
 
 export type AgentConfig = z.infer<typeof configSchema>;
