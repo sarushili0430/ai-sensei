@@ -43,20 +43,33 @@ class KarteScreen extends ConsumerWidget {
         child: ListView(
           padding: const EdgeInsets.all(AppSpacing.lg),
           children: <Widget>[
+            // マーカーは上の行から順に引かれる。今日の会話が書き取られていく順。
+            // 速くしない — ここは読み返す画面なので、走らせると落ち着かない。
             _Section(
               title: strings.karteSaidWell,
-              children: karte.saidWell
-                  .map((String it) => MarkerText(it, marker: MarkerColor.said))
-                  .toList(growable: false),
+              children: <Widget>[
+                for (int i = 0; i < karte.saidWell.length; i++)
+                  MarkerText(
+                    karte.saidWell[i],
+                    marker: MarkerColor.said,
+                    delay: AppDurations.draw * i,
+                  ),
+              ],
             ),
             const SizedBox(height: AppSpacing.lg),
             _Section(
               title: strings.karteHoles(karte.holes.length),
               children: karte.holes.isEmpty
                   ? <Widget>[Text(strings.karteNoHoles)]
-                  : karte.holes
-                      .map((Hole it) => MarkerText(it.description, marker: MarkerColor.hole))
-                      .toList(growable: false),
+                  : <Widget>[
+                      for (int i = 0; i < karte.holes.length; i++)
+                        MarkerText(
+                          karte.holes[i].description,
+                          marker: MarkerColor.hole,
+                          // 言えたことを引き終わってから、穴に移る。
+                          delay: AppDurations.draw * (karte.saidWell.length + i),
+                        ),
+                    ],
             ),
             if (karte.termNotes.isNotEmpty) ...<Widget>[
               const SizedBox(height: AppSpacing.lg),

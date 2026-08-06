@@ -36,8 +36,25 @@ Widget wrapApp(
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
+      builder: reduceMotion,
       home: child,
     ),
+  );
+}
+
+/// テストのあいだ、装飾のアニメーションを止める。
+///
+/// 端末の「アニメーションを減らす」と同じ経路(`AppMotion`)を通すので、
+/// 入場アニメーションは**終わった状態**で描かれ、呼吸やまばたきのような
+/// ループは始まらない。goldenが撮った瞬間で変わらなくなり、
+/// `pumpAndSettle` も返る。
+///
+/// 逆に言うと、ここを通していないアニメーションを足すと
+/// `pumpAndSettle` が返らずにテストが落ちる。それが検知そのものになる。
+Widget reduceMotion(BuildContext context, Widget? child) {
+  return MediaQuery(
+    data: MediaQuery.of(context).copyWith(disableAnimations: true),
+    child: child ?? const SizedBox.shrink(),
   );
 }
 
@@ -63,6 +80,7 @@ Widget wrapRouter(ProviderContainer container) {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
+      builder: reduceMotion,
       routerConfig: container.read(appRouterProvider),
     ),
   );

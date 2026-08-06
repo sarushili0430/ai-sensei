@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../common_widgets/chunky_button.dart';
+import '../../../common_widgets/entrance.dart';
 import '../../../common_widgets/kohai_face.dart';
 import '../../../l10n/strings.dart';
 import '../../../routing/routes.dart';
@@ -36,24 +37,32 @@ class HomeScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              _TopRow(progress: data.progress),
+              FadeSlideIn(child: _TopRow(progress: data.progress)),
               const Spacer(),
-              const Center(child: KohaiFace(mood: KohaiMood.neutral, size: 140)),
+              const FadeSlideIn(
+                child: Center(child: KohaiFace(mood: KohaiMood.neutral, size: 140)),
+              ),
               const SizedBox(height: AppSpacing.lg),
-              Text(
-                strings.homeGreeting,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleLarge,
+              FadeSlideIn.staggered(
+                index: 1,
+                child: Text(
+                  strings.homeGreeting,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
               ),
               const Spacer(),
-              _OpenHolesCard(progress: data.progress),
+              FadeSlideIn.staggered(index: 2, child: _OpenHolesCard(progress: data.progress)),
               const SizedBox(height: AppSpacing.md),
-              ChunkyButton(
-                label: strings.homeCapture,
-                onPressed: () => context.push(AppRoute.capture.path),
+              FadeSlideIn.staggered(
+                index: 3,
+                child: ChunkyButton(
+                  label: strings.homeCapture,
+                  onPressed: () => context.push(AppRoute.capture.path),
+                ),
               ),
               const SizedBox(height: AppSpacing.sm),
-              _RemainingLine(summary: data),
+              FadeSlideIn.staggered(index: 4, child: _RemainingLine(summary: data)),
             ],
           ),
         ),
@@ -201,8 +210,10 @@ class _Counter extends StatelessWidget {
       label: label,
       child: Row(
         children: <Widget>[
-          Text(
-            '$value',
+          // 数えているのはこの2つだけ(連続日数と埋めた穴)。
+          // 増えたことが見えるように、0から数え上げる。
+          CountUpText(
+            value,
             style: Theme.of(context).textTheme.titleLarge?.copyWith(color: color),
           ),
           const SizedBox(width: AppSpacing.xs),

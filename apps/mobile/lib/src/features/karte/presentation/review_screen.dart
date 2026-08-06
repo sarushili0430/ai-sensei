@@ -150,15 +150,21 @@ class _FilledSection extends StatelessWidget {
         if (filled.isEmpty)
           Text(strings.reviewFilledEmpty, style: Theme.of(context).textTheme.bodySmall)
         else
-          for (final FilledHole it in filled)
+          // 埋めた穴は、ピンクではなく黄で引き直される。
+          // 上から順に引くことで、積み上がってきたものとして見える。
+          for (int i = 0; i < filled.length; i++)
             Padding(
               padding: const EdgeInsets.only(bottom: AppSpacing.md),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  MarkerText(it.hole.description, marker: MarkerColor.said),
+                  MarkerText(
+                    filled[i].hole.description,
+                    marker: MarkerColor.said,
+                    delay: AppDurations.draw * i,
+                  ),
                   Text(
-                    strings.reviewFilledDays(it.daysSinceFilled),
+                    strings.reviewFilledDays(filled[i].daysSinceFilled),
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
