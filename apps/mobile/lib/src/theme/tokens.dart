@@ -50,4 +50,38 @@ abstract final class AppDurations {
   static const Duration tap = Duration(milliseconds: 90);
   static const Duration reaction = Duration(milliseconds: 220);
   static const Duration celebrate = Duration(milliseconds: 600);
+
+  /// 画面に入ってくるとき(要素1つぶん)。
+  static const Duration enter = Duration(milliseconds: 320);
+
+  /// 段差。次の要素が現れるまでの待ち。
+  /// 全部が同時に現れると、読む順序が消える。
+  static const Duration stagger = Duration(milliseconds: 70);
+
+  /// 蛍光マーカーを引く速さ。ペン先が走る時間そのもの。
+  static const Duration draw = Duration(milliseconds: 420);
+
+  /// 後輩の呼吸。まばたきもこの周期から作る。
+  static const Duration breath = Duration(milliseconds: 3400);
+
+  /// 1文字ぶんのタイプ速度(後輩のせりふ)。
+  static const Duration typeChar = Duration(milliseconds: 45);
+
+  /// 「長押しして説明する」を、説明したことにする長さ。
+  ///
+  /// これは装飾ではなく**操作の時間**なので、
+  /// アニメーションを減らす設定でも短くしない。
+  static const Duration hold = Duration(milliseconds: 1300);
+}
+
+/// 動きの気持ち。
+///
+/// にぎやかな画面(会話・祝福・オンボーディング)だけが [pop] を使える。
+/// カルテと復習は内省する画面なので、行き過ぎて戻る動きを持ち込まない
+/// (handoff §7「騒がしい/静かの分離」)。
+abstract final class AppCurves {
+  static const Curve enter = Curves.easeOutCubic;
+  static const Curve exit = Curves.easeInCubic;
+  static const Curve pop = Curves.easeOutBack;
+  static const Curve breathe = Curves.easeInOut;
 }

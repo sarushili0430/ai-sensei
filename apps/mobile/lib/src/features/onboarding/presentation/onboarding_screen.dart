@@ -4,17 +4,27 @@ import 'package:go_router/go_router.dart';
 
 import '../../../api/device_id.dart';
 import '../../../common_widgets/chunky_button.dart';
+import '../../../common_widgets/entrance.dart';
 import '../../../common_widgets/kohai_face.dart';
 import '../../../l10n/strings.dart';
 import '../../../routing/routes.dart';
+import '../../../theme/motion.dart';
 import '../../../theme/tokens.dart';
+import 'onboarding_karte_preview.dart';
+import 'onboarding_rehearsal.dart';
 
-/// オンボーディング(初回のみ・2ページ)。
+/// オンボーディング(初回のみ・4ページ)。
 ///
 /// 1枚目は機能ではなく**約束**。「答えは教えません」を先に言い切ることで、
 /// 既存の写真×数学アプリとの違いがここで立つ。
 /// 2枚目でやることの全体像を見せる。4分間なにをするのか分からないまま
 /// カメラを開かせない。
+///
+/// 3枚目と4枚目は**やってみる枚**。
+/// 「答えを教えない」は、読むと不便に聞こえる(inception-deck §7-7)。
+/// 言葉で否定するほど不便に見えるので、説明を増やすのではなく、
+/// 質問されて・言えて/言えなくて・カルテに残る、までを1往復させる。
+/// 台本は固定で、写真も声も使わないので、ここではまだ何の権限も要らない。
 ///
 /// **権限はここで求めない。** カメラは撮る直前、マイクは会話の直前、
 /// 通知は初回カルテで穴が見えた直後に、それぞれ文脈の中で聞く。
@@ -29,8 +39,12 @@ class OnboardingScreen extends ConsumerStatefulWidget {
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   final PageController _controller = PageController();
   int _page = 0;
+  RehearsalOutcome? _outcome;
 
-  static const int _pageCount = 2;
+  static const int _pageCount = 4;
+
+  /// リハーサルの枚。ここだけ、先に進むボタンが操作待ちになる。
+  static const int _rehearsalPage = 2;
 
   @override
   void dispose() {
@@ -40,14 +54,28 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   bool get _isLast => _page == _pageCount - 1;
 
+  /// リハーサルは「説明する」か「うまく言えない」のどちらかを通ってほしい。
+  /// どちらでも先へ進めるので行き止まりにはならないし、
+  /// 上の「とばす」でいつでも降りられる。
+  bool get _canAdvance => _page != _rehearsalPage || _outcome != null;
+
   Future<void> _next() async {
-    if (!_isLast) {
-      await _controller.nextPage(
-        duration: AppDurations.reaction,
-        curve: Curves.easeOut,
-      );
+    if (_isLast) {
+      await _finish();
       return;
     }
+
+    // 動かさない設定では、めくらずに切り替える
+    // (`nextPage` は長さ0を受け付けない)。
+    final Duration duration = AppMotion.decorative(context, AppDurations.reaction);
+    if (duration == Duration.zero) {
+      _controller.jumpToPage(_page + 1);
+      return;
+    }
+    await _controller.nextPage(duration: duration, curve: AppCurves.enter);
+  }
+
+  Future<void> _finish() async {
     await markOnboardingSeen(ref.read(preferencesProvider));
     if (mounted) context.go(AppRoute.home.path);
   }
@@ -56,15 +84,45 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
 
+    final List<Widget> pages = <Widget>[
+      const _PromisePage(),
+      const _HowItWorksPage(),
+      OnboardingRehearsalPage(
+        outcome: _outcome,
+        onOutcome: (RehearsalOutcome? outcome) => setState(() => _outcome = outcome),
+      ),
+      OnboardingKartePreviewPage(outcome: _outcome),
+    ];
+
     return Scaffold(
       body: SafeArea(
         child: Column(
           children: <Widget>[
+            SizedBox(
+              height: 40,
+              child: Align(
+                alignment: Alignment.centerRight,
+                // 約束(1枚目)とやること(2枚目)は飛ばさせない。
+                // デッキが期待値の設計をこの2枚に置いているので、
+                // 出口を作るのはあとから足した2枚から。
+                child: AnimatedOpacity(
+                  opacity: _page >= _rehearsalPage ? 1 : 0,
+                  duration: AppMotion.decorative(context, AppDurations.reaction),
+                  child: TextButton(
+                    onPressed: _page >= _rehearsalPage ? _finish : null,
+                    style: TextButton.styleFrom(foregroundColor: AppColors.inkMuted),
+                    child: Text(strings.onboardingSkip),
+                  ),
+                ),
+              ),
+            ),
             Expanded(
-              child: PageView(
+              child: PageView.builder(
                 controller: _controller,
+                itemCount: pages.length,
                 onPageChanged: (int page) => setState(() => _page = page),
-                children: const <Widget>[_PromisePage(), _HowItWorksPage()],
+                itemBuilder: (BuildContext context, int index) =>
+                    _PageTransition(controller: _controller, index: index, child: pages[index]),
               ),
             ),
             _Dots(count: _pageCount, current: _page),
@@ -77,12 +135,46 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               ),
               child: ChunkyButton(
                 label: _isLast ? strings.onboardingCta : strings.onboardingNext,
-                onPressed: _next,
+                onPressed: _canAdvance ? _next : null,
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// めくっている最中だけ、隣のページを少し縮めて薄くする。
+///
+/// 横に動いていることが指の下で分かるようにするための演出で、
+/// 止まっている状態(= golden で撮る状態)には何の影響もない。
+class _PageTransition extends StatelessWidget {
+  const _PageTransition({required this.controller, required this.index, required this.child});
+
+  final PageController controller;
+  final int index;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (AppMotion.isReduced(context)) return child;
+
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (BuildContext context, Widget? child) {
+        // 初回ビルドではまだ寸法が無い。そのときは静止状態として扱う。
+        final double page = controller.hasClients && controller.position.haveDimensions
+            ? (controller.page ?? index.toDouble())
+            : index.toDouble();
+        final double distance = (page - index).abs().clamp(0.0, 1.0);
+
+        return Opacity(
+          opacity: 1 - 0.5 * distance,
+          child: Transform.scale(scale: 1 - 0.05 * distance, child: child),
+        );
+      },
+      child: child,
     );
   }
 }
@@ -100,18 +192,26 @@ class _PromisePage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           const Spacer(),
-          const Center(child: KohaiFace(mood: KohaiMood.puzzled, size: 140)),
+          const FadeSlideIn(
+            child: Center(child: KohaiFace(mood: KohaiMood.puzzled, size: 140)),
+          ),
           const SizedBox(height: AppSpacing.xl),
-          Text(
-            strings.onboardingTitle,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.displaySmall,
+          FadeSlideIn.staggered(
+            index: 1,
+            child: Text(
+              strings.onboardingTitle,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.displaySmall,
+            ),
           ),
           const SizedBox(height: AppSpacing.md),
-          Text(
-            strings.onboardingBody,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyLarge,
+          FadeSlideIn.staggered(
+            index: 2,
+            child: Text(
+              strings.onboardingBody,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
           ),
           const Spacer(),
         ],
@@ -133,10 +233,12 @@ class _HowItWorksPage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           const Spacer(),
-          Text(
-            strings.onboardingHowTitle,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.headlineSmall,
+          FadeSlideIn(
+            child: Text(
+              strings.onboardingHowTitle,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
           ),
           const SizedBox(height: AppSpacing.xl),
           _Step(index: 1, icon: Icons.photo_camera_outlined, label: strings.onboardingStepCapture),
@@ -166,26 +268,39 @@ class _Step extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // 4番目だけ色を変える。ここが持ち帰るもの(カルテ)だと分かるように。
-    final Color tint = index == 4 ? AppColors.hole : AppColors.blue;
+    final bool isLast = index == 4;
+    final Color tint = isLast ? AppColors.hole : AppColors.blue;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.md),
-      child: Row(
-        children: <Widget>[
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: tint.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(AppRadius.button),
+    return FadeSlideIn.staggered(
+      index: index,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Column(
+              children: <Widget>[
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: tint.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(AppRadius.button),
+                  ),
+                  child: Icon(icon, size: 20, color: tint),
+                ),
+                // 次の手順へ続く線。1周であることが縦に見える。
+                if (!isLast) Expanded(child: Container(width: 2, color: AppColors.border)),
+              ],
             ),
-            child: Icon(icon, size: 20, color: tint),
-          ),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: Text(label, style: Theme.of(context).textTheme.bodyLarge),
-          ),
-        ],
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(top: AppSpacing.sm, bottom: AppSpacing.md),
+                child: Text(label, style: Theme.of(context).textTheme.bodyLarge),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -204,12 +319,18 @@ class _Dots extends StatelessWidget {
       children: <Widget>[
         for (int i = 0; i < count; i++)
           AnimatedContainer(
-            duration: AppDurations.tap,
+            duration: AppMotion.decorative(context, AppDurations.reaction),
+            curve: AppCurves.enter,
             margin: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
             width: i == current ? 20 : 8,
             height: 8,
             decoration: BoxDecoration(
-              color: i == current ? AppColors.blue : AppColors.border,
+              // 通ってきた枚は薄く残す。あと何枚あるかが見えるように。
+              color: switch (i) {
+                _ when i == current => AppColors.blue,
+                _ when i < current => AppColors.blue.withValues(alpha: 0.35),
+                _ => AppColors.border,
+              },
               borderRadius: BorderRadius.circular(AppRadius.chip),
             ),
           ),

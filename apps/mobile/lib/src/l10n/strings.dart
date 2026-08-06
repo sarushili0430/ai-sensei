@@ -48,6 +48,60 @@ class AppStrings {
         'We ask for camera, microphone and notification access only when they are needed',
       );
 
+  /// 3枚目 — リハーサル。読むだけの説明を、**一度やってみる**に変える。
+  ///
+  /// ここで扱う数式と質問は固定の台本。ノートも撮らないし、
+  /// 声も録らない(だから権限もまだ要らない)。
+  String get onboardingTryTitle => _pick('ためしに、1問だけ。', 'Try it once.');
+  String get onboardingTryNotebookLabel => _pick('きょうのノート', "Today's notes");
+  String get onboardingTryNotebook => _pick(
+        'x² − 4x + k = 0 が異なる2つの実数解をもつ',
+        'x² − 4x + k = 0 has two distinct real roots',
+      );
+  String get onboardingTryQuestion =>
+      _pick('なんでここで判別式を使うんですか?', 'Why do you use the discriminant here?');
+
+  /// 長押しの案内。読み上げを使っている人にはタップに切り替える。
+  String get onboardingTryHold => _pick('長押しして説明する', 'Hold to explain');
+  String get onboardingTryTap => _pick('タップして説明する', 'Tap to explain');
+  String get onboardingTryHolding => _pick('聞いています', 'Listening');
+  String get onboardingTryHint => _pick('押したままにしてください', 'Keep holding');
+
+  /// 本番と取り違えられると信頼を落とす。まだ録っていないことを先に言う。
+  String get onboardingTryNotRecording =>
+      _pick('ここではまだ録音しません', 'Nothing is recorded here yet');
+
+  String get onboardingTrySaidReaction => _pick('なるほど、わかりました!', 'Ah — now I get it!');
+  String get onboardingTrySaid => _pick(
+        '判別式を使う理由を、自分の言葉で説明した',
+        'You explained why the discriminant is used, in your own words',
+      );
+
+  /// パスは失敗ではない(§0 の約束3)。ここでの文言がその宣言になる。
+  String get onboardingTryHoleReaction =>
+      _pick('大丈夫です。ここが最初の穴です。', "That's fine — this is your first gap.");
+  String get onboardingTryHole => _pick(
+        '判別式を「なぜ」使うのかで、説明が止まった',
+        'You stalled on why the discriminant is used',
+      );
+  String get onboardingTryAgain => _pick('もう一度ためす', 'Try that again');
+
+  /// 4枚目 — リハーサルの結果が、そのままカルテの見本になる。
+  String get onboardingKarteTitle => _pick('これが、カルテです。', 'This is your karte.');
+  String get onboardingKarteBody => _pick(
+        '言えたことは黄色、止まったところはピンク。点数はつきません。',
+        'What you explained is yellow. Where you stalled is pink. There is no score.',
+      );
+  String get onboardingReviewTitle =>
+      _pick('穴は、埋まるまでたずねます', 'We keep asking until the gap is filled');
+  String get onboardingReviewTomorrow => _pick('あした', 'Tomorrow');
+  String get onboardingReviewDay3 => _pick('3日後', 'In 3 days');
+  String get onboardingReviewDay7 => _pick('7日後', 'In 7 days');
+
+  /// 約束(1枚目)とやること(2枚目)は飛ばさせない。
+  /// 出すのは、あとから足した2枚だけ。
+  String get onboardingSkip => _pick('とばす', 'Skip');
+
   // --- ホーム ---
   String get homeGreeting => _pick('今日のノート、見せてください', 'Show me your notes today');
   String get homeCapture => _pick('ノートを撮る', 'Take a photo');

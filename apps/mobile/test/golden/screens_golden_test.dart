@@ -11,6 +11,7 @@ import 'package:ai_sensei/src/features/monetization/presentation/paywall_screen.
 import 'package:ai_sensei/src/features/onboarding/presentation/onboarding_screen.dart';
 import 'package:ai_sensei/src/features/session/presentation/celebration_screen.dart';
 import 'package:ai_sensei/src/features/settings/presentation/settings_screen.dart';
+import 'package:ai_sensei/src/l10n/strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -28,6 +29,9 @@ import '../support/harness.dart';
 void main() {
   setUpAll(loadAppFonts);
 
+  Future<void> capture(WidgetTester tester, String name) =>
+      expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/$name.png'));
+
   Future<void> expectGolden(
     WidgetTester tester,
     Widget screen,
@@ -37,11 +41,45 @@ void main() {
     await setGoldenSurface(tester);
     await tester.pumpWidget(wrapApp(screen, overrides: overrides));
     await tester.pumpAndSettle();
-    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/$name.png'));
+    await capture(tester, name);
   }
 
-  testWidgets('01 オンボーディング', (WidgetTester tester) async {
+  const AppStrings ja = AppStrings(Locale('ja'));
+
+  Future<void> tapNext(WidgetTester tester) async {
+    await tester.tap(find.text(ja.onboardingNext));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('01 オンボーディング(約束)', (WidgetTester tester) async {
     await expectGolden(tester, const OnboardingScreen(), 'onboarding');
+  });
+
+  // リハーサル。ここで見たいのは、**答えが1文字も出ていない**こと。
+  // 出ているのは質問と、説明する/言えない の2つの道だけ。
+  testWidgets('01b オンボーディング(リハーサル)', (WidgetTester tester) async {
+    await setGoldenSurface(tester);
+    await tester.pumpWidget(wrapApp(const OnboardingScreen()));
+    await tester.pumpAndSettle();
+
+    await tapNext(tester);
+    await tapNext(tester);
+    await capture(tester, 'onboarding_rehearsal');
+  });
+
+  // パスしたあとのカルテ見本。穴がピンクで残り、責める言葉が無く、
+  // 「また来る」ことが線で見えているか。
+  testWidgets('01c オンボーディング(カルテの見本)', (WidgetTester tester) async {
+    await setGoldenSurface(tester);
+    await tester.pumpWidget(wrapApp(const OnboardingScreen()));
+    await tester.pumpAndSettle();
+
+    await tapNext(tester);
+    await tapNext(tester);
+    await tester.tap(find.text(ja.sessionPass));
+    await tester.pumpAndSettle();
+    await tapNext(tester);
+    await capture(tester, 'onboarding_karte');
   });
 
   testWidgets('02 ホーム', (WidgetTester tester) async {

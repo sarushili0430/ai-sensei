@@ -153,10 +153,15 @@ Biomeがlintと整形の両方を担当します(ESLint + Prettierは入れて�
 
 テスト方針は「①純関数ユニット(ガードレール照合・数式正規化・間隔反復スケジューラ・
 穴/連続日数の集計・contract fixtureのパース)」と「②主要画面のgolden test」の2本立てです。
-golden testは主要画面ぶん9枚あり(ホームと復習は状態違いを2枚ずつ撮る)、
-**Linuxのラスタライズを正**として
+golden testは主要画面ぶん11枚あり(オンボーディングは4枚のうち3枚、
+ホームと復習は状態違いを2枚ずつ撮る)、**Linuxのラスタライズを正**として
 CIで生成します(`apps/mobile/test/golden/README.md`)。
 E2Eは書かず、TestFlightでの手動確認に割り切っています。
+
+アニメーションは端末の「アニメーションを減らす」設定を必ず通します
+([ADR 0004](docs/adr/0004-motion-and-onboarding.md))。テストもその経路で回るので、
+ループするアニメーションを足して経路を通し忘れると `pumpAndSettle` が返らず、
+テストが止まって気づけます。
 
 依存の更新は Renovate(`renovate.json`)。ソロ開発なので週1にまとめ、
 同時に開くPRを3本までに絞っています。FlutterのSDK更新だけは

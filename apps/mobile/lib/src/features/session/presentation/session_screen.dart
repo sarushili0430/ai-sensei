@@ -4,8 +4,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../../common_widgets/chunky_button.dart';
 import '../../../common_widgets/kohai_face.dart';
+import '../../../common_widgets/speaking_wave.dart';
 import '../../../l10n/strings.dart';
 import '../../../routing/routes.dart';
+import '../../../theme/motion.dart';
 import '../../../theme/tokens.dart';
 import '../../capture/application/capture_controller.dart';
 import '../application/session_controller.dart';
@@ -53,6 +55,12 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
       return _SessionFailed(failure: state.failure);
     }
 
+    final String subtitle = switch (state.phase) {
+      SessionPhase.connecting => strings.sessionConnecting,
+      SessionPhase.summarizing => strings.sessionThinking,
+      _ => state.lastKohaiText ?? strings.sessionListening,
+    };
+
     return Scaffold(
       body: SafeArea(
         child: Padding(
@@ -78,16 +86,21 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
                 },
                 size: 160,
               ),
-              const SizedBox(height: AppSpacing.lg),
+              const SizedBox(height: AppSpacing.md),
+              // 聞いていることを、字幕より先に出す。
+              // 話している最中は文字を読んでいないので、目の端で分かる必要がある。
+              SpeakingWave(active: state.phase == SessionPhase.listening),
+              const SizedBox(height: AppSpacing.md),
               // 字幕。声を聞き取れない場所でも会話の流れを追えるようにする。
-              Text(
-                switch (state.phase) {
-                  SessionPhase.connecting => strings.sessionConnecting,
-                  SessionPhase.summarizing => strings.sessionThinking,
-                  _ => state.lastKohaiText ?? strings.sessionListening,
-                },
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyLarge,
+              // 差し替わるときに入れ替わりが見えるよう、文ごとに切り替える。
+              AnimatedSwitcher(
+                duration: AppMotion.decorative(context, AppDurations.reaction),
+                child: Text(
+                  subtitle,
+                  key: ValueKey<String>(subtitle),
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
               ),
               const Spacer(),
               // パスは恥ではない。穴の記録として価値がある(handoff §7)。
