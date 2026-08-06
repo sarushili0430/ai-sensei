@@ -34,22 +34,34 @@ MVPの範囲では**プラグインを差し込むだけ**でカスタムDSPを�
 (`node --experimental-strip-types src/index.ts start`)。どちらでも
 `backend/agent/` ディレクトリの中身は変わらない。
 
-### 追記 (2026-08-06): 稼働先を「自分で焼いたコンテナ」に統一する
+### 追記 (2026-08-06): LiveKit Cloud に載せる。Dockerfileはリポジトリのルートに置く
 
-第一候補は変えないが、**LiveKit Cloud にソースを送って向こうでビルドさせる方式は
-取らない**。`lk agent create` / `lk agent deploy` のソースアップロードは
-`package.json`・`Dockerfile`・ビルドコンテキストが同じディレクトリにある前提で、
-`workspace:*` を跨ぐ構成を解決できない
-([livekit-cli#688](https://github.com/livekit/livekit-cli/issues/688))。
+第一候補(LiveKit Cloud のエージェントホスティング)のまま進める。決めたのは
+**Dockerfileの置き場**で、`backend/agent/` ではなく**リポジトリのルート**にする。
 
-代わりに、リポジトリのルートをコンテキストにイメージをこちらで焼き、
-bring your own container(`lk agent deploy --image`)で渡す。
+理由は2つあり、どちらも動かせない:
 
-- **`backend/agent` を別リポジトリに切り出す案は取らない。** ガードレールを
-  二重実装しないことがこのADRでTypeScriptを選んだ理由そのもので、デプロイの
-  都合でそこを崩すと決定の前提が消える。
-- 同じイメージが任意のコンテナホストでも動くので、「不可の場合」の道が
-  **別の手順ではなく同じ成果物の置き場所違い**になる。
+1. agentは `packages/*` を `workspace:*` で参照しているので、**ビルドコンテキストが
+   リポジトリのルートでないとインストールが解けない**。
+2. `lk agent create` / `lk agent deploy` は**作業ディレクトリをそのままビルド
+   コンテキストにし、その直下の `Dockerfile` を読む**。パスを指定するフラグが無い。
+
+つまり「ルートに `Dockerfile` を置き、ルートから `lk` を叩く」以外に、この構成を
+LiveKit Cloud に載せる道がない。中身が `backend/agent` のものなのにルートにあるのは
+気持ちが悪いが、**ここは道具の制約に合わせる**。
+
+検討して**採らなかった**案:
+
+- **焼いたイメージを渡す(bring your own container、`lk agent deploy --image`)。**
+  これは手元のDockerデーモンのイメージをLiveKitのレジストリへpushするフラグで、
+  **push先が Enterprise プラン限定**。実際に叩くと
+  `Bring Your Own Container is only available for Enterprise projects` で断られる。
+- **`backend/agent` を別リポジトリに切り出す。** ガードレールを二重実装しないことが
+  このADRでTypeScriptを選んだ理由そのもので、デプロイの都合でそこを崩すと
+  決定の前提が消える。
+
+「不可の場合」の道(Node 22のコンテナ常駐)は**同じDockerfileがそのまま使える**ので、
+手順ではなく置き場所だけの違いになる。
 
 このADRが残していた「ホスティング先が決まった時点で `prewarm` が通ることを
 最初に確認する」は、`GET :8081/` が200を返すかで見る(LiveKitに登録できて

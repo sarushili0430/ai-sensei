@@ -25,7 +25,7 @@ git add .github/workflows/ && git commit -m "ci: enable CI and deploy workflows"
 | -------- | ------ | ---- |
 | `ci.yml` | `develop`/`main` へのpush、全PR | `pnpm run lint`(Biome)/ `pnpm run typecheck` / `pnpm test` / Workerのdry-runビルド / Flutter(analyze + test)/ シークレット走査 |
 | `deploy.yml` | `develop`/`main` へのpush(`backend/api` などに変更があったとき)、手動実行 | `backend/api` を Cloudflare Workers へデプロイ。`develop`→develop環境 / `main`→production環境 |
-| `deploy-agent.yml` | `develop`/`main` へのpush(`backend/agent` などに変更があったとき)、手動実行 | `backend/agent` のイメージを ghcr.io へpushし、LiveKit Cloud へデプロイ |
+| `deploy-agent.yml` | `develop`/`main` へのpush(`backend/agent` などに変更があったとき)、手動実行 | `backend/agent` を LiveKit Cloud へデプロイ(ソースを送り、ビルドは向こうで走る) |
 
 `deploy.yml` には Cloudflare のAPIトークンが要ります。リソースの作成・secretの登録・
 トークンの権限までの手順は [`docs/deploy.md`](../deploy.md) にまとめてあります。

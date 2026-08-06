@@ -27,12 +27,13 @@ pnpm --filter @ai-sensei/agent dev              # ルームを待ち受ける
 
 ## デプロイ
 
-常駐するコンテナにする。Dockerfileは [`Dockerfile`](./Dockerfile)で、
-**ビルドコンテキストはリポジトリのルート**(`packages/*` を `workspace:*` で
-参照しているため)。
+常駐するコンテナにする。**Dockerfileはリポジトリのルート**
+([`../../Dockerfile`](../../Dockerfile))にある。ここに無いのは、
+`packages/*` を `workspace:*` で参照しているからだけでなく、`lk agent deploy` が
+作業ディレクトリ直下の `Dockerfile` しか読まないため(ADR 0002 の追記)。
 
 ```bash
-pnpm --filter @ai-sensei/agent run docker:build   # docker build -f backend/agent/Dockerfile . 相当
+pnpm --filter @ai-sensei/agent run docker:build   # リポジトリのルートで docker build . 相当
 pnpm --filter @ai-sensei/agent run docker:run     # .env を渡して手元で起動
 curl -i http://localhost:8081/                    # 200 なら LiveKit に登録できている
 ```

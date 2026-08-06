@@ -1,14 +1,23 @@
-# syntax=docker/dockerfile:1
-
 # backend/agent(LiveKit Agents)を常駐させるためのイメージ。
 #
-# **ビルドコンテキストはリポジトリのルート。** agentは packages/* を `workspace:*` で
-# 参照しているので、backend/agent だけを送ってもインストールが解けない。
-#
-#   docker build -f backend/agent/Dockerfile -t ai-sensei-agent:local .
+#   docker build -t ai-sensei-agent:local .
 #   pnpm --filter @ai-sensei/agent run docker:build     # 同じことをする
 #
-# 稼働先(LiveKit Cloud / 任意のコンテナホスト)と手順は docs/deploy-agent.md。
+# **中身は backend/agent なのに、なぜルートに置いてあるのか。** 理由は2つあって、
+# どちらも動かせない:
+#
+# 1. agentは packages/* を `workspace:*` で参照している。ビルドコンテキストが
+#    リポジトリのルートでないと、そもそもインストールが解けない。
+# 2. `lk agent create/deploy` は**作業ディレクトリをそのままビルドコンテキストにし、
+#    その直下の `Dockerfile` を読む**。パスを指定するフラグは無い。つまり
+#    LiveKit Cloud に載せるには、ここに `Dockerfile` が要る。
+#
+# 焼いたイメージを渡す道(`--image`)は Enterprise プラン限定なので使えない。
+# 手順と稼働先は docs/deploy-agent.md。
+#
+# `# syntax=` は**あえて付けていない**。付けると外部のフロントエンドイメージを
+# 取りに行くので、LiveKit のビルドサービスのように手元でないところで焼くときに
+# 余計な依存になる。ここで使っている命令は素のビルダーで足りる。
 
 # Node 22 は package.json の engines(>=22.6)と CI に合わせている。
 # **slimを使う(alpineにしない)。** onnxruntime-node と @livekit/local-inference は

@@ -20,7 +20,18 @@ const configSchema = z.object({
   API_BASE_URL: z.string().url(),
   INTERNAL_API_TOKEN: z.string().min(1),
 
-  LIVEKIT_URL: z.string().min(1),
+  /**
+   * LiveKitのプロジェクトURL。**中身が空でないかだけでなく、URLとして読めるかまで見る。**
+   *
+   * スキームが落ちた `example.livekit.cloud` のような値を渡すと、ワーカーの起動中に
+   * フレームワーク側の `new URL()` が投げる。その例外は握り潰されていて
+   * **`closing worker due to error.` としか出ない**(どの環境変数が悪いのかも、
+   * URLの話だということも分からない)。名前を出して落とすためにここで見る。
+   */
+  LIVEKIT_URL: z
+    .string()
+    .min(1)
+    .refine((value) => URL.canParse(value), "URLとして読めません(wss://... の形で入れる)"),
   LIVEKIT_API_KEY: z.string().min(1),
   LIVEKIT_API_SECRET: z.string().min(1),
 
@@ -55,8 +66,12 @@ export type AgentConfig = z.infer<typeof configSchema>;
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig {
   const parsed = configSchema.safeParse(env);
   if (!parsed.success) {
-    const missing = parsed.error.issues.map((issue) => issue.path.join(".")).join(", ");
-    throw new Error(`agentの環境変数が足りません: ${missing}(.env.example を参照)`);
+    // 名前だけでなく理由も出す。「足りない」と「入っているが形が違う」は
+    // 直し方がまったく違うのに、名前だけだと見分けがつかない。
+    const detail = parsed.error.issues
+      .map((issue) => `${issue.path.join(".")}(${issue.message})`)
+      .join(", ");
+    throw new Error(`agentの環境変数を読めません: ${detail}(.env.example を参照)`);
   }
   return parsed.data;
 }
