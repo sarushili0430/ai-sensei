@@ -114,6 +114,13 @@ class SessionController extends _$SessionController {
   /// 「聞いています」を見せるのが、いちばん不親切な壊れ方)。
   static const Duration kohaiJoinTimeout = Duration(seconds: 25);
 
+  /// 切断の完了を待つ上限。
+  ///
+  /// SDKの `Room.disconnect()` は完了イベントを10秒待ってから例外を投げる。
+  /// 会話が終わったあとの10秒は、カルテを待つ画面がただ固まる時間でしかない。
+  /// 待つのはここまでにして、あとは `dispose()` に任せる。
+  static const Duration _disconnectTimeout = Duration(seconds: 3);
+
   @override
   SessionState build() {
     ref.onDispose(() {
@@ -371,20 +378,46 @@ class SessionController extends _$SessionController {
     ref.read(sessionOutcomeControllerProvider.notifier).set(outcome);
   }
 
+  /// 後片付けは**絶対に投げない**。
+  ///
+  /// `_teardown()` は失敗処理の途中(`connect` の catch)からも呼ばれる。
+  /// ここで例外が飛ぶと、失敗を画面に出す前に `connect` を抜けてしまい、
+  /// 「聞いています」のまま止まる。片付けの失敗で会話の結末を潰さない。
   Future<void> _teardown() async {
     _ticker?.cancel();
     _ticker = null;
     _kohaiWatchdog?.cancel();
     _kohaiWatchdog = null;
-    // 先に購読を切る。切断そのものがイベントになって戻ってくるのを避ける。
-    await _transcriptSubscription?.cancel();
-    _transcriptSubscription = null;
-    await _transcripts?.dispose();
-    _transcripts = null;
-    await _events?.dispose();
-    _events = null;
-    await _room?.disconnect();
-    await _room?.dispose();
+
+    final Room? room = _room;
+    // 先に参照を捨てる。片付けの途中で来たイベントに、
+    // 畳んでいる最中の部屋を触らせない。
     _room = null;
+
+    // 先に購読を切る。切断そのものがイベントになって戻ってくるのを避ける。
+    await _quietly('字幕の購読解除', () => _transcriptSubscription?.cancel());
+    _transcriptSubscription = null;
+    await _quietly('字幕の破棄', () => _transcripts?.dispose());
+    _transcripts = null;
+    await _quietly('イベント購読の破棄', () => _events?.dispose());
+    _events = null;
+
+    // 接続に失敗した部屋は切断の完了イベントを返さないことがあり、
+    // SDK側は10秒待ってから TimeoutException を投げる。待たずに畳む。
+    await _quietly(
+      'ルームの切断',
+      () => room?.disconnect().timeout(_disconnectTimeout),
+    );
+    // 切断が間に合わなくても dispose は必ず通す(SDKの後始末はこちらに入る)。
+    await _quietly('ルームの破棄', () => room?.dispose());
+  }
+
+  /// 片付けの一手。失敗しても次の一手に進む。
+  Future<void> _quietly(String what, FutureOr<void> Function() step) async {
+    try {
+      await step();
+    } catch (error) {
+      debugPrint('$what に失敗しました(片付けは続けます): $error');
+    }
   }
 }
