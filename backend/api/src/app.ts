@@ -5,6 +5,13 @@ import type { AppEnv, Bindings, Services } from "./env.ts";
 import { apiError } from "./lib/errors.ts";
 import { isValidDeviceId, newId } from "./lib/ids.ts";
 import { createOneSignalScheduler, noopScheduler } from "./lib/notifications.ts";
+import {
+  RequestLogger,
+  deviceTag,
+  errorCodeOf,
+  newTraceId,
+  readLogLevel,
+} from "./lib/observability.ts";
 import { createAnthropicAnalyzer } from "./lib/photo-analysis.ts";
 import { D1Repository } from "./repository/d1.ts";
 import { completeRoute } from "./routes/complete.ts";
@@ -24,6 +31,34 @@ export function createApp(options: CreateAppOptions = {}) {
     "*",
     cors({ origin: "*", allowHeaders: ["content-type", "authorization", "x-device-id"] }),
   );
+
+  // 全リクエストに1行。**遅い・落ちるがここだけで分かる**ようにしておく。
+  // trace_id はレスポンスヘッダにも返すので、アプリ側の報告から辿れる。
+  app.use("*", async (c, next) => {
+    const traceId = newTraceId();
+    const startedAt = Date.now();
+    const log = new RequestLogger(
+      traceId,
+      { environment: c.env?.ENVIRONMENT ?? "unknown" },
+      readLogLevel(c.env),
+    );
+    c.set("log", log);
+    c.set("traceId", traceId);
+
+    await next();
+
+    c.res.headers.set("x-trace-id", traceId);
+    log.info("http_request", {
+      method: c.req.method,
+      // ルートのパターンで出す(セッションIDでログが散らばらないように)
+      route: c.req.routePath,
+      path: c.req.path,
+      status: c.res.status,
+      duration_ms: Date.now() - startedAt,
+      device: deviceTag(c.req.header("x-device-id")),
+      error_code: await errorCodeOf(c.res),
+    });
+  });
 
   app.use("*", async (c, next) => {
     c.set("services", options.services?.(c.env) ?? defaultServices(c.env));
@@ -46,11 +81,30 @@ export function createApp(options: CreateAppOptions = {}) {
   app.route("/v1/webhooks", webhooksRoute);
 
   app.onError((error, c) => {
+    // 想定内の失敗(無料枠・写真が読めない等)は、そのままアプリへ返す。
+    // 上のミドルウェアが status と error_code をログに残す。
     if (error instanceof HTTPException) {
       return error.getResponse();
     }
-    console.error("[api] 未処理のエラー", error);
-    return apiError("internal_error").getResponse();
+
+    // ここに来たものはアプリからは internal_error にしか見えない。
+    // **原因はログにしか残らない**ので、文脈ごと出す。
+    const log = c.get("log");
+    const fields = {
+      method: c.req.method,
+      route: c.req.routePath,
+      device: deviceTag(c.req.header("x-device-id")),
+    };
+    if (log) {
+      log.error("unhandled_error", error, fields);
+    } else {
+      console.error(JSON.stringify({ level: "error", event: "unhandled_error", ...fields }), error);
+    }
+
+    const response = apiError("internal_error").getResponse();
+    const traceId = c.get("traceId");
+    if (traceId) response.headers.set("x-trace-id", traceId);
+    return response;
   });
 
   return app;

@@ -112,6 +112,8 @@ export function testBindings(overrides: Partial<Bindings> = {}): Bindings {
     FREE_SESSIONS_PER_DAY: "1",
     FREE_SESSION_MAX_SECONDS: "300",
     PREMIUM_SESSION_MAX_SECONDS: "900",
+    // テスト出力を1リクエスト1行で埋めない。失敗のログは残す。
+    LOG_LEVEL: "error",
     ...overrides,
   };
 }

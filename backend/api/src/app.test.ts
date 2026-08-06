@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createApp } from "./app.ts";
-import { testBindings, testServices } from "./test-support.ts";
+import { testBindings, testDeviceId, testServices } from "./test-support.ts";
 
 const app = createApp({ services: () => testServices() });
 
@@ -26,5 +26,37 @@ describe("GET /health", () => {
     const response = await app.request("/health", {}, testBindings());
 
     expect(response.status).toBe(200);
+  });
+});
+
+describe("trace_id", () => {
+  // ユーザーからの報告と、Workersのログを突き合わせるための唯一の手がかり
+  it("成功したリクエストにも付ける", async () => {
+    const response = await app.request("/health", {}, testBindings());
+    expect(response.headers.get("x-trace-id")).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("失敗したリクエストにも付ける", async () => {
+    const response = await app.request(
+      "/v1/me/progress",
+      { headers: { "x-device-id": "short" } },
+      testBindings(),
+    );
+    expect(response.status).toBe(401);
+    expect(response.headers.get("x-trace-id")).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("リクエストごとに変わる", async () => {
+    const first = await app.request(
+      "/v1/me/progress",
+      { headers: { "x-device-id": testDeviceId } },
+      testBindings(),
+    );
+    const second = await app.request(
+      "/v1/me/progress",
+      { headers: { "x-device-id": testDeviceId } },
+      testBindings(),
+    );
+    expect(first.headers.get("x-trace-id")).not.toBe(second.headers.get("x-trace-id"));
   });
 });

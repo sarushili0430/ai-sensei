@@ -36,10 +36,16 @@ export const completeRoute = new Hono<AppEnv>();
  */
 completeRoute.post("/:sessionId/complete", async (c) => {
   const { repository, scheduler, now, newId } = c.get("services");
+  const log = c.get("log");
   const at = now();
 
   const authorized = c.req.header("authorization") === `Bearer ${c.env.INTERNAL_API_TOKEN}`;
-  if (!authorized) throw apiError("unauthorized");
+  if (!authorized) {
+    // agent と API で内部トークンがずれていると、会話は成立するのにカルテだけ
+    // 落ちる。アプリからは「カルテが出ない」としか見えないので、ここに残す。
+    log?.warn("complete_unauthorized", { session_id: c.req.param("sessionId") });
+    throw apiError("unauthorized");
+  }
 
   const session = await repository.getSession(c.req.param("sessionId"));
   if (!session) throw apiError("session_not_found");
@@ -48,11 +54,14 @@ completeRoute.post("/:sessionId/complete", async (c) => {
   // 通知予約も二重に作られて進捗が壊れるので、既にあるものをそのまま返す。
   const existing = await repository.getKarteBySession(session.id);
   if (existing) {
+    log?.info("complete_replayed", { session_id: session.id });
     return c.json(await buildResponse({ repository, at, session, stored: existing }), 200);
   }
 
   const parsed = completeSessionRequestSchema.safeParse(await c.req.json());
   if (!parsed.success) {
+    // カルテの契約が壊れている。agent側のLLM出力かスキーマのずれ。
+    log?.error("complete_invalid_payload", parsed.error, { session_id: session.id });
     return c.json({ error: { code: "internal_error", message: parsed.error.message } }, 400);
   }
   const body = parsed.data;
@@ -69,10 +78,13 @@ completeRoute.post("/:sessionId/complete", async (c) => {
   const allowed = buildAllowedTopics(session.topic_ids);
   const { accepted: acceptedHoles, rejected } = filterHoleTopicIds(body.karte.holes, allowed);
   if (rejected.length > 0) {
-    const dropped = rejected.map((entry) => `${entry.hole.topic_id}(${entry.reason})`).join(", ");
-    console.warn(
-      `[guardrail] session=${session.id} 許可外のtopic_idが付いた穴を落としました: ${dropped}`,
-    );
+    log?.warn("guardrail_dropped_holes", {
+      session_id: session.id,
+      dropped: rejected.map((entry) => ({
+        topic_id: entry.hole.topic_id,
+        reason: entry.reason,
+      })),
+    });
   }
 
   const karteId = newId("kar");
@@ -141,7 +153,7 @@ completeRoute.post("/:sessionId/complete", async (c) => {
       externalId = scheduled.externalId;
     } catch (error) {
       // 通知の予約に失敗しても、カルテは返す。プッシュのために体験を止めない。
-      console.error(`[onesignal] 予約に失敗: hole=${hole.id}`, error);
+      log?.error("review_schedule_failed", error, { session_id: session.id, hole_id: hole.id });
     }
     persisted.push({
       id: newId("rev"),
@@ -183,9 +195,17 @@ completeRoute.post("/:sessionId/complete", async (c) => {
     }),
   };
 
-  if (filledThisSession > 0) {
-    console.info(`[progress] session=${session.id} 埋まった穴: ${filledThisSession}`);
-  }
+  // 会話が成立したかどうかは、この1行で分かる(穴0件は失敗ではない)。
+  log?.info("karte_stored", {
+    session_id: session.id,
+    kind: session.kind,
+    ended_reason: body.ended_reason,
+    duration_seconds: durationSeconds,
+    transcript_turns: body.transcript.length,
+    holes: holeRecords.length,
+    dropped_holes: rejected.length,
+    filled_holes: filledThisSession,
+  });
 
   return c.json(response, 201);
 });

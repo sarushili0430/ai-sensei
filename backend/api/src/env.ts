@@ -1,5 +1,6 @@
 import type { D1Database, KVNamespace, R2Bucket } from "./cloudflare.ts";
 import type { NotificationScheduler } from "./lib/notifications.ts";
+import type { RequestLogger } from "./lib/observability.ts";
 import type { PhotoAnalyzer } from "./lib/photo-analysis.ts";
 import type { Repository } from "./repository/types.ts";
 
@@ -37,6 +38,12 @@ export type Bindings = {
 
   INTERNAL_API_TOKEN: string;
 
+  /** 設定されていればエラーをSentryへ送る。無ければ構造化ログだけ(ローカル)。 */
+  SENTRY_DSN?: string;
+
+  /** `"error"` にすると全リクエストの1行を落として失敗だけ残す。既定は info。 */
+  LOG_LEVEL?: string;
+
   FREE_SESSIONS_PER_DAY?: string;
   FREE_SESSION_MAX_SECONDS?: string;
   PREMIUM_SESSION_MAX_SECONDS?: string;
@@ -61,6 +68,9 @@ export type AppEnv = {
   Variables: {
     services: Services;
     deviceId: string;
+    /** リクエスト単位のロガー。全行に同じ trace_id が入る。 */
+    log: RequestLogger;
+    traceId: string;
   };
 };
 
