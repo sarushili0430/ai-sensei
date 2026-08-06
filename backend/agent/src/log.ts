@@ -30,11 +30,22 @@ export function setErrorReporter(next: ErrorReporter | null): void {
 }
 
 export class JobLogger {
+  // コンストラクタ引数への修飾子(parameter property)は使わない。
+  // agentは `node --experimental-strip-types` で .ts を直接動かす(ADR 0002)。
+  // 型を消すだけのモードなので、値の生成を伴うこの構文だけは通らない。
+  private readonly base: LogFields;
+  private readonly sink: (line: string) => void;
+  private readonly errorSink: (line: string) => void;
+
   constructor(
-    private readonly base: LogFields = {},
-    private readonly sink: (line: string) => void = console.log,
-    private readonly errorSink: (line: string) => void = console.error,
-  ) {}
+    base: LogFields = {},
+    sink: (line: string) => void = console.log,
+    errorSink: (line: string) => void = console.error,
+  ) {
+    this.base = base;
+    this.sink = sink;
+    this.errorSink = errorSink;
+  }
 
   /** セッション文脈が読めたあと、session_id を全行に足した子を作る。 */
   child(fields: LogFields): JobLogger {

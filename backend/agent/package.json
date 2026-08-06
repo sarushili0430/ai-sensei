@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "node --experimental-strip-types --env-file=.env src/index.ts dev",
     "start": "node --experimental-strip-types src/index.ts start",
-    "download-files": "node --experimental-strip-types src/index.ts download-files"
+    "download-files": "livekit-agents download-files"
   },
   "dependencies": {
     "@ai-sensei/contract": "workspace:*",

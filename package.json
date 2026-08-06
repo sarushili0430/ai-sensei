@@ -18,7 +18,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "verify:secrets": "node --experimental-strip-types scripts/verify-no-secrets.ts",
     "verify:bindings": "node --experimental-strip-types scripts/verify-wrangler-bindings.ts",
-    "verify": "pnpm run lint && pnpm run typecheck && pnpm run verify:secrets && pnpm test"
+    "verify:strip-types": "node --experimental-strip-types scripts/verify-strip-types.ts",
+    "verify": "pnpm run lint && pnpm run typecheck && pnpm run verify:secrets && pnpm run verify:strip-types && pnpm test"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
