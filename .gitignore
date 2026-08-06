@@ -53,5 +53,11 @@ lefthook-local.yml
 # --- 環境変数の実値(テンプレートは *.example) ---
 backend/api/.dev.vars
 backend/agent/.env
+# dart-define の実値。テンプレートは dart_defines/*.example.json だけ追う。
+# (dart_defines.env は旧形式。手元に残っている人がいるので拾い続ける)
 apps/mobile/dart_defines.env
+apps/mobile/dart_defines.json
+apps/mobile/dart_defines/*.json
+apps/mobile/dart_defines/*.env
+!apps/mobile/dart_defines/*.example.json
 backend/api/.wrangler/
