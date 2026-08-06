@@ -14,17 +14,41 @@ import '../../karte/domain/karte.dart';
 ///
 /// **にぎやかな画面**。ただし数えるのは連続日数と「埋めた穴」だけで、
 /// 点数・正誤・XPは出さない(handoff §7)。
-class CelebrationScreen extends ConsumerWidget {
+class CelebrationScreen extends ConsumerStatefulWidget {
   const CelebrationScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CelebrationScreen> createState() => _CelebrationScreenState();
+}
+
+class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
+  bool _retrieving = false;
+
+  /// 会話直後に間に合わなかったカルテを、もう一度だけ取りに行く。
+  Future<void> _retrieveKarte() async {
+    setState(() => _retrieving = true);
+    final bool found =
+        await ref.read(sessionOutcomeControllerProvider.notifier).retrieveKarte();
+    if (!mounted) return;
+    setState(() => _retrieving = false);
+    if (found) {
+      context.go(AppRoute.karte.path);
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(AppStrings.of(context).karteStillCooking)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
     final Progress progress =
         (ref.watch(progressControllerProvider).value ?? ProgressSummary.empty).progress;
     final Karte? karte = ref.watch(latestKarteControllerProvider);
+    final SessionOutcome outcome = ref.watch(sessionOutcomeControllerProvider);
     // ペイウォールを出す位置はサーバが決める(初回カルテで穴が見えた直後の1回だけ)
-    final bool showPaywall = ref.watch(sessionOutcomeControllerProvider).showPaywall;
+    final bool showPaywall = outcome.showPaywall;
     final int filledThisSession = karte == null
         ? 0
         : karte.holes.where((Hole it) => it.status == HoleStatus.filled).length;
@@ -52,10 +76,18 @@ class CelebrationScreen extends ConsumerWidget {
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: AppColors.streak),
               ),
               const SizedBox(height: AppSpacing.xl),
-              ChunkyButton(
-                label: strings.karteTitle,
-                onPressed: () => context.go(AppRoute.karte.path),
-              ),
+              // カルテがまだ来ていないときに「今日のカルテ」を押させると、
+              // 出すものが無くてホームへ弾かれる。取りに行くボタンに変える。
+              if (karte == null && outcome.resultMissing)
+                ChunkyButton(
+                  label: _retrieving ? strings.karteRetrieving : strings.karteRetrieve,
+                  onPressed: _retrieving ? null : _retrieveKarte,
+                )
+              else
+                ChunkyButton(
+                  label: strings.karteTitle,
+                  onPressed: () => context.go(AppRoute.karte.path),
+                ),
               if (showPaywall)
                 Padding(
                   padding: const EdgeInsets.only(top: AppSpacing.sm),

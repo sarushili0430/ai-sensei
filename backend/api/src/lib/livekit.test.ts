@@ -58,6 +58,39 @@ describe("createLiveKitToken", () => {
     expect(claims?.["metadata"]).toBe(metadata);
   });
 
+  // 名前つきワーカーは自動ディスパッチの対象外。トークンで呼ばないと誰も来ない。
+  it("agentを渡すと、ルーム作成時のディスパッチがトークンに載る", async () => {
+    const metadata = JSON.stringify({ session_id: "ses_1" });
+    const token = await createLiveKitToken({
+      apiKey: "APItestkey",
+      apiSecret: secret,
+      identity: "device-1",
+      room: "ses_1",
+      ttlSeconds: 420,
+      metadata,
+      agent: { name: "ai-sensei-kohai", metadata },
+      now,
+    });
+
+    const claims = await verifyJwt(token, secret);
+    expect(claims?.["roomConfig"]).toEqual({
+      agents: [{ agent_name: "ai-sensei-kohai", metadata }],
+    });
+  });
+
+  it("agentを渡さなければroomConfigは載らない(自動ディスパッチ)", async () => {
+    const token = await createLiveKitToken({
+      apiKey: "APItestkey",
+      apiSecret: secret,
+      identity: "device-1",
+      room: "ses_1",
+      ttlSeconds: 420,
+      now,
+    });
+    const claims = await verifyJwt(token, secret);
+    expect(claims?.["roomConfig"]).toBeUndefined();
+  });
+
   it("別の秘密鍵では検証に失敗する", async () => {
     const token = await createLiveKitToken({
       apiKey: "APItestkey",

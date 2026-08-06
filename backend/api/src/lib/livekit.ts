@@ -13,6 +13,20 @@ export type VideoGrant = {
   canPublishData: boolean;
 };
 
+/**
+ * ルームに後輩(agent)を呼ぶ指定。
+ *
+ * LiveKitのワーカーが**名前つき**で登録されていると、自動ディスパッチは効かない。
+ * その場合、ルームを作る側が「このエージェントを呼ぶ」と言わないと、
+ * 部屋は誰も来ないまま開き続ける(アプリからは「聞いています」のまま止まる)。
+ */
+export type AgentDispatch = {
+  /** ワーカーの `agentName`(LIVEKIT_AGENT_NAME)。 */
+  name: string;
+  /** ジョブに渡す文脈。参加者metadataと同じものを載せる。 */
+  metadata?: string;
+};
+
 export type TokenInput = {
   apiKey: string;
   apiSecret: string;
@@ -22,6 +36,8 @@ export type TokenInput = {
   ttlSeconds: number;
   /** エージェントに渡す文脈(写真の解釈・許可トピック・質問方針)。 */
   metadata?: string;
+  /** 明示ディスパッチが要るワーカーのときだけ渡す。 */
+  agent?: AgentDispatch;
   now?: Date;
 };
 
@@ -45,6 +61,19 @@ export async function createLiveKitToken(input: TokenInput): Promise<string> {
     video: grant,
   };
   if (input.metadata !== undefined) payload["metadata"] = input.metadata;
+
+  // ルームが作られる瞬間に後輩を呼ぶ。トークンに載せるので、
+  // アプリが接続した時点で必ずディスパッチが走る(別APIを叩かなくてよい)。
+  if (input.agent) {
+    payload["roomConfig"] = {
+      agents: [
+        {
+          agent_name: input.agent.name,
+          ...(input.agent.metadata === undefined ? {} : { metadata: input.agent.metadata }),
+        },
+      ],
+    };
+  }
 
   return signJwt(payload, input.apiSecret);
 }

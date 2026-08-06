@@ -15,6 +15,14 @@ export type Bindings = {
   LIVEKIT_URL: string;
   LIVEKIT_API_KEY: string;
   LIVEKIT_API_SECRET: string;
+  /**
+   * 後輩(agent)ワーカーの名前。**名前つきで動かしているときだけ**設定する。
+   *
+   * LiveKit Cloud のエージェントホスティングは `LIVEKIT_AGENT_NAME` を自動で入れる。
+   * 名前つきワーカーは自動ディスパッチの対象外なので、ここを空のままにすると
+   * 部屋に誰も来ない(アプリは「聞いています」のまま止まる)。
+   */
+  LIVEKIT_AGENT_NAME?: string;
 
   LLM_PROVIDER?: string;
   ANTHROPIC_API_KEY?: string;

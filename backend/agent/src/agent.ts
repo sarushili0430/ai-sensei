@@ -7,7 +7,7 @@ import * as elevenlabs from "@livekit/agents-plugin-elevenlabs";
 import * as silero from "@livekit/agents-plugin-silero";
 import { closingGraceMs, isClosingUtterance } from "./closing.ts";
 import { loadConfig } from "./config.ts";
-import { type SessionContext, readSessionContext, remainingSeconds } from "./context.ts";
+import { type SessionContext, remainingSeconds, resolveSessionContext } from "./context.ts";
 import { buildKarte, createAnthropicClient, emptyKarte, postComplete } from "./karte.ts";
 import { TranscriptCollector } from "./transcript.ts";
 
@@ -34,7 +34,9 @@ export default defineAgent({
 
     let context: SessionContext;
     try {
-      context = readSessionContext(participant.metadata);
+      // 参加者metadata(自動ディスパッチ)とジョブmetadata(明示ディスパッチ)の
+      // どちらで来ても読めるようにする。
+      context = resolveSessionContext([participant.metadata, ctx.job.metadata]);
     } catch (error) {
       // 文脈なしで喋らせると、写真と関係ない一般論を聞き始めてしまう。
       // それくらいなら黙って終える。

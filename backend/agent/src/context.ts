@@ -55,6 +55,33 @@ export function readSessionContext(metadata: string | undefined | null): Session
   return parsed.data;
 }
 
+/**
+ * 文脈が来る経路は2つある。**最初に読めたほうを使う。**
+ *
+ * - 参加者のmetadata(トークンの `metadata` クレーム)
+ * - ジョブのmetadata(明示ディスパッチのとき、`roomConfig.agents[].metadata`)
+ *
+ * どちらもAPIが同じ内容を載せるが、ワーカーが名前つきかどうかで
+ * 届く経路が変わる。片方しか見ないと、ディスパッチの仕方を変えた瞬間に
+ * 「文脈が読めないので黙って切る」に落ちる。
+ */
+export function resolveSessionContext(
+  candidates: readonly (string | undefined | null)[],
+): SessionContext {
+  const errors: string[] = [];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      return readSessionContext(candidate);
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+  throw new InvalidSessionContextError(
+    errors.length > 0 ? errors.join(" / ") : "セッション文脈がどこにも載っていません",
+  );
+}
+
 /** 会話の残り時間(秒)。プロンプトに渡して、締めに入る判断をさせる。 */
 export function remainingSeconds(context: SessionContext, startedAt: Date, now: Date): number {
   const elapsed = Math.floor((now.getTime() - startedAt.getTime()) / 1000);
