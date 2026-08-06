@@ -12,10 +12,14 @@ export class TranscriptCollector {
   private readonly messages: TranscriptMessage[] = [];
   private readonly leaks: string[] = [];
 
-  constructor(
-    private readonly startedAt: Date,
-    private readonly context: SessionContext,
-  ) {}
+  // parameter property を使わない理由は `log.ts` と同じ(ADR 0002 の型ストリップ)。
+  private readonly startedAt: Date;
+  private readonly context: SessionContext;
+
+  constructor(startedAt: Date, context: SessionContext) {
+    this.startedAt = startedAt;
+    this.context = context;
+  }
 
   add(input: { role: "assistant" | "user"; text: string; at?: Date; topicId?: string }): void {
     const text = input.role === "user" ? normalizeMathSpeech(input.text).text : input.text;

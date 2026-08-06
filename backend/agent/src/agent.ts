@@ -3,7 +3,6 @@ import { conversationSystemPrompt } from "@ai-sensei/prompts";
 import { type JobContext, type JobProcess, defineAgent, voice } from "@livekit/agents";
 import * as anthropic from "@livekit/agents-plugin-anthropic";
 import * as deepgram from "@livekit/agents-plugin-deepgram";
-import * as elevenlabs from "@livekit/agents-plugin-elevenlabs";
 import * as silero from "@livekit/agents-plugin-silero";
 import { closingGraceMs, isClosingUtterance } from "./closing.ts";
 import { loadConfig } from "./config.ts";
@@ -15,7 +14,7 @@ import { TranscriptCollector } from "./transcript.ts";
 /**
  * 後輩AIの会話パイプライン。
  *
- *   VAD → 日本語ストリーミングSTT → Claude(後輩ペルソナ) → ElevenLabs TTS
+ *   VAD → 日本語ストリーミングSTT → Claude(後輩ペルソナ) → TTS(声)
  *
  * WebRTCは書かない(LiveKit Agentsに乗る)。ここで書くのは、
  * 写真文脈の受け渡し・上限時間の打ち切り・カルテ生成の3つだけ。
@@ -70,11 +69,14 @@ export default defineAgent({
         // 素朴な疑問の文体を安定させたいので、振れ幅は小さめにする
         temperature: 0.6,
       }),
-      tts: new elevenlabs.TTS({
-        apiKey: config.ELEVENLABS_API_KEY,
-        voiceId: config.ELEVENLABS_VOICE_ID,
-        modelID: config.ELEVENLABS_MODEL_ID,
-        language: context.locale,
+      // 声は**言語ごとにモデルが分かれる**。1ボイスに言語を渡す作りではないので、
+      // localeで選び分ける(日本語ボイスに英語を喋らせることはできない)。
+      // SDK 1.6.1 の `TTSModels` は英語ボイスしか型に持たないが、`model` の型は
+      // `TTSModels | string` で、実体はAPIへそのまま渡るだけなので日本語ボイスも通る。
+      tts: new deepgram.TTS({
+        apiKey: config.DEEPGRAM_API_KEY,
+        model:
+          context.locale === "en" ? config.DEEPGRAM_TTS_MODEL_EN : config.DEEPGRAM_TTS_MODEL_JA,
       }),
     });
 
