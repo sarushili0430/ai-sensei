@@ -54,4 +54,19 @@ describe("loadConfig", () => {
   it("API_BASE_URLがURLでなければ落とす", () => {
     expect(() => loadConfig({ ...complete, API_BASE_URL: "localhost" })).toThrow();
   });
+
+  // スキームの落ちたURLはフレームワーク側の new URL() が投げるが、その例外は
+  // 握り潰されて「closing worker due to error.」としか出ない。手前で名前を出す。
+  it("LIVEKIT_URLがURLとして読めなければ、名前を出して落とす", () => {
+    expect(() => loadConfig({ ...complete, LIVEKIT_URL: "example.livekit.cloud" })).toThrow(
+      /LIVEKIT_URL/,
+    );
+  });
+
+  // 「足りない」と「形が違う」は直し方が違うので、理由まで出す
+  it("落ちる理由がメッセージに出る", () => {
+    expect(() => loadConfig({ ...complete, LIVEKIT_URL: "example.livekit.cloud" })).toThrow(
+      /URLとして読めません/,
+    );
+  });
 });

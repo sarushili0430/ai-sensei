@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { WorkerOptions, cli } from "@livekit/agents";
 import * as Sentry from "@sentry/node";
+import { loadConfig } from "./config.ts";
 import { setErrorReporter } from "./log.ts";
 
 /**
@@ -24,6 +25,21 @@ if (dsn) {
   setErrorReporter((error, context) => {
     Sentry.captureException(error, { extra: context });
   });
+}
+
+/**
+ * 環境変数は**ワーカーを起こす前に**見る。
+ *
+ * 設定を実際に使うのはジョブ側(`agent.ts`)だが、そこまで待つと、値が壊れている
+ * ことに気づくのが「後輩が来ない」と言われたときになる。しかもフレームワークは
+ * 起動中の例外を握り潰して `closing worker due to error.` としか出さないので、
+ * **理由の分かる形で先に落とす**のがいちばん安い。
+ *
+ * `--help` や将来のサブコマンドまで巻き込まないよう、ワーカーを実際に起こす
+ * ときだけ見る。
+ */
+if (process.argv.includes("start") || process.argv.includes("dev")) {
+  loadConfig();
 }
 
 cli.runApp(
