@@ -34,6 +34,27 @@ MVPの範囲では**プラグインを差し込むだけ**でカスタムDSPを�
 (`node --experimental-strip-types src/index.ts start`)。どちらでも
 `backend/agent/` ディレクトリの中身は変わらない。
 
+### 追記 (2026-08-06): 稼働先を「自分で焼いたコンテナ」に統一する
+
+第一候補は変えないが、**LiveKit Cloud にソースを送って向こうでビルドさせる方式は
+取らない**。`lk agent create` / `lk agent deploy` のソースアップロードは
+`package.json`・`Dockerfile`・ビルドコンテキストが同じディレクトリにある前提で、
+`workspace:*` を跨ぐ構成を解決できない
+([livekit-cli#688](https://github.com/livekit/livekit-cli/issues/688))。
+
+代わりに、リポジトリのルートをコンテキストにイメージをこちらで焼き、
+bring your own container(`lk agent deploy --image`)で渡す。
+
+- **`backend/agent` を別リポジトリに切り出す案は取らない。** ガードレールを
+  二重実装しないことがこのADRでTypeScriptを選んだ理由そのもので、デプロイの
+  都合でそこを崩すと決定の前提が消える。
+- 同じイメージが任意のコンテナホストでも動くので、「不可の場合」の道が
+  **別の手順ではなく同じ成果物の置き場所違い**になる。
+
+このADRが残していた「ホスティング先が決まった時点で `prewarm` が通ることを
+最初に確認する」は、`GET :8081/` が200を返すかで見る(LiveKitに登録できて
+初めて200になる)。手順は [`docs/deploy-agent.md`](../deploy-agent.md)。
+
 ## 結果
 
 - 良い点: ガードレール・プロンプト・契約が1つの実装で、workers と agent の両方に効く。

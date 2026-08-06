@@ -53,6 +53,9 @@ lefthook-local.yml
 # --- 環境変数の実値(テンプレートは *.example) ---
 backend/api/.dev.vars
 backend/agent/.env
+# `lk agent create` が書き出すLiveKit Cloudの設定。agentのIDは環境ごとに違うので
+# コミットしない(develop用のIDで本番へdeployするのを防ぐ)。docs/deploy-agent.md
+livekit.toml
 # dart-define の実値。テンプレートは dart_defines/*.example.json だけ追う。
 # (dart_defines.env は旧形式。手元に残っている人がいるので拾い続ける)
 apps/mobile/dart_defines.env

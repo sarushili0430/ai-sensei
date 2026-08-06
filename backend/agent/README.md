@@ -25,6 +25,24 @@ pnpm --filter @ai-sensei/agent dev              # ルームを待ち受ける
 
 `backend/api` が `/v1/sessions` でルームを作ると、このワーカーがジョブを受け取る。
 
+## デプロイ
+
+常駐するコンテナにする。Dockerfileは [`Dockerfile`](./Dockerfile)で、
+**ビルドコンテキストはリポジトリのルート**(`packages/*` を `workspace:*` で
+参照しているため)。
+
+```bash
+pnpm --filter @ai-sensei/agent run docker:build   # docker build -f backend/agent/Dockerfile . 相当
+pnpm --filter @ai-sensei/agent run docker:run     # .env を渡して手元で起動
+curl -i http://localhost:8081/                    # 200 なら LiveKit に登録できている
+```
+
+**`0.0.0.0:8081` にヘルスチェックが立つ**(`GET /` が200/503、`GET /worker` が稼働状況)。
+`503` は「落ちている」ではなく「まだLiveKitに繋がっていない」。
+
+稼働先(LiveKit Cloud のエージェントホスティング / 任意のコンテナホスト)、secretの
+入れ方、GitHub Actionsからの自動デプロイは [`docs/deploy-agent.md`](../../docs/deploy-agent.md)。
+
 ## ディスパッチ(誰がこのワーカーを呼ぶか)
 
 ワーカーの登録の仕方で、呼ばれ方が変わる。
