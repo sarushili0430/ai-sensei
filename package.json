@@ -10,7 +10,7 @@
     "pnpm": ">=10"
   },
   "scripts": {
-    "prepare": "lefthook install",
+    "prepare": "lefthook install || echo 'lefthook が無いので git hooks の設定を飛ばしました(--prod インストール)' >&2",
     "lint": "biome ci .",
     "format": "biome check --write .",
     "test": "vitest run",

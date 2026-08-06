@@ -184,9 +184,14 @@ E2Eは書かず、TestFlightでの手動確認に割り切っています。
 リソースの作成・secretの登録・APIトークンの権限は [`docs/deploy.md`](docs/deploy.md)。
 `apps/mobile` の配布は Codemagic 側です([`docs/ci/codemagic.md`](docs/ci/codemagic.md))。
 
-> `backend/agent`(LiveKit Agents)の稼働先は
-> [ADR 0002](docs/adr/0002-agent-runtime.md) のとおりまだ保留です。
-> ただし **LiveKitのプロジェクトは環境ごとに分けます**(同じプロジェクトを共有すると
+`backend/agent`(LiveKit Agents)は**常駐するコンテナ**で載せます
+([`backend/agent/Dockerfile`](backend/agent/Dockerfile))。第一候補は LiveKit Cloud の
+エージェントホスティングですが、`workspace:*` を跨ぐモノレポはソースアップロード方式で
+解決できないため、イメージはこちらで焼いて渡します
+([ADR 0002 の追記](docs/adr/0002-agent-runtime.md)・[`docs/deploy-agent.md`](docs/deploy-agent.md))。
+同じイメージがどのコンテナホストでも動きます。
+
+> **LiveKitのプロジェクトは環境ごとに分けます**(同じプロジェクトを共有すると
 > 開発用のagentが本番のルームのジョブを拾いうるため)。
 
 ## アーキテクチャ

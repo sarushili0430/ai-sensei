@@ -19,8 +19,8 @@ Cloudflare Workers に **develop / production の2本**を立てる手順。
 コードは環境を意識せず、実体だけが分かれる。develop で流したテストデータや
 消し損ねたカルテが本番に混ざらないように、D1もR2もKVも共有しない。
 
-`backend/agent`(LiveKit Agents)の稼働先は [ADR 0002](adr/0002-agent-runtime.md) の
-とおりまだ保留。ここでは扱わないが、**agentから見た接続先は環境ごとに変わる**ので
+`backend/agent`(LiveKit Agents)のデプロイは [`docs/deploy-agent.md`](deploy-agent.md)。
+ここでは扱わないが、**agentから見た接続先は環境ごとに変わる**ので
 [§6](#6-まわりの設定) に書いてある。
 
 ---
@@ -304,5 +304,3 @@ APIとagentは `session_id` を共通のキーにしているので、両方の�
   野良のエンドポイントとして生き続ける)。
 - **トレース。** Sentryは入れたがエラーだけ(`tracesSampleRate: 0`)。
   どこで時間を使っているかは、いまは `http_request` の `duration_ms` で見る。
-- **backend/agent の稼働先。** [ADR 0002](adr/0002-agent-runtime.md) のとおり保留。
-  LiveKit Cloud のエージェントホスティングが第一候補で、不可ならNode 22のコンテナ常駐。

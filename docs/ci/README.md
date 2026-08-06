@@ -4,8 +4,9 @@
 
 ```bash
 mkdir -p .github/workflows
-cp docs/ci/ci.yml     .github/workflows/ci.yml
-cp docs/ci/deploy.yml .github/workflows/deploy.yml
+cp docs/ci/ci.yml           .github/workflows/ci.yml
+cp docs/ci/deploy.yml       .github/workflows/deploy.yml
+cp docs/ci/deploy-agent.yml .github/workflows/deploy-agent.yml
 git add .github/workflows/ && git commit -m "ci: enable CI and deploy workflows"
 ```
 
@@ -24,11 +25,16 @@ git add .github/workflows/ && git commit -m "ci: enable CI and deploy workflows"
 | -------- | ------ | ---- |
 | `ci.yml` | `develop`/`main` へのpush、全PR | `pnpm run lint`(Biome)/ `pnpm run typecheck` / `pnpm test` / Workerのdry-runビルド / Flutter(analyze + test)/ シークレット走査 |
 | `deploy.yml` | `develop`/`main` へのpush(`backend/api` などに変更があったとき)、手動実行 | `backend/api` を Cloudflare Workers へデプロイ。`develop`→develop環境 / `main`→production環境 |
+| `deploy-agent.yml` | `develop`/`main` へのpush(`backend/agent` などに変更があったとき)、手動実行 | `backend/agent` のイメージを ghcr.io へpushし、LiveKit Cloud へデプロイ |
 
 `deploy.yml` には Cloudflare のAPIトークンが要ります。リソースの作成・secretの登録・
 トークンの権限までの手順は [`docs/deploy.md`](../deploy.md) にまとめてあります。
 **リソースIDを差し替えるまでデプロイは走りません**(`wrangler.toml` に
 `REPLACE_ME` が残っていたらワークフローの最初のステップで落ちます)。
+
+`deploy-agent.yml` には LiveKit のAPIキーと、`lk agent create` が返す agent のID
+(Variables の `LIVEKIT_AGENT_ID`)が要ります。**初回の登録だけは手元で行います**
+(手順は [`docs/deploy-agent.md`](../deploy-agent.md))。
 
 Flutterのバージョンは `apps/mobile/.fvmrc` から読みます(手元のfvmとCIで同じ値を使う)。
 golden test は **Linuxのラスタライズを正** とするので、生成もCIで行います。
