@@ -63,6 +63,22 @@ curl -s http://localhost:8081/worker
 > localhostを見にいってカルテのPOSTだけ失敗する。手元で通しで試すなら
 > `--env API_BASE_URL=http://host.docker.internal:8787` を足す。
 
+**`.env` の値をクォートで囲まないこと。** `pnpm dev` が使うNodeの `--env-file` は
+`KEY="値"` の引用符を外すが、**`docker run --env-file` は外さない**(引用符も値の一部として
+渡す)。同じ `.env` で **`pnpm dev` は通るのに `docker:run` だけ 401 になる**という、
+いちばん時間を取られる形で出る。行末の空白も同じ。疑ったら中身を見る:
+
+```bash
+docker run --rm --env-file backend/agent/.env --entrypoint sh ai-sensei-agent:local -c \
+  'printf "URL=[%s]\nKEY=[%s]\nSECRET_LEN=%s\n" "$LIVEKIT_URL" "$LIVEKIT_API_KEY" "${#LIVEKIT_API_SECRET}"'
+```
+
+`[]` の中に引用符や空白が見えたら `.env` 側を直す(秘密そのものは出さず、長さだけ見る)。
+
+起動時に出る `onnxruntime cpuid_info warning: Unknown CPU vendor` は**無視してよい**。
+CPUの銘柄を読めなかっただけで、推論はCPUで通っている(Apple Silicon上でamd64の
+イメージをエミュレーションしているときによく出る)。
+
 Dockerfileで効かせてあることのうち、外から見て分かりにくいものは3つ:
 
 - **`ca-certificates` を入れている。** LiveKitのネイティブコア(Rust)はシステムの
@@ -246,7 +262,8 @@ agentは**静かに壊れる**。アプリからは「後輩が来ない」「�
 | --- | --- |
 | 後輩が来ない | まず `GET :8081/` が200か。200なら `job_started` の有無 → 無ければ[§4のディスパッチ](#4-ディスパッチ) |
 | 起動直後に落ちる | 環境変数の不足(`agentの環境変数が足りません: ...` が出る)。[§3](#3-secret) |
-| LiveKitに繋がらない | `ca-certificates` の有無(自前のイメージに差し替えたとき)、`LIVEKIT_URL` の環境違い |
+| LiveKitに繋がらない(`401`) | 鍵が拒否されている。**`LIVEKIT_URL` のプロジェクトと `LIVEKIT_API_KEY`/`SECRET` の出どころが揃っているか**(環境を分けた直後の取り違えが定番)。次に `.env` のクォート・行末の空白([§1](#1-イメージを焼く)) |
+| LiveKitに繋がらない(TLSで落ちる) | `ca-certificates` の有無(自前のイメージに差し替えたとき) |
 | 会話は始まるがすぐ切れる | `context_unreadable`。APIが載せたトークンのmetadataを疑う |
 | カルテが出ない | `karte_failed` / `complete_failed`、API側の `complete_unauthorized`。`INTERNAL_API_TOKEN` の環境違いが定番 |
 | デプロイ直後だけ会話が切れる | 停止時の猶予が短くてdrainしきれていない([§6](#6-livekit-cloud-を使わない場合)) |
