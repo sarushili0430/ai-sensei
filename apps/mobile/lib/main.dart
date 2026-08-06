@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -16,14 +15,9 @@ import 'src/theme/app_theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 縦向き固定。横向きのレイアウトは用意していないので、回転させない。
-  // ネイティブ側(AndroidManifest / Info.plist)でも塞いでいるが、
-  // OS の設定や起動経路によってはそちらだけでは効かないことがあるため
-  // Dart 側からも明示しておく。
-  await SystemChrome.setPreferredOrientations(<DeviceOrientation>[
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
+  // 向きの制限はネイティブ側(AndroidManifest / Info.plist)に任せている。
+  // SystemChrome はプラットフォーム共通で効いてしまい、横向きを許している
+  // iPad まで縦に固定してしまうため、ここでは指定しない。
 
   // 匿名デバイスIDは起動時に確定させる(アカウント作成は要求しない)
   final SharedPreferences preferences = await SharedPreferences.getInstance();
