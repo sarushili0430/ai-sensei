@@ -12,7 +12,6 @@
 /// (`dart run` にはCanvasが無い)。生成物はコミットする。
 library;
 
-import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -21,6 +20,8 @@ import 'package:ai_sensei/src/brand/app_mark.dart';
 import 'package:ai_sensei/src/theme/tokens.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'support/rgb_png.dart';
 
 const String _ios = 'ios/Runner/Assets.xcassets/AppIcon.appiconset';
 const String _android = 'android/app/src/main/res';
@@ -39,7 +40,7 @@ void main() {
     // --- iOS ---
     // Xcode 14以降の単一サイズ形式。1024だけ置けば残りはビルド時に作られる。
     // ダーク/ティントはこの形式でしか指定できない。
-    await _writeOpaquePng(
+    await writeOpaquePng(
       '$_ios/Icon-App-1024x1024@1x.png',
       await AppMark.rasterize(1024),
     );
@@ -137,82 +138,6 @@ Future<ui.Image> _rasterizeClipped(int size, {required double radius}) async {
 Future<void> _writePng(String path, ui.Image image) async {
   final ByteData data = (await image.toByteData(format: ui.ImageByteFormat.png))!;
   File(path).writeAsBytesSync(data.buffer.asUint8List(), flush: true);
-}
-
-/// **アルファチャンネルごと落として**書く。
-///
-/// App Store は1024のアイコンに透過を許さない(ITMS-90717)。中身が
-/// 完全に不透明でも、アルファチャンネルが在るだけで弾かれることがある。
-Future<void> _writeOpaquePng(String path, ui.Image image) async {
-  final ByteData data = (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
-  File(path).writeAsBytesSync(
-    _encodeRgbPng(data.buffer.asUint8List(), image.width, image.height),
-    flush: true,
-  );
-}
-
-// --- 最小のPNGエンコーダ(カラータイプ2 = RGB。アルファを持たない) ---
-//
-// `image` パッケージを足さないのは、生成物をコミットする都合上
-// このツールが依存を1つも増やさずに動くほうが安全なため。
-
-Uint8List _encodeRgbPng(Uint8List rgba, int width, int height) {
-  final BytesBuilder raw = BytesBuilder(copy: false);
-  for (int y = 0; y < height; y++) {
-    raw.addByte(0); // フィルタ: なし
-    for (int x = 0; x < width; x++) {
-      final int i = (y * width + x) * 4;
-      raw.add(<int>[rgba[i], rgba[i + 1], rgba[i + 2]]);
-    }
-  }
-
-  final BytesBuilder out = BytesBuilder(copy: false)
-    ..add(<int>[137, 80, 78, 71, 13, 10, 26, 10]);
-
-  final Uint8List ihdr = Uint8List(13);
-  ByteData.view(ihdr.buffer)
-    ..setUint32(0, width)
-    ..setUint32(4, height);
-  ihdr[8] = 8; // bit depth
-  ihdr[9] = 2; // color type: truecolor(アルファなし)
-  out.add(_chunk('IHDR', ihdr));
-  out.add(_chunk('IDAT', Uint8List.fromList(ZLibCodec(level: 9).encode(raw.takeBytes()))));
-  out.add(_chunk('IEND', Uint8List(0)));
-  return out.takeBytes();
-}
-
-Uint8List _chunk(String type, Uint8List data) {
-  final Uint8List typeBytes = Uint8List.fromList(ascii.encode(type));
-  final BytesBuilder body = BytesBuilder(copy: false)
-    ..add(typeBytes)
-    ..add(data);
-  final Uint8List payload = body.takeBytes();
-
-  final BytesBuilder out = BytesBuilder(copy: false);
-  final Uint8List length = Uint8List(4);
-  ByteData.view(length.buffer).setUint32(0, data.length);
-  out.add(length);
-  out.add(payload);
-  final Uint8List crc = Uint8List(4);
-  ByteData.view(crc.buffer).setUint32(0, _crc32(payload));
-  out.add(crc);
-  return out.takeBytes();
-}
-
-final List<int> _crcTable = List<int>.generate(256, (int n) {
-  int c = n;
-  for (int k = 0; k < 8; k++) {
-    c = (c & 1) != 0 ? 0xEDB88320 ^ (c >> 1) : c >> 1;
-  }
-  return c;
-});
-
-int _crc32(Uint8List bytes) {
-  int c = 0xFFFFFFFF;
-  for (final int byte in bytes) {
-    c = _crcTable[(c ^ byte) & 0xFF] ^ (c >> 8);
-  }
-  return (c ^ 0xFFFFFFFF) & 0xFFFFFFFF;
 }
 
 const String _iosContentsJson = '''
