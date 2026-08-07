@@ -297,3 +297,44 @@ describe("GET /v1/sessions/{id}/result", () => {
     expect(response.status).toBe(404);
   });
 });
+
+/**
+ * 通知の言語は端末の設定ではなく、**穴のtopic_idが属する課程**で決まる。
+ * カルテの文言はその課程の言語で書かれているので、ここを取り違えると
+ * 「きのうの『why the discriminant is used』」という通知が届く。
+ */
+describe("通知の言語", () => {
+  it("英語の課程の穴は、英語で予約する", async () => {
+    const sessionId = await startSession({ locale: "en" });
+    const response = await complete(sessionId, {
+      karte: {
+        said_well: ["Explained why the distance is compared with the radius"],
+        holes: [
+          {
+            topic_id: "A1-QUAD-SOLVE",
+            desc: "the explanation stopped at why the discriminant is used",
+            severity: "medium" as const,
+          },
+        ],
+        term_notes: [],
+        followup_question: null,
+      },
+    });
+    expect(response.status).toBe(201);
+
+    expect(services.scheduler.scheduled.length).toBe(3);
+    for (const entry of services.scheduler.scheduled) {
+      expect(entry.locale).toBe("en");
+    }
+  });
+
+  it("日本の課程の穴は、日本語のまま", async () => {
+    const sessionId = await startSession();
+    await complete(sessionId);
+
+    expect(services.scheduler.scheduled.length).toBe(3);
+    for (const entry of services.scheduler.scheduled) {
+      expect(entry.locale).toBe("ja");
+    }
+  });
+});

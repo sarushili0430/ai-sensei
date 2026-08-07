@@ -30,9 +30,25 @@ export const fixtureSchemas = {
 
 export type FixtureName = keyof typeof fixtureSchemas;
 
+/** JSON Schema を起こす単位。スキーマ1つにつき1ファイル。 */
 export const fixtureNames = Object.keys(fixtureSchemas) as FixtureName[];
 
+/**
+ * fixtureファイル → 満たすべきスキーマ。
+ *
+ * スキーマ1つに対してファイルは複数ありうる。`*.en.json` は**海外向けの課程**
+ * (Algebra 1 / Algebra 2 ...)のかたちで、topic_idの接頭辞も科目名も日本の
+ * 課程とは別。同じスキーマで両方が通ることを、TypeScriptとDartの双方で固定する。
+ */
+export const fixtureFileSchemas: Record<string, FixtureName> = {
+  ...Object.fromEntries(fixtureNames.map((name) => [name, name])),
+  "create-session-response.en": "create-session-response",
+  "karte.en": "karte",
+};
+
+export const fixtureFileNames = Object.keys(fixtureFileSchemas);
+
 /** fixtureファイルのリポジトリ相対パス。Dart側のテストからも同じ規約で参照する。 */
-export function fixturePath(name: FixtureName): string {
+export function fixturePath(name: string): string {
   return `packages/contract/fixtures/${name}.json`;
 }

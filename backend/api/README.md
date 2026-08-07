@@ -152,6 +152,17 @@ await app.request("/v1/sessions", { method: "POST", body: form }, testBindings()
 **D1に点数の列を置かない。** `kartes` テーブルにスコア列はなく、
 数えるのは連続日数と埋めた穴だけ。
 
+**`locale` は言語だけでなく課程を切り替える。** `POST /v1/sessions` の `locale` は、
+Vision LLMに渡すカリキュラムマップ(日本の数学I〜C / 海外の Algebra 1〜)と
+プロンプト本体を選ぶ。解析器が別の課程の `topic_id` を返しても落とす。
+チップUIに出る科目名も、そのままその課程の言語で返る
+([ADR 0005](../../docs/adr/0005-locale-curricula.md))。
+
+**穴の言語は `topic_id` から引く。** `locale` をDBに持たない代わりに、
+`M2-...`(日本)/ `A2-...`(海外)の接頭辞でその穴の言語が決まる。復習の通知文
+(`/complete` で予約)と復習キューの一行(`/v1/me/reviews`)はこれに従うので、
+端末の言語設定を変えても、日本語で説明した穴が英語で届くことはない。
+
 ## LiveKitトークン
 
 `server-sdk-js` はNode APIに依存するため、WorkersではWebCryptoで

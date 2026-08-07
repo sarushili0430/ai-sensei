@@ -3,6 +3,7 @@ import {
   completeSessionRequestSchema,
   karteDraftSchema,
 } from "@ai-sensei/contract";
+import { localeOfTopicId } from "@ai-sensei/curriculum";
 import { describe, expect, it, vi } from "vitest";
 import { readSessionContext } from "./context.ts";
 import {
@@ -284,5 +285,100 @@ describe("postComplete", () => {
       }),
     ).rejects.toThrow(/401/);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * 英語のセッション。プロンプトは日本語の本文に「英語で答えて」を足すのではなく、
+ * **英語のプロンプトそのもの**を使う(ペルソナも禁止事項も英語で書かれている)。
+ */
+describe("英語のセッション", () => {
+  const englishContext = readSessionContext(
+    JSON.stringify({
+      session_id: "ses_en",
+      locale: "en",
+      max_seconds: 300,
+      photo_summary: "A line-and-circle problem",
+      allowed_topics: "- A2-COORD-CIRCLE",
+      allowed_topic_ids: ["A2-COORD-CIRCLE", "A1-QUAD-SOLVE"],
+      is_premium: false,
+    }),
+  );
+
+  it("英語のカルテ生成プロンプトを使い、日本語を混ぜない", async () => {
+    const seen: { system: string; user: string }[] = [];
+    const llm: LlmClient = {
+      complete: async (input) => {
+        seen.push({ system: input.system, user: input.user });
+        return JSON.stringify({
+          said_well: ["Explained why the distance is compared with the radius"],
+          holes: [
+            {
+              topic_id: "A1-QUAD-SOLVE",
+              desc: "the explanation stopped at why the discriminant is used",
+              severity: "medium",
+            },
+          ],
+          term_notes: [],
+          followup_question: null,
+        });
+      },
+    };
+
+    const karte = await buildKarte({
+      context: englishContext,
+      transcript: [{ role: "user", text: "I compared the distance", at_ms: 1000 }],
+      llm,
+    });
+
+    expect(karte.holes[0]?.topic_id).toBe("A1-QUAD-SOLVE");
+    expect(seen[0]?.system).toContain('Build a "karte" from the whole conversation transcript');
+    expect(seen[0]?.system).toContain("Student: I compared the distance");
+    expect(seen[0]?.system).not.toMatch(/[ぁ-んァ-ン一-龯]/);
+    expect(seen[0]?.user).not.toMatch(/[ぁ-んァ-ン一-龯]/);
+  });
+
+  /**
+   * 別の課程のタグが付いても、**穴は捨てずにこのセッションの主単元へ付け替える**。
+   * 捨てると「今日は、止まらずに説明できました」に化けるため(develop の判断)。
+   * ここで見たいのは、付け替え先が**同じ課程のID**になっていること —
+   * 英語のセッションのカルテに日本語の単元が残ると、復習の通知まで日本語になる。
+   */
+  it("別の課程のタグは、英語の課程の主単元へ付け替える", () => {
+    const filtered = applyGuardrails(
+      {
+        said_well: [],
+        holes: [
+          { topic_id: "A2-COORD-CIRCLE", desc: "the explanation stopped here", severity: "low" },
+          { topic_id: "M2-ZUKEI-ENCHOKU", desc: "別の課程のタグ", severity: "low" },
+        ],
+        term_notes: [],
+      },
+      englishContext,
+    );
+
+    expect(filtered.holes.map((hole) => hole.topic_id)).toEqual([
+      "A2-COORD-CIRCLE",
+      "A2-COORD-CIRCLE",
+    ]);
+    for (const hole of filtered.holes) {
+      expect(localeOfTopicId(hole.topic_id), hole.topic_id).toBe("en");
+    }
+  });
+
+  /**
+   * 「わからない」と言ったのに穴ゼロ、を英語でも出さない。
+   * 発話の検出は言語をまたぐが、**足す穴の文言とタグはその課程のもの**になる。
+   */
+  it("英語で「わからない」と言われたら、英語の穴を足す", () => {
+    const karte = withUncertaintyHole(emptyKarte(), englishContext, [
+      { role: "assistant", text: "Why did you use the discriminant?", at_ms: 1000 },
+      { role: "user", text: "I don't know, sorry", at_ms: 4000 },
+    ]);
+
+    expect(karte.holes).toHaveLength(1);
+    expect(karte.holes[0]?.topic_id).toBe("A2-COORD-CIRCLE");
+    expect(karte.holes[0]?.desc).not.toMatch(/[ぁ-んァ-ン一-龯]/);
+    expect(karte.holes[0]?.evidence).toBe("I don't know, sorry");
   });
 });

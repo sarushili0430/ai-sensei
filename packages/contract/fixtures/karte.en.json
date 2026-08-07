@@ -1,0 +1,24 @@
+{
+  "id": "kar_01J8Z9M4RT2A6B7C8D9E0F1G3J",
+  "session_id": "ses_01J8Z9K2QF7X3M4N5P6R7S8T9W",
+  "created_at": "2026-08-03T13:24:07.000Z",
+  "topic_ids": ["A2-COORD-CIRCLE", "A1-QUAD-SOLVE"],
+  "said_well": [
+    "Explained, with a reason, the plan of comparing the centre-to-line distance d with the radius r",
+    "Linked d < r to the line cutting the circle at two points"
+  ],
+  "holes": [
+    {
+      "id": "hol_01J8Z9M4RT9H8I7J6K5L4M3N3Q",
+      "topic_id": "A1-QUAD-SOLVE",
+      "desc": "the explanation stopped at why the discriminant is used",
+      "severity": "medium",
+      "evidence": "that part is... just how I always do it",
+      "status": "open",
+      "created_at": "2026-08-03T13:24:07.000Z",
+      "filled_at": null
+    }
+  ],
+  "term_notes": ["\"quadratic formula\" and \"discriminant\" were being used interchangeably"],
+  "followup_question": null
+}

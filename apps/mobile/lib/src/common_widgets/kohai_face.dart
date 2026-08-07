@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../l10n/strings.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
 
@@ -92,6 +93,9 @@ class _KohaiFaceState extends State<KohaiFace> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    // 読み上げのラベルは毎フレーム作り直さない(builderの外で1回だけ引く)。
+    final AppStrings strings = AppStrings.of(context);
+
     return AnimatedBuilder(
       animation: Listenable.merge(<Listenable>[_ambient, _mood]),
       builder: (BuildContext context, Widget? child) {
@@ -130,10 +134,10 @@ class _KohaiFaceState extends State<KohaiFace> with TickerProviderStateMixin {
           ),
           child: Semantics(
             label: switch (widget.mood) {
-              KohaiMood.neutral => '後輩が待っています',
-              KohaiMood.listening => '後輩が聞いています',
-              KohaiMood.delighted => '後輩が納得しています',
-              KohaiMood.puzzled => '後輩が考えています',
+              KohaiMood.neutral => strings.kohaiWaiting,
+              KohaiMood.listening => strings.kohaiListening,
+              KohaiMood.delighted => strings.kohaiDelighted,
+              KohaiMood.puzzled => strings.kohaiPuzzled,
             },
             child: Transform.translate(
               offset: Offset(0, dy),

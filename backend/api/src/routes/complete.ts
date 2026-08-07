@@ -3,6 +3,7 @@ import {
   type Hole,
   completeSessionRequestSchema,
 } from "@ai-sensei/contract";
+import { localeOfTopicId } from "@ai-sensei/curriculum";
 import {
   buildAllowedTopics,
   computeProgress,
@@ -159,6 +160,9 @@ completeRoute.post("/:sessionId/complete", async (c) => {
         sendAt: entry.scheduled_at,
         desc: hole.desc,
         daysSince: entry.step === 1 ? 1 : entry.step === 2 ? 3 : 7,
+        // 通知の言語は穴のtopic_idから引く。カルテの文言はその課程の言語で
+        // 書かれているので、端末の設定ではなくこちらが正。
+        locale: localeOfTopicId(hole.topic_id),
       });
       externalId = scheduled.externalId;
     } catch (error) {

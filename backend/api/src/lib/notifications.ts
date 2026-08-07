@@ -1,3 +1,4 @@
+import type { CurriculumLocale } from "@ai-sensei/curriculum";
 import { buildReviewPrompt } from "@ai-sensei/guardrail";
 
 /**
@@ -20,8 +21,16 @@ export type NotificationScheduler = {
     sendAt: string;
     desc: string;
     daysSince: number;
+    /** 穴の文言の言語。呼び出し側が topic_id から引く。 */
+    locale?: CurriculumLocale;
   }): Promise<ScheduledNotification>;
   cancel(externalId: string): Promise<void>;
+};
+
+/** 通知のタイトル。後輩からの声で、アプリ名を叫ばない。 */
+const headings: Record<CurriculumLocale, string> = {
+  ja: "後輩から質問です",
+  en: "A question from your kohai",
 };
 
 /** 通知が設定されていない環境(ローカル開発)では何もしない。 */
@@ -46,8 +55,12 @@ export function createOneSignalScheduler(options: OneSignalOptions): Notificatio
   const baseUrl = options.baseUrl ?? "https://api.onesignal.com";
 
   return {
-    async schedule({ deviceId, holeId, step, sendAt, desc, daysSince }) {
-      const message = buildReviewPrompt({ desc, daysSince });
+    async schedule({ deviceId, holeId, step, sendAt, desc, daysSince, locale = "ja" }) {
+      const message = buildReviewPrompt({ desc, daysSince, locale });
+      // 穴の文言は、そのセッションの課程の言語で書かれている。端末の言語設定で
+      // 選び分けると、日本語で説明した穴が英語のタイトルで届くことになるので、
+      // **どちらのキーにも同じ(=穴と同じ言語の)文面を入れる**。
+      const heading = headings[locale];
       const response = await doFetch(`${baseUrl}/notifications`, {
         method: "POST",
         headers: {
@@ -60,7 +73,7 @@ export function createOneSignalScheduler(options: OneSignalOptions): Notificatio
           include_aliases: { external_id: [deviceId] },
           target_channel: "push",
           // 通知は後輩の声で。タイトルにアプリ名を叫ばせない
-          headings: { ja: "後輩から質問です", en: "A question from your kohai" },
+          headings: { ja: heading, en: heading },
           contents: { ja: message, en: message },
           send_after: sendAt,
           data: { hole_id: holeId, step },

@@ -99,21 +99,20 @@ export default defineAgent({
       if (role === "assistant" && isClosingUtterance(text)) onClosing?.();
     });
 
-    const instructions = conversationSystemPrompt({
-      photo_summary: context.photo_summary,
-      visible_work: context.visible_work,
-      allowed_topics: context.allowed_topics,
-      question_seeds: context.question_seeds,
-      remaining_seconds: context.max_seconds,
-    });
-
+    // プロンプトは言語ごとに別本(`prompts/<id>.<locale>.md`)。
+    // 日本語の本文に「英語で答えて」を足す作りだと、ペルソナも禁止事項も
+    // 日本語のまま薄く言い直されるだけで、範囲外に滑りやすくなる。
     const agent = new voice.Agent({
-      // プロンプト本体は日本語のまま。英語ロケールでは応答言語だけを切り替える
-      // (審査員向けの英語対応。プロンプトの英訳はW4の磨き込みで行う)
-      instructions:
-        context.locale === "en"
-          ? `${instructions}\n\n---\n\nRespond in English. Keep the same persona and the same rules.`
-          : instructions,
+      instructions: conversationSystemPrompt(
+        {
+          photo_summary: context.photo_summary,
+          visible_work: context.visible_work,
+          allowed_topics: context.allowed_topics,
+          question_seeds: context.question_seeds,
+          remaining_seconds: context.max_seconds,
+        },
+        context.locale,
+      ),
     });
 
     await session.start({ agent, room: ctx.room });

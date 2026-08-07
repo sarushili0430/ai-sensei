@@ -13,8 +13,25 @@ class AppStrings {
 
   static const List<Locale> supportedLocales = <Locale>[Locale('ja'), Locale('en')];
 
+  /// 端末の言語 → このアプリの言語。
+  ///
+  /// Flutter の既定は「一致しなければ supportedLocales の先頭」なので、
+  /// 何もしないとスペイン語の端末に**日本語**が出る。日本語を望んだ人にだけ
+  /// 日本語を出し、それ以外は英語に寄せる。
+  static Locale resolve(List<Locale>? preferred) {
+    for (final Locale locale in preferred ?? const <Locale>[]) {
+      if (locale.languageCode == 'ja') return const Locale('ja');
+      if (locale.languageCode == 'en') return const Locale('en');
+    }
+    return preferred == null || preferred.isEmpty ? const Locale('ja') : const Locale('en');
+  }
+
   static AppStrings of(BuildContext context) =>
       Localizations.of<AppStrings>(context, AppStrings) ?? const AppStrings(Locale('ja'));
+
+  /// BuildContext を持たない層(コントローラ)から引くための入口。
+  /// APIに送るのと同じ言語コードを渡す。未対応の言語は日本語に落ちる。
+  static AppStrings forLanguage(String languageCode) => AppStrings(Locale(languageCode));
 
   bool get _ja => locale.languageCode == 'ja';
 
@@ -378,7 +395,20 @@ class AppStrings {
   String get errorGeneric =>
       _pick('うまくいきませんでした。少し時間をおいて試してみてください。',
           'Something went wrong. Please try again shortly.');
+
+  /// 圏外・タイムアウトなど、送信そのものが届かなかったとき。
+  /// サーバの文言が返ってこない経路なので、アプリ側で持つ。
+  String get errorNetwork => _pick(
+        'うまく送れませんでした。電波の届くところで、もう一度お願いします。',
+        "We couldn't send that. Please try again where the signal is better.",
+      );
   String get errorRetry => _pick('もう一度', 'Try again');
+
+  // --- 後輩の表情(読み上げ用のラベル) ---
+  String get kohaiWaiting => _pick('後輩が待っています', 'Your kohai is waiting');
+  String get kohaiListening => _pick('後輩が聞いています', 'Your kohai is listening');
+  String get kohaiDelighted => _pick('後輩が納得しています', 'Your kohai just got it');
+  String get kohaiPuzzled => _pick('後輩が考えています', 'Your kohai is thinking');
 }
 
 class AppStringsDelegate extends LocalizationsDelegate<AppStrings> {

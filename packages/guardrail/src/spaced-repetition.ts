@@ -1,3 +1,5 @@
+import type { CurriculumLocale } from "@ai-sensei/curriculum";
+
 /**
  * 間隔反復スケジューラ(翌日 → 3日後 → 7日後)。
  *
@@ -87,25 +89,48 @@ export type ReviewPromptInput = {
   desc: string;
   /** 何日前にできた穴か。 */
   daysSince: number;
+  /**
+   * 文面の言語。省略時は日本語。
+   *
+   * 呼び出し側は穴の topic_id から引く(`localeOfTopicId`)。穴の説明文は
+   * その課程の言語で書かれているので、言語を取り違えると
+   * 「きのうの『why the discriminant is used』」のような通知になる。
+   */
+  locale?: CurriculumLocale;
 };
 
 /**
  * 通知文とレビュー画面の一行を作る。
- * 後輩の声・敬語・お願いの形。責める語彙と記録を人質に取る表現は使わない。
+ * 後輩の声・お願いの形。責める語彙と記録を人質に取る表現は使わない。
  */
-export function buildReviewPrompt({ desc, daysSince }: ReviewPromptInput): string {
+export function buildReviewPrompt({ desc, daysSince, locale = "ja" }: ReviewPromptInput): string {
+  if (locale === "en") {
+    const when =
+      daysSince <= 0 ? "earlier today" : daysSince === 1 ? "yesterday" : `${daysSince} days ago`;
+    return `That "${toSubject(desc, locale)}" from ${when} — could you explain it to me now?`;
+  }
   const when = daysSince <= 0 ? "さっき" : daysSince === 1 ? "きのう" : `${daysSince}日前`;
-  const subject = toSubject(desc);
-  return `${when}の「${subject}」、いまなら説明できますか?`;
+  return `${when}の「${toSubject(desc, locale)}」、いまなら説明できますか?`;
 }
 
 /** 穴の説明文から、通知に載る短い主題を取り出す。 */
-function toSubject(desc: string): string {
-  const trimmed = desc
-    .replace(/[、,]?\s*で説明が止まった。?$/u, "")
-    .replace(/[、,]?\s*説明できなかった。?$/u, "")
-    .replace(/^「|」$/gu, "")
-    .trim();
+function toSubject(desc: string, locale: CurriculumLocale): string {
+  const trimmed =
+    locale === "en"
+      ? desc
+          .replace(/^the explanation stopped at\s+/iu, "")
+          .replace(/^(?:you )?stopped at\s+/iu, "")
+          .replace(/[,]?\s*(?:—|-)?\s*(?:where )?the explanation stopped\.?$/iu, "")
+          .replace(/^["“]|["”]$/gu, "")
+          .trim()
+      : desc
+          .replace(/[、,]?\s*で説明が止まった。?$/u, "")
+          .replace(/[、,]?\s*説明できなかった。?$/u, "")
+          .replace(/^「|」$/gu, "")
+          .trim();
+
   const subject = trimmed.length > 0 ? trimmed : desc.trim();
-  return subject.length <= 24 ? subject : `${subject.slice(0, 23)}…`;
+  // 英語は1文字あたりの情報量が少ないので、同じ見た目の長さに収まるまで長く取る。
+  const limit = locale === "en" ? 48 : 24;
+  return subject.length <= limit ? subject : `${subject.slice(0, limit - 1)}…`;
 }

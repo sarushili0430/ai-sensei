@@ -1,5 +1,7 @@
+import { topicIdSchema } from "@ai-sensei/contract";
+import { isWellFormedTopicId, localeOfTopicId, topics } from "@ai-sensei/curriculum";
 import { describe, expect, it } from "vitest";
-import { analysisFixture } from "../test-support.ts";
+import { analysisFixture, analysisFixtureEn } from "../test-support.ts";
 import {
   curriculumDigest,
   detectImageMediaType,
@@ -146,5 +148,74 @@ describe("detectImageMediaType", () => {
     expect(detectImageMediaType(heic, "application/octet-stream")).toBeNull();
     expect(detectImageMediaType(heic)).toBeNull();
     expect(detectImageMediaType(new ArrayBuffer(0), "application/pdf")).toBeNull();
+  });
+});
+
+// 海外向けの課程。ここで日本のカリキュラムを渡していると、
+// 英語のノートに「数学II / 図形と方程式」というチップが出る。
+describe("課程の切り替え", () => {
+  it("英語のセッションには英語のカリキュラムを渡す", () => {
+    const prompt = photoAnalysisPrompt("en");
+    expect(prompt).toContain("A2-COORD-CIRCLE");
+    expect(prompt).toContain("Algebra 2 / Coordinate Geometry");
+    expect(prompt).not.toContain("M2-ZUKEI-ENCHOKU");
+    expect(prompt).not.toContain("{{");
+  });
+
+  it("ダイジェストはその課程のトピックだけを含む", () => {
+    expect(curriculumDigest("en")).not.toContain("数学");
+    expect(curriculumDigest("ja")).not.toContain("Algebra");
+    expect(curriculumDigest("en").split("\n").length).toBeGreaterThanOrEqual(30);
+  });
+
+  it("別の課程のtopic_idは落とす(解析器が思い出しで返しても通さない)", () => {
+    const resolved = resolveDetectedTopics(
+      {
+        ...analysisFixtureEn,
+        topics: [
+          { topic_id: "A2-COORD-CIRCLE", confidence: 0.9 },
+          { topic_id: "M2-ZUKEI-ENCHOKU", confidence: 0.8 },
+        ],
+      },
+      "en",
+    );
+    expect(resolved.topicIds).toEqual(["A2-COORD-CIRCLE"]);
+    expect(resolved.droppedIds).toEqual(["M2-ZUKEI-ENCHOKU"]);
+  });
+
+  it("キーワード推定のフォールバックも課程で絞る", () => {
+    const resolved = resolveDetectedTopics({ ...analysisFixtureEn, topics: [] }, "en");
+    expect(resolved.topicIds.length).toBeGreaterThan(0);
+    for (const id of resolved.topicIds) expect(localeOfTopicId(id)).toBe("en");
+  });
+
+  it("チップに出すのは英語の科目名", () => {
+    const payload = toDetectedTopicPayload(["A2-COORD-CIRCLE"], analysisFixtureEn);
+    expect(payload[0]).toMatchObject({
+      topic_id: "A2-COORD-CIRCLE",
+      course: "Algebra 2",
+      unit: "Coordinate Geometry",
+    });
+  });
+});
+
+/**
+ * contract は依存を持たない層なので、topic_idの正規表現を
+ * カリキュラム側と二重に書いている。**ここがずれると、カリキュラムには
+ * あるのに保存できないトピックができる。**
+ */
+describe("topic_idの形(contract ↔ curriculum)", () => {
+  it("すべてのトピックが contract のスキーマを通る", () => {
+    for (const topic of topics) {
+      expect(topicIdSchema.safeParse(topic.id).success, topic.id).toBe(true);
+      expect(isWellFormedTopicId(topic.id), topic.id).toBe(true);
+    }
+  });
+
+  it("どちらも同じものを弾く", () => {
+    for (const bad of ["大学数学-線形代数", "m2-zukei-enchoku", "XX-FOO", ""]) {
+      expect(topicIdSchema.safeParse(bad).success, bad).toBe(false);
+      expect(isWellFormedTopicId(bad), bad).toBe(false);
+    }
   });
 });

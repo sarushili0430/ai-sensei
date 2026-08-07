@@ -1,0 +1,1209 @@
+{
+  "version": "0.1.0",
+  "locale": "en",
+  "curriculum": "US/international high-school mathematics (Algebra 1 → Geometry → Algebra 2 → Precalculus → Calculus, with Statistics alongside)",
+  "note": "The allow-list for question generation and the vocabulary used to tag gaps, for learners outside the Japanese curriculum. Course names follow the sequence most international high schools recognise (Algebra 1, Geometry, ...), not a translation of 数学I〜C.",
+  "courses": [
+    { "code": "A1", "name": "Algebra 1" },
+    { "code": "GE", "name": "Geometry" },
+    { "code": "A2", "name": "Algebra 2" },
+    { "code": "PC", "name": "Precalculus" },
+    { "code": "CL", "name": "Calculus" },
+    { "code": "ST", "name": "Statistics" }
+  ],
+  "topics": [
+    {
+      "id": "A1-EXPR-POLY",
+      "course": "Algebra 1",
+      "unit": "Expressions and Equations",
+      "topic": "Expanding and factoring polynomials",
+      "goals": [
+        "Expand products of polynomials using the distributive property and the special products",
+        "Factor by pulling out a common factor, by pattern, and by splitting the middle term",
+        "Explain why you picked that factoring method for this expression"
+      ],
+      "prerequisites": [],
+      "keywords": [
+        "expand",
+        "factor",
+        "factoring",
+        "distributive property",
+        "difference of squares",
+        "perfect square trinomial",
+        "common factor",
+        "(a+b)^2"
+      ]
+    },
+    {
+      "id": "A1-EXPR-RADICAL",
+      "course": "Algebra 1",
+      "unit": "Expressions and Equations",
+      "topic": "Real numbers, radicals and absolute value",
+      "goals": [
+        "Explain the difference between rational and irrational numbers",
+        "Simplify radical expressions and rationalize a denominator",
+        "Remove absolute value bars by splitting into cases"
+      ],
+      "prerequisites": ["A1-EXPR-POLY"],
+      "keywords": [
+        "real number",
+        "rational",
+        "irrational",
+        "radical",
+        "square root",
+        "rationalize",
+        "absolute value",
+        "√"
+      ]
+    },
+    {
+      "id": "A1-EXPR-LINEAR-EQ",
+      "course": "Algebra 1",
+      "unit": "Expressions and Equations",
+      "topic": "Linear equations and inequalities",
+      "goals": [
+        "Solve a linear equation or inequality using the properties of equality",
+        "Explain why the inequality sign flips when you multiply by a negative number",
+        "Show the solution of a compound inequality on a number line"
+      ],
+      "prerequisites": ["A1-EXPR-RADICAL"],
+      "keywords": [
+        "linear equation",
+        "linear inequality",
+        "compound inequality",
+        "number line",
+        "solve for x",
+        "inequality sign"
+      ]
+    },
+    {
+      "id": "A1-FUNC-SLOPE",
+      "course": "Algebra 1",
+      "unit": "Linear Functions",
+      "topic": "Slope and equations of lines",
+      "goals": [
+        "Move between slope-intercept, point-slope and standard form",
+        "Explain what the slope and the intercept mean for the situation being modelled",
+        "Decide whether two lines are parallel or perpendicular from their slopes"
+      ],
+      "prerequisites": ["A1-EXPR-LINEAR-EQ"],
+      "keywords": [
+        "slope",
+        "y-intercept",
+        "slope-intercept form",
+        "point-slope form",
+        "parallel",
+        "perpendicular",
+        "rise over run"
+      ]
+    },
+    {
+      "id": "A1-FUNC-SYSTEM",
+      "course": "Algebra 1",
+      "unit": "Linear Functions",
+      "topic": "Systems of linear equations",
+      "goals": [
+        "Solve a system by graphing, substitution and elimination",
+        "Explain how you chose between substitution and elimination",
+        "Say what no solution and infinitely many solutions look like on the graph"
+      ],
+      "prerequisites": ["A1-FUNC-SLOPE"],
+      "keywords": [
+        "system of equations",
+        "substitution",
+        "elimination",
+        "simultaneous equations",
+        "no solution",
+        "infinitely many solutions"
+      ]
+    },
+    {
+      "id": "A1-QUAD-GRAPH",
+      "course": "Algebra 1",
+      "unit": "Quadratic Functions",
+      "topic": "Parabolas and completing the square",
+      "goals": [
+        "Complete the square to find the vertex and the axis of symmetry",
+        "Explain what completing the square is actually doing to the graph",
+        "Sketch a parabola from its vertex form"
+      ],
+      "prerequisites": ["A1-EXPR-POLY"],
+      "keywords": [
+        "parabola",
+        "vertex",
+        "vertex form",
+        "completing the square",
+        "axis of symmetry",
+        "quadratic function"
+      ]
+    },
+    {
+      "id": "A1-QUAD-MAXMIN",
+      "course": "Algebra 1",
+      "unit": "Quadratic Functions",
+      "topic": "Maximum and minimum of a quadratic",
+      "goals": [
+        "Find the maximum or minimum value of a quadratic on a restricted domain",
+        "Explain why the answer depends on where the vertex sits relative to the interval",
+        "Handle the case where the vertex falls outside the interval"
+      ],
+      "prerequisites": ["A1-QUAD-GRAPH"],
+      "keywords": ["maximum", "minimum", "vertex", "restricted domain", "interval", "optimization"]
+    },
+    {
+      "id": "A1-QUAD-SOLVE",
+      "course": "Algebra 1",
+      "unit": "Quadratic Functions",
+      "topic": "The quadratic formula and the discriminant",
+      "goals": [
+        "Solve a quadratic by factoring, by the quadratic formula and by completing the square",
+        "Explain what the discriminant tells you about the number of real roots",
+        "Decide which solving method fits the equation in front of you"
+      ],
+      "prerequisites": ["A1-QUAD-GRAPH"],
+      "keywords": [
+        "quadratic formula",
+        "discriminant",
+        "roots",
+        "real roots",
+        "b^2-4ac",
+        "zeros",
+        "x-intercepts"
+      ]
+    },
+    {
+      "id": "A1-EXPO-RULES",
+      "course": "Algebra 1",
+      "unit": "Exponents",
+      "topic": "Exponent rules and exponential growth",
+      "goals": [
+        "Apply the product, quotient and power rules for exponents",
+        "Explain what a zero, negative or fractional exponent means",
+        "Tell an exponential model apart from a linear one and say why"
+      ],
+      "prerequisites": ["A1-EXPR-POLY"],
+      "keywords": [
+        "exponent",
+        "power rule",
+        "negative exponent",
+        "fractional exponent",
+        "exponential growth",
+        "exponential decay"
+      ]
+    },
+    {
+      "id": "A1-NUM-FACTORS",
+      "course": "Algebra 1",
+      "unit": "Number and Operations",
+      "topic": "Factors, multiples and prime factorization",
+      "goals": [
+        "Write a number as a product of primes and read GCF and LCM off it",
+        "Explain why the prime factorization tells you the number of divisors",
+        "Choose between GCF and LCM for a word problem and justify the choice"
+      ],
+      "prerequisites": [],
+      "keywords": [
+        "prime",
+        "prime factorization",
+        "factors",
+        "multiples",
+        "GCF",
+        "greatest common factor",
+        "LCM",
+        "least common multiple",
+        "divisor"
+      ]
+    },
+    {
+      "id": "A1-NUM-BASES",
+      "course": "Algebra 1",
+      "unit": "Number and Operations",
+      "topic": "Number bases and remainders",
+      "goals": [
+        "Convert between base ten and another base",
+        "Explain what each digit position is worth in base n",
+        "Use remainders to decide divisibility and justify the rule"
+      ],
+      "prerequisites": ["A1-NUM-FACTORS"],
+      "keywords": [
+        "base",
+        "binary",
+        "base ten",
+        "place value",
+        "remainder",
+        "divisibility",
+        "modular arithmetic"
+      ]
+    },
+
+    {
+      "id": "GE-LOGIC-PROOF",
+      "course": "Geometry",
+      "unit": "Reasoning and Proof",
+      "topic": "Conditional statements, sets and proof",
+      "goals": [
+        "Write the converse, inverse and contrapositive of a statement",
+        "Explain the difference between a necessary and a sufficient condition",
+        "Lay out a two-column or paragraph proof and justify each step"
+      ],
+      "prerequisites": [],
+      "keywords": [
+        "conditional statement",
+        "converse",
+        "contrapositive",
+        "necessary condition",
+        "sufficient condition",
+        "proof",
+        "counterexample",
+        "set",
+        "union",
+        "intersection"
+      ]
+    },
+    {
+      "id": "GE-TRI-CONGRUENCE",
+      "course": "Geometry",
+      "unit": "Triangles",
+      "topic": "Congruence and similarity",
+      "goals": [
+        "Pick the right congruence or similarity criterion (SSS, SAS, ASA, AA)",
+        "Explain why the criterion you chose is enough to conclude congruence",
+        "Set up a proportion from similar triangles and solve it"
+      ],
+      "prerequisites": ["GE-LOGIC-PROOF"],
+      "keywords": [
+        "congruent",
+        "congruence",
+        "similar triangles",
+        "similarity",
+        "SSS",
+        "SAS",
+        "ASA",
+        "AA",
+        "proportion",
+        "scale factor"
+      ]
+    },
+    {
+      "id": "GE-TRI-CENTERS",
+      "course": "Geometry",
+      "unit": "Triangles",
+      "topic": "Special segments and points of concurrency",
+      "goals": [
+        "Locate the centroid, circumcenter, incenter and orthocenter",
+        "Explain what makes each centre special and where it comes from",
+        "Use the 2:1 centroid ratio and the perpendicular bisector property"
+      ],
+      "prerequisites": ["GE-TRI-CONGRUENCE"],
+      "keywords": [
+        "centroid",
+        "circumcenter",
+        "incenter",
+        "orthocenter",
+        "median",
+        "angle bisector",
+        "perpendicular bisector",
+        "altitude",
+        "concurrency"
+      ]
+    },
+    {
+      "id": "GE-TRI-PYTHAG",
+      "course": "Geometry",
+      "unit": "Triangles",
+      "topic": "Pythagorean theorem and special right triangles",
+      "goals": [
+        "Apply the Pythagorean theorem and its converse",
+        "Explain how the 30-60-90 and 45-45-90 ratios come about",
+        "Decide when a triangle is right from its side lengths"
+      ],
+      "prerequisites": ["GE-TRI-CONGRUENCE"],
+      "keywords": [
+        "Pythagorean theorem",
+        "hypotenuse",
+        "right triangle",
+        "30-60-90",
+        "45-45-90",
+        "Pythagorean triple"
+      ]
+    },
+    {
+      "id": "GE-TRIG-RATIOS",
+      "course": "Geometry",
+      "unit": "Right Triangle Trigonometry",
+      "topic": "Sine, cosine and tangent",
+      "goals": [
+        "Set up sin, cos and tan from a right triangle (SOH-CAH-TOA)",
+        "Explain how the ratios extend past 90° on the unit circle",
+        "Choose the ratio that matches the sides you were given and say why"
+      ],
+      "prerequisites": ["GE-TRI-PYTHAG"],
+      "keywords": [
+        "sine",
+        "cosine",
+        "tangent",
+        "sin",
+        "cos",
+        "tan",
+        "SOHCAHTOA",
+        "unit circle",
+        "reference angle",
+        "trigonometric ratio"
+      ]
+    },
+    {
+      "id": "GE-TRIG-LAWS",
+      "course": "Geometry",
+      "unit": "Right Triangle Trigonometry",
+      "topic": "Law of sines and law of cosines",
+      "goals": [
+        "Apply the law of sines and the law of cosines to non-right triangles",
+        "Explain how you decide which law the given information calls for",
+        "Recognise the ambiguous case and say what makes it ambiguous"
+      ],
+      "prerequisites": ["GE-TRIG-RATIOS"],
+      "keywords": [
+        "law of sines",
+        "law of cosines",
+        "oblique triangle",
+        "ambiguous case",
+        "SSA",
+        "circumradius"
+      ]
+    },
+    {
+      "id": "GE-TRIG-AREA",
+      "course": "Geometry",
+      "unit": "Right Triangle Trigonometry",
+      "topic": "Triangle area and three-dimensional applications",
+      "goals": [
+        "Find a triangle's area with (1/2)ab·sin C and with Heron's formula",
+        "Explain which area formula the given information supports",
+        "Cut a solid along a plane and solve the triangle you get"
+      ],
+      "prerequisites": ["GE-TRIG-LAWS"],
+      "keywords": [
+        "area of a triangle",
+        "Heron's formula",
+        "cross section",
+        "space figure",
+        "inradius",
+        "1/2absinC"
+      ]
+    },
+    {
+      "id": "GE-CIRCLE-ANGLES",
+      "course": "Geometry",
+      "unit": "Circles",
+      "topic": "Inscribed angles and tangents",
+      "goals": [
+        "Use the inscribed angle theorem and the tangent-chord angle",
+        "Explain why an angle inscribed in a semicircle is a right angle",
+        "Decide when four points lie on one circle and justify it"
+      ],
+      "prerequisites": ["GE-TRI-CONGRUENCE"],
+      "keywords": [
+        "circle",
+        "inscribed angle",
+        "central angle",
+        "tangent",
+        "chord",
+        "cyclic quadrilateral",
+        "arc"
+      ]
+    },
+    {
+      "id": "GE-CIRCLE-POWER",
+      "course": "Geometry",
+      "unit": "Circles",
+      "topic": "Power of a point and constructions",
+      "goals": [
+        "Apply the intersecting chords, secant and tangent-secant relationships",
+        "Explain why the three cases are one theorem in disguise",
+        "Carry out a compass-and-straightedge construction and justify the steps"
+      ],
+      "prerequisites": ["GE-CIRCLE-ANGLES"],
+      "keywords": [
+        "power of a point",
+        "intersecting chords",
+        "secant",
+        "tangent-secant",
+        "construction",
+        "compass and straightedge"
+      ]
+    },
+    {
+      "id": "GE-SOLID-VOLUME",
+      "course": "Geometry",
+      "unit": "Solid Geometry",
+      "topic": "Surface area and volume",
+      "goals": [
+        "Compute surface area and volume for prisms, cylinders, pyramids, cones and spheres",
+        "Explain why scaling a length by k scales area by k² and volume by k³",
+        "Decide which formula a composite solid needs and justify the split"
+      ],
+      "prerequisites": ["GE-TRI-PYTHAG"],
+      "keywords": [
+        "volume",
+        "surface area",
+        "prism",
+        "cylinder",
+        "pyramid",
+        "cone",
+        "sphere",
+        "scale factor",
+        "composite solid"
+      ]
+    },
+
+    {
+      "id": "A2-POLY-DIVISION",
+      "course": "Algebra 2",
+      "unit": "Polynomials",
+      "topic": "Polynomial division and the factor theorem",
+      "goals": [
+        "Divide polynomials by long division and synthetic division",
+        "Explain what the remainder theorem and the factor theorem are saying",
+        "Use a root you found to factor the polynomial further"
+      ],
+      "prerequisites": ["A1-EXPR-POLY"],
+      "keywords": [
+        "polynomial division",
+        "long division",
+        "synthetic division",
+        "remainder theorem",
+        "factor theorem",
+        "rational root theorem"
+      ]
+    },
+    {
+      "id": "A2-POLY-BINOMIAL",
+      "course": "Algebra 2",
+      "unit": "Polynomials",
+      "topic": "The binomial theorem",
+      "goals": [
+        "Expand a binomial power and pick out a specific term",
+        "Explain where the binomial coefficients come from in terms of counting",
+        "Connect Pascal's triangle to nCr"
+      ],
+      "prerequisites": ["ST-PROB-COUNTING"],
+      "keywords": [
+        "binomial theorem",
+        "binomial coefficient",
+        "Pascal's triangle",
+        "nCr",
+        "general term",
+        "expansion"
+      ]
+    },
+    {
+      "id": "A2-POLY-COMPLEX",
+      "course": "Algebra 2",
+      "unit": "Polynomials",
+      "topic": "Complex numbers and relationships between roots",
+      "goals": [
+        "Do arithmetic with complex numbers and with conjugates",
+        "Explain why non-real roots of a real polynomial come in conjugate pairs",
+        "Use the sum and product of roots instead of solving when it is faster"
+      ],
+      "prerequisites": ["A1-QUAD-SOLVE"],
+      "keywords": [
+        "complex number",
+        "imaginary unit",
+        "conjugate",
+        "sum of roots",
+        "product of roots",
+        "Vieta's formulas"
+      ]
+    },
+    {
+      "id": "A2-INEQ-QUADRATIC",
+      "course": "Algebra 2",
+      "unit": "Inequalities",
+      "topic": "Quadratic and rational inequalities",
+      "goals": [
+        "Solve a quadratic inequality from the sign of the factored form or the graph",
+        "Explain how the graph tells you which interval to keep",
+        "Handle a rational inequality without multiplying away the sign"
+      ],
+      "prerequisites": ["A1-QUAD-SOLVE", "A1-EXPR-LINEAR-EQ"],
+      "keywords": [
+        "quadratic inequality",
+        "rational inequality",
+        "sign chart",
+        "interval notation",
+        "number line",
+        "critical values"
+      ]
+    },
+    {
+      "id": "A2-INEQ-PROOF",
+      "course": "Algebra 2",
+      "unit": "Inequalities",
+      "topic": "Proving equalities and inequalities",
+      "goals": [
+        "Prove an inequality by comparing the difference with zero or by completing the square",
+        "Explain when the AM-GM inequality applies and when equality holds",
+        "Choose a proof strategy and justify why it fits the statement"
+      ],
+      "prerequisites": ["GE-LOGIC-PROOF"],
+      "keywords": [
+        "prove",
+        "inequality",
+        "AM-GM",
+        "arithmetic mean",
+        "geometric mean",
+        "equality condition",
+        "identity"
+      ]
+    },
+    {
+      "id": "A2-COORD-DISTANCE",
+      "course": "Algebra 2",
+      "unit": "Coordinate Geometry",
+      "topic": "Distance from a point to a line",
+      "goals": [
+        "Apply the point-to-line distance formula",
+        "Explain what the formula is measuring geometrically",
+        "Decide between the formula and a perpendicular foot construction"
+      ],
+      "prerequisites": ["A1-FUNC-SLOPE"],
+      "keywords": [
+        "distance formula",
+        "point to line distance",
+        "perpendicular distance",
+        "midpoint",
+        "foot of perpendicular"
+      ]
+    },
+    {
+      "id": "A2-COORD-CIRCLE",
+      "course": "Algebra 2",
+      "unit": "Coordinate Geometry",
+      "topic": "Lines and circles",
+      "goals": [
+        "Decide how a line and a circle meet by comparing the centre-to-line distance with the radius",
+        "Get the same answer with the discriminant of the substituted equation",
+        "Explain why you would choose one of the two methods over the other"
+      ],
+      "prerequisites": ["A1-QUAD-SOLVE", "A2-COORD-DISTANCE"],
+      "keywords": [
+        "equation of a circle",
+        "line and circle",
+        "tangent line",
+        "radius",
+        "discriminant",
+        "points of intersection"
+      ]
+    },
+    {
+      "id": "A2-COORD-LOCUS",
+      "course": "Algebra 2",
+      "unit": "Coordinate Geometry",
+      "topic": "Loci and regions",
+      "goals": [
+        "Turn a condition on a moving point into an equation",
+        "Shade the region a system of inequalities describes",
+        "Explain why the boundary is included or excluded"
+      ],
+      "prerequisites": ["A2-COORD-CIRCLE"],
+      "keywords": [
+        "locus",
+        "region",
+        "shaded region",
+        "system of inequalities",
+        "boundary",
+        "moving point"
+      ]
+    },
+    {
+      "id": "A2-EXPLOG-DEF",
+      "course": "Algebra 2",
+      "unit": "Exponential and Logarithmic Functions",
+      "topic": "Definition and properties of logarithms",
+      "goals": [
+        "Move between exponential and logarithmic form",
+        "Explain what a logarithm is asking for",
+        "Apply the product, quotient, power and change-of-base rules"
+      ],
+      "prerequisites": ["A1-EXPO-RULES"],
+      "keywords": [
+        "logarithm",
+        "log",
+        "natural log",
+        "ln",
+        "base",
+        "change of base",
+        "exponential form"
+      ]
+    },
+    {
+      "id": "A2-EXPLOG-SOLVE",
+      "course": "Algebra 2",
+      "unit": "Exponential and Logarithmic Functions",
+      "topic": "Exponential and logarithmic equations",
+      "goals": [
+        "Solve exponential and logarithmic equations and inequalities",
+        "Explain why the domain restriction has to be checked at the end",
+        "Say what happens to the inequality when the base is between 0 and 1"
+      ],
+      "prerequisites": ["A2-EXPLOG-DEF"],
+      "keywords": [
+        "exponential equation",
+        "logarithmic equation",
+        "extraneous solution",
+        "domain",
+        "base less than one",
+        "half-life"
+      ]
+    },
+    {
+      "id": "A2-SEQ-ARITH-GEO",
+      "course": "Algebra 2",
+      "unit": "Sequences and Series",
+      "topic": "Arithmetic and geometric sequences and series",
+      "goals": [
+        "Write the nth term and the sum of an arithmetic or geometric sequence",
+        "Explain where the sum formulas come from",
+        "Decide which model a sequence follows and justify it"
+      ],
+      "prerequisites": [],
+      "keywords": [
+        "arithmetic sequence",
+        "geometric sequence",
+        "common difference",
+        "common ratio",
+        "nth term",
+        "series",
+        "sum of a series"
+      ]
+    },
+    {
+      "id": "A2-SEQ-SIGMA",
+      "course": "Algebra 2",
+      "unit": "Sequences and Series",
+      "topic": "Sigma notation and differences",
+      "goals": [
+        "Read and manipulate sums written in sigma notation",
+        "Use the difference sequence to find a formula for the nth term",
+        "Explain why telescoping works"
+      ],
+      "prerequisites": ["A2-SEQ-ARITH-GEO"],
+      "keywords": [
+        "sigma notation",
+        "summation",
+        "difference sequence",
+        "telescoping",
+        "partial sum",
+        "Σ"
+      ]
+    },
+    {
+      "id": "A2-SEQ-RECURSION",
+      "course": "Algebra 2",
+      "unit": "Sequences and Series",
+      "topic": "Recursive formulas and induction",
+      "goals": [
+        "Turn a recursive definition into an explicit formula",
+        "Write a proof by mathematical induction",
+        "Explain why the base case and the inductive step are both needed"
+      ],
+      "prerequisites": ["A2-SEQ-SIGMA"],
+      "keywords": [
+        "recursive formula",
+        "recurrence relation",
+        "mathematical induction",
+        "base case",
+        "inductive step",
+        "explicit formula"
+      ]
+    },
+
+    {
+      "id": "PC-TRIG-IDENTITY",
+      "course": "Precalculus",
+      "unit": "Trigonometric Functions",
+      "topic": "Addition formulas and harmonic form",
+      "goals": [
+        "Apply the angle sum, double angle and half angle formulas",
+        "Rewrite a sin θ + b cos θ in the form R sin(θ + α)",
+        "Explain what the harmonic form makes easy to see"
+      ],
+      "prerequisites": ["GE-TRIG-RATIOS"],
+      "keywords": [
+        "addition formula",
+        "angle sum",
+        "double angle",
+        "half angle",
+        "harmonic form",
+        "amplitude",
+        "identity",
+        "phase shift"
+      ]
+    },
+    {
+      "id": "PC-TRIG-EQUATION",
+      "course": "Precalculus",
+      "unit": "Trigonometric Functions",
+      "topic": "Trigonometric equations and graphs",
+      "goals": [
+        "Solve trigonometric equations and inequalities on a given interval",
+        "Explain how the unit circle produces every solution in the range",
+        "Read period, amplitude and shift off a graph and justify each"
+      ],
+      "prerequisites": ["PC-TRIG-IDENTITY"],
+      "keywords": [
+        "trigonometric equation",
+        "period",
+        "amplitude",
+        "phase shift",
+        "unit circle",
+        "general solution",
+        "radians"
+      ]
+    },
+    {
+      "id": "PC-VECTOR-DOT",
+      "course": "Precalculus",
+      "unit": "Vectors",
+      "topic": "Vector operations and the dot product",
+      "goals": [
+        "Add, subtract and scale vectors in component form",
+        "Explain what the dot product measures and why perpendicular vectors give zero",
+        "Find the angle between two vectors"
+      ],
+      "prerequisites": ["GE-TRIG-RATIOS"],
+      "keywords": [
+        "vector",
+        "dot product",
+        "scalar product",
+        "magnitude",
+        "component form",
+        "angle between vectors",
+        "unit vector"
+      ]
+    },
+    {
+      "id": "PC-VECTOR-POSITION",
+      "course": "Precalculus",
+      "unit": "Vectors",
+      "topic": "Position vectors in geometry",
+      "goals": [
+        "Write points that divide a segment using position vectors",
+        "Prove collinearity and concurrency with vectors",
+        "Explain why the vector proof is shorter than the coordinate one here"
+      ],
+      "prerequisites": ["PC-VECTOR-DOT"],
+      "keywords": [
+        "position vector",
+        "collinear",
+        "section formula",
+        "centroid",
+        "vector proof",
+        "linear combination"
+      ]
+    },
+    {
+      "id": "PC-VECTOR-SPACE",
+      "course": "Precalculus",
+      "unit": "Vectors",
+      "topic": "Vectors in three dimensions",
+      "goals": [
+        "Work with components, magnitude and dot products in 3-D",
+        "Write the equation of a line or plane with vectors",
+        "Explain how a 3-D problem reduces to a 2-D one you already know"
+      ],
+      "prerequisites": ["PC-VECTOR-POSITION"],
+      "keywords": [
+        "three dimensions",
+        "3D vector",
+        "space",
+        "plane",
+        "normal vector",
+        "parametric equation of a line"
+      ]
+    },
+    {
+      "id": "PC-COMPLEX-POLAR",
+      "course": "Precalculus",
+      "unit": "Complex Plane",
+      "topic": "The complex plane and polar form",
+      "goals": [
+        "Convert a complex number between rectangular and polar form",
+        "Explain what multiplying by a complex number does geometrically",
+        "Apply De Moivre's theorem to powers and roots"
+      ],
+      "prerequisites": ["A2-POLY-COMPLEX", "PC-TRIG-IDENTITY"],
+      "keywords": [
+        "complex plane",
+        "polar form",
+        "modulus",
+        "argument",
+        "De Moivre",
+        "roots of unity",
+        "Argand diagram"
+      ]
+    },
+    {
+      "id": "PC-CONIC-PARAM",
+      "course": "Precalculus",
+      "unit": "Conic Sections",
+      "topic": "Conics and parametric curves",
+      "goals": [
+        "Identify a parabola, ellipse or hyperbola from its equation",
+        "Explain what the focus and directrix definition is saying",
+        "Move between parametric and Cartesian descriptions of a curve"
+      ],
+      "prerequisites": ["A2-COORD-CIRCLE"],
+      "keywords": [
+        "conic section",
+        "ellipse",
+        "hyperbola",
+        "parabola",
+        "focus",
+        "directrix",
+        "eccentricity",
+        "parametric equations",
+        "polar coordinates"
+      ]
+    },
+    {
+      "id": "PC-LIMIT-SEQ",
+      "course": "Precalculus",
+      "unit": "Limits",
+      "topic": "Limits of sequences and functions",
+      "goals": [
+        "Evaluate limits of sequences, series and functions, including one-sided limits",
+        "Explain what an indeterminate form means and why it needs more work",
+        "Decide whether an infinite geometric series converges and justify it"
+      ],
+      "prerequisites": ["A2-SEQ-SIGMA"],
+      "keywords": [
+        "limit",
+        "converge",
+        "diverge",
+        "infinity",
+        "one-sided limit",
+        "indeterminate form",
+        "infinite series",
+        "continuity"
+      ]
+    },
+
+    {
+      "id": "CL-DERIV-TANGENT",
+      "course": "Calculus",
+      "unit": "Differentiation",
+      "topic": "The derivative and tangent lines",
+      "goals": [
+        "Compute a derivative from the limit definition and from the power rule",
+        "Explain the derivative as a slope and as a rate of change",
+        "Write the equation of a tangent line at a point"
+      ],
+      "prerequisites": ["PC-LIMIT-SEQ", "A1-QUAD-GRAPH"],
+      "keywords": [
+        "derivative",
+        "tangent line",
+        "difference quotient",
+        "limit definition",
+        "power rule",
+        "rate of change",
+        "slope"
+      ]
+    },
+    {
+      "id": "CL-DERIV-RULES",
+      "course": "Calculus",
+      "unit": "Differentiation",
+      "topic": "Product, quotient and chain rules",
+      "goals": [
+        "Differentiate products, quotients and compositions",
+        "Differentiate trigonometric, exponential and logarithmic functions",
+        "Explain how you decided which rule to apply first"
+      ],
+      "prerequisites": ["CL-DERIV-TANGENT", "PC-TRIG-IDENTITY", "A2-EXPLOG-DEF"],
+      "keywords": [
+        "product rule",
+        "quotient rule",
+        "chain rule",
+        "implicit differentiation",
+        "composite function",
+        "derivative of sin",
+        "derivative of e^x"
+      ]
+    },
+    {
+      "id": "CL-DERIV-SHAPE",
+      "course": "Calculus",
+      "unit": "Differentiation",
+      "topic": "Increase, decrease and extrema",
+      "goals": [
+        "Build a sign chart for f′ and read increasing and decreasing intervals off it",
+        "Explain why a sign change of f′ marks a maximum or a minimum",
+        "Use the second derivative for concavity and inflection points"
+      ],
+      "prerequisites": ["CL-DERIV-TANGENT"],
+      "keywords": [
+        "increasing",
+        "decreasing",
+        "critical point",
+        "local maximum",
+        "local minimum",
+        "sign chart",
+        "concavity",
+        "inflection point",
+        "second derivative"
+      ]
+    },
+    {
+      "id": "CL-DERIV-APPLY",
+      "course": "Calculus",
+      "unit": "Differentiation",
+      "topic": "Optimization and related rates",
+      "goals": [
+        "Set up and solve an optimization problem",
+        "Solve a related-rates problem by differentiating a relationship in time",
+        "Explain how you chose the variable to optimize and the constraint"
+      ],
+      "prerequisites": ["CL-DERIV-SHAPE", "CL-DERIV-RULES"],
+      "keywords": [
+        "optimization",
+        "related rates",
+        "maximize",
+        "minimize",
+        "constraint",
+        "mean value theorem",
+        "L'Hopital"
+      ]
+    },
+    {
+      "id": "CL-INT-AREA",
+      "course": "Calculus",
+      "unit": "Integration",
+      "topic": "Definite integrals and area",
+      "goals": [
+        "Find an antiderivative and evaluate a definite integral",
+        "Explain the fundamental theorem of calculus in your own words",
+        "Set up the integral for the area between two curves and justify the limits"
+      ],
+      "prerequisites": ["CL-DERIV-SHAPE"],
+      "keywords": [
+        "integral",
+        "definite integral",
+        "antiderivative",
+        "fundamental theorem of calculus",
+        "area between curves",
+        "indefinite integral"
+      ]
+    },
+    {
+      "id": "CL-INT-TECHNIQUE",
+      "course": "Calculus",
+      "unit": "Integration",
+      "topic": "Substitution and integration by parts",
+      "goals": [
+        "Integrate by u-substitution and by parts",
+        "Explain how you pick u, and why that choice makes the integral simpler",
+        "Change the limits correctly when you substitute"
+      ],
+      "prerequisites": ["CL-INT-AREA", "CL-DERIV-RULES"],
+      "keywords": [
+        "u-substitution",
+        "integration by parts",
+        "change of variable",
+        "partial fractions",
+        "limits of integration"
+      ]
+    },
+    {
+      "id": "CL-INT-VOLUME",
+      "course": "Calculus",
+      "unit": "Integration",
+      "topic": "Volumes and Riemann sums",
+      "goals": [
+        "Find a volume of revolution by discs, washers or shells",
+        "Explain how a Riemann sum turns into an integral",
+        "Choose between the disc and the shell method and justify the choice"
+      ],
+      "prerequisites": ["CL-INT-TECHNIQUE"],
+      "keywords": [
+        "volume of revolution",
+        "disc method",
+        "washer method",
+        "shell method",
+        "Riemann sum",
+        "arc length"
+      ]
+    },
+
+    {
+      "id": "ST-DATA-CENTER",
+      "course": "Statistics",
+      "unit": "Exploring Data",
+      "topic": "Center, spread and box plots",
+      "goals": [
+        "Compute the mean, median, mode and quartiles of a data set",
+        "Read a box plot and a histogram",
+        "Explain when the median describes the data better than the mean"
+      ],
+      "prerequisites": [],
+      "keywords": [
+        "mean",
+        "median",
+        "mode",
+        "quartile",
+        "IQR",
+        "box plot",
+        "histogram",
+        "outlier",
+        "five number summary"
+      ]
+    },
+    {
+      "id": "ST-DATA-SPREAD",
+      "course": "Statistics",
+      "unit": "Exploring Data",
+      "topic": "Standard deviation and correlation",
+      "goals": [
+        "Compute variance, standard deviation and the correlation coefficient",
+        "Explain what the standard deviation tells you that the range does not",
+        "Say why correlation is not causation, using the data in front of you"
+      ],
+      "prerequisites": ["ST-DATA-CENTER"],
+      "keywords": [
+        "variance",
+        "standard deviation",
+        "correlation",
+        "correlation coefficient",
+        "scatter plot",
+        "regression line",
+        "causation"
+      ]
+    },
+    {
+      "id": "ST-PROB-COUNTING",
+      "course": "Statistics",
+      "unit": "Probability",
+      "topic": "Counting: permutations and combinations",
+      "goals": [
+        "Count arrangements and selections with permutations and combinations",
+        "Explain how you decided whether order matters",
+        "Apply the addition and multiplication principles to a multi-stage count"
+      ],
+      "prerequisites": [],
+      "keywords": [
+        "permutation",
+        "combination",
+        "nPr",
+        "nCr",
+        "factorial",
+        "counting principle",
+        "arrangement",
+        "order matters"
+      ]
+    },
+    {
+      "id": "ST-PROB-BASIC",
+      "course": "Statistics",
+      "unit": "Probability",
+      "topic": "Probability rules and complements",
+      "goals": [
+        "Compute probabilities with the addition rule and complements",
+        "Explain when events are mutually exclusive and when they are independent",
+        "Decide whether the complement is the easier thing to count and say why"
+      ],
+      "prerequisites": ["ST-PROB-COUNTING"],
+      "keywords": [
+        "probability",
+        "complement",
+        "mutually exclusive",
+        "independent events",
+        "addition rule",
+        "sample space",
+        "Venn diagram"
+      ]
+    },
+    {
+      "id": "ST-PROB-CONDITIONAL",
+      "course": "Statistics",
+      "unit": "Probability",
+      "topic": "Conditional probability and expected value",
+      "goals": [
+        "Apply the multiplication rule and Bayes-style reverse reasoning",
+        "Explain what conditioning on an event does to the sample space",
+        "Compute an expected value and say what it means for a repeated game"
+      ],
+      "prerequisites": ["ST-PROB-BASIC"],
+      "keywords": [
+        "conditional probability",
+        "multiplication rule",
+        "tree diagram",
+        "Bayes",
+        "expected value",
+        "independence"
+      ]
+    },
+    {
+      "id": "ST-DIST-BINOMIAL",
+      "course": "Statistics",
+      "unit": "Random Variables",
+      "topic": "Random variables and the binomial distribution",
+      "goals": [
+        "Build the probability distribution of a discrete random variable",
+        "Use the binomial mean and variance",
+        "Explain which conditions make a situation binomial"
+      ],
+      "prerequisites": ["ST-PROB-CONDITIONAL"],
+      "keywords": [
+        "random variable",
+        "probability distribution",
+        "binomial distribution",
+        "trials",
+        "expected value",
+        "variance"
+      ]
+    },
+    {
+      "id": "ST-DIST-NORMAL",
+      "course": "Statistics",
+      "unit": "Random Variables",
+      "topic": "The normal distribution and confidence intervals",
+      "goals": [
+        "Standardize to z-scores and read normal probabilities",
+        "Build a confidence interval for a mean",
+        "Explain what the confidence level does and does not promise"
+      ],
+      "prerequisites": ["ST-DIST-BINOMIAL", "ST-DATA-SPREAD"],
+      "keywords": [
+        "normal distribution",
+        "z-score",
+        "standardize",
+        "confidence interval",
+        "margin of error",
+        "sampling distribution",
+        "central limit theorem"
+      ]
+    },
+    {
+      "id": "ST-INFER-TEST",
+      "course": "Statistics",
+      "unit": "Inference",
+      "topic": "The logic of hypothesis testing",
+      "goals": [
+        "State a null and an alternative hypothesis for a claim",
+        "Explain what a p-value is measuring and what rejecting means",
+        "Decide whether the evidence supports rejecting the null and justify it"
+      ],
+      "prerequisites": ["ST-DIST-NORMAL"],
+      "keywords": [
+        "hypothesis test",
+        "null hypothesis",
+        "alternative hypothesis",
+        "p-value",
+        "significance level",
+        "reject",
+        "evidence"
+      ]
+    }
+  ]
+}

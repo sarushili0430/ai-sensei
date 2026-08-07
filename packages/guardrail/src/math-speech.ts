@@ -1,9 +1,16 @@
+import type { CurriculumLocale } from "@ai-sensei/curriculum";
+
 /**
  * 数式音声の正規化(handoff §4(d))。
  *
  * 日本語STTは数式をそのまま文字にするので、「エックスのにじょう」「さんぶんのに」
  * のような発話が返る。ここで機械的に直せるぶんだけ直し、文脈依存の補正
  * (「この問題の説明中なら、この発話はx²のこと」)は写真文脈を持つLLM側に任せる。
+ *
+ * 英語STTも同じことが起きる("x squared" "square root of three")。
+ * **ルールは言語ごとに分ける。** 日本語の規則を英語に当てても何も起きないが、
+ * 逆は起きる(`\bpi\b` を日本語のローマ字混じり文に当てるなど)ので、
+ * 言語を渡さない呼び出しは日本語の規則だけを使う。
  *
  * 方針: **やりすぎない**。誤変換を増やすくらいなら素通しする。
  * 変換は必ず `applied` に記録し、あとで効いているルールを検証できるようにする。
@@ -115,17 +122,80 @@ export const rules: NormalizationRule[] = [
   // 「かっこ」は式の読み上げでよく出るが、閉じ位置が曖昧なので触らない
 ];
 
+/**
+ * 英語STT向け。日本語ほど崩れないので、**確実なものだけ**を直す。
+ *
+ * `sine` → `sin` のような言い換えは入れていない。読みが正しく綴られていれば
+ * LLMは読めるし、`tangent`(接線)を `tan` に潰すほうが害が大きい。
+ */
+/**
+ * 英語の「式の一項」に見えるもの。`4x` `x^2` `2` `θ` `)` は項、`cost` は項ではない。
+ *
+ * ここを `[a-z]+` のように緩くすると、`cost plus tax` が `cost + tax` になる。
+ * 演算子の語(plus / times / over)は日常語でもあるので、**両側が項のときだけ**
+ * 記号にする。
+ */
+const EN_TERM = "(?:\\)|\\]|[a-zθπ]?[0-9]+[a-zθπ]?|[a-zθπ])(?:\\^[0-9]+)?";
+
+function enOperator(name: string, word: string, symbol: string): NormalizationRule {
+  return {
+    name,
+    pattern: new RegExp(
+      `(?<![a-z0-9])(${EN_TERM})\\s+${word}\\s+(?=-?${EN_TERM}(?![a-z0-9]))`,
+      "giu",
+    ),
+    replacement: (_match, left: string) => `${left} ${symbol} `,
+  };
+}
+
+export const enRules: NormalizationRule[] = [
+  // ギリシャ文字を先に直す。演算子の判定は「両側が項か」で決めるので、
+  // `theta plus pi` は θ・π にしてからでないと項として数えられない。
+  { name: "en-theta", pattern: /\btheta\b/giu, replacement: "θ" },
+  { name: "en-pi", pattern: /\bpi\b/giu, replacement: "π" },
+  // "x squared" → x^2 / "x cubed" → x^3
+  { name: "en-squared", pattern: /(?<=[a-z0-9θπ)\]])\s+squared\b/giu, replacement: "^2" },
+  { name: "en-cubed", pattern: /(?<=[a-z0-9θπ)\]])\s+cubed\b/giu, replacement: "^3" },
+  // "to the power of 4" → ^4
+  {
+    name: "en-power-of",
+    pattern: /\s*to the power of\s*([0-9]+)\b/giu,
+    replacement: (_match, exponent: string) => `^${exponent}`,
+  },
+  // "square root of 3" → √3
+  { name: "en-sqrt", pattern: /\bsquare root of\s+/giu, replacement: "√" },
+  // "3 over 4" → 3/4(数どうしのときだけ。"went over it" を割り算にしない)
+  {
+    name: "en-fraction",
+    pattern: /\b([0-9]+)\s+over\s+([0-9]+)\b/giu,
+    replacement: (_match, numerator: string, denominator: string) => `${numerator}/${denominator}`,
+  },
+  enOperator("en-plus", "plus", "+"),
+  enOperator("en-minus", "minus", "-"),
+  enOperator("en-times", "times", "×"),
+  enOperator("en-divide", "divided by", "÷"),
+  enOperator("en-equals", "equals", "="),
+];
+
+export const rulesByLocale: Record<CurriculumLocale, NormalizationRule[]> = {
+  ja: rules,
+  en: enRules,
+};
+
 export type NormalizationResult = {
   text: string;
   /** 適用されたルール名。テストとログで「効きすぎ」を監視する。 */
   applied: string[];
 };
 
-export function normalizeMathSpeech(input: string): NormalizationResult {
+export function normalizeMathSpeech(
+  input: string,
+  locale: CurriculumLocale = "ja",
+): NormalizationResult {
   let text = input.normalize("NFKC");
   const applied: string[] = [];
 
-  for (const rule of rules) {
+  for (const rule of rulesByLocale[locale]) {
     const pattern = new RegExp(rule.pattern.source, rule.pattern.flags);
     if (!pattern.test(text)) continue;
     pattern.lastIndex = 0;
@@ -145,10 +215,11 @@ export function normalizeMathSpeech(input: string): NormalizationResult {
  */
 export function normalizeUserUtterances<T extends { role: string; text: string }>(
   messages: readonly T[],
+  locale: CurriculumLocale = "ja",
 ): T[] {
   return messages.map((message) =>
     message.role === "user"
-      ? { ...message, text: normalizeMathSpeech(message.text).text }
+      ? { ...message, text: normalizeMathSpeech(message.text, locale).text }
       : message,
   );
 }

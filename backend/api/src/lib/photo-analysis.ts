@@ -1,4 +1,10 @@
-import { findTopic, isKnownTopicId, suggestTopics, topics } from "@ai-sensei/curriculum";
+import {
+  type CurriculumLocale,
+  findTopic,
+  isKnownTopicId,
+  suggestTopics,
+  topicsFor,
+} from "@ai-sensei/curriculum";
 import { formatBullets, getPrompt, renderPrompt } from "@ai-sensei/prompts";
 import { z } from "zod";
 
@@ -8,6 +14,11 @@ import { z } from "zod";
  * ここが「写真に写っている内容」の側のガードレールを作る工程。
  * 出力のtopic_idはこの時点でカリキュラム照合し、通ったものだけを
  * セッションの許可リストにする。
+ *
+ * カリキュラムは**ロケールごとに違う**(日本は数学I〜C、海外は Algebra 1〜)。
+ * 解析器に渡す一覧も、キーワード推定のフォールバックも、セッションの
+ * ロケールで絞る。混ぜると、英語のノートに「数学II / 図形と方程式」という
+ * チップが出てしまう。
  */
 
 export const photoAnalysisSchema = z.object({
@@ -23,7 +34,12 @@ export const photoAnalysisSchema = z.object({
 export type PhotoAnalysis = z.infer<typeof photoAnalysisSchema>;
 
 export type PhotoAnalyzer = {
-  analyze(input: { image: ArrayBuffer; contentType: string }): Promise<PhotoAnalysis>;
+  analyze(input: {
+    image: ArrayBuffer;
+    contentType: string;
+    /** どの課程のトピックに対応づけるか。省略時は日本の課程。 */
+    locale?: CurriculumLocale;
+  }): Promise<PhotoAnalysis>;
 };
 
 /** Vision API(Anthropic Messages)が受け取れる画像形式。これ以外は400が返る。 */
@@ -89,38 +105,50 @@ export function detectImageMediaType(
   return SUPPORTED_MEDIA_TYPES.find((type) => type === normalized) ?? null;
 }
 
-/** カリキュラムマップをプロンプトに貼れる形に畳む(全52トピックの要約)。 */
-export function curriculumDigest(): string {
-  return topics
+/** その課程のカリキュラムマップを、プロンプトに貼れる形に畳む。 */
+export function curriculumDigest(locale: CurriculumLocale = "ja"): string {
+  return topicsFor(locale)
     .map((topic) => `- ${topic.id} | ${topic.course} / ${topic.unit} / ${topic.topic}`)
     .join("\n");
 }
 
-export function photoAnalysisPrompt(): string {
-  return renderPrompt(getPrompt("photo_analysis"), { curriculum_digest: curriculumDigest() });
+export function photoAnalysisPrompt(locale: CurriculumLocale = "ja"): string {
+  return renderPrompt(getPrompt("photo_analysis", locale), {
+    curriculum_digest: curriculumDigest(locale),
+  });
 }
 
 /**
  * LLMが返したtopic_idを照合し、許可リストを作る(ガードレール1段目)。
  * 未知のIDは捨て、それでも空なら写真テキストからのキーワード推定にフォールバックする。
+ *
+ * 照合はロケールでも絞る。日本語のプロンプトに載っていない `A1-...` が返って
+ * きたら、それは解析器が別の課程の記憶で答えているので通さない。
  */
-export function resolveDetectedTopics(analysis: PhotoAnalysis): {
+export function resolveDetectedTopics(
+  analysis: PhotoAnalysis,
+  locale: CurriculumLocale = "ja",
+): {
   topicIds: string[];
   droppedIds: string[];
 } {
   const droppedIds: string[] = [];
   const topicIds: string[] = [];
+  const inCurriculum = new Set(topicsFor(locale).map((topic) => topic.id));
 
   for (const entry of analysis.topics) {
-    if (isKnownTopicId(entry.topic_id)) topicIds.push(entry.topic_id);
-    else droppedIds.push(entry.topic_id);
+    if (isKnownTopicId(entry.topic_id) && inCurriculum.has(entry.topic_id)) {
+      topicIds.push(entry.topic_id);
+    } else {
+      droppedIds.push(entry.topic_id);
+    }
   }
 
   if (topicIds.length === 0 && analysis.is_math_note) {
     const haystack = [analysis.summary, ...analysis.visible_work, ...analysis.question_seeds].join(
       " ",
     );
-    topicIds.push(...suggestTopics(haystack, 3).map((topic) => topic.id));
+    topicIds.push(...suggestTopics(haystack, 3, { locale }).map((topic) => topic.id));
   }
 
   return { topicIds: [...new Set(topicIds)], droppedIds };
@@ -149,6 +177,12 @@ export function toDetectedTopicPayload(
   });
 }
 
+/** systemと同じ言語で頼む。日本語で頼むと、英語のプロンプトでも日本語のsummaryが返る。 */
+const analysisInstruction: Record<CurriculumLocale, string> = {
+  ja: "このノートを解析してJSONだけを返してください。",
+  en: "Analyze these notes and return the JSON only.",
+};
+
 export type AnthropicAnalyzerOptions = {
   apiKey: string;
   model: string;
@@ -162,7 +196,7 @@ export function createAnthropicAnalyzer(options: AnthropicAnalyzerOptions): Phot
   const baseUrl = options.baseUrl ?? "https://api.anthropic.com";
 
   return {
-    async analyze({ image, contentType }) {
+    async analyze({ image, contentType, locale = "ja" }) {
       const response = await doFetch(`${baseUrl}/v1/messages`, {
         method: "POST",
         headers: {
@@ -173,7 +207,7 @@ export function createAnthropicAnalyzer(options: AnthropicAnalyzerOptions): Phot
         body: JSON.stringify({
           model: options.model,
           max_tokens: 1500,
-          system: photoAnalysisPrompt(),
+          system: photoAnalysisPrompt(locale),
           messages: [
             {
               role: "user",
@@ -182,7 +216,7 @@ export function createAnthropicAnalyzer(options: AnthropicAnalyzerOptions): Phot
                   type: "image",
                   source: { type: "base64", media_type: contentType, data: toBase64(image) },
                 },
-                { type: "text", text: "このノートを解析してJSONだけを返してください。" },
+                { type: "text", text: analysisInstruction[locale] },
               ],
             },
           ],

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../api/api_client.dart';
+import '../../../l10n/strings.dart';
 import '../../session/domain/session.dart';
 
 part 'capture_controller.g.dart';
@@ -98,9 +99,9 @@ class CaptureController extends _$CaptureController {
       // isSubmitting が立ったままスピナーで固まり、撮り直しの導線も消える。
       state = state.copyWith(
         isSubmitting: false,
-        error: const ApiException(
+        error: ApiException(
           code: 'internal_error',
-          message: 'うまく送れませんでした。電波の届くところで、もう一度お願いします。',
+          message: AppStrings.forLanguage(locale).errorNetwork,
         ),
       );
     }
@@ -139,9 +140,9 @@ class CaptureController extends _$CaptureController {
     } catch (_) {
       state = state.copyWith(
         isSubmitting: false,
-        error: const ApiException(
+        error: ApiException(
           code: 'internal_error',
-          message: 'うまく送れませんでした。電波の届くところで、もう一度お願いします。',
+          message: AppStrings.forLanguage(locale).errorNetwork,
         ),
       );
       return null;
@@ -165,9 +166,9 @@ class CaptureController extends _$CaptureController {
     } catch (_) {
       state = state.copyWith(
         isSubmitting: false,
-        error: const ApiException(
+        error: ApiException(
           code: 'internal_error',
-          message: 'うまく送れませんでした。電波の届くところで、もう一度お願いします。',
+          message: AppStrings.forLanguage(locale).errorNetwork,
         ),
       );
       return null;
