@@ -4,12 +4,15 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "description": "prompts/*.md の読み込みと穴埋め(Workers/agentから使う)",
+  "description": "prompts/*.md の読み込みと穴埋め(科目ごとの差し替えを含む)",
   "exports": {
     ".": "./src/index.ts"
   },
   "files": ["src"],
   "scripts": {
     "generate": "node --experimental-strip-types src/generate.ts"
+  },
+  "dependencies": {
+    "@ai-sensei/curriculum": "workspace:*"
   }
 }

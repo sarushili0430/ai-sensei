@@ -1,11 +1,11 @@
 ---
-id: question_types_few_shot
+id: question_types_math_few_shot
 locale: ja
 model_role: conversation
 variables: []
 ---
 
-質問の文体をそろえるためのfew-shot。**素朴な疑問**の形に統一する。
+数学の質問の文体をそろえるためのfew-shot。**素朴な疑問**の形に統一する。
 試験官の口調(「説明してください」「述べよ」)にしないこと。
 
 ## 1. 方針の理由

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  allowedSubjects,
   buildAllowedTopics,
   checkQuestion,
   containsAnswerLeak,
@@ -196,5 +197,79 @@ describe("確認の形をした答え", () => {
     "どこから話すか迷ってます?",
   ])("ふつうの質問は通す: %s", (text) => {
     expect(containsAnswerLeak(text)).toBe(false);
+  });
+});
+
+// 英文法のセッションでも、二重ガードは同じ形で効かないといけない。
+describe("英文法のセッション", () => {
+  const grammar = buildAllowedTopics(["EG-JISEI-GENZAI-KANRYO"]);
+
+  it("許可リストの科目を引ける", () => {
+    expect(allowedSubjects(grammar)).toEqual(["英文法"]);
+    expect(allowedSubjects(allowed)).toEqual(["数学"]);
+  });
+
+  it("前提は同じ科目の中だけをたどる", () => {
+    expect(grammar.prerequisite.has("EG-JISEI-GENZAI-KAKO")).toBe(true);
+    for (const id of [...grammar.primary, ...grammar.prerequisite]) {
+      expect(id.startsWith("EG-"), id).toBe(true);
+    }
+  });
+
+  it("数学のtopic_idは許可リストに入っていないので弾く", () => {
+    const verdict = checkQuestion(
+      { topic_id: "M2-ZUKEI-ENCHOKU", text: "なんで判別式を使ったんですか?" },
+      grammar,
+    );
+    expect(verdict).toMatchObject({ ok: false, reason: "topic_not_allowed" });
+  });
+
+  it("言語学の用語は範囲外として弾く", () => {
+    const verdict = checkQuestion(
+      { topic_id: "EG-JISEI-GENZAI-KANRYO", text: "これって統語論ではどう説明するんですか?" },
+      grammar,
+    );
+    expect(verdict).toMatchObject({ ok: false, reason: "out_of_scope_wording" });
+  });
+
+  it("素朴な「なぜ」は通す", () => {
+    const verdict = checkQuestion(
+      {
+        topic_id: "EG-JISEI-GENZAI-KANRYO",
+        text: "なんでここは過去形じゃなくて現在完了なんですか?",
+      },
+      grammar,
+    );
+    expect(verdict.ok).toBe(true);
+  });
+
+  // 文法用語を言い当ててしまうと、ユーザーが自分で気づく余地がなくなる
+  it.each(["ここ、現在完了ですよね?", "これは分詞構文ですよね?", "関係代名詞の主格ですよね?"])(
+    "確認の形をした答えを弾く: %s",
+    (text) => {
+      expect(containsAnswerLeak(text)).toBe(true);
+    },
+  );
+
+  // 「比較」「否定」「省略」はどちらの科目にもある日本語。科目を絞らずに
+  // 本文から単元を推定すると、まっとうな数学の質問が英文法と見なされて落ちる。
+  it("数学のセッションで「比較」を含む質問を、英文法と取り違えない", () => {
+    const verdict = checkQuestion(
+      { topic_id: "M2-ZUKEI-ENCHOKU", text: "なんで距離と半径を比較して判定したんですか?" },
+      allowed,
+    );
+    expect(verdict.ok).toBe(true);
+  });
+
+  it("科目をまたいだ穴のタグを落とす", () => {
+    const { accepted, rejected } = filterHoleTopicIds(
+      [
+        { topic_id: "EG-JISEI-GENZAI-KANRYO", desc: "完了の意味で説明が止まった" },
+        { topic_id: "M2-ZUKEI-ENCHOKU", desc: "判別式で説明が止まった" },
+      ],
+      grammar,
+    );
+    expect(accepted).toHaveLength(1);
+    expect(rejected[0]).toMatchObject({ reason: "topic_not_allowed" });
   });
 });

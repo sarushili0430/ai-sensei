@@ -6,11 +6,14 @@ import {
   isKnownTopicId,
   isWellFormedTopicId,
   prerequisitesOf,
+  subjectOfTopicId,
+  subjectsOfTopicIds,
   suggestTopics,
   topics,
   topicsByCourse,
+  topicsBySubject,
 } from "./index.ts";
-import { courseNames } from "./schema.ts";
+import { courseNames, subjects } from "./schema.ts";
 
 describe("カリキュラムデータの整合性", () => {
   it("スキーマを満たす(importの時点でparse済み)", () => {
@@ -22,9 +25,15 @@ describe("カリキュラムデータの整合性", () => {
     expect(checkIntegrity()).toEqual([]);
   });
 
-  it("6科目すべてにトピックがある", () => {
+  it("全コースにトピックがある", () => {
     for (const course of courseNames) {
       expect(topicsByCourse(course).length, `${course} のトピックが空`).toBeGreaterThan(0);
+    }
+  });
+
+  it("全科目にトピックがある", () => {
+    for (const subject of subjects) {
+      expect(topicsBySubject(subject).length, `${subject} のトピックが空`).toBeGreaterThan(0);
     }
   });
 
@@ -73,9 +82,52 @@ describe("新課程の配当", () => {
   });
 });
 
+// 英文法は数学と同じ仕組み(単元 → 到達目標 → 質問)に載せる。
+// 「訳せますか」ではなく「なぜそう読めるのか」を聞ける形になっているかを見る。
+describe("英文法の配当", () => {
+  const englishGrammar = topicsBySubject("英文法");
+
+  it("すべて 英文法 コース・EG- 接頭辞になっている", () => {
+    for (const topic of englishGrammar) {
+      expect(topic.course, topic.id).toBe("英文法");
+      expect(topic.id.startsWith("EG-"), topic.id).toBe(true);
+    }
+  });
+
+  it("高校英文法の主要単元がそろっている", () => {
+    const units = new Set(englishGrammar.map((topic) => topic.unit));
+    for (const unit of ["時制", "助動詞", "不定詞", "分詞", "関係詞", "仮定法", "比較表現"]) {
+      expect(units, `${unit} がない`).toContain(unit);
+    }
+  });
+
+  it("時制と仮定法がつながっている(仮定法は時制をずらす話なので)", () => {
+    const ids = prerequisitesOf("EG-KATEIHO-KAKO-KANRYO", 2).map((topic) => topic.id);
+    expect(ids).toContain("EG-KATEIHO-KAKO");
+    expect(ids).toContain("EG-JISEI-KAKO-KANRYO");
+  });
+});
+
+describe("科目の判定", () => {
+  it("topic_idから科目を引ける", () => {
+    expect(subjectOfTopicId("M2-ZUKEI-ENCHOKU")).toBe("数学");
+    expect(subjectOfTopicId("EG-KANKEISHI-DAIMEISHI")).toBe("英文法");
+    expect(subjectOfTopicId("M2-SONZAI-SHINAI")).toBeUndefined();
+  });
+
+  // 1枚のノートは1科目。混ざったまま許可リストを作ると、
+  // 数学のセッションで英文法の質問が通ってしまう。
+  it("複数のIDが何科目にまたがるかを返す", () => {
+    expect(subjectsOfTopicIds(["M2-ZUKEI-ENCHOKU", "M1-NIJI-HANBETSU"])).toEqual(["数学"]);
+    expect(subjectsOfTopicIds(["M2-ZUKEI-ENCHOKU", "EG-JISEI-SHINKO"])).toHaveLength(2);
+    expect(subjectsOfTopicIds([])).toEqual([]);
+  });
+});
+
 describe("topic_idの判定", () => {
   it("既知のIDを通す", () => {
     expect(isKnownTopicId("M2-ZUKEI-ENCHOKU")).toBe(true);
+    expect(isKnownTopicId("EG-JISEI-GENZAI-KANRYO")).toBe(true);
   });
 
   it("形は正しいが未定義のIDを弾く", () => {
@@ -126,8 +178,26 @@ describe("suggestTopics", () => {
     expect(ids).toContain("M1-NIJI-GURAFU");
   });
 
-  it("数学と無関係なテキストでは候補を返さない", () => {
+  it("どの科目とも無関係なテキストでは候補を返さない", () => {
     expect(suggestTopics("今日の献立はカレーです")).toEqual([]);
+  });
+
+  it("英文法のテキストから単元を推定する", () => {
+    const ids = suggestTopics("関係代名詞の目的格が省略されている 先行詞はどれか").map((t) => t.id);
+    expect(ids[0]).toBe("EG-KANKEISHI-DAIMEISHI");
+  });
+
+  // 「比較」「否定」「省略」は数学にも英文法にもある日本語。科目を絞らないと
+  // 数学のノートに英文法の単元が混ざる(逆も同じ)。
+  it("科目を指定すると、その科目の中からだけ候補を返す", () => {
+    const mathOnly = suggestTopics("原級を使った比較", 5, { subject: "数学" });
+    expect(mathOnly).toEqual([]);
+
+    const grammarOnly = suggestTopics("判別式 平方完成", 5, { subject: "英文法" });
+    expect(grammarOnly).toEqual([]);
+
+    const ids = suggestTopics("原級を使った比較", 5, { subject: "英文法" }).map((t) => t.id);
+    expect(ids).toContain("EG-HIKAKU-GENKYU");
   });
 
   // `constant` の tan、`since` の sin、`biology` の log を数学の証拠にしない。

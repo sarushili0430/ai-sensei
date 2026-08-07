@@ -4,8 +4,10 @@ import {
   createSessionRequestSchema,
   updateSessionTopicsRequestSchema,
 } from "@ai-sensei/contract";
+import type { Subject } from "@ai-sensei/curriculum";
 import {
   type AllowedTopics,
+  allowedSubjects,
   allowedTopicList,
   buildAllowedTopics,
   toLocalDate,
@@ -107,6 +109,7 @@ sessionsRoute.post("/", async (c) => {
   let analysis: PhotoAnalysis | null = null;
 
   let allowed: AllowedTopics;
+  let subject: Subject;
   try {
     if (photo instanceof File) {
       const image = await photo.arrayBuffer();
@@ -123,7 +126,7 @@ sessionsRoute.post("/", async (c) => {
       });
 
       analysis = await analyzer.analyze({ image, contentType: mediaType });
-      if (!analysis.is_math_note) {
+      if (analysis.subject === null) {
         throw apiError("out_of_scope", { locale });
       }
 
@@ -143,6 +146,15 @@ sessionsRoute.post("/", async (c) => {
     if (allowed.primary.size === 0) {
       throw apiError("photo_unreadable", { locale });
     }
+
+    // **1セッションは1科目。** 許可リストから科目を引き、写真の科目と突き合わせる。
+    // ここを開けると、数学の写真に英文法のtopic_idsを添えて投げるだけで、
+    // 写真と関係のない科目の会話に化けさせられる。
+    const resolved = resolveSubject(allowed);
+    if (resolved === null || (analysis !== null && resolved !== analysis.subject)) {
+      throw apiError("photo_unreadable", { locale });
+    }
+    subject = resolved;
   } catch (error) {
     // 押さえた枠を返す。読み取れなかった写真で今日の1回を失わせない。
     await repository.deleteSession(sessionId);
@@ -178,6 +190,7 @@ sessionsRoute.post("/", async (c) => {
     sessionId,
     locale,
     kind: meta.kind,
+    subject,
     maxSeconds: allowance.maxSeconds,
     context,
     allowed,
@@ -202,6 +215,7 @@ sessionsRoute.post("/", async (c) => {
     session_id: sessionId,
     kind: meta.kind,
     locale,
+    subject,
     topic_ids: [...allowed.primary],
     max_seconds: allowance.maxSeconds,
     agent_dispatch: dispatch ? "explicit" : "automatic",
@@ -211,7 +225,7 @@ sessionsRoute.post("/", async (c) => {
     session_id: sessionId,
     kind: meta.kind,
     livekit: { url: c.env.LIVEKIT_URL, token, room: sessionId },
-    detected_topics: buildDetectedTopics(allowed, context),
+    detected_topics: buildDetectedTopics(allowed, subject, context),
     limits: {
       max_seconds: allowance.maxSeconds,
       remaining_sessions_today: allowance.remainingToday,
@@ -254,6 +268,11 @@ sessionsRoute.patch("/:sessionId/topics", async (c) => {
   const allowed = buildAllowedTopics(requested.filter((topicId) => detected.has(topicId)));
   if (allowed.primary.size === 0) throw apiError("photo_unreadable", { locale });
 
+  // 科目は保存した文脈ではなく、残った単元から引き直す。
+  // 解析より前に作られたセッションの行にも、同じ判断が効く。
+  const subject = resolveSubject(allowed);
+  if (subject === null) throw apiError("photo_unreadable", { locale });
+
   const user = await repository.ensureUser(deviceId, at);
   const premium = isPremiumNow(user, at);
   const maxSeconds = premium ? limits.premiumSessionMaxSeconds : limits.freeSessionMaxSeconds;
@@ -276,6 +295,7 @@ sessionsRoute.patch("/:sessionId/topics", async (c) => {
     sessionId,
     locale,
     kind: session.kind,
+    subject,
     maxSeconds,
     context,
     allowed,
@@ -300,7 +320,7 @@ sessionsRoute.patch("/:sessionId/topics", async (c) => {
     session_id: sessionId,
     kind: session.kind,
     livekit: { url: c.env.LIVEKIT_URL, token, room: sessionId },
-    detected_topics: buildDetectedTopics(allowed, context),
+    detected_topics: buildDetectedTopics(allowed, subject, context),
     limits: {
       max_seconds: maxSeconds,
       remaining_sessions_today: premium
@@ -330,11 +350,21 @@ function agentDispatch(env: Bindings, metadata: string): AgentDispatch | undefin
   return { name, metadata };
 }
 
+/**
+ * 許可リストの科目。1セッションは1科目なので、2科目にまたがっていたら
+ * 組み立てが壊れている(nullを返して呼び出し側で落とす)。
+ */
+function resolveSubject(allowed: AllowedTopics): Subject | null {
+  const found = allowedSubjects(allowed);
+  return found.length === 1 ? (found[0] ?? null) : null;
+}
+
 /** エージェントがトークンから読む会話文脈。 */
 function buildSessionMetadata(input: {
   sessionId: string;
   locale: "ja" | "en";
   kind: "new" | "review";
+  subject: Subject;
   maxSeconds: number;
   context: SessionContext;
   allowed: AllowedTopics;
@@ -344,6 +374,8 @@ function buildSessionMetadata(input: {
     session_id: input.sessionId,
     locale: input.locale,
     kind: input.kind,
+    // 後輩の質問の文体と音声の補正ヒントは、これで切り替わる。
+    subject: input.subject,
     max_seconds: input.maxSeconds,
     photo_summary: input.context.summary,
     visible_work: formatBullets(input.context.visible_work),
@@ -359,9 +391,9 @@ function buildSessionMetadata(input: {
  * 解析器が返した確信度をそのまま渡す。ここで捨てると、確信度の高い候補まで
  * フォールバック値(0.4)になり、チップUIが全部「候補」表示になってしまう。
  */
-function buildDetectedTopics(allowed: AllowedTopics, context: SessionContext) {
+function buildDetectedTopics(allowed: AllowedTopics, subject: Subject, context: SessionContext) {
   return toDetectedTopicPayload([...allowed.primary], {
-    is_math_note: true,
+    subject,
     summary: context.summary,
     visible_work: context.visible_work,
     topics: context.topics,

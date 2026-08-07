@@ -1,14 +1,24 @@
 {
-  "version": "0.1.0",
-  "curriculum": "高等学校学習指導要領(平成30年告示・2022年度入学生から実施の新課程)",
-  "note": "質問生成の許可リスト兼、穴のタグ付けに使う。範囲外の話題を後輩AIに振らせないための正(source of truth)。",
-  "courses": [
-    { "code": "M1", "name": "数学I" },
-    { "code": "MA", "name": "数学A" },
-    { "code": "M2", "name": "数学II" },
-    { "code": "MB", "name": "数学B" },
-    { "code": "M3", "name": "数学III" },
-    { "code": "MC", "name": "数学C" }
+  "version": "0.2.0",
+  "note": "質問生成の許可リスト兼、穴のタグ付けに使う。範囲外の話題を後輩AIに振らせないための正(source of truth)。1セッションで扱えるのは1科目だけ。",
+  "subjects": [
+    {
+      "subject": "数学",
+      "curriculum": "高等学校学習指導要領(平成30年告示・2022年度入学生から実施の新課程) 数学",
+      "courses": [
+        { "code": "M1", "name": "数学I" },
+        { "code": "MA", "name": "数学A" },
+        { "code": "M2", "name": "数学II" },
+        { "code": "MB", "name": "数学B" },
+        { "code": "M3", "name": "数学III" },
+        { "code": "MC", "name": "数学C" }
+      ]
+    },
+    {
+      "subject": "英文法",
+      "curriculum": "高等学校学習指導要領(平成30年告示) 外国語(英語コミュニケーションI〜III・論理・表現I〜III)で扱う文法事項",
+      "courses": [{ "code": "EG", "name": "英文法" }]
+    }
   ],
   "topics": [
     {
@@ -699,6 +709,591 @@
       ],
       "prerequisites": ["M2-ZUKEI-ENCHOKU"],
       "keywords": ["放物線", "楕円", "双曲線", "焦点", "準線", "媒介変数", "極座標"]
+    },
+
+    {
+      "id": "EG-BUNKEI-GOBUNKEI",
+      "course": "英文法",
+      "unit": "文型と品詞",
+      "topic": "5文型と文の要素",
+      "goals": [
+        "主語・動詞・目的語・補語に分けて文の骨組みをとらえられる",
+        "目的語と補語の違いを、名詞との関係から説明できる",
+        "同じ動詞でも文型が変わると意味が変わる理由を説明できる"
+      ],
+      "prerequisites": [],
+      "keywords": ["文型", "第4文型", "第5文型", "SVOC", "補語", "目的語", "文の要素"]
+    },
+    {
+      "id": "EG-BUNKEI-JIDOSHI-TADOSHI",
+      "course": "英文法",
+      "unit": "文型と品詞",
+      "topic": "自動詞と他動詞",
+      "goals": [
+        "自動詞と他動詞を、目的語をとるかどうかで見分けられる",
+        "前置詞が要る動詞と要らない動詞の違いを説明できる"
+      ],
+      "prerequisites": ["EG-BUNKEI-GOBUNKEI"],
+      "keywords": ["自動詞", "他動詞", "目的語をとる動詞", "前置詞が必要な動詞"]
+    },
+    {
+      "id": "EG-BUNKEI-CHIKAKU-SHIEKI",
+      "course": "英文法",
+      "unit": "文型と品詞",
+      "topic": "知覚動詞・使役動詞の第5文型",
+      "goals": [
+        "知覚動詞・使役動詞のあとの形(原形・現在分詞・過去分詞)を使い分けられる",
+        "その形になる理由を、目的語と補語の関係から説明できる"
+      ],
+      "prerequisites": ["EG-BUNKEI-GOBUNKEI"],
+      "keywords": ["知覚動詞", "使役動詞", "第5文型の補語", "目的格補語"]
+    },
+
+    {
+      "id": "EG-JISEI-GENZAI-KAKO",
+      "course": "英文法",
+      "unit": "時制",
+      "topic": "現在形と過去形",
+      "goals": [
+        "現在形が「いつもそう」を表すことを説明できる",
+        "過去形が「今とは切れている」ことを説明できる",
+        "時を表す語句から、どちらの時制を選ぶかを判断できる"
+      ],
+      "prerequisites": [],
+      "keywords": ["現在形", "過去形", "時制", "習慣を表す現在形", "不変の真理"]
+    },
+    {
+      "id": "EG-JISEI-SHINKO",
+      "course": "英文法",
+      "unit": "時制",
+      "topic": "進行形",
+      "goals": [
+        "進行形が「途中である」ことを表すと説明できる",
+        "状態動詞が進行形になりにくい理由を説明できる",
+        "現在形と進行形を使い分けられる"
+      ],
+      "prerequisites": ["EG-JISEI-GENZAI-KAKO"],
+      "keywords": ["進行形", "現在進行形", "過去進行形", "状態動詞", "動作動詞"]
+    },
+    {
+      "id": "EG-JISEI-GENZAI-KANRYO",
+      "course": "英文法",
+      "unit": "時制",
+      "topic": "現在完了と過去形の使い分け",
+      "goals": [
+        "完了・経験・継続のどれで読むかを、文脈から判断できる",
+        "現在完了と過去形の違いを「今とのつながり」で説明できる",
+        "過去の一点を指す語句と現在完了が一緒に使えない理由を説明できる"
+      ],
+      "prerequisites": ["EG-JISEI-GENZAI-KAKO"],
+      "keywords": ["現在完了", "完了・経験・継続", "have+過去分詞", "現在完了進行形"]
+    },
+    {
+      "id": "EG-JISEI-KAKO-KANRYO",
+      "course": "英文法",
+      "unit": "時制",
+      "topic": "過去完了と大過去",
+      "goals": [
+        "過去完了が「過去のある時点より前」を表すことを説明できる",
+        "大過去と過去完了を使い分けられる",
+        "基準になる過去の時点がどこかを判断できる"
+      ],
+      "prerequisites": ["EG-JISEI-GENZAI-KANRYO"],
+      "keywords": ["過去完了", "大過去", "had+過去分詞", "未来完了", "基準となる時点"]
+    },
+    {
+      "id": "EG-JISEI-MIRAI",
+      "course": "英文法",
+      "unit": "時制",
+      "topic": "未来を表す表現",
+      "goals": [
+        "willとbe going toを、決めた時点の違いから使い分けられる",
+        "現在形・現在進行形で未来を表せる場合を判断できる"
+      ],
+      "prerequisites": ["EG-JISEI-SHINKO"],
+      "keywords": ["未来表現", "be going to", "予定を表す進行形", "その場で決めた未来"]
+    },
+
+    {
+      "id": "EG-JODOSHI-KIHON",
+      "course": "英文法",
+      "unit": "助動詞",
+      "topic": "助動詞の基本の意味",
+      "goals": [
+        "能力・許可・義務を表す助動詞を使い分けられる",
+        "助動詞のあとが動詞の原形になる理由を説明できる"
+      ],
+      "prerequisites": [],
+      "keywords": [
+        "助動詞",
+        "動詞の原形",
+        "義務を表す助動詞",
+        "許可を表す助動詞",
+        "能力を表す助動詞"
+      ]
+    },
+    {
+      "id": "EG-JODOSHI-SUIRYO",
+      "course": "英文法",
+      "unit": "助動詞",
+      "topic": "推量の助動詞と確信の強さ",
+      "goals": [
+        "推量の助動詞を確信の強い順に並べられる",
+        "同じ助動詞の義務の意味と推量の意味を、文脈から判断できる"
+      ],
+      "prerequisites": ["EG-JODOSHI-KIHON"],
+      "keywords": ["推量の助動詞", "確信の強さ", "にちがいない", "はずがない", "かもしれない"]
+    },
+    {
+      "id": "EG-JODOSHI-KANRYO",
+      "course": "英文法",
+      "unit": "助動詞",
+      "topic": "助動詞+have+過去分詞",
+      "goals": [
+        "この形が過去のことへの推量・後悔を表すと説明できる",
+        "助動詞ひとつの形との違いを使い分けられる"
+      ],
+      "prerequisites": ["EG-JODOSHI-SUIRYO", "EG-JISEI-GENZAI-KANRYO"],
+      "keywords": ["助動詞+have+過去分詞", "過去への後悔", "すればよかった", "したにちがいない"]
+    },
+
+    {
+      "id": "EG-TAI-JUDOTAI",
+      "course": "英文法",
+      "unit": "受動態",
+      "topic": "受動態の作り方と使いどころ",
+      "goals": [
+        "能動態と受動態を書き換えられる",
+        "わざわざ受動態にする理由(動作主を言わない・話題を主語に置く)を説明できる"
+      ],
+      "prerequisites": ["EG-BUNKEI-JIDOSHI-TADOSHI"],
+      "keywords": ["受動態", "受け身", "be+過去分詞", "動作主", "能動態への書き換え"]
+    },
+    {
+      "id": "EG-TAI-JUDOTAI-CHUI",
+      "course": "英文法",
+      "unit": "受動態",
+      "topic": "注意すべき受動態",
+      "goals": [
+        "句動詞の受動態で前置詞が残る理由を説明できる",
+        "by以外の前置詞をとる受動態を使い分けられる",
+        "第4文型・第5文型の受動態の形を判断できる"
+      ],
+      "prerequisites": ["EG-TAI-JUDOTAI"],
+      "keywords": [
+        "句動詞の受動態",
+        "前置詞が残る受動態",
+        "by以外の前置詞",
+        "第4文型の受動態",
+        "第5文型の受動態"
+      ]
+    },
+
+    {
+      "id": "EG-FUTEISHI-3YOHO",
+      "course": "英文法",
+      "unit": "不定詞",
+      "topic": "不定詞の3用法",
+      "goals": [
+        "名詞的・形容詞的・副詞的用法を、文中での働きから判断できる",
+        "同じto不定詞が用法によって訳し方の変わる理由を説明できる"
+      ],
+      "prerequisites": ["EG-BUNKEI-GOBUNKEI"],
+      "keywords": ["不定詞", "to不定詞", "名詞的用法", "形容詞的用法", "副詞的用法"]
+    },
+    {
+      "id": "EG-FUTEISHI-SHUGO-HITEI",
+      "course": "英文法",
+      "unit": "不定詞",
+      "topic": "意味上の主語・否定・完了不定詞",
+      "goals": [
+        "意味上の主語をforとofで使い分けられる",
+        "不定詞を否定するときのnotの位置を説明できる",
+        "完了不定詞が表す時のずれを説明できる"
+      ],
+      "prerequisites": ["EG-FUTEISHI-3YOHO"],
+      "keywords": ["意味上の主語", "不定詞の否定", "完了不定詞", "forとofの使い分け"]
+    },
+    {
+      "id": "EG-FUTEISHI-GENKEI",
+      "course": "英文法",
+      "unit": "不定詞",
+      "topic": "原形不定詞",
+      "goals": [
+        "原形不定詞をとる動詞を、知覚・使役の意味から説明できる",
+        "to不定詞との使い分けができる"
+      ],
+      "prerequisites": ["EG-FUTEISHI-3YOHO", "EG-BUNKEI-CHIKAKU-SHIEKI"],
+      "keywords": [
+        "原形不定詞",
+        "toのつかない不定詞",
+        "知覚動詞のあとの原形",
+        "使役動詞のあとの原形"
+      ]
+    },
+
+    {
+      "id": "EG-DOMEISHI-KIHON",
+      "course": "英文法",
+      "unit": "動名詞",
+      "topic": "動名詞の働き",
+      "goals": [
+        "動名詞が主語・目的語・補語になることを説明できる",
+        "前置詞のあとが動名詞になる理由を説明できる"
+      ],
+      "prerequisites": ["EG-BUNKEI-GOBUNKEI"],
+      "keywords": ["動名詞", "ing形", "前置詞+動名詞", "動名詞の意味上の主語"]
+    },
+    {
+      "id": "EG-DOMEISHI-FUTEISHI",
+      "course": "英文法",
+      "unit": "動名詞",
+      "topic": "動名詞と不定詞の使い分け",
+      "goals": [
+        "目的語に動名詞だけ・不定詞だけをとる動詞を、意味の向き(これから/すでに)から説明できる",
+        "あとに続く形で意味が変わる動詞を使い分けられる"
+      ],
+      "prerequisites": ["EG-DOMEISHI-KIHON", "EG-FUTEISHI-3YOHO"],
+      "keywords": [
+        "動名詞と不定詞",
+        "目的語にとる動詞",
+        "これからの行為",
+        "すでにした行為",
+        "意味が変わる動詞"
+      ]
+    },
+
+    {
+      "id": "EG-BUNSHI-KEIYOSHI",
+      "course": "英文法",
+      "unit": "分詞",
+      "topic": "分詞の形容詞用法",
+      "goals": [
+        "現在分詞と過去分詞を「する側・される側」で使い分けられる",
+        "分詞が名詞の前から修飾するか後ろからかを判断できる"
+      ],
+      "prerequisites": ["EG-BUNKEI-GOBUNKEI"],
+      "keywords": ["現在分詞", "過去分詞", "分詞の後置修飾", "名詞を修飾する分詞"]
+    },
+    {
+      "id": "EG-BUNSHI-KOBUN",
+      "course": "英文法",
+      "unit": "分詞",
+      "topic": "分詞構文",
+      "goals": [
+        "分詞構文が「接続詞+主語+動詞」を省いた形であることを説明できる",
+        "時・理由・条件のどれで訳すかを文脈から判断できる"
+      ],
+      "prerequisites": ["EG-BUNSHI-KEIYOSHI"],
+      "keywords": ["分詞構文", "接続詞の省略", "時を表す分詞構文", "理由を表す分詞構文"]
+    },
+    {
+      "id": "EG-BUNSHI-DOKURITSU",
+      "course": "英文法",
+      "unit": "分詞",
+      "topic": "独立分詞構文と付帯状況",
+      "goals": [
+        "主語が主節と違うときに分詞の前に主語を残す理由を説明できる",
+        "付帯状況の表し方を使い分けられる"
+      ],
+      "prerequisites": ["EG-BUNSHI-KOBUN"],
+      "keywords": ["独立分詞構文", "付帯状況", "with+名詞+分詞", "懸垂分詞"]
+    },
+
+    {
+      "id": "EG-HIKAKU-GENKYU",
+      "course": "英文法",
+      "unit": "比較表現",
+      "topic": "原級を使った比較",
+      "goals": [
+        "原級比較の形を作れる",
+        "倍数を表す語を置く位置を説明できる",
+        "否定の原級比較が何を言っているかを説明できる"
+      ],
+      "prerequisites": [],
+      "keywords": ["原級比較", "同じくらいだ", "倍数表現", "原級を使った比較"]
+    },
+    {
+      "id": "EG-HIKAKU-HIKAKUKYU",
+      "course": "英文法",
+      "unit": "比較表現",
+      "topic": "比較級と差の表し方",
+      "goals": [
+        "比較級の作り方(erとmore)を使い分けられる",
+        "差の大きさを表す語の位置を説明できる",
+        "thanのあとで省略された語を補って説明できる"
+      ],
+      "prerequisites": ["EG-HIKAKU-GENKYU"],
+      "keywords": ["比較級", "erとmore", "比較級の強調", "thanのあとの省略"]
+    },
+    {
+      "id": "EG-HIKAKU-SAIJOKYU",
+      "course": "英文法",
+      "unit": "比較表現",
+      "topic": "最上級と最上級相当表現",
+      "goals": [
+        "最上級にtheが付く理由を説明できる",
+        "原級・比較級で最上級の意味を表す言い換えを使い分けられる",
+        "範囲を表す前置詞を判断できる"
+      ],
+      "prerequisites": ["EG-HIKAKU-HIKAKUKYU"],
+      "keywords": ["最上級", "最上級相当表現", "比較級で最上級を表す", "範囲を表す前置詞"]
+    },
+
+    {
+      "id": "EG-KANKEISHI-DAIMEISHI",
+      "course": "英文法",
+      "unit": "関係詞",
+      "topic": "関係代名詞",
+      "goals": [
+        "主格・目的格・所有格を、関係詞節の中での働きから判断できる",
+        "目的格の関係代名詞が省略できる理由を説明できる"
+      ],
+      "prerequisites": ["EG-BUNKEI-GOBUNKEI"],
+      "keywords": ["関係代名詞", "先行詞", "関係詞節", "主格", "目的格", "関係代名詞の省略"]
+    },
+    {
+      "id": "EG-KANKEISHI-FUKUSHI",
+      "course": "英文法",
+      "unit": "関係詞",
+      "topic": "関係副詞と前置詞+関係代名詞",
+      "goals": [
+        "関係副詞と関係代名詞を、節の中で欠けている要素から使い分けられる",
+        "前置詞+関係代名詞に書き換えられる理由を説明できる"
+      ],
+      "prerequisites": ["EG-KANKEISHI-DAIMEISHI"],
+      "keywords": ["関係副詞", "前置詞+関係代名詞", "場所を表す関係副詞", "理由を表す関係副詞"]
+    },
+    {
+      "id": "EG-KANKEISHI-HISEIGEN",
+      "course": "英文法",
+      "unit": "関係詞",
+      "topic": "非制限用法",
+      "goals": [
+        "コンマの有無で意味がどう変わるかを説明できる",
+        "制限用法と非制限用法を使い分けられる"
+      ],
+      "prerequisites": ["EG-KANKEISHI-DAIMEISHI"],
+      "keywords": ["非制限用法", "制限用法", "コンマつきの関係詞", "継続用法"]
+    },
+    {
+      "id": "EG-KANKEISHI-WHAT-FUKUGO",
+      "course": "英文法",
+      "unit": "関係詞",
+      "topic": "関係代名詞whatと複合関係詞",
+      "goals": [
+        "whatが先行詞を含んでいることを説明できる",
+        "複合関係詞の「〜するものすべて」と「たとえ〜でも」を使い分けられる"
+      ],
+      "prerequisites": ["EG-KANKEISHI-DAIMEISHI"],
+      "keywords": ["関係代名詞what", "先行詞を含む関係詞", "複合関係詞", "譲歩を表す複合関係詞"]
+    },
+
+    {
+      "id": "EG-KATEIHO-KAKO",
+      "course": "英文法",
+      "unit": "仮定法",
+      "topic": "仮定法過去",
+      "goals": [
+        "仮定法過去が現在の事実に反する話であることを、時制をひとつずらす仕組みから説明できる",
+        "直説法のifと仮定法のifを使い分けられる"
+      ],
+      "prerequisites": ["EG-JISEI-GENZAI-KAKO", "EG-JODOSHI-KIHON"],
+      "keywords": ["仮定法過去", "事実に反する仮定", "時制をずらす", "直説法との違い"]
+    },
+    {
+      "id": "EG-KATEIHO-KAKO-KANRYO",
+      "course": "英文法",
+      "unit": "仮定法",
+      "topic": "仮定法過去完了と混合",
+      "goals": [
+        "仮定法過去完了が過去の事実に反する話であることを説明できる",
+        "条件節と主節で時がずれる形を判断できる"
+      ],
+      "prerequisites": ["EG-KATEIHO-KAKO", "EG-JISEI-KAKO-KANRYO"],
+      "keywords": ["仮定法過去完了", "混合仮定法", "過去の事実に反する仮定", "条件節と主節"]
+    },
+    {
+      "id": "EG-KATEIHO-IF-NASHI",
+      "course": "英文法",
+      "unit": "仮定法",
+      "topic": "ifを使わない仮定法",
+      "goals": [
+        "wishやas ifが仮定法を含む理由を説明できる",
+        "ifが省略されて倒置になった形を判断できる",
+        "ifの代わりをする語句を使い分けられる"
+      ],
+      "prerequisites": ["EG-KATEIHO-KAKO"],
+      "keywords": ["ifを使わない仮定法", "wishの仮定法", "as ifの仮定法", "ifの省略と倒置"]
+    },
+
+    {
+      "id": "EG-MEISHI-KASAN",
+      "course": "英文法",
+      "unit": "名詞と冠詞",
+      "topic": "可算名詞と不可算名詞",
+      "goals": [
+        "数えられるかどうかを、形が決まっているかで判断できる",
+        "不可算名詞の量の表し方を使い分けられる"
+      ],
+      "prerequisites": [],
+      "keywords": ["可算名詞", "不可算名詞", "数えられない名詞", "量を表す表現", "単数と複数"]
+    },
+    {
+      "id": "EG-MEISHI-KANSHI",
+      "course": "英文法",
+      "unit": "名詞と冠詞",
+      "topic": "冠詞",
+      "goals": ["aとtheの違いを「相手が特定できるか」で説明できる", "無冠詞になる場合を判断できる"],
+      "prerequisites": ["EG-MEISHI-KASAN"],
+      "keywords": ["冠詞", "定冠詞", "不定冠詞", "無冠詞", "aとtheの違い"]
+    },
+
+    {
+      "id": "EG-DAIMEISHI-FUTEI",
+      "course": "英文法",
+      "unit": "代名詞",
+      "topic": "不定代名詞",
+      "goals": [
+        "同じ物か同じ種類の物かで、代名詞を使い分けられる",
+        "残りがいくつあるかで、指す語が変わる理由を説明できる"
+      ],
+      "prerequisites": ["EG-MEISHI-KASAN"],
+      "keywords": [
+        "不定代名詞",
+        "oneとitの使い分け",
+        "anotherとotherの使い分け",
+        "残りを表す代名詞"
+      ]
+    },
+    {
+      "id": "EG-DAIMEISHI-SAIKI",
+      "course": "英文法",
+      "unit": "代名詞",
+      "topic": "再帰代名詞",
+      "goals": [
+        "主語と目的語が同じときに再帰代名詞を使う理由を説明できる",
+        "強調の用法と使い分けられる"
+      ],
+      "prerequisites": [],
+      "keywords": ["再帰代名詞", "強調用法の再帰代名詞", "自分自身を表す代名詞"]
+    },
+
+    {
+      "id": "EG-ZENCHISHI-JIKAN-BASHO",
+      "course": "英文法",
+      "unit": "前置詞",
+      "topic": "時と場所の前置詞",
+      "goals": [
+        "点・面・広がりのイメージで前置詞を使い分けられる",
+        "時と場所で同じ前置詞が使われる理由を説明できる"
+      ],
+      "prerequisites": [],
+      "keywords": ["前置詞", "時の前置詞", "場所の前置詞", "前置詞のイメージ"]
+    },
+    {
+      "id": "EG-ZENCHISHI-KUDOSHI",
+      "course": "英文法",
+      "unit": "前置詞",
+      "topic": "句動詞",
+      "goals": [
+        "句動詞の意味を、前置詞・副詞のイメージから説明できる",
+        "目的語が代名詞のときの語順を判断できる"
+      ],
+      "prerequisites": ["EG-ZENCHISHI-JIKAN-BASHO", "EG-BUNKEI-JIDOSHI-TADOSHI"],
+      "keywords": ["句動詞", "群動詞", "代名詞を挟む語順", "動詞と副詞のまとまり"]
+    },
+
+    {
+      "id": "EG-SETSUZOKUSHI-TOI-JUZOKU",
+      "course": "英文法",
+      "unit": "接続詞",
+      "topic": "等位接続詞と従属接続詞",
+      "goals": ["等位接続詞が結ぶものの形をそろえる理由を説明できる", "主節と従属節を見分けられる"],
+      "prerequisites": ["EG-BUNKEI-GOBUNKEI"],
+      "keywords": ["等位接続詞", "従属接続詞", "主節", "従属節", "並列のかたち"]
+    },
+    {
+      "id": "EG-SETSUZOKUSHI-MEISHISETSU",
+      "course": "英文法",
+      "unit": "接続詞",
+      "topic": "名詞節をつくる接続詞",
+      "goals": ["that節とwhether節を使い分けられる", "接続詞thatを省略できる位置を判断できる"],
+      "prerequisites": ["EG-SETSUZOKUSHI-TOI-JUZOKU"],
+      "keywords": ["名詞節", "that節", "whether節", "接続詞thatの省略"]
+    },
+    {
+      "id": "EG-SETSUZOKUSHI-JIKAN-JOKEN",
+      "course": "英文法",
+      "unit": "接続詞",
+      "topic": "時・条件の副詞節",
+      "goals": [
+        "時・条件の副詞節で未来のことを現在形で表す理由を説明できる",
+        "名詞節のifと副詞節のifを使い分けられる"
+      ],
+      "prerequisites": ["EG-SETSUZOKUSHI-MEISHISETSU", "EG-JISEI-MIRAI"],
+      "keywords": ["時の副詞節", "条件の副詞節", "副詞節では現在形", "名詞節と副詞節の見分け"]
+    },
+
+    {
+      "id": "EG-GIMON-KANSETSU",
+      "course": "英文法",
+      "unit": "疑問文と否定",
+      "topic": "間接疑問",
+      "goals": [
+        "間接疑問の語順が平叙文と同じになる理由を説明できる",
+        "疑問詞が主語になっているときの形を判断できる"
+      ],
+      "prerequisites": ["EG-SETSUZOKUSHI-MEISHISETSU"],
+      "keywords": ["間接疑問", "疑問詞", "平叙文の語順", "疑問詞が主語"]
+    },
+    {
+      "id": "EG-GIMON-HITEI",
+      "course": "英文法",
+      "unit": "疑問文と否定",
+      "topic": "否定の表現",
+      "goals": [
+        "部分否定と全体否定を使い分けられる",
+        "準否定語がどれくらいの否定かを説明できる",
+        "二重否定が結局なにを言っているかを判断できる"
+      ],
+      "prerequisites": [],
+      "keywords": ["部分否定", "全体否定", "準否定語", "二重否定", "否定語"]
+    },
+
+    {
+      "id": "EG-WAHO-TENKAN",
+      "course": "英文法",
+      "unit": "話法",
+      "topic": "直接話法と間接話法",
+      "goals": [
+        "話法の転換で時制・代名詞・時や場所を表す語が変わる理由を説明できる",
+        "疑問文・命令文を伝えるときの形を使い分けられる"
+      ],
+      "prerequisites": ["EG-JISEI-KAKO-KANRYO", "EG-SETSUZOKUSHI-MEISHISETSU"],
+      "keywords": ["直接話法", "間接話法", "話法の転換", "時制の一致", "伝達動詞"]
+    },
+
+    {
+      "id": "EG-TOCHI-TOCHI",
+      "course": "英文法",
+      "unit": "倒置・強調・省略",
+      "topic": "倒置",
+      "goals": [
+        "否定語が文頭に出ると疑問文と同じ語順になる理由を説明できる",
+        "強調のための倒置と、形の上で決まっている倒置を判断できる"
+      ],
+      "prerequisites": ["EG-GIMON-HITEI"],
+      "keywords": ["倒置", "否定語の文頭", "強調のための倒置", "語順の入れ替え"]
+    },
+    {
+      "id": "EG-TOCHI-KYOCHO-SHORYAKU",
+      "course": "英文法",
+      "unit": "倒置・強調・省略",
+      "topic": "強調構文と省略",
+      "goals": ["強調構文と形式主語のitを見分けられる", "省略された語を文脈から補って説明できる"],
+      "prerequisites": ["EG-KANKEISHI-DAIMEISHI"],
+      "keywords": ["強調構文", "形式主語", "省略された語", "共通語の省略"]
     }
   ]
 }

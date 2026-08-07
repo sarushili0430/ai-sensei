@@ -14,7 +14,7 @@
                 "properties": {
                   "topic_id": {
                     "type": "string",
-                    "pattern": "^(M1|MA|M2|MB|M3|MC)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+                    "pattern": "^(M1|MA|M2|MB|M3|MC|EG)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
                   },
                   "desc": {
                     "type": "string",
@@ -73,7 +73,7 @@
               },
               "topic_id": {
                 "type": "string",
-                "pattern": "^(M1|MA|M2|MB|M3|MC)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+                "pattern": "^(M1|MA|M2|MB|M3|MC|EG)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
               },
               "days_since": {
                 "type": "integer",
@@ -104,7 +104,7 @@
                 "properties": {
                   "topic_id": {
                     "type": "string",
-                    "pattern": "^(M1|MA|M2|MB|M3|MC)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+                    "pattern": "^(M1|MA|M2|MB|M3|MC|EG)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
                   },
                   "desc": {
                     "type": "string",
@@ -163,7 +163,7 @@
               },
               "topic_id": {
                 "type": "string",
-                "pattern": "^(M1|MA|M2|MB|M3|MC)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+                "pattern": "^(M1|MA|M2|MB|M3|MC|EG)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
               },
               "days_since_filled": {
                 "type": "integer",

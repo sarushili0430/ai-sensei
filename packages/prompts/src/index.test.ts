@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { subjects } from "@ai-sensei/curriculum";
 import { describe, expect, it } from "vitest";
 import { buildGeneratedSource, promptFiles, promptsDir } from "./generate.ts";
 import {
@@ -13,6 +14,7 @@ import {
   karteSystemPrompt,
   parsePrompt,
   promptIds,
+  promptIdsForSubject,
   renderPrompt,
 } from "./index.ts";
 
@@ -104,6 +106,7 @@ describe("整形ヘルパ", () => {
 
 describe("組み立て済みプロンプト", () => {
   const conversation = conversationSystemPrompt({
+    subject: "数学",
     photo_summary: "円と直線の位置関係の問題",
     visible_work: "- 中心と直線の距離を求めている",
     allowed_topics: "- M2-ZUKEI-ENCHOKU",
@@ -117,12 +120,14 @@ describe("組み立て済みプロンプト", () => {
   });
 
   it("渡した文脈が埋まっている", () => {
+    expect(conversation).toContain("数学");
     expect(conversation).toContain("円と直線の位置関係の問題");
     expect(conversation).toContain("300");
   });
 
   it("カルテ生成プロンプトも組み立てられる", () => {
     const karte = karteSystemPrompt({
+      subject: "数学",
       photo_summary: "円と直線",
       allowed_topics: "- M2-ZUKEI-ENCHOKU",
       transcript: "後輩: なんでですか?",
@@ -130,6 +135,53 @@ describe("組み立て済みプロンプト", () => {
     });
     expect(karte).toContain("said_well");
     expect(karte).toContain("後輩: なんでですか?");
+  });
+});
+
+// 数学のfew-shotのまま英文法を話させると「判別式」の例文に引きずられ、
+// 数式の補正ヒントを添えると英語の説明に数式の読み替えが混ざる。
+describe("科目でfew-shotと音声補正ヒントが入れ替わる", () => {
+  const grammar = conversationSystemPrompt({
+    subject: "英文法",
+    photo_summary: "現在完了の単元",
+    visible_work: "- have been to と have gone to を書き分けている",
+    allowed_topics: "- EG-JISEI-GENZAI-KANRYO",
+    question_seeds: "- 過去形ではなく現在完了にした理由",
+    remaining_seconds: 300,
+  });
+
+  it("英文法のfew-shotが入る", () => {
+    expect(grammar).toContain("え、なんでここ、過去形じゃなくて現在完了にしたんですか?");
+    expect(grammar).not.toContain("え、なんで(2)でいきなり判別式を使ったんですか?");
+  });
+
+  it("英文法の音声補正ヒントが入り、数式のヒントは入らない", () => {
+    expect(grammar).toContain("えすぶいおーしー");
+    expect(grammar).not.toContain("さんぶんのに");
+  });
+
+  it("科目が本文に埋まる", () => {
+    expect(grammar).toContain("**英文法** のノートです");
+  });
+
+  it("カルテ生成でも入れ替わる", () => {
+    const karte = karteSystemPrompt({
+      subject: "英文法",
+      photo_summary: "現在完了の単元",
+      allowed_topics: "- EG-JISEI-GENZAI-KANRYO",
+      transcript: "後輩: なんでここは現在完了なんですか?",
+      is_premium: "false",
+    });
+    expect(karte).toContain("えすぶいおーしー");
+    expect(karte).not.toContain("さんぶんのに");
+  });
+
+  it("すべての科目にfew-shotと音声補正ヒントの対がある", () => {
+    for (const subject of subjects) {
+      const pair = promptIdsForSubject(subject);
+      expect(() => getPrompt(pair.fewShot), `${subject} のfew-shot`).not.toThrow();
+      expect(() => getPrompt(pair.speechHints), `${subject} の音声補正ヒント`).not.toThrow();
+    }
   });
 });
 
@@ -144,6 +196,10 @@ describe("設計上の約束がプロンプトに書かれている", () => {
 
   it("写真にない話題に触れない、が明記されている", () => {
     expect(all).toContain("写真に写っていない話題に触れない");
+  });
+
+  it("今日の科目から出ない、が明記されている", () => {
+    expect(all).toContain("今日の科目({{subject}})から出ない");
   });
 
   it("点数をつけない、が明記されている", () => {

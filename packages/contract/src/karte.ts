@@ -11,8 +11,14 @@ import { z } from "zod";
  * 由来: handoff §4(c) 評価ルーブリック。
  */
 
-/** topic_idの形。中身がカリキュラム内かは @ai-sensei/guardrail が照合する。 */
-export const topicIdSchema = z.string().regex(/^(M1|MA|M2|MB|M3|MC)-[A-Z0-9]+(?:-[A-Z0-9]+)*$/);
+/**
+ * topic_idの形。中身がカリキュラム内かは @ai-sensei/guardrail が照合する。
+ *
+ * 接頭辞はコース(数学I〜C・英文法)の記号。ここは契約の境界なので
+ * `@ai-sensei/curriculum` を実行時に持ち込まず、正規表現を写している。
+ * ずれると正しいIDがAPIの入口で落ちるので、`karte.test.ts` で同期を見張る。
+ */
+export const topicIdSchema = z.string().regex(/^(M1|MA|M2|MB|M3|MC|EG)-[A-Z0-9]+(?:-[A-Z0-9]+)*$/);
 
 /**
  * 穴の深さ。点数ではなく「次にどれだけ効くか」の目安で、復習の優先順位に使う。

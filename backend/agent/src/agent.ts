@@ -94,6 +94,7 @@ export default defineAgent({
     });
 
     const instructions = conversationSystemPrompt({
+      subject: context.subject,
       photo_summary: context.photo_summary,
       visible_work: context.visible_work,
       allowed_topics: context.allowed_topics,
@@ -117,6 +118,7 @@ export default defineAgent({
     log.info("conversation_started", {
       kind: context.kind,
       locale: context.locale,
+      subject: context.subject,
       max_seconds: context.max_seconds,
       topics: context.allowed_topic_ids.length,
     });

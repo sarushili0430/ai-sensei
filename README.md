@@ -1,12 +1,15 @@
 # ai-sensei
 
-**数学の「わかったつもり」を、声に出して説明させて見つけるアプリ。**
+**「わかったつもり」を、声に出して説明させて見つけるアプリ。**
 
-ノートを撮ると、後輩AIが「え、なんでここで判別式使うんですか?」と聞いてくる。
+ノートを撮ると、後輩AIが「え、なんでここで判別式使うんですか?」
+「なんでここ、過去形じゃなくて現在完了にしたんですか?」と聞いてくる。
 答えは教えない。説明しているうちに、自分でも気づいていなかった **理解の穴** が見つかる。
 見つかった穴は「カルテ」に残り、翌日・3日後・7日後に後輩がもう一度たずねてくる。
 
-- ターゲット: 日本の高校生 / 対象科目: 高校数学(数I・A・II・B・III・C、新課程)
+- ターゲット: 日本の高校生
+- 対象科目: **高校数学**(数I・A・II・B・III・C、新課程)と **英文法**。
+  1セッションで扱うのは1科目で、どちらかは写真から自動で判定する(ユーザーは選ばない)
 - 学習科学の背景: 自己説明効果(self-explanation effect)とプロテジェ効果(teachable agent)
 - [RevenueCat Shipaton 2026](https://shipaton.revenuecat.com/) 提出プロジェクト(Next Gen Award 併願のため初日からpublic + MIT)
 
@@ -30,9 +33,9 @@ apps/mobile/        Flutter (iOS先行) + Riverpod 3 + livekit_client
 backend/api/        Cloudflare Workers + Hono — セッション作成 / カルテ保存 / 課金webhook
 backend/agent/      LiveKit Agents — VAD・STT・LLM・TTSの会話パイプライン(後輩キャラ)
 packages/contract/  APIとカルテのスキーマ + fixture(モバイル/サーバ双方で契約を検証)
-packages/curriculum/高校数学カリキュラムマップ(純JSON。質問生成の許可リスト兼、穴のタグ)
+packages/curriculum/カリキュラムマップ(数学・英文法。質問生成の許可リスト兼、穴のタグ)
 packages/guardrail/ topic_idホワイトリスト照合・数式音声の正規化などの純関数
-prompts/            システムプロンプトとfew-shot(差分レビューできるようにバージョン管理)
+prompts/            システムプロンプトとfew-shot(科目ごとに差し替える対を含む)
 docs/               企画資料・ワイヤーフレーム・ADR
 scripts/            リポジトリ全体の検証スクリプト
 ```

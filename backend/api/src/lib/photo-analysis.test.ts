@@ -51,7 +51,7 @@ describe("resolveDetectedTopics", () => {
 
   it("LLMがtopic_idを返さなくてもキーワードから拾う", () => {
     const resolved = resolveDetectedTopics({
-      is_math_note: true,
+      subject: "数学",
       summary: "平方完成して頂点を求める問題",
       visible_work: [],
       topics: [],
@@ -61,16 +61,61 @@ describe("resolveDetectedTopics", () => {
     expect(resolved.topicIds).toContain("M1-NIJI-GURAFU");
   });
 
-  it("数学のノートでなければフォールバックもしない", () => {
+  it("対応していない科目ならフォールバックもしない", () => {
     const resolved = resolveDetectedTopics({
-      is_math_note: false,
-      summary: "英語の単語帳。関数という言葉だけ写っている",
+      subject: null,
+      summary: "世界史の年表。関数という言葉だけ写っている",
       visible_work: [],
       topics: [],
       unreadable: [],
       question_seeds: [],
     });
     expect(resolved.topicIds).toEqual([]);
+  });
+
+  // 1枚のノートは1科目。混ざったまま許可リストにすると、
+  // 英文法のノートで数学の質問が始まる。
+  it("解析が言う科目と違うtopic_idは捨てる", () => {
+    const resolved = resolveDetectedTopics({
+      subject: "英文法",
+      summary: "現在完了の単元",
+      visible_work: [],
+      topics: [
+        { topic_id: "EG-JISEI-GENZAI-KANRYO", confidence: 0.9 },
+        { topic_id: "M2-ZUKEI-ENCHOKU", confidence: 0.8 },
+      ],
+      unreadable: [],
+      question_seeds: [],
+    });
+    expect(resolved.topicIds).toEqual(["EG-JISEI-GENZAI-KANRYO"]);
+    expect(resolved.droppedIds).toEqual(["M2-ZUKEI-ENCHOKU"]);
+  });
+
+  it("キーワードのフォールバックも同じ科目の中だけで引く", () => {
+    const resolved = resolveDetectedTopics({
+      subject: "英文法",
+      summary: "原級を使った比較の練習",
+      visible_work: [],
+      topics: [],
+      unreadable: [],
+      question_seeds: [],
+    });
+    expect(resolved.topicIds).toContain("EG-HIKAKU-GENKYU");
+    for (const id of resolved.topicIds) {
+      expect(id.startsWith("EG-"), id).toBe(true);
+    }
+  });
+});
+
+describe("curriculumDigest", () => {
+  // 解析器はここから `subject` も選ぶ。科目の見出しが無いと、
+  // どのIDがどの科目なのかが読めず、科目とIDが食い違う出力になる。
+  it("科目ごとの見出しをつけて全トピックを並べる", () => {
+    const digest = curriculumDigest();
+    expect(digest).toContain("### 数学");
+    expect(digest).toContain("### 英文法");
+    expect(digest).toContain("M2-ZUKEI-ENCHOKU | 数学II / 図形と方程式 / 円と直線の位置関係");
+    expect(digest).toContain("EG-JISEI-GENZAI-KANRYO | 英文法 / 時制 /");
   });
 });
 
@@ -97,7 +142,7 @@ describe("toDetectedTopicPayload", () => {
 
 describe("photoAnalysisSchema", () => {
   it("欠けた配列を空で補う(LLMの出力ゆれを吸収する)", () => {
-    const parsed = photoAnalysisSchema.parse({ is_math_note: true, summary: "円と直線" });
+    const parsed = photoAnalysisSchema.parse({ subject: "数学", summary: "円と直線" });
     expect(parsed.topics).toEqual([]);
     expect(parsed.question_seeds).toEqual([]);
   });

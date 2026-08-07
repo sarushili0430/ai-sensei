@@ -1,12 +1,12 @@
 import type { TranscriptMessage } from "@ai-sensei/contract";
-import { buildAllowedTopics, containsAnswerLeak, normalizeMathSpeech } from "@ai-sensei/guardrail";
+import { buildAllowedTopics, containsAnswerLeak, normalizeSpeech } from "@ai-sensei/guardrail";
 import type { SessionContext } from "./context.ts";
 
 /**
  * 会話ログの収集。
  *
  * transcriptがそのままカルテの材料になる(handoff §5 データ設計)。
- * ユーザーの発話には数式音声の正規化をかけてから積む。
+ * ユーザーの発話には**科目に応じた**音声の正規化をかけてから積む。
  */
 export class TranscriptCollector {
   private readonly messages: TranscriptMessage[] = [];
@@ -22,7 +22,8 @@ export class TranscriptCollector {
   }
 
   add(input: { role: "assistant" | "user"; text: string; at?: Date; topicId?: string }): void {
-    const text = input.role === "user" ? normalizeMathSpeech(input.text).text : input.text;
+    const text =
+      input.role === "user" ? normalizeSpeech(input.text, this.context.subject).text : input.text;
     const trimmed = text.trim();
     if (trimmed.length === 0) return;
 

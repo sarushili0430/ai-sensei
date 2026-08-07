@@ -31,6 +31,7 @@ export async function buildKarte({
   llm,
 }: BuildKarteOptions): Promise<KarteDraft> {
   const system = karteSystemPrompt({
+    subject: context.subject,
     photo_summary: context.photo_summary,
     allowed_topics: context.allowed_topics,
     transcript: renderTranscript(transcript),

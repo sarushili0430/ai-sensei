@@ -93,6 +93,10 @@ importers:
       zod-to-json-schema:
         specifier: ^3.24.1
         version: 3.25.2(zod@3.25.76)
+    devDependencies:
+      '@ai-sensei/curriculum':
+        specifier: workspace:*
+        version: link:../curriculum
 
   packages/curriculum:
     dependencies:
@@ -106,7 +110,11 @@ importers:
         specifier: workspace:*
         version: link:../curriculum
 
-  packages/prompts: {}
+  packages/prompts:
+    dependencies:
+      '@ai-sensei/curriculum':
+        specifier: workspace:*
+        version: link:../curriculum
 
 packages:
 

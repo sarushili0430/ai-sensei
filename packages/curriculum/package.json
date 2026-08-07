@@ -4,7 +4,7 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "description": "高校数学カリキュラムマップ(質問生成の許可リスト兼、穴のタグ付け)",
+  "description": "カリキュラムマップ(高校数学・英文法。質問生成の許可リスト兼、穴のタグ付け)",
   "exports": {
     ".": "./src/index.ts",
     "./data": "./data/curriculum.v0.json"

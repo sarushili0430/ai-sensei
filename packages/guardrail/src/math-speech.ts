@@ -138,17 +138,3 @@ export function normalizeMathSpeech(input: string): NormalizationResult {
 
   return { text, applied };
 }
-
-/**
- * transcriptの各発話に正規化をかける。カルテ生成へ渡す前段で使う。
- * 後輩(assistant)の発話はTTS向けの整形済みテキストなので触らない。
- */
-export function normalizeUserUtterances<T extends { role: string; text: string }>(
-  messages: readonly T[],
-): T[] {
-  return messages.map((message) =>
-    message.role === "user"
-      ? { ...message, text: normalizeMathSpeech(message.text).text }
-      : message,
-  );
-}

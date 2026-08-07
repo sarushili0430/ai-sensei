@@ -22,13 +22,13 @@ const messages: Record<ApiErrorCode, { ja: string; en: string; status: number }>
     status: 402,
   },
   photo_unreadable: {
-    ja: "写真から数学のノートを読み取れませんでした。もう一度撮ってみてください。",
-    en: "We couldn't read a math note in this photo. Could you take another one?",
+    ja: "写真からノートを読み取れませんでした。もう一度撮ってみてください。",
+    en: "We couldn't read a note in this photo. Could you take another one?",
     status: 422,
   },
   out_of_scope: {
-    ja: "このノートは高校数学の範囲外みたいです。今は数学だけに対応しています。",
-    en: "This looks outside high-school math. We only cover math for now.",
+    ja: "このノートは、いま対応している範囲の外みたいです。高校数学と英文法だけに対応しています。",
+    en: "This looks outside what we cover. For now it's high-school math and English grammar.",
     status: 422,
   },
   session_not_found: {

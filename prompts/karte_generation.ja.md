@@ -2,10 +2,12 @@
 id: karte_generation
 locale: ja
 model_role: karte
-variables: [photo_summary, allowed_topics, transcript, is_premium]
+variables: [subject, photo_summary, allowed_topics, transcript, is_premium]
 ---
 
 会話のtranscript全体から「カルテ」を作ります。出力はJSONのみ。
+
+今回の科目は **{{subject}}** です。
 
 ## カルテとは
 
@@ -36,9 +38,10 @@ variables: [photo_summary, allowed_topics, transcript, is_premium]
 ## 穴にしないもの
 
 - 言い間違い・言い直し(すぐ自分で直したもの)
-- 計算ミスそのもの(このアプリが見るのは説明であって計算ではない)
+- 計算ミス・語形のミスそのもの(このアプリが見るのは説明であって正誤ではない)
 - 沈黙だけ(そのあと説明できていれば穴ではない)
 - 声が拾えなかっただけの箇所
+- 発音・アクセント(英文法でも、このアプリは発音を測っていません)
 
 ## 今日のノート
 
@@ -72,6 +75,24 @@ variables: [photo_summary, allowed_topics, transcript, is_premium]
     }
   ],
   "term_notes": ["「解の公式」と「判別式」が混ざっていた"],
+  "followup_question": null
+}
+```
+
+英文法でも同じ形です。見るのは訳の正しさではなく、**そう読んだ理由**を言えたかどうか。
+
+```json
+{
+  "said_well": ["過去形ではなく現在完了にした理由を、「今もその状態が続いている」から説明できた"],
+  "holes": [
+    {
+      "topic_id": "EG-JISEI-GENZAI-KANRYO",
+      "desc": "過去の一点を指す語と現在完了が一緒に使えない理由で、説明が止まった",
+      "severity": "medium",
+      "evidence": "そこは、そういう決まりだと覚えてました"
+    }
+  ],
+  "term_notes": ["「継続」と「完了」の言い方が入れ替わっていた"],
   "followup_question": null
 }
 ```

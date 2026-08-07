@@ -63,6 +63,7 @@ describe("POST /v1/sessions", () => {
     const claims = await verifyJwt(body.livekit.token, bindings.LIVEKIT_API_SECRET);
     expect(claims).not.toBeNull();
     const metadata = JSON.parse(String(claims?.["metadata"])) as {
+      subject: string;
       allowed_topic_ids: string[];
       max_seconds: number;
     };
@@ -70,6 +71,8 @@ describe("POST /v1/sessions", () => {
     // 前提トピックまで深掘りを許す
     expect(metadata.allowed_topic_ids).toContain("M1-NIJI-HANBETSU");
     expect(metadata.max_seconds).toBe(300);
+    // 後輩のfew-shotと音声補正ヒントは、これで切り替わる
+    expect(metadata.subject).toBe("数学");
   });
 
   // 名前つきワーカーのときは、トークンでディスパッチしないと部屋に誰も来ない
@@ -138,11 +141,11 @@ describe("POST /v1/sessions", () => {
     expect(body.limits.remaining_sessions_today).toBeNull();
   });
 
-  it("数学のノートでなければ撮り直しを促す", async () => {
+  it("対応していない科目のノートなら撮り直しを促す", async () => {
     services = testServices({
       analysis: {
-        is_math_note: false,
-        summary: "英語の単語帳が写っている",
+        subject: null,
+        summary: "世界史の年表が写っている",
         visible_work: [],
         topics: [],
         unreadable: [],
@@ -159,7 +162,7 @@ describe("POST /v1/sessions", () => {
   it("単元を1つも特定できなければセッションを作らない", async () => {
     services = testServices({
       analysis: {
-        is_math_note: true,
+        subject: "数学",
         summary: "ぼやけていて読み取れない",
         visible_work: [],
         topics: [],
@@ -181,7 +184,7 @@ describe("POST /v1/sessions", () => {
   it("LLMが捏造したtopic_idは許可リストに入れない", async () => {
     services = testServices({
       analysis: {
-        is_math_note: true,
+        subject: "数学",
         summary: "円と直線の位置関係",
         visible_work: [],
         topics: [
@@ -352,7 +355,7 @@ describe("無料枠の押さえ方", () => {
   it("解析に失敗したら、その日の1回を消費しない", async () => {
     services = testServices({
       analysis: {
-        is_math_note: false,
+        subject: null,
         summary: "英語の単語帳",
         visible_work: [],
         topics: [],
@@ -495,5 +498,78 @@ describe("PATCH /v1/sessions/{id}/topics", () => {
     const body = (await response.json()) as CreateSessionResponse;
     expect(body.limits.max_seconds).toBe(900);
     expect(body.limits.remaining_sessions_today).toBeNull();
+  });
+});
+
+// 英文法のノートも、数学とまったく同じ道を通る。
+// 変わるのは許可リストの科目と、エージェントに渡す `subject` だけ。
+describe("英文法のセッション", () => {
+  const grammarAnalysis = {
+    subject: "英文法" as const,
+    summary: "現在完了の単元。完了・経験・継続の例文に線を引いている。",
+    visible_work: ["have been to と have gone to を書き分けている"],
+    topics: [{ topic_id: "EG-JISEI-GENZAI-KANRYO", confidence: 0.88 }],
+    unreadable: [],
+    question_seeds: ["過去形ではなく現在完了にした理由"],
+  };
+
+  beforeEach(() => {
+    services = testServices({ analysis: grammarAnalysis });
+  });
+
+  it("英文法の単元を検出してセッションを作る", async () => {
+    const response = await post(createSessionForm());
+    expect(response.status).toBe(201);
+
+    const body = (await response.json()) as CreateSessionResponse;
+    expect(createSessionResponseSchema.safeParse(body).success).toBe(true);
+    expect(body.detected_topics[0]).toMatchObject({
+      topic_id: "EG-JISEI-GENZAI-KANRYO",
+      course: "英文法",
+      unit: "時制",
+    });
+  });
+
+  it("会話の文脈に科目を載せ、許可リストは英文法だけにする", async () => {
+    const response = await post(createSessionForm());
+    const body = (await response.json()) as CreateSessionResponse;
+
+    const claims = await verifyJwt(body.livekit.token, bindings.LIVEKIT_API_SECRET);
+    const metadata = JSON.parse(String(claims?.["metadata"])) as {
+      subject: string;
+      allowed_topic_ids: string[];
+    };
+    expect(metadata.subject).toBe("英文法");
+    expect(metadata.allowed_topic_ids).toContain("EG-JISEI-GENZAI-KANRYO");
+    // 前提の深掘りも同じ科目の中だけ
+    for (const id of metadata.allowed_topic_ids) {
+      expect(id.startsWith("EG-"), id).toBe(true);
+    }
+  });
+
+  // 解析が英文法と言っているのに数学のIDが混ざっていたら、そのIDは捨てる。
+  // 混ぜたまま許可リストにすると、英文法のノートで数学の質問が始まる。
+  it("科目の違うtopic_idは許可リストに入れない", async () => {
+    services = testServices({
+      analysis: {
+        ...grammarAnalysis,
+        topics: [
+          { topic_id: "EG-JISEI-GENZAI-KANRYO", confidence: 0.88 },
+          { topic_id: "M2-ZUKEI-ENCHOKU", confidence: 0.8 },
+        ],
+      },
+    });
+    const response = await post(createSessionForm());
+    const body = (await response.json()) as CreateSessionResponse;
+    expect(body.detected_topics.map((topic) => topic.topic_id)).toEqual(["EG-JISEI-GENZAI-KANRYO"]);
+  });
+
+  // ここを開けると、数学の写真に英文法のtopic_idsを添えて投げるだけで、
+  // 写真と関係のない科目の会話に化けさせられる。
+  it("写真と違う科目のtopic_idsを添えて投げても、セッションを作らない", async () => {
+    services = testServices({ analysis: analysisFixture });
+    const response = await post(createSessionForm({ topic_ids: ["EG-JISEI-GENZAI-KANRYO"] }));
+    expect(response.status).toBe(422);
+    expect(services.repository.sessions.size).toBe(0);
   });
 });

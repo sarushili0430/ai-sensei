@@ -4,11 +4,19 @@
 
 | ファイル | 使う場所 | 役割 |
 | --- | --- | --- |
-| `photo_analysis.ja.md` | backend/api(Vision LLM) | ノート写真 → 単元検出・質問の種 |
+| `photo_analysis.ja.md` | backend/api(Vision LLM) | ノート写真 → **科目判定**・単元検出・質問の種 |
 | `kohai_conversation.ja.md` | agent(会話LLM) | 後輩ペルソナ + 会話中のガードレール |
-| `question_types.few_shot.ja.md` | agent | 質問4型の文体をそろえるfew-shot |
 | `karte_generation.ja.md` | agent(セッション終了時) | transcript → カルテJSON |
-| `math_speech_hints.ja.md` | 両方 | 数式音声の補正ヒント(§4(d)) |
+
+科目ごとに差し替えるものが2種類ある。**会話とカルテの組み立てで、科目に応じた対を選ぶ。**
+
+| 科目 | 質問4型のfew-shot | 音声補正ヒント(§4(d)) |
+| --- | --- | --- |
+| 数学 | `question_types.math.few_shot.ja.md` | `math_speech_hints.ja.md` |
+| 英文法 | `question_types.english_grammar.few_shot.ja.md` | `english_grammar_speech_hints.ja.md` |
+
+科目を足すときは、この2ファイルを対で足し、`packages/prompts/src/index.ts` の
+`promptIds` と `subjectPrompts` に登録する(片方だけだとテストで落ちる)。
 
 ## TypeScriptからの読み込み
 
@@ -19,7 +27,7 @@ Workers/agentはファイルシステムを前提にできないため、Markdow
 pnpm --filter @ai-sensei/prompts generate   # .md → generated.ts
 ```
 
-`.md` を編集して再生成を忘れると `packages/prompts/src/generated.test.ts` が落ちます。
+`.md` を編集して再生成を忘れると `packages/prompts/src/index.test.ts` が落ちます。
 
 ## フロントマター
 
@@ -30,7 +38,7 @@ pnpm --filter @ai-sensei/prompts generate   # .md → generated.ts
 id: kohai_conversation
 locale: ja
 model_role: conversation
-variables: [photo_summary, visible_work, allowed_topics, question_seeds, remaining_seconds]
+variables: [subject, photo_summary, visible_work, allowed_topics, question_seeds, remaining_seconds]
 ---
 ```
 
@@ -43,7 +51,8 @@ variables: [photo_summary, visible_work, allowed_topics, question_seeds, remaini
 プロンプトは仕様書です。以下はコードのガードレール(`@ai-sensei/guardrail`)と
 **二重に**書きます。片方だけ直さないこと。
 
-1. 答え・解き方・正解を言わない
+1. 答え・解き方・正解を言わない(英文法なら、正しい語形と訳も言わない)
 2. 写真に写っていない話題に触れない(topic_idは許可リストから選ぶ)
-3. 点数・評価語を使わない
-4. パス(説明できない)を責めない
+3. **今日の科目から出ない**(1セッションは1科目)
+4. 点数・評価語を使わない
+5. パス(説明できない)を責めない

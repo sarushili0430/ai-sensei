@@ -1,3 +1,4 @@
+import { subjects } from "@ai-sensei/curriculum";
 import { z } from "zod";
 
 /**
@@ -12,6 +13,11 @@ export const sessionContextSchema = z
     session_id: z.string().min(1),
     locale: z.enum(["ja", "en"]).default("ja"),
     kind: z.enum(["new", "review"]).default("new"),
+    /**
+     * 科目。後輩の質問の文体(few-shot)と音声の補正ヒントが、これで切り替わる。
+     * 発行済みのトークンが残っていることがあるので、無ければ数学として扱う。
+     */
+    subject: z.enum(subjects).default("数学"),
     /** サーバが強制する会話の上限秒数(無料5分 / Premium15分)。 */
     max_seconds: z.number().int().positive(),
     photo_summary: z.string().default(""),

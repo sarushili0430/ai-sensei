@@ -27,6 +27,37 @@ describe("readSessionContext", () => {
     expect(context.max_seconds).toBe(300);
   });
 
+  it("科目を読む", () => {
+    const grammar = readSessionContext(
+      JSON.stringify({
+        session_id: "ses_2",
+        subject: "英文法",
+        max_seconds: 300,
+        allowed_topic_ids: ["EG-JISEI-GENZAI-KANRYO"],
+      }),
+    );
+    expect(grammar.subject).toBe("英文法");
+  });
+
+  // 科目を載せる前に発行したトークンが残っていることがある。
+  // 会話を止めるほどの欠落ではないので、数学として続ける。
+  it("科目が載っていなければ数学として扱う", () => {
+    expect(readSessionContext(metadata).subject).toBe("数学");
+  });
+
+  it("知らない科目は受け付けない", () => {
+    expect(() =>
+      readSessionContext(
+        JSON.stringify({
+          session_id: "ses_3",
+          subject: "世界史",
+          max_seconds: 300,
+          allowed_topic_ids: ["M2-ZUKEI-ENCHOKU"],
+        }),
+      ),
+    ).toThrow(InvalidSessionContextError);
+  });
+
   // 文脈なしで喋らせると、写真と関係ない一般論を聞き始めてしまう
   it("metadataが空なら会話を始めない", () => {
     expect(() => readSessionContext(undefined)).toThrow(InvalidSessionContextError);

@@ -1,4 +1,12 @@
-import { findTopic, isKnownTopicId, suggestTopics, topics } from "@ai-sensei/curriculum";
+import {
+  type Subject,
+  findTopic,
+  isKnownTopicId,
+  subjectOfTopicId,
+  subjects,
+  suggestTopics,
+  topics,
+} from "@ai-sensei/curriculum";
 import { formatBullets, getPrompt, renderPrompt } from "@ai-sensei/prompts";
 import { z } from "zod";
 
@@ -6,12 +14,13 @@ import { z } from "zod";
  * ノート写真の解析(Vision LLM)。
  *
  * ここが「写真に写っている内容」の側のガードレールを作る工程。
- * 出力のtopic_idはこの時点でカリキュラム照合し、通ったものだけを
+ * 出力の科目とtopic_idはこの時点でカリキュラム照合し、通ったものだけを
  * セッションの許可リストにする。
  */
 
 export const photoAnalysisSchema = z.object({
-  is_math_note: z.boolean(),
+  /** 対応外の教科・ノートでない写真では null。 */
+  subject: z.enum(subjects).nullable().default(null),
   summary: z.string(),
   visible_work: z.array(z.string()).default([]),
   topics: z
@@ -89,11 +98,20 @@ export function detectImageMediaType(
   return SUPPORTED_MEDIA_TYPES.find((type) => type === normalized) ?? null;
 }
 
-/** カリキュラムマップをプロンプトに貼れる形に畳む(全52トピックの要約)。 */
+/**
+ * カリキュラムマップをプロンプトに貼れる形に畳む(全トピックの要約)。
+ * 科目ごとに見出しを付ける。解析器はここから `subject` も選ぶので、
+ * どのIDがどの科目かが読める形になっていないと、科目とIDが食い違う。
+ */
 export function curriculumDigest(): string {
-  return topics
-    .map((topic) => `- ${topic.id} | ${topic.course} / ${topic.unit} / ${topic.topic}`)
-    .join("\n");
+  return subjects
+    .map((subject) => {
+      const lines = topics
+        .filter((topic) => subjectOfTopicId(topic.id) === subject)
+        .map((topic) => `- ${topic.id} | ${topic.course} / ${topic.unit} / ${topic.topic}`);
+      return [`### ${subject}`, ...lines].join("\n");
+    })
+    .join("\n\n");
 }
 
 export function photoAnalysisPrompt(): string {
@@ -102,7 +120,10 @@ export function photoAnalysisPrompt(): string {
 
 /**
  * LLMが返したtopic_idを照合し、許可リストを作る(ガードレール1段目)。
- * 未知のIDは捨て、それでも空なら写真テキストからのキーワード推定にフォールバックする。
+ *
+ * 未知のIDと、**解析が言う科目と食い違うID**は捨てる。1枚のノートは1科目、
+ * という前提を崩すと、数学のセッションで英文法の質問が許可されてしまう。
+ * それでも空なら、同じ科目の中でキーワード推定にフォールバックする。
  */
 export function resolveDetectedTopics(analysis: PhotoAnalysis): {
   topicIds: string[];
@@ -110,20 +131,32 @@ export function resolveDetectedTopics(analysis: PhotoAnalysis): {
 } {
   const droppedIds: string[] = [];
   const topicIds: string[] = [];
+  const subject = analysis.subject;
 
   for (const entry of analysis.topics) {
-    if (isKnownTopicId(entry.topic_id)) topicIds.push(entry.topic_id);
+    const known = isKnownTopicId(entry.topic_id);
+    const sameSubject = subject !== null && subjectOfTopicId(entry.topic_id) === subject;
+    if (known && sameSubject) topicIds.push(entry.topic_id);
     else droppedIds.push(entry.topic_id);
   }
 
-  if (topicIds.length === 0 && analysis.is_math_note) {
+  if (topicIds.length === 0 && subject !== null) {
     const haystack = [analysis.summary, ...analysis.visible_work, ...analysis.question_seeds].join(
       " ",
     );
-    topicIds.push(...suggestTopics(haystack, 3).map((topic) => topic.id));
+    topicIds.push(...suggestTopics(haystack, 3, { subject }).map((topic) => topic.id));
   }
 
   return { topicIds: [...new Set(topicIds)], droppedIds };
+}
+
+/** 復習セッションのように、写真ではなく穴から科目を決める場合に使う。 */
+export function subjectOfTopics(topicIds: readonly string[]): Subject | null {
+  for (const id of topicIds) {
+    const subject = subjectOfTopicId(id);
+    if (subject) return subject;
+  }
+  return null;
 }
 
 export function toDetectedTopicPayload(

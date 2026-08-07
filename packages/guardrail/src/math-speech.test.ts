@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeMathSpeech, normalizeUserUtterances } from "./math-speech.ts";
+import { normalizeMathSpeech } from "./math-speech.ts";
 
 const normalize = (input: string) => normalizeMathSpeech(input).text;
 
@@ -55,18 +55,6 @@ describe("normalizeMathSpeech", () => {
 
   it("変換対象がなければ applied は空", () => {
     expect(normalizeMathSpeech("だいたい合っていると思います").applied).toEqual([]);
-  });
-});
-
-describe("normalizeUserUtterances", () => {
-  it("ユーザーの発話だけを正規化し、後輩の発話は触らない", () => {
-    const messages = [
-      { role: "assistant", text: "エックスの2乗の話ですよね?" },
-      { role: "user", text: "はい、エックスの2乗です" },
-    ];
-    const normalized = normalizeUserUtterances(messages);
-    expect(normalized[0]?.text).toBe("エックスの2乗の話ですよね?");
-    expect(normalized[1]?.text).toBe("はい、x^2です");
   });
 });
 

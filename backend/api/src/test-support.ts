@@ -10,7 +10,7 @@ import { MemoryRepository } from "./repository/memory.ts";
  */
 
 export const analysisFixture: PhotoAnalysis = {
-  is_math_note: true,
+  subject: "数学",
   summary: "円と直線の位置関係の問題。(1)は交点の個数を求めている。",
   visible_work: ["中心と直線の距離を求めている", "(2)では連立して判別式を使っている"],
   topics: [

@@ -2,6 +2,7 @@ import rawCurriculum from "../data/curriculum.v0.json" with { type: "json" };
 import {
   type CourseName,
   type Curriculum,
+  type Subject,
   type Topic,
   courseCodeByName,
   curriculumSchema,
@@ -12,13 +13,21 @@ export * from "./schema.ts";
 
 /**
  * カリキュラムマップ本体。
- * ここが「高校数学の範囲」の正であり、後輩AIが触れてよい話題の全集合。
+ * ここが「このアプリが扱える範囲」の正であり、後輩AIが触れてよい話題の全集合。
+ * 科目(数学 / 英文法)ごとに分かれていて、1セッションで扱えるのは1科目だけ。
  */
 export const curriculum: Curriculum = curriculumSchema.parse(rawCurriculum);
 
 export const topics: readonly Topic[] = curriculum.topics;
 
 const topicById = new Map<string, Topic>(topics.map((topic) => [topic.id, topic]));
+
+/** コース名 → 科目。データ側の `subjects[].courses` から引く。 */
+const subjectByCourseName = new Map<string, Subject>(
+  curriculum.subjects.flatMap((group) =>
+    group.courses.map((course) => [course.name, group.subject] as const),
+  ),
+);
 
 /** ガードレール照合用のID集合。 */
 export const topicIds: ReadonlySet<string> = new Set(topicById.keys());
@@ -30,6 +39,42 @@ export function findTopic(id: string): Topic | undefined {
 /** LLMが返したtopic_idがカリキュラム内かを判定する(サーバ側ガードの一次判定)。 */
 export function isKnownTopicId(id: string): boolean {
   return topicById.has(id);
+}
+
+/** そのコースが属する科目。未登録のコースでは undefined。 */
+export function subjectOfCourse(course: CourseName): Subject | undefined {
+  return subjectByCourseName.get(course);
+}
+
+/**
+ * topic_id が属する科目。
+ * セッションの科目を決めるのも、科目をまたいだタグ付けを弾くのもこれ。
+ */
+export function subjectOfTopicId(id: string): Subject | undefined {
+  const topic = topicById.get(id);
+  return topic ? subjectByCourseName.get(topic.course) : undefined;
+}
+
+export function topicsBySubject(subject: Subject): Topic[] {
+  return topics.filter((topic) => subjectByCourseName.get(topic.course) === subject);
+}
+
+export function coursesOfSubject(subject: Subject): CourseName[] {
+  const group = curriculum.subjects.find((entry) => entry.subject === subject);
+  return group ? group.courses.map((course) => course.name) : [];
+}
+
+/**
+ * 渡したtopic_idの集合が何科目にまたがっているか。
+ * 1枚のノートは1科目、という前提を呼び出し側が確かめるために使う。
+ */
+export function subjectsOfTopicIds(ids: readonly string[]): Subject[] {
+  const found = new Set<Subject>();
+  for (const id of ids) {
+    const subject = subjectOfTopicId(id);
+    if (subject) found.add(subject);
+  }
+  return [...found];
 }
 
 export function topicsByCourse(course: CourseName): Topic[] {
@@ -69,6 +114,17 @@ export function prerequisitesOf(id: string, depth = 1): Topic[] {
   return [...collected.values()];
 }
 
+export type SuggestTopicsOptions = {
+  /**
+   * 科目を絞る。
+   *
+   * 科目をまたぐと「比較」「否定」のような**どちらの科目にもある日本語**で
+   * 取り違えが起きる(数学の「比較」で英文法の比較表現が出てくる)。
+   * セッションの科目が決まっている場面では必ず渡すこと。
+   */
+  subject?: Subject;
+};
+
 /**
  * 写真解析で得たテキスト(単元名・用語・式の断片)から候補トピックを引く。
  *
@@ -78,7 +134,11 @@ export function prerequisitesOf(id: string, depth = 1): Topic[] {
  *
  * ここで拾った候補が、後輩AIに渡す「触れてよい話題」の初期集合になる。
  */
-export function suggestTopics(text: string, limit = 5): Topic[] {
+export function suggestTopics(
+  text: string,
+  limit = 5,
+  options: SuggestTopicsOptions = {},
+): Topic[] {
   const haystack = normalizeForMatch(text);
   if (haystack.length === 0) return [];
 
@@ -86,7 +146,12 @@ export function suggestTopics(text: string, limit = 5): Topic[] {
   const take = Math.max(0, Math.floor(limit));
   if (take === 0) return [];
 
-  const scored = topics
+  const pool =
+    options.subject === undefined
+      ? topics
+      : topics.filter((topic) => subjectByCourseName.get(topic.course) === options.subject);
+
+  const scored = pool
     .map((topic) => ({ topic, score: scoreTopic(topic, haystack) }))
     .filter((entry) => entry.score > 0)
     .sort((a, b) => b.score - a.score || a.topic.id.localeCompare(b.topic.id));
@@ -131,6 +196,8 @@ export type IntegrityIssue = {
     | "unknown-prerequisite"
     | "self-prerequisite"
     | "id-course-mismatch"
+    | "unknown-course"
+    | "cross-subject-prerequisite"
     | "cycle";
   topicId: string;
   detail: string;
@@ -144,6 +211,14 @@ export function checkIntegrity(data: Curriculum = curriculum): IntegrityIssue[] 
   const issues: IntegrityIssue[] = [];
   const seen = new Set<string>();
   const index = new Map<string, Topic>();
+
+  // 科目の対応表はデータから作る。`subjects[]` に載っていないコースを
+  // トピックが名乗っていたら、そのトピックはどの科目にも属さないことになる。
+  const subjectOf = new Map<string, Subject>(
+    data.subjects.flatMap((group) =>
+      group.courses.map((course) => [course.name, group.subject] as const),
+    ),
+  );
 
   for (const topic of data.topics) {
     if (seen.has(topic.id)) {
@@ -160,6 +235,14 @@ export function checkIntegrity(data: Curriculum = curriculum): IntegrityIssue[] 
         detail: `course=${topic.course} なら接頭辞は ${expectedPrefix}- のはずです`,
       });
     }
+
+    if (!subjectOf.has(topic.course)) {
+      issues.push({
+        kind: "unknown-course",
+        topicId: topic.id,
+        detail: `subjects[].courses にないコースです: ${topic.course}`,
+      });
+    }
   }
 
   for (const topic of data.topics) {
@@ -172,11 +255,22 @@ export function checkIntegrity(data: Curriculum = curriculum): IntegrityIssue[] 
         });
         continue;
       }
-      if (!index.has(prerequisiteId)) {
+      const prerequisite = index.get(prerequisiteId);
+      if (!prerequisite) {
         issues.push({
           kind: "unknown-prerequisite",
           topicId: topic.id,
           detail: `未定義のトピックを前提にしています: ${prerequisiteId}`,
+        });
+        continue;
+      }
+      // 前提は「そもそも◯◯とは?」の深掘り先として許可リストに入る。
+      // ここが科目をまたぐと、数学のセッションで英文法の質問が通ってしまう。
+      if (subjectOf.get(topic.course) !== subjectOf.get(prerequisite.course)) {
+        issues.push({
+          kind: "cross-subject-prerequisite",
+          topicId: topic.id,
+          detail: `科目をまたいで前提にしています: ${prerequisiteId}`,
         });
       }
     }

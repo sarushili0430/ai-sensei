@@ -31,6 +31,21 @@ describe("TranscriptCollector", () => {
     expect(collector.all[0]?.text).toBe("x^2を代入しました");
   });
 
+  // 数式のルールを英文法に当てると、英語の説明に数式の読み替えが紛れ込む
+  it("英文法のセッションでは英文法のルールで正規化する", () => {
+    const grammarContext = readSessionContext(
+      JSON.stringify({
+        session_id: "ses_2",
+        subject: "英文法",
+        max_seconds: 300,
+        allowed_topic_ids: ["EG-JISEI-GENZAI-KANRYO"],
+      }),
+    );
+    const collector = new TranscriptCollector(startedAt, grammarContext);
+    collector.add({ role: "user", text: "ビー動詞のあとなのでイング形にしました", at: at(1) });
+    expect(collector.all[0]?.text).toBe("be動詞のあとなのでing形にしました");
+  });
+
   it("後輩の発話は正規化しない(TTS向けの整形済みテキスト)", () => {
     const collector = new TranscriptCollector(startedAt, context);
     collector.add({ role: "assistant", text: "エックスの2乗の話ですよね?", at: at(1) });

@@ -4,7 +4,7 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "description": "ガードレール照合・数式音声の正規化・間隔反復・進捗カウンタ(すべて純関数)",
+  "description": "ガードレール照合・音声の正規化(科目別)・間隔反復・進捗カウンタ(すべて純関数)",
   "exports": {
     ".": "./src/index.ts"
   },
