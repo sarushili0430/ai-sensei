@@ -7,7 +7,13 @@ import * as silero from "@livekit/agents-plugin-silero";
 import { closingGraceMs, isClosingUtterance } from "./closing.ts";
 import { loadConfig } from "./config.ts";
 import { type SessionContext, remainingSeconds, resolveSessionContext } from "./context.ts";
-import { buildKarte, createAnthropicClient, emptyKarte, postComplete } from "./karte.ts";
+import {
+  buildKarte,
+  createAnthropicClient,
+  emptyKarte,
+  postComplete,
+  withUncertaintyHole,
+} from "./karte.ts";
 import { JobLogger } from "./log.ts";
 import { TranscriptCollector } from "./transcript.ts";
 
@@ -140,7 +146,7 @@ export default defineAgent({
     });
 
     const karteStartedAt = Date.now();
-    const karte = collector.hasUserSpeech
+    const drafted = collector.hasUserSpeech
       ? await buildKarte({
           context,
           transcript,
@@ -164,6 +170,13 @@ export default defineAgent({
             return emptyKarte();
           })
       : emptyKarte();
+
+    // 「わからない」と言ったのに穴ゼロ、を出さない。
+    // LLMが書けなかったときも(上の catch を通ったときも)ここを通る。
+    const karte = withUncertaintyHole(drafted, context, transcript);
+    if (karte.holes.length > drafted.holes.length) {
+      log.info("karte_uncertainty_hole_added", { session_id: context.session_id });
+    }
 
     if (collector.answerLeaks.length > 0) {
       // プロンプト調整の材料。会話中に差し止めることはできないので記録に残す。

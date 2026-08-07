@@ -57,9 +57,14 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
 
     final String subtitle = switch (state.phase) {
       SessionPhase.connecting => strings.sessionConnecting,
-      SessionPhase.summarizing => strings.sessionThinking,
+      SessionPhase.summarizing || SessionPhase.finished => strings.sessionSummarizing,
       _ => state.lastKohaiText ?? strings.sessionListening,
     };
+
+    // 会話は終わっていて、あとはカルテを待つだけ。
+    // ここでボタンを押せるままにしておくと、押しても何も起きないので連打される。
+    final bool wrappingUp =
+        state.phase == SessionPhase.summarizing || state.phase == SessionPhase.finished;
 
     return Scaffold(
       body: SafeArea(
@@ -89,7 +94,26 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
               const SizedBox(height: AppSpacing.md),
               // 聞いていることを、字幕より先に出す。
               // 話している最中は文字を読んでいないので、目の端で分かる必要がある。
-              SpeakingWave(active: state.phase == SessionPhase.listening),
+              // カルテを書いているあいだは、待たせている場所をここに出す
+              // (波のままだと、まだ聞いていると思わせてしまう)。
+              if (wrappingUp)
+                SizedBox(
+                  height: 26,
+                  child: Center(
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        // 動かさない設定では回さない。書いている途中だと分かる
+                        // 円弧として置く(SpeakingWave と同じ扱い)。
+                        value: AppMotion.isReduced(context) ? 0.25 : null,
+                      ),
+                    ),
+                  ),
+                )
+              else
+                SpeakingWave(active: state.phase == SessionPhase.listening),
               const SizedBox(height: AppSpacing.md),
               // 字幕。声を聞き取れない場所でも会話の流れを追えるようにする。
               // 差し替わるときに入れ替わりが見えるよう、文ごとに切り替える。
@@ -106,15 +130,21 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
               // パスは恥ではない。穴の記録として価値がある(handoff §7)。
               GhostButton(
                 label: strings.sessionPass,
-                onPressed: () => ref
-                    .read(sessionControllerProvider.notifier)
-                    .pass(strings.sessionPassMessage),
+                onPressed: wrappingUp
+                    ? null
+                    : () => ref
+                        .read(sessionControllerProvider.notifier)
+                        .pass(strings.sessionPassMessage),
               ),
               ChunkyButton(
-                label: strings.sessionEnd,
+                label: wrappingUp ? strings.sessionSummarizing : strings.sessionEnd,
                 color: AppColors.border,
                 foregroundColor: AppColors.ink,
-                onPressed: () => ref.read(sessionControllerProvider.notifier).finish(),
+                // 押した瞬間に押せなくなる。もう受け取ってあることが、
+                // 文言と色の両方で分かるようにする。
+                onPressed: wrappingUp
+                    ? null
+                    : () => ref.read(sessionControllerProvider.notifier).finish(),
               ),
             ],
           ),
