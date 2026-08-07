@@ -40,6 +40,12 @@ jobs:
     name: ${{ inputs.environment || (github.ref_name == 'main' && 'production' || 'develop') }}
     runs-on: ubuntu-latest
 
+    # ソースを読むだけ。デプロイ先はLiveKit Cloudなので、GitHubへ書き戻すものは無い。
+    permissions:
+      contents: read
+
+    # secret / variable はこの環境のものが引かれる。develop と production で
+    # LiveKitプロジェクトを分けるなら、リポジトリ共通ではなくここに置く。
     environment:
       name: ${{ inputs.environment || (github.ref_name == 'main' && 'production' || 'develop') }}
 
@@ -75,14 +81,20 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # インストーラはバージョンを固定できない(常に最新が入る)。`lk` はまだ
+      # 動きの変わりやすいCLIなので、**どのバージョンで壊れたか**を後から辿れるよう
+      # ログに残す。昨日まで緑だったものが急に落ちたら、まずここを見る。
       - name: Install LiveKit CLI
-        run: curl -sSL https://get.livekit.io/cli | bash
+        run: |
+          curl -sSL https://get.livekit.io/cli | bash
+          lk --version
 
       # `lk` はまだ動きの変わりやすいCLI。フラグ名が合わなくなったら
       # `lk agent deploy --help` を見て直す(docs/deploy-agent.md にも同じ注意がある)。
       #
       # 作業ディレクトリ(= リポジトリのルート)がそのままビルドコンテキストになり、
       # 直下の Dockerfile が読まれる。何を送らないかは .dockerignore が決める。
+      # 直前の `pnpm install` が置いた node_modules も .dockerignore で外れる。
       - name: Deploy to LiveKit Cloud
         env:
           LIVEKIT_URL: ${{ secrets.LIVEKIT_URL }}
@@ -92,13 +104,15 @@ jobs:
         shell: bash
         run: |
           if [ -z "$AGENT_ID" ]; then
-            echo "::error::LIVEKIT_AGENT_ID (Variables) が未設定です。初回は手元で lk agent create を流してください(docs/deploy-agent.md §2-2)"
+            echo "::error::$TARGET の LIVEKIT_AGENT_ID (Variables) が未設定です。初回は手元で lk agent create を流してください(docs/deploy-agent.md §2-2)"
             exit 1
           fi
           lk agent deploy --id "$AGENT_ID"
 
-      # ワーカーがLiveKitに登録し直すまで少し待つ。status が拾えなくても
-      # デプロイ自体は成功しているので、ここでは落とさない。
+      # ワーカーがLiveKitに登録し直すまで待つ。**ここでは落とさない。**
+      # `lk agent deploy` がビルドの完了まで待つのかは未確認で(docs/deploy-agent.md
+      # 「まだやっていないこと」)、待たないなら status はまだ前の状態を映す。
+      # 「拾えなかった」を失敗として報告すると、成功したデプロイまで赤くなる。
       - name: Status
         continue-on-error: true
         env:
@@ -106,6 +120,12 @@ jobs:
           LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
           LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
           AGENT_ID: ${{ vars.LIVEKIT_AGENT_ID }}
+        shell: bash
         run: |
-          sleep 30
-          lk agent status --id "$AGENT_ID"
+          # 向こうのビルドが数分かかるので、30秒おきに最大5回(=2分半)見る。
+          for i in 1 2 3 4 5; do
+            sleep 30
+            lk agent status --id "$AGENT_ID" && exit 0
+            echo "::notice::status をまだ拾えません($i/5)"
+          done
+          echo "::warning::$TARGET の agent status を拾えませんでした。デプロイ自体は成功しています。lk agent status --id $AGENT_ID と lk agent logs --id $AGENT_ID を手元で確認してください(docs/deploy-agent.md §7)"
