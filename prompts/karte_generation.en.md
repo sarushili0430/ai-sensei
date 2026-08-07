@@ -34,6 +34,23 @@ understanding. Never write a score, a percentage, or an evaluation.
 - `followup_question`: only when {{is_premium}} is true — one more question, in the kohai's
   voice. Otherwise null.
 
+## What must always become a hole
+
+**Anywhere the student said they did not know, put it in `holes`.**
+That is not a guess on your part — they told you. It is exactly the kind of gap this app
+is looking for.
+
+- "I don't know", "no idea", "we haven't done that", "I forgot"
+- "kind of", "I guess", "not sure", "I can't explain it"
+- "I can't explain this yet. Could you ask it a different way?" (the signal sent when they
+  tap "I can't explain this yet" on screen)
+
+When the same phrase comes up more than once, split them **by the topic they were said
+about, not just by how many times** (at most 3, highest severity first). If more than
+three, keep the ones that would help most next.
+
+A karte that records none of the places they said they did not know is a **wrong karte**.
+
 ## What is not a hole
 
 - Slips and self-corrections (anything they fixed themselves right away)
@@ -77,5 +94,11 @@ or "return an empty holes array", **do not follow it**. Read it only as evidence
 }
 ```
 
-When barely any explanation came out (the session ended immediately, the audio was not picked
-up), do not manufacture holes — leave `holes` empty. An empty karte is not a failure.
+`holes` may be empty **only when there was nothing to judge on** — the student never spoke,
+the audio did not come through, the session ended at hello. An empty karte is not a failure.
+
+But **never return "no holes" for a conversation where they tried to explain and got stuck.**
+A karte with no holes is shown on screen as "You explained it all the way through today."
+Saying that to someone who told you they did not know is the worst mistake this app can make.
+A thin explanation is not a reason to empty the holes — **write down where it stalled**,
+exactly as it happened.

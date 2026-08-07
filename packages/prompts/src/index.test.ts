@@ -250,6 +250,23 @@ describe("設計上の約束がプロンプトに書かれている", () => {
     expect(englishBodies).toMatch(/do not make them feel bad about it/);
   });
 
+  /**
+   * 「わからない」と言われた箇所は必ず穴にする、も言語ごとに二重で書く。
+   *
+   * これは develop で入った約束(実機で「わからないと何度も言ったのに穴なし」に
+   * なった報告への対応)。日本語側にだけ足すと、英語のセッションでだけ
+   * 「今日は、止まらずに説明できました」が返り続ける。
+   */
+  it("「わからない」を必ず穴にする、が両方の言語に書かれている", () => {
+    const ja = getPrompt("karte_generation", "ja").body;
+    const en = getPrompt("karte_generation", "en").body;
+
+    expect(ja).toContain("必ず `holes` に入れてください");
+    expect(ja).toContain("間違ったカルテ");
+    expect(en).toContain("put it in `holes`");
+    expect(en).toContain("wrong karte");
+  });
+
   it("全プロンプトにフロントマターのidがある", () => {
     for (const template of allPrompts()) {
       expect(template.meta.id.length, template.meta.id).toBeGreaterThan(0);

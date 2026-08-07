@@ -74,19 +74,29 @@ completeRoute.post("/:sessionId/complete", async (c) => {
     durationSeconds,
   });
 
-  // 会話中に許可範囲を越えたタグが付いていたら、ここで落とす。
-  // 的外れなタグを残すと、復習の通知まで的外れになる。
+  // 会話中に許可範囲を越えたタグが付いていたら、ここで直す。
+  // 的外れなタグを残すと復習の通知まで的外れになるが、**穴そのものは捨てない** —
+  // 外れているのはLLMが付けたIDであって、本人が説明に詰まった事実ではない。
+  // 捨てるとカルテが空になり、画面には「止まらずに説明できました」と出てしまう。
   const allowed = buildAllowedTopics(session.topic_ids);
-  const { accepted: acceptedHoles, rejected } = filterHoleTopicIds(body.karte.holes, allowed);
+  const { rejected } = filterHoleTopicIds(body.karte.holes, allowed);
+  const misTagged = new Set(rejected.map((entry) => entry.hole));
+  const fallbackTopicId = session.topic_ids[0];
   if (rejected.length > 0) {
-    log?.warn("guardrail_dropped_holes", {
+    log?.warn("guardrail_retagged_holes", {
       session_id: session.id,
+      retagged_to: fallbackTopicId ?? null,
       dropped: rejected.map((entry) => ({
         topic_id: entry.hole.topic_id,
         reason: entry.reason,
       })),
     });
   }
+  const acceptedHoles = body.karte.holes.flatMap((hole) => {
+    if (!misTagged.has(hole)) return [hole];
+    // 付け替える先が無いセッションだけは落とす。
+    return fallbackTopicId === undefined ? [] : [{ ...hole, topic_id: fallbackTopicId }];
+  });
 
   const karteId = newId("kar");
   const holeRecords: HoleRecord[] = acceptedHoles.map((hole) => ({

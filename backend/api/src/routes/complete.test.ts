@@ -111,8 +111,11 @@ describe("POST /v1/sessions/{id}/complete", () => {
     expect(services.scheduler.scheduled[0]?.desc).toContain("判別式");
   });
 
-  // 会話中に許可範囲を越えたタグが付くと、復習の通知まで的外れになる
-  it("許可リスト外のtopic_idが付いた穴を落とす", async () => {
+  // 会話中に許可範囲を越えたタグが付くと復習の通知まで的外れになるので直す。
+  // ただし**穴そのものは捨てない** — 外れているのはLLMが付けたIDであって、
+  // 本人が説明に詰まった事実ではない。捨てるとカルテが空になり、画面には
+  // 「今日は、止まらずに説明できました」と出てしまう。
+  it("許可リスト外のtopic_idは、穴を捨てずにこのセッションの単元へ付け替える", async () => {
     const sessionId = await startSession();
     const body = (await (
       await complete(sessionId, {
@@ -126,7 +129,13 @@ describe("POST /v1/sessions/{id}/complete", () => {
       })
     ).json()) as CompleteSessionResponse;
 
-    expect(body.karte.holes.map((hole) => hole.topic_id)).toEqual(["M1-NIJI-HANBETSU"]);
+    expect(body.karte.holes.map((hole) => hole.desc)).toEqual([
+      "判別式を「なぜ」使うのか、で説明が止まった",
+      "Σで止まった",
+    ]);
+    // 付け替え先はこのセッションで検出した単元。復習の通知は的外れにならない。
+    expect(body.karte.holes[1]?.topic_id).not.toBe("MB-SURETSU-SIGMA");
+    expect(body.karte.topic_ids).toContain(body.karte.holes[1]?.topic_id);
   });
 
   it("穴が0件の会話でもカルテは作る(空のカルテは失敗ではない)", async () => {

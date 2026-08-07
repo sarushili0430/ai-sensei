@@ -121,6 +121,16 @@ class SessionController extends _$SessionController {
   /// 待つのはここまでにして、あとは `dispose()` に任せる。
   static const Duration _disconnectTimeout = Duration(seconds: 3);
 
+  /// 会話画面でカルテを待つ上限。
+  ///
+  /// カルテはエージェントがLLMで書くので、会話が終わってから数秒〜十数秒かかる。
+  /// **その全部をこの画面で待たない。** 待ちきると、終わってから画面が変わるまで
+  /// 最長1分「考えています」のまま止まり、押しても何も起きない画面を見せ続ける
+  /// ことになる。ここまで待って来なければ先に祝福へ進み、カルテは祝福画面が
+  /// 受け取りに行く([SessionOutcomeController.retrieveKarte])。
+  static const Duration _karteGrace = Duration(seconds: 8);
+  static const Duration _kartePollInterval = Duration(seconds: 1);
+
   @override
   SessionState build() {
     ref.onDispose(() {
@@ -131,6 +141,12 @@ class SessionController extends _$SessionController {
 
   Future<void> connect(SessionStart session) async {
     _sessionId = session.sessionId;
+
+    // 前の会話の結果を持ち越さない。持ち越したまま今回のカルテが作れないと、
+    // 祝福もカルテ画面も**前回のカルテ**を「今日のカルテ」として出してしまう。
+    ref.read(sessionOutcomeControllerProvider.notifier).clear();
+    ref.read(latestKarteControllerProvider.notifier).clear();
+
     state = SessionState(
       phase: SessionPhase.connecting,
       remainingSeconds: session.limits.maxSeconds,
@@ -326,19 +342,24 @@ class SessionController extends _$SessionController {
     _finishing = true;
 
     final bool talked = _kohaiIdentity != null;
-    await _teardown();
 
-    final String? sessionId = _sessionId;
-    if (!talked) {
+    // **画面を先に動かす。** 片付け(切断の完了待ち)には数秒かかるので、
+    // ここを `_teardown()` の後ろに置くと、「今日はここまで」を押してから
+    // 数秒間、画面が押す前とまったく同じまま止まる。反応が無いので連打される。
+    if (talked) {
+      state = state.copyWith(phase: SessionPhase.summarizing);
+    } else {
       // 後輩が来ていないので、カルテは作られない。待たせずに理由を出す。
       state = state.copyWith(
         phase: SessionPhase.failed,
         failure: SessionFailure.kohaiUnavailable,
       );
-      return;
     }
 
-    state = state.copyWith(phase: SessionPhase.summarizing);
+    await _teardown();
+
+    final String? sessionId = _sessionId;
+    if (!talked) return;
 
     if (sessionId == null) {
       _publish(const SessionOutcome(resultMissing: true));
@@ -347,10 +368,16 @@ class SessionController extends _$SessionController {
     }
 
     try {
-      final SessionResult? result =
-          await ref.read(apiClientProvider).awaitSessionResult(sessionId);
+      final SessionResult? result = await ref.read(apiClientProvider).awaitSessionResult(
+            sessionId,
+            interval: _kartePollInterval,
+            attempts: _karteGrace.inSeconds ~/ _kartePollInterval.inSeconds,
+          );
+      // 待っているあいだに画面を離れられた。書き戻す先がもう無い。
+      if (!ref.mounted) return;
+
       if (result == null) {
-        // 生成が間に合わなかった。祝福は見せて、カルテは後で取りに行く。
+        // 生成が間に合わなかった。祝福は見せて、カルテは祝福画面が取りに行く。
         _publish(SessionOutcome(resultMissing: true, sessionId: sessionId));
         state = state.copyWith(phase: SessionPhase.finished, resultMissing: true);
         return;
@@ -364,6 +391,7 @@ class SessionController extends _$SessionController {
         showPaywall: result.showPaywall,
       );
     } catch (error) {
+      if (!ref.mounted) return;
       _publish(SessionOutcome(resultMissing: true, sessionId: sessionId));
       state = state.copyWith(
         phase: SessionPhase.finished,

@@ -216,13 +216,26 @@ class FakeLatestKarteController extends LatestKarteController {
   Karte? build() => _karte ?? sampleKarte;
 }
 
+/// カルテがまだ手元に無い状態。会話直後(生成待ち)の祝福画面で使う。
+class EmptyLatestKarteController extends LatestKarteController {
+  @override
+  Karte? build() => null;
+}
+
 class FakeSessionOutcomeController extends SessionOutcomeController {
-  FakeSessionOutcomeController(this._outcome);
+  FakeSessionOutcomeController(this._outcome, {this.karteArrives = false});
 
   final SessionOutcome _outcome;
 
+  /// 取りに行ったらカルテがあるか。
+  final bool karteArrives;
+
   @override
   SessionOutcome build() => _outcome;
+
+  /// 取りに行くのをここで止める。テストからネットワークへ出さないため。
+  @override
+  Future<bool> retrieveKarte() async => karteArrives;
 }
 
 class FakeReviewController extends ReviewController {

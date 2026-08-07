@@ -109,4 +109,8 @@ class LatestKarteController extends _$LatestKarteController {
   Karte? build() => null;
 
   void set(Karte karte) => state = karte;
+
+  /// 会話を始めるときに空にする。前回のカルテを残したまま今回のカルテが
+  /// 作れないと、古い穴が「今日のカルテ」として出てしまう。
+  void clear() => state = null;
 }

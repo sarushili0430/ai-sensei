@@ -25,6 +25,19 @@ abstract final class AppColors {
   static const Color surface = Color(0xFFFFFFFF);
   static const Color background = Color(0xFFFBFAF7);
   static const Color border = Color(0xFFE6E3DC);
+
+  /// 祝福画面の地。連続日数の色をほんのり敷いた、暖かい地。
+  ///
+  /// **画面の地は必ず不透明にする。** `streak.withValues(alpha: 0.08)` を
+  /// そのまま `Scaffold` に渡すと、地が92%透ける。遷移中は下のルートが
+  /// 透けて見えるので正しく見えるが、遷移が終わって下のルートがツリーから
+  /// 外れた瞬間、透けた先には**何も無くなる**(端末の地の色 = 黒)。
+  /// 本文は [ink](ほぼ黒)なので黒に沈み、画面全体が真っ黒で固まったように見える。
+  /// 敷きたいのは色であって透明度ではないので、先に混ぜて不透明の色にする。
+  static final Color celebration = Color.alphaBlend(
+    streak.withValues(alpha: 0.08),
+    background,
+  );
 }
 
 abstract final class AppSpacing {

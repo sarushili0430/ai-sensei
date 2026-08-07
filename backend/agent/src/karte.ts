@@ -1,10 +1,16 @@
 import {
   type CompleteSessionRequest,
+  type HoleDraft,
   type KarteDraft,
   type TranscriptMessage,
   karteDraftSchema,
 } from "@ai-sensei/contract";
-import { buildAllowedTopics, filterHoleTopicIds } from "@ai-sensei/guardrail";
+import { findTopic } from "@ai-sensei/curriculum";
+import {
+  buildAllowedTopics,
+  filterHoleTopicIds,
+  findUncertaintyUtterances,
+} from "@ai-sensei/guardrail";
 import { karteSystemPrompt } from "@ai-sensei/prompts";
 import type { SessionContext } from "./context.ts";
 import { renderTranscript } from "./transcript.ts";
@@ -58,19 +64,96 @@ export async function buildKarte({
 
 /**
  * カルテ側のガードレール。
- * 会話の許可リストを越えたタグと、Premium限定のあと追い質問を落とす。
- * サーバ側でも同じ照合をするが、送る前に落としておけば無駄な往復が減る。
+ * 会話の許可リストを越えたタグを直し、Premium限定のあと追い質問を落とす。
+ * サーバ側でも同じ照合をするが、送る前に直しておけば無駄な往復が減る。
+ *
+ * **穴そのものは捨てない。** 以前はタグが許可リストから外れた穴を丸ごと
+ * 落としていたが、落ちるのはLLMが付けたIDであって、本人が「わからない」と
+ * 言った事実ではない。捨てるとカルテには何も残らず、画面には
+ * 「今日は、止まらずに説明できました」と出てしまう。
+ * タグはこのセッションの主単元に付け替える(会話はその単元の話だったので、
+ * 復習の通知も的外れにはならない)。
  */
 export function applyGuardrails(draft: KarteDraft, context: SessionContext): KarteDraft {
   const allowed = buildAllowedTopics(context.allowed_topic_ids, { prerequisiteDepth: 0 });
-  const { accepted } = filterHoleTopicIds(draft.holes, allowed);
+  const { rejected } = filterHoleTopicIds(draft.holes, allowed);
+  const misTagged = new Set(rejected.map((entry) => entry.hole));
+  const fallbackTopicId = primaryTopicId(context);
+
+  const holes = draft.holes
+    .map((hole) => {
+      if (!misTagged.has(hole)) return hole;
+      // 付け替える先が無いセッションは、そもそも会話が始まらない。
+      // それでも来たときだけは落とす(的外れなIDのまま残すよりまし)。
+      if (fallbackTopicId === undefined) return undefined;
+      return { ...hole, topic_id: fallbackTopicId };
+    })
+    .filter((hole): hole is HoleDraft => hole !== undefined);
 
   return {
     said_well: draft.said_well,
-    holes: accepted,
+    holes,
     term_notes: draft.term_notes,
     followup_question: context.is_premium ? (draft.followup_question ?? null) : null,
   };
+}
+
+/** このセッションの主単元。穴のタグを付け替える先。 */
+function primaryTopicId(context: SessionContext): string | undefined {
+  return context.allowed_topic_ids[0];
+}
+
+/**
+ * 「わからない」と言ったのに穴がゼロだったカルテを、そのまま出さない。
+ *
+ * 穴を書くのはLLMなので、会話が短かった・言い淀みが多かったという理由で
+ * 穴を1件も返さないことがある。だが**本人が「わからない」と口にした箇所は、
+ * 理解の穴のいちばんはっきりした証拠**で、それを落として
+ * 「今日は、止まらずに説明できました」と返すのが、このアプリで一番わるい嘘になる。
+ *
+ * ここで足すのは、本人の発話をそのまま根拠にした1件だけ。
+ * LLMが既に穴を書いているときは何もしない(数を水増ししない)。
+ */
+export function withUncertaintyHole(
+  karte: KarteDraft,
+  context: SessionContext,
+  transcript: readonly TranscriptMessage[],
+): KarteDraft {
+  if (karte.holes.length > 0) return karte;
+
+  const said = findUncertaintyUtterances(transcript);
+  if (said.length === 0) return karte;
+
+  const topicId = primaryTopicId(context);
+  if (topicId === undefined) return karte;
+
+  return {
+    ...karte,
+    holes: [
+      {
+        topic_id: topicId,
+        desc: uncertaintyDesc(topicId, context.locale),
+        // 何度も言っているほど、次に効く。1回だけなら言い淀みのこともある。
+        severity: said.length >= 2 ? "high" : "medium",
+        // 根拠は本人の言葉のまま。要約すると「そんなことは言っていない」になる。
+        evidence: said.join(" / ").slice(0, 500),
+      },
+    ],
+  };
+}
+
+/** 断定しない文体で書く。「理解していない」ではなく「説明が止まった」。 */
+function uncertaintyDesc(topicId: string, locale: string): string {
+  const topic = findTopic(topicId)?.topic;
+  const desc =
+    locale === "en"
+      ? topic
+        ? `Explaining ${topic} stalled at "I don't know"`
+        : 'Your explanation stalled at "I don\'t know"'
+      : topic
+        ? `${topic}の説明が「わからない」で止まった`
+        : "説明が「わからない」で止まった";
+  return desc.slice(0, 200);
 }
 
 /** 会話が成立しなかったときのカルテ。空のカルテは失敗ではない。 */

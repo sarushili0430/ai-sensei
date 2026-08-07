@@ -166,6 +166,12 @@ class AppStrings {
   String get sessionListening => _pick('聞いています', 'Listening');
   String get sessionThinking => _pick('考えています', 'Thinking');
 
+  /// 会話が終わって、カルテを書いているあいだ。
+  ///
+  /// **何が起きているかを書く。** 「考えています」のままだと会話が続いて
+  /// いるように見えて、もう一度「今日はここまで」を押させてしまう。
+  String get sessionSummarizing => _pick('カルテを書いています…', 'Writing your karte…');
+
   /// つないでから後輩が入ってくるまで。無言の数秒を「止まっている」に見せない。
   String get sessionConnecting => _pick('後輩を呼んでいます…', 'Getting your kohai…');
   String get sessionPass => _pick('うまく言えない', "I can't explain this yet");

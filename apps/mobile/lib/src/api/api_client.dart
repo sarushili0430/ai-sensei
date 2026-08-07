@@ -22,6 +22,16 @@ class ApiClient {
   final String deviceId;
   final http.Client _client;
 
+  /// 1リクエストの上限。
+  ///
+  /// `http` は既定で待ち続ける。電波が切れかけている場所では接続が張られたまま
+  /// 返ってこないことがあり、そのまま待つと**画面が固まる**。
+  /// 失敗として返せば、上の層が「もう一度」を出せる。
+  static const Duration _timeout = Duration(seconds: 15);
+
+  /// 写真のアップロードは本文が大きいぶん長い。ここだけ別に持つ。
+  static const Duration _uploadTimeout = Duration(seconds: 45);
+
   Map<String, String> get _headers => <String, String>{'x-device-id': deviceId};
 
   /// 写真を送ってセッションを作る。復習(kind=review)では写真を送らない。
@@ -56,8 +66,9 @@ class ApiClient {
       );
     }
 
-    final http.Response response =
-        await http.Response.fromStream(await _client.send(request));
+    final http.Response response = await http.Response
+        .fromStream(await _client.send(request))
+        .timeout(_uploadTimeout);
     return SessionStart.fromJson(_decode(response));
   }
 
@@ -71,24 +82,28 @@ class ApiClient {
     required List<String> topicIds,
     String locale = 'ja',
   }) async {
-    final http.Response response = await _client.patch(
-      Uri.parse('$baseUrl/v1/sessions/$sessionId/topics'),
-      headers: <String, String>{
-        ..._headers,
-        'content-type': 'application/json; charset=utf-8',
-      },
-      body: jsonEncode(<String, dynamic>{'locale': locale, 'topic_ids': topicIds}),
-    );
+    final http.Response response = await _client
+        .patch(
+          Uri.parse('$baseUrl/v1/sessions/$sessionId/topics'),
+          headers: <String, String>{
+            ..._headers,
+            'content-type': 'application/json; charset=utf-8',
+          },
+          body: jsonEncode(<String, dynamic>{'locale': locale, 'topic_ids': topicIds}),
+        )
+        .timeout(_timeout);
     return SessionStart.fromJson(_decode(response));
   }
 
   /// 会話後の結果を取りに行く。カルテ生成が終わるまでサーバは202を返すので、
   /// 生成中は null を返して呼び出し側に待たせる。
   Future<SessionResult?> fetchSessionResult(String sessionId) async {
-    final http.Response response = await _client.get(
-      Uri.parse('$baseUrl/v1/sessions/$sessionId/result'),
-      headers: _headers,
-    );
+    final http.Response response = await _client
+        .get(
+          Uri.parse('$baseUrl/v1/sessions/$sessionId/result'),
+          headers: _headers,
+        )
+        .timeout(_timeout);
     if (response.statusCode == 202) return null;
     return SessionResult.fromJson(_decode(response));
   }
@@ -96,35 +111,36 @@ class ApiClient {
   /// カルテができるまで待つ。
   ///
   /// 会話が終わってから、エージェントがLLMでカルテを書いて `/complete` に送るまで
-  /// 数秒〜十数秒かかる。ここで待つのをやめるとカルテは表示されないので、
-  /// **祝福画面を見ている間ぶん**は待つ(60秒)。それでも来なければ、
-  /// 祝福だけ見せて、あとから取りに行けるようにする。
+  /// 数秒〜十数秒かかる。**呼ぶ側は短く区切って待つこと**(会話画面で待ちきると、
+  /// 終わってから画面が変わるまで押しても何も起きない時間になる)。
+  /// 待ちきれなかったぶんは、祝福画面が受け取りに行く。
+  ///
+  /// 最後の1回のあとには待たない。待つと、諦めると決めたあとに
+  /// `interval` ぶんだけ余計に画面が止まる。
   Future<SessionResult?> awaitSessionResult(
     String sessionId, {
     Duration interval = const Duration(seconds: 2),
-    int attempts = 30,
+    int attempts = 5,
   }) async {
     for (int i = 0; i < attempts; i++) {
       final SessionResult? result = await fetchSessionResult(sessionId);
       if (result != null) return result;
-      await Future<void>.delayed(interval);
+      if (i < attempts - 1) await Future<void>.delayed(interval);
     }
     return null;
   }
 
   Future<ProgressSummary> fetchProgress() async {
-    final http.Response response = await _client.get(
-      Uri.parse('$baseUrl/v1/me/progress'),
-      headers: _headers,
-    );
+    final http.Response response = await _client
+        .get(Uri.parse('$baseUrl/v1/me/progress'), headers: _headers)
+        .timeout(_timeout);
     return ProgressSummary.fromJson(_decode(response));
   }
 
   Future<ReviewQueue> fetchReviews() async {
-    final http.Response response = await _client.get(
-      Uri.parse('$baseUrl/v1/me/reviews'),
-      headers: _headers,
-    );
+    final http.Response response = await _client
+        .get(Uri.parse('$baseUrl/v1/me/reviews'), headers: _headers)
+        .timeout(_timeout);
     return ReviewQueue.fromJson(_decode(response));
   }
 

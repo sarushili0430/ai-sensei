@@ -3,6 +3,7 @@ import {
   completeSessionRequestSchema,
   karteDraftSchema,
 } from "@ai-sensei/contract";
+import { localeOfTopicId } from "@ai-sensei/curriculum";
 import { describe, expect, it, vi } from "vitest";
 import { readSessionContext } from "./context.ts";
 import {
@@ -12,6 +13,7 @@ import {
   emptyKarte,
   extractJson,
   postComplete,
+  withUncertaintyHole,
 } from "./karte.ts";
 
 const context = readSessionContext(
@@ -100,7 +102,9 @@ describe("buildKarte", () => {
 });
 
 describe("applyGuardrails", () => {
-  it("許可リスト外のtopic_idが付いた穴を落とす", () => {
+  // 落ちるのはLLMが付けたIDであって、本人が説明に詰まった事実ではない。
+  // 穴ごと捨てるとカルテが空になり、画面には「止まらずに説明できました」と出る。
+  it("許可リスト外のtopic_idは、穴を捨てずに主単元へ付け替える", () => {
     const guarded = applyGuardrails(
       {
         ...karteDraftSchema.parse(validKarte),
@@ -111,7 +115,24 @@ describe("applyGuardrails", () => {
       },
       context,
     );
-    expect(guarded.holes.map((hole) => hole.topic_id)).toEqual(["M1-NIJI-HANBETSU"]);
+    expect(guarded.holes.map((hole) => hole.desc)).toEqual(["判別式で止まった", "Σで止まった"]);
+    expect(guarded.holes.map((hole) => hole.topic_id)).toEqual([
+      "M1-NIJI-HANBETSU",
+      "M2-ZUKEI-ENCHOKU",
+    ]);
+  });
+
+  it("カリキュラムに無いIDを作られても、穴は残す", () => {
+    const guarded = applyGuardrails(
+      {
+        ...karteDraftSchema.parse(validKarte),
+        holes: [{ topic_id: "M9-NAI-TOPIC", desc: "理由で止まった", severity: "high" }],
+      },
+      context,
+    );
+    expect(guarded.holes).toEqual([
+      { topic_id: "M2-ZUKEI-ENCHOKU", desc: "理由で止まった", severity: "high" },
+    ]);
   });
 
   it("無料ユーザーにはあと追い質問を作らない", () => {
@@ -124,6 +145,49 @@ describe("applyGuardrails", () => {
     expect(
       applyGuardrails(karteDraftSchema.parse(validKarte), premiumContext).followup_question,
     ).toContain("判別式");
+  });
+});
+
+// 「わからない」と何度も言ったのに「穴なし」と返すのが、このアプリで一番わるい間違い。
+describe("withUncertaintyHole", () => {
+  const said = (text: string) => ({ role: "user" as const, text, at_ms: 1000 });
+
+  it("LLMが穴を1件も書かなくても、本人の申告から穴を1件残す", () => {
+    const karte = withUncertaintyHole(emptyKarte(), context, [
+      said("えっと、そこはわからないです"),
+      { role: "assistant", text: "なるほど", at_ms: 2000 },
+    ]);
+
+    expect(karte.holes).toHaveLength(1);
+    expect(karte.holes[0]?.topic_id).toBe("M2-ZUKEI-ENCHOKU");
+    // 単元の名前が入る(「説明が止まった」の文体は崩さない)
+    expect(karte.holes[0]?.desc).toContain("止まった");
+    // 根拠は本人の言葉のまま。要約すると「そんなことは言っていない」になる。
+    expect(karte.holes[0]?.evidence).toBe("えっと、そこはわからないです");
+    expect(karteDraftSchema.safeParse(karte).success).toBe(true);
+  });
+
+  it("何度も言われているほど、次に効くものとして扱う", () => {
+    const once = withUncertaintyHole(emptyKarte(), context, [said("わからないです")]);
+    const twice = withUncertaintyHole(emptyKarte(), context, [
+      said("わからないです"),
+      said("そこも習ってないです"),
+    ]);
+
+    expect(once.holes[0]?.severity).toBe("medium");
+    expect(twice.holes[0]?.severity).toBe("high");
+    expect(twice.holes[0]?.evidence).toBe("わからないです / そこも習ってないです");
+  });
+
+  it("LLMが穴を書けているときは足さない(数を水増ししない)", () => {
+    const drafted = applyGuardrails(karteDraftSchema.parse(validKarte), context);
+    expect(withUncertaintyHole(drafted, context, [said("わからないです")])).toEqual(drafted);
+  });
+
+  it("わからないと言っていない会話には足さない", () => {
+    const karte = emptyKarte();
+    expect(withUncertaintyHole(karte, context, [said("距離で比べました")])).toEqual(karte);
+    expect(withUncertaintyHole(karte, context, [])).toEqual(karte);
   });
 });
 
@@ -274,7 +338,13 @@ describe("英語のセッション", () => {
     expect(seen[0]?.user).not.toMatch(/[ぁ-んァ-ン一-龯]/);
   });
 
-  it("英語の課程の外に付いたタグは落とす", () => {
+  /**
+   * 別の課程のタグが付いても、**穴は捨てずにこのセッションの主単元へ付け替える**。
+   * 捨てると「今日は、止まらずに説明できました」に化けるため(develop の判断)。
+   * ここで見たいのは、付け替え先が**同じ課程のID**になっていること —
+   * 英語のセッションのカルテに日本語の単元が残ると、復習の通知まで日本語になる。
+   */
+  it("別の課程のタグは、英語の課程の主単元へ付け替える", () => {
     const filtered = applyGuardrails(
       {
         said_well: [],
@@ -286,6 +356,29 @@ describe("英語のセッション", () => {
       },
       englishContext,
     );
-    expect(filtered.holes.map((hole) => hole.topic_id)).toEqual(["A2-COORD-CIRCLE"]);
+
+    expect(filtered.holes.map((hole) => hole.topic_id)).toEqual([
+      "A2-COORD-CIRCLE",
+      "A2-COORD-CIRCLE",
+    ]);
+    for (const hole of filtered.holes) {
+      expect(localeOfTopicId(hole.topic_id), hole.topic_id).toBe("en");
+    }
+  });
+
+  /**
+   * 「わからない」と言ったのに穴ゼロ、を英語でも出さない。
+   * 発話の検出は言語をまたぐが、**足す穴の文言とタグはその課程のもの**になる。
+   */
+  it("英語で「わからない」と言われたら、英語の穴を足す", () => {
+    const karte = withUncertaintyHole(emptyKarte(), englishContext, [
+      { role: "assistant", text: "Why did you use the discriminant?", at_ms: 1000 },
+      { role: "user", text: "I don't know, sorry", at_ms: 4000 },
+    ]);
+
+    expect(karte.holes).toHaveLength(1);
+    expect(karte.holes[0]?.topic_id).toBe("A2-COORD-CIRCLE");
+    expect(karte.holes[0]?.desc).not.toMatch(/[ぁ-んァ-ン一-龯]/);
+    expect(karte.holes[0]?.evidence).toBe("I don't know, sorry");
   });
 });
