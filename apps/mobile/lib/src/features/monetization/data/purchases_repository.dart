@@ -29,6 +29,18 @@ class PurchasesRepository {
     // 課金の不具合はログが無いと追えない。リリースでも info は残す。
     await Purchases.setLogLevel(kDebugMode ? LogLevel.debug : LogLevel.info);
 
+    // **Test Store の鍵で提出したアプリは審査で落ちる**(RevenueCatの明記)。
+    // 落とさずに警告に留めるのは、ストアに商品を作る前でも TestFlight /
+    // 内部テストに配って課金フローを通す、という使い方を潰さないため。
+    // 提出前に appl_ / goog_ の鍵へ差し替えること。
+    if (kReleaseMode && RevenueCatConfig.usesTestStore) {
+      debugPrint(
+        'RevenueCat: release ビルドが Test Store の鍵(test_)で動いている。'
+        'このまま審査に出すと落ちる。REVENUECAT_IOS_PUBLIC_SDK_KEY / '
+        'REVENUECAT_ANDROID_PUBLIC_SDK_KEY を渡すこと。',
+      );
+    }
+
     await Purchases.configure(
       PurchasesConfiguration(RevenueCatConfig.apiKey)
         // アカウント作成を要求しないので、匿名デバイスIDをそのまま appUserID にする。

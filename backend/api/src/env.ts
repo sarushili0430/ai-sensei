@@ -35,6 +35,12 @@ export type Bindings = {
 
   REVENUECAT_WEBHOOK_AUTH: string;
   REVENUECAT_ENTITLEMENT_ID?: string;
+  /**
+   * Sandbox(iOSのサンドボックス / Playのライセンステスター / Test Store)の
+   * webhook でも entitlement を与えるか。`"true"` / `"false"`。
+   * 未設定なら production 以外で有効。詳細は [allowsSandboxPurchases]。
+   */
+  ALLOW_SANDBOX_PURCHASES?: string;
 
   INTERNAL_API_TOKEN: string;
 
@@ -86,6 +92,25 @@ export function readLimits(env: Bindings): Limits {
     freeSessionMaxSeconds: toInt(env.FREE_SESSION_MAX_SECONDS, 300),
     premiumSessionMaxSeconds: toInt(env.PREMIUM_SESSION_MAX_SECONDS, 900),
   };
+}
+
+/**
+ * Sandbox の購入で entitlement を与えてよいか。
+ *
+ * RevenueCat は sandbox の webhook を**本番と同じURLに**送ってくる
+ * (payload の `environment` が `SANDBOX` になるだけ)。素通しにすると、
+ * テスターが1人サンドボックスで買うたびに本番のD1に有料の記録が残る。
+ * 逆に一律で捨てると、develop に当てた実機テストで課金を通せなくなる。
+ *
+ * そこで既定を **production だけ拒否**にした。テスト環境では素通し。
+ * 本番でも一時的に通したい場合(リリース直前の疎通確認など)は
+ * `ALLOW_SANDBOX_PURCHASES=true` を明示的に立てる。
+ */
+export function allowsSandboxPurchases(env: Bindings): boolean {
+  const configured = env.ALLOW_SANDBOX_PURCHASES?.trim().toLowerCase();
+  if (configured === "true") return true;
+  if (configured === "false") return false;
+  return env.ENVIRONMENT !== "production";
 }
 
 function toInt(value: string | undefined, fallback: number): number {

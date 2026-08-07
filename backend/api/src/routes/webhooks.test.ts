@@ -10,7 +10,11 @@ beforeEach(() => {
   services = testServices();
 });
 
-function postWebhook(event: Record<string, unknown>, auth = bindings.REVENUECAT_WEBHOOK_AUTH) {
+function postWebhookTo(
+  env: ReturnType<typeof testBindings>,
+  event: Record<string, unknown>,
+  auth = env.REVENUECAT_WEBHOOK_AUTH,
+) {
   return app.request(
     "/v1/webhooks/revenuecat",
     {
@@ -18,8 +22,12 @@ function postWebhook(event: Record<string, unknown>, auth = bindings.REVENUECAT_
       headers: { "content-type": "application/json", authorization: auth },
       body: JSON.stringify({ event }),
     },
-    bindings,
+    env,
   );
+}
+
+function postWebhook(event: Record<string, unknown>, auth = bindings.REVENUECAT_WEBHOOK_AUTH) {
+  return postWebhookTo(bindings, event, auth);
 }
 
 describe("POST /v1/webhooks/revenuecat", () => {
@@ -177,6 +185,77 @@ describe("POST /v1/webhooks/revenuecat", () => {
       expect((await services.repository.getUser(newDeviceId))?.premium_expires_at).toBe(
         "2026-12-03T00:00:00.000Z",
       );
+    });
+  });
+
+  // iOSのサンドボックス・Playのライセンステスター・Test Store の購入は、
+  // すべて environment: "SANDBOX" として**本番と同じURLに**届く。
+  describe("sandbox の購入", () => {
+    it("テスト環境では本物と同じように反映する", async () => {
+      await postWebhookTo(testBindings({ ENVIRONMENT: "develop" }), {
+        type: "INITIAL_PURCHASE",
+        app_user_id: testDeviceId,
+        environment: "SANDBOX",
+        expiration_at_ms: Date.parse("2026-09-03T00:00:00.000Z"),
+      });
+      expect((await services.repository.getUser(testDeviceId))?.is_premium).toBe(true);
+    });
+
+    it("本番では無視する(テストの課金記録を本番のD1に残さない)", async () => {
+      const response = await postWebhookTo(testBindings({ ENVIRONMENT: "production" }), {
+        type: "INITIAL_PURCHASE",
+        app_user_id: testDeviceId,
+        environment: "SANDBOX",
+        expiration_at_ms: Date.parse("2026-09-03T00:00:00.000Z"),
+      });
+
+      // 400/401 だと RevenueCat が再送し続ける。受け取った上で無視する。
+      expect(response.status).toBe(200);
+      expect(await services.repository.getUser(testDeviceId)).toBeNull();
+    });
+
+    it("本番でも ALLOW_SANDBOX_PURCHASES=true なら反映する", async () => {
+      await postWebhookTo(
+        testBindings({ ENVIRONMENT: "production", ALLOW_SANDBOX_PURCHASES: "true" }),
+        {
+          type: "INITIAL_PURCHASE",
+          app_user_id: testDeviceId,
+          environment: "SANDBOX",
+          expiration_at_ms: Date.parse("2026-09-03T00:00:00.000Z"),
+        },
+      );
+      expect((await services.repository.getUser(testDeviceId))?.is_premium).toBe(true);
+    });
+
+    it("本番の購入は本番環境でもそのまま反映する", async () => {
+      await postWebhookTo(testBindings({ ENVIRONMENT: "production" }), {
+        type: "INITIAL_PURCHASE",
+        app_user_id: testDeviceId,
+        environment: "PRODUCTION",
+        expiration_at_ms: Date.parse("2026-09-03T00:00:00.000Z"),
+      });
+      expect((await services.repository.getUser(testDeviceId))?.is_premium).toBe(true);
+    });
+
+    // 本番で sandbox を捨てるなら、TRANSFER も捨てないと辻褄が合わない
+    // (剥奪だけ通って付け替えが通らない、が起きる)。
+    it("本番では sandbox の TRANSFER も無視する", async () => {
+      await postWebhook({
+        type: "INITIAL_PURCHASE",
+        app_user_id: testDeviceId,
+        expiration_at_ms: Date.parse("2026-09-03T00:00:00.000Z"),
+      });
+
+      await postWebhookTo(testBindings({ ENVIRONMENT: "production" }), {
+        type: "TRANSFER",
+        environment: "SANDBOX",
+        transferred_from: [testDeviceId],
+        transferred_to: ["dev_new"],
+      });
+
+      // 移行元のPremiumが剥がされていないこと
+      expect((await services.repository.getUser(testDeviceId))?.is_premium).toBe(true);
+      expect(await services.repository.getUser("dev_new")).toBeNull();
     });
   });
 

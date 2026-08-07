@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import type { AppEnv, Services } from "../env.ts";
+import { type AppEnv, type Services, allowsSandboxPurchases } from "../env.ts";
 import type { UserRecord } from "../repository/types.ts";
 
 export const webhooksRoute = new Hono<AppEnv>();
@@ -26,6 +26,11 @@ const revenueCatEventSchema = z.object({
     /** TRANSFER のみ。移行元/移行先の app_user_id(複数あり得る)。 */
     transferred_from: z.array(z.string()).nullable().optional(),
     transferred_to: z.array(z.string()).nullable().optional(),
+    /**
+     * `"SANDBOX"` | `"PRODUCTION"`。
+     * sandbox の購入も**本番と同じwebhook URLに**届くので、これで見分ける。
+     */
+    environment: z.string().nullable().optional(),
   }),
 });
 
@@ -126,6 +131,21 @@ webhooksRoute.post("/revenuecat", async (c) => {
 
   const event = parsed.data.event;
   const at = now();
+
+  // iOSのサンドボックス購入・Playのライセンステスター・Test Store は、
+  // すべて `environment: "SANDBOX"` として**本番と同じURLに**届く。
+  // 本番のD1にテストの課金記録を残さないよう、ここで落とす(既定は production のみ)。
+  //
+  // 401/400 を返すと RevenueCat が再送し続けるので、200 で「受け取った上で無視した」
+  // と返す。無視したことはログに残す —— 「テストで買ったのに反映されない」を
+  // 追えるようにするため。
+  if (event.environment === "SANDBOX" && !allowsSandboxPurchases(c.env)) {
+    const environment = c.env.ENVIRONMENT ?? "unset";
+    console.info(
+      `RevenueCat webhook: sandbox の ${event.type} を無視した (ENVIRONMENT=${environment})。本番で通したいときは ALLOW_SANDBOX_PURCHASES=true。`,
+    );
+    return c.json({ ok: true, ignored: "sandbox" });
+  }
 
   // 機種変更・アンインストール後の「購入を復元する」。
   //

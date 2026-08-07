@@ -3,7 +3,9 @@
 課金は RevenueCat SDK(`purchases_flutter` + `purchases_ui_flutter`)で通す。
 Shipaton の参加条件(SDKで最低1つのアプリ内課金)を満たす箇所でもある。
 
-ストア側の申請作業は [`docs/ci/store-setup.md`](ci/store-setup.md) にある。
+ストア側の申請作業は [`docs/ci/store-setup.md`](ci/store-setup.md)、
+**実際に決済を通す手順**(Test Store / iOS Sandbox / Play のテストカード)は
+[`docs/revenuecat-testing.md`](revenuecat-testing.md) にある。
 ここは **アプリとダッシュボードの噛み合わせ** だけを書く。
 
 ---
@@ -136,6 +138,13 @@ fvm flutter run --dart-define-from-file=dart_defines.env
 `REVENUECAT_ANDROID_PUBLIC_SDK_KEY` を入れる。そちらが優先されるので
 `REVENUECAT_SDK_KEY` は消さなくてよい。
 
+**`test_` の鍵のまま提出したアプリは審査で落ちる。**
+`codemagic.yaml` の dart-define 検査が、プラットフォーム鍵に `test_` が
+入っていればビルドを落とし、鍵が空で Test Store に落ちる場合は
+「このビルドは審査に出せない」と警告する。
+
+使い方は [`revenuecat-testing.md`](revenuecat-testing.md) §1。
+
 ---
 
 ## 4. プラットフォームの要件
@@ -209,6 +218,10 @@ SDKは失敗を `PlatformException` で投げる。**利用者が自分で閉じ
 ---
 
 ## 8. テスト
+
+**実際に決済を通すほう**(Test Store のダイアログ・iOS Sandbox・Play の
+テストカード・webhook の疎通)は [`revenuecat-testing.md`](revenuecat-testing.md)。
+ここに書くのは自動テストだけ。
 
 ```bash
 cd apps/mobile
