@@ -10,6 +10,7 @@ import {
   type LlmClient,
   applyGuardrails,
   buildKarte,
+  createAnthropicClient,
   emptyKarte,
   extractJson,
   postComplete,
@@ -213,6 +214,27 @@ describe("extractJson", () => {
   });
 });
 
+describe("createAnthropicClient", () => {
+  // ここで詰まると `/complete` が永久に送られない。アプリ側は `/result` が
+  // 202を返し続けるので、「取りに行っています…」のまま固まったように見える。
+  // 待ち続けるくらいなら、諦めて空のカルテで送るほうがまし。
+  it("カルテを書く呼び出しに上限を付ける", async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ content: [{ type: "text", text: "{}" }] }), { status: 200 }),
+    );
+
+    await createAnthropicClient({
+      apiKey: "sk-test",
+      model: "claude-sonnet-5",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    }).complete({ system: "s", user: "u", maxTokens: 100 });
+
+    const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+});
+
 describe("postComplete", () => {
   const body: CompleteSessionRequest = {
     transcript: [],
@@ -234,6 +256,22 @@ describe("postComplete", () => {
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://api.example.com/v1/sessions/ses_1/complete");
     expect((init.headers as Record<string, string>)["authorization"]).toBe("Bearer secret-token");
+  });
+
+  // 返事の来ない接続を掴んだままにすると、送り直しにも入れないままジョブが
+  // 終わる。アプリからは「カルテがいつまでも来ない」としか見えない。
+  it("返事を待ち続けないよう、1回ぶんの上限を付ける", async () => {
+    const fetchImpl = vi.fn(async () => new Response("{}", { status: 201 }));
+    await postComplete({
+      apiBaseUrl: "https://api.example.com",
+      internalToken: "secret-token",
+      sessionId: "ses_1",
+      body,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.signal).toBeInstanceOf(AbortSignal);
   });
 
   it("失敗したらエラーにする(呼び出し側でログに残す)", async () => {

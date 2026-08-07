@@ -161,6 +161,14 @@ export function emptyKarte(): KarteDraft {
   return { said_well: [], holes: [], term_notes: [], followup_question: null };
 }
 
+/**
+ * `/complete` 1回ぶんの上限。
+ *
+ * 返事が来ない接続を掴んだままにすると、送り直しにも入れないまま
+ * ジョブが終わる。アプリからは「カルテがいつまでも来ない」に見える。
+ */
+export const postCompleteTimeoutMs = 15_000;
+
 export type PostCompleteOptions = {
   apiBaseUrl: string;
   internalToken: string;
@@ -203,6 +211,7 @@ export async function postComplete({
           authorization: `Bearer ${internalToken}`,
         },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(postCompleteTimeoutMs),
       });
 
       if (response.ok) return;
@@ -232,6 +241,16 @@ export function extractJson(text: string): unknown {
   return JSON.parse(candidate.slice(start, end + 1));
 }
 
+/**
+ * カルテを書くLLM呼び出しの上限。
+ *
+ * ここで詰まると、会話は終わっているのに `/complete` が永久に送られない。
+ * アプリ側は `/result` が202を返し続けるので、「取りに行っています…」の
+ * まま固まったようにしか見えない。**待つのをやめて空のカルテで送る**ほうが、
+ * 待たせ続けるよりずっとまし(呼び出し側が catch して空カルテに落とす)。
+ */
+export const karteTimeoutMs = 60_000;
+
 export type AnthropicOptions = {
   apiKey: string;
   model: string;
@@ -258,6 +277,7 @@ export function createAnthropicClient(options: AnthropicOptions): LlmClient {
           system,
           messages: [{ role: "user", content: user }],
         }),
+        signal: AbortSignal.timeout(karteTimeoutMs),
       });
       if (!response.ok) {
         throw new Error(`カルテ生成に失敗しました: ${response.status}`);

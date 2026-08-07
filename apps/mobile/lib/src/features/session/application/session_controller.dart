@@ -200,12 +200,13 @@ class SessionController extends _$SessionController {
     _ticker?.cancel();
     _ticker = Timer.periodic(const Duration(seconds: 1), (Timer timer) {
       final int remaining = state.remainingSeconds - 1;
+      // **0を飛ばさない。** 先に打ち切ると、時間切れで終わった会話が
+      // 「のこり 0:01」のまま止まり、まだ1秒あるのに動かない画面になる。
+      state = state.copyWith(remainingSeconds: remaining < 0 ? 0 : remaining);
       if (remaining <= 0) {
         timer.cancel();
         unawaited(finish());
-        return;
       }
-      state = state.copyWith(remainingSeconds: remaining);
     });
   }
 
@@ -340,6 +341,11 @@ class SessionController extends _$SessionController {
   Future<void> finish() async {
     if (_finishing) return;
     _finishing = true;
+
+    // 会話はもう終わっている。片付け(数秒かかる)のあいだも数字が減り続けると、
+    // 終わったはずの会話がまだ動いているように見える。
+    _ticker?.cancel();
+    _ticker = null;
 
     final bool talked = _kohaiIdentity != null;
 
