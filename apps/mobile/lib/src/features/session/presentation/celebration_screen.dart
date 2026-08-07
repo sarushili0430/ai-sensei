@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -29,13 +31,69 @@ class CelebrationScreen extends ConsumerStatefulWidget {
 }
 
 class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
+  /// 祝福を見ているあいだ、カルテを受け取りに行く間隔と回数。
+  ///
+  /// 会話画面では待たない(待つと、終わってから画面が変わるまで固まる)。
+  /// 代わりに**紙吹雪を見ているあいだ**に届く。押させないのは、
+  /// 押すのがユーザーの仕事ではないから。
+  static const Duration _pollInterval = Duration(seconds: 2);
+  static const int _pollAttempts = 20;
+
+  Timer? _poll;
+  int _attempts = 0;
   bool _retrieving = false;
 
-  /// 会話直後に間に合わなかったカルテを、もう一度だけ取りに行く。
+  @override
+  void initState() {
+    super.initState();
+    if (ref.read(sessionOutcomeControllerProvider).resultMissing) {
+      _poll = Timer.periodic(_pollInterval, (_) => unawaited(_tick()));
+    }
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
+
+  void _stopPolling() {
+    _poll?.cancel();
+    _poll = null;
+  }
+
+  /// 自動で取りに行く1回ぶん。届けば build がボタンを差し替える。
+  /// **ここでは画面を動かさない** — 紙吹雪の途中でカルテへ飛ばさない。
+  Future<void> _tick() async {
+    if (_retrieving) return;
+    if (_attempts >= _pollAttempts) {
+      setState(_stopPolling);
+      return;
+    }
+    _attempts += 1;
+
+    _retrieving = true;
+    final bool found = await _fetchQuietly();
+    if (!mounted) return;
+    _retrieving = false;
+    if (found) setState(_stopPolling);
+  }
+
+  /// 取りに行く。生成中(202)も通信の失敗も、ここでは同じ「まだ」に畳む。
+  /// 自動で回している最中にエラーを出すと、押していないのに叱られる。
+  Future<bool> _fetchQuietly() async {
+    try {
+      return await ref.read(sessionOutcomeControllerProvider.notifier).retrieveKarte();
+    } on Object catch (error) {
+      debugPrint('カルテを受け取れませんでした(待ち続けます): $error');
+      return false;
+    }
+  }
+
+  /// 自動で届かなかったぶんを、手で取りに行く。
   Future<void> _retrieveKarte() async {
     setState(() => _retrieving = true);
-    final bool found =
-        await ref.read(sessionOutcomeControllerProvider.notifier).retrieveKarte();
+    final bool found = await _fetchQuietly();
     if (!mounted) return;
     setState(() => _retrieving = false);
     if (found) {
@@ -60,8 +118,12 @@ class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
         ? 0
         : karte.holes.where((Hole it) => it.status == HoleStatus.filled).length;
 
+    // まだカルテが手元に無い。自分で取りに行っている最中は押させない。
+    final bool waiting = karte == null && outcome.resultMissing;
+    final bool fetching = _retrieving || _poll != null;
+
     return Scaffold(
-      backgroundColor: AppColors.streak.withValues(alpha: 0.08),
+      backgroundColor: AppColors.celebration,
       body: Stack(
         children: <Widget>[
           // 紙吹雪は本文の下に敷く。読むものの前に紙を落とさない。
@@ -101,10 +163,10 @@ class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
                   // 出すものが無くてホームへ弾かれる。取りに行くボタンに変える。
                   FadeSlideIn.staggered(
                     index: 6,
-                    child: karte == null && outcome.resultMissing
+                    child: waiting
                         ? ChunkyButton(
-                            label: _retrieving ? strings.karteRetrieving : strings.karteRetrieve,
-                            onPressed: _retrieving ? null : _retrieveKarte,
+                            label: fetching ? strings.karteRetrieving : strings.karteRetrieve,
+                            onPressed: fetching ? null : _retrieveKarte,
                           )
                         : ChunkyButton(
                             label: strings.karteTitle,
@@ -119,6 +181,13 @@ class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
+                    ),
+                  // カルテを待っているあいだの逃げ道。この画面は戻る先を持たない
+                  // ので、待つ以外にできることが無いと行き止まりになる。
+                  if (waiting)
+                    GhostButton(
+                      label: strings.sessionBackHome,
+                      onPressed: () => context.go(AppRoute.home.path),
                     ),
                 ],
               ),
