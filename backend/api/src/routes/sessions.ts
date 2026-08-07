@@ -4,9 +4,11 @@ import {
   createSessionRequestSchema,
   updateSessionTopicsRequestSchema,
 } from "@ai-sensei/contract";
+import { localeOfTopicId } from "@ai-sensei/curriculum";
 import {
   type AllowedTopics,
   allowedTopicList,
+  allowedTopicsLocale,
   buildAllowedTopics,
   toLocalDate,
 } from "@ai-sensei/guardrail";
@@ -43,6 +45,7 @@ sessionsRoute.post("/", async (c) => {
 
   const form = await c.req.formData();
   const meta = parseMeta(form.get("meta"));
+  /** アプリの表示言語。エラー文言はこれで返す。 */
   const locale = meta.locale;
 
   const user = await repository.ensureUser(deviceId, at);
@@ -99,9 +102,18 @@ sessionsRoute.post("/", async (c) => {
     duration_seconds: null,
     context: null,
   });
+  /**
+   * 会話の言語。**アプリの表示言語ではなく、扱う単元の課程で決まる。**
+   *
+   * 復習は穴が起点なので、穴が属する課程がそのまま会話の言語になる。
+   * 端末を英語に変えただけで、日本語で残した穴に英語で聞きに来ても、
+   * 穴の説明文も単元名も日本語のままなので会話が噛み合わない。
+   */
+  const conversationLocale = reviewHole ? (localeOfTopicId(reviewHole.topic_id) ?? locale) : locale;
+
   let topicIds: string[] = reviewHole ? [reviewHole.topic_id] : [];
   let photoKey: string | null = null;
-  let summary = reviewHole ? `前回、${reviewHole.desc}` : "";
+  let summary = reviewHole ? reviewSummary(conversationLocale, reviewHole.desc) : "";
   let visibleWork: string[] = [];
   let questionSeeds: string[] = reviewHole ? [reviewHole.desc] : [];
   let analysis: PhotoAnalysis | null = null;
@@ -122,12 +134,16 @@ sessionsRoute.post("/", async (c) => {
         httpMetadata: { contentType: mediaType },
       });
 
-      analysis = await analyzer.analyze({ image, contentType: mediaType });
+      analysis = await analyzer.analyze({
+        image,
+        contentType: mediaType,
+        locale: conversationLocale,
+      });
       if (!analysis.is_math_note) {
         throw apiError("out_of_scope", { locale });
       }
 
-      const resolved = resolveDetectedTopics(analysis);
+      const resolved = resolveDetectedTopics(analysis, conversationLocale);
       topicIds = resolved.topicIds;
       summary = analysis.summary;
       visibleWork = analysis.visible_work;
@@ -176,7 +192,7 @@ sessionsRoute.post("/", async (c) => {
   // エージェントに渡す文脈。会話中のガードレールはこれを基準にする。
   const metadata = buildSessionMetadata({
     sessionId,
-    locale,
+    locale: conversationLocale,
     kind: meta.kind,
     maxSeconds: allowance.maxSeconds,
     context,
@@ -201,7 +217,7 @@ sessionsRoute.post("/", async (c) => {
   log?.info("session_created", {
     session_id: sessionId,
     kind: meta.kind,
-    locale,
+    locale: conversationLocale,
     topic_ids: [...allowed.primary],
     max_seconds: allowance.maxSeconds,
     agent_dispatch: dispatch ? "explicit" : "automatic",
@@ -274,7 +290,8 @@ sessionsRoute.patch("/:sessionId/topics", async (c) => {
 
   const metadata = buildSessionMetadata({
     sessionId,
-    locale,
+    // 会話の言語は残った単元の課程に従う(作成時と同じ規則)。
+    locale: allowedTopicsLocale(allowed),
     kind: session.kind,
     maxSeconds,
     context,
@@ -330,6 +347,14 @@ function agentDispatch(env: Bindings, metadata: string): AgentDispatch | undefin
   return { name, metadata };
 }
 
+/**
+ * 復習セッションの「今日のノート」。写真がないので、前回の穴を文脈にする。
+ * プロンプトに貼る文字列なので、会話の言語で書く。
+ */
+function reviewSummary(locale: "ja" | "en", desc: string): string {
+  return locale === "en" ? `Last time, ${desc}` : `前回、${desc}`;
+}
+
 /** エージェントがトークンから読む会話文脈。 */
 function buildSessionMetadata(input: {
   sessionId: string;
@@ -346,9 +371,11 @@ function buildSessionMetadata(input: {
     kind: input.kind,
     max_seconds: input.maxSeconds,
     photo_summary: input.context.summary,
-    visible_work: formatBullets(input.context.visible_work),
-    question_seeds: formatBullets(input.context.question_seeds),
-    allowed_topics: formatAllowedTopics(allowedTopicList(input.allowed)),
+    // 整形済みの断片はそのままプロンプトに貼られる。空のときの
+    // プレースホルダまで含めて、会話の言語で揃える。
+    visible_work: formatBullets(input.context.visible_work, input.locale),
+    question_seeds: formatBullets(input.context.question_seeds, input.locale),
+    allowed_topics: formatAllowedTopics(allowedTopicList(input.allowed), input.locale),
     allowed_topic_ids: [...input.allowed.primary, ...input.allowed.prerequisite],
     is_premium: input.isPremium,
   });

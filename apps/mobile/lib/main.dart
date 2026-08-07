@@ -81,6 +81,10 @@ class AiSenseiApp extends ConsumerWidget {
         theme: AppTheme.light(),
         routerConfig: router,
         supportedLocales: AppStrings.supportedLocales,
+        // 既定の解決は「一致しなければ先頭(=日本語)」。海外の端末に
+        // 日本語が出ないよう、日本語を望んだ端末以外は英語に寄せる。
+        localeListResolutionCallback: (List<Locale>? preferred, Iterable<Locale> _) =>
+            AppStrings.resolve(preferred),
         localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
           AppStringsDelegate(),
           GlobalMaterialLocalizations.delegate,

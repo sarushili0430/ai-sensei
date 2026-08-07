@@ -87,3 +87,36 @@ describe("日常語の「かける」「わる」", () => {
     expect(normalize("手間をわるく見積もっていました")).toBe("手間をわるく見積もっていました");
   });
 });
+
+// 英語STTも読み上げのまま文字にする("x squared")。
+// 日常語と衝突する語(times / over / plus)は、両側が式のときだけ直す。
+describe("英語の読み替え", () => {
+  const en = (input: string) => normalizeMathSpeech(input, "en").text;
+
+  it("累乗と根号を記号にする", () => {
+    expect(en("x squared minus 4x plus k")).toBe("x^2 - 4x + k");
+    expect(en("y cubed")).toBe("y^3");
+    expect(en("the square root of 3")).toBe("the √3");
+    expect(en("2 to the power of 5")).toBe("2^5");
+  });
+
+  it("数どうしの分数と演算子を記号にする", () => {
+    expect(en("3 over 4")).toBe("3/4");
+    expect(en("6 divided by 2 equals 3")).toBe("6 ÷ 2 = 3");
+    expect(en("2 times 3")).toBe("2 × 3");
+  });
+
+  it("日常語まで演算子にしない", () => {
+    expect(en("I went over the working three times")).toBe("I went over the working three times");
+    expect(en("that takes a plus side")).toBe("that takes a plus side");
+  });
+
+  it("ギリシャ文字の読みを記号にする", () => {
+    expect(en("sin theta plus pi")).toBe("sin θ + π");
+  });
+
+  it("日本語のルールを英語の発話に当てない(既定はja)", () => {
+    expect(normalizeMathSpeech("x squared").text).toBe("x squared");
+    expect(normalizeMathSpeech("x squared", "en").applied).toContain("en-squared");
+  });
+});

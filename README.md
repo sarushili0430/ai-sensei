@@ -7,6 +7,9 @@
 見つかった穴は「カルテ」に残り、翌日・3日後・7日後に後輩がもう一度たずねてくる。
 
 - ターゲット: 日本の高校生 / 対象科目: 高校数学(数I・A・II・B・III・C、新課程)
+- 日本語と英語の2言語。**海外の学習者には海外の課程**(Algebra 1 / Geometry /
+  Algebra 2 / Precalculus / Calculus / Statistics)を出す
+  ([ADR 0005](docs/adr/0005-locale-curricula.md))
 - 学習科学の背景: 自己説明効果(self-explanation effect)とプロテジェ効果(teachable agent)
 - [RevenueCat Shipaton 2026](https://shipaton.revenuecat.com/) 提出プロジェクト(Next Gen Award 併願のため初日からpublic + MIT)
 
@@ -30,9 +33,9 @@ apps/mobile/        Flutter (iOS先行) + Riverpod 3 + livekit_client
 backend/api/        Cloudflare Workers + Hono — セッション作成 / カルテ保存 / 課金webhook
 backend/agent/      LiveKit Agents — VAD・STT・LLM・TTSの会話パイプライン(後輩キャラ)
 packages/contract/  APIとカルテのスキーマ + fixture(モバイル/サーバ双方で契約を検証)
-packages/curriculum/高校数学カリキュラムマップ(純JSON。質問生成の許可リスト兼、穴のタグ)
+packages/curriculum/高校数学カリキュラムマップ(純JSON。日本の課程と海外の課程を別に持つ)
 packages/guardrail/ topic_idホワイトリスト照合・数式音声の正規化などの純関数
-prompts/            システムプロンプトとfew-shot(差分レビューできるようにバージョン管理)
+prompts/            システムプロンプトとfew-shot(`<id>.<locale>.md`。日英で別本)
 docs/               企画資料・ワイヤーフレーム・ADR
 scripts/            リポジトリ全体の検証スクリプト
 ```
@@ -210,6 +213,24 @@ Flutter app ──HTTPS──▶ backend/api ──▶ LiveKit room 作成 + age
 質問生成には二重のガードレールがあります。
 プロンプト側で「ノート写真に写っている内容 ∩ カリキュラムマップの範囲」に限定し、
 サーバ側で出力の `topic_id` をホワイトリスト照合して、外れたものは再生成させます。
+
+## 2つの課程(日本 / 海外)
+
+`locale` は写真解析からカルテ・通知まで一本で通します。**言語だけでなく分類も
+切り替わります** — 海外の学習者に「数学II / 図形と方程式」と出しても、
+自分の教科書の目次と一致しないので穴のタグとして機能しないためです。
+
+| | `ja` | `en` |
+| --- | --- | --- |
+| カリキュラム | 数学I〜C(新課程) | Algebra 1 / Geometry / Algebra 2 / Precalculus / Calculus / Statistics |
+| topic_id | `M2-ZUKEI-ENCHOKU` | `A2-COORD-CIRCLE` |
+| プロンプト | `prompts/*.ja.md` | `prompts/*.en.md` |
+| STT / TTS | 日本語モデル | 英語モデル |
+| ガードレール | 答えの漏れ・範囲外の語・数式音声を日本語で | 同じものを英語で |
+
+穴(hole)に付いた `topic_id` の接頭辞が、その穴の言語を決めます。復習の通知と
+復習画面の一行は端末の言語設定ではなくこれに従うので、日本語で説明した穴が
+英語の通知で届くことはありません([ADR 0005](docs/adr/0005-locale-curricula.md))。
 
 ## 設計上の約束(実装時に守ること)
 

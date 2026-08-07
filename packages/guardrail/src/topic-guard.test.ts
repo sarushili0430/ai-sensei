@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  allowedTopicsLocale,
   buildAllowedTopics,
   checkQuestion,
   containsAnswerLeak,
+  containsOutOfScopeTerm,
   filterHoleTopicIds,
   filterQuestions,
   isAllowedTopic,
   rejectionGuidance,
+  rejectionGuidanceByLocale,
 } from "./topic-guard.ts";
 
 const allowed = buildAllowedTopics(["M2-ZUKEI-ENCHOKU"]);
@@ -196,5 +199,82 @@ describe("確認の形をした答え", () => {
     "どこから話すか迷ってます?",
   ])("ふつうの質問は通す: %s", (text) => {
     expect(containsAnswerLeak(text)).toBe(false);
+  });
+});
+
+// 海外向けの課程(Algebra 1 〜 Statistics)。日本語のルールをそのまま
+// 当てると、英語のセッションで**答えの漏れが素通しになる**。
+describe("英語のセッション", () => {
+  const allowedEn = buildAllowedTopics(["A2-COORD-CIRCLE"]);
+
+  it("許可リストからロケールを決める", () => {
+    expect(allowedTopicsLocale(allowedEn)).toBe("en");
+    expect(allowedTopicsLocale(buildAllowedTopics(["M2-ZUKEI-ENCHOKU"]))).toBe("ja");
+    // 空のときは既定(日本の課程)に落とす
+    expect(allowedTopicsLocale(buildAllowedTopics([]))).toBe("ja");
+  });
+
+  it("英語の質問を通す", () => {
+    const verdict = checkQuestion(
+      { topic_id: "A2-COORD-CIRCLE", text: "Why did you compare the distance with the radius?" },
+      allowedEn,
+    );
+    expect(verdict.ok).toBe(true);
+  });
+
+  it.each([
+    "The answer is 2.",
+    "Here's how to solve it: substitute and expand.",
+    "So x = 2, right?",
+    "So the answer is the maximum at the vertex.",
+  ])("答えを与える英語の発話を弾く: %s", (text) => {
+    expect(containsAnswerLeak(text, "en")).toBe(true);
+  });
+
+  it.each([
+    "Why did you use the discriminant there?",
+    "What made you pick that as the first step?",
+    "Could you say a bit more about that part?",
+  ])("ふつうの英語の質問は通す: %s", (text) => {
+    expect(containsAnswerLeak(text, "en")).toBe(false);
+  });
+
+  it("疑問符のない英語の問いかけも質問として通す", () => {
+    const verdict = checkQuestion(
+      { topic_id: "A2-COORD-CIRCLE", text: "Tell me why the radius matters here" },
+      allowedEn,
+    );
+    expect(verdict.ok).toBe(true);
+  });
+
+  it("大学範囲の語を弾く(英語の語彙で)", () => {
+    expect(containsOutOfScopeTerm("we need a partial derivative here", "en")).toBe(
+      "partial derivative",
+    );
+    const verdict = checkQuestion(
+      { topic_id: "A2-COORD-CIRCLE", text: "Is that an eigenvalue?" },
+      allowedEn,
+    );
+    expect(verdict).toMatchObject({ ok: false, reason: "out_of_scope_wording" });
+  });
+
+  // ロピタルの定理は日本の高校では範囲外だが、AP Calculus では扱う。
+  // リストを一本にすると、教科書どおりの話題まで弾いてしまう。
+  it("範囲外リストは課程ごとに違う", () => {
+    expect(containsOutOfScopeTerm("ロピタルの定理を使う", "ja")).toBe("ロピタルの定理");
+    expect(containsOutOfScopeTerm("we can use L'Hopital here", "en")).toBeUndefined();
+  });
+
+  it("許可外の単元の話をしている英語の質問を弾く", () => {
+    const verdict = checkQuestion(
+      { topic_id: "A2-COORD-CIRCLE", text: "How do you find the sum of a geometric series?" },
+      allowedEn,
+    );
+    expect(verdict).toMatchObject({ ok: false, reason: "text_topic_mismatch" });
+  });
+
+  it("再生成の指示も英語で返す", () => {
+    expect(rejectionGuidanceByLocale.en.answer_leak).toMatch(/Do not give the answer/);
+    expect(rejectionGuidanceByLocale.ja.answer_leak).toContain("答え");
   });
 });

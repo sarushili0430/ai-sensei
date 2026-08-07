@@ -1,5 +1,7 @@
 import type { TranscriptMessage } from "@ai-sensei/contract";
+import type { CurriculumLocale } from "@ai-sensei/curriculum";
 import { buildAllowedTopics, containsAnswerLeak, normalizeMathSpeech } from "@ai-sensei/guardrail";
+import { formatTranscript } from "@ai-sensei/prompts";
 import type { SessionContext } from "./context.ts";
 
 /**
@@ -22,13 +24,15 @@ export class TranscriptCollector {
   }
 
   add(input: { role: "assistant" | "user"; text: string; at?: Date; topicId?: string }): void {
-    const text = input.role === "user" ? normalizeMathSpeech(input.text).text : input.text;
+    // 数式音声の直し方は言語ごとに違う(「にじょう」/ "squared")。
+    const locale = this.context.locale;
+    const text = input.role === "user" ? normalizeMathSpeech(input.text, locale).text : input.text;
     const trimmed = text.trim();
     if (trimmed.length === 0) return;
 
     // 後輩が答えを漏らしていないかを見る。realtimeなので発話を差し止めることは
     // できないが、記録してプロンプト調整の材料にする(W2の調整で使う)。
-    if (input.role === "assistant" && containsAnswerLeak(trimmed)) {
+    if (input.role === "assistant" && containsAnswerLeak(trimmed, locale)) {
       this.leaks.push(trimmed);
     }
 
@@ -59,10 +63,14 @@ export class TranscriptCollector {
   }
 }
 
-/** カルテ生成プロンプトに貼る形へ。 */
-export function renderTranscript(messages: readonly TranscriptMessage[]): string {
-  if (messages.length === 0) return "(発話なし)";
-  return messages
-    .map((message) => `${message.role === "assistant" ? "後輩" : "ユーザー"}: ${message.text}`)
-    .join("\n");
+/**
+ * カルテ生成プロンプトに貼る形へ。
+ * ロール名(後輩 / Kohai)はプロンプト側と揃える必要があるので、
+ * @ai-sensei/prompts の整形をそのまま使う。
+ */
+export function renderTranscript(
+  messages: readonly TranscriptMessage[],
+  locale: CurriculumLocale = "ja",
+): string {
+  return formatTranscript(messages, locale);
 }

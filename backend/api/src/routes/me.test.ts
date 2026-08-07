@@ -196,3 +196,31 @@ describe("GET /v1/me/reviews", () => {
     expect(body.items.map((item) => item.hole.id)).toEqual(["hol_seed", "hol_2"]);
   });
 });
+
+// 復習画面の一行も、穴と同じ課程の言語で出す(通知文と同じ文面)。
+describe("復習キューの言語", () => {
+  it("英語の課程の穴には英語の一行を返す", async () => {
+    await makePremium();
+    await seedHole({
+      topic_id: "A1-QUAD-SOLVE",
+      desc: "the explanation stopped at why the discriminant is used",
+    });
+
+    const response = await get("/v1/me/reviews");
+    const body = (await response.json()) as ReviewQueueResponse;
+
+    expect(reviewQueueResponseSchema.safeParse(body).success).toBe(true);
+    expect(body.items[0]?.prompt).toBe(
+      'That "why the discriminant is used" from 3 days ago — could you explain it to me now?',
+    );
+  });
+
+  it("日本の課程の穴は日本語のまま", async () => {
+    await makePremium();
+    await seedHole();
+
+    const response = await get("/v1/me/reviews");
+    const body = (await response.json()) as ReviewQueueResponse;
+    expect(body.items[0]?.prompt).toContain("いまなら説明できますか?");
+  });
+});

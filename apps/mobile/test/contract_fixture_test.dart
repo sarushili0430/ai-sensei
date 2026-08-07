@@ -33,6 +33,19 @@ void main() {
     test('あと追い質問がnullでも読める(無料ユーザー)', () {
       expect(Karte.fromJson(loadFixture('karte')).followupQuestion, isNull);
     });
+
+    // 海外向けの課程(Algebra 1 / Algebra 2 ...)。topic_idの接頭辞が別なので、
+    // ここが落ちたら英語のセッションのカルテが画面に出せていない。
+    test('karte.en.json をパースできる', () {
+      final Karte karte = Karte.fromJson(loadFixture('karte.en'));
+
+      expect(karte.topicIds, containsAll(<String>['A2-COORD-CIRCLE', 'A1-QUAD-SOLVE']));
+      expect(karte.holes.first.topicId, 'A1-QUAD-SOLVE');
+      expect(
+        karte.holes.first.description,
+        'the explanation stopped at why the discriminant is used',
+      );
+    });
   });
 
   group('セッションのfixture', () {
@@ -44,6 +57,16 @@ void main() {
       expect(session.detectedTopics, hasLength(2));
       expect(session.limits.maxSeconds, 300);
       expect(session.limits.isUnlimited, isFalse);
+    });
+
+    test('create-session-response.en.json をパースできる(海外向けの課程)', () {
+      final SessionStart session = SessionStart.fromJson(
+        loadFixture('create-session-response.en'),
+      );
+
+      expect(session.detectedTopics.first.topicId, 'A2-COORD-CIRCLE');
+      // チップに出るのはサーバが返す科目名。訳さずそのまま出す。
+      expect(session.detectedTopics.first.course, 'Algebra 2');
     });
 
     test('確信度の低い候補を見分けられる(チップの初期選択に使う)', () {

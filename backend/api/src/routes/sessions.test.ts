@@ -1,10 +1,12 @@
 import type { CreateSessionResponse } from "@ai-sensei/contract";
 import { createSessionResponseSchema } from "@ai-sensei/contract";
+import { localeOfTopicId } from "@ai-sensei/curriculum";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../app.ts";
 import { verifyJwt } from "../lib/livekit.ts";
 import {
   JPEG_BYTES,
+  RecordingAnalyzer,
   type TestServices,
   analysisFixture,
   createSessionForm,
@@ -335,6 +337,44 @@ describe("復習セッション", () => {
     const response = await post(reviewForm(holeId));
     expect(response.status).toBe(404);
   });
+
+  /**
+   * 端末を英語に切り替えたあとで、日本語で残した穴を復習する場合。
+   * 穴の説明文も単元名も日本語なので、**会話は穴の課程の言語で始める**。
+   * 表示言語(エラー文言)はアプリ側のままにする。
+   */
+  it("会話の言語は端末の設定ではなく、穴の課程で決まる", async () => {
+    await makePremium();
+    const holeId = await seedHole();
+
+    const form = new FormData();
+    form.set("meta", JSON.stringify({ kind: "review", locale: "en", hole_id: holeId }));
+
+    const response = await post(form);
+    expect(response.status).toBe(201);
+
+    const body = (await response.json()) as CreateSessionResponse;
+    const claims = await verifyJwt(body.livekit.token, bindings.LIVEKIT_API_SECRET);
+    const metadata = JSON.parse(String(claims?.["metadata"])) as {
+      locale: string;
+      photo_summary: string;
+    };
+
+    expect(metadata.locale).toBe("ja");
+    expect(metadata.photo_summary).toBe("前回、平方完成のなぜで説明が止まった");
+  });
+
+  it("表示言語(エラー文言)はアプリの設定に従う", async () => {
+    const holeId = await seedHole();
+
+    const form = new FormData();
+    form.set("meta", JSON.stringify({ kind: "review", locale: "en", hole_id: holeId }));
+
+    const response = await post(form);
+    expect(response.status).toBe(402);
+    const body = (await response.json()) as { error: { message: string } };
+    expect(body.error.message).not.toMatch(/[ぁ-んァ-ン一-龯]/);
+  });
 });
 
 describe("検出単元の確信度", () => {
@@ -495,5 +535,81 @@ describe("PATCH /v1/sessions/{id}/topics", () => {
     const body = (await response.json()) as CreateSessionResponse;
     expect(body.limits.max_seconds).toBe(900);
     expect(body.limits.remaining_sessions_today).toBeNull();
+  });
+});
+
+/**
+ * 海外向けの課程で始めるセッション。
+ *
+ * 見ているのは「英語で返るか」ではなく、**会話に渡す文脈が最後まで
+ * 英語の課程で揃っているか**。ここが混ざると、後輩が英語で話しながら
+ * 日本語の単元名でガードレールを引くことになる。
+ */
+describe("locale=en のセッション", () => {
+  let analyzer: RecordingAnalyzer;
+
+  beforeEach(() => {
+    analyzer = new RecordingAnalyzer();
+    services = { ...testServices(), analyzer };
+  });
+
+  it("英語の課程で解析し、英語の科目名をチップに返す", async () => {
+    const response = await post(createSessionForm({ locale: "en" }));
+    expect(response.status).toBe(201);
+
+    expect(analyzer.calls).toEqual([{ locale: "en" }]);
+
+    const body = (await response.json()) as CreateSessionResponse;
+    expect(createSessionResponseSchema.safeParse(body).success).toBe(true);
+    expect(body.detected_topics.map((topic) => topic.topic_id)).toContain("A2-COORD-CIRCLE");
+    expect(body.detected_topics.map((topic) => topic.course)).toContain("Algebra 2");
+  });
+
+  it("エージェントに渡す文脈も英語で揃える", async () => {
+    const response = await post(createSessionForm({ locale: "en" }));
+    const body = (await response.json()) as CreateSessionResponse;
+
+    const claims = await verifyJwt(body.livekit.token, bindings.LIVEKIT_API_SECRET);
+    const metadata = JSON.parse(String(claims?.["metadata"])) as {
+      locale: string;
+      allowed_topics: string;
+      allowed_topic_ids: string[];
+      question_seeds: string;
+    };
+
+    expect(metadata.locale).toBe("en");
+    expect(metadata.allowed_topics).toContain("Algebra 2 / Coordinate Geometry");
+    expect(metadata.allowed_topics).not.toMatch(/[ぁ-んァ-ン一-龯]/);
+    for (const id of metadata.allowed_topic_ids) {
+      expect(localeOfTopicId(id), id).toBe("en");
+    }
+  });
+
+  it("エラー文言も英語で返す", async () => {
+    await post(createSessionForm({ locale: "en" }));
+    const response = await post(createSessionForm({ locale: "en" }));
+
+    expect(response.status).toBe(402);
+    const body = (await response.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("free_limit_reached");
+    expect(body.error.message).not.toMatch(/[ぁ-んァ-ン一-龯]/);
+  });
+
+  it("単元を絞り込んでも英語の課程のまま", async () => {
+    const created = await post(createSessionForm({ locale: "en" }));
+    const session = (await created.json()) as CreateSessionResponse;
+
+    const response = await patchTopics(session.session_id, {
+      locale: "en",
+      topic_ids: ["A2-COORD-CIRCLE"],
+    });
+    expect(response.status).toBe(200);
+
+    const body = (await response.json()) as CreateSessionResponse;
+    expect(body.detected_topics.map((topic) => topic.topic_id)).toEqual(["A2-COORD-CIRCLE"]);
+
+    const claims = await verifyJwt(body.livekit.token, bindings.LIVEKIT_API_SECRET);
+    const metadata = JSON.parse(String(claims?.["metadata"])) as { locale: string };
+    expect(metadata.locale).toBe("en");
   });
 });

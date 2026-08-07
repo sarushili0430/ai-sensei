@@ -98,11 +98,26 @@ LLMに無理やり穴を作らせない。空のカルテは失敗ではない�
 
 ## ロケール
 
-`locale` はAPIが受け付ける値なので、STTの言語と最初の挨拶をそれに合わせる。
+`locale` はAPIが受け付ける値なので、STT・TTS・最初の挨拶をそれに合わせる。
 日本語モデルのまま英語を流すと認識が崩れて会話にならない。
 
-プロンプト本体は日本語のままで、`locale=en` のときは「英語で答える」指示だけを
-足している。プロンプトの英訳はW4の磨き込みで行う。
+**プロンプトも言語ごとに別本**を使う(`prompts/<id>.<locale>.md`)。
+日本語の本文に「英語で答える」を足す作りはやめた
+([ADR 0005](../../docs/adr/0005-locale-curricula.md))。ペルソナも禁止事項も
+few-shot も、その言語で書かれたものをそのまま渡す。
+
+言語で変わるのはこの4つ。ひとつでも取り違えると、英語で話しながら日本語の
+基準でガードレールを引くことになる。
+
+| | 切り替えるもの |
+| --- | --- |
+| STT / TTS | `deepgram` のモデル(`DEEPGRAM_TTS_MODEL_JA` / `_EN`) |
+| プロンプト | `conversationSystemPrompt(vars, locale)` / `karteSystemPrompt(vars, locale)` |
+| transcriptの整形 | ロール名(`後輩:` / `Kohai:`) |
+| ガードレール | 答えの漏れの検出と数式音声の正規化(`normalizeMathSpeech(text, locale)`) |
+
+許可トピックは `locale` を見ずに済む。topic_id の接頭辞がロケールごとに
+分かれているので、APIが渡した許可リストがそのまま課程を決める。
 
 ## ログと監視
 

@@ -11,8 +11,20 @@ import { z } from "zod";
  * 由来: handoff §4(c) 評価ルーブリック。
  */
 
-/** topic_idの形。中身がカリキュラム内かは @ai-sensei/guardrail が照合する。 */
-export const topicIdSchema = z.string().regex(/^(M1|MA|M2|MB|M3|MC)-[A-Z0-9]+(?:-[A-Z0-9]+)*$/);
+/**
+ * topic_idの形。中身がカリキュラム内かは @ai-sensei/guardrail が照合する。
+ *
+ * 接頭辞は課程ごと。`M1`〜`MC` が日本の数学I〜C、`A1`(Algebra 1)・`GE`
+ * (Geometry)・`A2`(Algebra 2)・`PC`(Precalculus)・`CL`(Calculus)・
+ * `ST`(Statistics)が海外向けの課程。
+ *
+ * **`@ai-sensei/curriculum` の `topicIdPattern` と同じ形にすること。**
+ * contract は依存を持たない層なので参照できず、二重に書いている
+ * (ずれると `backend/api` の photo-analysis のテストで落ちる)。
+ */
+export const topicIdSchema = z
+  .string()
+  .regex(/^(M1|MA|M2|MB|M3|MC|A1|GE|A2|PC|CL|ST)-[A-Z0-9]+(?:-[A-Z0-9]+)*$/);
 
 /**
  * 穴の深さ。点数ではなく「次にどれだけ効くか」の目安で、復習の優先順位に使う。

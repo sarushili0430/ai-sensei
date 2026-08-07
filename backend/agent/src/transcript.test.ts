@@ -88,3 +88,38 @@ describe("renderTranscript", () => {
     expect(renderTranscript([])).toBe("(発話なし)");
   });
 });
+
+describe("英語のセッション", () => {
+  const englishContext = readSessionContext(
+    JSON.stringify({
+      session_id: "ses_en",
+      locale: "en",
+      max_seconds: 300,
+      allowed_topic_ids: ["A2-COORD-CIRCLE"],
+    }),
+  );
+
+  it("ユーザーの発話には英語の正規化をかける", () => {
+    const collector = new TranscriptCollector(startedAt, englishContext);
+    collector.add({ role: "user", text: "I substituted x squared", at: at(1) });
+    expect(collector.all[0]?.text).toBe("I substituted x^2");
+  });
+
+  it("英語の答えの漏れを拾う", () => {
+    const collector = new TranscriptCollector(startedAt, englishContext);
+    collector.add({ role: "assistant", text: "The answer is 2, isn't it?", at: at(1) });
+    expect(collector.answerLeaks).toEqual(["The answer is 2, isn't it?"]);
+  });
+
+  it("transcriptは英語のロール名で書き出す(プロンプト側と揃える)", () => {
+    expect(
+      renderTranscript(
+        [
+          { role: "assistant", text: "Why is that?", at_ms: 1000 },
+          { role: "user", text: "Because of the radius", at_ms: 4000 },
+        ],
+        "en",
+      ),
+    ).toBe("Kohai: Why is that?\nStudent: Because of the radius");
+  });
+});

@@ -1,3 +1,4 @@
+import type { CurriculumLocale } from "@ai-sensei/curriculum";
 import type { D1Database, KVNamespace, R2Bucket } from "./cloudflare.ts";
 import type { Bindings, Services } from "./env.ts";
 import type { NotificationScheduler } from "./lib/notifications.ts";
@@ -21,12 +22,50 @@ export const analysisFixture: PhotoAnalysis = {
   question_seeds: ["方法を変えた理由", "判別式で何がわかるのか"],
 };
 
+/** 海外向けの課程(Algebra 1 / Algebra 2 ...)で返ってくる解析結果。 */
+export const analysisFixtureEn: PhotoAnalysis = {
+  is_math_note: true,
+  summary: "A line-and-circle problem. Part (1) asks for the number of intersection points.",
+  visible_work: [
+    "Finding the distance from the center to the line",
+    "In (2), substituting and using the discriminant",
+  ],
+  topics: [
+    { topic_id: "A2-COORD-CIRCLE", confidence: 0.92 },
+    { topic_id: "A1-QUAD-SOLVE", confidence: 0.41 },
+  ],
+  unreadable: [],
+  question_seeds: ["Why the method changed", "What the discriminant tells you"],
+};
+
+/**
+ * 解析器のスタブ。**呼ばれたロケールを記録する**。
+ * ここが素通しだと、英語のセッションで日本語のカリキュラムを
+ * 渡していても、テストからは気づけない。
+ */
+export class RecordingAnalyzer implements PhotoAnalyzer {
+  readonly calls: { locale: CurriculumLocale }[] = [];
+
+  private readonly byLocale: Partial<Record<CurriculumLocale, PhotoAnalysis>>;
+  private readonly fallback: PhotoAnalysis;
+
+  constructor(
+    fallback: PhotoAnalysis = analysisFixture,
+    byLocale: Partial<Record<CurriculumLocale, PhotoAnalysis>> = { en: analysisFixtureEn },
+  ) {
+    this.fallback = fallback;
+    this.byLocale = byLocale;
+  }
+
+  async analyze(input: { locale?: CurriculumLocale }): Promise<PhotoAnalysis> {
+    const locale = input.locale ?? "ja";
+    this.calls.push({ locale });
+    return this.byLocale[locale] ?? this.fallback;
+  }
+}
+
 export function stubAnalyzer(analysis: PhotoAnalysis = analysisFixture): PhotoAnalyzer {
-  return {
-    async analyze() {
-      return analysis;
-    },
-  };
+  return new RecordingAnalyzer(analysis);
 }
 
 export class RecordingScheduler implements NotificationScheduler {
@@ -36,6 +75,7 @@ export class RecordingScheduler implements NotificationScheduler {
     step: number;
     sendAt: string;
     desc: string;
+    locale?: CurriculumLocale;
   }[] = [];
   readonly cancelled: string[] = [];
 
@@ -46,6 +86,7 @@ export class RecordingScheduler implements NotificationScheduler {
     sendAt: string;
     desc: string;
     daysSince: number;
+    locale?: CurriculumLocale;
   }): Promise<{ externalId: string | null }> {
     this.scheduled.push(input);
     return { externalId: `os_${this.scheduled.length}` };
@@ -127,7 +168,7 @@ export function testServices(options: { now?: Date; analysis?: PhotoAnalysis } =
   let counter = 0;
   return {
     repository: new MemoryRepository(),
-    analyzer: stubAnalyzer(options.analysis),
+    analyzer: new RecordingAnalyzer(options.analysis),
     scheduler: new RecordingScheduler(),
     now: () => options.now ?? new Date("2026-08-03T13:24:07.000Z"),
     // テストで安定したIDにする(ses_1, kar_2, ...)

@@ -24,22 +24,31 @@ export type BuildKarteOptions = {
   llm: LlmClient;
 };
 
+/** カルテ生成の指示。systemと同じ言語で頼む(混ぜると出力の言語が揺れる)。 */
+const karteInstruction: Record<"ja" | "en", string> = {
+  ja: "この会話からカルテのJSONだけを返してください。",
+  en: "Return only the karte JSON for this conversation.",
+};
+
 /** LLMの出力からカルテを作り、ガードレールを通す。 */
 export async function buildKarte({
   context,
   transcript,
   llm,
 }: BuildKarteOptions): Promise<KarteDraft> {
-  const system = karteSystemPrompt({
-    photo_summary: context.photo_summary,
-    allowed_topics: context.allowed_topics,
-    transcript: renderTranscript(transcript),
-    is_premium: String(context.is_premium),
-  });
+  const system = karteSystemPrompt(
+    {
+      photo_summary: context.photo_summary,
+      allowed_topics: context.allowed_topics,
+      transcript: renderTranscript(transcript, context.locale),
+      is_premium: String(context.is_premium),
+    },
+    context.locale,
+  );
 
   const raw = await llm.complete({
     system,
-    user: "この会話からカルテのJSONだけを返してください。",
+    user: karteInstruction[context.locale],
     maxTokens: 1200,
   });
 

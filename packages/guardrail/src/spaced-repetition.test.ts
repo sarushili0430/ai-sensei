@@ -91,3 +91,45 @@ describe("buildReviewPrompt", () => {
     }
   });
 });
+
+// 通知の言語は端末の設定ではなく、穴の課程で決まる(呼び出し側が
+// topic_id から引く)。取り違えると、日本語で説明した穴が英語で届く。
+describe("buildReviewPrompt(英語)", () => {
+  it("後輩からのお願いの形にする", () => {
+    expect(
+      buildReviewPrompt({
+        desc: "the explanation stopped at why the discriminant is used",
+        daysSince: 1,
+        locale: "en",
+      }),
+    ).toBe('That "why the discriminant is used" from yesterday — could you explain it to me now?');
+  });
+
+  it("きのう・さっきを言い分ける", () => {
+    const en = (daysSince: number) =>
+      buildReviewPrompt({ desc: "why the radius matters", daysSince, locale: "en" });
+    expect(en(0)).toContain("from earlier today");
+    expect(en(1)).toContain("from yesterday");
+    expect(en(3)).toContain("from 3 days ago");
+  });
+
+  it("長い説明は切り詰める", () => {
+    const prompt = buildReviewPrompt({
+      desc: "the explanation stopped at choosing between the distance method and the discriminant method",
+      daysSince: 7,
+      locale: "en",
+    });
+    expect(prompt).toContain("…");
+  });
+
+  it("責める語彙を含まない", () => {
+    const prompt = buildReviewPrompt({
+      desc: "why the discriminant is used",
+      daysSince: 7,
+      locale: "en",
+    });
+    for (const word of ["forgot", "failed", "again", "still", "should"]) {
+      expect(prompt.toLowerCase()).not.toContain(word);
+    }
+  });
+});

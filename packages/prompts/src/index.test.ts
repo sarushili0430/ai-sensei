@@ -13,7 +13,10 @@ import {
   karteSystemPrompt,
   parsePrompt,
   promptIds,
+  promptLocales,
+  promptsFor,
   renderPrompt,
+  toPromptLocale,
 } from "./index.ts";
 
 describe("generated.ts", () => {
@@ -25,8 +28,39 @@ describe("generated.ts", () => {
     );
   });
 
-  it("すべての.mdが取り込まれている", () => {
-    expect(promptFiles().length).toBe(promptIds.length);
+  it("すべての.mdが取り込まれている(id × ロケール)", () => {
+    expect(promptFiles().length).toBe(promptIds.length * promptLocales.length);
+  });
+});
+
+describe("ロケール", () => {
+  // 片方の言語だけプロンプトを足すと、その言語のセッションが日本語に落ちる。
+  it("すべてのidが、すべてのロケールで揃っている", () => {
+    for (const locale of promptLocales) {
+      for (const id of promptIds) {
+        const template = getPrompt(id, locale);
+        expect(template.meta.id).toBe(id);
+        expect(template.meta.locale, `${id} の ${locale}`).toBe(locale);
+      }
+    }
+  });
+
+  // 変数がずれていると、片方の言語だけ renderPrompt が落ちる(会話が始まらない)。
+  it("同じidなら、宣言している変数もロケール間で同じ", () => {
+    for (const id of promptIds) {
+      const ja = [...getPrompt(id, "ja").meta.variables].sort();
+      const en = [...getPrompt(id, "en").meta.variables].sort();
+      expect(en, id).toEqual(ja);
+    }
+  });
+
+  it("未対応の言語は日本語に落とす", () => {
+    expect(toPromptLocale("fr")).toBe("ja");
+    expect(getPrompt("kohai_conversation", toPromptLocale("fr")).meta.locale).toBe("ja");
+  });
+
+  it("promptsFor はそのロケールの5本を返す", () => {
+    expect(promptsFor("en").map((template) => template.meta.id)).toEqual([...promptIds]);
   });
 });
 
@@ -86,6 +120,7 @@ describe("整形ヘルパ", () => {
 
   it("許可トピックが空のときは撮り直しを促す文言になる", () => {
     expect(formatAllowedTopics([])).toContain("撮り直し");
+    expect(formatAllowedTopics([], "en")).toContain("another photo");
   });
 
   it("transcriptを役割つきで並べる", () => {
@@ -97,8 +132,22 @@ describe("整形ヘルパ", () => {
     ).toBe("後輩: なんでですか?\nユーザー: 距離で比べました");
   });
 
-  it("空リストはプレースホルダを返す", () => {
+  it("英語のtranscriptは英語のロール名で並べる", () => {
+    expect(
+      formatTranscript(
+        [
+          { role: "assistant", text: "Why is that?" },
+          { role: "user", text: "I compared the distance" },
+        ],
+        "en",
+      ),
+    ).toBe("Kohai: Why is that?\nStudent: I compared the distance");
+  });
+
+  // 日本語の「(なし)」が英語のプロンプトに混ざると、そこだけ日本語で返ってくる。
+  it("空リストはロケールに合ったプレースホルダを返す", () => {
     expect(formatBullets([])).toBe("(なし)");
+    expect(formatBullets([], "en")).toBe("(none)");
   });
 });
 
@@ -131,12 +180,50 @@ describe("組み立て済みプロンプト", () => {
     expect(karte).toContain("said_well");
     expect(karte).toContain("後輩: なんでですか?");
   });
+
+  // 英語ロケールでは、日本語の本文に「英語で答えて」を足すのではなく、
+  // 英語のプロンプトそのものを使う(ペルソナと禁止事項ごと差し替える)。
+  const english = conversationSystemPrompt(
+    {
+      photo_summary: "A line-and-circle problem",
+      visible_work: "- Finding the distance from the center to the line",
+      allowed_topics: "- A2-COORD-CIRCLE",
+      question_seeds: "- Why the method changed",
+      remaining_seconds: 300,
+    },
+    "en",
+  );
+
+  it("英語の会話プロンプトに日本語が混ざらない", () => {
+    expect(english).toContain("You are the user's **kohai**");
+    expect(english).toContain("Wait, why did you go straight to the discriminant");
+    expect(english).toContain("square root of 3");
+    expect(english).not.toMatch(/[ぁ-んァ-ン一-龯]/);
+  });
+
+  it("英語のカルテ生成プロンプトも組み立てられる", () => {
+    const karte = karteSystemPrompt(
+      {
+        photo_summary: "A line-and-circle problem",
+        allowed_topics: "- A2-COORD-CIRCLE",
+        transcript: "Kohai: Why is that?",
+        is_premium: "false",
+      },
+      "en",
+    );
+    expect(karte).toContain("said_well");
+    expect(karte).toContain("Kohai: Why is that?");
+    expect(karte).not.toMatch(/[ぁ-んァ-ン一-龯]/);
+  });
 });
 
 // プロンプトはコードのガードレールと二重に書く。片方だけ消える事故を防ぐ。
 describe("設計上の約束がプロンプトに書かれている", () => {
   const bodies = allPrompts().map((template) => template.body);
   const all = bodies.join("\n");
+  const englishBodies = promptsFor("en")
+    .map((template) => template.body)
+    .join("\n");
 
   it("答えを教えない、が明記されている", () => {
     expect(all).toMatch(/答え(?:を教えない|・解説を書かない|・解き方・正解を言わない)/);
@@ -152,6 +239,15 @@ describe("設計上の約束がプロンプトに書かれている", () => {
 
   it("パスを責めない、が明記されている", () => {
     expect(all).toContain("責めない");
+  });
+
+  // 4つの約束は言語ごとに書き直す。英語側だけ抜けると、
+  // 海外のユーザーにだけ答えを教える後輩ができあがる。
+  it("英語のプロンプトにも同じ4つの約束が書かれている", () => {
+    expect(englishBodies).toMatch(/Never give the answer|Do not write solutions/);
+    expect(englishBodies).toContain("Never bring up anything that is not in the photo");
+    expect(englishBodies).toMatch(/Never grade/);
+    expect(englishBodies).toMatch(/do not make them feel bad about it/);
   });
 
   it("全プロンプトにフロントマターのidがある", () => {

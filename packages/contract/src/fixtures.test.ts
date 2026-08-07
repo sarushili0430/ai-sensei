@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { fixtureNames, fixturePath, fixtureSchemas } from "./fixtures.ts";
+import { fixtureFileNames, fixtureFileSchemas, fixturePath, fixtureSchemas } from "./fixtures.ts";
 import {
   completeSessionRequestSchema,
   createSessionRequestSchema,
@@ -20,9 +20,18 @@ function loadFixture(name: string): unknown {
 
 describe("fixture", () => {
   // Flutter側のテストも同じファイルを読む。両側が通れば契約は揃っている。
-  it.each(fixtureNames)("%s.json が対応スキーマを満たす", (name) => {
-    const parsed = fixtureSchemas[name].safeParse(loadFixture(name));
+  it.each(fixtureFileNames)("%s.json が対応スキーマを満たす", (name) => {
+    const schema = fixtureSchemas[fixtureFileSchemas[name] as keyof typeof fixtureSchemas];
+    const parsed = schema.safeParse(loadFixture(name));
     expect(parsed.success ? null : parsed.error.issues).toBeNull();
+  });
+
+  // 海外向けの課程のfixtureが消えると、英語のセッションのかたちを
+  // 誰も検査しなくなる(接頭辞を変えた瞬間に気づけない)。
+  it("日本の課程と海外の課程、両方のかたちを持っている", () => {
+    expect(fixtureFileNames).toContain("karte");
+    expect(fixtureFileNames).toContain("karte.en");
+    expect(fixtureFileNames).toContain("create-session-response.en");
   });
 
   it("fixturePath がリポジトリ相対パスを返す", () => {

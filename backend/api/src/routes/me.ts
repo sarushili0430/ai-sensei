@@ -1,5 +1,6 @@
 import type { ProgressResponse, ReviewQueueResponse } from "@ai-sensei/contract";
 import { filledHolesLimit } from "@ai-sensei/contract";
+import { localeOfTopicId } from "@ai-sensei/curriculum";
 import { buildReviewPrompt, computeProgress, daysBetween, toLocalDate } from "@ai-sensei/guardrail";
 import { Hono } from "hono";
 import type { AppEnv } from "../env.ts";
@@ -69,7 +70,12 @@ meRoute.get("/reviews", async (c) => {
         hole: toHole(hole),
         topic_id: hole.topic_id,
         days_since: daysSince,
-        prompt: buildReviewPrompt({ desc: hole.desc, daysSince }),
+        // 復習画面の一行も、穴と同じ課程の言語で出す(通知文と同じ文面)。
+        prompt: buildReviewPrompt({
+          desc: hole.desc,
+          daysSince,
+          locale: localeOfTopicId(hole.topic_id),
+        }),
       };
     })
     // 古い穴 → 深い穴の順。放置されたものから声をかける。
