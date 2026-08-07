@@ -228,6 +228,21 @@ class AppStrings {
   /// カルテの生成が会話直後に間に合わなかったとき。作り直しではなく取りに行く。
   String get karteRetrieve => _pick('カルテを取りに行く', 'Fetch my karte');
   String get karteRetrieving => _pick('取りに行っています…', 'Fetching…');
+
+  /// 待っているあいだ、押せないボタンの上に置く説明。
+  ///
+  /// ボタンの文言だけだと、**押せないボタンが出ているだけ**にしか見えない。
+  /// 何を待っているのか(と、待てば届くこと)をここで言う。
+  String get karteWriting => _pick(
+        '後輩がカルテを書いています。届いたら、ここに出ます。',
+        'Your kohai is writing your karte. It will appear here when it is ready.',
+      );
+
+  /// 待つと決めた時間ぶん待っても届かなかった。行き止まりにしないための言い方。
+  String get karteTakingLong => _pick(
+        '思ったより時間がかかっています。もう一度取りに行けます。',
+        "It's taking longer than expected. You can try fetching it again.",
+      );
   String get karteStillCooking => _pick(
         'まだ書いている途中でした。少しあとで、もう一度おためしください。',
         "It's still being written. Please try again in a moment.",

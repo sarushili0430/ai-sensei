@@ -1,4 +1,5 @@
 import 'package:ai_sensei/src/common_widgets/chunky_button.dart';
+import 'package:ai_sensei/src/common_widgets/confetti.dart';
 import 'package:ai_sensei/src/features/capture/application/capture_controller.dart';
 import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
 import 'package:ai_sensei/src/features/session/application/session_controller.dart';
@@ -102,6 +103,75 @@ void main() {
     testWidgets('カルテを待っているあいだも行き止まりにしない', (WidgetTester tester) async {
       await pumpWaiting(tester);
       expect(find.text(ja.sessionBackHome), findsOneWidget);
+    });
+
+    /// 待っているあいだ、**押せないボタン以外のもの**を出す。
+    ///
+    /// 文言の変わらない無効なボタンだけが置いてあると、待っているのか
+    /// 壊れたのかが読めない。何を待っているのかを言葉で出す。
+    testWidgets('カルテを待っているあいだ、何を待っているのかを出す', (WidgetTester tester) async {
+      await pumpWaiting(tester);
+
+      expect(find.text(ja.karteWriting), findsOneWidget);
+      expect(find.text(ja.karteRetrieving), findsOneWidget);
+      final ChunkyButton button = tester.widget(find.byType(ChunkyButton));
+      expect(button.onPressed, isNull);
+    });
+
+    /// 待たせる画面から**動きを消さない**。
+    ///
+    /// 紙吹雪は一度きりだと2秒で止まる。そのあとカルテを待つ数十秒は
+    /// 画面がまったく動かなくなり、固まったようにしか見えない。
+    testWidgets('カルテを待っているあいだ、紙吹雪は降り続ける', (WidgetTester tester) async {
+      await pumpWaiting(tester);
+
+      final ConfettiBurst confetti = tester.widget(find.byType(ConfettiBurst));
+      expect(confetti.looping, isTrue);
+    });
+
+    testWidgets('カルテが届いていれば、紙吹雪は一度きりで終わる', (WidgetTester tester) async {
+      await pumpApp(
+        tester,
+        const CelebrationScreen(),
+        overrides: <Object?>[
+          progressControllerProvider.overrideWith(FakeProgressController.new),
+          latestKarteControllerProvider.overrideWith(FakeLatestKarteController.new),
+          sessionOutcomeControllerProvider.overrideWith(
+            () => FakeSessionOutcomeController(const SessionOutcome()),
+          ),
+        ],
+      );
+
+      final ConfettiBurst confetti = tester.widget(find.byType(ConfettiBurst));
+      expect(confetti.looping, isFalse);
+    });
+  });
+
+  /// 残り時間は**0まで見せる**。
+  ///
+  /// 0を飛ばして打ち切ると、時間切れで終わった会話が「のこり 0:01」の
+  /// まま止まる。まだ1秒あるのに動かない画面は、固まったようにしか見えない。
+  group('残り時間', () {
+    test('0秒は 0:00 と出る', () {
+      expect(ja.remaining(0), 'のこり 0:00');
+      expect(const AppStrings(Locale('en')).remaining(0), '0:00 left');
+    });
+
+    testWidgets('時間切れの会話画面は 0:00 を出す', (WidgetTester tester) async {
+      await pumpApp(
+        tester,
+        const SessionScreen(),
+        overrides: <Object?>[
+          captureControllerProvider.overrideWith(FakeCaptureController.new),
+          sessionControllerProvider.overrideWith(
+            () => FakeSessionController(
+              const SessionState(phase: SessionPhase.summarizing, remainingSeconds: 0),
+            ),
+          ),
+        ],
+      );
+
+      expect(find.text(ja.remaining(0)), findsOneWidget);
     });
   });
 

@@ -11,18 +11,31 @@ import '../theme/tokens.dart';
 /// 紙の色もアプリの語彙から取る — 黄(言えた)・ピンク(穴)・オレンジ(連続日数)。
 /// 埋めた穴が祝われているのだと、色だけで分かるように。
 class ConfettiBurst extends StatefulWidget {
-  const ConfettiBurst({this.pieces = 26, super.key});
+  const ConfettiBurst({this.pieces = 26, this.looping = false, super.key});
 
   final int pieces;
+
+  /// 降り続けるかどうか。
+  ///
+  /// 一度きりの紙吹雪は2秒ほどで終わる。**そのあと何かを待たせる画面では、
+  /// 止まった紙吹雪が「固まった」に見える。** 待っているあいだは降り続け、
+  /// 待ちが終わったところで最後にもう一降りして止まる。
+  final bool looping;
 
   @override
   State<ConfettiBurst> createState() => _ConfettiBurstState();
 }
 
 class _ConfettiBurstState extends State<ConfettiBurst> with SingleTickerProviderStateMixin {
+  /// 一度きりの紙吹雪。
+  static const Duration _burst = Duration(milliseconds: 2200);
+
+  /// 降り続けるときの一周。急かさない速さにする(待たせている画面なので)。
+  static const Duration _loop = Duration(milliseconds: 4200);
+
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 2200),
+    duration: widget.looping ? _loop : _burst,
   );
   late final List<_Piece> _confetti = _buildPieces(widget.pieces);
   bool _started = false;
@@ -43,7 +56,30 @@ class _ConfettiBurstState extends State<ConfettiBurst> with SingleTickerProvider
       _controller.value = _stillFrame;
       return;
     }
-    _controller.forward();
+    if (widget.looping) {
+      _controller.repeat();
+    } else {
+      _controller.forward();
+    }
+  }
+
+  @override
+  void didUpdateWidget(ConfettiBurst oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.looping == widget.looping) return;
+    if (AppMotion.isReduced(context)) return;
+
+    // `repeat()` は今の duration で回るので、先に入れ替える。
+    if (widget.looping) {
+      _controller
+        ..duration = _loop
+        ..repeat();
+    } else {
+      // 待っていたものが届いた。降り続けるのをやめて、最後にもう一降りする。
+      _controller
+        ..duration = _burst
+        ..forward(from: 0);
+    }
   }
 
   @override
@@ -61,7 +97,11 @@ class _ConfettiBurstState extends State<ConfettiBurst> with SingleTickerProvider
           child: AnimatedBuilder(
             animation: _controller,
             builder: (BuildContext context, Widget? child) => CustomPaint(
-              painter: _ConfettiPainter(pieces: _confetti, progress: _controller.value),
+              painter: _ConfettiPainter(
+                pieces: _confetti,
+                progress: _controller.value,
+                looping: widget.looping,
+              ),
               size: Size.infinite,
             ),
           ),
@@ -120,15 +160,27 @@ class _Piece {
 }
 
 class _ConfettiPainter extends CustomPainter {
-  const _ConfettiPainter({required this.pieces, required this.progress});
+  const _ConfettiPainter({
+    required this.pieces,
+    required this.progress,
+    this.looping = false,
+  });
 
   final List<_Piece> pieces;
   final double progress;
+  final bool looping;
 
   @override
   void paint(Canvas canvas, Size size) {
     for (final _Piece piece in pieces) {
-      final double local = (progress - piece.delay) * piece.speed;
+      // 一度きりのときは、紙ごとの速さの差がそのまま散らばりになる。
+      //
+      // 降り続けるときは**同じ速さで位相だけずらす**。速さを紙ごとに変えると
+      // 一周するたびに位相が寄っていき、「どっと降って、しばらく空」の
+      // 繰り返しになる。位相をずらして回せば、継ぎ目のないひとつづきに見える。
+      final double local = looping
+          ? (progress + piece.delay + piece.x) % 1.0
+          : (progress - piece.delay) * piece.speed;
       if (local <= 0) continue;
 
       // 落ちきったら消す。溜まった紙を床に描くと、画面の下が重くなる。
@@ -159,5 +211,6 @@ class _ConfettiPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_ConfettiPainter oldDelegate) => oldDelegate.progress != progress;
+  bool shouldRepaint(_ConfettiPainter oldDelegate) =>
+      oldDelegate.progress != progress || oldDelegate.looping != looping;
 }

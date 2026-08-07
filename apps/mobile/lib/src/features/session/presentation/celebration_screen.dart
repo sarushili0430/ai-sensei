@@ -36,8 +36,12 @@ class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
   /// 会話画面では待たない(待つと、終わってから画面が変わるまで固まる)。
   /// 代わりに**紙吹雪を見ているあいだ**に届く。押させないのは、
   /// 押すのがユーザーの仕事ではないから。
+  ///
+  /// カルテは会話が終わってからLLMが書くので、長い会話ほど遅い。40秒で
+  /// 諦めていたころは、**書き上がる直前で待つのをやめて**「取りに行って
+  /// います…」のまま止まったように見えていた。生成が普通に終わるより長く待つ。
   static const Duration _pollInterval = Duration(seconds: 2);
-  static const int _pollAttempts = 20;
+  static const int _pollAttempts = 45;
 
   Timer? _poll;
   int _attempts = 0;
@@ -127,7 +131,11 @@ class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
       body: Stack(
         children: <Widget>[
           // 紙吹雪は本文の下に敷く。読むものの前に紙を落とさない。
-          const Positioned.fill(child: ConfettiBurst()),
+          //
+          // カルテを待たせているあいだは降り続ける。一度きりだと2秒で止まり、
+          // そのあと**画面から動きが消える**。待っているだけなのに、
+          // 止まってしまったように見えてしまう。
+          Positioned.fill(child: ConfettiBurst(looping: fetching)),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(AppSpacing.lg),
@@ -164,9 +172,22 @@ class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
                   FadeSlideIn.staggered(
                     index: 6,
                     child: waiting
-                        ? ChunkyButton(
-                            label: fetching ? strings.karteRetrieving : strings.karteRetrieve,
-                            onPressed: fetching ? null : _retrieveKarte,
+                        ? Column(
+                            children: <Widget>[
+                              // 押せないボタンだけを置かない。文言の変わらない
+                              // 無効なボタンが出ていると、待っているのか
+                              // 壊れたのかが読めない。何を待っているのかを言う。
+                              Text(
+                                fetching ? strings.karteWriting : strings.karteTakingLong,
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                              const SizedBox(height: AppSpacing.sm),
+                              ChunkyButton(
+                                label: fetching ? strings.karteRetrieving : strings.karteRetrieve,
+                                onPressed: fetching ? null : _retrieveKarte,
+                              ),
+                            ],
                           )
                         : ChunkyButton(
                             label: strings.karteTitle,

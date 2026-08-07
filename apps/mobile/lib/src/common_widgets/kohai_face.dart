@@ -119,6 +119,15 @@ class _KohaiFaceState extends State<KohaiFace> with TickerProviderStateMixin {
           dy = widget.size * 0.022 * (1 - math.cos(nod * 2 * math.pi)) / 2;
         }
 
+        // うれしさは、最初のはずみで終わらない。
+        //
+        // 祝福画面は**何かを待たせることがある**画面で、はずみが一度きりだと
+        // そのあと動きが消えて止まって見える。跳ねは呼吸の位相から作るので
+        // タイマーは増えず、動かすのも Transform だけ(顔の描き直しは増えない)。
+        if (widget.mood == KohaiMood.delighted) {
+          dy -= widget.size * 0.018 * math.max(0, math.sin(phase * 4 * math.pi));
+        }
+
         // 首をかしげる。困っているだけで、責めてはいない。
         final double tilt = widget.mood == KohaiMood.puzzled ? 0.05 + 0.015 * wave : 0;
 
@@ -233,11 +242,17 @@ class _FacePainter extends CustomPainter {
     }
 
     // 口。困り顔でも口角は下げない(責める顔にしないため)。
+    //
+    // うれしいときだけ、笑い方が少し揺れる。**同じ絵のまま置いておかない**
+    // ための揺れなので、幅はごく小さくていい(呼吸と同じ位相から作る)。
     final double mouthY = size.height * 0.63;
+    final double smile = mood == KohaiMood.delighted
+        ? 0.16 * (1 + 0.10 * math.sin(phase * 2 * math.pi))
+        : 0.08;
     final Rect mouth = Rect.fromCenter(
       center: Offset(size.width / 2, mouthY),
       width: size.width * 0.26,
-      height: size.height * (mood == KohaiMood.delighted ? 0.16 : 0.08),
+      height: size.height * smile,
     );
     canvas.drawArc(mouth, 0.15, 2.85, false, stroke);
 
