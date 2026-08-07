@@ -15,6 +15,10 @@ import 'src/theme/app_theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 向きの制限はネイティブ側(AndroidManifest / Info.plist)に任せている。
+  // SystemChrome はプラットフォーム共通で効いてしまい、横向きを許している
+  // iPad まで縦に固定してしまうため、ここでは指定しない。
+
   // 匿名デバイスIDは起動時に確定させる(アカウント作成は要求しない)
   final SharedPreferences preferences = await SharedPreferences.getInstance();
   final String deviceId = await loadOrCreateDeviceId(preferences);
