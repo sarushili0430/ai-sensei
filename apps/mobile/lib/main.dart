@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'src/api/device_id.dart';
+import 'src/features/monetization/application/premium_sync.dart';
 import 'src/features/monetization/data/purchases_repository.dart';
 import 'src/features/notifications/application/push_controller.dart';
 import 'src/features/notifications/presentation/push_registration_gate.dart';
@@ -60,6 +61,10 @@ class AiSenseiApp extends ConsumerWidget {
 
     // 通知の配線(SDK初期化とexternal idの登録)。許可はここでは求めない。
     ref.watch(pushSetupProvider);
+
+    // 課金の配線。購入・復元でPremiumになったら、サーバ側の判定を読み直す。
+    // ここを外すと**買った直後は再起動するまで無料のまま**になる。
+    ref.watch(premiumSyncProvider);
 
     // 通知タップの着地。コールドスタートではウィジェットツリーより先に
     // クリックが届くので、ここまで運んでから遷移する。

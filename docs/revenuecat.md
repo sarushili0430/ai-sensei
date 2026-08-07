@@ -17,6 +17,7 @@ Shipaton の参加条件(SDKで最低1つのアプリ内課金)を満たす箇�
 | `domain/entitlement.dart` | `CustomerInfo` / `Offering` を画面が使う形に落とす純関数 |
 | `domain/purchase_outcome.dart` | SDKの例外を「キャンセル / 失敗の種類」に畳む純関数 |
 | `application/entitlement_controller.dart` | 状態を持つ。購入・復元・ペイウォール・Customer Center の入口 |
+| `application/premium_sync.dart` | entitlement が変わったら、サーバ側の判定を読み直す(§9) |
 | `presentation/paywall_screen.dart` | RevenueCatのペイウォール →(出せなければ)自前のペイウォール |
 | `presentation/manage_subscription_button.dart` | Customer Center の導線(契約がある人にだけ出る) |
 | `main.dart` | 起動時に一度だけ `configure` する |
@@ -184,6 +185,9 @@ fvm flutter run --dart-define-from-file=dart_defines.env
 更新・失効・ペイウォール内での購入・Customer Center での解約が、
 画面を開き直さなくても反映される。ポーリングは無い。
 
+ただしこれは**アプリ側の entitlement が変わるだけ**で、サーバ側の判定は
+別経路(webhook)で遅れて変わる。噛み合わせは §9。
+
 ---
 
 ## 7. 失敗の扱い
@@ -212,7 +216,7 @@ SDKは失敗を `PlatformException` で投げる。**利用者が自分で閉じ
 
 ```bash
 cd apps/mobile
-fvm flutter test test/monetization_test.dart
+fvm flutter test test/monetization_test.dart test/premium_sync_test.dart
 ```
 
 見ているのは「SDKが動くか」ではなく **SDKの返した値をこちらが取り違えていないか**。
@@ -222,3 +226,40 @@ entitlement identifier のずれ・パッケージの並び・0円ではない�
 ペイウォールの golden(`test/golden/goldens/paywall.png`)は鍵の無いビルド、
 つまり自前のペイウォールを撮っている。「無料のまま続ける」と
 「いつでも解約できます」が消えていないかは `test/widget_test.dart` が見る。
+
+---
+
+## 9. アプリの entitlement と、サーバの `is_premium`
+
+Premium は**2つの経路で別々に**更新される。ここがこのアプリで
+いちばん噛み合わせを間違えやすい。
+
+| | 誰が書くか | いつ |
+| --- | --- | --- |
+| アプリの entitlement | SDK(`CustomerInfo`) | 購入した瞬間 |
+| サーバの `users.is_premium` | RevenueCat の webhook | 数秒遅れ |
+
+そして**画面が出し分けに使っているのはサーバ側**のほう。ホームの残り回数
+(`/v1/me/progress` の `is_premium`)、復習画面のロック(`/v1/me/reviews` の
+`requires_premium`)、セッション開始の可否(`premium_required` / `free_limit_reached`)。
+判定を持たせないのは、クライアントの申告で上限を緩められないようにするため(§handoff 5)。
+
+その2つを読む `ProgressController` / `ReviewController` は `keepAlive` で、
+**起動時に一度読んだきり**誰も読み直さない。だから購入したあとに読み直す配線が要る。
+
+`premium_sync.dart` がそれをやる。`EntitlementController` の変化を購読して、
+Premium が付いた/外れたら `/v1/me/progress` を読み直す。webhook はまだ届いて
+いないことがあるので、追いつくまで数回(1s / 2s / 4s / 8s)読み直す。
+
+追いつかなければ**そこで諦めて無料のまま**にする。クライアントの言い分で
+解放はしない。webhook が恒久的に壊れているならサーバ側で直すべきもので、
+ここで上書きすると誰も壊れていることに気づけなくなる。
+
+> これが無いと **webhook が200で届いていてもアプリは無料のまま**になる。
+> 「課金は成立していて、ダッシュボードにもD1にも記録があるのに、
+> アプリを再起動するまで何も解放されない」という壊れ方をする。
+> `test/premium_sync_test.dart` がこの経路を押さえている。
+
+購入の入口(自前のペイウォール・RevenueCat のペイウォール・Customer Center・
+設定画面の復元)ごとに呼ぶのではなく、**entitlement の変化**で拾っているのは、
+入口を足したときに呼び忘れても壊れないようにするため。
