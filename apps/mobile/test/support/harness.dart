@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
 import 'package:ai_sensei/src/features/karte/domain/karte.dart';
+import 'package:ai_sensei/src/features/monetization/application/entitlement_controller.dart';
 import 'package:ai_sensei/src/l10n/strings.dart';
 import 'package:ai_sensei/src/routing/app_router.dart';
 import 'package:ai_sensei/src/theme/app_theme.dart';
@@ -183,6 +184,44 @@ const ProgressSummary firstRunSummary = ProgressSummary(
   limits: SessionLimits(maxSeconds: 300, remainingSessionsToday: 1),
 );
 
+/// 契約している人のホーム。残り回数は **null(無制限)** で返る。
+///
+/// entitlement だけ Premium にして進捗を無料のままにすると、
+/// 「Premium の印」と「残り1回・無制限にする」が同じ画面に並ぶ。
+/// 実機では起きない組み合わせなので、golden に写してはいけない。
+const ProgressSummary premiumSummary = ProgressSummary(
+  progress: sampleProgress,
+  isPremium: true,
+  limits: SessionLimits(maxSeconds: 300, remainingSessionsToday: null),
+);
+
+/// 契約している状態。
+///
+/// 期限は固定の**ローカル日時**にする。`DateTime.utc` にすると、走らせる
+/// 端末のタイムゾーン次第で日付が1日ずれて golden が揺れる。
+final Entitlement premiumEntitlement = Entitlement(
+  isPremium: true,
+  willRenew: true,
+  expiresAt: DateTime(2026, 9, 8),
+);
+
+/// 解約予約済み。期限までは使える。
+final Entitlement cancelledEntitlement = Entitlement(
+  isPremium: true,
+  expiresAt: DateTime(2026, 9, 8),
+);
+
+/// 無料トライアル中。**まだ1円も払っていない。**
+///
+/// 残り日数は「今から」数えるので、期限も今からの相対で作る
+/// (固定日にすると、その日を過ぎた瞬間にテストが落ちる)。
+Entitlement trialEntitlement({int days = 7}) => Entitlement(
+  isPremium: true,
+  willRenew: true,
+  isTrial: true,
+  expiresAt: DateTime.now().add(Duration(days: days)),
+);
+
 final FilledHole sampleFilledHole = FilledHole(
   hole: Hole(
     id: 'hol_filled',
@@ -246,3 +285,20 @@ class FakeReviewController extends ReviewController {
   @override
   Future<ReviewQueue> build() async => _queue;
 }
+
+/// 契約の状態を差し替える。SDKを呼ばずに Premium の画面を組むために使う。
+class FakeEntitlementController extends EntitlementController {
+  FakeEntitlementController(this._entitlement);
+
+  final Entitlement _entitlement;
+
+  @override
+  Future<Entitlement> build() async => _entitlement;
+}
+
+/// Premium で画面を組むときの差し替え一式。
+List<Object?> premiumOverrides([Entitlement? entitlement]) => <Object?>[
+  entitlementControllerProvider.overrideWith(
+    () => FakeEntitlementController(entitlement ?? premiumEntitlement),
+  ),
+];

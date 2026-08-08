@@ -8,6 +8,7 @@ import '../../../common_widgets/kohai_face.dart';
 import '../../../l10n/strings.dart';
 import '../../../routing/routes.dart';
 import '../../../theme/tokens.dart';
+import '../../monetization/presentation/manage_subscription_button.dart';
 import '../application/karte_controllers.dart';
 import '../domain/karte.dart';
 
@@ -81,18 +82,34 @@ class _TopRow extends StatelessWidget {
     final AppStrings strings = AppStrings.of(context);
     return Row(
       children: <Widget>[
-        _Counter(
-          value: progress.streakDays,
-          label: strings.streakDays(progress.streakDays),
-          color: AppColors.streak,
+        // 数えている2つ。余白を持つのはこちらなので、Spacer は要らない。
+        //
+        // Premium のチップが並ぶぶん、横幅の狭い端末では入りきらなくなる。
+        // 縮めば読めるものを RenderFlex の縞模様にしない — 入るときは
+        // 何も起きず(scaleDown は等倍までしか拡げない)、入らないときだけ縮む。
+        Expanded(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Row(
+              children: <Widget>[
+                _Counter(
+                  value: progress.streakDays,
+                  label: strings.streakDays(progress.streakDays),
+                  color: AppColors.streak,
+                ),
+                const SizedBox(width: AppSpacing.md),
+                _Counter(
+                  value: progress.filledHoles,
+                  label: strings.filledHoles(progress.filledHoles),
+                  color: AppColors.blue,
+                ),
+              ],
+            ),
+          ),
         ),
-        const SizedBox(width: AppSpacing.md),
-        _Counter(
-          value: progress.filledHoles,
-          label: strings.filledHoles(progress.filledHoles),
-          color: AppColors.blue,
-        ),
-        const Spacer(),
+        // 契約している印。契約が無ければ何も出ない。
+        const PremiumChip(),
         IconButton(
           onPressed: () => context.push(AppRoute.settings.path),
           icon: const Icon(Icons.settings_outlined, size: 22),

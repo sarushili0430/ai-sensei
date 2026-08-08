@@ -16,6 +16,7 @@ enum AppRoute {
   karte('/karte'),
   review('/review'),
   paywall('/paywall'),
+  thanks('/thanks'),
   settings('/settings');
 
   const AppRoute(this.path);
@@ -38,4 +39,23 @@ extension AppNavigation on BuildContext {
       go(AppRoute.home.path);
     }
   }
+
+  /// ペイウォールを、購入のお礼に**差し替える**。
+  ///
+  /// push ではなく差し替えなのは、買ったあとに戻れても、戻る先が
+  /// 「もう一度買う画面」しか無いから。差し替えておくと、お礼を閉じたときに
+  /// ペイウォールを開く前の画面(ホーム・カルテ・復習)へそのまま戻る。
+  void replaceWithThanks({bool restored = false}) =>
+      pushReplacement(thanksLocation(restored: restored));
+
+  /// お礼を重ねて出す。設定から復元したときのように、
+  /// **元の画面を残したい**ところから使う。
+  void pushThanks({bool restored = false}) => push(thanksLocation(restored: restored));
 }
+
+/// お礼画面の行き先。
+///
+/// 復元だけクエリで渡す。無料トライアルかどうかは entitlement が知っているので
+/// 渡さない(渡すと、画面とSDKで別々の事実を持つことになる)。
+String thanksLocation({bool restored = false}) =>
+    restored ? '${AppRoute.thanks.path}?restored=1' : AppRoute.thanks.path;

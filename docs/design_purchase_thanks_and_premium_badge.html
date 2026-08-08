@@ -598,8 +598,19 @@
   <h2>推奨の組み合わせと、実装するときの注意</h2>
   <div class="rule"></div>
 
+  <div class="rec-band" style="border-color:var(--ok);margin-bottom:16px">
+    <h3 style="color:var(--ok)">決まったこと:A-1 + B-1 + B-4(実装済み)</h3>
+    <p style="margin:0;font-size:13px">
+      <b>B-2(残り回数の行を「セッションは無制限です」に差し替える)は入れなかった。</b>
+      つまり契約している人のホームは、いまも下端が空白のまま
+      (<code style="font-family:ui-monospace,Menlo,monospace;font-size:12px">remainingSessionsUnlimited</code> は未使用のまま残っている)。
+      印は右上のチップが担当し、何が変わったかはお礼の画面と設定で伝える。
+      あとから足すなら <code style="font-family:ui-monospace,Menlo,monospace;font-size:12px">_RemainingLine</code> の1分岐だけで済む。
+    </p>
+  </div>
+
   <div class="rec-band">
-    <h3>おすすめ:A-1 + B-1 + B-2 + B-4</h3>
+    <h3>提案時のおすすめ:A-1 + B-1 + B-2 + B-4</h3>
     <ol>
       <li><b>A-1 全画面のお礼</b> — 購入・トライアル・復元で見出しを出し分ける。祝うのはここ1回だけ。</li>
       <li><b>B-2 残り回数の行</b> — 「セッションは無制限です」。<b>これが本体</b>。空白だった行に事実が戻る。</li>

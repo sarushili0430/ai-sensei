@@ -10,7 +10,6 @@ import '../../../common_widgets/entrance.dart';
 import '../../../common_widgets/kohai_face.dart';
 import '../../../l10n/strings.dart';
 import '../../../routing/routes.dart';
-import '../../../theme/motion.dart';
 import '../../../theme/tokens.dart';
 import '../../karte/application/karte_controllers.dart';
 import '../../karte/domain/karte.dart';
@@ -142,7 +141,7 @@ class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
-                  const _PopIn(child: KohaiFace(mood: KohaiMood.delighted, size: 160)),
+                  const PopIn(child: KohaiFace(mood: KohaiMood.delighted, size: 160)),
                   const SizedBox(height: AppSpacing.xl),
                   FadeSlideIn.staggered(
                     index: 2,
@@ -216,28 +215,6 @@ class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
           ),
         ],
       ),
-    );
-  }
-}
-
-/// 少し小さいところから、跳ねて出てくる。
-///
-/// 行き過ぎて戻る動き([AppCurves.pop])を使うのはここだけ。
-/// 内省する画面(カルテ・復習)に持ち込むと、記録が軽く見える。
-class _PopIn extends StatelessWidget {
-  const _PopIn({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween<double>(begin: 0.7, end: 1),
-      duration: AppMotion.decorative(context, AppDurations.celebrate),
-      curve: AppCurves.pop,
-      builder: (BuildContext context, double scale, Widget? child) =>
-          Transform.scale(scale: scale, child: child),
-      child: child,
     );
   }
 }

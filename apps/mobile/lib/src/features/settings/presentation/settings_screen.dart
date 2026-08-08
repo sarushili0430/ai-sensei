@@ -40,7 +40,7 @@ class SettingsScreen extends ConsumerWidget {
               _Section(title: strings.settingsSectionAccount),
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                child: SubscriptionStatusLine(),
+                child: SubscriptionStatusCard(),
               ),
               const Align(alignment: Alignment.centerLeft, child: ManageSubscriptionButton()),
               const RestorePurchasesButton(),

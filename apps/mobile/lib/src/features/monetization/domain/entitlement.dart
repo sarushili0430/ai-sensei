@@ -122,6 +122,7 @@ class Entitlement {
     this.offering,
     this.expiresAt,
     this.willRenew = false,
+    this.isTrial = false,
     this.isSandbox = false,
     this.store,
     this.managementUrl,
@@ -144,6 +145,9 @@ class Entitlement {
       offering: offering,
       expiresAt: _parseDate(active?.expirationDate),
       willRenew: active?.willRenew ?? false,
+      // 無料期間は「まだ1円も払っていない」。お礼の言い方を変える分岐に使う。
+      // intro(有料の入会キャンペーン)を混ぜないこと — あれは払っている。
+      isTrial: active?.periodType == PeriodType.trial,
       isSandbox: active?.isSandbox ?? false,
       store: active?.store,
       // ストアの解約画面へのURL。Customer Center が使えないときの逃げ道。
@@ -160,6 +164,13 @@ class Entitlement {
   final DateTime? expiresAt;
 
   final bool willRenew;
+
+  /// 無料トライアル中。**まだ請求は発生していない。**
+  ///
+  /// ここを見ずに「ご購入ありがとうございます」と出すと、1円も払っていない
+  /// 人にお礼を言うことになる(handoff §6 誠実さ)。
+  final bool isTrial;
+
   final bool isSandbox;
   final Store? store;
   final String? managementUrl;
@@ -169,6 +180,21 @@ class Entitlement {
   /// 解約予約済み(期限まで有効)。払ったぶんは最後まで使える。
   /// backend 側の CANCELLATION の扱いと合わせてある。
   bool get isCancelled => isPremium && !willRenew;
+
+  /// 期限までの残り日数。**切り上げる。**
+  ///
+  /// 無料期間の見出し(「7日間、ぜんぶ使えます」)に使う。切り捨てると、
+  /// 買った直後に「あと6日」と出ることがある(7日ちょうどに数分足りない)。
+  /// 残っていない・期限が分からないときは 0。
+  ///
+  /// [now] を引数で受けるのは、テストから時計を固定するため。
+  int daysLeft(DateTime now) {
+    final DateTime? end = expiresAt;
+    if (end == null) return 0;
+    final Duration left = end.difference(now);
+    if (left.isNegative) return 0;
+    return (left.inMinutes / Duration.minutesPerDay).ceil();
+  }
 
   /// 契約の管理導線を出すか。契約中か、ストアに解約URLがあるとき。
   bool get canManageSubscription => isPremium || managementUrl != null;

@@ -8,7 +8,9 @@ import '../features/karte/application/karte_controllers.dart';
 import '../features/karte/presentation/home_screen.dart';
 import '../features/karte/presentation/karte_screen.dart';
 import '../features/karte/presentation/review_screen.dart';
+import '../features/monetization/application/entitlement_controller.dart';
 import '../features/monetization/presentation/paywall_screen.dart';
+import '../features/monetization/presentation/thanks_screen.dart';
 import '../features/onboarding/presentation/onboarding_screen.dart';
 import '../features/session/presentation/celebration_screen.dart';
 import '../features/session/presentation/session_screen.dart';
@@ -63,6 +65,15 @@ GoRouter appRouter(Ref ref) {
           GoRoute(
             path: AppRoute.paywall.segment,
             builder: (_, _) => const PaywallScreen(),
+          ),
+          GoRoute(
+            path: AppRoute.thanks.segment,
+            builder: (_, GoRouterState state) =>
+                ThanksScreen(restored: state.uri.queryParameters['restored'] == '1'),
+            // 契約が無いのに祝わない。決済は通ったが entitlement が付いて
+            // いない場合(ダッシュボードの設定漏れ)がここに来る。紙吹雪を
+            // 見せてから使えないのが、いちばん落差が大きい。
+            redirect: (_, _) => ref.read(isPremiumProvider) ? null : AppRoute.home.path,
           ),
           GoRoute(
             path: AppRoute.settings.segment,

@@ -344,19 +344,79 @@ class AppStrings {
   String planFreeTrial(int days) =>
       _pick('はじめの$days日間は無料', 'First $days days free');
 
+  // --- 購入のお礼 ---
+  //
+  // 「ご購入ありがとうございます」と書けない場合が3つある。
+  // 無料トライアル(まだ1円も払っていない)・復元(買い直していない)・
+  // 決済は通ったが未反映(祝ってはいけない)。見出しを分けているのはそのため。
+
+  /// 買った。素直にお礼を言っていい唯一のケース。
+  String get thanksTitle => _pick('ありがとうございます', 'Thank you');
+  String get thanksBody =>
+      _pick('これから、いくらでも聞きます。', 'From now on, ask me as much as you like.');
+
+  /// 無料トライアルが始まった。**お礼ではなく、事実から書く。**
+  String thanksTrialTitle(int days) =>
+      _pick('$days日間、ぜんぶ使えます', 'Everything is open for $days days');
+
+  /// 期限が読めなかったとき。日数を騙るくらいなら、日数を言わない。
+  /// ここでお礼に落とすと、払っていない人にお礼を言うことになる。
+  String get thanksTrialTitlePlain => _pick('ぜんぶ、使えます', 'Everything is open');
+
+  /// 課金がいつ始まるかを、先に、はっきり言う(§6)。
+  String thanksTrialBody(String date) => _pick(
+    '$date までは無料です。その日から請求が始まります。',
+    "It's free until $date. Billing starts that day.",
+  );
+
+  /// 機種変更などで戻ってきた人。買い直していないので、お礼は言わない。
+  String get thanksRestoredTitle => _pick('おかえりなさい', 'Welcome back');
+  String thanksRestoredBody(String date) =>
+      _pick('契約は $date まで有効です。', 'Your subscription is active until $date.');
+
+  /// 解放されたもの。ペイウォールの比較表と同じ3つを、同じ順で出す。
+  String get thanksUnlockedSessions =>
+      _pick('1日1回の上限がなくなりました', 'The once-a-day limit is gone');
+  String get thanksUnlockedHistory =>
+      _pick('埋めた穴が、ぜんぶ残ります', 'Every gap you fill stays on record');
+  String get thanksUnlockedFollowup =>
+      _pick('後輩があと追いで質問します', 'Your kohai follows up with more questions');
+
+  String get thanksStart => _pick('はじめる', 'Get started');
+
+  /// 自動更新であることは、祝っている画面でも省かない(Guideline 3.1.2)。
+  String thanksRenewsOn(String date) => _pick(
+    '$date に更新されます・いつでも解約できます',
+    'Renews on $date · Cancel anytime',
+  );
+  String get thanksCancelAnytime => _pick('いつでも解約できます', 'Cancel anytime');
+
   // --- 購入の復元・契約の管理 ---
   String get paywallRestore => _pick('購入を復元する', 'Restore purchases');
-  String get paywallRestored => _pick('購入を復元しました', 'Your purchase was restored');
+  // 復元できたときの文言はここに無い。SnackBar ではなく、
+  // お礼の画面([ThanksScreen])が「おかえりなさい」を出す。
   String get paywallRestoredNothing => _pick(
     'このアカウントに、復元できる購入は見つかりませんでした',
     'No previous purchases were found for this account',
   );
   String get manageSubscription => _pick('契約の管理', 'Manage subscription');
-  String premiumUntil(String date) => _pick('$date まで有効です', 'Active until $date');
   String premiumEndsOn(String date) => _pick(
     '$date に終わります。それまではこのまま使えます',
     'Ends on $date. Everything stays available until then',
   );
+  String premiumRenewsOn(String date) =>
+      _pick('$date に更新されます', 'Renews on $date');
+  String premiumBillingStarts(String date) =>
+      _pick('$date から請求が始まります', 'Billing starts on $date');
+
+  /// 契約している印。ホーム右上と設定に出す。
+  ///
+  /// **ランクや称号ではない。** 数えるのは連続日数と埋めた穴だけなので
+  /// (handoff §7)、ここは「今どっちの状態か」の表示に留める。
+  /// 商品名なので日英で変えない。
+  String get premiumBadge => 'Premium';
+  String get premiumActive => _pick('有効', 'Active');
+  String get premiumTrialBadge => _pick('無料おためし中', 'Free trial');
 
   /// Test Store で動いているビルドの表示。実売と取り違えないための注記。
   String get testStoreNotice =>

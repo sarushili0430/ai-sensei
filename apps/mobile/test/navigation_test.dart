@@ -4,6 +4,8 @@ import 'package:ai_sensei/src/features/karte/domain/karte.dart';
 import 'package:ai_sensei/src/features/karte/presentation/home_screen.dart';
 import 'package:ai_sensei/src/features/karte/presentation/karte_screen.dart';
 import 'package:ai_sensei/src/features/karte/presentation/review_screen.dart';
+import 'package:ai_sensei/src/features/monetization/presentation/paywall_screen.dart';
+import 'package:ai_sensei/src/features/monetization/presentation/thanks_screen.dart';
 import 'package:ai_sensei/src/features/onboarding/presentation/onboarding_screen.dart';
 import 'package:ai_sensei/src/features/settings/presentation/settings_screen.dart';
 import 'package:ai_sensei/src/l10n/strings.dart';
@@ -26,6 +28,7 @@ void main() {
   /// 起動時に確定する値。本番は main() が差し込む。
   List<Object?> bootOverrides({
     bool onboarded = true,
+    bool premium = false,
     ReviewQueue? queue,
     Karte? karte,
   }) {
@@ -38,6 +41,7 @@ void main() {
       ),
       if (karte != null)
         latestKarteControllerProvider.overrideWith(() => FakeLatestKarteController(karte)),
+      if (premium) ...premiumOverrides(),
     ];
   }
 
@@ -143,5 +147,69 @@ void main() {
     router.go(AppRoute.karte.path);
     await tester.pumpAndSettle();
     expect(find.byType(KarteScreen), findsOneWidget);
+  });
+
+  // 決済は通ったのに entitlement が付いていない(ダッシュボードの設定漏れ)と、
+  // ここへ来る。紙吹雪を見せてから使えないのが、いちばん落差が大きい。
+  testWidgets('契約が無いのにお礼へ行くと、ホームへ戻す', (WidgetTester tester) async {
+    final GoRouter router = await pumpRouter(tester, overrides: bootOverrides());
+
+    router.go(thanksLocation());
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ThanksScreen), findsNothing);
+    expect(find.byType(HomeScreen), findsOneWidget);
+  });
+
+  testWidgets('契約していればお礼を出し、はじめるでホームへ戻る', (WidgetTester tester) async {
+    final GoRouter router = await pumpRouter(tester, overrides: bootOverrides(premium: true));
+
+    router.go(thanksLocation());
+    await tester.pumpAndSettle();
+    expect(find.byType(ThanksScreen), findsOneWidget);
+
+    final AppStrings strings = AppStrings.of(tester.element(find.byType(ThanksScreen)));
+    await tester.tap(find.text(strings.thanksStart));
+    await tester.pumpAndSettle();
+    expect(find.byType(HomeScreen), findsOneWidget);
+  });
+
+  // 買ったあとにペイウォールへ戻れても、戻る先は「もう一度買う画面」しかない。
+  testWidgets('お礼はペイウォールを差し替える(閉じても買う画面に戻らない)', (WidgetTester tester) async {
+    final GoRouter router = await pumpRouter(tester, overrides: bootOverrides(premium: true));
+
+    router.push(AppRoute.paywall.path);
+    await tester.pumpAndSettle();
+    expect(find.byType(PaywallScreen), findsOneWidget);
+
+    // 購入が通ったところ。SDKを呼ばずに、画面が呼ぶのと同じ導線だけ動かす。
+    tester.element(find.byType(PaywallScreen)).replaceWithThanks();
+    await tester.pumpAndSettle();
+    expect(find.byType(ThanksScreen), findsOneWidget);
+
+    final AppStrings strings = AppStrings.of(tester.element(find.byType(ThanksScreen)));
+    await tester.tap(find.text(strings.thanksStart));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PaywallScreen), findsNothing, reason: 'ペイウォールは残っていてはいけない');
+    expect(find.byType(HomeScreen), findsOneWidget);
+  });
+
+  // 機種変更で戻ってきた人。「おかえりなさい」を出したあと、設定に戻す。
+  testWidgets('設定からの復元は、お礼を重ねて出して設定に戻る', (WidgetTester tester) async {
+    final GoRouter router = await pumpRouter(tester, overrides: bootOverrides(premium: true));
+
+    router.push(AppRoute.settings.path);
+    await tester.pumpAndSettle();
+
+    tester.element(find.byType(SettingsScreen)).pushThanks(restored: true);
+    await tester.pumpAndSettle();
+
+    final AppStrings strings = AppStrings.of(tester.element(find.byType(ThanksScreen)));
+    expect(find.text(strings.thanksRestoredTitle), findsOneWidget);
+
+    await tester.tap(find.text(strings.thanksStart));
+    await tester.pumpAndSettle();
+    expect(find.byType(SettingsScreen), findsOneWidget, reason: '復元してきた場所に戻す');
   });
 }
