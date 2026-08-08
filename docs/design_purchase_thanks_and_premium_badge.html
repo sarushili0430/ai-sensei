@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>購入後のお礼と Premium バッジ — デザイン案</title>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* apps/mobile/lib/src/theme/tokens.dart と同じ値 */
+    --blue:#0EA5E9; --blue-d:#0A7AAC; --blue-l:#E7F6FE;
+    --said:#FFD93B; --hole:#FF7AA8; --streak:#FF9F1C;
+    --ink:#33323D; --mut:#7A7887;
+    --surface:#FFFFFF; --bg:#FBFAF7; --border:#E6E3DC;
+    --celebration:#FBF3E5;
+    --canvas:#EDEBE6;
+    --ok:#1C7A4A; --ng:#C2402A;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--canvas);color:var(--ink);line-height:1.6;
+    font-family:"Zen Maru Gothic","Hiragino Maru Gothic ProN","Hiragino Sans",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1400px;margin:0 auto;padding:32px 24px 64px}
+  section{padding:26px;background:var(--canvas)}
+
+  .eyebrow{font-family:ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:.14em;color:var(--mut)}
+  h1{font-size:28px;margin:6px 0 6px;font-weight:900;letter-spacing:-.01em}
+  h2{font-size:20px;margin:0 0 4px;font-weight:900}
+  .lede{font-size:14px;color:var(--mut);max-width:760px;margin:0}
+  .rule{height:2px;background:var(--ink);opacity:.12;margin:26px 0 22px;border-radius:2px}
+
+  /* --- 現状 / 前提 --- */
+  .cards{display:flex;flex-wrap:wrap;gap:14px;margin:18px 0 0}
+  .card{flex:1;min-width:270px;background:var(--surface);border:2px solid var(--border);
+    border-radius:18px;padding:15px 17px}
+  .card > b{display:block;font-size:13.5px;font-weight:900;margin-bottom:4px}
+  .card > span{font-size:12.5px;color:var(--mut);display:block}
+  .card.warn{border-color:var(--hole)} .card.warn > b{color:#D9366B}
+  .card code{font-family:ui-monospace,Menlo,monospace;font-size:11px;
+    background:#F3F1EC;border-radius:4px;padding:1px 5px;color:var(--ink)}
+
+  /* --- 案のグリッド --- */
+  .flow{display:flex;flex-wrap:wrap;gap:26px;align-items:flex-start}
+  .opt{width:300px}
+  .opt.wide{width:392px}
+  .ohead{display:flex;align-items:baseline;gap:8px;margin-bottom:3px}
+  .num{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:var(--ink);
+    color:#fff;border-radius:6px;padding:1px 8px;font-weight:700}
+  .num.rec{background:var(--blue)}
+  .oname{font-size:15px;font-weight:900}
+  .osub{font-size:11.5px;color:var(--mut);margin:0 0 10px}
+  .pros{font-size:12px;margin:10px 0 0;padding:0;list-style:none}
+  .pros li{margin-bottom:3px;padding-left:16px;position:relative}
+  .pros li::before{position:absolute;left:0;font-weight:900}
+  .pros li.o::before{content:"○";color:var(--ok)}
+  .pros li.x::before{content:"△";color:var(--ng)}
+  .pros li.n::before{content:"×";color:var(--ng)}
+
+  /* --- 端末フレーム --- */
+  .phone{background:var(--bg);border:2.5px solid var(--ink);border-radius:30px;height:600px;
+    padding:16px 15px;display:flex;flex-direction:column;gap:10px;overflow:hidden;position:relative}
+  .phone.cheer{background:var(--celebration)}
+  .phone.short{height:392px}
+  .notch{width:38%;height:5px;background:#DDD9D1;border-radius:3px;margin:0 auto 2px;flex:none}
+  /* 紙吹雪は本文の下に敷く(実機と同じ重なり順) */
+  .confetti{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}
+  .phone > *:not(.confetti){position:relative;z-index:1}
+  /* ホーム最上段。数字 + ラベルは折り返させない */
+  .toprow{display:flex;align-items:center;gap:9px;flex:none}
+  .toprow .n{font-size:16px;font-weight:700;line-height:1.2}
+  .toprow .l{font-size:10.5px;color:var(--mut);white-space:nowrap}
+  .toprow .gear{font-size:14px;color:var(--mut);line-height:1}
+  .spacer{flex:1}
+  .row{display:flex;align-items:center;gap:8px}
+  .between{justify-content:space-between}
+  .center{justify-content:center}
+
+  /* テキスト階層 = app_theme.dart の TextTheme */
+  .display{font-size:23px;font-weight:900;line-height:1.35;text-align:center}
+  .titleL{font-size:17px;font-weight:700}
+  .titleM{font-size:14px;font-weight:700}
+  .body{font-size:13px;line-height:1.6}
+  .small{font-size:11px;color:var(--mut);line-height:1.5}
+  .ctr{text-align:center}
+
+  /* ボタン */
+  .chunky{background:var(--blue);color:#fff;border-radius:16px;text-align:center;
+    padding:14px 20px;font-size:15px;font-weight:700;box-shadow:0 4px 0 var(--blue-d)}
+  .ghost{color:var(--mut);text-align:center;font-size:13px;padding:11px 8px}
+
+  /* カード類 */
+  .box{background:var(--surface);border:1.5px solid var(--border);border-radius:20px;padding:13px 14px}
+  .unlocked{display:flex;flex-direction:column;gap:9px}
+  .unlocked div{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;line-height:1.45}
+  .unlocked i{width:19px;height:19px;border-radius:50%;background:var(--blue);color:#fff;
+    font-style:normal;font-size:11px;font-weight:900;display:flex;align-items:center;
+    justify-content:center;flex:none;margin-top:1px}
+
+  /* バッジのトーン */
+  .b-fill{display:inline-flex;align-items:center;gap:4px;background:var(--blue);color:#fff;
+    border-radius:99px;padding:2px 10px;font-size:11px;font-weight:700;line-height:1.5}
+  .b-line{display:inline-flex;align-items:center;gap:4px;border:1.5px solid var(--blue);
+    color:var(--blue);border-radius:99px;padding:1.5px 9px;font-size:11px;font-weight:700;line-height:1.5}
+  .b-mark{display:inline-block;font-size:12px;font-weight:900;padding:0 3px;line-height:1.5;
+    background:linear-gradient(transparent 52%, var(--said) 52%, var(--said) 92%, transparent 92%)}
+  .b-gold{display:inline-flex;align-items:center;gap:4px;color:#6B4E12;border-radius:99px;
+    padding:2px 10px;font-size:11px;font-weight:700;line-height:1.5;
+    background:linear-gradient(135deg,#F7E08A,#D4AF37 55%,#F7E08A)}
+
+  /* トーン見本 */
+  .tones{display:flex;flex-wrap:wrap;gap:14px}
+  .tone{width:238px;background:var(--surface);border:2px solid var(--border);border-radius:18px;
+    padding:14px 16px}
+  .tone.no{border-color:var(--hole);background:#FFF7FA}
+  .tone .demo{height:52px;display:flex;align-items:center;justify-content:center;
+    background:var(--bg);border-radius:12px;margin-bottom:10px}
+  .tone .name{font-size:13px;font-weight:900;display:flex;align-items:baseline;gap:6px;margin-bottom:2px}
+  .tone .desc{font-size:11.5px;color:var(--mut);margin:0}
+  .pick{font-size:10.5px;font-weight:700;color:var(--blue);border:1.5px solid var(--blue);
+    border-radius:99px;padding:0 6px;line-height:1.5;flex:none}
+  .pick.no{color:var(--ng);border-color:var(--ng)}
+
+  /* 表 */
+  table{border-collapse:separate;border-spacing:0;width:100%;background:var(--surface);
+    border:2px solid var(--border);border-radius:16px;overflow:hidden;font-size:12.5px}
+  th{background:#F5F3EF;text-align:left;font-weight:900;font-size:11.5px;color:var(--mut);
+    padding:9px 13px;border-bottom:1.5px solid var(--border)}
+  td{padding:10px 13px;border-bottom:1px solid var(--border);vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  td.k{font-weight:700;white-space:nowrap}
+  td .say{color:var(--ink);font-weight:700}
+  td .sub{color:var(--mut);font-size:11.5px;display:block}
+  .no-cel td.k{color:var(--ng)}
+
+  /* 推奨まとめ */
+  .rec-band{background:var(--surface);border:2.5px solid var(--blue);border-radius:20px;
+    padding:18px 20px;margin-bottom:20px}
+  .rec-band h3{margin:0 0 8px;font-size:15px;font-weight:900;color:var(--blue)}
+  .rec-band ol{margin:0;padding-left:1.25em;font-size:13px}
+  .rec-band li{margin-bottom:5px}
+  .impl{display:flex;flex-wrap:wrap;gap:14px}
+  .impl div{flex:1;min-width:290px;background:var(--surface);border:2px solid var(--border);
+    border-radius:18px;padding:14px 17px;font-size:12.5px}
+  .impl h4{margin:0 0 6px;font-size:13px;font-weight:900}
+  .impl ul{margin:0;padding-left:1.2em}
+  .impl li{margin-bottom:4px}
+  .impl code{font-family:ui-monospace,Menlo,monospace;font-size:11px;
+    background:#F3F1EC;border-radius:4px;padding:1px 5px}
+
+  /* 設定リスト */
+  .list .it{display:flex;justify-content:space-between;align-items:center;
+    padding:9px 0;border-bottom:1px solid var(--border);font-size:12.5px;gap:8px}
+  .list .grp{font-size:12px;color:var(--mut);font-weight:700;margin:12px 0 2px}
+  .chev{color:var(--mut);font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- ============================ 0. 現状 ============================ -->
+<section id="s0">
+  <div class="eyebrow">DESIGN PROPOSAL / apps/mobile — monetization</div>
+  <h1>お金を払った瞬間、アプリが何も言わない。</h1>
+  <p class="lede">
+    購入が通ると <code style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">closeOrGoHome()</code> でペイウォールが消えるだけで、お礼も、何が解放されたかの説明も無い。
+    そのあとホームに戻っても、Premium だと分かる印がどこにも無い(残り回数の行は Premium だと消える = <b>払った人の画面のほうが情報が少ない</b>)。
+    ここを埋める案です。
+  </p>
+
+  <div class="cards">
+    <div class="card warn">
+      <b>いま起きていること ①</b>
+      <span>購入成功 → 画面が閉じるだけ。RevenueCat のペイウォールで買った場合も同じ。「本当に買えたのか」が分からない。</span>
+    </div>
+    <div class="card warn">
+      <b>いま起きていること ②</b>
+      <span>ホームの残り回数の行は Premium だと <code>SizedBox</code> になる。無料の人には「残り1回」が出て、払った人には空白が出る。</span>
+    </div>
+    <div class="card">
+      <b>すでにある部品</b>
+      <span><code>remainingSessionsUnlimited</code>(「セッションは無制限です」)は<b>定義済みで未使用</b>。紙吹雪・後輩の表情・厚いボタンも既存。新規で作るものは少ない。</span>
+    </div>
+  </div>
+
+  <div class="cards" style="margin-top:14px">
+    <div class="card">
+      <b>守る前提 ①  煽らない(handoff §6)</b>
+      <span>バッジは「自慢する印」ではなく「今どっちの状態か」の表示にする。このアプリは一人で使うので、見せる相手がいない。</span>
+    </div>
+    <div class="card">
+      <b>守る前提 ②  数えるのは2つだけ(§7)</b>
+      <span>連続日数と埋めた穴以外は数えない。バッジがランク・称号・レベルに見えたら失敗。金色とグラデを使わない理由もこれ。</span>
+    </div>
+    <div class="card">
+      <b>守る前提 ③  祝うのは1回だけ(§7)</b>
+      <span>にぎやかにするのは購入直後の1画面まで。カルテと復習は静かな画面なので、そこに祝いの色を持ち込まない。</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ A. お礼 ============================ -->
+<section id="sA">
+  <div class="eyebrow">PART A</div>
+  <h2>購入直後の「ありがとう」— 3案</h2>
+  <p class="lede">どれも中身は同じ(お礼 + 解放されたもの3つ + 更新と解約の注記)。ちがうのは<b>どれくらい足を止めさせるか</b>。</p>
+  <div class="rule"></div>
+
+  <div class="flow">
+
+    <!-- A-1 -->
+    <div class="opt">
+      <div class="ohead"><span class="num rec">A-1</span><span class="oname">全画面でお礼</span></div>
+      <p class="osub">推奨 / 祝福画面と同じ文法(紙吹雪 + 後輩)</p>
+      <div class="phone cheer">
+        <div class="notch"></div>
+        <!-- 紙吹雪 -->
+        <svg class="confetti" viewBox="0 0 300 600">
+          <g opacity=".85">
+            <rect x="28" y="54" width="9" height="13" rx="2" fill="#FFD93B" transform="rotate(24 32 60)"/>
+            <rect x="82" y="28" width="8" height="12" rx="2" fill="#0EA5E9" transform="rotate(-38 86 34)"/>
+            <rect x="150" y="66" width="9" height="12" rx="2" fill="#FF7AA8" transform="rotate(15 154 72)"/>
+            <rect x="214" y="34" width="8" height="13" rx="2" fill="#FF9F1C" transform="rotate(-16 218 40)"/>
+            <rect x="262" y="82" width="9" height="12" rx="2" fill="#FFD93B" transform="rotate(41 266 88)"/>
+            <rect x="44" y="150" width="8" height="12" rx="2" fill="#0EA5E9" transform="rotate(-27 48 156)"/>
+            <rect x="252" y="176" width="9" height="12" rx="2" fill="#FF7AA8" transform="rotate(33 256 182)"/>
+            <rect x="18" y="264" width="8" height="12" rx="2" fill="#FF9F1C" transform="rotate(12 22 270)"/>
+            <rect x="272" y="292" width="8" height="12" rx="2" fill="#FFD93B" transform="rotate(-22 276 298)"/>
+            <rect x="60" y="392" width="8" height="12" rx="2" fill="#FF7AA8" transform="rotate(45 64 398)"/>
+            <rect x="238" y="430" width="9" height="12" rx="2" fill="#0EA5E9" transform="rotate(-9 242 436)"/>
+          </g>
+        </svg>
+
+        <div class="spacer"></div>
+        <!-- 後輩(delighted) -->
+        <div class="row center">
+          <svg width="128" height="128" viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="50" fill="#FFD93B" fill-opacity="0.25"/>
+            <g fill="#FF9F1C" opacity=".9">
+              <path d="M12 15.5 Q12 20 16.5 20 Q12 20 12 24.5 Q12 20 7.5 20 Q12 20 12 15.5 Z"/>
+              <path d="M88 12.7 Q88 16 91.3 16 Q88 16 88 19.3 Q88 16 84.7 16 Q88 16 88 12.7 Z"/>
+              <path d="M94 57.5 Q94 62 98.5 62 Q94 62 94 66.5 Q94 62 89.5 62 Q94 62 94 57.5 Z"/>
+              <path d="M6 56.7 Q6 60 9.3 60 Q6 60 6 63.3 Q6 60 2.7 60 Q6 60 6 56.7 Z"/>
+            </g>
+            <g stroke="#33323D" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+              <path d="M23.8 46.5 L31 37.5 L38.2 46.5"/>
+              <path d="M61.8 46.5 L69 37.5 L76.2 46.5"/>
+              <path d="M62.85 64.2 A13 8 0 0 1 37.13 64.13"/>
+            </g>
+          </svg>
+        </div>
+        <div style="height:6px"></div>
+        <div class="display">ありがとうございます</div>
+        <div class="small ctr" style="font-size:12.5px;color:var(--ink)">これから、いくらでも聞きます。</div>
+        <div style="height:8px"></div>
+        <div class="box unlocked">
+          <div><i>∞</i><span>1日1回の上限がなくなりました</span></div>
+          <div><i>○</i><span>埋めた穴が、ぜんぶ残ります</span></div>
+          <div><i>○</i><span>後輩があと追いで質問します</span></div>
+        </div>
+        <div class="spacer"></div>
+        <div class="chunky">はじめる</div>
+        <div class="small ctr">2026年9月8日に更新されます・いつでも解約できます</div>
+      </div>
+      <ul class="pros">
+        <li class="o">記憶に残る。「後輩の表情が最大の報酬」という設計と一致する</li>
+        <li class="o">既存部品だけで組める(ConfettiBurst / KohaiFace / ChunkyButton)</li>
+        <li class="o">サーバ側の Premium 反映が追いつく数秒を、ここで隠せる</li>
+        <li class="x">画面が1枚増える。閉じるのに1タップ必要</li>
+      </ul>
+    </div>
+
+    <!-- A-2 -->
+    <div class="opt">
+      <div class="ohead"><span class="num">A-2</span><span class="oname">ホームの上にシート</span></div>
+      <p class="osub">遷移しない / 下から1枚上がる</p>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="row between">
+          <div class="toprow">
+            <span class="n" style="color:var(--streak)">3</span><span class="l">日つづけて説明中</span>
+          </div>
+          <span class="small">⚙</span>
+        </div>
+        <div class="spacer"></div>
+        <div class="row center" style="opacity:.35">
+          <svg width="86" height="86" viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="50" fill="#0EA5E9" fill-opacity="0.12"/>
+            <g fill="#33323D"><circle cx="31" cy="42" r="4.5"/><circle cx="69" cy="42" r="4.5"/></g>
+            <path d="M62.85 63.6 A13 4 0 0 1 37.13 63.56" stroke="#33323D" stroke-width="4.5"
+              stroke-linecap="round" fill="none"/>
+          </svg>
+        </div>
+        <div class="ctr titleL" style="opacity:.35">今日のノート、見せてください</div>
+        <div class="spacer"></div>
+        <!-- シート -->
+        <div style="margin:0 -15px -16px;background:var(--surface);border-top-left-radius:24px;
+          border-top-right-radius:24px;border:1.5px solid var(--border);border-bottom:none;
+          padding:14px 16px 18px;box-shadow:0 -10px 26px rgba(51,50,61,.10)">
+          <div style="width:34px;height:4px;background:var(--border);border-radius:9px;margin:0 auto 12px"></div>
+          <div class="row" style="gap:10px;margin-bottom:10px">
+            <svg width="44" height="44" viewBox="0 0 100 100" style="flex:none">
+              <circle cx="50" cy="50" r="50" fill="#FFD93B" fill-opacity="0.25"/>
+              <g stroke="#33323D" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+                <path d="M23.8 46.5 L31 37.5 L38.2 46.5"/><path d="M61.8 46.5 L69 37.5 L76.2 46.5"/>
+                <path d="M62.85 64.2 A13 8 0 0 1 37.13 64.13"/>
+              </g>
+            </svg>
+            <div>
+              <div class="titleL">ありがとうございます</div>
+              <div class="small">Premium になりました</div>
+            </div>
+          </div>
+          <div class="unlocked" style="margin-bottom:12px">
+            <div><i>∞</i><span>1日1回の上限がなくなりました</span></div>
+            <div><i>○</i><span>埋めた穴が、ぜんぶ残ります</span></div>
+            <div><i>○</i><span>後輩があと追いで質問します</span></div>
+          </div>
+          <div class="chunky">閉じる</div>
+          <div class="small ctr" style="margin-top:8px">2026年9月8日に更新されます<br>いつでも解約できます</div>
+        </div>
+      </div>
+      <ul class="pros">
+        <li class="o">軽い。遷移が増えず、実装は <code style="font-size:11px">showModalBottomSheet</code> 1つ</li>
+        <li class="o">後ろにホームが見えるので、バッジが付いたことに同時に気づける</li>
+        <li class="x">紙吹雪を敷く場所がない。払った瞬間の割にあっさりしている</li>
+      </ul>
+    </div>
+
+    <!-- A-3 -->
+    <div class="opt">
+      <div class="ohead"><span class="num">A-3</span><span class="oname">ホームに歓迎バナー</span></div>
+      <p class="osub">いちばん静か / 購入後の初回ホームだけ</p>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="row between">
+          <div class="toprow">
+            <span class="n" style="color:var(--streak)">3</span><span class="l">日つづけて説明中</span>
+          </div>
+          <span class="b-line">Premium</span>
+        </div>
+        <div style="height:2px"></div>
+        <div class="box" style="border-color:var(--blue);background:var(--blue-l);position:relative">
+          <div style="position:absolute;top:9px;right:12px;color:var(--mut);font-size:13px">×</div>
+          <div class="titleM" style="margin-bottom:2px">Premium になりました</div>
+          <div class="small" style="color:var(--ink)">今日から、回数の上限はありません。埋めた穴も残ります。</div>
+        </div>
+        <div class="spacer"></div>
+        <div class="row center">
+          <svg width="112" height="112" viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="50" fill="#0EA5E9" fill-opacity="0.12"/>
+            <g fill="#33323D"><circle cx="31" cy="42" r="4.5"/><circle cx="69" cy="42" r="4.5"/></g>
+            <path d="M62.85 63.6 A13 4 0 0 1 37.13 63.56" stroke="#33323D" stroke-width="4.5"
+              stroke-linecap="round" fill="none"/>
+          </svg>
+        </div>
+        <div style="height:8px"></div>
+        <div class="ctr titleL">今日のノート、見せてください</div>
+        <div class="spacer"></div>
+        <div class="chunky">ノートを撮る</div>
+        <div style="height:2px"></div>
+        <div class="small ctr">セッションは無制限です</div>
+      </div>
+      <ul class="pros">
+        <li class="o">邪魔をしない。誠実で、静かな画面のままでいられる</li>
+        <li class="x">見逃す。「払ったのに何も起きない」の解決になりきらない</li>
+        <li class="x">祝いがゼロなので、A-1 / A-2 の代わりというより<b>併用の下地</b>に近い</li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============================ A'. 文言 ============================ -->
+<section id="sA2">
+  <div class="eyebrow">PART A — 文言</div>
+  <h2>「ご購入ありがとう」と書けない場合が3つある</h2>
+  <p class="lede">ここを1文で済ませると、誠実さの方針(§6)と正面からぶつかる。同じ画面のまま、見出しだけ出し分ける。</p>
+  <div class="rule"></div>
+  <table>
+    <tr>
+      <th style="width:210px">状況</th><th style="width:250px">見出し</th><th>添える一行</th><th style="width:280px">なぜ分けるか</th>
+    </tr>
+    <tr>
+      <td class="k">購入(トライアル無し)</td>
+      <td><span class="say">ありがとうございます</span></td>
+      <td>これから、いくらでも聞きます。</td>
+      <td class="small" style="color:var(--mut)">素直にお礼を言っていい唯一のケース。</td>
+    </tr>
+    <tr>
+      <td class="k">無料トライアル開始</td>
+      <td><span class="say">7日間、ぜんぶ使えます</span></td>
+      <td>2026年8月15日までは無料です。その日に ¥580 の請求が始まります。<span class="sub">解約はいつでもできます</span></td>
+      <td class="small" style="color:var(--mut)"><b>まだ1円も払っていない。</b>「ご購入ありがとう」は事実として嘘になる。課金が始まる日付を先に言う。</td>
+    </tr>
+    <tr>
+      <td class="k">購入の復元</td>
+      <td><span class="say">おかえりなさい</span></td>
+      <td>契約は 2026年9月8日まで有効です。</td>
+      <td class="small" style="color:var(--mut)">買い直していない。機種変更した人にお礼を言うと、二重に払ったのかと思わせる。</td>
+    </tr>
+    <tr class="no-cel">
+      <td class="k">決済は通ったが未反映</td>
+      <td><span class="say" style="color:var(--ng)">祝わない</span></td>
+      <td>既存の <code style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px">purchaseErrorNotEntitled</code> をそのまま出す</td>
+      <td class="small" style="color:var(--mut)">解放されていないのに紙吹雪を出すと、次に使えなかったときの落差が大きい。</td>
+    </tr>
+  </table>
+</section>
+
+<!-- ============================ B. バッジ ============================ -->
+<section id="sB">
+  <div class="eyebrow">PART B</div>
+  <h2>Premium バッジ — どこに出すか(4案)</h2>
+  <p class="lede">「加入している感」は、印を1つ置くだけでは出ない。<b>印(見た目)</b>と<b>事実(できることが変わった表示)</b>の両方が要る。</p>
+  <div class="rule"></div>
+
+  <div class="flow">
+
+    <!-- B-1 -->
+    <div class="opt">
+      <div class="ohead"><span class="num rec">B-1</span><span class="oname">ホーム右上のチップ</span></div>
+      <p class="osub">推奨 / 設定アイコンの左に小さく</p>
+      <div class="phone short">
+        <div class="notch"></div>
+        <div class="row between">
+          <div class="toprow">
+            <span class="n" style="color:var(--streak)">3</span><span class="l">日つづけて</span>
+            <span class="n" style="color:var(--blue)">7</span><span class="l">埋めた穴</span>
+          </div>
+          <div class="toprow" style="gap:7px">
+            <span class="b-line">Premium</span><span class="gear">⚙</span>
+          </div>
+        </div>
+        <div class="spacer"></div>
+        <div class="row center">
+          <svg width="104" height="104" viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="50" fill="#0EA5E9" fill-opacity="0.12"/>
+            <g fill="#33323D"><circle cx="31" cy="42" r="4.5"/><circle cx="69" cy="42" r="4.5"/></g>
+            <path d="M62.85 63.6 A13 4 0 0 1 37.13 63.56" stroke="#33323D" stroke-width="4.5"
+              stroke-linecap="round" fill="none"/>
+          </svg>
+        </div>
+        <div class="ctr titleL" style="margin-top:6px">今日のノート、見せてください</div>
+        <div class="spacer"></div>
+        <div class="chunky">ノートを撮る</div>
+      </div>
+      <ul class="pros">
+        <li class="o">起動のたびに目に入る。押すと契約の管理に飛ばせる</li>
+        <li class="o">数える2つ(連続日数・埋めた穴)と別の場所に置けるので、成績と混ざらない</li>
+        <li class="x">これ<b>だけ</b>だと飾り。何ができるようになったのかは伝わらない</li>
+      </ul>
+    </div>
+
+    <!-- B-2 -->
+    <div class="opt">
+      <div class="ohead"><span class="num rec">B-2</span><span class="oname">残り回数の行を差し替える</span></div>
+      <p class="osub">推奨 / 空白だった行に事実を戻す</p>
+      <div class="phone short">
+        <div class="notch"></div>
+        <div class="row between">
+          <div class="toprow">
+            <span class="n" style="color:var(--streak)">3</span><span class="l">日つづけて説明中</span>
+            <span class="n" style="color:var(--blue)">7</span><span class="l">埋めた穴</span>
+          </div>
+          <span class="gear">⚙</span>
+        </div>
+        <div class="spacer"></div>
+        <div class="row center">
+          <svg width="104" height="104" viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="50" fill="#0EA5E9" fill-opacity="0.12"/>
+            <g fill="#33323D"><circle cx="31" cy="42" r="4.5"/><circle cx="69" cy="42" r="4.5"/></g>
+            <path d="M62.85 63.6 A13 4 0 0 1 37.13 63.56" stroke="#33323D" stroke-width="4.5"
+              stroke-linecap="round" fill="none"/>
+          </svg>
+        </div>
+        <div class="ctr titleL" style="margin-top:6px">今日のノート、見せてください</div>
+        <div class="spacer"></div>
+        <div class="chunky">ノートを撮る</div>
+        <div style="height:3px"></div>
+        <div class="row between">
+          <span class="small">セッションは無制限です</span>
+          <span class="b-mark">Premium</span>
+        </div>
+      </div>
+      <ul class="pros">
+        <li class="o"><code style="font-size:11px">remainingSessionsUnlimited</code> がすでにある。<b>文字列を書かずに済む</b></li>
+        <li class="o">無料の人が見ていた「残り1回」と同じ場所。差が読み取れる</li>
+        <li class="o">飾りではなく事実なので、煽らない方針とぶつからない</li>
+        <li class="x">下端なので、印としては弱い。B-1 と併用が前提</li>
+      </ul>
+    </div>
+
+    <!-- B-3 -->
+    <div class="opt">
+      <div class="ohead"><span class="num">B-3</span><span class="oname">後輩に印をつける</span></div>
+      <p class="osub">キャラに寄せる / リボン・星</p>
+      <div class="phone short">
+        <div class="notch"></div>
+        <div class="row between">
+          <div class="toprow">
+            <span class="n" style="color:var(--streak)">3</span><span class="l">日つづけて説明中</span>
+            <span class="n" style="color:var(--blue)">7</span><span class="l">埋めた穴</span>
+          </div>
+          <span class="gear">⚙</span>
+        </div>
+        <div class="spacer"></div>
+        <div class="row center">
+          <div style="position:relative">
+            <svg width="104" height="104" viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="50" fill="#0EA5E9" fill-opacity="0.12"/>
+              <g fill="#33323D"><circle cx="31" cy="42" r="4.5"/><circle cx="69" cy="42" r="4.5"/></g>
+              <path d="M62.85 63.6 A13 4 0 0 1 37.13 63.56" stroke="#33323D" stroke-width="4.5"
+                stroke-linecap="round" fill="none"/>
+            </svg>
+            <svg width="34" height="34" viewBox="0 0 40 40" style="position:absolute;right:-4px;top:-2px">
+              <circle cx="20" cy="20" r="18" fill="#fff" stroke="#E6E3DC" stroke-width="2"/>
+              <path d="M20 8.5 Q20 20 31.5 20 Q20 20 20 31.5 Q20 20 8.5 20 Q20 20 20 8.5 Z" fill="#FFD93B"/>
+            </svg>
+          </div>
+        </div>
+        <div class="ctr titleL" style="margin-top:6px">今日のノート、見せてください</div>
+        <div class="spacer"></div>
+        <div class="chunky">ノートを撮る</div>
+      </div>
+      <ul class="pros">
+        <li class="o">かわいい。ブランドの中心(後輩)に紐づく</li>
+        <li class="n">「<b>後輩が</b>課金している」ように読める。自分の契約の話に見えない</li>
+        <li class="n">きらり(納得したときの★)と同じ語彙。ご褒美の意味が濁る</li>
+      </ul>
+    </div>
+
+    <!-- B-4 -->
+    <div class="opt">
+      <div class="ohead"><span class="num">B-4</span><span class="oname">設定の契約セクション</span></div>
+      <p class="osub">既存の1行を格上げする / どの案でも入れる</p>
+      <div class="phone short" style="background:var(--bg)">
+        <div class="notch"></div>
+        <div class="titleL">設定</div>
+        <div class="list">
+          <div class="grp">契約</div>
+          <div class="box" style="border-color:var(--blue);background:var(--blue-l);padding:12px 13px">
+            <div class="row between" style="margin-bottom:3px">
+              <span class="titleM">Premium</span>
+              <span class="b-fill">有効</span>
+            </div>
+            <div class="small" style="color:var(--ink)">2026年9月8日 に更新されます</div>
+          </div>
+          <div class="it"><span>契約の管理</span><span class="chev">›</span></div>
+          <div class="it"><span>購入を復元する</span><span class="chev">↻</span></div>
+          <div class="grp">通知</div>
+          <div class="it"><span>後輩からの再説明のお願い</span><span class="chev">›</span></div>
+        </div>
+        <div class="spacer"></div>
+      </div>
+      <ul class="pros">
+        <li class="o">解約予約済みなら「9月8日に終わります」に差し替えるだけで足りる</li>
+        <li class="o">審査で見られる場所。状態がはっきり書いてあるほうが良い</li>
+        <li class="x">単独だと見つけてもらえない。加入している「感」は出ない</li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============================ B'. トーン ============================ -->
+<section id="sB2">
+  <div class="eyebrow">PART B — 見た目</div>
+  <h2>バッジのトーン — 4案</h2>
+  <p class="lede">置き場所とは独立に選べる。上の図では T-2(枠線)と T-3(黄マーカー)を使っています。</p>
+  <div class="rule"></div>
+  <div class="tones">
+    <div class="tone">
+      <div class="demo"><span class="b-fill">Premium</span></div>
+      <div class="name">T-1 ブルー塗り</div>
+      <p class="desc">いちばん目立つ。ただし塗りのピルは厚いボタンと同じ重さなので、押せるものに見える。押せないなら避ける。</p>
+    </div>
+    <div class="tone">
+      <div class="demo"><span class="b-line">Premium</span></div>
+      <div class="name">T-2 枠線 + ブルー文字<span class="pick">推奨</span></div>
+      <p class="desc">静か。押せる(契約の管理へ飛ぶ)ことも伝わる。ホーム右上のように常に出ている場所に向く。</p>
+    </div>
+    <div class="tone">
+      <div class="demo"><span class="b-mark">Premium</span></div>
+      <div class="name">T-3 黄マーカー<span class="pick">推奨</span></div>
+      <p class="desc">このアプリだけの語彙(黄 = 言えたこと)。バッジに見えないほど軽いので、文字のとなりに置くのに向く。</p>
+    </div>
+    <div class="tone no">
+      <div class="demo"><span class="b-gold">Premium</span></div>
+      <div class="name" style="color:var(--ng)">T-4 金・グラデ<span class="pick no">不採用</span></div>
+      <p class="desc">パレットに無い色。ランク/称号に見えるので「数えるのは連続日数と埋めた穴だけ」と衝突する。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ C. 推奨 ============================ -->
+<section id="sC">
+  <div class="eyebrow">PART C</div>
+  <h2>推奨の組み合わせと、実装するときの注意</h2>
+  <div class="rule"></div>
+
+  <div class="rec-band">
+    <h3>おすすめ:A-1 + B-1 + B-2 + B-4</h3>
+    <ol>
+      <li><b>A-1 全画面のお礼</b> — 購入・トライアル・復元で見出しを出し分ける。祝うのはここ1回だけ。</li>
+      <li><b>B-2 残り回数の行</b> — 「セッションは無制限です」。<b>これが本体</b>。空白だった行に事実が戻る。</li>
+      <li><b>B-1 ホーム右上のチップ(T-2 枠線)</b> — 印。押すと設定の契約セクションへ。</li>
+      <li><b>B-4 設定のカード</b> — 状態と次の更新日。解約予約済みなら終了日に差し替え。</li>
+    </ol>
+    <p style="margin:8px 0 0;font-size:12.5px;color:var(--mut)">
+      B-3(後輩に印)は不採用。★は「納得した瞬間のきらり」に使っていて、意味が混ざる。
+    </p>
+  </div>
+
+  <div class="impl">
+    <div>
+      <h4>入口は3つある(ここが抜けやすい)</h4>
+      <ul>
+        <li>自前ペイウォールの <code>PurchaseSucceeded()</code></li>
+        <li>RevenueCat ペイウォールの <code>PaywallResult.purchased</code></li>
+        <li>復元の <code>RestoreSucceeded()</code>(設定からの復元も含む)</li>
+        <li>いまはどれも <code>closeOrGoHome()</code>。<b>3つとも</b>お礼へ寄せないと、RevenueCat 側で買った人には何も出ない。</li>
+      </ul>
+    </div>
+    <div>
+      <h4>待ち時間を隠す場所として使える</h4>
+      <ul>
+        <li>サーバの <code>is_premium</code> は webhook 経由で数秒遅れる(<code>PremiumSync</code> がバックオフで読み直している)。</li>
+        <li>お礼画面を見ているあいだに追いつくので、ホームに戻った瞬間には無制限になっている。</li>
+        <li>祝福画面がカルテ生成を隠しているのと同じ構造。</li>
+      </ul>
+    </div>
+    <div>
+      <h4>足すもの / 直すもの</h4>
+      <ul>
+        <li>ルート <code>/thanks</code> を1つ(<code>/</code> の子ルート)。</li>
+        <li>文言 ja/en:見出し3種・解放3行・更新日の注記・<code>premiumBadge</code>。</li>
+        <li><code>_RemainingLine</code>:Premium で <code>SizedBox</code> を返している分岐を、既存の <code>remainingSessionsUnlimited</code> に差し替える。</li>
+        <li><code>SubscriptionStatusLine</code> をカードに格上げ(文言はそのまま使える)。</li>
+        <li>golden を1枚追加。トライアル時の見出しも撮る。</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</div>
+</body>
+</html>
