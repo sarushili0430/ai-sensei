@@ -101,6 +101,29 @@ class _FadeSlideInState extends State<FadeSlideIn> with SingleTickerProviderStat
   }
 }
 
+/// 少し小さいところから、跳ねて出てくる。
+///
+/// 行き過ぎて戻る動き([AppCurves.pop])を使うのは**にぎやかな画面だけ**。
+/// 内省する画面(カルテ・復習)に持ち込むと、記録が軽く見える(handoff §7)。
+class PopIn extends StatelessWidget {
+  const PopIn({required this.child, this.duration = AppDurations.celebrate, super.key});
+
+  final Widget child;
+  final Duration duration;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0.7, end: 1),
+      duration: AppMotion.decorative(context, duration),
+      curve: AppCurves.pop,
+      builder: (BuildContext context, double scale, Widget? child) =>
+          Transform.scale(scale: scale, child: child),
+      child: child,
+    );
+  }
+}
+
 /// 数を 0 から数え上げる。
 ///
 /// 数えているのが「連続日数」と「埋めた穴」だけだからこそ、

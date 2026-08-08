@@ -8,6 +8,7 @@ import 'package:ai_sensei/src/features/karte/presentation/home_screen.dart';
 import 'package:ai_sensei/src/features/karte/presentation/karte_screen.dart';
 import 'package:ai_sensei/src/features/karte/presentation/review_screen.dart';
 import 'package:ai_sensei/src/features/monetization/presentation/paywall_screen.dart';
+import 'package:ai_sensei/src/features/monetization/presentation/thanks_screen.dart';
 import 'package:ai_sensei/src/features/onboarding/presentation/onboarding_screen.dart';
 import 'package:ai_sensei/src/features/session/presentation/celebration_screen.dart';
 import 'package:ai_sensei/src/features/settings/presentation/settings_screen.dart';
@@ -105,6 +106,20 @@ void main() {
     );
   });
 
+  // 契約している人のホーム。右上に印が出ているか、
+  // それが数えている2つ(連続日数・埋めた穴)を押し出していないか。
+  testWidgets('02c ホーム(Premium)', (WidgetTester tester) async {
+    await expectGolden(
+      tester,
+      const HomeScreen(),
+      'home_premium',
+      overrides: <Object?>[
+        progressControllerProvider.overrideWith(() => FakeProgressController(premiumSummary)),
+        ...premiumOverrides(),
+      ],
+    );
+  });
+
   testWidgets('03 祝福', (WidgetTester tester) async {
     await expectGolden(
       tester,
@@ -186,6 +201,20 @@ void main() {
       overrides: <Object?>[
         deviceIdProvider.overrideWithValue('11111111-2222-3333-4444-555555555555'),
       ],
+    );
+  });
+
+  // 購入のお礼。見たいのは、祝っている画面でも
+  // **更新日と解約できることが消えていない**こと(Guideline 3.1.2)。
+  //
+  // 無料トライアルの見出しは残り日数で変わる = 撮る日で変わるので、
+  // golden では撮らない(文言の出し分けは monetization_test.dart で見る)。
+  testWidgets('08 購入のお礼', (WidgetTester tester) async {
+    await expectGolden(
+      tester,
+      const ThanksScreen(),
+      'thanks',
+      overrides: premiumOverrides(),
     );
   });
 }

@@ -48,10 +48,12 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     if (!mounted) return;
 
     switch (result) {
-      // 購入・復元できた。閉じてホームへ。
+      // 買えた・戻せた。**ここを閉じるだけにしない。** RevenueCat の
+      // ペイウォールで買った人にも、自前で買った人と同じお礼を出す。
       case PaywallResult.purchased:
+        context.replaceWithThanks();
       case PaywallResult.restored:
-        context.closeOrGoHome();
+        context.replaceWithThanks(restored: true);
       // 閉じただけ。「無料のまま続ける」を押したのと同じ扱いにする。
       case PaywallResult.cancelled:
       case PaywallResult.notPresented:
@@ -108,7 +110,7 @@ class _ManualPaywallState extends ConsumerState<_ManualPaywall> {
 
     switch (outcome) {
       case PurchaseSucceeded():
-        context.closeOrGoHome();
+        context.replaceWithThanks();
       // 自分で閉じただけ。エラーは出さないし、引き止めもしない。
       case PurchaseCancelled():
         break;
@@ -133,7 +135,7 @@ class _ManualPaywallState extends ConsumerState<_ManualPaywall> {
 
     switch (outcome) {
       case RestoreSucceeded():
-        context.closeOrGoHome();
+        context.replaceWithThanks(restored: true);
       // 「失敗」ではない。見つからなかった、と正直に出す。
       case RestoreFoundNothing():
         setState(() => _message = strings.paywallRestoredNothing);

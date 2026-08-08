@@ -19,8 +19,35 @@ Shipaton の参加条件(SDKで最低1つのアプリ内課金)を満たす箇�
 | `application/entitlement_controller.dart` | 状態を持つ。購入・復元・ペイウォール・Customer Center の入口 |
 | `application/premium_sync.dart` | entitlement が変わったら、サーバ側の判定を読み直す(§9) |
 | `presentation/paywall_screen.dart` | RevenueCatのペイウォール →(出せなければ)自前のペイウォール |
-| `presentation/manage_subscription_button.dart` | Customer Center の導線(契約がある人にだけ出る) |
+| `presentation/thanks_screen.dart` | 購入・トライアル・復元のお礼。ペイウォールの次に出る |
+| `presentation/manage_subscription_button.dart` | Customer Center の導線・契約カード・Premium の印 |
 | `main.dart` | 起動時に一度だけ `configure` する |
+
+## 買えたあとに出るもの
+
+購入が通ったら**必ず `/thanks` へ寄せる**。入口が3つあるので、
+どれか1つでも `closeOrGoHome()` のままだと、その経路で買った人にだけ
+何も出なくなる:
+
+| 入口 | 呼ぶもの |
+| --- | --- |
+| 自前ペイウォールの `PurchaseSucceeded()` | `context.replaceWithThanks()` |
+| RevenueCat ペイウォールの `PaywallResult.purchased` | `context.replaceWithThanks()` |
+| 復元(ペイウォール / 設定) | `context.replaceWithThanks(restored: true)` / `pushThanks(restored: true)` |
+
+見出しは3通りに分かれる。**「ご購入ありがとうございます」と書けない場合が
+あるため**(§6 誠実さ):
+
+- **無料トライアル**(`Entitlement.isTrial`)— まだ1円も払っていない。
+  日数と、課金が始まる日を先に言う。`PeriodType.intro`(初月100円のような
+  **有料の**キャンペーン)は無料に数えないこと。
+- **復元** — 買い直していない。お礼を言うと二重に払ったのかと思わせる。
+- **決済は通ったが entitlement が付いていない** — ルータの `redirect` が
+  ホームへ弾く。祝ってから使えないのが、いちばん落差が大きい。
+
+契約している印は2か所。ホーム右上の `PremiumChip` と、設定の
+`SubscriptionStatusCard`(状態と、更新日 / 終了日 / 課金開始日)。
+**ランクや称号にしないこと** — 数えるのは連続日数と埋めた穴だけ(§7)。
 
 `Purchases.configure` は **`main()` で一度だけ**呼ぶ。
 provider の `build()` の中で呼ぶと、providerが再構築されるたびに走ってしまう。
