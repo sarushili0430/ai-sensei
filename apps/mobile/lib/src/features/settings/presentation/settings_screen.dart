@@ -12,11 +12,13 @@ import '../../monetization/application/entitlement_controller.dart' show Revenue
 import '../../monetization/presentation/manage_subscription_button.dart';
 import '../../notifications/application/push_controller.dart';
 import '../../notifications/data/push_repository.dart';
+import '../application/language_controller.dart';
 import '../data/support_links.dart';
 
 /// 設定。
 ///
-/// 新しい機能は何も足していない。**置き場所が無かったものを集めた画面**:
+/// **置き場所が無かったものを集めた画面**:
+///   - 言語(端末に合わせる / 日本語 / English)
 ///   - 契約の管理と購入の復元(ホームから移した)
 ///   - 通知のオン/オフ
 ///   - プライバシーポリシー・利用規約(サブスクを載せる以上、審査で見られる)
@@ -35,6 +37,10 @@ class SettingsScreen extends ConsumerWidget {
         child: ListView(
           padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
           children: <Widget>[
+            // 言語をいちばん上に置く。読めない言葉で書かれた画面から
+            // 探し始める人がいるので、下のほうに埋めない。
+            _Section(title: strings.settingsSectionLanguage),
+            const _LanguageRows(),
             // 鍵の無いビルドでは中身が全部消えるので、見出しごと出さない。
             if (RevenueCatConfig.isConfigured) ...<Widget>[
               _Section(title: strings.settingsSectionAccount),
@@ -61,6 +67,66 @@ class SettingsScreen extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 言語の選択。端末に合わせる / 日本語 / English。
+///
+/// 通知と違って、こちらはアプリ側に状態を持つ(端末の言語とアプリの言語を
+/// 別々にできることが、この行の存在理由そのもの)。
+///
+/// 選んだ瞬間に画面全体の言葉が入れ替わる。再起動も、確認ダイアログも挟まない
+/// —— 押した結果が目の前に出るので、押し間違えたらもう一度押せば戻せる。
+class _LanguageRows extends ConsumerWidget {
+  const _LanguageRows();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AppStrings strings = AppStrings.of(context);
+    final AppLanguage selected = ref.watch(languageControllerProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        for (final AppLanguage language in AppLanguage.values)
+          _LanguageRow(language: language, selected: language == selected),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg,
+            AppSpacing.sm,
+            AppSpacing.lg,
+            0,
+          ),
+          child: Text(
+            strings.settingsLanguageNote,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LanguageRow extends ConsumerWidget {
+  const _LanguageRow({required this.language, required this.selected});
+
+  final AppLanguage language;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AppStrings strings = AppStrings.of(context);
+
+    return ListTile(
+      // 言語名はその言語自身の表記。訳したものに置き換えない。
+      title: Text(language.nativeName ?? strings.settingsLanguageSystem),
+      // `selected` は色だけでなく読み上げ(Semantics)にも乗る。
+      // チェックの印を色だけに預けない。
+      selected: selected,
+      selectedColor: AppColors.blue,
+      trailing: selected ? const Icon(Icons.check, color: AppColors.blue) : null,
+      onTap: () => ref.read(languageControllerProvider.notifier).select(language),
     );
   }
 }

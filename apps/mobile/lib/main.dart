@@ -9,6 +9,7 @@ import 'src/features/monetization/application/premium_sync.dart';
 import 'src/features/monetization/data/purchases_repository.dart';
 import 'src/features/notifications/application/push_controller.dart';
 import 'src/features/notifications/presentation/push_registration_gate.dart';
+import 'src/features/settings/application/language_controller.dart';
 import 'src/l10n/strings.dart';
 import 'src/routing/app_router.dart';
 import 'src/theme/app_theme.dart';
@@ -59,6 +60,10 @@ class AiSenseiApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final GoRouter router = ref.watch(appRouterProvider);
 
+    // 設定で選んだ言語。既定(端末に合わせる)なら null で、下の解決に任せる。
+    // watch なので、設定画面で選び直した瞬間に画面の言葉が入れ替わる。
+    final AppLanguage language = ref.watch(languageControllerProvider);
+
     // 通知の配線(SDK初期化とexternal idの登録)。許可はここでは求めない。
     ref.watch(pushSetupProvider);
 
@@ -86,6 +91,9 @@ class AiSenseiApp extends ConsumerWidget {
         theme: AppTheme.light(),
         routerConfig: router,
         supportedLocales: AppStrings.supportedLocales,
+        // 設定で選ばれていればそれが最優先。null(端末に合わせる)のときだけ
+        // 下の解決が走る。
+        locale: language.locale,
         // 既定の解決は「一致しなければ先頭(=日本語)」。海外の端末に
         // 日本語が出ないよう、日本語を望んだ端末以外は英語に寄せる。
         localeListResolutionCallback: (List<Locale>? preferred, Iterable<Locale> _) =>
