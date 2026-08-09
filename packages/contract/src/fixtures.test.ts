@@ -3,6 +3,13 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { fixtureFileNames, fixtureFileSchemas, fixturePath, fixtureSchemas } from "./fixtures.ts";
 import {
+  boardChannelLogSchema,
+  boardChannelMessageSchema,
+  boardLessonSchema,
+  boardSpeechMaxLength,
+  boardStepSchema,
+  boardStepsMaxCount,
+  boardTexMaxLength,
   completeSessionRequestSchema,
   createSessionRequestSchema,
   createSessionResponseSchema,
@@ -32,6 +39,7 @@ describe("fixture", () => {
     expect(fixtureFileNames).toContain("karte");
     expect(fixtureFileNames).toContain("karte.en");
     expect(fixtureFileNames).toContain("create-session-response.en");
+    expect(fixtureFileNames).toContain("board-lesson.en");
   });
 
   it("fixturePath がリポジトリ相対パスを返す", () => {
@@ -96,6 +104,154 @@ describe("カルテのスキーマ", () => {
   it("followup_question は省略可(無料ユーザーには生成しない)", () => {
     const draft = { said_well: [], holes: [], term_notes: [] };
     expect(karteDraftSchema.parse(draft).followup_question).toBeUndefined();
+  });
+});
+
+describe("板書のスキーマ", () => {
+  /** 有効な手順1つ。壊し方だけをテストごとに変える。 */
+  function step(overrides: Record<string, unknown> = {}) {
+    return {
+      index: 0,
+      speech: "ここ、D を見てほしいんだけど — プラスだよね。だから?",
+      board: { kind: "latex", tex: "D = 1 > 0" },
+      ...overrides,
+    };
+  }
+
+  function lesson(steps: unknown[]) {
+    return { title: "判別式で解の個数を見る", topic_ids: ["M1-NIJI-HANBETSU"], steps };
+  }
+
+  // 音声は問いかけと接続だけ(§3-1)。原則をプロンプトではなくスキーマで守る。
+  // ここを緩めるとTTS原価が線形に増える。
+  it("speechが長すぎる手順を弾く(1手順=20〜25秒)", () => {
+    expect(boardSpeechMaxLength).toBe(120);
+    expect(boardStepSchema.safeParse(step({ speech: "あ".repeat(120) })).success).toBe(true);
+    expect(boardStepSchema.safeParse(step({ speech: "あ".repeat(121) })).success).toBe(false);
+  });
+
+  it("speechに数式(LaTeX)を書かせない", () => {
+    expect(boardStepSchema.safeParse(step({ speech: "D は \\frac{1}{2} だよね" })).success).toBe(
+      false,
+    );
+  });
+
+  it("board が null の手順は有効(相づち・確認)", () => {
+    expect(boardStepSchema.safeParse(step({ board: null })).success).toBe(true);
+  });
+
+  // 板書は「1手順=1行」であって、答案の貼り付け場所ではない。
+  // 1要素の上限・多行環境の禁止・手順数の上限の3つで塞ぐ。
+  it("解答を丸ごと1要素に流し込めない", () => {
+    expect(
+      boardStepSchema.safeParse(
+        step({ board: { kind: "latex", tex: "x = 1".repeat(boardTexMaxLength) } }),
+      ).success,
+    ).toBe(false);
+    expect(
+      boardStepSchema.safeParse(
+        step({ board: { kind: "latex", tex: "\\begin{align} a &= 1 \\\\ b &= 2 \\end{align}" } }),
+      ).success,
+    ).toBe(false);
+    expect(
+      boardStepSchema.safeParse(step({ board: { kind: "text", body: "解説".repeat(100) } }))
+        .success,
+    ).toBe(false);
+  });
+
+  it("手順が多すぎる板書を弾く(1行ずつ40行という抜け道を塞ぐ)", () => {
+    const steps = Array.from({ length: boardStepsMaxCount + 1 }, (_, index) => step({ index }));
+    expect(boardLessonSchema.safeParse(lesson(steps)).success).toBe(false);
+  });
+
+  it("indexが飛んだ板書を弾く(受信側が欠落と区別できないため)", () => {
+    expect(
+      boardLessonSchema.safeParse(lesson([step({ index: 0 }), step({ index: 2 })])).success,
+    ).toBe(false);
+  });
+
+  // 自由描画をさせない。プリミティブを固定し、パラメータだけ吐かせる。
+  it("知らない種類の板書要素を弾く", () => {
+    expect(
+      boardStepSchema.safeParse(step({ board: { kind: "svg", d: "M0 0 L10 10" } })).success,
+    ).toBe(false);
+    expect(
+      boardStepSchema.safeParse(step({ board: { kind: "latex", tex: "x", note: "余計" } })).success,
+    ).toBe(false);
+  });
+
+  it("座標が有限でない図形を弾く", () => {
+    const circle = { kind: "circle", center: { x: 0, y: Number.POSITIVE_INFINITY }, r: 5 };
+    expect(boardStepSchema.safeParse(step({ board: circle })).success).toBe(false);
+  });
+
+  it("plotのfnは既定の文字と関数名しか受け付けない(端末上で評価するため)", () => {
+    const plot = (fn: string) => ({ kind: "plot", fn, domain: { min: -1, max: 4 } });
+    expect(boardStepSchema.safeParse(step({ board: plot("x^2 - 3*x + 2") })).success).toBe(true);
+    expect(boardStepSchema.safeParse(step({ board: plot("sqrt(x) + 1") })).success).toBe(true);
+    expect(boardStepSchema.safeParse(step({ board: plot("process.exit()") })).success).toBe(false);
+  });
+
+  it("plotのdomainは min < max", () => {
+    const plot = { kind: "plot", fn: "x^2", domain: { min: 4, max: -1 } };
+    expect(boardStepSchema.safeParse(step({ board: plot })).success).toBe(false);
+  });
+
+  // 封筒(data channel)とLLM出力は別物。混ぜると幻覚したIDが配送層に流れ込む。
+  it("LLMの出す板書に session_id / board_id を持たせない", () => {
+    const withIds = { ...lesson([step()]), session_id: "ses_1", board_id: "brd_1" };
+    expect(boardLessonSchema.safeParse(withIds).success).toBe(false);
+  });
+
+  describe("data channel の封筒", () => {
+    function log() {
+      return JSON.parse(JSON.stringify(loadFixture("board-channel-log"))) as {
+        messages: Record<string, unknown>[];
+      };
+    }
+
+    it("1セッションで複数の板書を扱える(board_idで切り替える)", () => {
+      const boardIds = new Set(log().messages.map((message) => message["board_id"]));
+      expect(boardIds.size).toBe(2);
+    });
+
+    it("seqが飛んだら欠落として弾く", () => {
+      const broken = log();
+      broken.messages[2]!["seq"] = 9;
+      expect(boardChannelLogSchema.safeParse(broken).success).toBe(false);
+    });
+
+    it("手順が抜けたら弾く(indexは板書ごとに0始まりで1ずつ)", () => {
+      const broken = log();
+      broken.messages.splice(2, 1);
+      broken.messages.forEach((message, seq) => {
+        message["seq"] = seq;
+      });
+      expect(boardChannelLogSchema.safeParse(broken).success).toBe(false);
+    });
+
+    it("step_countが実際の手順数と合わなければ弾く(末尾の欠落の検知)", () => {
+      const broken = log();
+      broken.messages[4]!["step_count"] = 5;
+      expect(boardChannelLogSchema.safeParse(broken).success).toBe(false);
+    });
+
+    it("board_openされていない板書の手順を弾く", () => {
+      const broken = log();
+      broken.messages[1]!["board_id"] = "brd_未開封";
+      expect(boardChannelLogSchema.safeParse(broken).success).toBe(false);
+    });
+
+    it("知らない種類の封筒を弾く", () => {
+      const message = {
+        v: 1,
+        session_id: "ses_1",
+        board_id: "brd_1",
+        seq: 0,
+        type: "board_clear",
+      };
+      expect(boardChannelMessageSchema.safeParse(message).success).toBe(false);
+    });
   });
 });
 

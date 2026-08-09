@@ -1,0 +1,105 @@
+{
+  "messages": [
+    {
+      "v": 1,
+      "session_id": "ses_01J8Z9K2QF7X3M4N5P6R7S8T9V",
+      "board_id": "brd_01J8Z9K3A1B2C3D4E5F6G7H8J9",
+      "seq": 0,
+      "type": "board_open",
+      "title": "判別式で解の個数を見る",
+      "topic_ids": ["M1-NIJI-HANBETSU"]
+    },
+    {
+      "v": 1,
+      "session_id": "ses_01J8Z9K2QF7X3M4N5P6R7S8T9V",
+      "board_id": "brd_01J8Z9K3A1B2C3D4E5F6G7H8J9",
+      "seq": 1,
+      "type": "board_step",
+      "step": {
+        "index": 0,
+        "speech": "まず、式をそのまま書くね。",
+        "board": { "kind": "latex", "tex": "x^2 - 3x + 2 = 0" }
+      }
+    },
+    {
+      "v": 1,
+      "session_id": "ses_01J8Z9K2QF7X3M4N5P6R7S8T9V",
+      "board_id": "brd_01J8Z9K3A1B2C3D4E5F6G7H8J9",
+      "seq": 2,
+      "type": "board_step",
+      "step": {
+        "index": 1,
+        "speech": "ここ、D を見てほしいんだけど — プラスだよね。だから?",
+        "board": { "kind": "latex", "tex": "D = (-3)^2 - 4 \\cdot 1 \\cdot 2 = 1" }
+      }
+    },
+    {
+      "v": 1,
+      "session_id": "ses_01J8Z9K2QF7X3M4N5P6R7S8T9V",
+      "board_id": "brd_01J8Z9K3A1B2C3D4E5F6G7H8J9",
+      "seq": 3,
+      "type": "board_step",
+      "step": {
+        "index": 2,
+        "speech": "そう。じゃあ今の、自分の言葉で説明してみて。",
+        "board": null
+      }
+    },
+    {
+      "v": 1,
+      "session_id": "ses_01J8Z9K2QF7X3M4N5P6R7S8T9V",
+      "board_id": "brd_01J8Z9K3A1B2C3D4E5F6G7H8J9",
+      "seq": 4,
+      "type": "board_close",
+      "step_count": 3,
+      "reason": "completed"
+    },
+    {
+      "v": 1,
+      "session_id": "ses_01J8Z9K2QF7X3M4N5P6R7S8T9V",
+      "board_id": "brd_01J8Z9K4K1L2M3N4P5Q6R7S8T9",
+      "seq": 5,
+      "type": "board_open",
+      "title": "円と直線の位置関係",
+      "topic_ids": ["M2-ZUKEI-ENCHOKU"]
+    },
+    {
+      "v": 1,
+      "session_id": "ses_01J8Z9K2QF7X3M4N5P6R7S8T9V",
+      "board_id": "brd_01J8Z9K4K1L2M3N4P5Q6R7S8T9",
+      "seq": 6,
+      "type": "board_step",
+      "step": {
+        "index": 0,
+        "speech": "つぎの問題、まず円を描くね。",
+        "board": {
+          "kind": "circle",
+          "center": { "x": 0, "y": 0 },
+          "r": 5,
+          "labels": ["O", "r = 5"]
+        }
+      }
+    },
+    {
+      "v": 1,
+      "session_id": "ses_01J8Z9K2QF7X3M4N5P6R7S8T9V",
+      "board_id": "brd_01J8Z9K4K1L2M3N4P5Q6R7S8T9",
+      "seq": 7,
+      "type": "board_step",
+      "step": {
+        "index": 1,
+        "speech": "中心からの距離 d と、半径 r。どっちが大きい?",
+        "board": { "kind": "latex", "tex": "d = \\frac{|{-3}|}{\\sqrt{2}}" }
+      }
+    },
+    {
+      "v": 1,
+      "session_id": "ses_01J8Z9K2QF7X3M4N5P6R7S8T9V",
+      "board_id": "brd_01J8Z9K4K1L2M3N4P5Q6R7S8T9",
+      "seq": 8,
+      "type": "board_close",
+      "step_count": 2,
+      "reason": "interrupted"
+    }
+  ]
+}
