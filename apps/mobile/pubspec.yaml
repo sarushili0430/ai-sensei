@@ -57,6 +57,12 @@ dependencies:
   # 問い合わせのときに聞かれるので、設定画面にバージョンを出す。
   package_info_plus: ^9.0.0
 
+  # 板書レイヤーのLaTeX描画(計画書§3-5・§3-6)。
+  # 実測スパイクで採否判定済み(§3-6。約30式を目視確認・崩れ0件)。
+  # メンテが薄いリスクへの保険は `packages/guardrail` の許可コマンド照合と
+  # agent側のKaTeXパースで取る(§3-6の三段構え。このパッケージ自体は縛らない)。
+  flutter_math_fork: ^0.7.4
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
