@@ -5,12 +5,15 @@ import {
   type BoardStep,
   boardChannelLogSchema,
   boardChannelTopic,
+  boardLessonStepsMaxCount,
   boardStepsMaxCount,
   fixturePath,
 } from "@ai-sensei/contract";
 import { latexRejectionGuidanceByLocale } from "@ai-sensei/guardrail";
 import { describe, expect, it, vi } from "vitest";
 import {
+  type AppendBoardOptions,
+  type BoardAppendResult,
   BoardChannel,
   type BoardSink,
   type BoardStepRejection,
@@ -78,6 +81,24 @@ function channelWith(sink: BoardSink, locale: "ja" | "en" = "ja"): BoardChannel 
   });
 }
 
+/**
+ * 1回の説明で終わる板書。**テスト用の近道**で、本番の呼び出し側は
+ * `append()` を何度か呼んでから `close()` する(板書の寿命は1つの問題)。
+ *
+ * 「開く → 1回積む → その回の理由で締める」までを1つにまとめてある。
+ * 検証・再生成・割り込みのテストは板書の寿命とは無関係なので、
+ * こちらを通して**1回ぶんの振る舞いだけ**を見る。
+ */
+async function deliverOnce(
+  channel: BoardChannel,
+  options: AppendBoardOptions,
+): Promise<BoardAppendResult> {
+  const board = channel.startBoard();
+  const result = await board.append(options);
+  await board.close(result.reason);
+  return { ...result, closed: board.isClosed };
+}
+
 const typesOf = (sent: readonly BoardChannelMessage[]) => sent.map((message) => message.type);
 const texOf = (sent: readonly BoardChannelMessage[]) =>
   sent.flatMap((message) =>
@@ -86,10 +107,10 @@ const texOf = (sent: readonly BoardChannelMessage[]) =>
       : [],
   );
 
-describe("BoardChannel.deliver(正常系)", () => {
+describe("板書の配送(正常系)", () => {
   it("board_open → board_step × n → board_close の順で送る", async () => {
     const sink = recordingSink();
-    const result = await channelWith(sink).deliver({
+    const result = await deliverOnce(channelWith(sink), {
       chunks: stream(slice(lessonJson([step(0, "x^2 - 3x + 2 = 0"), step(1, "D = 9 - 8 = 1")]), 7)),
     });
 
@@ -101,7 +122,7 @@ describe("BoardChannel.deliver(正常系)", () => {
 
   it("seq は種別をまたいで0始まり1ずつ", async () => {
     const sink = recordingSink();
-    await channelWith(sink).deliver({
+    await deliverOnce(channelWith(sink), {
       chunks: stream(slice(lessonJson([step(0, "x = 1"), step(1, "y = 2"), step(2, "z = 3")]), 5)),
     });
 
@@ -116,8 +137,8 @@ describe("BoardChannel.deliver(正常系)", () => {
     const sink = recordingSink();
     const channel = channelWith(sink);
 
-    await channel.deliver({ chunks: stream([lessonJson([step(0, "x = 1")], "1問目")]) });
-    await channel.deliver({ chunks: stream([lessonJson([step(0, "y = 2")], "2問目")]) });
+    await deliverOnce(channel, { chunks: stream([lessonJson([step(0, "x = 1")], "1問目")]) });
+    await deliverOnce(channel, { chunks: stream([lessonJson([step(0, "y = 2")], "2問目")]) });
 
     expect(sink.sent.map((message) => message.seq)).toEqual([0, 1, 2, 3, 4, 5]);
     expect(new Set(sink.sent.map((message) => message.board_id)).size).toBe(2);
@@ -135,7 +156,7 @@ describe("BoardChannel.deliver(正常系)", () => {
     const parts = slice(json, 1);
     const sentBefore: number[] = [];
 
-    await channelWith(sink).deliver({
+    await deliverOnce(channelWith(sink), {
       chunks: stream(parts, () => sentBefore.push(sink.sent.length)),
     });
 
@@ -167,7 +188,7 @@ describe("BoardChannel.deliver(正常系)", () => {
       },
     };
 
-    await channelWith(trackingSink).deliver({
+    await deliverOnce(channelWith(trackingSink), {
       chunks: stream(slice(lessonJson([step(0, "x = 1"), step(1, "y = 2")]), 9)),
       onStep: (delivered: BoardStep) => {
         order.push("speak");
@@ -191,13 +212,13 @@ describe("BoardChannel.deliver(正常系)", () => {
 /* 検証に落ちた手順                                                            */
 /* -------------------------------------------------------------------------- */
 
-describe("BoardChannel.deliver(描けない式)", () => {
+describe("板書の配送(描けない式)", () => {
   // `\text{}` の日本語は tofu になる(§3-6d)。LLMが最もやりたがる書き方。
   const rejected = "\\text{よって} x = 2";
 
   it("弾かれた式はワイヤーに出ない(再生成しない設定)", async () => {
     const sink = recordingSink();
-    const result = await channelWith(sink).deliver({
+    const result = await deliverOnce(channelWith(sink), {
       chunks: stream(slice(lessonJson([step(0, "x = 1"), step(1, rejected), step(2, "z = 3")]), 6)),
       maxRepairAttempts: 0,
     });
@@ -216,7 +237,7 @@ describe("BoardChannel.deliver(描けない式)", () => {
    */
   it("落ちても板書は作り直さない(そこまでを残して閉じる)", async () => {
     const sink = recordingSink();
-    await channelWith(sink).deliver({
+    await deliverOnce(channelWith(sink), {
       chunks: stream([lessonJson([step(0, "x = 1"), step(1, rejected)])]),
       maxRepairAttempts: 0,
     });
@@ -231,7 +252,7 @@ describe("BoardChannel.deliver(描けない式)", () => {
     const sink = recordingSink();
     const seen: BoardStepRejection[] = [];
 
-    await channelWith(sink).deliver({
+    await deliverOnce(channelWith(sink), {
       chunks: stream([lessonJson([step(0, rejected)])]),
       repair: async (rejection) => {
         seen.push(rejection);
@@ -252,7 +273,7 @@ describe("BoardChannel.deliver(描けない式)", () => {
     const sink = recordingSink();
     let guidance = "";
 
-    await channelWith(sink, "en").deliver({
+    await deliverOnce(channelWith(sink, "en"), {
       chunks: stream([lessonJson([step(0, "\\href{x}{y}")])]),
       repair: async (rejection) => {
         guidance = rejection.guidance;
@@ -276,7 +297,7 @@ describe("BoardChannel.deliver(描けない式)", () => {
       board: { kind: "text", body: "よって x = 2" },
     }));
 
-    const result = await channelWith(sink).deliver({
+    const result = await deliverOnce(channelWith(sink), {
       chunks: stream(slice(lessonJson([step(0, "x = 1"), step(1, rejected), step(2, "z = 3")]), 8)),
       repair,
     });
@@ -300,7 +321,7 @@ describe("BoardChannel.deliver(描けない式)", () => {
     const sink = recordingSink();
     const repair = vi.fn(async () => step(9, rejected));
 
-    const result = await channelWith(sink).deliver({
+    const result = await deliverOnce(channelWith(sink), {
       chunks: stream([lessonJson([step(0, "x = 1"), step(1, rejected)])]),
       maxRepairAttempts: 2,
       repair,
@@ -323,7 +344,7 @@ describe("BoardChannel.deliver(描けない式)", () => {
     const sink = recordingSink();
     const repair = vi.fn(async () => step(0, rejected));
 
-    await channelWith(sink).deliver({
+    await deliverOnce(channelWith(sink), {
       chunks: stream([lessonJson([step(0, rejected)])]),
       repair,
     });
@@ -334,7 +355,7 @@ describe("BoardChannel.deliver(描けない式)", () => {
 
   it("直させる側が落ちても、板書は締まる", async () => {
     const sink = recordingSink();
-    const result = await channelWith(sink).deliver({
+    const result = await deliverOnce(channelWith(sink), {
       chunks: stream([lessonJson([step(0, rejected)])]),
       repair: async () => {
         throw new Error("LLMが落ちた");
@@ -350,7 +371,7 @@ describe("BoardChannel.deliver(描けない式)", () => {
     const seen: BoardStepRejection[] = [];
 
     // speech に数式(LaTeXコマンド)を入れている = 板書に置くべきものを喋らせている
-    const result = await channelWith(sink).deliver({
+    const result = await deliverOnce(channelWith(sink), {
       chunks: stream([
         lessonJson([{ index: 0, speech: "\\frac{1}{2} を読み上げます", board: null }]),
       ]),
@@ -371,7 +392,7 @@ describe("BoardChannel.deliver(描けない式)", () => {
 /* 割り込み                                                                    */
 /* -------------------------------------------------------------------------- */
 
-describe("BoardChannel.deliver(割り込み)", () => {
+describe("板書の配送(割り込み)", () => {
   it("割り込んだら interrupted で締め、step_count は送った数と一致する", async () => {
     const sink = recordingSink();
     const controller = new AbortController();
@@ -382,7 +403,7 @@ describe("BoardChannel.deliver(割り込み)", () => {
       if (sink.sent.length === 3) controller.abort();
     });
 
-    const result = await channelWith(sink).deliver({ chunks, signal: controller.signal });
+    const result = await deliverOnce(channelWith(sink), { chunks, signal: controller.signal });
 
     expect(result.reason).toBe("interrupted");
     expect(result.step_count).toBe(2);
@@ -408,7 +429,7 @@ describe("BoardChannel.deliver(割り込み)", () => {
       yield "";
     }
 
-    const delivery = channelWith(sink).deliver({
+    const delivery = deliverOnce(channelWith(sink), {
       chunks: stalling(),
       signal: controller.signal,
     });
@@ -425,7 +446,7 @@ describe("BoardChannel.deliver(割り込み)", () => {
     const controller = new AbortController();
     controller.abort();
 
-    const result = await channelWith(sink).deliver({
+    const result = await deliverOnce(channelWith(sink), {
       chunks: stream([lessonJson([step(0, "x = 1")])]),
       signal: controller.signal,
     });
@@ -436,15 +457,241 @@ describe("BoardChannel.deliver(割り込み)", () => {
 });
 
 /* -------------------------------------------------------------------------- */
+/* 板書の寿命 = 1つの問題(1回のLLM呼び出しではない)                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * **ここが継ぎ目のテスト。**
+ *
+ * 教え方は1往復で終わらない(切り分ける → 教える → 教え返させる)。
+ * LLM呼び出しごとに板書を開き直すと、契約上 `board_open` が板書を消すので、
+ * **会話が1往復するたびに生徒が読んでいた式が消える**。
+ * §3-2 の「前の行は消さない。消えるのは別の問題に移るときだけ」が毎ターン破れる。
+ */
+describe("板書の寿命", () => {
+  /** n手順のLLM出力。`index` は**その出力の中で**0始まり(LLMは通し番号を知らない)。 */
+  function lessonOf(count: number, offset = 0): string {
+    return lessonJson(
+      Array.from({ length: count }, (_, at) => step(at, `x = ${offset + at}`)),
+      "判別式で解の個数を見る",
+    );
+  }
+
+  it("何回説明しても board_open は1回だけ(板書は消えない)", async () => {
+    const sink = recordingSink();
+    const board = channelWith(sink).startBoard();
+
+    await board.append({ chunks: stream([lessonOf(2)]) }); // 切り分け
+    await board.append({ chunks: stream([lessonOf(3, 10)]) }); // 教える
+    await board.append({ chunks: stream([lessonOf(1, 20)]) }); // 教え返しへ渡す
+    await board.close("completed");
+
+    expect(typesOf(sink.sent).filter((type) => type === "board_open")).toHaveLength(1);
+    expect(new Set(sink.sent.map((message) => message.board_id)).size).toBe(1);
+    expect(typesOf(sink.sent)).toEqual([
+      "board_open",
+      ...Array.from({ length: 6 }, () => "board_step"),
+      "board_close",
+    ]);
+    expect(boardChannelLogSchema.safeParse({ messages: sink.sent }).success).toBe(true);
+  });
+
+  /**
+   * LLMは自分が何回目の呼び出しかを知らないので、毎回0から数え直してくる。
+   * **通し番号を振るのは配送層**(振らせると幻覚した番号がワイヤーに出る)。
+   */
+  it("LLMが毎回0始まりで返しても、ワイヤーの index は板書を通して連続する", async () => {
+    const sink = recordingSink();
+    const board = channelWith(sink).startBoard();
+
+    const first = await board.append({ chunks: stream([lessonOf(3)]) });
+    const second = await board.append({ chunks: stream([lessonOf(2, 10)]) });
+    const third = await board.append({ chunks: stream([lessonOf(2, 20)]) });
+
+    // LLMの出力は 0,1,2 / 0,1 / 0,1
+    expect(JSON.parse(lessonOf(2, 10)).steps.map((s: { index: number }) => s.index)).toEqual([
+      0, 1,
+    ]);
+    // ワイヤーは 0..6
+    expect(
+      sink.sent.flatMap((message) => (message.type === "board_step" ? [message.step.index] : [])),
+    ).toEqual([0, 1, 2, 3, 4, 5, 6]);
+
+    expect(first).toMatchObject({ appended: 3, step_count: 3 });
+    expect(second).toMatchObject({ appended: 2, step_count: 5 });
+    expect(third).toMatchObject({ appended: 2, step_count: 7 });
+    expect(board.stepCount).toBe(7);
+  });
+
+  it("board_close.step_count は板書全体で送った数", async () => {
+    const sink = recordingSink();
+    const board = channelWith(sink).startBoard();
+
+    await board.append({ chunks: stream([lessonOf(3)]) });
+    await board.append({ chunks: stream([lessonOf(4, 10)]) });
+    await board.close("completed");
+
+    expect(sink.sent.at(-1)).toMatchObject({
+      type: "board_close",
+      step_count: 7,
+      reason: "completed",
+    });
+    expect(boardChannelLogSchema.safeParse({ messages: sink.sent }).success).toBe(true);
+  });
+
+  /**
+   * **割り込みは「いま質問がある」であって「この問題は終わり」ではない。**
+   * ここで閉じると、割り込みに答えたあと同じ問題を続けるときに板書が消える。
+   */
+  it("割り込みでは板書を閉じない(続きは同じ板書に積める)", async () => {
+    const sink = recordingSink();
+    const controller = new AbortController();
+    const board = channelWith(sink).startBoard();
+
+    const json = lessonOf(3);
+    const interrupted = await board.append({
+      chunks: stream(slice(json, 1), () => {
+        if (sink.sent.length === 2) controller.abort();
+      }),
+      signal: controller.signal,
+    });
+
+    expect(interrupted).toMatchObject({ reason: "interrupted", closed: false });
+    expect(board.isOpen).toBe(true);
+    expect(typesOf(sink.sent)).not.toContain("board_close");
+
+    // 割り込みに答えたあと、同じ板書に続きを積む
+    const resumed = await board.append({ chunks: stream([lessonOf(2, 10)]) });
+    expect(resumed).toMatchObject({ reason: "completed", appended: 2 });
+    expect(typesOf(sink.sent).filter((type) => type === "board_open")).toHaveLength(1);
+
+    await board.close("completed");
+    expect(boardChannelLogSchema.safeParse({ messages: sink.sent }).success).toBe(true);
+  });
+
+  // 説明が1回失敗しただけで閉じると、次の説明で板書を開き直すことになる。
+  it("検証に落ちても板書を閉じない(次の説明は同じ板書に続く)", async () => {
+    const sink = recordingSink();
+    const board = channelWith(sink).startBoard();
+
+    const failed = await board.append({
+      chunks: stream([lessonJson([step(0, "x = 1"), step(1, "\\text{よって} x = 2")])]),
+      maxRepairAttempts: 0,
+    });
+
+    expect(failed).toMatchObject({ reason: "error", appended: 1, closed: false });
+    expect(board.isOpen).toBe(true);
+
+    const next = await board.append({ chunks: stream([lessonOf(2, 10)]) });
+    expect(next).toMatchObject({ reason: "completed", step_count: 3 });
+    expect(typesOf(sink.sent).filter((type) => type === "board_open")).toHaveLength(1);
+  });
+
+  /**
+   * 上限に達した板書だけは閉じる。**これ以上1手順も積めない板書を開けておくと、
+   * 呼び出し側は黒い穴に向かってLLMを呼び続ける。**
+   */
+  it("板書1枚の上限に達したら閉じ、以降は1件も送らない", async () => {
+    const sink = recordingSink();
+    const board = channelWith(sink).startBoard();
+
+    // 1回の出力は12手順まで。40に達するまで積む。
+    // 続きを積めるかは `isClosed` で見る(`isOpen` は board_open を送ったあとで真になる)。
+    let guard = 0;
+    while (!board.isClosed && guard < 10) {
+      await board.append({ chunks: stream([lessonOf(boardLessonStepsMaxCount, guard * 100)]) });
+      guard += 1;
+    }
+
+    expect(board.stepCount).toBe(boardStepsMaxCount);
+    expect(board.isClosed).toBe(true);
+    expect(sink.sent.at(-1)).toMatchObject({
+      type: "board_close",
+      step_count: boardStepsMaxCount,
+      reason: "error",
+    });
+    expect(boardChannelLogSchema.safeParse({ messages: sink.sent }).success).toBe(true);
+
+    // 閉じた板書に積もうとしても、ワイヤーには1件も出ない
+    const sentAfterClose = sink.sent.length;
+    const refused = await board.append({ chunks: stream([lessonOf(2)]) });
+    expect(refused).toMatchObject({ appended: 0, reason: "error", closed: true });
+    expect(sink.sent).toHaveLength(sentAfterClose);
+  });
+
+  // 締めの二重送信は、受信側では「未開封の板書のメッセージ」になる(契約違反)
+  it("close を2回呼んでも board_close は1回だけ", async () => {
+    const sink = recordingSink();
+    const board = channelWith(sink).startBoard();
+
+    await board.append({ chunks: stream([lessonOf(1)]) });
+    await board.close("completed");
+    await board.close("error");
+
+    expect(typesOf(sink.sent).filter((type) => type === "board_close")).toHaveLength(1);
+    expect(sink.sent.at(-1)).toMatchObject({ reason: "completed" });
+  });
+
+  // 見出しは「何の問題か」なので、問題が変わらない限り出し直さない
+  it("2回目以降の出力の見出しは捨てる(board_open を出し直さない)", async () => {
+    const sink = recordingSink();
+    const board = channelWith(sink).startBoard();
+
+    await board.append({ chunks: stream([lessonJson([step(0, "x = 1")], "1回目の見出し")]) });
+    await board.append({ chunks: stream([lessonJson([step(0, "y = 2")], "2回目の見出し")]) });
+    await board.close("completed");
+
+    const opens = sink.sent.filter((message) => message.type === "board_open");
+    expect(opens).toHaveLength(1);
+    expect(opens[0]).toMatchObject({ title: "1回目の見出し" });
+    expect(JSON.stringify(sink.sent)).not.toContain("2回目の見出し");
+  });
+
+  it("開かないまま close しても、何も送らない", async () => {
+    const sink = recordingSink();
+    const board = channelWith(sink).startBoard();
+
+    await board.append({ chunks: stream(["板書は作れませんでした。"]) });
+    await board.close("error");
+
+    expect(sink.sent).toEqual([]);
+    expect(channelWith(sink).nextSeq).toBe(0);
+  });
+
+  /**
+   * 別の問題に移るときは、**新しい板書を始める**。ここで初めて画面が変わる
+   * (§3-2「消えるのは別の問題に移るときだけ」)。
+   */
+  it("別の問題では新しい板書になり、seq はセッションを通して連続する", async () => {
+    const sink = recordingSink();
+    const channel = channelWith(sink);
+
+    const first = channel.startBoard();
+    await first.append({ chunks: stream([lessonJson([step(0, "x = 1")], "1問目")]) });
+    await first.append({ chunks: stream([lessonJson([step(0, "y = 2")], "1問目のつづき")]) });
+    await first.close("completed");
+
+    const second = channel.startBoard();
+    await second.append({ chunks: stream([lessonJson([step(0, "z = 3")], "2問目")]) });
+    await second.close("completed");
+
+    expect(sink.sent.map((message) => message.seq)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(new Set(sink.sent.map((message) => message.board_id)).size).toBe(2);
+    expect(first.id).not.toBe(second.id);
+    expect(boardChannelLogSchema.safeParse({ messages: sink.sent }).success).toBe(true);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
 /* 壊れたときに壊れたと分かること                                              */
 /* -------------------------------------------------------------------------- */
 
-describe("BoardChannel.deliver(壊れ方)", () => {
+describe("板書の配送(壊れ方)", () => {
   it("途中で切れたストリームは completed にしない", async () => {
     const sink = recordingSink();
     const json = lessonJson([step(0, "x = 1"), step(1, "y = 2")]);
 
-    const result = await channelWith(sink).deliver({
+    const result = await deliverOnce(channelWith(sink), {
       chunks: stream(slice(json.slice(0, json.length - 20), 13)),
     });
 
@@ -454,7 +701,7 @@ describe("BoardChannel.deliver(壊れ方)", () => {
 
   it("ヘッダが来ないまま終わったら、1件も送らない", async () => {
     const sink = recordingSink();
-    const result = await channelWith(sink).deliver({
+    const result = await deliverOnce(channelWith(sink), {
       chunks: stream([JSON.stringify({ steps: [step(0, "x = 1")] })]),
     });
 
@@ -465,7 +712,7 @@ describe("BoardChannel.deliver(壊れ方)", () => {
   // 壊れた板書を開くくらいなら、1枚も開かないほうがよい
   it("見出しが契約に合わなければ、板書を開かない", async () => {
     const sink = recordingSink();
-    const result = await channelWith(sink).deliver({
+    const result = await deliverOnce(channelWith(sink), {
       chunks: stream([JSON.stringify({ title: "", topic_ids: [], steps: [step(0, "x = 1")] })]),
     });
 
@@ -474,25 +721,39 @@ describe("BoardChannel.deliver(壊れ方)", () => {
   });
 
   /**
-   * **「1行ずつだが40行」で答案を丸ごと流し込む抜け道**(contract の `boardStepsMaxCount`)を、
-   * 送る前に閉じる。上限を超えた手順は1つもワイヤーに出ない。
+   * **「1行ずつだが40行」で答案を丸ごと流し込む抜け道**(contract の
+   * `boardLessonStepsMaxCount`)を、送る前に閉じる。上限を超えた手順は1つもワイヤーに出ない。
+   *
+   * **ここで板書は閉じない。**1回の出力が長すぎただけで、この問題はまだ続く。
    */
-  it("12手順を超えたら、そこで止めて閉じる", async () => {
+  it("1回の出力が12手順を超えたら、そこで打ち切る(板書は閉じない)", async () => {
     const sink = recordingSink();
-    const many = Array.from({ length: boardStepsMaxCount + 3 }, (_, at) => step(at, `x = ${at}`));
-
-    const result = await channelWith(sink).deliver({ chunks: stream(slice(lessonJson(many), 20)) });
-
-    expect(result).toMatchObject({ step_count: boardStepsMaxCount, reason: "error" });
-    expect(sink.sent.filter((message) => message.type === "board_step")).toHaveLength(
-      boardStepsMaxCount,
+    const many = Array.from({ length: boardLessonStepsMaxCount + 3 }, (_, at) =>
+      step(at, `x = ${at}`),
     );
-    expect(boardChannelLogSchema.safeParse({ messages: sink.sent }).success).toBe(true);
+
+    const board = channelWith(sink).startBoard();
+    const result = await board.append({ chunks: stream(slice(lessonJson(many), 20)) });
+
+    expect(result).toMatchObject({
+      appended: boardLessonStepsMaxCount,
+      reason: "error",
+      closed: false,
+    });
+    expect(board.isOpen).toBe(true);
+    expect(sink.sent.filter((message) => message.type === "board_step")).toHaveLength(
+      boardLessonStepsMaxCount,
+    );
+    expect(typesOf(sink.sent)).not.toContain("board_close");
   });
 
   /**
    * `index` は「板書の何行目に積むか」という配送の事実。LLMの数え間違いを
    * 流すと、**受信側は正しく届いた板書を「抜けている」と判定する**。
+   *
+   * 警告の突き合わせ先は **`position`(その出力の中での位置)**。
+   * ワイヤーの通し番号と比べると、2回目以降の説明では全手順が「ずれている」ことになり、
+   * 本物の数え間違いが埋もれる。
    */
   it("LLMが index を間違えても、送信位置で上書きする", async () => {
     const sink = recordingSink();
@@ -505,20 +766,24 @@ describe("BoardChannel.deliver(壊れ方)", () => {
       log: { info: vi.fn(), warn },
     });
 
-    await channel.deliver({
+    await deliverOnce(channel, {
       chunks: stream([lessonJson([step(0, "x = 1"), step(7, "y = 2"), step(1, "z = 3")])]),
     });
 
     expect(
       sink.sent.flatMap((message) => (message.type === "board_step" ? [message.step.index] : [])),
     ).toEqual([0, 1, 2]);
-    expect(warn).toHaveBeenCalledWith("board_step_index_overridden", { declared: 7, index: 1 });
+    expect(warn).toHaveBeenCalledWith("board_step_index_overridden", {
+      declared: 7,
+      position: 1,
+      index: 1,
+    });
     expect(boardChannelLogSchema.safeParse({ messages: sink.sent }).success).toBe(true);
   });
 
   it("JSONではないものが流れてきたら、開かずに終わる", async () => {
     const sink = recordingSink();
-    const result = await channelWith(sink).deliver({
+    const result = await deliverOnce(channelWith(sink), {
       chunks: stream(["すみません、板書は作れませんでした。"]),
     });
 
@@ -551,7 +816,7 @@ describe("BoardChannel.deliver(壊れ方)", () => {
     });
 
     failNext = true;
-    const result = await channel.deliver({ chunks: stream([lessonJson([step(0, "x = 1")])]) });
+    const result = await deliverOnce(channel, { chunks: stream([lessonJson([step(0, "x = 1")])]) });
 
     expect(result).toMatchObject({ step_count: 0, reason: "error" });
     expect(sent.map((message) => message.seq)).toEqual([0, 1]);
@@ -628,7 +893,7 @@ describe("契約のfixture", () => {
       const lesson = JSON.parse(json) as { title: string; steps: unknown[] };
       const sink = recordingSink();
 
-      const result = await channelWith(sink, name.endsWith(".en") ? "en" : "ja").deliver({
+      const result = await deliverOnce(channelWith(sink, name.endsWith(".en") ? "en" : "ja"), {
         chunks: stream(slice(json, 3)),
       });
 

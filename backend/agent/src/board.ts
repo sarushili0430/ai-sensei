@@ -3,6 +3,7 @@ import {
   type BoardStep,
   boardChannelMessageSchema,
   boardChannelTopic,
+  boardLessonStepsMaxCount,
   boardProtocolVersion,
   boardStepSchema,
   boardStepsMaxCount,
@@ -26,6 +27,27 @@ import type { JobLogger } from "./log.ts";
  * **全部こちらの責務**で、LLMの出力には漏らさない(`contract/src/board.ts` の分担)。
  *
  * ─────────────────────────────────────────────────────────────────────────
+ * 【寿命】板書1枚 = **1つの問題**(1回のLLM呼び出しではない)
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * 教え方は1往復で終わらない(確定した仕様):
+ *
+ *   1往復目: 切り分ける(「最初の一手、言ってみて」)→ 答えを聞くためにいったん止まる
+ *   生徒が答える
+ *   2往復目: 詰まった地点から教える
+ *   3往復目: 「じゃあ今の、自分の言葉で説明してみて」
+ *
+ * **LLM呼び出しごとに板書を開き直すと、会話が1往復するたびに板書が消える。**
+ * 契約上、板書が消えるのは `board_open` が来たときだけだから。
+ * §3-2 の「前の行は消さない。消えるのは別の問題に移るときだけ」が毎ターン破れ、
+ * 「書いたものが残る」という板書の価値そのものが失われる。
+ *
+ * だから {@link BoardChannel.startBoard} で1枚はじめ、説明のたびに
+ * {@link BoardDelivery.append} で同じ `board_id` に積み、問題が終わったら
+ * {@link BoardDelivery.close} で締める。**通し番号(`index`)を振り直すのはここ**で、
+ * LLMは自分が何回目の呼び出しかを知らない(知らせると幻覚した番号がワイヤーに出る)。
+ *
+ * ─────────────────────────────────────────────────────────────────────────
  * 【設計判断】送りながら検証する以上、落ちた手順の手前は取り消せない
  * ─────────────────────────────────────────────────────────────────────────
  *
@@ -33,7 +55,8 @@ import type { JobLogger } from "./log.ts";
  * 送信は取り消せない(板書は積み上げで、消えるのは `board_open` のときだけ)。
  *
  * **採るのは (b) — 落ちた手順だけ直させて、続きを送る。** 上限回数を超えたら
- * `board_close(reason: "error")` で締め、**そこまでの板書は残す**。
+ * **その回の説明だけをやめて、板書は開けたままにする**(そこまでの板書は残り、
+ * 次の説明は同じ板書に続けられる)。
  *
  * 理由:
  *
@@ -67,7 +90,7 @@ import type { JobLogger } from "./log.ts";
  *    最初の手順で落ちたときはリードがゼロで、待ちがそのまま沈黙になる
  *    (§3-2 が「最初の手順までの無音」を事前生成音声で埋めると決めた、あの穴と同じ場所)。
  *
- *    **ただしリードが積み上がる場所は、呼び出し側の {@link DeliverBoardOptions.onStep}
+ *    **ただしリードが積み上がる場所は、呼び出し側の {@link AppendBoardOptions.onStep}
  *    の作り方で変わる。**TTSへ渡して即座に返すなら、リードは配送そのものに乗る
  *    (板書が音声を追い越して積まれる)。読み上げ終わりまで待つなら、
  *    §3-2 の「同期の粒度は手順」は守られるが、**リードは生成側にしか残らず、
@@ -88,12 +111,16 @@ import type { JobLogger } from "./log.ts";
  *    **「生徒が読んでいる途中の板書が、生徒には理由の分からないタイミングで白紙に戻る」**。
  *    §3-2 の「前の行は消さない」を、ユーザーには観測できない内部事情で破ることになる。
  *
- * 5. だから**行き止まりの締め方も (c) ではなく「閉じるだけ」にする。**
- *    再生成が上限に達したら `board_close(reason: "error")` を送って終わる。
- *    板書は途中まで残り、`interrupted` と同じ扱いになる。
- *    先輩は会話(音声)で続けられるし、次の問題に移るときの `board_open` で
- *    初めて画面が変わる。**「壊れたら止まる。ただし今あるものは消さない」**が、
+ * 5. だから**行き止まりでも板書は閉じない。**再生成が上限に達したら、
+ *    その回の `append()` を打ち切って `reason: "error"` を返すだけで、
+ *    `board_open` も `board_close` も送らない。板書は途中まで残ったまま開いていて、
+ *    **次の説明は同じ板書に続けられる**。先輩は会話(音声)で続けられるし、
+ *    画面が変わるのは次の問題に移るときだけ。
+ *    **「壊れたら止まる。ただし今あるものは消さないし、次を受け入れる余地も潰さない」**が、
  *    この層の失敗のしかた。
+ *
+ *    板書ごと閉じる唯一の場合は**上限に達したとき**({@link boardStepsMaxCount})。
+ *    そこはもう1手順も積めないので、開けておくと呼び出し側が黒い穴にLLMを呼び続ける。
  *
  * 再生成そのもの(LLMへの投げ直し)は {@link StepRepair} として外に出してある。
  * 落ちた理由に対応する `latexRejectionGuidanceByLocale` の指示文を添えて渡すので、
@@ -229,13 +256,30 @@ export type BoardChannelOptions = {
   log?: Pick<JobLogger, "info" | "warn">;
 };
 
-export type DeliverBoardOptions = {
+/** 締め方。契約のenumから引く(こちらで書き写すと、増えたときにずれる)。 */
+export type BoardCloseReason = Extract<BoardChannelMessage, { type: "board_close" }>["reason"];
+
+/**
+ * 封筒の中身から、チャネルが埋める部分(`v` / `session_id` / `seq`)を除いたもの。
+ * **`seq` を呼び出し側に書かせない**ための形 — 連番はチャネルだけが持つ。
+ */
+type BoardEnvelopeBody =
+  | { type: "board_open"; board_id: string; title: string; topic_ids: string[] }
+  | { type: "board_step"; board_id: string; step: BoardStep }
+  | { type: "board_close"; board_id: string; step_count: number; reason: BoardCloseReason };
+
+export type AppendBoardOptions = {
   /** LLMの出力。チャンクの切れ目はどこでもよい(文字列の中・エスケープの中でも壊れない)。 */
   chunks: AsyncIterable<string>;
   /**
-   * ユーザーの割り込み。**abort したら板書は途中で締める**(§3-2 案Aの利点そのもの)。
+   * ユーザーの割り込み。**abort したらこの回の説明を途中でやめる**(§3-2 案Aの利点そのもの)。
    * チャンク待ちの最中でも効くよう、`next()` と競走させている —
-   * ポーリングだけだと、LLMが黙り込んだときに締めそこねる。
+   * ポーリングだけだと、LLMが黙り込んだときに止めそこねる。
+   *
+   * **板書は閉じない。**割り込みは「いま質問がある」であって「この問題は終わり」ではない。
+   * ここで閉じると、割り込みに答えたあと同じ問題を続けるときに板書を開き直すことになり、
+   * 生徒が読んでいる板書が消える。閉じるのは呼び出し側が {@link BoardDelivery.close} を
+   * 呼んだとき(= 問題が終わったとき)だけ。
    */
   signal?: AbortSignal;
   /**
@@ -259,13 +303,18 @@ export type DeliverBoardOptions = {
   maxRepairAttempts?: number;
 };
 
-export type BoardDeliveryResult = {
+export type BoardAppendResult = {
   board_id: string;
-  /** `board_open` を送ったか。**送っていなければ `board_close` も送っていない**。 */
+  /** `board_open` が済んでいるか。**済んでいなければ手順は1つも出ていない**。 */
   opened: boolean;
-  /** 実際にワイヤーへ出した手順数。`board_close.step_count` と同じ値。 */
+  /** **この呼び出しで**ワイヤーへ出した手順数。 */
+  appended: number;
+  /** **板書1枚の合計**。`board_close.step_count` になる値。 */
   step_count: number;
-  reason: "completed" | "interrupted" | "error";
+  /** この呼び出しの終わり方。`error` でも板書は開いたまま(下の `closed` を見ること)。 */
+  reason: BoardCloseReason;
+  /** 板書ごと閉じたか。**上限に達したときだけ true**。 */
+  closed: boolean;
   /** 検証に落ちた手順(直って送れたものも含む)。プロンプト調整の材料。 */
   rejections: BoardStepRejection[];
 };
@@ -279,6 +328,9 @@ const aborted = Symbol("aborted");
  * **`seq` はここが持つ**。契約上 `seq` は「セッション内の通し番号(0始まり・
  * 種別をまたいで1ずつ)」なので、板書を跨いで連番になる。板書ごとに
  * リセットすると、2枚目の `board_open` で受信側が「巻き戻った」と見る。
+ *
+ * **板書1枚の寿命は {@link BoardDelivery} が持つ。**チャネルは
+ * 「どの部屋へ、何番目に送るか」だけを知っていて、「いま何を教えているか」は知らない。
  */
 export class BoardChannel {
   // コンストラクタ引数への修飾子は使わない(`node --experimental-strip-types`・ADR 0002)。
@@ -303,14 +355,116 @@ export class BoardChannel {
   }
 
   /**
-   * 板書1枚を配送する。ストリームを食べながら、手順が閉じた端から送る。
+   * 板書を1枚はじめる。**単位は「1つの問題」であって「1回の説明」ではない。**
    *
-   * 送るのは常に `board_open` → `board_step` × n → `board_close` の順。
-   * **`board_open` を送れなかったときは、何も送らない** — 開いていない板書の
-   * 手順は受信側が捨てるので(contract README「未開封の `board_id` は捨てる」)、
-   * 送るだけ無駄で、`seq` を無駄に進めるぶん害がある。
+   * この時点ではまだ何も送らない。`board_open` は最初の {@link BoardDelivery.append} で、
+   * LLMが出した `title` / `topic_ids` を使って送る — 見出しは「何の問題か」なので、
+   * 問題を見ているLLMにしか書けない。
    */
-  async deliver(options: DeliverBoardOptions): Promise<BoardDeliveryResult> {
+  startBoard(): BoardDelivery {
+    return new BoardDelivery({
+      boardId: this.newBoardId(),
+      locale: this.locale,
+      log: this.log,
+      send: (body) => this.sendEnvelope(body),
+    });
+  }
+
+  /**
+   * 封筒を1つ送る。`v` / `session_id` / `seq` はここで埋める。
+   *
+   * **送る直前に封筒スキーマで自分を検算する。**配送層のバグ(`seq` の付け間違い・
+   * 板書IDの取り違え)は、トランスポートからは正常に見えるので、
+   * ここで落とさないと誰も気づかない。
+   *
+   * `seq` を進めるのは **送れたあと**。失敗した封筒でも番号を消費すると、
+   * 受信側からは「1つ欠けた板書」に見えて、次の手順まで巻き添えにする。
+   */
+  private async sendEnvelope(body: BoardEnvelopeBody): Promise<void> {
+    const validated = boardChannelMessageSchema.parse({
+      v: boardProtocolVersion,
+      session_id: this.sessionId,
+      seq: this.seq,
+      ...body,
+    });
+    await this.sink.send(validated);
+    this.seq += 1;
+  }
+}
+
+type BoardDeliveryOptions = {
+  boardId: string;
+  locale: CurriculumLocale;
+  log: Pick<JobLogger, "info" | "warn"> | undefined;
+  send: (body: BoardEnvelopeBody) => Promise<void>;
+};
+
+/**
+ * 板書1枚 = **1つの問題**。
+ *
+ * ライフサイクルは `append()` × n → `close(reason)`。
+ * `board_open` は最初の `append()` が1回だけ送り、以降の説明は同じ `board_id` に積む。
+ *
+ * **`append()` は板書を閉じない。**1回の説明が割り込まれても、検証で落ちても、
+ * 板書は開いたままで次の説明を待つ。これは §3-2 の「前の行は消さない。消えるのは
+ * 別の問題に移るときだけ」を、**配送層の失敗まで含めて**守るため —
+ * 説明が1回失敗しただけで閉じると、次の説明で板書を開き直すことになり、
+ * 生徒が読んでいた式が「生徒には理由の分からないタイミングで」消える。
+ *
+ * 例外は**上限に達したとき**だけ。それ以上1手順も積めない板書を開けておくと、
+ * 呼び出し側は黒い穴に向かってLLMを呼び続ける。そこは閉じて止める。
+ */
+export class BoardDelivery {
+  private readonly boardId: string;
+  private readonly locale: CurriculumLocale;
+  private readonly log: Pick<JobLogger, "info" | "warn"> | undefined;
+  private readonly send: (body: BoardEnvelopeBody) => Promise<void>;
+
+  private opened = false;
+  private closed = false;
+  /** 板書1枚で送った手順数。**ワイヤーの `index` はこの値**(LLMの申告ではない)。 */
+  private sent = 0;
+
+  constructor(options: BoardDeliveryOptions) {
+    this.boardId = options.boardId;
+    this.locale = options.locale;
+    this.log = options.log;
+    this.send = options.send;
+  }
+
+  get id(): string {
+    return this.boardId;
+  }
+
+  /** 板書1枚で送った手順数。次に積む手順の `index` でもある。 */
+  get stepCount(): number {
+    return this.sent;
+  }
+
+  /**
+   * `board_open` を送り、まだ締めていない状態。
+   *
+   * **「まだ積めるか」を聞きたいときはこれではなく {@link isClosed} を見ること。**
+   * 板書を始めた直後は `board_open` をまだ送っていない(見出しはLLMの最初の出力から取る)ので、
+   * `isOpen` は false のまま — それでも `append()` は当然できる。
+   */
+  get isOpen(): boolean {
+    return this.opened && !this.closed;
+  }
+
+  /** 締めたあと。**ここが true なら `append()` は1件もワイヤーに出さない。** */
+  get isClosed(): boolean {
+    return this.closed;
+  }
+
+  /**
+   * 1回ぶんの説明を、同じ板書に積む。
+   *
+   * ストリームを食べながら、手順が閉じた端から送る(§3-2 案A)。
+   * 最初の呼び出しだけ `board_open` を出し、2回目以降はLLMが付けてくる
+   * `title` / `topic_ids` を**捨てる** — そこで開き直すと板書が消える。
+   */
+  async append(options: AppendBoardOptions): Promise<BoardAppendResult> {
     const {
       chunks,
       signal,
@@ -319,15 +473,22 @@ export class BoardChannel {
       maxRepairAttempts = defaultMaxRepairAttempts,
     } = options;
 
-    const boardId = this.newBoardId();
-    const parser = new BoardLessonStreamParser();
     const rejections: BoardStepRejection[] = [];
+    const before = this.sent;
+    let reason: BoardCloseReason = "completed";
+
+    if (this.closed) {
+      // 上限で閉じた板書に積もうとした。呼び出し側は知らずに呼びうるので、
+      // 例外にせず「積めなかった」と返す(会話は音声で続けられる)。
+      this.log?.warn("board_append_after_close", { board_id: this.boardId, step_count: this.sent });
+      return this.result({ reason: "error", before, rejections });
+    }
+
+    const parser = new BoardLessonStreamParser();
     /** ヘッダ(title / topic_ids)より先に閉じた手順の待避所。 */
     const pending: unknown[] = [];
-
-    let opened = false;
-    let sent = 0;
-    let reason: BoardDeliveryResult["reason"] = "completed";
+    /** **この呼び出しの中での**位置。LLMの申告と突き合わせるのはこちら。 */
+    let position = 0;
 
     const iterator = chunks[Symbol.asyncIterator]();
 
@@ -342,27 +503,30 @@ export class BoardChannel {
 
         for (const event of parser.feed(next.value)) {
           if (event.type === "lesson_head") {
-            // ここで初めて `board_open` を送れる。以降のヘッダは無視(1枚に1つ)。
-            if (opened) continue;
+            // 2回目以降の見出しは捨てる。**ここで開き直すと板書が消える。**
+            if (this.opened) {
+              this.log?.info("board_head_ignored", {
+                board_id: this.boardId,
+                title: event.title,
+              });
+              continue;
+            }
             await this.send({
-              v: boardProtocolVersion,
-              session_id: this.sessionId,
-              board_id: boardId,
-              seq: this.seq,
               type: "board_open",
+              board_id: this.boardId,
               // 型は封筒スキーマが見る。LLMが変な値を入れたらここで落ちて、
-              // 板書は1枚も開かない(壊れた板書を開くよりよい)。
+              // 板書は開かない(壊れた板書を開くよりよい)。
               title: event.title as string,
               topic_ids: event.topic_ids as string[],
             });
-            opened = true;
-            this.log?.info("board_opened", { board_id: boardId, title: event.title });
+            this.opened = true;
+            this.log?.info("board_opened", { board_id: this.boardId, title: event.title });
             continue;
           }
           pending.push(event.raw);
         }
 
-        if (!opened) continue;
+        if (!this.opened) continue;
 
         while (pending.length > 0) {
           if (signal?.aborted === true) {
@@ -370,11 +534,25 @@ export class BoardChannel {
             break consume;
           }
 
-          // 12手順を超えたら止める。ここを素通りさせると `index` が契約の上限を
-          // 超え、封筒スキーマで落ちる。**「1行ずつだが40行」で答案を流し込む抜け道**
-          // (contract の `boardStepsMaxCount`)は、送る前に閉じる。
-          if (sent >= boardStepsMaxCount) {
-            this.log?.warn("board_steps_overflow", { board_id: boardId, step_count: sent });
+          // 板書1枚の上限。ここに達したら**板書ごと閉じる**(下の finally 後の処理)。
+          // これ以上1手順も積めないので、開けておくと呼び出し側が黒い穴にLLMを呼び続ける。
+          if (this.sent >= boardStepsMaxCount) {
+            this.log?.warn("board_steps_overflow", {
+              board_id: this.boardId,
+              step_count: this.sent,
+            });
+            reason = "error";
+            break consume;
+          }
+
+          // 1回の出力の上限。**「1行ずつだが40行」で答案を丸ごと流し込む抜け道**
+          // (contract の `boardLessonStepsMaxCount`)を、送る前に閉じる。
+          // 板書は閉じない — 次の説明はまだこの板書に積める。
+          if (position >= boardLessonStepsMaxCount) {
+            this.log?.warn("board_lesson_overflow", {
+              board_id: this.boardId,
+              appended: this.sent - before,
+            });
             reason = "error";
             break consume;
           }
@@ -382,16 +560,18 @@ export class BoardChannel {
           const raw = pending.shift();
           const verdict = await this.settleStep({
             raw,
-            index: sent,
+            index: this.sent,
+            position,
             repair,
             maxRepairAttempts,
             rejections,
           });
 
           if (!verdict.ok) {
-            // 直らなかった。**そこまでの板書は残したまま**締める(上のコメントの5)。
+            // 直らなかった。**この回の説明だけをやめる。板書は開けたまま**にして、
+            // 次の説明を待つ(閉じると、次の説明で板書が消える)。
             this.log?.warn("board_step_rejected", {
-              board_id: boardId,
+              board_id: this.boardId,
               index: verdict.rejection.index,
               reason: verdict.rejection.reason,
               detail: verdict.rejection.detail,
@@ -401,14 +581,12 @@ export class BoardChannel {
           }
 
           await this.send({
-            v: boardProtocolVersion,
-            session_id: this.sessionId,
-            board_id: boardId,
-            seq: this.seq,
             type: "board_step",
+            board_id: this.boardId,
             step: verdict.step,
           });
-          sent += 1;
+          this.sent += 1;
+          position += 1;
 
           // 板書を出してから喋る(§3-2)。ここで待つのは意図的で、
           // 音声が板書を追い越すと「ここ、見て」が空の盤面を指すことになる。
@@ -416,54 +594,86 @@ export class BoardChannel {
         }
       }
 
-      // ルートの `}` まで読めていない = 途中で切れた板書。送った手順は有効だが、
-      // 「全部送った」とは言えないので `completed` にはしない。
+      // ルートの `}` まで読めていない = 途中で切れた出力。送った手順は有効だが、
+      // 「1回ぶん全部送った」とは言えないので `completed` にはしない。
       if (reason === "completed" && !parser.completed) {
-        this.log?.warn("board_stream_truncated", { board_id: boardId, step_count: sent });
+        this.log?.warn("board_stream_truncated", {
+          board_id: this.boardId,
+          appended: this.sent - before,
+        });
         reason = "error";
       }
 
-      // 最後まで読めたのに `title` / `topic_ids` が無かった = 契約違反の板書。
+      // 最後まで読めたのに `title` / `topic_ids` が無かった = 契約違反の出力。
       // 1件も送っていないので受信側には何も起きないが、**成功として返してはいけない** —
       // 呼び出し側が「板書は出た」と思って音声だけ進めてしまう。
-      if (reason === "completed" && !opened) {
-        this.log?.warn("board_head_missing", { board_id: boardId });
+      if (reason === "completed" && !this.opened) {
+        this.log?.warn("board_head_missing", { board_id: this.boardId });
         reason = "error";
       }
     } catch (error) {
       // 走査の破綻(`BoardStreamError`)・封筒の契約違反・送信の失敗。
-      // どれも「待っても直らない」ので、締めて返す。
+      // どれも「この回は待っても直らない」が、**板書そのものは生きている**。
       reason = "error";
-      this.log?.warn("board_delivery_failed", {
-        board_id: boardId,
-        step_count: sent,
+      this.log?.warn("board_append_failed", {
+        board_id: this.boardId,
+        appended: this.sent - before,
         stream_error: error instanceof BoardStreamError,
         message: error instanceof Error ? error.message : String(error),
       });
       releaseIterator(iterator);
     }
 
-    if (opened) {
-      // `step_count` は**実際に送った数**。末尾の欠落はこれでしか検知できない。
-      await this.send({
-        v: boardProtocolVersion,
-        session_id: this.sessionId,
-        board_id: boardId,
-        seq: this.seq,
-        type: "board_close",
-        step_count: sent,
-        reason,
-      }).catch((error) => {
-        this.log?.warn("board_close_failed", {
-          board_id: boardId,
-          message: error instanceof Error ? error.message : String(error),
-        });
-      });
-    }
-
     if (reason === "interrupted") releaseIterator(iterator);
 
-    return { board_id: boardId, opened, step_count: sent, reason, rejections };
+    // 上限に達した板書だけは、ここで閉じる。
+    if (this.opened && !this.closed && this.sent >= boardStepsMaxCount) {
+      await this.close("error");
+    }
+
+    return this.result({ reason, before, rejections });
+  }
+
+  /**
+   * 板書を締める。**問題が終わったときに呼ぶ**(1回の説明が終わったときではない)。
+   *
+   * `board_open` を送っていなければ何も送らない — 開いていない板書の `board_close` は
+   * 受信側が「未開封」として捨てるので、`seq` を無駄に進めるぶん害がある。
+   * 2回目以降の呼び出しは何もしない(締めの二重送信は受信側で契約違反になる)。
+   */
+  async close(reason: BoardCloseReason): Promise<void> {
+    if (this.closed) return;
+    this.closed = true;
+    if (!this.opened) return;
+
+    // `step_count` は**板書1枚で実際に送った数**。末尾の欠落はこれでしか検知できない。
+    await this.send({
+      type: "board_close",
+      board_id: this.boardId,
+      step_count: this.sent,
+      reason,
+    }).catch((error) => {
+      this.log?.warn("board_close_failed", {
+        board_id: this.boardId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    });
+  }
+
+  private result(input: {
+    reason: BoardCloseReason;
+    before: number;
+    rejections: BoardStepRejection[];
+  }): BoardAppendResult {
+    return {
+      board_id: this.boardId,
+      opened: this.opened,
+      appended: this.sent - input.before,
+      step_count: this.sent,
+      reason: input.reason,
+      closed: this.closed,
+      rejections: input.rejections,
+    };
   }
 
   /**
@@ -472,18 +682,21 @@ export class BoardChannel {
    */
   private async settleStep(input: {
     raw: unknown;
+    /** ワイヤーに出す `index`(板書1枚での通し番号)。 */
     index: number;
+    /** この呼び出しの中での位置。LLMの申告と突き合わせるのはこちら。 */
+    position: number;
     repair: StepRepair | undefined;
     maxRepairAttempts: number;
     rejections: BoardStepRejection[];
   }): Promise<StepVerdict> {
-    const { raw, index, repair, maxRepairAttempts, rejections } = input;
+    const { raw, index, position, repair, maxRepairAttempts, rejections } = input;
     let candidate = raw;
 
     for (let attempt = 0; ; attempt += 1) {
       const verdict = validateStep(candidate, index, this.locale);
       if (verdict.ok) {
-        this.warnIfIndexMoved(candidate, index);
+        this.warnIfIndexMoved(candidate, position, index);
         return verdict;
       }
 
@@ -501,29 +714,21 @@ export class BoardChannel {
     }
   }
 
-  /** LLMの申告した `index` を上書きした事実を残す(プロンプト調整の材料)。 */
-  private warnIfIndexMoved(raw: unknown, index: number): void {
+  /**
+   * LLMが数え間違えた事実だけを残す。
+   *
+   * **突き合わせる相手は `position`(その出力の中での位置)であって、
+   * ワイヤーの `index` ではない。**LLMは自分が何回目の呼び出しかを知らないので、
+   * 2回目の説明では必ず0から数え直してくる — それは正しい振る舞いで、
+   * ワイヤーの通し番号とずれているのは当たり前。ここでワイヤー側と比べると、
+   * **2回目以降の全手順に警告が出て、本物の数え間違いが埋もれる。**
+   */
+  private warnIfIndexMoved(raw: unknown, position: number, index: number): void {
     if (typeof raw !== "object" || raw === null) return;
     const declared = (raw as { index?: unknown }).index;
-    if (typeof declared === "number" && declared !== index) {
-      this.log?.warn("board_step_index_overridden", { declared, index });
+    if (typeof declared === "number" && declared !== position) {
+      this.log?.warn("board_step_index_overridden", { declared, position, index });
     }
-  }
-
-  /**
-   * 封筒を1つ送る。
-   *
-   * **送る直前に封筒スキーマで自分を検算する。**配送層のバグ(`seq` の付け間違い・
-   * 板書IDの取り違え)は、トランスポートからは正常に見えるので、
-   * ここで落とさないと誰も気づかない。
-   *
-   * `seq` を進めるのは **送れたあと**。失敗した封筒でも番号を消費すると、
-   * 受信側からは「1つ欠けた板書」に見えて、次の手順まで巻き添えにする。
-   */
-  private async send(message: BoardChannelMessage): Promise<void> {
-    const validated = boardChannelMessageSchema.parse(message);
-    await this.sink.send(validated);
-    this.seq += 1;
   }
 }
 

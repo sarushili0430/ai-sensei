@@ -6,6 +6,7 @@ import {
   boardChannelLogSchema,
   boardChannelMessageSchema,
   boardLessonSchema,
+  boardLessonStepsMaxCount,
   boardSpeechMaxLength,
   boardStepSchema,
   boardStepsMaxCount,
@@ -159,8 +160,12 @@ describe("板書のスキーマ", () => {
     ).toBe(false);
   });
 
-  it("手順が多すぎる板書を弾く(1行ずつ40行という抜け道を塞ぐ)", () => {
-    const steps = Array.from({ length: boardStepsMaxCount + 1 }, (_, index) => step({ index }));
+  // 上限は**1回の出力**にかかる(板書1枚の上限 boardStepsMaxCount とは別物)。
+  // 1回でこれを超えるなら、それは板書ではなく答案。
+  it("1回の出力に手順を詰め込みすぎた板書を弾く(1行ずつ40行という抜け道を塞ぐ)", () => {
+    const steps = Array.from({ length: boardLessonStepsMaxCount + 1 }, (_, index) =>
+      step({ index }),
+    );
     expect(boardLessonSchema.safeParse(lesson(steps)).success).toBe(false);
   });
 
@@ -240,6 +245,54 @@ describe("板書のスキーマ", () => {
       const broken = log();
       broken.messages[1]!["board_id"] = "brd_未開封";
       expect(boardChannelLogSchema.safeParse(broken).success).toBe(false);
+    });
+
+    /**
+     * **板書の寿命は「1回の説明」ではなく「1つの問題」。**
+     * 1回のLLM出力に12手順の上限があるのは「答案を一度に流し込ませない」ためで、
+     * 板書1枚の上限とは別物。両者を同じ数にすると、**会話が1往復するたびに
+     * 板書を開き直す**しかなくなり、§3-2 の「前の行は消さない」が毎ターン破れる。
+     */
+    it("ワイヤーの index は1回の出力の上限を超えられる(板書は問題ぶん続く)", () => {
+      expect(boardStepsMaxCount).toBeGreaterThan(boardLessonStepsMaxCount);
+
+      const message = {
+        v: 1,
+        session_id: "ses_1",
+        board_id: "brd_1",
+        seq: 0,
+        type: "board_step",
+        step: {
+          index: boardLessonStepsMaxCount,
+          speech: "じゃあ、続きね。",
+          board: { kind: "latex", tex: "x = 1" },
+        },
+      };
+      expect(boardChannelMessageSchema.safeParse(message).success).toBe(true);
+
+      // ただし板書1枚の上限は超えられない(打ち切りの安全弁)
+      const overflow = {
+        ...message,
+        step: { ...message.step, index: boardStepsMaxCount },
+      };
+      expect(boardChannelMessageSchema.safeParse(overflow).success).toBe(false);
+    });
+
+    it("step_count も板書1枚ぶんの合計として受け付ける", () => {
+      const close = {
+        v: 1,
+        session_id: "ses_1",
+        board_id: "brd_1",
+        seq: 0,
+        type: "board_close",
+        step_count: boardStepsMaxCount,
+        reason: "completed",
+      };
+      expect(boardChannelMessageSchema.safeParse(close).success).toBe(true);
+      expect(
+        boardChannelMessageSchema.safeParse({ ...close, step_count: boardStepsMaxCount + 1 })
+          .success,
+      ).toBe(false);
     });
 
     it("知らない種類の封筒を弾く", () => {

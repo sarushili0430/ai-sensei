@@ -86,7 +86,7 @@
                       "index": {
                         "type": "integer",
                         "minimum": 0,
-                        "maximum": 11
+                        "maximum": 39
                       },
                       "speech": {
                         "type": "string",
@@ -451,7 +451,7 @@
                   "step_count": {
                     "type": "integer",
                     "minimum": 0,
-                    "maximum": 12
+                    "maximum": 40
                   },
                   "reason": {
                     "type": "string",

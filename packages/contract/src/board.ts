@@ -11,16 +11,18 @@ import { topicIdSchema } from "./karte.ts";
  *   - **自由描画をさせない。** 図形はプリミティブを4種(latex / text / plot / triangle / circle)に
  *     固定し、LLMにはパラメータだけ吐かせる。SVGもcanvasコマンドも受け取らない。
  *   - **解答を丸ごと1要素に流し込めない。** 板書は「1手順=1行」であって答案の貼り付け場所ではない。
- *     `tex` / `body` の上限と、手順数の上限({@link boardStepsMaxCount})の両方で縛る。
+ *     `tex` / `body` の上限と、**1回の出力あたりの**手順数の上限
+ *     ({@link boardLessonStepsMaxCount})の両方で縛る。
  *   - **座標は有限で、盤面に収まる範囲。** `Infinity` や 1e300 が来ると Flutter 側が黙って壊れる。
  *
  * このファイルは2つの形を持つ。責務が違うので **意図的に分けている**:
  *
  *   1. **LLMが出す形**({@link boardLessonSchema})
- *      agent が構造化出力で受け取る、板書1枚まるごと。ストリーミングJSONを
+ *      agent が構造化出力で受け取る、**1回の説明ぶん**。ストリーミングJSONを
  *      インクリメンタルにパースし、`steps[i]` が閉じた時点で {@link boardStepSchema} で1手順だけ検証する。
  *      LLMは「どの部屋の、何番目のメッセージか」を知らないし、知らせる必要もない。
  *      セッションの識別子をLLMの出力に混ぜると、幻覚したIDが配送層に流れ込む。
+ *      **何回目の説明かも知らせない。**通し番号を持たせると、幻覚した番号がワイヤーに出る。
  *
  *   2. **data channel を流れる形**({@link boardChannelMessageSchema})
  *      LiveKit の data channel で1手順ずつモバイルへ送る封筒。
@@ -47,7 +49,7 @@ export const boardSpeechMaxLength = 120;
  * `latex` の上限。板書の1行として画面幅に収まる長さ。
  * `x^2 - 3x + 2 = 0 \Rightarrow D = 9 - 8 = 1 > 0` で約45字なので、200字は「1行としては長すぎる」
  * ものだけを弾く緩めの線。答案の貼り付けを止めるのは、この上限と
- * {@link boardStepsMaxCount} と多行環境の禁止(下記)の3つで行う。
+ * {@link boardLessonStepsMaxCount} と多行環境の禁止(下記)の3つで行う。
  */
 export const boardTexMaxLength = 200;
 
@@ -58,13 +60,37 @@ export const boardTextMaxLength = 100;
 export const boardLabelMaxLength = 24;
 
 /**
- * 板書1枚あたりの手順数の上限。
+ * **LLMが1回に出せる手順数の上限**({@link boardLessonSchema} の `steps`)。
  *
  * 判別式のような単元は6〜8手順で終わる。上限がないと、LLMは
  * 「1行ずつだが40行」という形で解答を丸ごと流し込める(1要素の上限をすり抜ける抜け道)。
- * 15〜20分のセッション(§5)で1枚の板書に12行以上積むなら、それは板書ではなく答案。
+ * **1回の説明でこれを超えるなら、それは板書ではなく答案。**
+ *
+ * これは**板書1枚の上限ではない**({@link boardStepsMaxCount})。
+ * 板書は1つの問題ぶん生き続け、何回かの説明が同じ板書に積み上がる。
  */
-export const boardStepsMaxCount = 12;
+export const boardLessonStepsMaxCount = 12;
+
+/**
+ * **板書1枚に積める手順数の上限**。ワイヤーの `index`({@link boardStepSchema})と
+ * {@link boardCloseMessageSchema} の `step_count` の上限。
+ *
+ * 板書の寿命は「1回の説明」ではなく **「1つの問題」**(§3-2「前の行は消さない。
+ * 消えるのは別の問題に移るときだけ」)。1回のLLM呼び出しごとに板書を開き直すと、
+ * **会話が1往復するたびに板書が消える** — 板書の価値そのものが失われる。
+ *
+ * 1つの問題は15〜20分(§4-1)で、その間に説明は何往復かする:
+ *
+ *   切り分け2〜3手順 + 教える5〜8手順 + 教え返しへの受け渡し1手順 ≒ **1往復 8〜12手順**
+ *   教え返しで詰まればもう一度教える(§2 のコアループ)ので **2〜3往復**
+ *   → **16〜36手順**
+ *
+ * **40** はその上限側(36)にわずかな余白を足した値。ここに達するのは
+ * 「1つの問題に40行書いてまだ終わっていない」ときで、それは板書の不足ではなく
+ * 授業の設計の問題(§3-4 のゲートで見る種類の壊れ方)。
+ * つまりこの数字は**打ち切りの安全弁**であって、目標値でも推奨値でもない。
+ */
+export const boardStepsMaxCount = 40;
 
 /**
  * 盤面座標の絶対値の上限。板書は「その場でノートに描く図」なので、
@@ -261,7 +287,22 @@ const noLatexCommandPattern = /^(?![\s\S]*\\[a-zA-Z])[\s\S]*$/;
  */
 export const boardStepSchema = z
   .object({
-    /** 板書内での通し番号。**0始まり**で、1ずつ増える(欠落検知の二重化)。 */
+    /**
+     * 板書内での通し番号。**0始まり**で、1ずつ増える(欠落検知の二重化)。
+     *
+     * このスキーマは2つの文脈で使われ、**`index` が数える範囲が違う**:
+     *
+     *   - {@link boardLessonSchema} の中(LLMが出す形)= **その1回の出力の中で0始まり**。
+     *     LLMは自分が何回目の呼び出しかを知らないし、知らせない
+     *     (通し番号を持たせると、幻覚した番号がワイヤーに出る)。
+     *   - {@link boardStepMessageSchema} の中(ワイヤー)= **板書1枚の中で0始まり**。
+     *     板書は1つの問題ぶん生き続けるので、2回目以降の説明は前の続きの番号になる。
+     *     **付け直すのは配送層の責務。**
+     *
+     * したがって上限は広いほう({@link boardStepsMaxCount})で取る。
+     * LLM出力側がこれより厳しいことは、`steps` の要素数
+     * ({@link boardLessonStepsMaxCount})と `index === position` の検査で担保される。
+     */
     index: z
       .number()
       .int()
@@ -282,11 +323,16 @@ export const boardStepSchema = z
 export type BoardStep = z.infer<typeof boardStepSchema>;
 
 /**
- * LLMが出す形 — 板書1枚まるごと。
+ * LLMが出す形 — **1回の説明ぶん**。
  *
  * agent はこれをストリーミングJSONで受け取り、`steps[i]` が閉じた時点で
  * {@link boardStepSchema} で1手順だけ検証して即座に配送する(全部揃うのを待たない・§3-2 案A)。
  * したがって **このスキーマ全体での検証は「最後の答え合わせ」** であって、配送のゲートではない。
+ *
+ * **「1枚の板書」ではないことに注意。**板書(`board_id`)は1つの問題ぶん生き続け、
+ * この形の出力が何回か積み上がってできる。`title` / `topic_ids` を毎回持つのは、
+ * LLMが「何回目か」を知らないから — **使われるのは最初の1回だけ**で、
+ * 2回目以降は配送層が捨てる(そこで `board_open` を出し直すと板書が消える)。
  *
  * session_id / board_id を持たないのは意図。識別子は配送層(封筒)が付ける。
  */
@@ -296,7 +342,7 @@ export const boardLessonSchema = z
     title: z.string().min(1).max(60),
     /** 扱っている単元。@ai-sensei/guardrail の範囲チェックに渡す。 */
     topic_ids: z.array(topicIdSchema).min(1).max(3),
-    steps: z.array(boardStepSchema).min(1).max(boardStepsMaxCount),
+    steps: z.array(boardStepSchema).min(1).max(boardLessonStepsMaxCount),
   })
   .strict()
   .superRefine((lesson, ctx) => {
@@ -363,6 +409,11 @@ const envelopeFields = {
  * これを手順のフラグ(`clear: true` のような)にすると、LLMの気まぐれで
  * 板書が消える経路ができてしまう。板書の切り替えは配送層の判断であって、
  * 授業の内容ではない。
+ *
+ * **「別の問題に移るとき」であって「次に説明するとき」ではない。**
+ * 1つの問題は何往復かの説明でできている(切り分け → 教える → 教え返させる)。
+ * LLMを呼ぶたびにこれを送ると、**会話が1往復するたびに板書が消える**。
+ * だから `board_open` は1つの問題につき1回で、以降の説明は同じ `board_id` に積む。
  */
 export const boardOpenMessageSchema = z
   .object({
@@ -393,10 +444,15 @@ export const boardCloseMessageSchema = z
   .object({
     ...envelopeFields,
     type: z.literal("board_close"),
+    /** **板書1枚ぶんの合計**(1回の説明ぶんではない)。 */
     step_count: z.number().int().min(0).max(boardStepsMaxCount),
     /**
      * `interrupted` はユーザーが割り込んで途中で止めた場合(§3-2 案Aの利点そのもの)。
      * 板書は途中まで残す。エラーとは扱いが違うので、理由をenumで分けておく。
+     *
+     * **1回の説明が割り込まれただけでは、ここには来ない。**割り込みのあと
+     * 同じ問題の説明が続くなら板書は開いたままで、閉じるのは問題そのものが
+     * 終わったとき(または終われなかったとき)。
      */
     reason: z.enum(["completed", "interrupted", "error"]),
   })
