@@ -5,6 +5,7 @@ import { buildGeneratedSource, promptFiles, promptsDir } from "./generate.ts";
 import {
   PromptRenderError,
   allPrompts,
+  boardLessonSystemPrompt,
   conversationSystemPrompt,
   formatAllowedTopics,
   formatBullets,
@@ -59,7 +60,7 @@ describe("ロケール", () => {
     expect(getPrompt("kohai_conversation", toPromptLocale("fr")).meta.locale).toBe("ja");
   });
 
-  it("promptsFor はそのロケールの5本を返す", () => {
+  it("promptsFor はそのロケールの全部を返す", () => {
     expect(promptsFor("en").map((template) => template.meta.id)).toEqual([...promptIds]);
   });
 });
@@ -265,6 +266,68 @@ describe("設計上の約束がプロンプトに書かれている", () => {
     expect(ja).toContain("間違ったカルテ");
     expect(en).toContain("put it in `holes`");
     expect(en).toContain("wrong karte");
+  });
+
+  /**
+   * 板書プロンプト(先輩)の約束。**contract / guardrail と二重に書いている**ので、
+   * 片方が消えたことを検知できるようにここで見る。
+   *
+   * 「長い式は = の前で割る」だけはコード側に相手がいない(計画書 §3-6b)。
+   * 板書がはみ出さないことを守っているのは、いまのところこの1行だけなので、
+   * 消えても誰も気づかない状態にしないためにテストで留める。
+   */
+  it("板書の出力規約が両方の言語に書かれている", () => {
+    const ja = getPrompt("senpai_board", "ja").body;
+    const en = getPrompt("senpai_board", "en").body;
+
+    expect(ja).toContain("120字以内");
+    expect(ja).toContain("`=` の前で切って");
+    expect(ja).toContain("text` 要素として送ってください");
+    expect(en).toContain("120 characters max");
+    expect(en).toContain("cut before the `=`");
+    expect(en).toContain("`text` board element");
+  });
+
+  /**
+   * 【申告させず、やらせる】。このアプリの出発点(インセプションデッキ §1
+   * 「わかったと感じた状態と説明できる状態は別物で、前者は本人には区別がつかない」)を
+   * 教え方に落としたもので、**ここが緩むと、本人が分かっていない地点から授業が始まる**。
+   */
+  it("「申告させず、やらせる」が両方の言語に書かれている", () => {
+    const ja = getPrompt("senpai_board", "ja").body;
+    const en = getPrompt("senpai_board", "en").body;
+
+    expect(ja).toContain("申告させず、やらせる");
+    expect(ja).toContain("最初の一手、言ってみて");
+    expect(ja).toContain("「うん / いや」で返せない形");
+    expect(en).toContain("never ask them to self-report");
+    expect(en).toContain('"tell me the first step"');
+    expect(en).toContain('cannot answer with "yes" or "no"');
+  });
+
+  it("先輩のプロンプトは音声ヒントを同梱し、英語版に日本語が混ざらない", () => {
+    const variables = {
+      problem_text: "x^2 - 3x + 2 < 0 を解け",
+      student_work: "- 左辺を因数分解しかけて止まっている",
+      allowed_topics: "- M1-NIJI-FUTOSHIKI",
+      remaining_seconds: 600,
+    };
+    const ja = boardLessonSystemPrompt(variables, "ja");
+    expect(ja).toContain("x^2 - 3x + 2 < 0 を解け");
+    expect(ja).toContain("さんぶんのに");
+
+    const en = boardLessonSystemPrompt(
+      {
+        problem_text: "Solve x^2 - 3x + 2 < 0",
+        student_work: "- Started factorising the left side and stopped",
+        allowed_topics: "- A2-INEQ-QUADRATIC",
+        remaining_seconds: 600,
+      },
+      "en",
+    );
+    expect(en).toContain("Solve x^2 - 3x + 2 < 0");
+    expect(en).toContain("square root of 3");
+    expect(en).not.toMatch(/[ぁ-んァ-ン一-龯]/);
   });
 
   it("全プロンプトにフロントマターのidがある", () => {

@@ -8,6 +8,7 @@ export const promptIds = [
   "question_types_few_shot",
   "karte_generation",
   "math_speech_hints",
+  "senpai_board",
 ] as const;
 export type PromptId = (typeof promptIds)[number];
 
@@ -72,6 +73,35 @@ export function conversationSystemPrompt(
     renderPrompt(getPrompt("kohai_conversation", locale), variables),
     "---",
     getPrompt("question_types_few_shot", locale).body,
+    "---",
+    getPrompt("math_speech_hints", locale).body,
+  ].join("\n\n");
+}
+
+/**
+ * 板書つきで教える先輩のシステムプロンプト(ピボット計画 v1 §3-1)。
+ *
+ * 出力は `@ai-sensei/contract` の `boardLessonSchema` の形で、
+ * agent がストリーミングJSONとして受け取る。
+ *
+ * **音声補正ヒントを同梱する。** 先輩は喋るだけでなく、生徒の説明を聞いて
+ * 「言えたか / 詰まったか」で教える地点を決める(=【申告させず、やらせる】)。
+ * その判定材料はSTTを通った生徒の発話そのものなので、
+ * 「さんぶんのに = 2/3」を取り違えると、**言えているのに詰まったと判定する**。
+ * few-shot(`question_types_few_shot`)は同梱しない — あれは
+ * 「わかっていない後輩が質問する」文体で、教える側の文体ではない。
+ */
+export function boardLessonSystemPrompt(
+  variables: {
+    problem_text: string;
+    student_work: string;
+    allowed_topics: string;
+    remaining_seconds: number;
+  },
+  locale: PromptLocale = defaultPromptLocale,
+): string {
+  return [
+    renderPrompt(getPrompt("senpai_board", locale), variables),
     "---",
     getPrompt("math_speech_hints", locale).body,
   ].join("\n\n");
