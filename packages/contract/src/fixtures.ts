@@ -8,6 +8,7 @@ import {
   progressResponseSchema,
   reviewQueueResponseSchema,
 } from "./api.ts";
+import { boardChannelLogSchema, boardLessonSchema } from "./board.ts";
 import { karteSchema } from "./karte.ts";
 
 /**
@@ -26,6 +27,10 @@ export const fixtureSchemas = {
   "review-queue-response": reviewQueueResponseSchema,
   "progress-response": progressResponseSchema,
   "api-error": apiErrorSchema,
+  // 板書。LLMが出す形(board-lesson)と、data channel を流れる形(board-channel-log)は
+  // 責務が違うので別のfixtureにしている(理由は src/board.ts の冒頭)。
+  "board-lesson": boardLessonSchema,
+  "board-channel-log": boardChannelLogSchema,
 } satisfies Record<string, ZodTypeAny>;
 
 export type FixtureName = keyof typeof fixtureSchemas;
@@ -44,6 +49,7 @@ export const fixtureFileSchemas: Record<string, FixtureName> = {
   ...Object.fromEntries(fixtureNames.map((name) => [name, name])),
   "create-session-response.en": "create-session-response",
   "karte.en": "karte",
+  "board-lesson.en": "board-lesson",
 };
 
 export const fixtureFileNames = Object.keys(fixtureFileSchemas);

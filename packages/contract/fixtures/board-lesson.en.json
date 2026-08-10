@@ -1,0 +1,44 @@
+{
+  "title": "Reading a quadratic inequality off the graph",
+  "topic_ids": ["A2-INEQ-QUADRATIC", "A1-QUAD-SOLVE"],
+  "steps": [
+    {
+      "index": 0,
+      "speech": "Let's start from the inequality itself.",
+      "board": { "kind": "latex", "tex": "x^2 - 3x + 2 < 0" }
+    },
+    {
+      "index": 1,
+      "speech": "Factorise the left side for me. What do you get?",
+      "board": { "kind": "latex", "tex": "(x - 1)(x - 2) < 0" }
+    },
+    {
+      "index": 2,
+      "speech": "Right, so those two numbers are where it touches zero.",
+      "board": { "kind": "text", "body": "roots: x = 1, x = 2" }
+    },
+    {
+      "index": 3,
+      "speech": "Now look at the curve. Where does it sit below the axis?",
+      "board": {
+        "kind": "plot",
+        "fn": "x^2 - 3*x + 2",
+        "domain": { "min": -1, "max": 4 },
+        "marks": [
+          { "at": { "x": 1, "y": 0 }, "label": "x = 1" },
+          { "at": { "x": 2, "y": 0 }, "label": "x = 2" }
+        ]
+      }
+    },
+    {
+      "index": 4,
+      "speech": "Between them. That is the whole answer.",
+      "board": { "kind": "latex", "tex": "1 < x < 2" }
+    },
+    {
+      "index": 5,
+      "speech": "Now say it back to me. Why is it between and not outside?",
+      "board": null
+    }
+  ]
+}

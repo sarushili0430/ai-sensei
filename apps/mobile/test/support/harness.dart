@@ -112,13 +112,25 @@ const Size goldenSurface = Size(393, 852);
 /// パスを直書きせず FontManifest から読むのは、**MaterialIcons も一緒に
 /// 載せる**ため。アイコンが四角のままだと、戻るボタンや設定アイコンが
 /// 出ているかどうかを golden で確かめられない(導線が消えても気づけない)。
+///
+/// **family名はプレフィックスを剥がさず、そのまま登録する。**
+/// 以前は `packages/foo/MyFont` 形式のとき末尾だけ取り出していたが、これは
+/// このアプリ自身のフォント(`ZenMaruGothic`。プレフィックス無し)にしか
+/// 当てはまらない前提だった。サードパーティのフォントパッケージ(例:
+/// `flutter_math_fork` のKaTeXフォント一式)は、パッケージ自身のコードの中で
+/// `'packages/flutter_math_fork/KaTeX_Main'` のようにプレフィックス込みの
+/// family名で参照している(該当パッケージの `make_symbol.dart` で確認済み)。
+/// 剥がして登録すると、その名前で探しにいくwidgetからは見つからず、
+/// フォントが無いのと同じ状態(golden上は黒塗りの四角=tofu)になる。
+/// `FontManifest.json` を実際に読ませて確認したところ、`MaterialIcons` と
+/// `ZenMaruGothic` はもともとプレフィックスを持たないので、剥がすのをやめても
+/// 既存のgoldenの見た目は変わらない(登録名がそのまま変わらないため)。
 Future<void> loadAppFonts() async {
   final String manifest = await rootBundle.loadString('FontManifest.json');
 
   for (final dynamic entry in jsonDecode(manifest) as List<dynamic>) {
     final Map<String, dynamic> family = entry as Map<String, dynamic>;
-    // `packages/foo/MyFont` 形式で入っていることがある。実際の family 名は末尾。
-    final String name = (family['family'] as String).split('/').last;
+    final String name = family['family'] as String;
 
     final FontLoader loader = FontLoader(name);
     for (final dynamic font in family['fonts'] as List<dynamic>) {
