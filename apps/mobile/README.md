@@ -5,7 +5,7 @@ Flutter(iOS先行)。Riverpod 3 + go_router。
 ```
 lib/src/
   api/             backend/api との通信・匿名デバイスID
-  common_widgets/  蛍光マーカー・厚みのあるボタン・後輩の表情
+  common_widgets/  蛍光マーカー・厚みのあるボタン・先輩の表情
   features/        ドメイン単位(画面単位ではない)
     onboarding/
     capture/       撮影・単元確認
@@ -149,7 +149,6 @@ fvm flutter test
 
 - カメラのプレビュー画面(いまは `image_picker` でOSのカメラを呼ぶだけ)
 - `resultMissing` のときにカルテを取り直す導線(いまは祝福で止まる)
-- Sentry の初期化(鍵が入ってから)
 - iOS: APNs Auth Key を OneSignal に登録する(入れるまで実機に一通も届かない)
 - 会話中の字幕をLiveKitのデータチャネルから受け取る配線
 - 効果音・ハプティクス(いまは押下時の `HapticFeedback.lightImpact` のみ)

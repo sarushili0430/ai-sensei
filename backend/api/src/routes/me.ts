@@ -32,9 +32,7 @@ meRoute.get("/progress", async (c) => {
     is_premium: premium,
     limits: {
       max_seconds: premium ? limits.premiumSessionMaxSeconds : limits.freeSessionMaxSeconds,
-      remaining_sessions_today: premium
-        ? null
-        : Math.max(0, limits.freeSessionsPerDay - sessionsToday),
+      lesson_allowed_today: premium || sessionsToday < limits.freeSessionsPerDay,
     },
   };
   return c.json(response);

@@ -49,3 +49,22 @@ describe("板書のガードがDartの参照に残っている", () => {
     expect(triangle.properties.labels).toMatchObject({ minItems: 3, maxItems: 3 });
   });
 });
+
+/**
+ * 学習計画の日付は**暦の1日**であって瞬間ではない(`plan.ts` の `planDateSchema`)。
+ * `pattern` が参照から落ちると、Dart側は「日付っぽい文字列」として実装し、
+ * ISO8601の瞬間を受け入れる。そこからタイムゾーンぶんテストが前日に動く。
+ */
+describe("学習計画の日付がDartの参照に残っている", () => {
+  // biome-ignore lint/suspicious/noExplicitAny: 生成物(JSON Schema)を辿るだけのテスト
+  const plan = buildJsonSchema("study-plan")["definitions"] as any;
+  const properties = plan["study-plan"].properties;
+
+  it.each([
+    ["テスト日", () => properties.intake.properties.exam_date],
+    ["割り当ての日", () => properties.days.items.properties.date],
+    // biome-ignore lint/suspicious/noExplicitAny: 同上
+  ])("%s が pattern として出力されている", (_name, pick: () => any) => {
+    expect(pick().pattern).toBe("^\\d{4}-\\d{2}-\\d{2}$");
+  });
+});

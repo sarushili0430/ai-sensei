@@ -1,4 +1,4 @@
-import type { HoleSeverity } from "@ai-sensei/contract";
+import type { HoleSeverity, SessionProblem } from "@ai-sensei/contract";
 
 export type UserRecord = {
   device_id: string;
@@ -16,6 +16,18 @@ export type UserRecord = {
  */
 export type SessionContext = {
   summary: string;
+  /**
+   * 解析が読み取った問題。読めなければ null。
+   *
+   * **写真そのものは残らないので、ここが問題文の唯一の保存先。**
+   * 問題の写真は解析後に破棄する(著作物。`contract` の `sessionPhotoParts`)ので、
+   * ここを落とすと、単元を絞り込んだ瞬間(PATCH /topics)に問題文が消え、
+   * 先輩が問題を見ないまま教え始める状態に戻る。
+   *
+   * D1では `context` 列にJSONで入る(列は増えないのでマイグレーション不要)。
+   * この欄が無い古い行は `undefined` で読めるので、`?? null` で受けること。
+   */
+  problem?: SessionProblem | null;
   visible_work: string[];
   question_seeds: string[];
   /** 検出時の確信度。チップUIの表示を、単元を絞ったあとも同じに保つ。 */

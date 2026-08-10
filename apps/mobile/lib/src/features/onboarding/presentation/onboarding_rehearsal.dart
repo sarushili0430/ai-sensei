@@ -4,17 +4,26 @@ import 'package:flutter/services.dart';
 import '../../../common_widgets/centered_scroll.dart';
 import '../../../common_widgets/chunky_button.dart';
 import '../../../common_widgets/entrance.dart';
-import '../../../common_widgets/kohai_face.dart';
+import '../../../common_widgets/senpai_face.dart';
 import '../../../common_widgets/marker_text.dart';
 import '../../../common_widgets/speaking_wave.dart';
 import '../../../common_widgets/typing_text.dart';
 import '../../../l10n/strings.dart';
 import '../../../theme/motion.dart';
 import '../../../theme/tokens.dart';
+import '../../session/domain/board.dart';
+import '../../session/presentation/board/board_view.dart';
+
+/// 板書が下に続いていることを示す帯([_BottomFade])の目印。
+///
+/// **出る / 出ないの出し分けそのものが仕様**(切れているのに手がかりが無いのが
+/// いちばん悪い状態で、切れていないのに出続けるのは嘘)なので、
+/// 見た目ではなくこの目印でテストできるようにしてある。
+const Key onboardingBoardMoreBelowKey = Key('onboarding_board_more_below');
 
 /// リハーサルの結果。
 enum RehearsalOutcome {
-  /// 説明できた → 黄マーカー。
+  /// 教え返せた → 黄マーカー。
   explained,
 
   /// うまく言えなかった → ピンクのマーカー(= 穴)。**失敗ではない。**
@@ -24,14 +33,38 @@ enum RehearsalOutcome {
 /// オンボーディング3枚目 — リハーサル。
 ///
 /// 読んで分かった気になる説明を、**一度やってみる**に置き換える枚。
-/// ここを通ると、初回の撮影ボタンを押す前に、後輩に聞かれる感じと
-/// 「言えなかったことが残る」ことの両方を体験している。
+/// ここを通ると、初回の撮影ボタンを押す前に、
+/// 「先輩が板書で教えてくれる」と「教え返せなかったことが残る」の両方を体験している。
+///
+/// **この1枚の主張は「答えが目の前にあっても、説明できるとは限らない」。**
+/// 板書には結論(`解が2つ ⇔ D > 0`)まで書いてあり、隠していない。
+/// それでも「なんで D を見るんだっけ?」には詰まる — そこが穴で、
+/// 教えて終わりにしない理由そのもの(ピボット計画 §1-1「誤読の保険」と同じ構造)。
+/// 改正前の「答えを出さない」を守るために質問だけを見せていたのを、
+/// **答えを見せたうえで聞く**に作り替えてある。
 ///
 /// 3つ守る:
-///   - **答えを出さない。** 台本は質問だけで、模範解答は持たない(§0 の約束1)。
+///   - **繋がない。** 板書も質問も固定の台本で、LiveKitにもAPIにも触らない。
 ///   - **権限を要求しない。** マイクもカメラも使わない。録らないことは画面に書く。
-///   - **正解にしない。** 説明しても、パスしても、先へ進める。
-///     どちらを選んだかで責めない(§0 の約束3)。
+///   - **正解にしない。** 教え返しても、パスしても、先へ進める。
+///     どちらを選んだかで責めない(§0 の約束3。ここは改正されていない)。
+///
+/// ## 画面を「読む側」と「やる側」に割ってある
+///
+/// 板書を積んだぶん縦に伸び、375×667(SE級)では操作が折り返しの下に落ちた。
+/// **操作が初期表示に無いことは、板書が全部見えないことより重い** —
+/// 板書は切れていても「下に続く」と分かれば体験は壊れないが、操作が見えなければ
+/// **やることがある枚だと気づかれないままスワイプされる**。この1枚は
+/// 「読ませる枚」ではなく「やらせる枚」なので、そこで離脱されると存在理由が消える。
+///
+/// そこで上下に割った:
+///   - **上(スクロールする)**: 見出し・撮った問題・板書。収まらなければここだけが動く
+///   - **下(固定)**: 先輩の顔とふきだし・操作・録音しない注記
+///
+/// 顔とふきだしを固定側に入れているのは、**押しているあいだの手ごたえが顔だから**。
+/// 長押し中は表情が `listening` に変わるので、顔が流れて見えなくなると
+/// 「聞いてもらえている」という唯一のフィードバックが消える。
+/// ふきだしの問いかけも、操作の意味そのものなので離さない。
 class OnboardingRehearsalPage extends StatefulWidget {
   const OnboardingRehearsalPage({required this.outcome, required this.onOutcome, super.key});
 
@@ -50,59 +83,92 @@ class _OnboardingRehearsalPageState extends State<OnboardingRehearsalPage> {
   bool _asked = false;
   bool _holding = false;
 
-  KohaiMood get _mood => switch (widget.outcome) {
-    RehearsalOutcome.explained => KohaiMood.delighted,
-    RehearsalOutcome.passed => KohaiMood.puzzled,
-    null => _holding ? KohaiMood.listening : KohaiMood.neutral,
+  /// **うまく言えなかったときに顔を曇らせない。**
+  ///
+  /// 後輩版はここで困り顔([SenpaiMood.puzzled])にしていた。後輩にとっては
+  /// 「聞いても分からなかった」という事実の表示で、責める意味を持たなかったからだ。
+  /// 先輩がここで困ると意味が変わる — **教えたのに伝わらなかった、という落胆**に
+  /// 読める。詰まることは織り込み済み(それを見つけに来ている)なので、
+  /// 顔は受け取ったまま動かさず、応えるのは言葉とマーカーだけにする(§0 の約束3)。
+  SenpaiMood get _mood => switch (widget.outcome) {
+    RehearsalOutcome.explained => SenpaiMood.delighted,
+    RehearsalOutcome.passed => SenpaiMood.neutral,
+    null => _holding ? SenpaiMood.listening : SenpaiMood.neutral,
   };
 
   @override
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
 
-    return CenteredScroll(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        const SizedBox(height: AppSpacing.md),
-        FadeSlideIn(
-          child: Text(
-            strings.onboardingTryTitle,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-        ),
-        const SizedBox(height: AppSpacing.lg),
-        const FadeSlideIn.staggered(index: 1, child: _NotebookCard()),
-        const SizedBox(height: AppSpacing.lg),
-        FadeSlideIn.staggered(
-          index: 2,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: <Widget>[
-              KohaiFace(mood: _mood, size: 76),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: _SpeechBubble(
-                  child: TypingText(
-                    strings.onboardingTryQuestion,
-                    style: Theme.of(context).textTheme.bodyLarge,
-                    onDone: () {
-                      if (mounted && !_asked) setState(() => _asked = true);
-                    },
+        // 読む側。ここだけがスクロールする。
+        Flexible(
+          child: _ScrollWithBottomFade(
+            child: CenteredScroll(
+              children: <Widget>[
+                const SizedBox(height: AppSpacing.md),
+                FadeSlideIn(
+                  child: Text(
+                    strings.onboardingTryTitle,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.headlineSmall,
                   ),
                 ),
+                const SizedBox(height: AppSpacing.lg),
+                const FadeSlideIn.staggered(index: 1, child: _NotebookCard()),
+                // 問題と板書はひとつながりなので、あいだの間は詰める。
+                const SizedBox(height: AppSpacing.md),
+                const FadeSlideIn.staggered(index: 2, child: _SenpaiBoard()),
+                const SizedBox(height: AppSpacing.md),
+              ],
+            ),
+          ),
+        ),
+        // やる側。**折り返しの下には絶対に出さない。**
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              FadeSlideIn.staggered(
+                index: 3,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: <Widget>[
+                    SenpaiFace(mood: _mood, size: 76),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: _SpeechBubble(
+                        child: TypingText(
+                          strings.onboardingTryQuestion,
+                          style: Theme.of(context).textTheme.bodyLarge,
+                          onDone: () {
+                            if (mounted && !_asked) setState(() => _asked = true);
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
+              const SizedBox(height: AppSpacing.md),
+              _resize(
+                child: _asked ? _buildAnswer(strings) : const SizedBox(width: double.infinity),
+              ),
+              // 注記を操作と「つぎへ」のあいだに挟む。
+              // 同じ幅のボタンが2つ続けて並ぶと、どちらが今の一手か分かりにくい。
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                strings.onboardingTryNotRecording,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: AppSpacing.sm),
             ],
           ),
         ),
-        const SizedBox(height: AppSpacing.lg),
-        _resize(child: _asked ? _buildAnswer(strings) : const SizedBox(width: double.infinity)),
-        const SizedBox(height: AppSpacing.md),
-        Text(
-          strings.onboardingTryNotRecording,
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        const SizedBox(height: AppSpacing.md),
       ],
     );
   }
@@ -169,7 +235,7 @@ class _OnboardingRehearsalPageState extends State<OnboardingRehearsalPage> {
   }
 }
 
-/// 撮ったノートの代わり。本物の写真は使わない(まだカメラを開かせない)。
+/// 撮った問題の代わり。本物の写真は使わない(まだカメラを開かせない)。
 ///
 /// わずかに傾けてあるのは、机の上に置いた紙に見せるため。
 /// まっすぐ置くと、アプリが用意した問題集に見える。
@@ -202,7 +268,156 @@ class _NotebookCard extends StatelessWidget {
   }
 }
 
-/// 後輩のふきだし。しっぽを左に向けて、話しているのが顔の側だと分かるようにする。
+/// 下に続きがあることを示す帯を重ねたスクロール領域。
+///
+/// **`LatexElementView` の右端フェード(`_ScrollWithEdgeFade`)の縦版。**
+/// 判定基準も同じで、「スクロールできること」ではなく
+/// **「スクロールできると分かること」**を保証する。計画書§3-6b が横スクロールを
+/// 不採用にした理由 —「静止画では続きがある手がかりが一切出ず、
+/// 『これで全部だ』と誤読させる」— は、板書が縦に切れるときもそのまま当てはまる。
+/// 最後まで見えたら帯は消す(見えているのに手がかりを出し続けるのは嘘になる)。
+///
+/// 中身の [CenteredScroll] は共有ウィジェットで `ScrollController` を外に出して
+/// いないので、位置は通知から読む。`ScrollMetricsNotification` が初回レイアウトの
+/// ぶんを、`ScrollNotification` が指で動かしたぶんを運んでくる。
+///
+/// 既定を「続きが無い」にしてあるのは、`_ScrollWithEdgeFade` と逆
+/// (あちらは計測前を「あるかもしれない」にしている)。**縦は、収まる端末のほうが
+/// 主戦場**(393×852 では日本語は収まる)なので、計測前に帯を出すと、
+/// 何も切れていない画面に一瞬だけ影が差す。通知は初回レイアウトで届くので、
+/// 出遅れて困ることはない。
+class _ScrollWithBottomFade extends StatefulWidget {
+  const _ScrollWithBottomFade({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_ScrollWithBottomFade> createState() => _ScrollWithBottomFadeState();
+}
+
+class _ScrollWithBottomFadeState extends State<_ScrollWithBottomFade> {
+  bool _hasMore = false;
+
+  void _update(ScrollMetrics metrics) {
+    final bool hasMore = metrics.extentAfter > 1;
+    if (hasMore == _hasMore) return;
+
+    // 通知はレイアウトの直後に来る。その場で setState するとフレームの最中に
+    // 自分を作り直すことになるので、次のフレームに送る。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && hasMore != _hasMore) setState(() => _hasMore = hasMore);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return NotificationListener<ScrollMetricsNotification>(
+      onNotification: (ScrollMetricsNotification notification) {
+        _update(notification.metrics);
+        return false;
+      },
+      child: NotificationListener<ScrollNotification>(
+        onNotification: (ScrollNotification notification) {
+          _update(notification.metrics);
+          return false;
+        },
+        child: Stack(
+          children: <Widget>[
+            widget.child,
+            if (_hasMore)
+              const Positioned(
+                key: onboardingBoardMoreBelowKey,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: IgnorePointer(child: _BottomFade()),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 帯そのもの。色は既存トークンの範囲内(`AppColors.background` = 画面の地。
+/// 透明から不透明へ)。新しい色は定義しない。
+class _BottomFade extends StatelessWidget {
+  const _BottomFade();
+
+  static const double _height = 28;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: _height,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            // alpha:0 は「その色の透明版」であって別の色ではない。
+            colors: <Color>[
+              AppColors.background.withValues(alpha: 0),
+              AppColors.background,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 先輩が書いた板書。**本番と同じ [BoardView] に、固定の台本を渡しているだけ。**
+///
+/// ここだけ別の見た目を作らないのは、リハーサルで見た板書と授業モードで出る板書が
+/// 食い違うと、この枚が下見として機能しなくなるため。LiveKit も
+/// `BoardChannelReceiver` も通らない — 届くはずの手順が最初から手元にあるので、
+/// 通す相手がいない。
+///
+/// **白いカードには乗せない。** `LatexElementView` の右端フェードは、板書が
+/// 画面の地(`AppColors.background`)に直接乗っている前提の色で描かれる
+/// (同ファイルの `_EdgeFade` のコメントに既知の前提として書いてある)。
+/// 別の地の上に置くと、長い式が来たときにフェードだけ色が合わない。
+/// ここは地の上に直接置き、見出しだけで区切る。
+class _SenpaiBoard extends StatelessWidget {
+  const _SenpaiBoard();
+
+  /// 2手順目。**数式はロケールを持たないので、ここに直接置く**
+  /// (1手順目の日本語は `text` 要素として `strings` 側にある。
+  /// LaTeXの中に日本語を入れると文字化けする・計画書§3-6d)。
+  ///
+  /// 短い式を選んであるのは意図的で、`BoardStyle.latexMinScale`(70%)の
+  /// フォールバック(横スクロール)に落ちない幅に収まる。
+  static const String _tex = r'D = (-4)^2 - 4k > 0';
+
+  @override
+  Widget build(BuildContext context) {
+    final AppStrings strings = AppStrings.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Text(strings.onboardingTryBoardLabel, style: Theme.of(context).textTheme.bodySmall),
+        const SizedBox(height: AppSpacing.xs),
+        BoardView(
+          // `speech` を空にしてあるのは手抜きではない。この枚は音を出さないし、
+          // そもそも「書いている間は喋らない」が板書レイヤーの原則(§3-1)なので、
+          // 板書だけが残る形は本番の1手順としても正しい。
+          steps: <BoardStep>[
+            BoardStep(
+              index: 0,
+              speech: '',
+              board: BoardElement.text(body: strings.onboardingTryBoardText),
+            ),
+            const BoardStep(index: 1, speech: '', board: BoardElement.latex(tex: _tex)),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// 先輩のふきだし。しっぽを左に向けて、話しているのが顔の側だと分かるようにする。
 class _SpeechBubble extends StatelessWidget {
   const _SpeechBubble({required this.child});
 
@@ -276,7 +491,7 @@ class _KarteLine extends StatelessWidget {
   }
 }
 
-/// 長押ししているあいだだけ、後輩が聞いている。
+/// 長押ししているあいだだけ、先輩が聞いている。
 ///
 /// 本番のセッションは「話し続ける」ので、ここでも押し続ける操作にしてある。
 /// 押している時間そのものが説明の比喩なので、この長さは

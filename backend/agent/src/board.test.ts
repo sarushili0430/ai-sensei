@@ -9,7 +9,11 @@ import {
   boardStepsMaxCount,
   fixturePath,
 } from "@ai-sensei/contract";
-import { checkBoardLatex, latexRejectionGuidanceByLocale } from "@ai-sensei/guardrail";
+import {
+  buildAllowedTopics,
+  checkBoardLatex,
+  latexRejectionGuidanceByLocale,
+} from "@ai-sensei/guardrail";
 import { describe, expect, it, vi } from "vitest";
 import {
   type AppendBoardOptions,
@@ -20,6 +24,7 @@ import {
   checkLatexSyntax,
   createTextStreamBoardSink,
   defaultMaxRepairAttempts,
+  validateHead,
   validateStep,
 } from "./board.ts";
 
@@ -69,12 +74,17 @@ function recordingSink(): BoardSink & { sent: BoardChannelMessage[] } {
   };
 }
 
-function channelWith(sink: BoardSink, locale: "ja" | "en" = "ja"): BoardChannel {
+function channelWith(
+  sink: BoardSink,
+  locale: "ja" | "en" = "ja",
+  allowedTopicIds?: readonly string[],
+): BoardChannel {
   let issued = 0;
   return new BoardChannel({
     sessionId: "ses_1",
     locale,
     sink,
+    ...(allowedTopicIds === undefined ? {} : { allowedTopicIds }),
     newBoardId: () => {
       issued += 1;
       return `brd_${issued}`;
@@ -1095,5 +1105,135 @@ describe("createTextStreamBoardSink", () => {
     const [payload, options] = sendText.mock.calls[0] as unknown as [string, { topic?: string }];
     expect(options.topic).toBe(boardChannelTopic);
     expect(JSON.parse(payload)).toMatchObject({ type: "board_close", seq: 0 });
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* 教える範囲の妥当性(計画書 §8)                                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * 板書の `topic_id` の照合。**カルテ側には `filterHoleTopicIds` があるのに、
+ * 板書だけが片翼だった。** 契約の `topicIdSchema` は書式しか見ないので、
+ * 形だけ正しい別単元は素通りする。
+ */
+describe("validateHead", () => {
+  const allowed = buildAllowedTopics(["M2-ZUKEI-ENCHOKU", "M1-NIJI-HANBETSU"], {
+    prerequisiteDepth: 0,
+  });
+
+  it("許可リストの中なら通す", () => {
+    expect(
+      validateHead({ title: "判別式", topic_ids: ["M1-NIJI-HANBETSU"] }, allowed, "ja"),
+    ).toEqual({ ok: true });
+  });
+
+  // 書式は正しいので `topicIdSchema` では止まらない
+  it("形だけ正しい別単元を弾く", () => {
+    const verdict = validateHead(
+      { title: "ベクトルの内積", topic_ids: ["M2-ZUKEI-ENCHOKU", "MB-VECTOR-NAISEKI"] },
+      allowed,
+      "ja",
+    );
+
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) return;
+    expect(verdict.rejection.reason).toBe("topic_not_allowed");
+    // 外れたIDだけを出す(カリキュラムの閉じた語彙なのでログに出してよい)
+    expect(verdict.rejection.detail).toBe("MB-VECTOR-NAISEKI");
+    expect(verdict.rejection.guidance).toContain("許可リスト");
+  });
+
+  it("再生成の指示は会話の言語で書く", () => {
+    const verdict = validateHead({ topic_ids: ["MB-VECTOR-NAISEKI"] }, allowed, "en");
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) return;
+    expect(verdict.rejection.guidance).not.toMatch(/[ぁ-んァ-ン一-龯]/);
+  });
+
+  // 形の検査は封筒スキーマの仕事。二重に判定して食い違わせない
+  it("形が違うものはここでは弾かない", () => {
+    expect(validateHead({ topic_ids: "not an array" }, allowed, "ja")).toEqual({ ok: true });
+    expect(validateHead(null, allowed, "ja")).toEqual({ ok: true });
+  });
+});
+
+describe("板書の範囲の照合(配送を通して)", () => {
+  const allowedIds = ["M2-ZUKEI-ENCHOKU", "M1-NIJI-HANBETSU"];
+
+  function lessonWithTopics(topicIds: readonly string[]): string {
+    return JSON.stringify({
+      title: "判別式で解の個数を見る",
+      topic_ids: topicIds,
+      steps: [step(0, "x^2 - 3x + 2 = 0")],
+    });
+  }
+
+  it("範囲内ならそのまま開く", async () => {
+    const sink = recordingSink();
+    const result = await deliverOnce(channelWith(sink, "ja", allowedIds), {
+      chunks: stream(slice(lessonWithTopics(["M1-NIJI-HANBETSU"]), 9)),
+    });
+
+    expect(result.opened).toBe(true);
+    expect(sink.sent[0]).toMatchObject({ type: "board_open", topic_ids: ["M1-NIJI-HANBETSU"] });
+  });
+
+  // 手順を1つも送る前に見るので、弾いても画面には何も出ていない
+  it("範囲外なら作り直させ、直ったものを開く", async () => {
+    const sink = recordingSink();
+    const repairHead = vi.fn(async () => ({
+      title: "判別式で解の個数を見る",
+      topic_ids: ["M1-NIJI-HANBETSU"],
+    }));
+
+    await deliverOnce(channelWith(sink, "ja", allowedIds), {
+      chunks: stream(slice(lessonWithTopics(["MB-VECTOR-NAISEKI"]), 9)),
+      repairHead,
+    });
+
+    expect(repairHead).toHaveBeenCalledTimes(1);
+    expect(sink.sent[0]).toMatchObject({ type: "board_open", topic_ids: ["M1-NIJI-HANBETSU"] });
+  });
+
+  /**
+   * **直らなくても板書は殺さない。**板書を止めると生徒は15分の授業を丸ごと失う。
+   * 範囲が少しずれた板書のほうが、板書が出ないよりまし。
+   */
+  it("作り直しが失敗しても、授業は続ける", async () => {
+    const sink = recordingSink();
+    const warnings: string[] = [];
+
+    const channel = new BoardChannel({
+      sessionId: "ses_1",
+      locale: "ja",
+      sink,
+      allowedTopicIds: allowedIds,
+      newBoardId: () => "brd_1",
+      log: { info: () => undefined, warn: (event) => warnings.push(event) },
+    });
+
+    const board = channel.startBoard();
+    const result = await board.append({
+      chunks: stream(slice(lessonWithTopics(["MB-VECTOR-NAISEKI"]), 9)),
+      repairHead: async () => null,
+    });
+
+    expect(result.opened).toBe(true);
+    expect(result.step_count).toBe(1);
+    // 縮退としてログに残す(頻発するならプロンプト側を直す材料)
+    expect(warnings).toContain("board_topics_rejected");
+  });
+
+  it("許可集合を渡さなければ照合しない(テストと、範囲が取れない経路)", async () => {
+    const sink = recordingSink();
+    const repairHead = vi.fn(async () => null);
+
+    await deliverOnce(channelWith(sink), {
+      chunks: stream(slice(lessonWithTopics(["MB-VECTOR-NAISEKI"]), 9)),
+      repairHead,
+    });
+
+    expect(repairHead).not.toHaveBeenCalled();
   });
 });

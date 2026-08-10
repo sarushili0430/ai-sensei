@@ -29,4 +29,31 @@ abstract final class BoardStyle {
   /// 図形プリミティブ(plot / triangle / circle)を描く `CustomPaint` の高さ。
   /// 板書の1手順として単独の行に収まる大きさ。
   static const double graphicHeight = 180;
+
+  /// 実測の前提にした板書の実効幅(pt)。iPhone 15 の393ptから余白を引いた値。
+  ///
+  /// **[latexMinScale] はこの幅を基準に決めた値**なので、実際の幅がこれを下回ると
+  /// 「縮小して収まる」と確認した式まで横スクロールに落ちる。
+  /// 見た目では気づけないので、下回ったら記録する
+  /// (`Degradation.boardTooNarrow`。計画書 §10-7)。
+  static const double measuredWidthAssumption = 340;
+
+  /// 板書の左右の余白の合計。どの画面も `AppSpacing.lg` × 2 で揃えてある。
+  static const double horizontalPadding = 48;
+
+  /// この端末で板書が使えるはずの幅。
+  ///
+  /// **[measuredWidthAssumption] をそのまま閾値にすると、狭い端末では
+  /// 当たり前に下回る。** 340pt は iPhone 15(393pt)基準の値で、
+  /// iPhone SE(375pt)なら 375 − 48 = **327pt** にしかならない。
+  /// 端末が狭いという事実を縮退として送ると、**SEの利用者ぶんが全部飛んで**、
+  /// 本当に見たい「こちらの版組が幅を食った」(自習室のカードで311ptまで
+  /// 落ちていた件)が件数に埋もれる。
+  ///
+  /// なので比べる相手は「この端末で取れるはずの幅」にする。
+  /// 下回るのは**版組が食ったときだけ**になる。
+  static double expectedWidth(double screenWidth) {
+    final double available = screenWidth - horizontalPadding;
+    return available < measuredWidthAssumption ? available : measuredWidthAssumption;
+  }
 }

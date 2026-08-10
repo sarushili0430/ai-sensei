@@ -89,7 +89,7 @@ class _NotificationRow extends ConsumerWidget {
   }
 }
 
-/// 後輩の質問がおかしかったときの報告先。
+/// 先輩の説明・板書・質問がおかしかったときの報告先。
 class _ReportRow extends ConsumerWidget {
   const _ReportRow();
 

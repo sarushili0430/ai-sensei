@@ -6,10 +6,11 @@ import '../l10n/strings.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
 
-/// 後輩の表情(handoff §7「最大の報酬はキャラの表情」)。
+/// 先輩の表情(handoff §7「最大の報酬はキャラの表情」)。
 ///
-/// 説明が伝わると顔が輝く。ご褒美とプロテジェ効果が一致する場所なので、
-/// ここが体験の中心になる。
+/// **報酬の位置はピボットで動いていない。** 後輩に説明が伝わって顔が輝く、が
+/// 先輩に教え返せて「そう、それ」に変わっただけで、
+/// いちばん嬉しい瞬間に顔が輝くという構造は同じ(ピボット計画§2のコアループ)。
 ///
 /// v0はCustomPaintの簡素な自作。表情差分3〜5枚から始め、
 /// v1.1でRiveのステートマシンに載せ替える(そのとき差し替えるのはこのWidgetだけ)。
@@ -19,31 +20,49 @@ import '../theme/tokens.dart';
 /// **表情が変わった瞬間だけのもの**(納得したときのはずみ・きらり)は
 /// 別のコントローラで一度だけ再生する。
 /// 生きている感じは前者が、ご褒美は後者が担当する。
-enum KohaiMood {
-  /// 待機。まだ何も聞いていない。
+enum SenpaiMood {
+  /// 待機。まだ始まっていない、または**ただ受け取った**。
+  ///
+  /// 「うまく言えない」を押したあともここに留まる。詳しくは [puzzled] を参照。
   neutral,
 
-  /// 聞いている。うなずきの微アニメーション。
+  /// 聞いている。教え返しを受け取っている最中。うなずきの微アニメーション。
   listening,
 
-  /// わかった!(説明が伝わった瞬間の最大の報酬)
+  /// 「そう、それ」。**教え返しが伝わった瞬間**の最大の報酬。
+  ///
+  /// 配役が変わっても、ここが体験の頂点であることは変わらない。
+  /// 後輩版では「わかった!」だったものが、先輩の承認に置き換わっただけ。
   delighted,
 
-  /// うーん、まだピンときていない。**責める顔ではない。**
+  /// **困っているのは先輩のほう。** 生徒に向ける顔ではない。
+  ///
+  /// ここが後輩版といちばん意味が違う。後輩の困り顔は
+  /// 「聞いても分からなかった」= 教わる側の困惑で、相手(生徒)の説明が
+  /// 足りないことを指していた。先輩は分かっている側なので、同じ絵を
+  /// 同じ意味では使えない。**逆に、うまくいかなかった責任をこちらが引き取る顔**
+  /// として定義し直す:
+  ///
+  ///   - 先輩が来られなかった・つながらなかった(こちら側の不首尾)
+  ///
+  /// 汗のしずくが乗っているのは、そのため。**生徒が詰まったときには使わない。**
+  /// 詰まったのは織り込み済みの出来事(それを見つけに来ている)なので、
+  /// そこで顔が困ると、パスが失敗として演出されてしまう(§0 の約束3)。
+  /// 詰まったときは [neutral] のまま受け取り、言葉とマーカーだけで応える。
   puzzled,
 }
 
-class KohaiFace extends StatefulWidget {
-  const KohaiFace({required this.mood, this.size = 120, super.key});
+class SenpaiFace extends StatefulWidget {
+  const SenpaiFace({required this.mood, this.size = 120, super.key});
 
-  final KohaiMood mood;
+  final SenpaiMood mood;
   final double size;
 
   @override
-  State<KohaiFace> createState() => _KohaiFaceState();
+  State<SenpaiFace> createState() => _SenpaiFaceState();
 }
 
-class _KohaiFaceState extends State<KohaiFace> with TickerProviderStateMixin {
+class _SenpaiFaceState extends State<SenpaiFace> with TickerProviderStateMixin {
   /// 呼吸・まばたき・うなずきの元になる位相。0→1を延々と繰り返す。
   late final AnimationController _ambient = AnimationController(
     vsync: this,
@@ -71,7 +90,7 @@ class _KohaiFaceState extends State<KohaiFace> with TickerProviderStateMixin {
   }
 
   @override
-  void didUpdateWidget(KohaiFace oldWidget) {
+  void didUpdateWidget(SenpaiFace oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.mood == widget.mood) return;
 
@@ -79,7 +98,7 @@ class _KohaiFaceState extends State<KohaiFace> with TickerProviderStateMixin {
       ..duration = AppMotion.decorative(
         context,
         // 納得した瞬間だけは、ゆっくり見せる。ここが報酬なので。
-        widget.mood == KohaiMood.delighted ? AppDurations.celebrate : AppDurations.reaction,
+        widget.mood == SenpaiMood.delighted ? AppDurations.celebrate : AppDurations.reaction,
       )
       ..forward(from: 0);
   }
@@ -108,13 +127,13 @@ class _KohaiFaceState extends State<KohaiFace> with TickerProviderStateMixin {
         double scale = 1 + 0.022 * wave;
 
         // 納得した瞬間のはずみ。行き過ぎて戻る。
-        if (widget.mood == KohaiMood.delighted) {
+        if (widget.mood == SenpaiMood.delighted) {
           scale += 0.13 * math.sin(moodT * math.pi);
         }
 
         // うなずき。呼吸の3倍の速さで、下に沈んで戻る。
         double dy = 0;
-        if (widget.mood == KohaiMood.listening) {
+        if (widget.mood == SenpaiMood.listening) {
           final double nod = (phase * 3) % 1;
           dy = widget.size * 0.022 * (1 - math.cos(nod * 2 * math.pi)) / 2;
         }
@@ -124,29 +143,29 @@ class _KohaiFaceState extends State<KohaiFace> with TickerProviderStateMixin {
         // 祝福画面は**何かを待たせることがある**画面で、はずみが一度きりだと
         // そのあと動きが消えて止まって見える。跳ねは呼吸の位相から作るので
         // タイマーは増えず、動かすのも Transform だけ(顔の描き直しは増えない)。
-        if (widget.mood == KohaiMood.delighted) {
+        if (widget.mood == SenpaiMood.delighted) {
           dy -= widget.size * 0.018 * math.max(0, math.sin(phase * 4 * math.pi));
         }
 
-        // 首をかしげる。困っているだけで、責めてはいない。
-        final double tilt = widget.mood == KohaiMood.puzzled ? 0.05 + 0.015 * wave : 0;
+        // 首をかしげる。困っているのはこちらで、相手を責めてはいない。
+        final double tilt = widget.mood == SenpaiMood.puzzled ? 0.05 + 0.015 * wave : 0;
 
         return AnimatedContainer(
           duration: AppDurations.reaction,
           width: widget.size,
           height: widget.size,
           decoration: BoxDecoration(
-            color: widget.mood == KohaiMood.delighted
+            color: widget.mood == SenpaiMood.delighted
                 ? AppColors.said.withValues(alpha: 0.25)
                 : AppColors.blue.withValues(alpha: 0.12),
             shape: BoxShape.circle,
           ),
           child: Semantics(
             label: switch (widget.mood) {
-              KohaiMood.neutral => strings.kohaiWaiting,
-              KohaiMood.listening => strings.kohaiListening,
-              KohaiMood.delighted => strings.kohaiDelighted,
-              KohaiMood.puzzled => strings.kohaiPuzzled,
+              SenpaiMood.neutral => strings.senpaiWaiting,
+              SenpaiMood.listening => strings.senpaiListening,
+              SenpaiMood.delighted => strings.senpaiDelighted,
+              SenpaiMood.puzzled => strings.senpaiPuzzled,
             },
             child: Transform.translate(
               offset: Offset(0, dy),
@@ -192,7 +211,7 @@ class _FacePainter extends CustomPainter {
     required this.eyeOpenness,
   });
 
-  final KohaiMood mood;
+  final SenpaiMood mood;
   final double phase;
   final double moodT;
   final double eyeOpenness;
@@ -209,7 +228,7 @@ class _FacePainter extends CustomPainter {
     final double eyeDx = size.width * 0.19;
     final double eyeRadius = size.width * 0.045;
 
-    if (mood == KohaiMood.delighted) {
+    if (mood == SenpaiMood.delighted) {
       // ^ ^ の目。輝きは色(背景)と目の形の両方で出す。
       for (final double sign in <double>[-1, 1]) {
         final Path path = Path()
@@ -221,7 +240,7 @@ class _FacePainter extends CustomPainter {
       _paintSparkles(canvas, size);
     } else {
       final Paint fill = Paint()..color = AppColors.ink;
-      final double radius = eyeRadius * (mood == KohaiMood.listening ? 1.15 : 1.0);
+      final double radius = eyeRadius * (mood == SenpaiMood.listening ? 1.15 : 1.0);
 
       for (final double sign in <double>[-1, 1]) {
         final Offset center = Offset(size.width / 2 + sign * eyeDx, eyeY);
@@ -246,7 +265,7 @@ class _FacePainter extends CustomPainter {
     // うれしいときだけ、笑い方が少し揺れる。**同じ絵のまま置いておかない**
     // ための揺れなので、幅はごく小さくていい(呼吸と同じ位相から作る)。
     final double mouthY = size.height * 0.63;
-    final double smile = mood == KohaiMood.delighted
+    final double smile = mood == SenpaiMood.delighted
         ? 0.16 * (1 + 0.10 * math.sin(phase * 2 * math.pi))
         : 0.08;
     final Rect mouth = Rect.fromCenter(
@@ -256,11 +275,14 @@ class _FacePainter extends CustomPainter {
     );
     canvas.drawArc(mouth, 0.15, 2.85, false, stroke);
 
-    if (mood == KohaiMood.puzzled) _paintSweat(canvas, size);
+    if (mood == SenpaiMood.puzzled) _paintSweat(canvas, size);
   }
 
   /// 「?」ではなく、小さな汗。疑問符は問い詰める印象になる。
   /// ゆっくり伝って、消えて、また出る。
+  ///
+  /// **汗は「こちらの不首尾」の印。** 分かっている側が汗をかいているので、
+  /// 生徒に向けた表情として使うと意味が反転する([SenpaiMood.puzzled])。
   void _paintSweat(Canvas canvas, Size size) {
     final double drip = (phase * 2) % 1;
     final Offset center = Offset(size.width * 0.78, size.height * (0.30 + 0.12 * drip));

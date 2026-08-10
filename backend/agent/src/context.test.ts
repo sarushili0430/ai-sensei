@@ -8,6 +8,7 @@ import {
 
 const metadata = JSON.stringify({
   session_id: "ses_1",
+  problem_text: "x^2 - 3x + 2 = 0 を解け",
   locale: "ja",
   kind: "new",
   max_seconds: 300,
@@ -40,6 +41,51 @@ describe("readSessionContext", () => {
   it("許可トピックが空なら会話を始めない", () => {
     const empty = JSON.stringify({ ...JSON.parse(metadata), allowed_topic_ids: [] });
     expect(() => readSessionContext(empty)).toThrow(/許可トピックが空/);
+  });
+
+  /**
+   * `problem_text` と `visible_work` は**agent側で埋めない**。
+   *
+   * 契約(`sessionMetadataSchema`)が `.min(1)` を保証していて、読めなかったとき・
+   * ノートが無いときのプレースホルダまで backend/api が会話の言語で入れてくる。
+   * ここで空を埋めると文言を作る場所が2つになり、`senpai_board.<locale>.md` が
+   * **名指しで見ている**プレースホルダとずれて、分岐が発火しない。
+   *
+   * 欠けて届くのは版ずれなので、**会話を始めずに落とす**のが正しい。
+   * 空の問題文で授業を始めると、生徒はまるごと間違った問題を教わる。
+   */
+  it("問題文が欠けていたら会話を始めない", () => {
+    const { problem_text, ...rest } = JSON.parse(metadata);
+    expect(() => readSessionContext(JSON.stringify(rest))).toThrow(InvalidSessionContextError);
+    expect(() => readSessionContext(JSON.stringify({ ...rest, problem_text: "" }))).toThrow(
+      InvalidSessionContextError,
+    );
+  });
+
+  // ノートが無い経路(問題だけを撮った生徒)でも、契約側が
+  // 「(ノートの写真なし)」を入れて送ってくるので、空では届かない。
+  it("ノートの欄が欠けていたら会話を始めない", () => {
+    const { visible_work, ...rest } = JSON.parse(metadata);
+    expect(() => readSessionContext(JSON.stringify(rest))).toThrow(InvalidSessionContextError);
+  });
+
+  it("ノートが無い経路のプレースホルダは、そのまま素通しする", () => {
+    const noNotes = JSON.stringify({
+      ...JSON.parse(metadata),
+      visible_work: "(ノートの写真なし)",
+    });
+    expect(readSessionContext(noNotes).visible_work).toBe("(ノートの写真なし)");
+  });
+
+  // `question_seeds` は契約側が空を許しているので、ここだけは受ける。
+  // 文言は backend/api と同じ `formatBullets([])` から取るのでずれない。
+  it("質問の種が空なら、会話の言語で「なし」を入れる", () => {
+    const { question_seeds, ...rest } = JSON.parse(metadata);
+
+    expect(readSessionContext(JSON.stringify(rest)).question_seeds).toBe("(なし)");
+    expect(readSessionContext(JSON.stringify({ ...rest, locale: "en" })).question_seeds).toBe(
+      "(none)",
+    );
   });
 
   it("必須項目が欠けていれば会話を始めない", () => {

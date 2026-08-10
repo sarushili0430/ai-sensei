@@ -22,8 +22,12 @@
       "confidence": 0.41
     }
   ],
+  "problem": {
+    "text": "For the circle x^2 + y^2 = 5 and the line y = x + k: (1) find the number of intersection points. (2) find the value of k that makes them tangent.",
+    "source": "notes_photo"
+  },
   "limits": {
     "max_seconds": 300,
-    "remaining_sessions_today": 0
+    "lesson_allowed_today": false
   }
 }

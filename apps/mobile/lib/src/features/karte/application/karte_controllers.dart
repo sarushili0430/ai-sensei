@@ -7,8 +7,8 @@ import '../domain/karte.dart';
 
 part 'karte_controllers.g.dart';
 
-/// ホーム画面が読む進捗。カウンター(連続日数・埋めた穴)と、
-/// 今日あと何回撮れるか。数えるのはこの2つだけで、点数は持たない。
+/// ホーム画面が読む進捗。カウンター(連続日数・埋めた穴)と、今日の授業可否。
+/// 数えるのは連続日数と埋めた穴だけで、授業回数や点数は持たない。
 @Riverpod(keepAlive: true)
 class ProgressController extends _$ProgressController {
   @override
@@ -19,20 +19,26 @@ class ProgressController extends _$ProgressController {
     state = await AsyncValue.guard(() => ref.read(apiClientProvider).fetchProgress());
   }
 
-  /// セッション直後は、サーバが返した進捗をそのまま反映する(再取得しない)。
+  /// セッション作成後の可否を、そのレスポンスから引き継ぐ。
   ///
-  /// `/complete` のレスポンスに残セッション数は入っていないので、
-  /// 1回ぶん自分で減らす。ホームに戻った瞬間に古い数字が残らないようにするため
-  /// で、判定そのものはサーバが持っている(ここがずれても撮れる/撮れないは変わらない)。
+  /// 回数から推測しない。セッションを作った時点でサーバが返した真偽値が、
+  /// その授業のあとにもう一度始められるかを表している。
+  void applyLessonAllowance(bool lessonAllowedToday) {
+    final ProgressSummary previous = state.value ?? ProgressSummary.empty;
+    state = AsyncValue<ProgressSummary>.data(
+      previous.copyWith(
+        limits: previous.limits.copyWith(lessonAllowedToday: lessonAllowedToday),
+      ),
+    );
+  }
+
+  /// セッション直後は、サーバが返した進捗をそのまま反映する(再取得しない)。
+  /// 授業可否はセッション作成時に [applyLessonAllowance] で反映済み。
   void applyFromSession(Progress progress) {
     final ProgressSummary previous = state.value ?? ProgressSummary.empty;
-    final int? remaining = previous.limits.remainingSessionsToday;
     state = AsyncValue<ProgressSummary>.data(
       previous.copyWith(
         progress: progress,
-        limits: previous.limits.copyWith(
-          remainingSessionsToday: remaining == null ? null : (remaining - 1).clamp(0, remaining),
-        ),
       ),
     );
   }

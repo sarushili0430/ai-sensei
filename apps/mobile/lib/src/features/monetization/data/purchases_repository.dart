@@ -29,16 +29,38 @@ class PurchasesRepository {
     // 課金の不具合はログが無いと追えない。リリースでも info は残す。
     await Purchases.setLogLevel(kDebugMode ? LogLevel.debug : LogLevel.info);
 
-    await Purchases.configure(
-      PurchasesConfiguration(RevenueCatConfig.apiKey)
+    await Purchases.configure(configurationFor(appUserId));
+  }
+
+  /// 設定値そのもの。**テストから読めるように切り出してある。**
+  ///
+  /// `Purchases.configure` はプラットフォームチャンネルを叩くのでテストから
+  /// 呼べない。値の組み立てだけを分けておけば、「送信の既定を明示して切った」
+  /// という約束は回帰で固定できる(`Telemetry` の `DegradationEvent` と同じ考え方)。
+  @visibleForTesting
+  static PurchasesConfiguration configurationFor(String appUserId) {
+    return PurchasesConfiguration(RevenueCatConfig.apiKey)
         // アカウント作成を要求しないので、匿名デバイスIDをそのまま appUserID にする。
         // webhook の app_user_id にこの値が乗ってくる
         // (backend/api/src/routes/webhooks.ts)。
         ..appUserID = appUserId
         // ストア側の障害メッセージ(支払い方法の期限切れなど)は
         // OSに任せて自動で出す。自前で気づけない類のものなので。
-        ..shouldShowInAppMessagesAutomatically = true,
-    );
+        ..shouldShowInAppMessagesAutomatically = true
+        // **SDKの既定は true。** アトリビューションIDを設定したときに
+        // 広告識別子(iOS: `$idfa` / `$idfv` / `$ip`、Android: `$gpsAdId` /
+        // `$androidId` / `$ip`)を RevenueCat へ送る設定。
+        //
+        // このアプリはアトリビューションを1つも使っていないので、いまは
+        // 実際には送られない。**それでも明示して切る**理由が2つある:
+        //   1. 将来 `setAdjustID` などを1行足した瞬間に、**未成年の端末の
+        //      広告識別子が黙って流れ始める**。1行の追加で起きる変化としては重すぎる
+        //   2. 既定に頼ると、SDKの更新で既定が変わったときに誰も気づけない
+        //      (Sentry の `enablePrintBreadcrumbs` で踏んだのと同じ形)
+        ..automaticDeviceIdentifierCollectionEnabled = false
+        // 既定でも false。**既定で安全なものも明示する**(同上の理由)。
+        // 応答時間やエラーコードを RevenueCat に送る設定で、購入の成否には関わらない。
+        ..diagnosticsEnabled = false;
   }
 
   Future<CustomerInfo> customerInfo() => Purchases.getCustomerInfo();

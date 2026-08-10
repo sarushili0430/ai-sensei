@@ -7,7 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../common_widgets/chunky_button.dart';
 import '../../../common_widgets/confetti.dart';
 import '../../../common_widgets/entrance.dart';
-import '../../../common_widgets/kohai_face.dart';
+import '../../../common_widgets/senpai_face.dart';
 import '../../../l10n/strings.dart';
 import '../../../routing/routes.dart';
 import '../../../theme/tokens.dart';
@@ -19,7 +19,7 @@ import '../../karte/domain/karte.dart';
 /// **にぎやかな画面**。ただし数えるのは連続日数と「埋めた穴」だけで、
 /// 点数・正誤・XPは出さない(handoff §7)。
 ///
-/// にぎやかさの出しかたは、紙吹雪と後輩のはずみだけ。
+/// にぎやかさの出しかたは、紙吹雪と先輩のはずみだけ。
 /// 数字を大きく動かして盛り上げると、点数を出していないのに
 /// 点数の画面に見えてしまう。
 class CelebrationScreen extends ConsumerStatefulWidget {
@@ -141,7 +141,7 @@ class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
-                  const PopIn(child: KohaiFace(mood: KohaiMood.delighted, size: 160)),
+                  const PopIn(child: SenpaiFace(mood: SenpaiMood.delighted, size: 160)),
                   const SizedBox(height: AppSpacing.xl),
                   FadeSlideIn.staggered(
                     index: 2,

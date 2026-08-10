@@ -8,6 +8,6 @@
   "is_premium": false,
   "limits": {
     "max_seconds": 300,
-    "remaining_sessions_today": 1
+    "lesson_allowed_today": true
   }
 }

@@ -15,8 +15,8 @@ export function isPremiumNow(user: UserRecord | null, now: Date): boolean {
 }
 
 export type SessionAllowance =
-  | { allowed: true; maxSeconds: number; remainingToday: number | null }
-  | { allowed: false; remainingToday: 0; retryAfterSeconds: number };
+  | { allowed: true; maxSeconds: number; lessonAllowedToday: boolean }
+  | { allowed: false; lessonAllowedToday: false; retryAfterSeconds: number };
 
 /**
  * そのデバイスが今セッションを始められるかを判定する。
@@ -35,7 +35,7 @@ export function checkSessionAllowance(input: {
     return {
       allowed: true,
       maxSeconds: input.limits.premiumSessionMaxSeconds,
-      remainingToday: null,
+      lessonAllowedToday: true,
     };
   }
 
@@ -43,7 +43,7 @@ export function checkSessionAllowance(input: {
   if (remaining <= 0) {
     return {
       allowed: false,
-      remainingToday: 0,
+      lessonAllowedToday: false,
       retryAfterSeconds: secondsUntilLocalMidnight(input.now, input.timezoneOffsetMinutes ?? 540),
     };
   }
@@ -51,8 +51,8 @@ export function checkSessionAllowance(input: {
   return {
     allowed: true,
     maxSeconds: input.limits.freeSessionMaxSeconds,
-    // このセッションを消費したあとの残数
-    remainingToday: remaining - 1,
+    // 成功したセッションは直後に予約される。§6-3の方針どおり、残数ではなく次の授業の可否だけを渡す。
+    lessonAllowedToday: remaining > 1,
   };
 }
 

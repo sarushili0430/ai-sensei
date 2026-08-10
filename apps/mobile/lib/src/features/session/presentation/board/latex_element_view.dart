@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 
+import '../../../../telemetry/telemetry.dart';
 import '../../../../theme/tokens.dart';
 import 'board_style.dart';
 
@@ -25,7 +26,9 @@ import 'board_style.dart';
 /// 状況は輪をかけて長い式なので、無条件に縮め続けるとほぼ確実に読めなくなる。
 /// 横スクロールは板書としては望ましくない(実測比較で不採用と判定した案B)が、
 /// **「読めないまま固定表示する」よりは「操作すれば全部読める」方が安全**という
-/// 消去法の選択。起きてはいけない状態なので `debugPrint` で気づけるようにする。
+/// 消去法の選択。**起きてはいけない状態なので、記録して本番でも気づけるようにする**
+/// (`Degradation.latexScaleFloor`。計画書 §10-7。以前は `debugPrint` だけで、
+/// agent 側の分割が効いていないことに永遠に気づけなかった)。
 ///
 /// **横スクロールに逃がすだけでは、案Bを不採用にした理由がそのまま復活する。**
 /// 実測比較で案Bを見送ったのは「静止画では続きがある手がかりが一切ない」ためで、
@@ -60,6 +63,24 @@ class _LatexElementViewState extends State<LatexElementView> {
     setState(() => _naturalWidth = width);
   }
 
+  /// 幅が痩せたことを1度だけ記録する。
+  ///
+  /// `LayoutBuilder` は再ビルドのたびに走るので、**ここで自前の番人を持たないと
+  /// 1画面ぶんで何度も呼ばれる**([Telemetry] 側の間引きは種類×鍵の単位なので、
+  /// 鍵が同じなら結局落ちるが、無駄な呼び出しは手前で止める)。
+  bool _reportedNarrow = false;
+
+  void _reportIfTooNarrow(BuildContext context, double available) {
+    // 比べる相手は「この端末で取れるはずの幅」。340pt をそのまま閾値にすると、
+    // iPhone SE(実効327pt)では**当たり前に下回って毎回飛ぶ**。
+    final double expected = BoardStyle.expectedWidth(MediaQuery.sizeOf(context).width);
+    if (_reportedNarrow || available >= expected) return;
+    _reportedNarrow = true;
+    Telemetry.report(
+      DegradationEvent.boardTooNarrow(availableWidth: available, assumedWidth: expected),
+    );
+  }
+
   Widget _math({Key? key, double fontSize = BoardStyle.latexFontSize}) => Math.tex(
     widget.tex,
     key: key,
@@ -77,6 +98,14 @@ class _LatexElementViewState extends State<LatexElementView> {
       builder: (BuildContext context, BoxConstraints constraints) {
         final double available = constraints.maxWidth;
         final double? natural = _naturalWidth;
+
+        // 板書に使える幅を、**この端末で取れるはずの幅**と比べる。
+        //
+        // **縮小率の下限(70%)は幅を基準に決めた値**なので、幅が痩せると
+        // 「収まると確認した式」まで横スクロールに落ちる。実際、自習室の板書は
+        // カードに入れた時点で 311pt まで落ちていた(`study_room_screen.dart` の
+        // `_Board` のコメント)。見た目では気づけないので、幅そのものを見張る。
+        _reportIfTooNarrow(context, available);
 
         // 計測用。画面には出さず(不透明度0)、`OverflowBox` で制約を外して
         // 「自然な幅なら何ptか」を測るためだけに存在する。
@@ -126,10 +155,22 @@ class _LatexElementViewState extends State<LatexElementView> {
         }
 
         // 70%を下回る。理由はクラスコメント参照。
-        debugPrint(
-          'LatexElementView: 縮小率${(scale * 100).toStringAsFixed(0)}%'
-          '(下限${(BoardStyle.latexMinScale * 100).toStringAsFixed(0)}%)になる'
-          'texを受信。横スクロールにフォールバックします: "${widget.tex}"',
+        //
+        // **これは agent 側の分割が効いていないことのシグナル**(計画書 §3-6b の
+        // 宿題そのもの)。以前は `debugPrint` にしか出ておらず、本番では
+        // 「分割が機能していないことに永遠に気づけない」状態だった(§10-7)。
+        //
+        // 間引きは式ごと(この層は `board_id` を知らない)。同じ式が
+        // 何度描き直されても1件で、別の式なら別件として飛ぶ。
+        // `tex` を切るのは `DegradationEvent` の内側。全文を渡してよい。
+        Telemetry.report(
+          DegradationEvent.latexScaleFloor(
+            tex: widget.tex,
+            scale: scale,
+            minScale: BoardStyle.latexMinScale,
+            availableWidth: available,
+            naturalWidth: natural,
+          ),
         );
         // Transform.scaleではなく、フォントサイズそのものを70%にして描き直す。
         // Transformは描画だけを縮小してレイアウト上の幅は元のままなので、

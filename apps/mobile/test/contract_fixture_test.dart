@@ -57,7 +57,7 @@ void main() {
       expect(session.livekit.room, session.sessionId);
       expect(session.detectedTopics, hasLength(2));
       expect(session.limits.maxSeconds, 300);
-      expect(session.limits.isUnlimited, isFalse);
+      expect(session.limits.lessonAllowedToday, isFalse);
     });
 
     test('create-session-response.en.json をパースできる(海外向けの課程)', () {
@@ -68,6 +68,39 @@ void main() {
       expect(session.detectedTopics.first.topicId, 'A2-COORD-CIRCLE');
       // チップに出るのはサーバが返す科目名。訳さずそのまま出す。
       expect(session.detectedTopics.first.course, 'Algebra 2');
+    });
+
+    // 問題文(§4-1 グラウンディング)。ここが落ちていると、授業の前に
+    // 読み合わせる画面に何も出ず、誤読が15分後まで表面化しない。
+    test('読み取った問題文を、出どころつきで読める', () {
+      final SessionStart session = SessionStart.fromJson(loadFixture('create-session-response'));
+
+      expect(session.problem, isNotNull);
+      expect(session.problem!.text, contains('共有点の個数'));
+      // 2枚目(問題の写真)から読めた場合。**この写真は解析後に破棄される。**
+      expect(session.problem!.source, ProblemSource.problemPhoto);
+    });
+
+    test('1枚に両方写っていた場合は、出どころがノートの写真になる', () {
+      final SessionStart session = SessionStart.fromJson(
+        loadFixture('create-session-response.en'),
+      );
+
+      expect(session.problem!.source, ProblemSource.notesPhoto);
+      expect(session.problem!.text, contains('number of intersection points'));
+    });
+
+    // 読めなかったとき。**fixtureが無いのでキーを落として作る。**
+    // `packages/contract` は読むだけなので、ここでfixtureを増やさない。
+    // 見たいのは「値が無くても組み立てが止まらないこと」で、
+    // 契約上のキーの有無(`nullable()`)はTypeScript側が見ている。
+    test('問題文が読めなくても、セッションは組み立てられる', () {
+      final Map<String, dynamic> json = loadFixture('create-session-response')
+        ..['problem'] = null;
+      expect(SessionStart.fromJson(json).problem, isNull);
+
+      json.remove('problem');
+      expect(SessionStart.fromJson(json).problem, isNull);
     });
 
     test('確信度の低い候補を見分けられる(チップの初期選択に使う)', () {

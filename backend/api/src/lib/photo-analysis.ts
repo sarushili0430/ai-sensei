@@ -1,3 +1,4 @@
+import { type SessionProblem, problemTextMaxLength } from "@ai-sensei/contract";
 import {
   type CurriculumLocale,
   findTopic,
@@ -5,6 +6,7 @@ import {
   suggestTopics,
   topicsFor,
 } from "@ai-sensei/curriculum";
+import { checkProblemText } from "@ai-sensei/guardrail";
 import { formatBullets, getPrompt, renderPrompt } from "@ai-sensei/prompts";
 import { z } from "zod";
 
@@ -24,6 +26,19 @@ import { z } from "zod";
 export const photoAnalysisSchema = z.object({
   is_math_note: z.boolean(),
   summary: z.string(),
+  /**
+   * 解いている問題そのものの書き起こし(計画書 §0 の決定4「問題とノートをセットで送る」)。
+   *
+   * **読めなければ空文字**。既定を `""` にしてあるのは、解析器が古い形で返しても
+   * セッションが始まるようにするため — ここで parse に失敗させると、
+   * 問題文が読めないだけで**授業そのものが始まらなくなる**。
+   * 空だったときに何をプロンプトへ渡すかは、呼び出し側(`routes/sessions.ts`)の責務。
+   *
+   * 上限は `@ai-sensei/contract` の `problemTextMaxLength`。**ここでは切らずに通す。**
+   * 超えた場合は「紙面を丸ごと書き起こした」ということなので、
+   * 黙って先頭600字を使うと、設問の途中で切れた問題を教えることになる。
+   */
+  problem_text: z.string().default(""),
   visible_work: z.array(z.string()).default([]),
   topics: z
     .array(z.object({ topic_id: z.string(), confidence: z.number().min(0).max(1) }))
@@ -33,13 +48,27 @@ export const photoAnalysisSchema = z.object({
 });
 export type PhotoAnalysis = z.infer<typeof photoAnalysisSchema>;
 
+/** 解析に渡す画像1枚。 */
+export type PhotoAnalysisImage = { image: ArrayBuffer; contentType: string };
+
+/**
+ * 解析に渡すもの。**どちらか1枚は必ずある**ことを型で言っている。
+ *
+ * 配列(`images: [...]`)にしていないのは、2枚が対等ではないから:
+ * ノートはR2に保存し、問題の紙面は**保存しない**(`contract` の `sessionPhotoParts`)。
+ * 配列にすると、この非対称性が型から消える。
+ *
+ * 「両方 undefined」を書けなくしてあるのは、そこが**無音で壊れる形**だから —
+ * 画像なしでVision APIを呼ぶと、解析器は写真を見ないまま `is_math_note: true` と
+ * 想像で答えることがあり、**写真に無い単元でセッションが始まる**。
+ */
+export type PhotoAnalyzerInput = { locale?: CurriculumLocale } & (
+  | { notes: PhotoAnalysisImage; problem?: PhotoAnalysisImage }
+  | { notes?: PhotoAnalysisImage; problem: PhotoAnalysisImage }
+);
+
 export type PhotoAnalyzer = {
-  analyze(input: {
-    image: ArrayBuffer;
-    contentType: string;
-    /** どの課程のトピックに対応づけるか。省略時は日本の課程。 */
-    locale?: CurriculumLocale;
-  }): Promise<PhotoAnalysis>;
+  analyze(input: PhotoAnalyzerInput): Promise<PhotoAnalysis>;
 };
 
 /** Vision API(Anthropic Messages)が受け取れる画像形式。これ以外は400が返る。 */
@@ -154,6 +183,66 @@ export function resolveDetectedTopics(
   return { topicIds: [...new Set(topicIds)], droppedIds };
 }
 
+/**
+ * 解析結果から、そのセッションが扱う問題を決める(ガードレール1段目の問題文版)。
+ *
+ * `resolveDetectedTopics` が topic_id にやっていることと同じ立ち位置で、
+ * **LLMの出力をそのまま信じないための一段**。3つに分かれる:
+ *
+ *   - `read` … 読めた。会話の起点になる
+ *   - `not_found` … 写っていない(または解析器が空で返した)。
+ *     **これは失敗ではない。** 問題の写真は必須ではないので(§4-1)、
+ *     セッションはこのまま成立する。先輩は「問題、読んでもらってもいい?」から始める
+ *   - `too_long` … 上限を超えた = **紙面を丸ごと書き起こしている**。
+ *     先頭で切ると設問の途中で切れた問題を教えることになるので、**丸ごと捨てる**。
+ *     章末の解答まで書き起こしている可能性が高く、そのまま渡すと先輩が答えを読み上げる
+ *   - `solution_included` / `not_a_problem` … `@ai-sensei/guardrail` の
+ *     {@link checkProblemText} が弾いたもの
+ *
+ * **どの落ち方でも `problem` は `null` にするだけで、セッションは止めない。**
+ * 再解析はしない: 解答が混ざる原因は「紙面のどこを写したか」なので、
+ * **同じ写真をもう一度投げても同じものが返る**。Vision の課金とセッション開始の
+ * 数秒を払って、同じ結果を得るだけになりやすい。
+ *
+ * 落ち方を `not_found` にまとめないのは、**観測のため**。
+ * `too_long` が続けば `prompts/photo_analysis.*.md` の600字の指示が効いていない、
+ * `solution_included` が続けば「解答は取らない」の指示が効いていない、と読み分けられる。
+ * ログで区別できないと、どちらも永遠に気づけない。
+ */
+export const problemOutcomes = [
+  "read",
+  "not_found",
+  "too_long",
+  "solution_included",
+  "not_a_problem",
+] as const;
+export type ProblemOutcome = (typeof problemOutcomes)[number];
+
+export function resolveSessionProblem(input: {
+  analysis: PhotoAnalysis | null;
+  /** `problem_photo` パートが送られてきたか。読み取り元の記録に使う。 */
+  hadProblemPhoto: boolean;
+}): { problem: SessionProblem | null; outcome: ProblemOutcome } {
+  const text = input.analysis?.problem_text.trim() ?? "";
+  if (text.length === 0) return { problem: null, outcome: "not_found" };
+  if (text.length > problemTextMaxLength) return { problem: null, outcome: "too_long" };
+
+  /**
+   * 中身の妥当性は guardrail の担当(`topicIdSchema` と同じ分担)。
+   *
+   * **弾いた結果は「問題が写っているのに見ないまま教える」に戻る**ので、
+   * 向こうは「迷ったら通す」で書いてある。ここでその方針を上書きしない —
+   * 追加の条件をこちら側に足すと、方針が2か所に分かれて緩急が読めなくなる。
+   */
+  const verdict = checkProblemText(text);
+  if (!verdict.ok) return { problem: null, outcome: verdict.reason };
+
+  return {
+    problem: { text, source: input.hadProblemPhoto ? "problem_photo" : "notes_photo" },
+    outcome: "read",
+  };
+}
+
 export function toDetectedTopicPayload(
   topicIds: readonly string[],
   analysis: PhotoAnalysis,
@@ -183,6 +272,40 @@ const analysisInstruction: Record<CurriculumLocale, string> = {
   en: "Analyze these notes and return the JSON only.",
 };
 
+/**
+ * 各画像の前に置く見出し。
+ *
+ * **2枚を1回の呼び出しで渡すときは、どちらがどちらかを言葉で教える。**
+ * ラベルなしで2枚並べると、解析器は問題集の紙面を「生徒が書いた作業」として
+ * `visible_work` に入れる(= 印刷された模範解答を、生徒がやったことだと誤読する)。
+ *
+ * **ノートだけのときはラベルを付けない。**「1枚目」と言われると、
+ * 解析器は写っていない2枚目を前提に答えはじめる。
+ *
+ * **問題だけのときは、必ずラベルを付ける。**
+ * システムプロンプト(`prompts/photo_analysis.*.md`)は「2枚目が無ければ、
+ * ノートの写真に問題が写っていないか探す」と書いてあり、**1枚しか無い場合は
+ * それをノートだと想定している**。問題だけを送る経路はそのあとに増えたので、
+ * ここで打ち消さないと、印刷された紙面がまるごと「生徒がやった作業」になる。
+ */
+const imageLabels: Record<
+  CurriculumLocale,
+  { notes: string; problem: string; problemOnly: string }
+> = {
+  ja: {
+    notes: "1枚目 — 生徒のノート:",
+    problem: "2枚目 — 問題(教科書・問題集の紙面):",
+    problemOnly:
+      "問題(教科書・問題集の紙面)。ノートの写真はありません — visible_work は空にしてください:",
+  },
+  en: {
+    notes: "Photo 1 — the student's notes:",
+    problem: "Photo 2 — the problem (a textbook or workbook page):",
+    problemOnly:
+      "The problem (a textbook or workbook page). There is no photo of the notes — leave visible_work empty:",
+  },
+};
+
 export type AnthropicAnalyzerOptions = {
   apiKey: string;
   model: string;
@@ -196,7 +319,31 @@ export function createAnthropicAnalyzer(options: AnthropicAnalyzerOptions): Phot
   const baseUrl = options.baseUrl ?? "https://api.anthropic.com";
 
   return {
-    async analyze({ image, contentType, locale = "ja" }) {
+    async analyze({ notes, problem, locale = "ja" }) {
+      // 2枚あるときは **1回の呼び出し** で渡す。分けて2回叩くと、
+      // (a) Vision の課金が2倍になる(§6-1 の見積もりは「問題+ノート2枚」で1項目)
+      // (b) **解析器が2枚を突き合わせられない** — ノートだけを見た回は
+      //     「何の問題を解いているか」を知らないまま単元を当てることになる。
+      //     問題とノートをセットで送る(§0 決定4)の意味は、まさにこの突き合わせにある。
+      const labels = imageLabels[locale];
+      const content: Record<string, unknown>[] = [];
+
+      const pushImage = (label: string | null, picture: PhotoAnalysisImage) => {
+        if (label !== null) content.push({ type: "text", text: label });
+        content.push({
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: picture.contentType,
+            data: toBase64(picture.image),
+          },
+        });
+      };
+
+      if (notes) pushImage(problem ? labels.notes : null, notes);
+      if (problem) pushImage(notes ? labels.problem : labels.problemOnly, problem);
+      content.push({ type: "text", text: analysisInstruction[locale] });
+
       const response = await doFetch(`${baseUrl}/v1/messages`, {
         method: "POST",
         headers: {
@@ -208,18 +355,7 @@ export function createAnthropicAnalyzer(options: AnthropicAnalyzerOptions): Phot
           model: options.model,
           max_tokens: 1500,
           system: photoAnalysisPrompt(locale),
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "image",
-                  source: { type: "base64", media_type: contentType, data: toBase64(image) },
-                },
-                { type: "text", text: analysisInstruction[locale] },
-              ],
-            },
-          ],
+          messages: [{ role: "user", content }],
         }),
       });
 

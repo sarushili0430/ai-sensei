@@ -68,13 +68,13 @@ describe("createLiveKitToken", () => {
       room: "ses_1",
       ttlSeconds: 420,
       metadata,
-      agent: { name: "ai-sensei-kohai", metadata },
+      agent: { name: "ai-sensei-senpai", metadata },
       now,
     });
 
     const claims = await verifyJwt(token, secret);
     expect(claims?.["roomConfig"]).toEqual({
-      agents: [{ agent_name: "ai-sensei-kohai", metadata }],
+      agents: [{ agent_name: "ai-sensei-senpai", metadata }],
     });
   });
 

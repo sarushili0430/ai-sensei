@@ -60,7 +60,7 @@ abstract class Karte with _$Karte {
     required List<Hole> holes,
     @JsonKey(name: 'term_notes') required List<String> termNotes,
 
-    /// 後輩のあと追い質問(Premiumのみ)。
+    /// 先輩のあと追い質問(Premiumのみ)。
     @JsonKey(name: 'followup_question') String? followupQuestion,
   }) = _Karte;
 
@@ -87,19 +87,19 @@ abstract class SessionLimits with _$SessionLimits {
   const factory SessionLimits({
     @JsonKey(name: 'max_seconds') required int maxSeconds,
 
-    /// その日に残っているセッション数。Premium は null(無制限)。
-    @JsonKey(name: 'remaining_sessions_today') required int? remainingSessionsToday,
+    /// この応答時点から、今日さらに授業を始められるか。
+    @JsonKey(name: 'lesson_allowed_today') required bool lessonAllowedToday,
   }) = _SessionLimits;
 
   factory SessionLimits.fromJson(Map<String, dynamic> json) => _$SessionLimitsFromJson(json);
 
   static const SessionLimits unknown =
-      SessionLimits(maxSeconds: 300, remainingSessionsToday: null);
+      SessionLimits(maxSeconds: 300, lessonAllowedToday: true);
 }
 
 /// `GET /v1/me/progress` の全体。ホームが読む。
 ///
-/// カウンターだけでなく残りセッション数も返ってきているので、
+/// カウンターだけでなく今日の授業可否も返ってきているので、
 /// 「今日はもう撮れない」をホームで先に伝えられる(撮ってから断らない)。
 @freezed
 abstract class ProgressSummary with _$ProgressSummary {
@@ -125,7 +125,7 @@ abstract class ReviewQueueItem with _$ReviewQueueItem {
     required Hole hole,
     @JsonKey(name: 'days_since') required int daysSince,
 
-    /// 後輩の声のひとこと。通知文と同じ。
+    /// 先輩の声のひとこと。通知文と同じ。
     required String prompt,
   }) = _ReviewQueueItem;
 

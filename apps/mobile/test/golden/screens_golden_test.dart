@@ -39,7 +39,7 @@ void main() {
     String name, {
     List<Object?> overrides = const <Object?>[],
   }) async {
-    await setGoldenSurface(tester);
+    await setSurface(tester);
     await tester.pumpWidget(wrapApp(screen, overrides: overrides));
     await tester.pumpAndSettle();
     await capture(tester, name);
@@ -59,7 +59,7 @@ void main() {
   // リハーサル。ここで見たいのは、**答えが1文字も出ていない**こと。
   // 出ているのは質問と、説明する/言えない の2つの道だけ。
   testWidgets('01b オンボーディング(リハーサル)', (WidgetTester tester) async {
-    await setGoldenSurface(tester);
+    await setSurface(tester);
     await tester.pumpWidget(wrapApp(const OnboardingScreen()));
     await tester.pumpAndSettle();
 
@@ -71,7 +71,7 @@ void main() {
   // パスしたあとのカルテ見本。穴がピンクで残り、責める言葉が無く、
   // 「また来る」ことが線で見えているか。
   testWidgets('01c オンボーディング(カルテの見本)', (WidgetTester tester) async {
-    await setGoldenSurface(tester);
+    await setSurface(tester);
     await tester.pumpWidget(wrapApp(const OnboardingScreen()));
     await tester.pumpAndSettle();
 

@@ -5,6 +5,8 @@ import { TranscriptCollector, renderTranscript } from "./transcript.ts";
 const context = readSessionContext(
   JSON.stringify({
     session_id: "ses_1",
+    problem_text: "x^2 - 3x + 2 = 0 を解け",
+    visible_work: "- 因数分解しかけて止まっている",
     max_seconds: 300,
     allowed_topic_ids: ["M2-ZUKEI-ENCHOKU"],
   }),
@@ -31,7 +33,7 @@ describe("TranscriptCollector", () => {
     expect(collector.all[0]?.text).toBe("x^2を代入しました");
   });
 
-  it("後輩の発話は正規化しない(TTS向けの整形済みテキスト)", () => {
+  it("先輩の発話は正規化しない(TTS向けの整形済みテキスト)", () => {
     const collector = new TranscriptCollector(startedAt, context);
     collector.add({ role: "assistant", text: "エックスの2乗の話ですよね?", at: at(1) });
     expect(collector.all[0]?.text).toBe("エックスの2乗の話ですよね?");
@@ -58,19 +60,20 @@ describe("TranscriptCollector", () => {
     expect(collector.hasUserSpeech).toBe(true);
   });
 
-  // 会話中に差し止めることはできないので、記録してプロンプト調整の材料にする
-  it("後輩が答えを漏らした発話を記録する", () => {
+  /**
+   * 答えの漏れは**もう見ていない**(ピボット計画 v1 §0 の改正・§8 の「捨てる」列)。
+   * 先輩は詰まった箇所を教えるのが仕事なので、当てたままだと
+   * **ほぼ全セッションが漏れとして記録され、警告が鳴りっぱなしになる**。
+   *
+   * 教えた発話も、そのまま transcript に載る(カルテ生成の文脈として要る)。
+   * 授業フェーズの発話が載らないのは `addToChatCtx: false` のほうの手当てで、
+   * ここではない。
+   */
+  it("先輩が答えを教えた発話も、そのまま積む", () => {
     const collector = new TranscriptCollector(startedAt, context);
-    collector.add({ role: "assistant", text: "答えは2点で交わる、ですよね?", at: at(4) });
-    collector.add({ role: "assistant", text: "なんでそうしたんですか?", at: at(8) });
+    collector.add({ role: "assistant", text: "答えは2点で交わる、だね。", at: at(4) });
 
-    expect(collector.answerLeaks).toEqual(["答えは2点で交わる、ですよね?"]);
-  });
-
-  it("ユーザーの発話は答え漏れとして数えない", () => {
-    const collector = new TranscriptCollector(startedAt, context);
-    collector.add({ role: "user", text: "答えは2点で交わるです", at: at(4) });
-    expect(collector.answerLeaks).toEqual([]);
+    expect(collector.all.map((message) => message.text)).toEqual(["答えは2点で交わる、だね。"]);
   });
 });
 
@@ -81,7 +84,7 @@ describe("renderTranscript", () => {
         { role: "assistant", text: "なんでですか?", at_ms: 0 },
         { role: "user", text: "距離で比べました", at_ms: 1000 },
       ]),
-    ).toBe("後輩: なんでですか?\nユーザー: 距離で比べました");
+    ).toBe("先輩: なんでですか?\nユーザー: 距離で比べました");
   });
 
   it("発話がなければプレースホルダ", () => {
@@ -93,6 +96,8 @@ describe("英語のセッション", () => {
   const englishContext = readSessionContext(
     JSON.stringify({
       session_id: "ses_en",
+      problem_text: "x^2 - 3x + 2 = 0 を解け",
+      visible_work: "- 因数分解しかけて止まっている",
       locale: "en",
       max_seconds: 300,
       allowed_topic_ids: ["A2-COORD-CIRCLE"],
@@ -105,12 +110,6 @@ describe("英語のセッション", () => {
     expect(collector.all[0]?.text).toBe("I substituted x^2");
   });
 
-  it("英語の答えの漏れを拾う", () => {
-    const collector = new TranscriptCollector(startedAt, englishContext);
-    collector.add({ role: "assistant", text: "The answer is 2, isn't it?", at: at(1) });
-    expect(collector.answerLeaks).toEqual(["The answer is 2, isn't it?"]);
-  });
-
   it("transcriptは英語のロール名で書き出す(プロンプト側と揃える)", () => {
     expect(
       renderTranscript(
@@ -120,6 +119,6 @@ describe("英語のセッション", () => {
         ],
         "en",
       ),
-    ).toBe("Kohai: Why is that?\nStudent: Because of the radius");
+    ).toBe("Senpai: Why is that?\nStudent: Because of the radius");
   });
 });

@@ -23,7 +23,7 @@ abstract final class PushConfig {
 /// プッシュ通知(OneSignal)。
 ///
 /// このアプリの再訪はぜんぶ通知が起点なので、ここが繋がっていないと
-/// 「翌日・3日後・7日後に後輩がもう一度たずねてくる」が実機で成立しない。
+/// 「翌日・3日後・7日後に先輩がもう一度たずねてくる」が実機で成立しない。
 ///
 /// サーバは `include_aliases.external_id = [deviceId]` で宛先を指定している
 /// (`backend/api/src/lib/notifications.ts`)。なので **login(deviceId) は必須**。
@@ -35,6 +35,15 @@ class PushRepository {
   Future<void> configure({required String deviceId}) async {
     if (!PushConfig.isConfigured) return;
     OneSignal.initialize(PushConfig.appId);
+
+    // **位置情報を渡さない。** このアプリは地理での出し分けを一切しないので、
+    // 位置は要らない。SDK側の既定に頼らず明示するのは、既定が変わったときに
+    // 誰も気づけないため(Sentry の `enablePrintBreadcrumbs` で踏んだ形)。
+    //
+    // ユーザーは未成年で、通知に要るのは「いつ送るか」だけ。
+    // `requestPermission()` は**呼ばない**(呼ぶと位置情報の許可を聞きにいく)。
+    await OneSignal.Location.setShared(false);
+
     await OneSignal.login(deviceId);
   }
 

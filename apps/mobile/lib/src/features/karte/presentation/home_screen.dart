@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../common_widgets/centered_scroll.dart';
 import '../../../common_widgets/chunky_button.dart';
 import '../../../common_widgets/entrance.dart';
-import '../../../common_widgets/kohai_face.dart';
+import '../../../common_widgets/senpai_face.dart';
 import '../../../l10n/strings.dart';
 import '../../../routing/routes.dart';
 import '../../../theme/tokens.dart';
@@ -14,10 +15,22 @@ import '../domain/karte.dart';
 
 /// ホーム。
 ///
-/// ここは**ハブ**であって、カメラの起動ボタンではない。置くのは3つだけ:
-///   - 数えているもの(連続日数と埋めた穴。XP・レベル・ランクは出さない — handoff §7)
-///   - 今日やること(撮る)と、きのうの続き(埋めていない穴)
-///   - 今日あと何回撮れるか(事実だけ。煽らない — §6)
+/// ここは**ハブ**であって、カメラの起動ボタンではない。ピボット(計画書§2)で
+/// コアループが「後輩に説明する」から「先輩に教わる → 教え返す」に変わり、
+/// モードが増えたので、入口が1本(撮る)から3本に組み替わっている。
+///
+/// 数えているもの(連続日数と埋めた穴)は据え置き。
+/// XP・レベル・偏差値は出さない(§5-2)。入口は3つ:
+///   - 今日の入口「先輩に教わる」(撮る → 授業モード。従量原価が発生する側 — §4-1)
+///   - 「自習室に入る」(無料・原価ゼロ — §4-2)
+///   - きのうの続き(埋めていない穴 → 復習)
+///
+/// **回数の数字は出さない**(§6-3)。上限は「先輩の判断」として文章で見せる。
+/// 詳しくは [_EnoughForTodayLine]。
+///
+/// 計画モード(§4-3)の導線は**まだ置いていない**。画面がまだ無く、
+/// 押しても何も起きない入口をハブに並べると「押せば進む」が崩れるため。
+/// 画面ができたら、ここに4つ目として足す。
 ///
 /// タブバーは置かない。常設タブに値するのはこの画面だけで、カルテは
 /// セッション直後にだけ意味を持つ一過性の画面だから(タブにすると空タブになる)。
@@ -31,6 +44,11 @@ class HomeScreen extends ConsumerWidget {
     final AsyncValue<ProgressSummary> summary = ref.watch(progressControllerProvider);
     final ProgressSummary data = summary.value ?? ProgressSummary.empty;
 
+    // 今日はもう授業をしない、と先輩が決めた状態(§6-3)。
+    // 撮ってから断られるより、ここで先に「今日はここまで」と言われるほうがいい。
+    // 進捗が取れていないときは `unknown` が true なので、入口を止めない。
+    final bool enoughForToday = !data.limits.lessonAllowedToday;
+
     return Scaffold(
       body: SafeArea(
         child: Padding(
@@ -39,31 +57,67 @@ class HomeScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               FadeSlideIn(child: _TopRow(progress: data.progress)),
-              const Spacer(),
-              const FadeSlideIn(
-                child: Center(child: KohaiFace(mood: KohaiMood.neutral, size: 140)),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              FadeSlideIn.staggered(
-                index: 1,
-                child: Text(
-                  strings.homeGreeting,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleLarge,
+              // 顔とあいさつは**読む側**。収まれば中央、収まらなければここだけ動く。
+              //
+              // 以前は `Spacer` 2つで中央に置いていたが、それだと文言が伸びた瞬間に
+              // 下の操作ごと画面の外へ押し出される(実測: 英語で「今日はここまで」の
+              // 一文が入ると 375×667 で溢れた)。**溢れた `Column` は中身を
+              // 切り落とす**ので、押せないボタンができる。
+              // 収まるときの見え方は `Spacer` と同じ(中央)。
+              Expanded(
+                child: CenteredScroll(
+                  padding: EdgeInsets.zero,
+                  children: <Widget>[
+                    const FadeSlideIn(
+                      // 顔が自分で「先輩が待っています」と読み上げるようになったので、
+                      // ここで包んで差し替えていたラベルは外した(同じ文言の二重管理になる)。
+                      child: Center(child: SenpaiFace(mood: SenpaiMood.neutral, size: 140)),
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                    FadeSlideIn.staggered(
+                      index: 1,
+                      child: Text(
+                        strings.homeGreeting,
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const Spacer(),
+              const SizedBox(height: AppSpacing.lg),
               FadeSlideIn.staggered(index: 2, child: _OpenHolesCard(progress: data.progress)),
               const SizedBox(height: AppSpacing.md),
               FadeSlideIn.staggered(
                 index: 3,
                 child: ChunkyButton(
-                  label: strings.homeCapture,
-                  onPressed: () => context.push(AppRoute.capture.path),
+                  label: strings.homeLesson,
+                  onPressed:
+                      enoughForToday ? null : () => context.push(AppRoute.capture.path),
                 ),
               ),
               const SizedBox(height: AppSpacing.sm),
-              FadeSlideIn.staggered(index: 4, child: _RemainingLine(summary: data)),
+              // 自習室。**授業が閉まっていても、ここは開いている。**
+              // 原価ゼロなので閉める理由が無いし、上限に当たった人の
+              // 行き先がホームで途切れないようにするため(§4-2)。
+              //
+              // 先輩が締めた日だけ、こちらが主役の色になる。閉まった授業と
+              // 同じ灰色のまま並べると、**押せるほうがどちらか見て分からない**
+              // (押せないボタンと、押せるボタンが同じ見た目になる)。
+              FadeSlideIn.staggered(
+                index: 4,
+                child: ChunkyButton(
+                  label: strings.homeStudyRoom,
+                  color: enoughForToday ? AppColors.blue : AppColors.border,
+                  foregroundColor: enoughForToday ? Colors.white : AppColors.ink,
+                  onPressed: () => context.push(AppRoute.studyRoom.path),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              FadeSlideIn.staggered(
+                index: 5,
+                child: _EnoughForTodayLine(show: enoughForToday),
+              ),
             ],
           ),
         ),
@@ -179,25 +233,37 @@ class _OpenHolesCard extends StatelessWidget {
   }
 }
 
-/// 今日あと何回撮れるか。撮ってから断らないために、先に出しておく。
-class _RemainingLine extends StatelessWidget {
-  const _RemainingLine({required this.summary});
+/// 今日はここまで、という**先輩の判断**(§6-3)。
+///
+/// ここは以前「今日の無料セッション: 残り1回」を出していた場所。
+/// **回数の数字は出さない**に変えた:
+///   - 数字を見せた瞬間に、上限は「先生の判断」ではなく「制限」になる(約束4)
+///   - 残りが見えていれば、ユーザーは残りの使い道を計算しはじめる。
+///     今日いちばん聞きたい1問を、明日に取っておく理由を作ってしまう
+///   - 通常利用(1日1〜2回)では一度も発火しない値にする設計なので、
+///     そもそも普段は出す数字が無い
+///
+/// **残っているあいだは何も出さない。** 「まだ大丈夫です」も残数の匂わせになる。
+/// 出すのは先輩が締めたときだけで、そのときだけ契約への道を隣に置く
+/// (隠しはしない — HAMMが見るのは誠実さのほう)。
+class _EnoughForTodayLine extends StatelessWidget {
+  const _EnoughForTodayLine({required this.show});
 
-  final ProgressSummary summary;
+  final bool show;
 
   @override
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
-    final int? remaining = summary.limits.remainingSessionsToday;
 
-    // Premium は無制限。ここに何も足さない(契約の管理は設定にある)。
-    if (remaining == null) return const SizedBox(height: AppSpacing.md);
+    // 高さは空でも確保する。締められた瞬間にボタンが跳ね上がらないように。
+    if (!show) return const SizedBox(height: AppSpacing.md);
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         Text(
-          remaining > 0 ? strings.remainingSessions(remaining) : strings.remainingSessionsNone,
+          strings.homeEnoughForToday,
+          textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodySmall,
         ),
         TextButton(

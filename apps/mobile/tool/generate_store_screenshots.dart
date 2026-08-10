@@ -13,7 +13,9 @@
 ///   plain/     1179x2556 端末フレームなしの素のまま。Shipaton提出用の指定サイズ
 ///   captioned/ 1290x2796 App Store Connect の 6.9インチ必須サイズ。見出し付き
 ///
-/// 並び順は inception-deck §3。①会話 ②祝福 ③カルテ ④連続日数 ⑤復習。
+/// 並び順は inception-deck §3。①授業(板書)②祝福 ③カルテ ④連続日数 ⑤復習。
+/// ※デッキ §3 の本文はまだピボット前の並び(①会話)のまま。文言も
+/// 「後輩が聞いてくる」で止まっているので、直すときは本ファイルを正とすること。
 library;
 
 import 'dart:io';
@@ -24,11 +26,14 @@ import 'package:ai_sensei/src/features/capture/application/capture_controller.da
 import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
 // `SessionLimits` は karte / session の両方に別々の定義がある。ここで要るのは
 // `SessionStart` が持つ session 側なので、karte 側を隠す。
-import 'package:ai_sensei/src/features/karte/domain/karte.dart' hide SessionLimits;
+import 'package:ai_sensei/src/features/karte/domain/karte.dart'
+    hide SessionLimits;
 import 'package:ai_sensei/src/features/karte/presentation/home_screen.dart';
 import 'package:ai_sensei/src/features/karte/presentation/karte_screen.dart';
 import 'package:ai_sensei/src/features/karte/presentation/review_screen.dart';
+import 'package:ai_sensei/src/features/session/application/board_inbox.dart';
 import 'package:ai_sensei/src/features/session/application/session_controller.dart';
+import 'package:ai_sensei/src/features/session/domain/board.dart';
 import 'package:ai_sensei/src/features/session/domain/session.dart';
 import 'package:ai_sensei/src/features/session/presentation/celebration_screen.dart';
 import 'package:ai_sensei/src/features/session/presentation/session_screen.dart';
@@ -58,7 +63,8 @@ void main() {
       testWidgets('${copy.locale} ${shot.slug}', (WidgetTester tester) async {
         // ラスタライズ(toImage)は本物の非同期を要るので、pumpと分けて
         // runAsync の中で回す。fake_async のゾーンで呼ぶと完了しない。
-        final GlobalKey plainKey = await _pump(tester, shot, copy.locale, _plainLogical);
+        final GlobalKey plainKey =
+            await _pump(tester, shot, copy.locale, _plainLogical);
         await tester.runAsync(() async {
           _write(
             '$_outDir/${copy.locale}/plain/${shot.slug}.png',
@@ -66,7 +72,8 @@ void main() {
           );
         });
 
-        final GlobalKey key = await _pump(tester, shot, copy.locale, _captionedLogical);
+        final GlobalKey key =
+            await _pump(tester, shot, copy.locale, _captionedLogical);
         await tester.runAsync(() async {
           _write(
             '$_outDir/${copy.locale}/captioned/${shot.slug}.png',
@@ -81,11 +88,7 @@ void main() {
 // --- 実画面のレンダリング ---
 
 Future<GlobalKey> _pump(
-  WidgetTester tester,
-  _Shot shot,
-  String locale,
-  Size logical,
-) async {
+    WidgetTester tester, _Shot shot, String locale, Size logical) async {
   await tester.binding.setSurfaceSize(logical);
   tester.view.physicalSize = logical;
   tester.view.devicePixelRatio = 1;
@@ -99,7 +102,8 @@ Future<GlobalKey> _pump(
   await tester.pumpWidget(
     RepaintBoundary(
       key: key,
-      child: wrapApp(shot.screen, overrides: shot.overrides, locale: Locale(locale)),
+      child: wrapApp(shot.screen,
+          overrides: shot.overrides, locale: Locale(locale)),
     ),
   );
   await tester.pumpAndSettle();
@@ -128,10 +132,7 @@ Future<ui.Image> _compose(ui.Image screen, _Copy copy) async {
     Rect.fromLTWH(0, 0, w, h),
     Paint()
       ..shader = ui.Gradient.linear(
-        Offset.zero,
-        Offset(0, h),
-        <Color>[_canvasTop, _canvasBottom],
-      ),
+          Offset.zero, Offset(0, h), <Color>[_canvasTop, _canvasBottom]),
   );
 
   _drawCaption(
@@ -153,7 +154,8 @@ Future<ui.Image> _compose(ui.Image screen, _Copy copy) async {
     height = width * (screen.height / screen.width);
   }
   final Rect dst = Rect.fromLTWH((w - width) / 2, top, width, height);
-  final RRect clip = RRect.fromRectAndRadius(dst, Radius.circular(width * 0.045));
+  final RRect clip =
+      RRect.fromRectAndRadius(dst, Radius.circular(width * 0.045));
 
   canvas.drawRRect(
     clip.shift(const Offset(0, 10)),
@@ -201,15 +203,18 @@ void _drawCaption(
 
   final Offset origin = Offset(centerX - painter.width / 2, top);
 
-  final int start = copy.marker == null ? -1 : copy.headline.indexOf(copy.marker!);
+  final int start =
+      copy.marker == null ? -1 : copy.headline.indexOf(copy.marker!);
   if (start >= 0) {
     final List<TextBox> boxes = painter.getBoxesForSelection(
-      TextSelection(baseOffset: start, extentOffset: start + copy.marker!.length),
+      TextSelection(
+          baseOffset: start, extentOffset: start + copy.marker!.length),
     );
     for (final TextBox box in boxes) {
       final Rect r = box.toRect().shift(origin);
       canvas.drawRect(
-        Rect.fromLTRB(r.left, r.top + r.height * 0.52, r.right, r.top + r.height * 0.96),
+        Rect.fromLTRB(
+            r.left, r.top + r.height * 0.52, r.right, r.top + r.height * 0.96),
         Paint()..color = copy.markerColor.withValues(alpha: 0.92),
       );
     }
@@ -219,7 +224,9 @@ void _drawCaption(
 }
 
 Future<Uint8List> _png(ui.Image image) async =>
-    (await image.toByteData(format: ui.ImageByteFormat.png))!.buffer.asUint8List();
+    (await image.toByteData(format: ui.ImageByteFormat.png))!
+        .buffer
+        .asUint8List();
 
 void _write(String path, Uint8List bytes) {
   final File file = File(path);
@@ -266,7 +273,8 @@ class _Shot {
 const SessionStart _sampleSessionStart = SessionStart(
   sessionId: 'ses_1',
   kind: 'realtime',
-  livekit: LiveKitConnection(url: 'wss://example', token: 'token', room: 'room'),
+  livekit:
+      LiveKitConnection(url: 'wss://example', token: 'token', room: 'room'),
   detectedTopics: <DetectedTopic>[
     DetectedTopic(
       topicId: 'M1-NIJI-HANBETSU',
@@ -276,7 +284,7 @@ const SessionStart _sampleSessionStart = SessionStart(
       confidence: 0.9,
     ),
   ],
-  limits: SessionLimits(maxSeconds: 300, remainingSessionsToday: 1),
+  limits: SessionLimits(maxSeconds: 300, lessonAllowedToday: true),
 );
 
 class _FakeSessionController extends SessionController {
@@ -297,31 +305,54 @@ class _FakeCaptureController extends CaptureController {
 }
 
 final List<_Shot> _shots = <_Shot>[
+  // 1枚目は**授業モード(板書つき)**。ピボット前は「後輩が答えを知らないまま
+  // 聞いてくる」画面だったが、それは改正前の約束1(答えを教えない)そのもので、
+  // いまのプロダクトではない。板書が残っている画面は静止画でいちばん映える
+  // (計画書§4-2)ので、ストアの1枚目もここに変える。
   _Shot(
-    slug: '01-session',
+    slug: '01-lesson',
     screen: const SessionScreen(),
     overrides: <Object?>[
       captureControllerProvider.overrideWith(_FakeCaptureController.new),
       sessionControllerProvider.overrideWith(
         () => _FakeSessionController(
           const SessionState(
-            phase: SessionPhase.kohaiSpeaking,
+            phase: SessionPhase.senpaiTeaching,
             remainingSeconds: 214,
-            lastKohaiText: 'え、(2)っていきなり判別式ですけど、なんでですか?',
+            // 数式は板書、声は問いかけだけ(計画書§3-1)。
+            // 見出しの言葉と同じものを喋らせない。
+            lastSenpaiText: 'ここ、D を見てほしいんだけど — プラスだよね。だから?',
+            board: BoardSnapshot(
+              title: '判別式で解の個数を見る',
+              steps: <BoardStep>[
+                BoardStep(
+                  index: 0,
+                  speech: 'まず、式をそのまま書くね。',
+                  board: BoardElement.latex(tex: 'x^2 - 3x + 2 = 0'),
+                ),
+                BoardStep(
+                  index: 1,
+                  speech: 'a、b、c がどれか、言える?',
+                  board: BoardElement.text(body: 'a = 1, b = -3, c = 2'),
+                ),
+                BoardStep(
+                  index: 2,
+                  speech: '判別式は、この形だったよね。',
+                  board: BoardElement.latex(
+                      tex: 'D = (-3)^2 - 4 \\cdot 1 \\cdot 2 = 1'),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     ],
     copy: const <_Copy>[
-      _Copy(
-        locale: 'ja',
-        headline: '後輩が、答えを知らないまま聞いてくる。',
-        marker: '答えを知らないまま',
-      ),
+      _Copy(locale: 'ja', headline: '先輩が、板書つきで教えてくれる。', marker: '板書つきで'),
       _Copy(
         locale: 'en',
-        headline: 'A junior asks you — and never knows the answer.',
-        marker: 'never knows the answer',
+        headline: 'Your senpai teaches you — on the board.',
+        marker: 'on the board',
       ),
     ],
   ),
@@ -336,15 +367,11 @@ final List<_Shot> _shots = <_Shot>[
       ),
     ],
     copy: const <_Copy>[
-      _Copy(
-        locale: 'ja',
-        headline: '説明が伝わると、後輩の顔が輝く。',
-        marker: '後輩の顔が輝く',
-      ),
+      _Copy(locale: 'ja', headline: '教え返せると、先輩の顔が輝く。', marker: '先輩の顔が輝く'),
       _Copy(
         locale: 'en',
-        headline: 'Explain it well and your kohai lights up.',
-        marker: 'your kohai lights up',
+        headline: 'Teach it back well and your senpai lights up.',
+        marker: 'your senpai lights up',
       ),
     ],
   ),
@@ -376,7 +403,7 @@ final List<_Shot> _shots = <_Shot>[
     slug: '04-progress',
     screen: const HomeScreen(),
     overrides: <Object?>[
-      progressControllerProvider.overrideWith(FakeProgressController.new),
+      progressControllerProvider.overrideWith(FakeProgressController.new)
     ],
     copy: const <_Copy>[
       _Copy(
@@ -417,11 +444,10 @@ final List<_Shot> _shots = <_Shot>[
       _Copy(
         locale: 'ja',
         headline: '埋まるまで、翌日・3日後・7日後にまた聞いてくる。',
-        marker: '翌日・3日後・7日後',
-      ),
+          marker: '翌日・3日後・7日後'),
       _Copy(
         locale: 'en',
-        headline: 'Your kohai asks again after 1, 3 and 7 days.',
+        headline: 'Your senpai asks again after 1, 3 and 7 days.',
         marker: 'after 1, 3 and 7 days',
       ),
     ],

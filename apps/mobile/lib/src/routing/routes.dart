@@ -11,6 +11,10 @@ enum AppRoute {
   onboarding('/onboarding'),
   home('/'),
   capture('/capture'),
+
+  /// 自習室(計画書§4-2)。無料・原価ゼロの滞在先。
+  /// 授業(`session`)と違って戻れることが前提なので、`/` の子にする。
+  studyRoom('/study-room'),
   session('/session'),
   celebration('/celebration'),
   karte('/karte'),

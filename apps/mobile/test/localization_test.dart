@@ -1,4 +1,4 @@
-import 'package:ai_sensei/src/common_widgets/kohai_face.dart';
+import 'package:ai_sensei/src/common_widgets/senpai_face.dart';
 import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
 import 'package:ai_sensei/src/features/karte/domain/karte.dart';
 import 'package:ai_sensei/src/features/karte/presentation/karte_screen.dart';
@@ -42,17 +42,17 @@ void main() {
   });
 
   group('読み上げのラベル', () {
-    testWidgets('後輩の表情のラベルもロケールに従う', (WidgetTester tester) async {
+    testWidgets('先輩の表情のラベルもロケールに従う', (WidgetTester tester) async {
       await tester.pumpWidget(
         wrapApp(
-          const Scaffold(body: KohaiFace(mood: KohaiMood.delighted)),
+          const Scaffold(body: SenpaiFace(mood: SenpaiMood.delighted)),
           locale: const Locale('en'),
         ),
       );
       await tester.pumpAndSettle();
 
-      expect(find.bySemanticsLabel(en.kohaiDelighted), findsOneWidget);
-      expect(find.bySemanticsLabel(ja.kohaiDelighted), findsNothing);
+      expect(find.bySemanticsLabel(en.senpaiDelighted), findsOneWidget);
+      expect(find.bySemanticsLabel(ja.senpaiDelighted), findsNothing);
     });
   });
 

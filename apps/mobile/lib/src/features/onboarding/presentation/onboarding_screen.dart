@@ -3,9 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../api/device_id.dart';
+import '../../../common_widgets/centered_scroll.dart';
 import '../../../common_widgets/chunky_button.dart';
 import '../../../common_widgets/entrance.dart';
-import '../../../common_widgets/kohai_face.dart';
+import '../../../common_widgets/senpai_face.dart';
 import '../../../l10n/strings.dart';
 import '../../../routing/routes.dart';
 import '../../../theme/motion.dart';
@@ -15,15 +16,18 @@ import 'onboarding_rehearsal.dart';
 
 /// オンボーディング(初回のみ・4ページ)。
 ///
-/// 1枚目は機能ではなく**約束**。「答えは教えません」を先に言い切ることで、
-/// 既存の写真×数学アプリとの違いがここで立つ。
-/// 2枚目でやることの全体像を見せる。4分間なにをするのか分からないまま
+/// 1枚目は機能ではなく**約束**。ピボット計画 §0 の憲法改正で、この約束は
+/// 「答えを教えない」から**「教える。そのあと教え返してもらう」**に変わった。
+/// 機能ではなく約束を先に言い切る、という設計意図はそのまま引き継いでいる
+/// (「教える」だけなら手元の無料AIと同じに見えるので、後半まで含めて1つの約束)。
+/// 2枚目でコアループ(§2)の全体像を見せる。何をする時間なのか分からないまま
 /// カメラを開かせない。
 ///
 /// 3枚目と4枚目は**やってみる枚**。
-/// 「答えを教えない」は、読むと不便に聞こえる(inception-deck §7-7)。
-/// 言葉で否定するほど不便に見えるので、説明を増やすのではなく、
-/// 質問されて・言えて/言えなくて・カルテに残る、までを1往復させる。
+/// 約束は、読むだけでは腑に落ちない(inception-deck §7-7 が
+/// 「答えを教えない」について指摘していた問題。改正後も構造は同じで、
+/// **言葉を足すほど遠くなる**)。だから説明を増やすのではなく、
+/// 教わって・教え返して(または言えなくて)・カルテに残る、までを1往復させる。
 /// 台本は固定で、写真も声も使わないので、ここではまだ何の権限も要らない。
 ///
 /// **権限はここで求めない。** カメラは撮る直前、マイクは会話の直前、
@@ -180,80 +184,89 @@ class _PageTransition extends StatelessWidget {
 }
 
 /// 1枚目 — 約束。
+///
+/// **`Spacer` で中央に置いた `Column` から [CenteredScroll] に替えてある。**
+/// 改正後の約束は前後2拍あるぶん長く、英語(`The AI tutor that teaches you —
+/// then asks you to teach it back.`)を 375pt 幅の端末に流すと、
+/// 見出しだけで画面を食い切って**下がはみ出す**(実測で確認)。
+/// はみ出した `Column` は中身を切り落とすので、
+/// 3・4枚目と同じ「収まれば中央・収まらなければスクロール」に揃える。
 class _PromisePage extends StatelessWidget {
   const _PromisePage();
 
   @override
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          const Spacer(),
-          const FadeSlideIn(
-            child: Center(child: KohaiFace(mood: KohaiMood.puzzled, size: 140)),
+    return CenteredScroll(
+      children: <Widget>[
+        // 困り顔(`puzzled`)は「教わる側」の表情だった。配役が先輩に変わって
+        // ここは教える側の顔になるので、待っている顔で置く。
+        // 顔ウィジェットそのものの刷新は横断的なので別タスク。
+        const FadeSlideIn(
+          child: Center(child: SenpaiFace(mood: SenpaiMood.neutral, size: 140)),
+        ),
+        const SizedBox(height: AppSpacing.xl),
+        FadeSlideIn.staggered(
+          index: 1,
+          child: Text(
+            strings.onboardingTitle,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.displaySmall,
           ),
-          const SizedBox(height: AppSpacing.xl),
-          FadeSlideIn.staggered(
-            index: 1,
-            child: Text(
-              strings.onboardingTitle,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.displaySmall,
-            ),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        FadeSlideIn.staggered(
+          index: 2,
+          child: Text(
+            strings.onboardingBody,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyLarge,
           ),
-          const SizedBox(height: AppSpacing.md),
-          FadeSlideIn.staggered(
-            index: 2,
-            child: Text(
-              strings.onboardingBody,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyLarge,
-            ),
-          ),
-          const Spacer(),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-/// 2枚目 — やることの全体像と、権限の予告。
+/// 2枚目 — コアループ(計画書§2)の全体像と、権限の予告。
+///
+/// 4行は「撮る → 先輩が板書つきで教える → 教え返す → 詰まったところが穴として残る」。
+/// **穴の出どころが4行目にある**のが要で、ここが「質問した内容をメモ」に
+/// 化けると、1/3/7日の再訪の根拠(§1-3)ごと崩れる。
 class _HowItWorksPage extends StatelessWidget {
   const _HowItWorksPage();
 
   @override
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          const Spacer(),
-          FadeSlideIn(
-            child: Text(
-              strings.onboardingHowTitle,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.xl),
-          _Step(index: 1, icon: Icons.photo_camera_outlined, label: strings.onboardingStepCapture),
-          _Step(index: 2, icon: Icons.help_outline, label: strings.onboardingStepAsked),
-          _Step(index: 3, icon: Icons.mic_none_outlined, label: strings.onboardingStepExplain),
-          _Step(index: 4, icon: Icons.description_outlined, label: strings.onboardingStepKarte),
-          const Spacer(),
-          Text(
-            strings.onboardingPermissionNote,
+    // 1枚目と同じ理由で [CenteredScroll]。手順の文が長くなったぶん、
+    // 小さい端末の英語では4行目(穴の出どころ)から先が切れていた。
+    // **切れてはいけないのが最後の1行**なので、スクロールできる形にする。
+    return CenteredScroll(
+      children: <Widget>[
+        FadeSlideIn(
+          child: Text(
+            strings.onboardingHowTitle,
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodySmall,
+            style: Theme.of(context).textTheme.headlineSmall,
           ),
-          const SizedBox(height: AppSpacing.md),
-        ],
-      ),
+        ),
+        const SizedBox(height: AppSpacing.xl),
+        _Step(index: 1, icon: Icons.photo_camera_outlined, label: strings.onboardingStepCapture),
+        // 2番目は「書きながら教える」。ペン先のアイコンにしてあるのは、
+        // 板書が飾りではなくこのループの一手だと1行目で分かるようにするため。
+        _Step(index: 2, icon: Icons.draw_outlined, label: strings.onboardingStepTaught),
+        _Step(index: 3, icon: Icons.mic_none_outlined, label: strings.onboardingStepExplain),
+        _Step(index: 4, icon: Icons.description_outlined, label: strings.onboardingStepKarte),
+        // `Spacer` で画面下へ押し付けるのはやめた(スクロールの中では使えない)。
+        // 権限の予告は手順のすぐ下、同じかたまりの一部として置く。
+        const SizedBox(height: AppSpacing.lg),
+        Text(
+          strings.onboardingPermissionNote,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ],
     );
   }
 }

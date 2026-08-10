@@ -3,30 +3,55 @@
  *
  * ここは**いちばん静かに壊れる場所**。ワーカーが動いていない・ディスパッチが
  * 来ない・カルテのLLMが落ちた、のどれが起きてもアプリからは
- * 「後輩が来ない / カルテが出ない」としか見えない。1行1JSONで、
+ * 「先輩が来ない / 板書が出ない / カルテが出ない」としか見えない。1行1JSONで、
  * ジョブの節目を必ず残す。
  *
- * | event                  | いつ |
- * | ---------------------- | --- |
- * | `job_started`          | ジョブを受け取った(= ディスパッチは届いている) |
- * | `context_unreadable`   | 文脈が読めない。会話せずに切る |
- * | `conversation_started` | 後輩が最初の一言を出した |
- * | `conversation_ended`   | 終わり方(completed / timeout / user_left / error) |
- * | `karte_built`          | カルテができた(穴の数と所要時間) |
- * | `karte_failed`         | LLMかスキーマで落ちた。空のカルテを送る |
- * | `complete_posted`      | `/complete` に通った |
- * | `complete_failed`      | 通らなかった。**カルテが表に出ない唯一の経路** |
+ * | event                        | いつ |
+ * | ---------------------------- | --- |
+ * | `job_started`                | ジョブを受け取った(= ディスパッチは届いている) |
+ * | `context_unreadable`         | 文脈が読めない。会話せずに切る |
+ * | `conversation_started`       | セッションが立ち上がった(授業の**前**) |
+ * | `lesson_interrupted_by_user` | 授業中に生徒が喋った。板書の生成を止めて会話へ |
+ * | `lesson_finished`            | 授業1回ぶんが終わった(手順数・締め方・検証落ちの数) |
+ * | `lesson_empty`               | 板書が1行も出せなかった。**8/16のゲートを見る指標** |
+ * | `board_publisher_missing`    | Text Streams の送り口が無い。板書なしで会話だけ続ける |
+ * | `say_failed`                 | 読み上げに失敗した(セッションが閉じかけている等) |
+ * | `conversation_ended`         | 終わり方(completed / timeout / user_left / error) |
+ * | `karte_built`                | カルテができた(穴の数と所要時間) |
+ * | `karte_failed`               | LLMかスキーマで落ちた。空のカルテを送る |
+ * | `complete_posted`            | `/complete` に通った |
+ * | `complete_failed`            | 通らなかった。**カルテが表に出ない唯一の経路** |
+ *
+ * 板書の配送そのもの(`board_opened` / `board_step_rejected` / `board_lesson_overflow` …)は
+ * `board.ts` が同じ `JobLogger` に出す。
  */
 
 export type LogFields = Record<string, unknown>;
 
 export type ErrorReporter = (error: unknown, context: LogFields) => void;
 
+/**
+ * 縮退の受け皿。**エラーとは別の口にする。**
+ *
+ * `error` はクラッシュとして `captureException` に流れるが、縮退は
+ * 「落ちてはいないが約束が破れている」状態で、混ぜると本当に落ちたものが埋もれる
+ * (計画書 §10-7・モバイル側の `telemetry.dart` と同じ切り分け)。
+ *
+ * どの `warn` を縮退として扱うか・何を伏せるかは `telemetry.ts` が決める。
+ * ここは**来たものを渡すだけ**にして、送る条件を触る場所を1つに保つ。
+ */
+export type DegradationReporter = (event: string, fields: LogFields) => void;
+
 let reporter: ErrorReporter | null = null;
+let degradationReporter: DegradationReporter | null = null;
 
 /** Sentryのような受け皿。`index.ts` が(DSNがあれば)差し込む。 */
 export function setErrorReporter(next: ErrorReporter | null): void {
   reporter = next;
+}
+
+export function setDegradationReporter(next: DegradationReporter | null): void {
+  degradationReporter = next;
 }
 
 export class JobLogger {
@@ -58,6 +83,8 @@ export class JobLogger {
 
   warn(event: string, fields: LogFields = {}): void {
     this.sink(this.line("warn", event, fields));
+    // 受け皿が無ければ何もしない(ローカルとテストは常にこちら)。
+    degradationReporter?.(event, { ...this.base, ...fields });
   }
 
   error(event: string, error: unknown, fields: LogFields = {}): void {
