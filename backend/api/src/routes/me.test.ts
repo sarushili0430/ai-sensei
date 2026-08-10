@@ -91,12 +91,36 @@ describe("GET /v1/me/progress", () => {
     expect(body.limits.lesson_allowed_today).toBe(false);
   });
 
-  it("Premiumは今日の授業が常に許可され、会話時間の上限も長い", async () => {
+  it("Premiumはフェアユース枠が残っていれば授業可で、無料と同じ20分を返す", async () => {
     await makePremium();
     const body = (await (await get("/v1/me/progress")).json()) as ProgressResponse;
     expect(body.is_premium).toBe(true);
     expect(body.limits.lesson_allowed_today).toBe(true);
-    expect(body.limits.max_seconds).toBe(900);
+    expect(body.limits.max_seconds).toBe(1200);
+  });
+
+  it("Premiumも3回を使ったあとは今日の授業不可だけを返す", async () => {
+    await makePremium();
+    for (let count = 0; count < 3; count += 1) {
+      await services.repository.createSession({
+        id: `ses_premium_${count}`,
+        device_id: testDeviceId,
+        kind: "new",
+        status: "completed",
+        created_at: "2026-08-03T13:00:00.000Z",
+        completed_at: "2026-08-03T13:20:00.000Z",
+        local_date: "2026-08-03",
+        photo_key: null,
+        topic_ids: [],
+        hole_id: null,
+        duration_seconds: 1200,
+        context: null,
+      });
+    }
+
+    const body = (await (await get("/v1/me/progress")).json()) as ProgressResponse;
+    expect(body.is_premium).toBe(true);
+    expect(body.limits).toEqual({ max_seconds: 1200, lesson_allowed_today: false });
   });
 
   it("デバイスIDがなければ401", async () => {

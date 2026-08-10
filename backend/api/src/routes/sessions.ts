@@ -26,7 +26,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { AppEnv, Bindings } from "../env.ts";
 import { readLimits } from "../env.ts";
-import { checkSessionAllowance, isPremiumNow } from "../lib/entitlement.ts";
+import { canStartSessionToday, checkSessionAllowance, isPremiumNow } from "../lib/entitlement.ts";
 import { apiError } from "../lib/errors.ts";
 import { type AgentDispatch, createLiveKitToken } from "../lib/livekit.ts";
 import {
@@ -82,7 +82,7 @@ sessionsRoute.post("/", async (c) => {
   const allowance = checkSessionAllowance({ user, sessionsToday, now: at, limits });
 
   if (!allowance.allowed) {
-    throw apiError("free_limit_reached", {
+    throw apiError(allowance.reason, {
       locale,
       retryAfterSeconds: allowance.retryAfterSeconds,
     });
@@ -108,7 +108,7 @@ sessionsRoute.post("/", async (c) => {
 
   const sessionId = newId("ses");
 
-  // 無料枠の判定と行の作成が離れていると、同時に2本投げられたときに
+  // 授業枠の判定と行の作成が離れていると、同時に2本投げられたときに
   // 両方が「今日はまだ0回」を見て通ってしまう。写真のアップロードと解析に
   // 数秒かかるぶん窓が広いので、**先に行を作って枠を押さえる**。
   // 解析に失敗したら下で消すので、失敗が枠を食うこともない。
@@ -238,7 +238,7 @@ sessionsRoute.post("/", async (c) => {
       throw apiError("photo_unreadable", { locale });
     }
   } catch (error) {
-    // 押さえた枠を返す。読み取れなかった写真で今日の1回を失わせない。
+    // 押さえた枠を返す。読み取れなかった写真で今日の授業枠を失わせない。
     await repository.deleteSession(sessionId);
 
     // 「写真が読めない」は想定内(ユーザーに文言が返る)。
@@ -407,7 +407,7 @@ sessionsRoute.patch("/:sessionId/topics", async (c) => {
     problem: context.problem ?? null,
     limits: {
       max_seconds: maxSeconds,
-      lesson_allowed_today: premium || sessionsToday < limits.freeSessionsPerDay,
+      lesson_allowed_today: canStartSessionToday({ user, sessionsToday, now: at, limits }),
     },
   };
 

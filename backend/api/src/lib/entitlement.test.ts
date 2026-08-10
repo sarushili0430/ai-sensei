@@ -7,7 +7,12 @@ import {
   shouldShowPaywall,
 } from "./entitlement.ts";
 
-const limits = { freeSessionsPerDay: 1, freeSessionMaxSeconds: 300, premiumSessionMaxSeconds: 900 };
+const limits = {
+  freeSessionsPerDay: 1,
+  premiumSessionsPerDay: 3,
+  freeSessionMaxSeconds: 1200,
+  premiumSessionMaxSeconds: 1200,
+};
 const now = new Date("2026-08-03T13:24:07.000Z"); // 22:24 JST
 
 function user(overrides: Partial<UserRecord> = {}): UserRecord {
@@ -46,7 +51,7 @@ describe("isPremiumNow", () => {
 describe("checkSessionAllowance", () => {
   it("無料ユーザーの1回目は通る", () => {
     const allowance = checkSessionAllowance({ user: user(), sessionsToday: 0, now, limits });
-    expect(allowance).toEqual({ allowed: true, maxSeconds: 300, lessonAllowedToday: false });
+    expect(allowance).toEqual({ allowed: true, maxSeconds: 1200, lessonAllowedToday: false });
   });
 
   it("無料枠を使い切るまでは、今日もう一度授業を受けられる", () => {
@@ -70,8 +75,11 @@ describe("checkSessionAllowance", () => {
 
   it("無料ユーザーの2回目は止める", () => {
     const allowance = checkSessionAllowance({ user: user(), sessionsToday: 1, now, limits });
-    expect(allowance.allowed).toBe(false);
-    expect(allowance.lessonAllowedToday).toBe(false);
+    expect(allowance).toMatchObject({
+      allowed: false,
+      lessonAllowedToday: false,
+      reason: "free_limit_reached",
+    });
   });
 
   it("止めるときは翌日までの秒数を返す(「また明日」と言えるように)", () => {
@@ -81,14 +89,41 @@ describe("checkSessionAllowance", () => {
     expect(allowance.retryAfterSeconds).toBe(5753);
   });
 
-  it("Premiumは何回でも通り、上限秒数が長い", () => {
+  it("Premiumは通常利用の1日1〜2回ではフェアユース上限に当たらない", () => {
+    for (const sessionsToday of [0, 1, 2]) {
+      const allowance = checkSessionAllowance({
+        user: user({ is_premium: true }),
+        sessionsToday,
+        now,
+        limits,
+      });
+      expect(allowance.allowed).toBe(true);
+    }
+  });
+
+  it("Premiumは3回を使ったあとの4回目を翌日まで止める", () => {
     const allowance = checkSessionAllowance({
       user: user({ is_premium: true }),
-      sessionsToday: 5,
+      sessionsToday: 3,
       now,
       limits,
     });
-    expect(allowance).toEqual({ allowed: true, maxSeconds: 900, lessonAllowedToday: true });
+    expect(allowance).toEqual({
+      allowed: false,
+      lessonAllowedToday: false,
+      retryAfterSeconds: 5753,
+      reason: "fair_use_limit_reached",
+    });
+  });
+
+  it("無料とPremiumで1回の上限時間を変えない", () => {
+    const premium = checkSessionAllowance({
+      user: user({ is_premium: true }),
+      sessionsToday: 0,
+      now,
+      limits,
+    });
+    expect(premium).toEqual({ allowed: true, maxSeconds: 1200, lessonAllowedToday: true });
   });
 });
 

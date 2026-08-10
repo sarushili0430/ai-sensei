@@ -45,6 +45,7 @@ export type Bindings = {
   LOG_LEVEL?: string;
 
   FREE_SESSIONS_PER_DAY?: string;
+  PREMIUM_SESSIONS_PER_DAY?: string;
   FREE_SESSION_MAX_SECONDS?: string;
   PREMIUM_SESSION_MAX_SECONDS?: string;
 };
@@ -76,6 +77,7 @@ export type AppEnv = {
 
 export type Limits = {
   freeSessionsPerDay: number;
+  premiumSessionsPerDay: number;
   freeSessionMaxSeconds: number;
   premiumSessionMaxSeconds: number;
 };
@@ -83,8 +85,11 @@ export type Limits = {
 export function readLimits(env: Bindings): Limits {
   return {
     freeSessionsPerDay: toInt(env.FREE_SESSIONS_PER_DAY, 1),
-    freeSessionMaxSeconds: toInt(env.FREE_SESSION_MAX_SECONDS, 300),
-    premiumSessionMaxSeconds: toInt(env.PREMIUM_SESSION_MAX_SECONDS, 900),
+    // 通常利用の1日1〜2回には当てず、異常利用だけを止める最小のフェアユース上限。
+    premiumSessionsPerDay: toInt(env.PREMIUM_SESSIONS_PER_DAY, 3),
+    // 無料のお試しも品質を落とさず、設計の15〜20分を完走できる上端を既定値にする。
+    freeSessionMaxSeconds: toInt(env.FREE_SESSION_MAX_SECONDS, 1200),
+    premiumSessionMaxSeconds: toInt(env.PREMIUM_SESSION_MAX_SECONDS, 1200),
   };
 }
 

@@ -12,6 +12,7 @@
               "enum": [
                 "unauthorized",
                 "free_limit_reached",
+                "fair_use_limit_reached",
                 "premium_required",
                 "photo_unreadable",
                 "out_of_scope",
