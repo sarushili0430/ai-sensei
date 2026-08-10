@@ -222,9 +222,10 @@ describe("scrubMessage", () => {
   });
 
   it("トークンらしい長い塊は潰す", () => {
-    expect(scrubMessage("x-api-key sk-ant-api03-AAAABBBBCCCCDDDD が拒否されました")).not.toContain(
-      "AAAABBBBCCCCDDDD",
-    );
+    // 本物ではなく、伏せ字化を検査するための入力。
+    // シークレット走査がこれを拾うのは**正しい挙動**なので、この行だけ許可する。
+    const fakeKey = "sk-ant-api03-AAAABBBBCCCCDDDD"; // pragma: allowlist secret
+    expect(scrubMessage(`x-api-key ${fakeKey} が拒否されました`)).not.toContain("AAAABBBBCCCCDDDD");
   });
 
   // 日本語の文と短い数式は巻き添えにしない(読めなくなると意味がない)
