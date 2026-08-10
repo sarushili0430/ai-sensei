@@ -1,10 +1,12 @@
 # ai-sensei
 
-**数学の「わかったつもり」を、声に出して説明させて見つけるアプリ。**
+**答えを教える。そのあと、あなたに教え返してもらう。**
 
-ノートを撮ると、後輩AIが「え、なんでここで判別式使うんですか?」と聞いてくる。
-答えは教えない。説明しているうちに、自分でも気づいていなかった **理解の穴** が見つかる。
-見つかった穴は「カルテ」に残り、翌日・3日後・7日後に後輩がもう一度たずねてくる。
+ノートを撮ると、先輩AIが板書つきで教えてくれる。数式や計算は板書に書き、声は
+「ここ、Dを見てほしいんだけど — プラスだよね。だから?」と問いかけるだけ。
+教わったらすぐ、「じゃあ今の、説明してみて」と**教え返す**。説明に詰まった場所が、
+自分でも気づいていなかった **理解の穴** として「カルテ」に残り、1日・3日・7日後に
+もう一度たずねます。
 
 - ターゲット: 日本の高校生 / 対象科目: 高校数学(数I・A・II・B・III・C、新課程)
 - 日本語と英語の2言語。**海外の学習者には海外の課程**(Algebra 1 / Geometry /
@@ -15,6 +17,8 @@
 
 何を作っていて何を作らないかの合意は [`docs/inception-deck.md`](docs/inception-deck.md) にまとめてあります
 (エレベーターピッチ・やらないことリスト・トレードオフスライダー)。スプリントの入口で読んでください。
+2026-08-09に「先輩AIが板書つきで教える → 教え返させる」へ差し替えた経緯と設計は
+[`docs/pivot_plan_v1.md`](docs/pivot_plan_v1.md) にまとめてあります。
 企画・設計の一次情報は [`docs/handoff_to_opus.md`](docs/handoff_to_opus.md) にあります。
 画面設計と**画面遷移図**は [`docs/wireframe_v1.html`](docs/wireframe_v1.html)、ビジュアル方針は
 [`docs/design_direction_v0.html`](docs/design_direction_v0.html) を参照してください
@@ -31,11 +35,11 @@
 ```
 apps/mobile/        Flutter (iOS先行) + Riverpod 3 + livekit_client
 backend/api/        Cloudflare Workers + Hono — セッション作成 / カルテ保存 / 課金webhook
-backend/agent/      LiveKit Agents — VAD・STT・LLM・TTSの会話パイプライン(後輩キャラ)
-packages/contract/  APIとカルテのスキーマ + fixture(モバイル/サーバ双方で契約を検証)
+backend/agent/      LiveKit Agents — VAD・STT・LLM・TTSの会話パイプライン + 板書生成(先輩キャラ)
+packages/contract/  APIとカルテと板書(`board.ts`)のスキーマ + fixture(モバイル/サーバ双方で契約を検証)
 packages/curriculum/高校数学カリキュラムマップ(純JSON。日本の課程と海外の課程を別に持つ)
-packages/guardrail/ topic_idホワイトリスト照合・数式音声の正規化などの純関数
-prompts/            システムプロンプトとfew-shot(`<id>.<locale>.md`。日英で別本)
+packages/guardrail/ topic_idホワイトリスト照合・板書LaTeXのコマンド照合・数式音声の正規化などの純関数
+prompts/            システムプロンプトとfew-shot(`<id>.<locale>.md`。日英で別本。板書つき授業は`senpai_board.*.md`)
 docs/               企画資料・ワイヤーフレーム・ADR
 scripts/            リポジトリ全体の検証スクリプト
 ```
@@ -204,15 +208,24 @@ Flutter app ──HTTPS──▶ backend/api ──▶ LiveKit room 作成 + age
      │                    │  写真をVision LLMで解析し、単元判定と質問方針を作る
      │                    │  ストレージ: R2(写真) / DB: D1 / メータリング: KV
      └──WebRTC────────▶ agent
-                          VAD → 日本語ストリーミングSTT → LLM(後輩ペルソナ)
-                          → TTS。割り込み対応。終了時にtranscriptからカルテを生成し
+                          VAD → 日本語ストリーミングSTT → LLM(先輩ペルソナ)が
+                          {speech, board} をストリーミング生成。手順が1つ完成するたびに
+                          board を LiveKit Text Streams で送信し、直後に speech を TTS
+                          → 割り込み対応。終了時にtranscriptからカルテを生成し
                           backend/api の /v1/sessions/{id}/complete へPOST
-                          → OneSignalで翌日/3日後/7日後の再説明プッシュを予約
+                          → OneSignalで翌日/3日後/7日後の再訪プッシュを予約
 ```
+
+先輩は「教える」区間だけ声で話し、数式・計算・図は板書として画面に積みます
+(数式を音声で読み上げません)。Flutter側は受信した手順を1行ずつ積み上げ、
+前の手順は消さずに残します。板書要素(LaTeX・グラフ・三角形・円)のスキーマは
+`packages/contract/src/board.ts` にあり、モバイルとagentの両方が同じ形を検証します。
 
 質問生成には二重のガードレールがあります。
 プロンプト側で「ノート写真に写っている内容 ∩ カリキュラムマップの範囲」に限定し、
 サーバ側で出力の `topic_id` をホワイトリスト照合して、外れたものは再生成させます。
+板書のLaTeXも同様に、`packages/guardrail` でコマンドをホワイトリスト照合してから送信し、
+描画できない構文を弾きます。
 
 ## 2つの課程(日本 / 海外)
 
@@ -234,10 +247,10 @@ Flutter app ──HTTPS──▶ backend/api ──▶ LiveKit room 作成 + age
 
 ## 設計上の約束(実装時に守ること)
 
-1. **答えを教えない。** 解答・解説の生成は機能として持たない。
+1. **教える。そのあと教え返させる。** 先輩が板書つきで教え、その場で「説明してみて」と聞き返す。
 2. **点数を出さない。** 数えるのは「連続日数」と「埋めた穴の数」だけ。
 3. **パスを恥にしない。** 説明できなかったことは、そのまま穴として価値化する。
-4. **煽らない。** 通知もペイウォールも、後輩からのお願いとして書く。
+4. **煽らない。** 通知もペイウォールも、先輩の判断として書く。数字は見せず、命令や催促にもしない。
 
 ## ライセンス
 

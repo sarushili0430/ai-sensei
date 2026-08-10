@@ -187,6 +187,7 @@ export type BoardElement =
 | **受信経路** | **Text Streams API**(`registerTextStreamHandler` + 専用topic)。生の `publishData` は使わない | `stream_writer.dart` が内部で常に `Reliability.reliable` に固定する。一方 `publishData` の `reliable` 既定は **false(LOSSY)** で、書き忘れると欠落・順不同が起きる。**地雷そのものを踏まない経路を選ぶ** |
 | **順序保証** | reliable経路が面倒を見る | `engine.dart` で送信側が単調増加 `sequence` を付与、受信側が重複排除、再接続時は `lastMessageSeq` 以降を再送 |
 | **1手順の受信単位** | **1手順 = 1ストリーム**とし、`readAll()` で完成を待つ | チャンク境界をまたぐ部分JSONを自前で組み立てる必要がなくなる。封筒に index を持たせてあるので、欠落は受信側で検知できる |
+| **readAll()の完了順(2026-08-10・実装で判明)** | 受信側は `readAll()` を1本の Future の鎖(`session_controller.dart` の `_boardQueue`)に**直列化**する | ハンドラは封筒の到着順に呼ばれるが、`readAll()` の完了順まで同じとは限らない(封筒ごとにチャンク数が違えば、後に届いた封筒が先に読み終わる)。追い越しが起きると、受信側の `seq` 検算はそれを**欠落として誤認**する——実際には全部届いているのに板書がとぎれる。**罠として重い**: 追い越しが起きるかどうかは封筒ごとのチャンク数(= `tex` や `speech` の長さ)と回線次第なので、**同じ問題を教わっても起きたり起きなかったりする**。しかも症状は「板書がとぎれました」——配送は正常なのに、欠落検知のほうが誤報する。これを知らずに再実装すると、原因の切り分けに何日か溶ける |
 | **LaTeX描画** | `flutter_math_fork` 0.7.4(**リスクあり・§3-6**) | Flutter 3.44.8 と互換。高校数学に必要な範囲(分数・根号・指数・添字・総和・積分・行列・`cases`)は非サポート一覧に含まれない |
 | **図形描画** | **`CustomPainter` を自前で書く**(`fl_chart` は不採用) | `fl_chart` に三角形・角度マークに対応する型がない。加えて既存の `common_widgets/marker_text.dart` が「進捗値でペン先を走らせる `CustomPainter`」を既に確立しており、**板書の「1行ずつ積んで残り続ける」要件と設計思想が一致する**。`AppDurations.draw = 420ms` も流用できる |
 | **golden test** | 要素ごとに単体golden + 「3手順積んだ最終状態」を1枚 | 既存の `reduceMotion`(`test/support/harness.dart`)でアニメを終了状態に固定する運用に乗せる。タイミングではなく最終状態を検証対象にする |
