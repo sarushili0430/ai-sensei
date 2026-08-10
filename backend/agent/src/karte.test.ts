@@ -16,14 +16,16 @@ import {
   postComplete,
   withUncertaintyHole,
 } from "./karte.ts";
+import { sessionMetadataJson } from "./test-support.ts";
 
 const context = readSessionContext(
-  JSON.stringify({
+  sessionMetadataJson({
     session_id: "ses_1",
     problem_text: "x^2 - 3x + 2 = 0 を解け",
     visible_work: "- 因数分解しかけて止まっている",
     max_seconds: 300,
     photo_summary: "円と直線の位置関係",
+    question_seeds: "",
     allowed_topics: "- M2-ZUKEI-ENCHOKU",
     allowed_topic_ids: ["M2-ZUKEI-ENCHOKU", "M1-NIJI-HANBETSU"],
     is_premium: false,
@@ -31,11 +33,14 @@ const context = readSessionContext(
 );
 
 const premiumContext = readSessionContext(
-  JSON.stringify({
+  sessionMetadataJson({
     session_id: "ses_2",
     problem_text: "x^2 - 3x + 2 = 0 を解け",
     visible_work: "- 因数分解しかけて止まっている",
     max_seconds: 900,
+    photo_summary: "",
+    question_seeds: "",
+    allowed_topics: "",
     allowed_topic_ids: ["M2-ZUKEI-ENCHOKU", "M1-NIJI-HANBETSU"],
     is_premium: true,
   }),
@@ -336,13 +341,14 @@ describe("postComplete", () => {
  */
 describe("英語のセッション", () => {
   const englishContext = readSessionContext(
-    JSON.stringify({
+    sessionMetadataJson({
       session_id: "ses_en",
       problem_text: "x^2 - 3x + 2 = 0 を解け",
       visible_work: "- 因数分解しかけて止まっている",
       locale: "en",
       max_seconds: 300,
       photo_summary: "A line-and-circle problem",
+      question_seeds: "",
       allowed_topics: "- A2-COORD-CIRCLE",
       allowed_topic_ids: ["A2-COORD-CIRCLE", "A1-QUAD-SOLVE"],
       is_premium: false,

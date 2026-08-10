@@ -1,3 +1,4 @@
+import type { SessionMetadata } from "@ai-sensei/contract";
 import { describe, expect, it } from "vitest";
 import {
   InvalidSessionContextError,
@@ -5,25 +6,20 @@ import {
   remainingSeconds,
   resolveSessionContext,
 } from "./context.ts";
+import { sessionMetadataFixture, sessionMetadataJson } from "./test-support.ts";
 
-const metadata = JSON.stringify({
-  session_id: "ses_1",
-  problem_text: "x^2 - 3x + 2 = 0 を解け",
-  locale: "ja",
-  kind: "new",
-  max_seconds: 300,
-  photo_summary: "円と直線の位置関係の問題",
-  visible_work: "- 中心と直線の距離を求めている",
-  question_seeds: "- 方法を変えた理由",
-  allowed_topics: "- M2-ZUKEI-ENCHOKU — 数学II / 図形と方程式 / 円と直線の位置関係",
-  allowed_topic_ids: ["M2-ZUKEI-ENCHOKU", "M1-NIJI-HANBETSU"],
-  is_premium: false,
-});
+const metadata = sessionMetadataJson();
+
+function withoutField(field: keyof SessionMetadata): string {
+  const value: Partial<SessionMetadata> = { ...sessionMetadataFixture };
+  delete value[field];
+  return JSON.stringify(value);
+}
 
 describe("readSessionContext", () => {
-  it("トークンのmetadataから会話文脈を読む", () => {
+  it("contractのfixtureをトークンのmetadataとして読む", () => {
     const context = readSessionContext(metadata);
-    expect(context.session_id).toBe("ses_1");
+    expect(context.session_id).toBe(sessionMetadataFixture.session_id);
     expect(context.allowed_topic_ids).toContain("M2-ZUKEI-ENCHOKU");
     expect(context.max_seconds).toBe(300);
   });
@@ -39,7 +35,7 @@ describe("readSessionContext", () => {
   });
 
   it("許可トピックが空なら会話を始めない", () => {
-    const empty = JSON.stringify({ ...JSON.parse(metadata), allowed_topic_ids: [] });
+    const empty = sessionMetadataJson({ allowed_topic_ids: [] });
     expect(() => readSessionContext(empty)).toThrow(/許可トピックが空/);
   });
 
@@ -55,9 +51,10 @@ describe("readSessionContext", () => {
    * 空の問題文で授業を始めると、生徒はまるごと間違った問題を教わる。
    */
   it("問題文が欠けていたら会話を始めない", () => {
-    const { problem_text, ...rest } = JSON.parse(metadata);
-    expect(() => readSessionContext(JSON.stringify(rest))).toThrow(InvalidSessionContextError);
-    expect(() => readSessionContext(JSON.stringify({ ...rest, problem_text: "" }))).toThrow(
+    expect(() => readSessionContext(withoutField("problem_text"))).toThrow(
+      InvalidSessionContextError,
+    );
+    expect(() => readSessionContext(sessionMetadataJson({ problem_text: "" }))).toThrow(
       InvalidSessionContextError,
     );
   });
@@ -65,53 +62,64 @@ describe("readSessionContext", () => {
   // ノートが無い経路(問題だけを撮った生徒)でも、契約側が
   // 「(ノートの写真なし)」を入れて送ってくるので、空では届かない。
   it("ノートの欄が欠けていたら会話を始めない", () => {
-    const { visible_work, ...rest } = JSON.parse(metadata);
-    expect(() => readSessionContext(JSON.stringify(rest))).toThrow(InvalidSessionContextError);
-  });
-
-  it("ノートが無い経路のプレースホルダは、そのまま素通しする", () => {
-    const noNotes = JSON.stringify({
-      ...JSON.parse(metadata),
-      visible_work: "(ノートの写真なし)",
-    });
-    expect(readSessionContext(noNotes).visible_work).toBe("(ノートの写真なし)");
-  });
-
-  // `question_seeds` は契約側が空を許しているので、ここだけは受ける。
-  // 文言は backend/api と同じ `formatBullets([])` から取るのでずれない。
-  it("質問の種が空なら、会話の言語で「なし」を入れる", () => {
-    const { question_seeds, ...rest } = JSON.parse(metadata);
-
-    expect(readSessionContext(JSON.stringify(rest)).question_seeds).toBe("(なし)");
-    expect(readSessionContext(JSON.stringify({ ...rest, locale: "en" })).question_seeds).toBe(
-      "(none)",
+    expect(() => readSessionContext(withoutField("visible_work"))).toThrow(
+      InvalidSessionContextError,
     );
   });
 
-  it("必須項目が欠けていれば会話を始めない", () => {
-    const broken = JSON.stringify({ session_id: "ses_1" });
-    expect(() => readSessionContext(broken)).toThrow(InvalidSessionContextError);
+  it("ノートが無い経路のプレースホルダは、そのまま素通しする", () => {
+    const noNotes = sessionMetadataJson({ visible_work: "(ノートの写真なし)" });
+    expect(readSessionContext(noNotes).visible_work).toBe("(ノートの写真なし)");
   });
 
-  it("将来サーバが項目を足しても壊れない(passthrough)", () => {
-    const extended = JSON.stringify({ ...JSON.parse(metadata), future_field: "x" });
-    expect(readSessionContext(extended).session_id).toBe("ses_1");
+  // `question_seeds` は欄そのものは必須だが、空文字は契約側が許している。
+  // 文言は backend/api と同じ `formatBullets([])` から取るのでずれない。
+  it("質問の種が空なら、会話の言語で「なし」を入れる", () => {
+    expect(readSessionContext(sessionMetadataJson({ question_seeds: "" })).question_seeds).toBe(
+      "(なし)",
+    );
+    expect(
+      readSessionContext(sessionMetadataJson({ locale: "en", question_seeds: "" })).question_seeds,
+    ).toBe("(none)");
+  });
+
+  // fixtureに欄が増えたときも自動で検査対象になる。agent側でdefaultを足すと、
+  // その欄を消したケースが通って契約ドリフトを再び隠すため、全欄を1つずつ削る。
+  it("共有契約の必須項目をagent側で補わない", () => {
+    for (const field of Object.keys(sessionMetadataFixture) as (keyof SessionMetadata)[]) {
+      expect(() => readSessionContext(withoutField(field)), field).toThrow(
+        InvalidSessionContextError,
+      );
+    }
+  });
+
+  it("共有契約にない項目を受け入れない(strict)", () => {
+    const extended = JSON.stringify({ ...sessionMetadataFixture, future_field: "x" });
+    expect(() => readSessionContext(extended)).toThrow(InvalidSessionContextError);
   });
 });
 
 describe("resolveSessionContext", () => {
   it("参加者metadataが読めればそれを使う", () => {
-    expect(resolveSessionContext([metadata, undefined]).session_id).toBe("ses_1");
+    expect(resolveSessionContext([metadata, undefined]).session_id).toBe(
+      sessionMetadataFixture.session_id,
+    );
   });
 
   // 明示ディスパッチでは、文脈はジョブ側に載って来る
   it("参加者metadataが空でも、ジョブmetadataから読める", () => {
-    expect(resolveSessionContext([undefined, metadata]).session_id).toBe("ses_1");
-    expect(resolveSessionContext(["", metadata]).session_id).toBe("ses_1");
+    expect(resolveSessionContext([undefined, metadata]).session_id).toBe(
+      sessionMetadataFixture.session_id,
+    );
+    expect(resolveSessionContext(["", metadata]).session_id).toBe(
+      sessionMetadataFixture.session_id,
+    );
   });
 
   it("壊れたmetadataは飛ばして、読めるほうを使う", () => {
-    expect(resolveSessionContext(["not json", metadata]).session_id).toBe("ses_1");
+    expect(resolveSessionContext(["not json", metadata]).session_id).toBe(
+      sessionMetadataFixture.session_id,
+    );
   });
 
   it("どこにも載っていなければ会話を始めない", () => {

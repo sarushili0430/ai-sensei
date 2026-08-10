@@ -4,6 +4,7 @@ import {
   type SessionProblem,
   type UpdateSessionTopicsResponse,
   createSessionRequestSchema,
+  sessionMetadataSchema,
   sessionPhotoParts,
   updateSessionTopicsRequestSchema,
 } from "@ai-sensei/contract";
@@ -469,10 +470,11 @@ function studentWorkForPrompt(input: {
 /**
  * エージェントがトークンから読む会話文脈。形は `contract` の {@link SessionMetadata}。
  *
- * **戻り値を `SessionMetadata` で型づけしてから文字列化している。**
+ * **`SessionMetadata` で型検査し、共有スキーマで実行時検証してから文字列化する。**
  * ここが素の object リテラルだったために `problem_text` の欄が無いことに誰も気づかず、
  * agent は `photo_summary`(「何が写っているか」の要約)を問題文として流用していた
  * = 先輩が問題そのものを見ないまま教えていた(計画書 §0 決定4 の未実装)。
+ * 型は実行時には消えるので、検証なしでは壊れた封筒をトークンへ載せてしまう。
  */
 function buildSessionMetadata(input: {
   sessionId: string;
@@ -485,7 +487,7 @@ function buildSessionMetadata(input: {
   /** ノートの写真がR2にあるか(= 送られてきたか)。`student_work` の文言が変わる。 */
   hasNotesPhoto: boolean;
 }): string {
-  const metadata: SessionMetadata = {
+  const metadata = sessionMetadataSchema.parse({
     session_id: input.sessionId,
     locale: input.locale,
     kind: input.kind,
@@ -507,7 +509,7 @@ function buildSessionMetadata(input: {
     allowed_topics: formatAllowedTopics(allowedTopicList(input.allowed), input.locale),
     allowed_topic_ids: [...input.allowed.primary, ...input.allowed.prerequisite],
     is_premium: input.isPremium,
-  };
+  } satisfies SessionMetadata);
   return JSON.stringify(metadata);
 }
 
