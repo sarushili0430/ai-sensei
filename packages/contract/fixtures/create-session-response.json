@@ -22,8 +22,12 @@
       "confidence": 0.41
     }
   ],
+  "problem": {
+    "text": "円 x^2 + y^2 = 5 と直線 y = x + k について、(1) 共有点の個数を求めよ。(2) 接するときの k の値を求めよ。",
+    "source": "problem_photo"
+  },
   "limits": {
     "max_seconds": 300,
-    "remaining_sessions_today": 0
+    "lesson_allowed_today": false
   }
 }

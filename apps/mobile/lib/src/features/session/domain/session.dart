@@ -26,6 +26,36 @@ abstract class DetectedTopic with _$DetectedTopic {
   bool get isConfident => confidence >= 0.5;
 }
 
+/// 問題文をどの写真から読んだか(`api.ts` の `problemSources`)。
+///
+/// **画面の出しわけには使っていない。** 読めたときは出どころに関係なく
+/// 問題文をそのまま見せる([SessionProblem] 参照)。ここを持っているのは、
+/// 契約が `text` と `source` を1オブジェクトで縛っているから
+/// (「本文はあるが出どころが無い」を表現できなくするため)と、
+/// **実際に何割の生徒が2枚送っているかが、この値でしか観測できない**ため。
+enum ProblemSource {
+  @JsonValue('problem_photo')
+  problemPhoto,
+  @JsonValue('notes_photo')
+  notesPhoto,
+}
+
+/// このセッションが扱う問題。**読み取れたときだけ存在する。**
+///
+/// 授業を始める前に画面へ出す。**誤読が表面化するのがここで最も早い**からで、
+/// 15分教わったあとに「それ別の問題です」となるのと、開始前に気づくのとでは
+/// 価値がまったく違う(計画書 §1-1「AIが理解している建て付けのアプリほど
+/// 誤読が致命傷になる」への、授業前の手当て)。
+@freezed
+abstract class SessionProblem with _$SessionProblem {
+  const factory SessionProblem({
+    required String text,
+    required ProblemSource source,
+  }) = _SessionProblem;
+
+  factory SessionProblem.fromJson(Map<String, dynamic> json) => _$SessionProblemFromJson(json);
+}
+
 @freezed
 abstract class LiveKitConnection with _$LiveKitConnection {
   const factory LiveKitConnection({
@@ -40,18 +70,14 @@ abstract class LiveKitConnection with _$LiveKitConnection {
 
 @freezed
 abstract class SessionLimits with _$SessionLimits {
-  const SessionLimits._();
-
   const factory SessionLimits({
     @JsonKey(name: 'max_seconds') required int maxSeconds,
 
-    /// Premiumはnull(無制限)。
-    @JsonKey(name: 'remaining_sessions_today') int? remainingSessionsToday,
+    /// この応答時点から、今日さらに授業を始められるか。
+    @JsonKey(name: 'lesson_allowed_today') required bool lessonAllowedToday,
   }) = _SessionLimits;
 
   factory SessionLimits.fromJson(Map<String, dynamic> json) => _$SessionLimitsFromJson(json);
-
-  bool get isUnlimited => remainingSessionsToday == null;
 }
 
 @freezed
@@ -61,6 +87,13 @@ abstract class SessionStart with _$SessionStart {
     required String kind,
     required LiveKitConnection livekit,
     @JsonKey(name: 'detected_topics') required List<DetectedTopic> detectedTopics,
+
+    /// 読み取れた問題文。読めなければ null。
+    ///
+    /// **`required` にしない。** 契約上はキーが必ず来る(`nullable()`)が、
+    /// 復習セッション(`kind: review`)のように写真を送らない経路もあるので、
+    /// キーの有無ではなく値の有無だけを見る。
+    SessionProblem? problem,
     required SessionLimits limits,
   }) = _SessionStart;
 

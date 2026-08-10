@@ -7,9 +7,11 @@ import {
   createSessionResponseSchema,
   progressResponseSchema,
   reviewQueueResponseSchema,
+  sessionMetadataSchema,
 } from "./api.ts";
 import { boardChannelLogSchema, boardLessonSchema } from "./board.ts";
 import { karteSchema } from "./karte.ts";
+import { planTurnSchema, studyPlanSchema } from "./plan.ts";
 
 /**
  * fixture名 → スキーマの対応表。
@@ -23,6 +25,9 @@ export const fixtureSchemas = {
   "create-session-response": createSessionResponseSchema,
   "complete-session-request": completeSessionRequestSchema,
   "complete-session-response": completeSessionResponseSchema,
+  // LiveKitトークンに載って agent に届く会話文脈。HTTPのボディではないので
+  // 「主なエンドポイント」の表には出てこないが、backend/api ↔ agent の契約そのもの。
+  "session-metadata": sessionMetadataSchema,
   karte: karteSchema,
   "review-queue-response": reviewQueueResponseSchema,
   "progress-response": progressResponseSchema,
@@ -31,6 +36,11 @@ export const fixtureSchemas = {
   // 責務が違うので別のfixtureにしている(理由は src/board.ts の冒頭)。
   "board-lesson": boardLessonSchema,
   "board-channel-log": boardChannelLogSchema,
+  // 学習計画。板書と同じく、LLMが出す形(study-plan-turn)と保存後の形を分けている。
+  // 画面と親レポートが読むのは保存後のほう、agentがLLM出力を検証するのは turn のほう
+  // (計画は聞き取りの会話の途中で生まれるので、LLMの単位は「計画」ではなく「1ターン」)。
+  "study-plan": studyPlanSchema,
+  "study-plan-turn": planTurnSchema,
 } satisfies Record<string, ZodTypeAny>;
 
 export type FixtureName = keyof typeof fixtureSchemas;
@@ -50,6 +60,7 @@ export const fixtureFileSchemas: Record<string, FixtureName> = {
   "create-session-response.en": "create-session-response",
   "karte.en": "karte",
   "board-lesson.en": "board-lesson",
+  "study-plan.en": "study-plan",
 };
 
 export const fixtureFileNames = Object.keys(fixtureFileSchemas);

@@ -16,10 +16,18 @@ describe("loadConfig", () => {
     const config = loadConfig(complete);
     expect(config.LLM_MODEL_CONVERSATION).toBe("claude-haiku-4-5-20251001");
     expect(config.LLM_MODEL_KARTE).toBe("claude-sonnet-5");
+    expect(config.LLM_MODEL_BOARD).toBe("claude-sonnet-5");
   });
 
-  // 後輩の声は環境ごとに変わってはいけないので、鍵と違って設定必須にしない
-  it("後輩の声は設定が無くても固定される", () => {
+  // 8/16のゲートで測られるのは会話の速さではなく板書の質(計画書 §3-4)。
+  // 会話と同じ軽いモデルに落ちると、そのゲートを試す前に負ける。
+  it("板書は会話より重いモデルを既定にする", () => {
+    const config = loadConfig(complete);
+    expect(config.LLM_MODEL_BOARD).not.toBe(config.LLM_MODEL_CONVERSATION);
+  });
+
+  // 先輩の声は環境ごとに変わってはいけないので、鍵と違って設定必須にしない
+  it("先輩の声は設定が無くても固定される", () => {
     const config = loadConfig(complete);
     expect(config.DEEPGRAM_TTS_MODEL_JA).toBe("aura-2-izanami-ja");
     expect(config.DEEPGRAM_TTS_MODEL_EN).toBe("aura-2-andromeda-en");

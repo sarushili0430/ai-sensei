@@ -22,7 +22,7 @@ import type { CurriculumLocale } from "@ai-sensei/curriculum";
  *     `packages/guardrail` の約束どおり **副作用なし・外部依存なし** で書く。
  *     KaTeXを持ち込まないのはそのため。
  *
- * 落ちたものは agent 側で**再生成させる**(`topic-guard.ts` と同じ二重ガードの構え)。
+ * 落ちたものは agent 側で**再生成させる**(プロンプトの制約と機械検査の二重ガード)。
  */
 
 /**
@@ -304,8 +304,7 @@ export function collectLatexCommands(tex: string): string[] {
 
 /**
  * 再生成プロンプトに添える指示。**会話の言語で書く**
- * (`topic-guard.ts` の `rejectionGuidanceByLocale` と同じ理由 —
- * 日本語の指示を英語の授業に混ぜると、次の板書だけ日本語で返ってくる)。
+ * (日本語の指示を英語の授業に混ぜると、次の板書だけ日本語で返ってくるため)。
  *
  * 文面は「何を直せばよいか」まで書く。理由だけ渡しても、LLMは同じ式を出し直す。
  *

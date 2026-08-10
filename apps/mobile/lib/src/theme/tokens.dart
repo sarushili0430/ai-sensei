@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 /// ストリーク・厚みのあるボタン・キャラの感情リアクションは採用し、
 /// XP/リーグ/正誤スコア/緑フクロウ的なトレードドレスは採用しない。
 abstract final class AppColors {
-  /// 主役・行動・後輩。
+  /// 主役・行動・先輩。
   static const Color blue = Color(0xFF0EA5E9);
 
   /// 言えたこと(蛍光マーカー・黄)。
@@ -74,10 +74,10 @@ abstract final class AppDurations {
   /// 蛍光マーカーを引く速さ。ペン先が走る時間そのもの。
   static const Duration draw = Duration(milliseconds: 420);
 
-  /// 後輩の呼吸。まばたきもこの周期から作る。
+  /// 先輩の呼吸。まばたきもこの周期から作る。
   static const Duration breath = Duration(milliseconds: 3400);
 
-  /// 1文字ぶんのタイプ速度(後輩のせりふ)。
+  /// 1文字ぶんのタイプ速度(先輩のせりふ)。
   static const Duration typeChar = Duration(milliseconds: 45);
 
   /// 「長押しして説明する」を、説明したことにする長さ。

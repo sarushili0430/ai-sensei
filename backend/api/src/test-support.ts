@@ -1,8 +1,9 @@
+import { sessionPhotoParts } from "@ai-sensei/contract";
 import type { CurriculumLocale } from "@ai-sensei/curriculum";
 import type { D1Database, KVNamespace, R2Bucket } from "./cloudflare.ts";
 import type { Bindings, Services } from "./env.ts";
 import type { NotificationScheduler } from "./lib/notifications.ts";
-import type { PhotoAnalysis, PhotoAnalyzer } from "./lib/photo-analysis.ts";
+import type { PhotoAnalysis, PhotoAnalyzer, PhotoAnalyzerInput } from "./lib/photo-analysis.ts";
 import { MemoryRepository } from "./repository/memory.ts";
 
 /**
@@ -13,6 +14,8 @@ import { MemoryRepository } from "./repository/memory.ts";
 export const analysisFixture: PhotoAnalysis = {
   is_math_note: true,
   summary: "円と直線の位置関係の問題。(1)は交点の個数を求めている。",
+  problem_text:
+    "円 x^2 + y^2 = 5 と直線 y = x + k について、(1) 共有点の個数を求めよ。(2) 接するときの k の値を求めよ。",
   visible_work: ["中心と直線の距離を求めている", "(2)では連立して判別式を使っている"],
   topics: [
     { topic_id: "M2-ZUKEI-ENCHOKU", confidence: 0.92 },
@@ -26,6 +29,8 @@ export const analysisFixture: PhotoAnalysis = {
 export const analysisFixtureEn: PhotoAnalysis = {
   is_math_note: true,
   summary: "A line-and-circle problem. Part (1) asks for the number of intersection points.",
+  problem_text:
+    "For the circle x^2 + y^2 = 5 and the line y = x + k: (1) find the number of intersection points. (2) find the value of k that makes them tangent.",
   visible_work: [
     "Finding the distance from the center to the line",
     "In (2), substituting and using the discriminant",
@@ -44,7 +49,8 @@ export const analysisFixtureEn: PhotoAnalysis = {
  * 渡していても、テストからは気づけない。
  */
 export class RecordingAnalyzer implements PhotoAnalyzer {
-  readonly calls: { locale: CurriculumLocale }[] = [];
+  /** 呼ばれたロケールと、どちらの写真が渡されたか。 */
+  readonly calls: { locale: CurriculumLocale; hadNotes: boolean; hadProblem: boolean }[] = [];
 
   private readonly byLocale: Partial<Record<CurriculumLocale, PhotoAnalysis>>;
   private readonly fallback: PhotoAnalysis;
@@ -57,9 +63,13 @@ export class RecordingAnalyzer implements PhotoAnalyzer {
     this.byLocale = byLocale;
   }
 
-  async analyze(input: { locale?: CurriculumLocale }): Promise<PhotoAnalysis> {
+  async analyze(input: PhotoAnalyzerInput): Promise<PhotoAnalysis> {
     const locale = input.locale ?? "ja";
-    this.calls.push({ locale });
+    this.calls.push({
+      locale,
+      hadNotes: input.notes !== undefined,
+      hadProblem: input.problem !== undefined,
+    });
     return this.byLocale[locale] ?? this.fallback;
   }
 }
@@ -182,12 +192,27 @@ export function testServices(options: { now?: Date; analysis?: PhotoAnalysis } =
 /** JPEGとして通るだけの最小のバイト列(SOIマーカー + APP0)。 */
 export const JPEG_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
 
-/** multipart/form-data のセッション作成リクエストを組み立てる。 */
-export function createSessionForm(meta: Record<string, unknown> = {}): FormData {
+/**
+ * multipart/form-data のセッション作成リクエストを組み立てる。
+ *
+ * `problemPhoto` は §4-1 の2枚目(教科書・問題集の紙面)。**任意**なので、
+ * 既定では付けない — 「2枚必須にしない」が既定の経路で守られていることが、
+ * ここに何も渡さないテストがすべて通ることで示される。
+ */
+export function createSessionForm(
+  meta: Record<string, unknown> = {},
+  options: { problemPhoto?: File } = {},
+): FormData {
   const form = new FormData();
   // 先頭はJPEGのマジックナンバー。中身で形式を判定するので、ここが
   // ただのダミーバイトだと「読み取れない写真」として弾かれる。
-  form.set("photo", new File([JPEG_BYTES], "note.jpg", { type: "image/jpeg" }));
+  form.set(sessionPhotoParts.notes, new File([JPEG_BYTES], "note.jpg", { type: "image/jpeg" }));
+  if (options.problemPhoto) form.set(sessionPhotoParts.problem, options.problemPhoto);
   form.set("meta", JSON.stringify({ kind: "new", locale: "ja", ...meta }));
   return form;
+}
+
+/** 問題の写真(2枚目)。中身はノートと同じダミーで、扱いの違いだけを見る。 */
+export function problemPhotoFile(type = "image/jpeg"): File {
+  return new File([JPEG_BYTES], "problem.jpg", { type });
 }

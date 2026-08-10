@@ -35,6 +35,21 @@ export function setErrorReporter(next: ErrorReporter | null): void {
 }
 
 /**
+ * **縮退**の受け皿。エラーとは別の口にする(計画書 §10-7)。
+ *
+ * `error` はクラッシュとして `captureException` に流れる。こちらは
+ * 「落ちてはいないが約束が破れている」状態で、`captureMessage(level: "warning")` へ送る。
+ * 混ぜると本当に落ちたものが埋もれる。モバイル側・agent 側と同じ切り分け。
+ */
+export type DegradationReporter = (event: string, fields: LogFields) => void;
+
+let degradationReporter: DegradationReporter | null = null;
+
+export function setDegradationReporter(next: DegradationReporter | null): void {
+  degradationReporter = next;
+}
+
+/**
  * どこまで出すか。
  *
  * `error` にすると、全リクエストの1行(`http_request`)を落として失敗だけ残す。
@@ -61,7 +76,16 @@ export class RequestLogger {
     this.write("info", event, fields);
   }
 
+  /**
+   * **縮退の通報は `LOG_LEVEL` で止めない。**
+   *
+   * `level: "error"` は**標準出力の量**を落とすための逃げ道で、
+   * 「気づかなくてよい」という意味ではない。ここで一緒に黙らせると、
+   * ログが多いという理由で監視まで切れる — しかも切れたことに気づく手段がない。
+   */
   warn(event: string, fields: LogFields = {}): void {
+    // 受け皿が無ければ何もしない(ローカルとテストは常にこちら)。
+    degradationReporter?.(event, { trace_id: this.traceId, ...this.base, ...fields });
     if (this.level === "error") return;
     this.write("warn", event, fields);
   }
@@ -126,4 +150,127 @@ export async function errorCodeOf(response: Response): Promise<string | undefine
 
 export function newTraceId(): string {
   return crypto.randomUUID();
+}
+
+/* -------------------------------------------------------------------------- */
+/* 縮退(warn のうち、監視に上げるもの)                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * 監視に上げる縮退。**閉じた集合にする。**
+ *
+ * `warn` を全部上げると、認証の弾き(スキャナが常時叩く)まで飛んで
+ * **アラート疲れ**になる。入れる基準は「**ユーザーが損をしたか**」の1つ。
+ *
+ * agent 側(`backend/agent/src/telemetry.ts`)と**同じ考え方だが、別の実装**。
+ * ランタイムもSDKも違う(`@sentry/node` / `@sentry/cloudflare`)ので、
+ * 共有パッケージにはしていない。**揃えるのは方針**(縮退はwarning・本文は送らない・
+ * 鍵が無ければ何もしない)であって、コードではない。
+ */
+export const apiDegradations = [
+  /**
+   * ノートの写真が読めなかった。手がかりゼロで授業が始まる。
+   * ここが増え続けるなら、撮影のガイドか解析のどちらかが効いていない。
+   */
+  "notes_photo_unreadable",
+  /**
+   * 問題の写真が読めなかった。**先輩は問題を見ないまま教える**ことになり、
+   * 「問題、読んでもらってもいい?」から始まる(計画書 §4-1)。
+   */
+  "problem_photo_unreadable",
+  /**
+   * カルテのLLMが許可リスト外のtopic_idを付け、こちらで付け替えた。
+   * 復習の通知が的外れになる方向の劣化で、**画面上は何事もなく進む**。
+   */
+  "guardrail_retagged_holes",
+] as const;
+
+export type ApiDegradation = (typeof apiDegradations)[number];
+
+const degradationSet = new Set<string>(apiDegradations);
+
+export function isDegradation(event: string): event is ApiDegradation {
+  return degradationSet.has(event);
+}
+
+/**
+ * 監視に送ってよい欄。**ここに無い文字列は落とす(deny ではなく allow)。**
+ *
+ * ログの欄は今後も増えるので、「危ないものを列挙して落とす」形だと
+ * 足された欄が既定で送られてしまう。既定は落とす側に倒す。
+ */
+export const degradationStringFields = [
+  "trace_id",
+  "session_id",
+  "kind",
+  "locale",
+  /** カリキュラムの閉じた語彙(`packages/curriculum` のID)。ユーザーの入力ではない。 */
+  "retagged_to",
+] as const;
+
+const allowedStrings = new Set<string>(degradationStringFields);
+
+/** 送る直前に本文を落とす最後の関門。数値・真偽値は通し、文字列は許可リストのみ。 */
+export function scrubFields(fields: LogFields): LogFields {
+  const out: LogFields = {};
+  for (const [key, value] of Object.entries(fields)) {
+    if (typeof value === "number" || typeof value === "boolean") {
+      out[key] = value;
+      continue;
+    }
+    if (typeof value === "string" && allowedStrings.has(key)) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+/**
+ * 同じことを何度も送らないための間引き。
+ *
+ * Workers は**リクエストごとにアイソレートが使い回される**ので、状態はプロセス内に
+ * 溜まる。上限に達したら全部忘れる(送りすぎより「長く生きたアイソレートからは
+ * 何も飛ばなくなる」ほうが困る)。
+ */
+export class DegradationThrottle {
+  private readonly limit: number;
+  private readonly seen = new Set<string>();
+
+  constructor(limit = 64) {
+    this.limit = limit;
+  }
+
+  allow(key: string): boolean {
+    if (this.seen.has(key)) return false;
+    if (this.seen.size >= this.limit) this.seen.clear();
+    this.seen.add(key);
+    return true;
+  }
+
+  reset(): void {
+    this.seen.clear();
+  }
+}
+
+/** 「同じ出来事」の単位。セッション単位で1件だけ送る。 */
+export function degradationKey(event: string, fields: LogFields): string {
+  const scope = fields["session_id"];
+  return `${event}/${typeof scope === "string" ? scope : ""}`;
+}
+
+export type CaptureDegradation = (event: ApiDegradation, fields: LogFields) => void;
+
+/**
+ * `RequestLogger.warn` を受けて、縮退だけを間引いて送る関数を作る。
+ * 判定・間引き・伏せ字をここに集めるので、`index.ts` は差し込むだけでよい。
+ */
+export function createDegradationReporter(
+  capture: CaptureDegradation,
+  throttle: DegradationThrottle = new DegradationThrottle(),
+): DegradationReporter {
+  return (event, fields) => {
+    if (!isDegradation(event)) return;
+    if (!throttle.allow(degradationKey(event, fields))) return;
+    capture(event, scrubFields(fields));
+  };
 }

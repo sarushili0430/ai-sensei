@@ -15,7 +15,7 @@ const CLOSING_PATTERNS: RegExp[] = [
   /(?:thanks|thank you)[,.!]?\s*(?:that helped|got it)?/i,
 ];
 
-/** 後輩の締めの発話かどうか。ユーザー側の発話には使わない。 */
+/** AI側の締めの発話かどうか。ユーザー側の発話には使わない。 */
 export function isClosingUtterance(text: string): boolean {
   const normalized = text.trim();
   if (normalized.length === 0) return false;
@@ -24,6 +24,6 @@ export function isClosingUtterance(text: string): boolean {
 
 /**
  * 締めたあと、TTSが最後まで読み上げるのを待つ余白。
- * ここを0にすると、後輩の「ありがとうございました」が途中で切れる。
+ * ここを0にすると、締めの「今日はここまでにしよっか」が途中で切れる。
  */
 export const closingGraceMs = 2500;

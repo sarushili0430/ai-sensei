@@ -54,7 +54,7 @@ class _FakeServer {
         'is_premium': _premium,
         'limits': <String, dynamic>{
           'max_seconds': _premium ? 900 : 300,
-          'remaining_sessions_today': _premium ? null : 0,
+          'lesson_allowed_today': _premium,
         },
       });
     }

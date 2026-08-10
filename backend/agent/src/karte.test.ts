@@ -20,6 +20,8 @@ import {
 const context = readSessionContext(
   JSON.stringify({
     session_id: "ses_1",
+    problem_text: "x^2 - 3x + 2 = 0 を解け",
+    visible_work: "- 因数分解しかけて止まっている",
     max_seconds: 300,
     photo_summary: "円と直線の位置関係",
     allowed_topics: "- M2-ZUKEI-ENCHOKU",
@@ -31,6 +33,8 @@ const context = readSessionContext(
 const premiumContext = readSessionContext(
   JSON.stringify({
     session_id: "ses_2",
+    problem_text: "x^2 - 3x + 2 = 0 を解け",
+    visible_work: "- 因数分解しかけて止まっている",
     max_seconds: 900,
     allowed_topic_ids: ["M2-ZUKEI-ENCHOKU", "M1-NIJI-HANBETSU"],
     is_premium: true,
@@ -334,6 +338,8 @@ describe("英語のセッション", () => {
   const englishContext = readSessionContext(
     JSON.stringify({
       session_id: "ses_en",
+      problem_text: "x^2 - 3x + 2 = 0 を解け",
+      visible_work: "- 因数分解しかけて止まっている",
       locale: "en",
       max_seconds: 300,
       photo_summary: "A line-and-circle problem",

@@ -1,0 +1,108 @@
+{
+  "id": "pln_01J8ZB4X6TQ2M3N4P5R6S7T8V9",
+  "created_at": "2026-08-24T12:05:31.000Z",
+  "source": "senpai",
+  "intake": {
+    "exam_name": "2学期の中間",
+    "exam_date": "2026-09-10",
+    "scope": {
+      "topic_ids": ["M2-SANKAKU-KAHO", "M2-SANKAKU-HOTEISHIKI"],
+      "said": "数IIの三角関数、教科書120〜150ページ"
+    },
+    "materials": ["4STEP", "青チャート", "教科書"]
+  },
+  "days": [
+    {
+      "date": "2026-09-01",
+      "items": [
+        {
+          "topic_id": "M2-SANKAKU-KAHO",
+          "what": "加法定理を、導出しながらノートに書き出す",
+          "material": 2,
+          "minutes": 30,
+          "status": "done"
+        },
+        {
+          "topic_id": "M2-SANKAKU-KAHO",
+          "what": "4STEPの加法定理の例題を一周",
+          "material": 0,
+          "minutes": 40,
+          "status": "done"
+        }
+      ]
+    },
+    {
+      "date": "2026-09-02",
+      "items": [
+        {
+          "topic_id": "M2-SANKAKU-KAHO",
+          "what": "合成の式を、なぜその形になるか言いながら解く",
+          "material": 0,
+          "minutes": 40,
+          "status": "moved"
+        }
+      ]
+    },
+    {
+      "date": "2026-09-03",
+      "items": []
+    },
+    {
+      "date": "2026-09-06",
+      "items": [
+        {
+          "topic_id": "M2-SANKAKU-KAHO",
+          "what": "合成の式を、なぜその形になるか言いながら解く",
+          "material": 0,
+          "minutes": 40,
+          "status": "todo"
+        },
+        {
+          "topic_id": "M2-SANKAKU-HOTEISHIKI",
+          "what": "三角方程式を、単位円を描いてから解く",
+          "material": 0,
+          "minutes": 40,
+          "status": "todo"
+        }
+      ]
+    },
+    {
+      "date": "2026-09-08",
+      "items": [
+        {
+          "topic_id": "M2-SANKAKU-HOTEISHIKI",
+          "what": "青チャートの三角不等式の例題を、解ける形まで",
+          "material": 1,
+          "minutes": 45,
+          "status": "todo"
+        },
+        {
+          "topic_id": "M2-SANKAKU-KAHO",
+          "what": "間違えたところだけノートで見直す",
+          "material": null,
+          "minutes": 20,
+          "status": "todo"
+        }
+      ]
+    },
+    {
+      "date": "2026-09-09",
+      "items": [
+        {
+          "topic_id": "M2-SANKAKU-HOTEISHIKI",
+          "what": "グラフを描く問題だけ、もう一度通す",
+          "material": 0,
+          "minutes": 30,
+          "status": "todo"
+        }
+      ]
+    }
+  ],
+  "revisions": [
+    {
+      "at": "2026-09-05T20:14:02.000Z",
+      "reason": "behind",
+      "said": "風邪ひいて3日できなかった"
+    }
+  ]
+}

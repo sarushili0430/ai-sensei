@@ -68,14 +68,34 @@ describe("GET /v1/me/progress", () => {
       open_holes: 0,
       last_session_date: null,
     });
-    expect(body.limits.remaining_sessions_today).toBe(1);
+    expect(body.limits.lesson_allowed_today).toBe(true);
   });
 
-  it("Premiumは残セッション数がnull(無制限)", async () => {
+  it("無料ユーザーが今日の枠を使ったあとは授業不可を返す", async () => {
+    await services.repository.createSession({
+      id: "ses_today",
+      device_id: testDeviceId,
+      kind: "new",
+      status: "open",
+      created_at: "2026-08-03T13:00:00.000Z",
+      completed_at: null,
+      local_date: "2026-08-03",
+      photo_key: null,
+      topic_ids: [],
+      hole_id: null,
+      duration_seconds: null,
+      context: null,
+    });
+
+    const body = (await (await get("/v1/me/progress")).json()) as ProgressResponse;
+    expect(body.limits.lesson_allowed_today).toBe(false);
+  });
+
+  it("Premiumは今日の授業が常に許可され、会話時間の上限も長い", async () => {
     await makePremium();
     const body = (await (await get("/v1/me/progress")).json()) as ProgressResponse;
     expect(body.is_premium).toBe(true);
-    expect(body.limits.remaining_sessions_today).toBeNull();
+    expect(body.limits.lesson_allowed_today).toBe(true);
     expect(body.limits.max_seconds).toBe(900);
   });
 

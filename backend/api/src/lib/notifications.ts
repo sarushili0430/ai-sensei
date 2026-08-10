@@ -27,10 +27,19 @@ export type NotificationScheduler = {
   cancel(externalId: string): Promise<void>;
 };
 
-/** 通知のタイトル。後輩からの声で、アプリ名を叫ばない。 */
+/**
+ * 通知のタイトル。先輩からの声で、アプリ名を叫ばない。
+ *
+ * **ここがアプリの外で最初に目に入る面**なので、改正後の約束4
+ * (「通知もペイウォールも、先輩の判断として書く。数字は見せず、命令や催促にもしない」)
+ * が最も試される場所でもある。後輩の「教えてほしい」は**構造的に催促になりようがなかった**が、
+ * 先輩は言い切れる立場なので、「リマインド」「忘れていませんか」を入れた瞬間に催促になる。
+ * だから**誰が命じるかではなく、届くものの中身で名づける**(英語の `Reminders` も同じ理由で避ける)。
+ * 本文({@link buildReviewPrompt})が問いかけなので、タイトルは何が来たかだけを言う。
+ */
 const headings: Record<CurriculumLocale, string> = {
-  ja: "後輩から質問です",
-  en: "A question from your kohai",
+  ja: "先輩からおさらいです",
+  en: "A check-back from your senpai",
 };
 
 /** 通知が設定されていない環境(ローカル開発)では何もしない。 */
@@ -72,7 +81,7 @@ export function createOneSignalScheduler(options: OneSignalOptions): Notificatio
           // 匿名運用なので、デバイスIDをexternal idにしてある
           include_aliases: { external_id: [deviceId] },
           target_channel: "push",
-          // 通知は後輩の声で。タイトルにアプリ名を叫ばせない
+          // 通知は先輩の声で。タイトルにアプリ名を叫ばせない
           headings: { ja: heading, en: heading },
           contents: { ja: message, en: message },
           send_after: sendAt,

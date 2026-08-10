@@ -1,6 +1,7 @@
 import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
 import 'package:ai_sensei/src/features/karte/presentation/home_screen.dart';
 import 'package:ai_sensei/src/features/monetization/application/entitlement_controller.dart';
+import 'package:ai_sensei/src/features/monetization/data/purchases_repository.dart';
 import 'package:ai_sensei/src/features/monetization/presentation/manage_subscription_button.dart';
 import 'package:ai_sensei/src/features/monetization/presentation/paywall_screen.dart';
 import 'package:ai_sensei/src/features/monetization/presentation/thanks_screen.dart';
@@ -75,6 +76,33 @@ EntitlementInfo _entitlementInfo({
 );
 
 void main() {
+  /// **SDKの既定のまま何が送られるか**(計画書 §10-7 で Sentry を塞いだのと同じ観点)。
+  ///
+  /// ユーザーは未成年で、問題文はR2にすら保存しないと決めている。
+  /// 課金SDKに個人情報が流れたら、その決定は無効になる。
+  group('RevenueCat の送信設定', () {
+    /// **SDKの既定は true。** アトリビューションIDを設定した瞬間に
+    /// 広告識別子(`$idfa` / `$gpsAdId` / `$androidId` / `$ip` など)が流れ始める。
+    /// いまは使っていないが、**1行足しただけで未成年の端末から流れ出す**のは重すぎる。
+    test('広告識別子の自動収集は、明示的に切ってある', () {
+      expect(
+        PurchasesRepository.configurationFor('device-1')
+            .automaticDeviceIdentifierCollectionEnabled,
+        isFalse,
+      );
+    });
+
+    /// 既定でも false。**既定で安全なものも明示する** —— 既定に頼ると、
+    /// SDKの更新で既定が変わったときに誰も気づけない。
+    test('診断情報の送信も、明示的に切ってある', () {
+      expect(PurchasesRepository.configurationFor('device-1').diagnosticsEnabled, isFalse);
+    });
+
+    test('匿名のデバイスIDがそのまま appUserID になる(アカウントを作らせない)', () {
+      expect(PurchasesRepository.configurationFor('device-1').appUserID, 'device-1');
+    });
+  });
+
   group('設定', () {
     test('鍵が無いビルドでは課金を無効にする(テスト・CIがこの経路)', () {
       expect(RevenueCatConfig.isConfigured, isFalse);

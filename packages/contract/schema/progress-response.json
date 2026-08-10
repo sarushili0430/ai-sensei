@@ -49,21 +49,13 @@
               "type": "integer",
               "exclusiveMinimum": 0
             },
-            "remaining_sessions_today": {
-              "anyOf": [
-                {
-                  "type": "integer",
-                  "minimum": 0
-                },
-                {
-                  "type": "null"
-                }
-              ]
+            "lesson_allowed_today": {
+              "type": "boolean"
             }
           },
           "required": [
             "max_seconds",
-            "remaining_sessions_today"
+            "lesson_allowed_today"
           ],
           "additionalProperties": false
         }

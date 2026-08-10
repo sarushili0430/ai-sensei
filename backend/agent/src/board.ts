@@ -10,8 +10,11 @@ import {
 } from "@ai-sensei/contract";
 import type { CurriculumLocale } from "@ai-sensei/curriculum";
 import {
+  type AllowedTopics,
   type LatexRejectionReason,
+  buildAllowedTopics,
   checkBoardLatex,
+  isAllowedTopic,
   latexRejectionGuidanceByLocale,
 } from "@ai-sensei/guardrail";
 import katex from "katex";
@@ -179,6 +182,12 @@ export type BoardStepRejection = {
  */
 export type StepRepair = (rejection: BoardStepRejection) => Promise<unknown>;
 
+/**
+ * 範囲外の見出しを直させる。直せなければ `null`。
+ * 実装はLLM呼び出しになるが、**この層はそれを知らない**(テストではただの関数)。
+ */
+export type HeadRepair = (rejection: BoardHeadRejection) => Promise<unknown>;
+
 /** 契約に合わなかったときの指示。LaTeXの理由別の文面は guardrail 側にある。 */
 const schemaGuidanceByLocale: Record<CurriculumLocale, string> = {
   ja: "手順の形が契約に合っていません。speech は120字以内の話し言葉(数式を入れない)、board は latex / text / plot / triangle / circle のどれか、または null にすること。",
@@ -297,10 +306,93 @@ export function validateStep(raw: unknown, index: number, locale: CurriculumLoca
   return { ok: true, step: parsed.data };
 }
 
+/**
+ * 見出しが範囲外だった理由。手順の {@link BoardStepRejection} と同じ形で持つ。
+ */
+export type BoardHeadRejection = {
+  reason: "topic_not_allowed";
+  /** 外れた `topic_id`。**カリキュラムの閉じた語彙**なのでログに出してよい。 */
+  detail: string;
+  /** **会話の言語で書かれた再生成の指示。**そのままプロンプトに足せる。 */
+  guidance: string;
+  /** 落ちた見出しの生の値。直させるときの材料。 */
+  raw: unknown;
+};
+
+export type HeadVerdict = { ok: true } | { ok: false; rejection: BoardHeadRejection };
+
+/** 範囲外の単元を教えようとしたときの指示。理由だけ渡すと同じIDが返ってくる。 */
+const topicGuidanceByLocale: Record<CurriculumLocale, (outside: string) => string> = {
+  ja: (outside) =>
+    [
+      `topic_ids に、この写真の許可リストに無い単元が入っています(${outside})。`,
+      "許可リストの中から選び直し、板書の中身もその範囲で組み立て直すこと。",
+      "リストには写真の単元とその前提が入っているので、前提に戻るのは構いません。",
+    ].join(""),
+  en: (outside) =>
+    [
+      `topic_ids contains a unit that is not in the allowed list for this photo (${outside}). `,
+      "Pick again from the allowed list, and rebuild the board within that range. ",
+      "The list already contains the photo's unit plus its prerequisites, so going back to a prerequisite is fine.",
+    ].join(""),
+};
+
+/**
+ * 見出しの `topic_ids` が、このセッションで教えてよい範囲に入っているか。
+ *
+ * **ここが無いと、板書だけがガードレールの片翼になる。**
+ * README は「サーバ側で出力の `topic_id` をホワイトリスト照合して、外れたものは
+ * 再生成させる」= 二重のガードレールと書いていて、カルテ側には
+ * `filterHoleTopicIds` がある。契約の `topicIdSchema` は**書式しか見ない**ので、
+ * `M9-ARIENAI-TANGEN` のような**形だけ正しい別単元**は素通りしてしまう。
+ *
+ * 計画書 §8 は topic_id 照合を「**教える範囲の妥当性**」チェックに転用すると
+ * 書いていて、板書こそがその対象。ピボット後にガードレールが向くべき先が、
+ * いちばん無防備だった。
+ *
+ * **見出しの時点で見る。**手順を1つも送る前なので、弾いても画面には何も出ていない。
+ * 手順を送り始めてからでは、消せないものが既に生徒の画面に載っている。
+ */
+export function validateHead(
+  raw: unknown,
+  allowed: AllowedTopics,
+  locale: CurriculumLocale,
+): HeadVerdict {
+  const topicIds = (raw as { topic_ids?: unknown } | null)?.topic_ids;
+  // 形が違うものはここでは弾かない。封筒スキーマ(`boardOpenMessageSchema`)が
+  // 見るので、二重に判定して食い違わせない。
+  if (!Array.isArray(topicIds)) return { ok: true };
+
+  const outside = topicIds.filter(
+    (id): id is string => typeof id === "string" && !isAllowedTopic(allowed, id),
+  );
+  if (outside.length === 0) return { ok: true };
+
+  return {
+    ok: false,
+    rejection: {
+      reason: "topic_not_allowed",
+      detail: outside.join(", "),
+      guidance: topicGuidanceByLocale[locale](outside.join(", ")),
+      raw,
+    },
+  };
+}
+
 export type BoardChannelOptions = {
   sessionId: string;
   locale: CurriculumLocale;
   sink: BoardSink;
+  /**
+   * このセッションで教えてよい単元。**見出しの照合に使う**({@link validateHead})。
+   *
+   * `backend/api` が既に前提2段ぶん(`conversationPrerequisiteDepth`)を含めて
+   * 載せてくるので、ここで**さらに広げない**(`karte.ts` が
+   * `prerequisiteDepth: 0` で組むのと同じ理由)。
+   *
+   * 省略すると照合しない。テストと、範囲が取れない経路のための逃げ道。
+   */
+  allowedTopicIds?: readonly string[];
   /**
    * `board_id` の発行。テストから固定値を入れられるようにしてある。
    *
@@ -356,6 +448,13 @@ export type AppendBoardOptions = {
    */
   onStep?: (step: BoardStep) => void | Promise<void>;
   repair?: StepRepair;
+  /**
+   * 範囲外の単元で板書を始めようとしたときに、見出しを作り直させる。
+   *
+   * **直らなくても板書は止めない。**縮退として記録して、そのまま進む
+   * (`append` の中の説明を参照)。`repair` と同じく、この層はLLM呼び出しを知らない。
+   */
+  repairHead?: HeadRepair;
   /** 1手順あたりの作り直し回数の上限。0にすると再生成しない。 */
   maxRepairAttempts?: number;
 };
@@ -394,6 +493,7 @@ export class BoardChannel {
   private readonly sessionId: string;
   private readonly locale: CurriculumLocale;
   private readonly sink: BoardSink;
+  private readonly allowedTopics: AllowedTopics | undefined;
   private readonly newBoardId: () => string;
   private readonly log: Pick<JobLogger, "info" | "warn"> | undefined;
   private seq = 0;
@@ -402,6 +502,11 @@ export class BoardChannel {
     this.sessionId = options.sessionId;
     this.locale = options.locale;
     this.sink = options.sink;
+    // 前提はAPI側で入っているので、ここでは広げない(depth 0)。
+    this.allowedTopics =
+      options.allowedTopicIds === undefined
+        ? undefined
+        : buildAllowedTopics(options.allowedTopicIds, { prerequisiteDepth: 0 });
     this.newBoardId = options.newBoardId ?? (() => `brd_${crypto.randomUUID()}`);
     this.log = options.log;
   }
@@ -422,6 +527,7 @@ export class BoardChannel {
     return new BoardDelivery({
       boardId: this.newBoardId(),
       locale: this.locale,
+      allowedTopics: this.allowedTopics,
       log: this.log,
       send: (body) => this.sendEnvelope(body),
     });
@@ -452,6 +558,7 @@ export class BoardChannel {
 type BoardDeliveryOptions = {
   boardId: string;
   locale: CurriculumLocale;
+  allowedTopics: AllowedTopics | undefined;
   log: Pick<JobLogger, "info" | "warn"> | undefined;
   send: (body: BoardEnvelopeBody) => Promise<void>;
 };
@@ -474,6 +581,7 @@ type BoardDeliveryOptions = {
 export class BoardDelivery {
   private readonly boardId: string;
   private readonly locale: CurriculumLocale;
+  private readonly allowedTopics: AllowedTopics | undefined;
   private readonly log: Pick<JobLogger, "info" | "warn"> | undefined;
   private readonly send: (body: BoardEnvelopeBody) => Promise<void>;
 
@@ -485,6 +593,7 @@ export class BoardDelivery {
   constructor(options: BoardDeliveryOptions) {
     this.boardId = options.boardId;
     this.locale = options.locale;
+    this.allowedTopics = options.allowedTopics;
     this.log = options.log;
     this.send = options.send;
   }
@@ -527,6 +636,7 @@ export class BoardDelivery {
       signal,
       onStep,
       repair,
+      repairHead,
       maxRepairAttempts = defaultMaxRepairAttempts,
     } = options;
 
@@ -573,7 +683,11 @@ export class BoardDelivery {
               });
               continue;
             }
-            head = { title: event.title, topic_ids: event.topic_ids };
+            head = await this.settleHead(
+              { title: event.title, topic_ids: event.topic_ids },
+              repairHead,
+              maxRepairAttempts,
+            );
             continue;
           }
           pending.push(event.raw);
@@ -771,6 +885,52 @@ export class BoardDelivery {
       closed: this.closed,
       rejections: input.rejections,
     };
+  }
+
+  /**
+   * 見出しを、必要なら直させながら確定させる。**弾いても板書は止めない。**
+   *
+   * 範囲外の単元で教え始めるのは、写真に無い話を教えることなので直させる。
+   * だが**直らなかったときに板書を殺してはいけない** — 生徒は15分の授業を
+   * 丸ごと失う。範囲が少しずれた板書のほうが、板書が出ないよりまし。
+   * だから最後は**元の見出しをそのまま返して進む**(縮退としてログに残す)。
+   *
+   * 許可集合が渡されていなければ素通し(テストと、範囲が取れない経路)。
+   */
+  private async settleHead(
+    head: { title: unknown; topic_ids: unknown },
+    repairHead: HeadRepair | undefined,
+    maxRepairAttempts: number,
+  ): Promise<{ title: unknown; topic_ids: unknown }> {
+    const allowed = this.allowedTopics;
+    if (allowed === undefined) return head;
+
+    let candidate: { title: unknown; topic_ids: unknown } = head;
+
+    for (let attempt = 0; ; attempt += 1) {
+      const verdict = validateHead(candidate, allowed, this.locale);
+      if (verdict.ok) return candidate;
+
+      this.log?.warn("board_topics_rejected", {
+        board_id: this.boardId,
+        // 外れたIDはカリキュラムの閉じた語彙。頻発するならプロンプト側を直す材料になる。
+        reason: verdict.rejection.reason,
+        detail: verdict.rejection.detail,
+        attempt,
+      });
+
+      if (repairHead === undefined || attempt >= maxRepairAttempts) return head;
+
+      let repaired: unknown;
+      try {
+        repaired = await repairHead(verdict.rejection);
+      } catch {
+        return head;
+      }
+      if (repaired === null || repaired === undefined) return head;
+      if (typeof repaired !== "object" || Array.isArray(repaired)) return head;
+      candidate = repaired as { title: unknown; topic_ids: unknown };
+    }
   }
 
   /**

@@ -16,6 +16,11 @@ import {
   createSessionResponseSchema,
   karteDraftSchema,
   karteSchema,
+  planDayMinutesMax,
+  planDaysMaxCount,
+  planTurnSchema,
+  studyPlanDraftSchema,
+  studyPlanSchema,
 } from "./index.ts";
 
 const repoRoot = resolve(import.meta.dirname, "..", "..", "..");
@@ -41,6 +46,7 @@ describe("fixture", () => {
     expect(fixtureFileNames).toContain("karte.en");
     expect(fixtureFileNames).toContain("create-session-response.en");
     expect(fixtureFileNames).toContain("board-lesson.en");
+    expect(fixtureFileNames).toContain("study-plan.en");
   });
 
   it("fixturePath がリポジトリ相対パスを返す", () => {
@@ -308,6 +314,209 @@ describe("板書のスキーマ", () => {
   });
 });
 
+describe("学習計画のスキーマ", () => {
+  function plan() {
+    return JSON.parse(JSON.stringify(loadFixture("study-plan"))) as {
+      intake: { exam_date: string; materials: string[] };
+      days: { date: string; items: Record<string, unknown>[] }[];
+      revisions: Record<string, unknown>[];
+    };
+  }
+
+  function draft() {
+    return JSON.parse(
+      JSON.stringify((loadFixture("study-plan-turn") as { plan: unknown }).plan),
+    ) as {
+      intake: { exam_date: string; materials: string[]; scope: { topic_ids: string[] } };
+      days: { date: string; items: Record<string, unknown>[] }[];
+      revision: unknown;
+    };
+  }
+
+  /**
+   * 約束2「点数を出さない」は、学習計画でいちばん破られやすい
+   * (「目標80点」「今週の達成率」は計画アプリの定番)。しかも §5 の親レポートに
+   * 載る前提なので、ここに置いた数字はそのまま親に届く。
+   */
+  it("目標点・正答率・達成率のフィールドを受け付けない(strict)", () => {
+    for (const extra of [{ target_score: 80 }, { accuracy: 0.7 }, { completion_rate: 0.5 }]) {
+      expect(studyPlanSchema.safeParse({ ...plan(), ...extra }).success).toBe(false);
+    }
+  });
+
+  it("割り当ての実績時間も持たせない(親レポートの学習時間ランキングに一歩で届く)", () => {
+    const broken = plan();
+    broken.days[0]!.items[0]!["actual_minutes"] = 35;
+    expect(studyPlanSchema.safeParse(broken).success).toBe(false);
+  });
+
+  // テストが終わったあとの日に課題を置く計画は、誰もやらない。
+  it("テスト日より後の日には置けない", () => {
+    const broken = plan();
+    broken.days[broken.days.length - 1]!.date = "2026-09-11";
+    expect(studyPlanSchema.safeParse(broken).success).toBe(false);
+  });
+
+  // 同じ日が2回出ると画面にその日が二重に並び、どちらが正かを決める根拠がない。
+  it("日付が昇順でない・同じ日が2回ある計画を弾く", () => {
+    const swapped = plan();
+    const first = swapped.days[0]!.date;
+    swapped.days[0]!.date = swapped.days[1]!.date;
+    swapped.days[1]!.date = first;
+    expect(studyPlanSchema.safeParse(swapped).success).toBe(false);
+
+    const duplicated = plan();
+    duplicated.days[1]!.date = duplicated.days[0]!.date;
+    expect(studyPlanSchema.safeParse(duplicated).success).toBe(false);
+  });
+
+  /**
+   * `material` を名前ではなく添字にしてある理由そのもの。
+   * 文字列だったら「青チャートの例題42」を、青チャートを持っていない生徒に割り当てられる。
+   */
+  it("聞き取っていない教材を割り当てられない", () => {
+    const broken = plan();
+    broken.days[0]!.items[0]!["material"] = broken.intake.materials.length;
+    expect(studyPlanSchema.safeParse(broken).success).toBe(false);
+  });
+
+  it("教材を1つも持っていなくても計画は作れる(教材なしで組む)", () => {
+    const noMaterials = draft();
+    noMaterials.intake.materials = [];
+    for (const day of noMaterials.days) {
+      for (const item of day.items) item["material"] = null;
+    }
+    expect(studyPlanDraftSchema.safeParse(noMaterials).success).toBe(true);
+  });
+
+  // 守られなかった計画は「計画は自分には無理だ」だけを教える。
+  it("1日に詰め込みすぎた計画を弾く", () => {
+    const broken = draft();
+    broken.days[0]!.items = [
+      { topic_id: "M2-SANKAKU-KAHO", what: "解く", material: null, minutes: 60 },
+      { topic_id: "M2-SANKAKU-KAHO", what: "解く", material: null, minutes: 60 },
+      { topic_id: "M2-SANKAKU-KAHO", what: "解く", material: null, minutes: 60 },
+    ];
+    expect(planDayMinutesMax).toBeLessThan(180);
+    expect(studyPlanDraftSchema.safeParse(broken).success).toBe(false);
+  });
+
+  // 休みの入っていない計画は、最初に崩れた日に丸ごと捨てられる。
+  it("休む日(itemsが空)を置ける", () => {
+    const rest = draft().days.find((day) => day.items.length === 0);
+    expect(rest).toBeDefined();
+  });
+
+  it("テストがずっと先の計画は作らない(近づいてから組む)", () => {
+    const tooLong = draft();
+    tooLong.intake.exam_date = "2027-03-01";
+    tooLong.days = Array.from({ length: planDaysMaxCount + 1 }, (_, index) => ({
+      date: `2026-10-${String(index + 1).padStart(2, "0")}`,
+      items: [],
+    }));
+    expect(studyPlanDraftSchema.safeParse(tooLong).success).toBe(false);
+  });
+
+  // 板書と同じ理由。識別子と来歴をLLMに持たせると、幻覚したIDが下流に流れ込む。
+  it("LLMの出す計画に id / source / revisions を持たせない", () => {
+    for (const extra of [{ id: "pln_1" }, { source: "senpai" }, { revisions: [] }]) {
+      expect(studyPlanDraftSchema.safeParse({ ...draft(), ...extra }).success).toBe(false);
+    }
+  });
+
+  /**
+   * 組み直しの理由と引用はLLMが出すが、**時刻は出させない**(いまが何時か知らない)。
+   * 押すのは保存側。`id` を持たせないのと同じ理由。
+   */
+  it("LLMの出す組み直しに時刻を持たせない", () => {
+    const rebuilt = { ...draft(), revision: { reason: "behind", said: "3日できなかった" } };
+    expect(studyPlanDraftSchema.safeParse(rebuilt).success).toBe(true);
+
+    const withTime = {
+      ...rebuilt,
+      revision: { ...rebuilt.revision, at: "2026-09-05T20:14:02.000Z" },
+    };
+    expect(studyPlanDraftSchema.safeParse(withTime).success).toBe(false);
+  });
+
+  /**
+   * §7「遅れたら落とす順」①の縮退版が**本当に落とせる形か**を固定する。
+   * LLMにしか埋められないフィールドが1つでもあると、定型テンプレに落とせなくなる。
+   */
+  it("定型テンプレでも埋められる(縮退版が同じ形で出せる)", () => {
+    const intake = draft().intake; // 聞き取りは縮退版でも同じように取れる
+    const template = {
+      id: "pln_template",
+      created_at: "2026-08-24T12:00:00.000Z",
+      source: "template" as const,
+      intake,
+      days: ["2026-09-01", "2026-09-03", "2026-09-05"].map((date, index) => ({
+        date,
+        items: [
+          {
+            topic_id: intake.scope.topic_ids[index % intake.scope.topic_ids.length]!,
+            what: "範囲を1周する",
+            material: intake.materials.length > 0 ? 0 : null,
+            minutes: 40,
+            status: "todo" as const,
+          },
+        ],
+      })),
+      revisions: [],
+    };
+    const parsed = studyPlanSchema.safeParse(template);
+    expect(parsed.success ? null : parsed.error.issues).toBeNull();
+  });
+
+  /**
+   * 組み直しの引用は §5-2「本人の説明の引用」としてそのまま親に届く。
+   * 本人が言っていない組み直し(縮退版・アプリ側の判断)は null が正しい。
+   */
+  it("組み直しの理由は、本人が言っていなければ null にできる", () => {
+    const withoutQuote = plan();
+    withoutQuote.revisions[0]!["said"] = null;
+    expect(studyPlanSchema.safeParse(withoutQuote).success).toBe(true);
+
+    withoutQuote.revisions[0]!["said"] = "";
+    expect(studyPlanSchema.safeParse(withoutQuote).success).toBe(false);
+  });
+
+  // 事実が変わった組み直しと、進みが変わっただけの組み直しは別物。
+  it("知らない組み直しの理由を弾く", () => {
+    const broken = plan();
+    broken.revisions[0]!["reason"] = "lazy";
+    expect(studyPlanSchema.safeParse(broken).success).toBe(false);
+  });
+
+  it("テスト日は暦の日付で、瞬間では持たない", () => {
+    const broken = plan();
+    broken.intake.exam_date = "2026-09-10T00:00:00.000Z";
+    expect(studyPlanSchema.safeParse(broken).success).toBe(false);
+  });
+
+  /**
+   * 計画は聞き取りの会話の途中で生まれる(§4-3)。「テストいつ?」と聞く回と
+   * 計画を出す回は同じ形の1ターンで、違いは `plan` が入っているかどうかだけ。
+   */
+  describe("聞き取りの1ターン", () => {
+    it("まだ聞いている途中のターンは plan が null", () => {
+      const asking = { speech: "テスト、いつ?", plan: null };
+      expect(planTurnSchema.safeParse(asking).success).toBe(true);
+    });
+
+    it("喋りすぎるターンを弾く(聞き取りを長引かせない)", () => {
+      const turn = loadFixture("study-plan-turn") as Record<string, unknown>;
+      expect(planTurnSchema.safeParse({ ...turn, speech: "あ".repeat(121) }).success).toBe(false);
+    });
+
+    it("聞き取りのターンに板書を持たせない(聞き取りは授業ではない)", () => {
+      const turn = loadFixture("study-plan-turn") as Record<string, unknown>;
+      const withBoard = { ...turn, board: { kind: "latex", tex: "x = 1" } };
+      expect(planTurnSchema.safeParse(withBoard).success).toBe(false);
+    });
+  });
+});
+
 describe("APIスキーマ", () => {
   it("kind=review には hole_id が要る(復習は穴が起点)", () => {
     expect(createSessionRequestSchema.safeParse({ kind: "review" }).success).toBe(false);
@@ -327,6 +536,18 @@ describe("APIスキーマ", () => {
     expect(
       createSessionResponseSchema.safeParse({ ...response, detected_topics: [] }).success,
     ).toBe(false);
+  });
+
+  it("授業上限は残数を返さず、今日の可否だけを返す", () => {
+    const response = loadFixture("create-session-response") as Record<string, unknown>;
+    const withRemainingCount = {
+      ...response,
+      limits: { max_seconds: 300, remaining_sessions_today: 0 },
+    };
+
+    // §6-3「UIに数字は一切出さない」を、古い数値契約を拒否することで守る。
+    expect(createSessionResponseSchema.safeParse(withRemainingCount).success).toBe(false);
+    expect(createSessionResponseSchema.safeParse(response).success).toBe(true);
   });
 
   it("transcriptのroleは assistant / user のみ", () => {

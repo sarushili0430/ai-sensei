@@ -76,6 +76,35 @@
           },
           "minItems": 1
         },
+        "problem": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 600
+                },
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "problem_photo",
+                    "notes_photo"
+                  ]
+                }
+              },
+              "required": [
+                "text",
+                "source"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "limits": {
           "type": "object",
           "properties": {
@@ -83,21 +112,13 @@
               "type": "integer",
               "exclusiveMinimum": 0
             },
-            "remaining_sessions_today": {
-              "anyOf": [
-                {
-                  "type": "integer",
-                  "minimum": 0
-                },
-                {
-                  "type": "null"
-                }
-              ]
+            "lesson_allowed_today": {
+              "type": "boolean"
             }
           },
           "required": [
             "max_seconds",
-            "remaining_sessions_today"
+            "lesson_allowed_today"
           ],
           "additionalProperties": false
         }
@@ -107,6 +128,7 @@
         "kind",
         "livekit",
         "detected_topics",
+        "problem",
         "limits"
       ],
       "additionalProperties": false

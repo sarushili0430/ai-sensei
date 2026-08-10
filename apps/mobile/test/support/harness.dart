@@ -92,17 +92,42 @@ Widget wrapRouter(ProviderContainer container) {
 /// GlobalMaterialLocalizations のデリゲートは**非同期に読み込まれる**ので、
 /// pumpWidget の1フレーム目には本文がまだ出ていない。ここを忘れると
 /// 「Found 0 widgets」で落ちる。
+///
+/// ## 寸法を必ず固定する
+///
+/// **widget test の既定は 800×600 で、どの端末でもない横長。**
+/// 縦が実機より250pt以上短いので、画面の下のほうにあるボタンがビューポートの
+/// 外に出る。そして `tap` は画面外の座標を叩いても**例外にならず、静かに何も
+/// 起きない** —— テストは通るのに操作が届いていない状態ができる。
+///
+/// 実際、オンボーディングでこれが起きた。「うまく言えない」が折り返しの下に
+/// 落ちたあとも3本のテストが緑のままで、**板書を積んで画面が伸びたことに
+/// 誰も気づけなかった**。既定を実機の寸法にしておけば、同じ壊れ方は
+/// 「ボタンが見つからない」として落ちる。
 Future<void> pumpApp(
   WidgetTester tester,
   Widget child, {
   List<Object?> overrides = const <Object?>[],
+  Locale locale = const Locale('ja'),
+  Size size = phoneSurface,
 }) async {
-  await tester.pumpWidget(wrapApp(child, overrides: overrides));
+  await setSurface(tester, size: size);
+  await tester.pumpWidget(wrapApp(child, overrides: overrides, locale: locale));
   await tester.pumpAndSettle();
 }
 
-/// golden test の描画サイズ。iPhone 15 相当の論理ピクセル。
-const Size goldenSurface = Size(393, 852);
+/// 既定の描画サイズ。iPhone 15 相当の論理ピクセル。
+///
+/// golden もこの寸法で撮る(だから以前は `goldenSurface` という名前だった)が、
+/// **golden 専用の値ではない。** 名前が golden 専用に見えると、
+/// 普通の widget test で寸法を固定する動機が消えてしまう。
+const Size phoneSurface = Size(393, 852);
+
+/// いちばん狭い実機(iPhone SE 級)。
+///
+/// 折り返しの下に操作が落ちていないかは、この寸法で見る。
+/// [phoneSurface] で収まっても、ここで溢れる画面がある。
+const Size smallPhoneSurface = Size(375, 667);
 
 /// 実フォントを読み込む。
 ///
@@ -140,8 +165,11 @@ Future<void> loadAppFonts() async {
   }
 }
 
-/// golden用にサイズを固定する。端末差でgoldenが揺れないように。
-Future<void> setGoldenSurface(WidgetTester tester, {Size size = goldenSurface}) async {
+/// 描画サイズを固定する。
+///
+/// golden では端末差で絵が揺れないように、普通の widget test では
+/// **既定の 800×600(どの端末でもない横長)で走らせないように**使う。
+Future<void> setSurface(WidgetTester tester, {Size size = phoneSurface}) async {
   await tester.binding.setSurfaceSize(size);
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -151,6 +179,62 @@ Future<void> setGoldenSurface(WidgetTester tester, {Size size = goldenSurface}) 
     tester.view.resetDevicePixelRatio();
   });
 }
+
+/// 実時間と擬似時間を交互に進めて、[finder] が現れるまで待つ。
+///
+/// ## `pumpAndSettle` が返らなくなる形
+///
+/// **「スピナーを出しているあいだに、未解決の非同期がある」**と固まる。
+/// `CircularProgressIndicator` は終わらないアニメーションなので
+/// `pumpAndSettle` は「まだフレームが来る」と判断して回り続け、
+/// その裏の非同期は擬似時間では進まない。踏んだ例が2つある:
+///
+///   - **multipart の送信。** `MockClient` は本文を組み立てるときに
+///     **実際にファイルを読む**。これは `runAsync` の中でしか進まない
+///     (素の `test()` で書かれたテストが平気なのは、最初から実時間だから)
+///   - **`permission_handler` の照会。** チャンネルを差し替えていないと
+///     応答が返らず、許可を待つあいだスピナーが回り続ける
+///     → こちらは [mockPermissionHandler] で塞ぐ
+///
+/// だから `pumpAndSettle` ではなく、**実時間([WidgetTester.runAsync])と
+/// 擬似時間([WidgetTester.pump])を交互に**進めて、目印が出たら止める。
+Future<void> pumpUntil(
+  WidgetTester tester,
+  Finder finder, {
+  Duration step = const Duration(milliseconds: 10),
+  int maxSteps = 100,
+}) async {
+  for (int i = 0; i < maxSteps; i++) {
+    await tester.runAsync(() => Future<void>.delayed(step));
+    await tester.pump(step);
+    if (finder.evaluate().isNotEmpty) return;
+  }
+  fail('${finder.describeMatch(Plurality.one)} が ${step * maxSteps} 待っても現れませんでした');
+}
+
+/// `permission_handler` のチャンネルを差し替える。
+///
+/// **差し替えないと照会が返ってこない。** 許可を待つあいだ画面に出ているのが
+/// スピナーだと、そのまま `pumpAndSettle` が返らなくなる([pumpUntil] 参照)。
+/// 実機では必ず答えが返る問い合わせなので、テストでも返す。
+///
+/// [status] は `PermissionStatus` の並び順(0=denied / 1=granted / 2=restricted /
+/// 3=limited / 4=permanentlyDenied)。既定は granted。
+void mockPermissionHandler({int status = permissionGranted}) {
+  const MethodChannel channel = MethodChannel('flutter.baseflow.com/permissions/methods');
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(channel, (MethodCall call) async => status);
+  addTearDown(
+    () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, null),
+  );
+}
+
+/// `PermissionStatus.granted`(enum の2番目)。
+const int permissionGranted = 1;
+
+/// `PermissionStatus.denied`(enum の先頭)。
+const int permissionDenied = 0;
 
 // --- テスト用のデータ ---
 
@@ -186,25 +270,36 @@ const Progress sampleProgress = Progress(
 const ProgressSummary sampleSummary = ProgressSummary(
   progress: sampleProgress,
   isPremium: false,
-  limits: SessionLimits(maxSeconds: 300, remainingSessionsToday: 1),
+  limits: SessionLimits(maxSeconds: 300, lessonAllowedToday: true),
 );
 
 /// 初回起動のホーム。数えるものが何も無い状態。
 const ProgressSummary firstRunSummary = ProgressSummary(
   progress: Progress.empty,
   isPremium: false,
-  limits: SessionLimits(maxSeconds: 300, remainingSessionsToday: 1),
+  limits: SessionLimits(maxSeconds: 300, lessonAllowedToday: true),
 );
 
-/// 契約している人のホーム。残り回数は **null(無制限)** で返る。
+/// 今日はもう授業をしない日のホーム(§6-3「先輩の判断」)。
+///
+/// **いちばん長い文が出る状態。** 「今日はここまでにしよっか。詰め込みすぎても
+/// 入らないから、明日また続きやろう」が画面に乗るので、
+/// 狭い端末で溢れるならまずここから溢れる。
+const ProgressSummary exhaustedSummary = ProgressSummary(
+  progress: sampleProgress,
+  isPremium: false,
+  limits: SessionLimits(maxSeconds: 300, lessonAllowedToday: false),
+);
+
+/// 契約している人のホーム。授業可否は常に true で返る。
 ///
 /// entitlement だけ Premium にして進捗を無料のままにすると、
-/// 「Premium の印」と「残り1回・無制限にする」が同じ画面に並ぶ。
+/// 「Premium の印」と「今日はここまで」が同じ画面に並ぶ。
 /// 実機では起きない組み合わせなので、golden に写してはいけない。
 const ProgressSummary premiumSummary = ProgressSummary(
   progress: sampleProgress,
   isPremium: true,
-  limits: SessionLimits(maxSeconds: 300, remainingSessionsToday: null),
+  limits: SessionLimits(maxSeconds: 300, lessonAllowedToday: true),
 );
 
 /// 契約している状態。

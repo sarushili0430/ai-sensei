@@ -31,7 +31,12 @@ dependencies:
   image_picker: ^1.1.2
 
   # リアルタイム会話
-  livekit_client: ^2.3.5
+  # 板書の受信は Text Streams API(registerTextStreamHandler)に乗っている。
+  # 生の publishData は reliable の既定が false で、書き忘れると板書が欠落・順不同で
+  # 届く(docs/pivot_plan_v1.md §3-5)。そのAPIを 2.10.0 のソースで確認して設計したので、
+  # 宣言の下限も 2.10.0 に合わせる。^2.3.5 のままだとクリーンな pub get で
+  # 古い版に解決されうる。
+  livekit_client: ^2.10.0
   permission_handler: ^13.0.0
 
   # 課金 / 通知 / 監視

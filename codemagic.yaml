@@ -372,6 +372,7 @@ workflows:
             --dart-define=REVENUECAT_ENTITLEMENT_ID="${REVENUECAT_ENTITLEMENT_ID:-premium}" \
             --dart-define=REVENUECAT_OFFERING_ID="${REVENUECAT_OFFERING_ID:-}" \
             --dart-define=ONESIGNAL_APP_ID="${ONESIGNAL_APP_ID:-47044c5e-15eb-49ec-bdd4-e0ed2219a799}" \
+            --dart-define=SENTRY_DSN="${SENTRY_DSN:-}" \
             --dart-define=PRIVACY_POLICY_URL="${PRIVACY_POLICY_URL:-}" \
             --dart-define=TERMS_URL="${TERMS_URL:-}" \
             --dart-define=SUPPORT_EMAIL="${SUPPORT_EMAIL:-}" \
@@ -379,7 +380,11 @@ workflows:
 
     artifacts:
       - apps/mobile/build/ios/ipa/*.ipa
-      # クラッシュのシンボル化(Sentry)に要る
+      # クラッシュのシンボル化(Sentry)に要る。
+      # **送り先が入るまでは、シンボルだけ集めている状態**だった(計画書 §10-7)。
+      # いまは `--dart-define=SENTRY_DSN` を渡しているので、変数グループに
+      # 値が入った時点で対になる。DSN が空のビルドでは監視ごと無効
+      # (`src/telemetry/telemetry.dart` の `SentryConfig`)。
       - apps/mobile/build/ios/archive/Runner.xcarchive/dSYMs/**
       - /tmp/xcodebuild_logs/*.log
 
@@ -468,6 +473,7 @@ workflows:
             --dart-define=REVENUECAT_ENTITLEMENT_ID="${REVENUECAT_ENTITLEMENT_ID:-premium}" \
             --dart-define=REVENUECAT_OFFERING_ID="${REVENUECAT_OFFERING_ID:-}" \
             --dart-define=ONESIGNAL_APP_ID="${ONESIGNAL_APP_ID:-47044c5e-15eb-49ec-bdd4-e0ed2219a799}" \
+            --dart-define=SENTRY_DSN="${SENTRY_DSN:-}" \
             --dart-define=PRIVACY_POLICY_URL="${PRIVACY_POLICY_URL:-}" \
             --dart-define=TERMS_URL="${TERMS_URL:-}" \
             --dart-define=SUPPORT_EMAIL="${SUPPORT_EMAIL:-}"

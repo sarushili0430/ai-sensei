@@ -15,6 +15,7 @@ import '../features/onboarding/presentation/onboarding_screen.dart';
 import '../features/session/presentation/celebration_screen.dart';
 import '../features/session/presentation/session_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
+import '../features/study_room/presentation/study_room_screen.dart';
 import 'routes.dart';
 
 part 'app_router.g.dart';
@@ -49,6 +50,16 @@ GoRouter appRouter(Ref ref) {
           GoRoute(
             path: AppRoute.capture.segment,
             builder: (_, _) => const CaptureScreen(),
+          ),
+          // 自習室。**ホームを下に積んだまま**にする(§4-2)。
+          //
+          // 自習室から「先輩、ちょっといい?」を押すと、この上に撮影が push される。
+          // 自習室が下に残っているので、撮るのをやめても自習に戻れる
+          // (= 課金の切れ目で引き返せる。これを `go` にすると、
+          //  ためらった人が自習室ごと失う)。
+          GoRoute(
+            path: AppRoute.studyRoom.segment,
+            builder: (_, _) => const StudyRoomScreen(),
           ),
           GoRoute(
             path: AppRoute.karte.segment,

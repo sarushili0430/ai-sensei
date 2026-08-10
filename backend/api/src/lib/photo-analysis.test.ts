@@ -1,4 +1,4 @@
-import { topicIdSchema } from "@ai-sensei/contract";
+import { problemTextMaxLength, sessionProblemSchema, topicIdSchema } from "@ai-sensei/contract";
 import { isWellFormedTopicId, localeOfTopicId, topics } from "@ai-sensei/curriculum";
 import { describe, expect, it } from "vitest";
 import { analysisFixture, analysisFixtureEn } from "../test-support.ts";
@@ -9,6 +9,7 @@ import {
   photoAnalysisPrompt,
   photoAnalysisSchema,
   resolveDetectedTopics,
+  resolveSessionProblem,
   toDetectedTopicPayload,
 } from "./photo-analysis.ts";
 
@@ -55,6 +56,7 @@ describe("resolveDetectedTopics", () => {
     const resolved = resolveDetectedTopics({
       is_math_note: true,
       summary: "平方完成して頂点を求める問題",
+      problem_text: "",
       visible_work: [],
       topics: [],
       unreadable: [],
@@ -67,12 +69,134 @@ describe("resolveDetectedTopics", () => {
     const resolved = resolveDetectedTopics({
       is_math_note: false,
       summary: "英語の単語帳。関数という言葉だけ写っている",
+      problem_text: "",
       visible_work: [],
       topics: [],
       unreadable: [],
       question_seeds: [],
     });
     expect(resolved.topicIds).toEqual([]);
+  });
+});
+
+/**
+ * 問題文もLLMの出力なので、topic_id と同じく**そのまま信じない一段**を通す
+ * (計画書 §0 決定4「問題とノートをセットで送る」の受け口)。
+ */
+describe("resolveSessionProblem", () => {
+  it("読めた問題文を、どちらの写真から来たかと一緒に返す", () => {
+    expect(resolveSessionProblem({ analysis: analysisFixture, hadProblemPhoto: true })).toEqual({
+      problem: { text: analysisFixture.problem_text, source: "problem_photo" },
+      outcome: "read",
+    });
+  });
+
+  // 1枚に問題とノートの両方が写るケース(§4-1 が「多い」と書いているほう)。
+  it("問題の写真が無ければ、ノートから読んだものとして記録する", () => {
+    const resolved = resolveSessionProblem({ analysis: analysisFixture, hadProblemPhoto: false });
+    expect(resolved.problem?.source).toBe("notes_photo");
+  });
+
+  // 問題が読めないのは失敗ではない。先輩が「問題、読んでもらってもいい?」から始める。
+  it("空・空白だけ・解析なしは not_found(セッションは止めない)", () => {
+    for (const analysis of [
+      { ...analysisFixture, problem_text: "" },
+      { ...analysisFixture, problem_text: "   \n " },
+      null,
+    ]) {
+      expect(resolveSessionProblem({ analysis, hadProblemPhoto: false })).toEqual({
+        problem: null,
+        outcome: "not_found",
+      });
+    }
+  });
+
+  /**
+   * 上限超えは「紙面を丸ごと書き起こした」とき。先頭で切ると設問の途中で切れた問題を
+   * 教えることになり、章末の解答まで混ざっている可能性も高い。**切らずに捨てる。**
+   */
+  it("上限を超えた問題文は切らずに捨て、not_found と区別できる形で返す", () => {
+    const resolved = resolveSessionProblem({
+      analysis: { ...analysisFixture, problem_text: "あ".repeat(problemTextMaxLength + 1) },
+      hadProblemPhoto: true,
+    });
+    expect(resolved).toEqual({ problem: null, outcome: "too_long" });
+  });
+
+  /**
+   * `@ai-sensei/guardrail` の `checkProblemText()` を通していること。
+   * **ガードだけあって呼ばれていない状態は「入れたつもり」で運用に入る**ので、
+   * 「繋がっている」ことをここで固定する。
+   */
+  it("解答が混ざった問題文を落とす(guardrailを通している)", () => {
+    const resolved = resolveSessionProblem({
+      analysis: {
+        ...analysisFixture,
+        problem_text: "x^2 - 3x + 2 = 0 を解け。 【解答】x = 1, 2",
+      },
+      hadProblemPhoto: true,
+    });
+    expect(resolved).toEqual({ problem: null, outcome: "solution_included" });
+  });
+
+  it("設問の無い式だけの断片を落とす", () => {
+    const resolved = resolveSessionProblem({
+      analysis: { ...analysisFixture, problem_text: "x^2 - 3x + 2 = 0" },
+      hadProblemPhoto: true,
+    });
+    expect(resolved).toEqual({ problem: null, outcome: "not_a_problem" });
+  });
+
+  /**
+   * **弾く条件はこちら側で足さない。** guardrail が「迷ったら通す」で書いてあるので、
+   * ここに独自の条件を足すと方針が2か所に分かれ、どこまで厳しいのかが読めなくなる。
+   * ふつうの設問がそのまま通ることを、境目の例で押さえておく。
+   */
+  it("「解答用紙」「答えを求めよ」を含むふつうの設問は通す", () => {
+    for (const problemText of [
+      "解答用紙に途中式も書くこと。x^2 - 3x + 2 = 0 を解け。",
+      "答えは小数第2位を四捨五入して求めよ。",
+    ]) {
+      const resolved = resolveSessionProblem({
+        analysis: { ...analysisFixture, problem_text: problemText },
+        hadProblemPhoto: false,
+      });
+      expect(resolved.outcome, problemText).toBe("read");
+    }
+  });
+
+  /**
+   * 落ち方を `not_found` にまとめない。`too_long` が続けば600字の指示が、
+   * `solution_included` が続けば「解答は取らない」の指示が効いていないと読み分けられる。
+   */
+  it("落ちた理由がログで読み分けられる(全部 not_found にしない)", () => {
+    const outcomes = [
+      "",
+      "あ".repeat(problemTextMaxLength + 1),
+      "解け。【解答】x = 1",
+      "x = 1",
+    ].map(
+      (problem_text) =>
+        resolveSessionProblem({
+          analysis: { ...analysisFixture, problem_text },
+          hadProblemPhoto: true,
+        }).outcome,
+    );
+    expect(new Set(outcomes).size).toBe(outcomes.length);
+  });
+
+  it("上限ちょうどは通す", () => {
+    const resolved = resolveSessionProblem({
+      analysis: { ...analysisFixture, problem_text: "あ".repeat(problemTextMaxLength) },
+      hadProblemPhoto: true,
+    });
+    expect(resolved.outcome).toBe("read");
+  });
+
+  // contract 側のスキーマと、ここが通す値の範囲がずれていないこと。
+  it("返す問題は contract のスキーマを満たす", () => {
+    const resolved = resolveSessionProblem({ analysis: analysisFixture, hadProblemPhoto: true });
+    expect(sessionProblemSchema.safeParse(resolved.problem).success).toBe(true);
   });
 });
 

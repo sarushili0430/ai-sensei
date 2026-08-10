@@ -10,8 +10,51 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 触っていない側のCIは流さない(Flutterのpub get + build_runnerが特に重い)。
+  #
+  # ワークフロー全体の `on.paths` ではなくジョブ単位で切り分けているのは、
+  # 対象外のジョブを「スキップ」として必ず報告させるため。`on.paths` で弾くと
+  # チェック自体が作られず、required status check にしているとPRが永久に
+  # 待ち状態になる。
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    # PRでは差分をAPIから引く(pushではcheckout済みのgit履歴を使う)
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      typescript: ${{ steps.filter.outputs.typescript }}
+      flutter: ${{ steps.filter.outputs.flutter }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            typescript:
+              - "backend/**"
+              - "packages/**"
+              - "prompts/**"
+              - "scripts/**"
+              - "package.json"
+              - "pnpm-lock.yaml"
+              - "pnpm-workspace.yaml"
+              - "tsconfig*.json"
+              - "biome.json"
+              - "vitest.config.ts"
+              - ".github/workflows/ci.yml"
+            flutter:
+              - "apps/mobile/**"
+              # contract_fixture_test.dart が packages/contract/fixtures を直接読む
+              - "packages/contract/**"
+              - ".github/workflows/ci.yml"
+
   typescript:
     name: TypeScript (backend / packages)
+    needs: changes
+    if: ${{ needs.changes.outputs.typescript == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -46,6 +89,8 @@ jobs:
 
   flutter:
     name: Flutter (apps/mobile)
+    needs: changes
+    if: ${{ needs.changes.outputs.flutter == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -80,6 +125,7 @@ jobs:
           path: apps/mobile/test/golden/failures/
           if-no-files-found: ignore
 
+  # 鍵の混入はどのディレクトリからでも起こるので、ここだけは常に流す。
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest

@@ -1,0 +1,209 @@
+import type { BoardStep } from "@ai-sensei/contract";
+import type { CurriculumLocale } from "@ai-sensei/curriculum";
+import { conversationSystemPrompt } from "@ai-sensei/prompts";
+import type { SessionContext } from "./context.ts";
+
+/**
+ * フェーズ2「教え返し」の、agent 側にしか置けないもの。
+ *
+ * **人格と約束はここには無い。**正本は `prompts/senpai_conversation.{ja,en}.md` で、
+ * このファイルが持つのは2つだけ:
+ *
+ *   1. **定型の一言**(冒頭の無音埋め・教え返しへの受け渡し・立て直し)。
+ *      会話LLMを通さずにTTSへ直接渡す文なので、プロンプトには置けない。
+ *   2. **板書の要約**(`lesson_recap` に入れる値)。板書は配送層の事実
+ *      (`BoardStep`)なので、プロンプト側からは見えない。
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * 【板書の内容は instructions にだけ入れる。transcript には入れない】
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * 先輩が何を教えたかを知らないと、教え返しを聞いても「言えた / 詰まった」の
+ * 判定ができない。だが計画書 §2 の設計制約は
+ * **「出題元はユーザーが説明した内容。AIが教えた内容から作らない」**で、
+ * カルテと小テストの材料は transcript だけ。
+ *
+ * だから板書の要約は **instructions(この層)にだけ**渡し、
+ * 授業中の発話は `addToChatCtx: false` で transcript に入れない(`agent.ts`)。
+ * 「先輩は知っているが、カルテの材料にはならない」という置き分けになる。
+ * この線引きは `senpai_conversation.<locale>.md` の本文にも二重に書いてある。
+ */
+
+/** 授業の冒頭、最初の手順が出るまでの無音を埋める一言(計画書 §3-2)。 */
+const OPENING_FILLER: Record<CurriculumLocale, string> = {
+  ja: "なるほど、じゃあ一緒に見てみようか。",
+  en: "Okay, let's take a look at this together.",
+};
+
+/** 授業が終わったら教え返しへ渡す。計画書 §2 のコアループの2つ目。 */
+const TEACH_BACK_PROMPT: Record<CurriculumLocale, string> = {
+  ja: "じゃあ今の、自分の言葉で説明してみて。",
+  en: "Alright — now explain that back to me in your own words.",
+};
+
+/**
+ * 板書が1行も出せなかったときの立て直し。
+ *
+ * **黙って会話に落とさない。**板書ゼロで「じゃあ今の、説明してみて」と言うと、
+ * 教わっていないことの説明を求めることになる。何が起きたかを認めて、
+ * 生徒の手が止まっている場所を聞くところからやり直す。
+ */
+const LESSON_FAILED_PROMPT: Record<CurriculumLocale, string> = {
+  ja: "ごめん、板書がうまく出せなかった。口でやろっか。この問題、どこまでできた?",
+  en: "Sorry — the board didn't come up. Let's just talk it through. How far did you get?",
+};
+
+/**
+ * 復習セッションの最初の一言。板書は出さず、前回の穴から聞き直す。
+ *
+ * **「覚えてる?」と聞かない。**それは `senpai_conversation.*.md` が禁じている
+ * 申告させる聞き方そのもので、「うん」で返せてしまう。言わせて判定する。
+ */
+const REVIEW_OPENING: Record<CurriculumLocale, string> = {
+  ja: "この前つまずいたとこ、もう一回説明してみて。",
+  en: "Let's take another run at the bit you got stuck on — explain it to me.",
+};
+
+/**
+ * 板書がまだ1行も無いときに `lesson_recap` へ入れる定型句。
+ *
+ * **会話の言語で書く。**日本語の「(なし)」が英語のプロンプトに混ざると、
+ * モデルはそこだけ日本語で応答しはじめる(`render.ts` の `phrases` と同じ理由)。
+ * 空文字を渡さないのは、見出しだけが残った節を先輩が読むと
+ * 「板書はあるが読めない」と解釈しうるから。**無いことを書く。**
+ */
+const NO_LESSON_RECAP: Record<CurriculumLocale, string> = {
+  ja: "(まだ板書には何も出していません)",
+  en: "(nothing on the board yet)",
+};
+
+/**
+ * 最後の手順が、もう生徒に番を渡しているか。
+ *
+ * 渡しているのに {@link teachBackPrompt} を続けると、先輩が同じことを2回言う。
+ * 板書プロンプト(`senpai_board.*.md`)は「教えたら必ず『じゃあ今の、自分の言葉で
+ * 説明してみて』に渡す」と指示しているので、**普通に成功した授業では毎回起きる**。
+ *
+ * **文言の一致ではなく「番を渡したか」で見る。**切り分けの質問
+ * (「最初の一手、言ってみて」)で終わった授業も、答えを待っている状態なので同じ扱い。
+ */
+const HANDOFF_PATTERNS: Record<CurriculumLocale, RegExp[]> = {
+  ja: [/説明してみて/, /言ってみて/, /やってみて/, /話してみて/, /書いてみて/],
+  en: [/explain\b/i, /your own words/i, /tell me\b/i, /give it a (?:go|shot|try)/i, /try it\b/i],
+};
+
+export function openingFiller(locale: CurriculumLocale): string {
+  return OPENING_FILLER[locale];
+}
+
+export function teachBackPrompt(locale: CurriculumLocale): string {
+  return TEACH_BACK_PROMPT[locale];
+}
+
+export function lessonFailedPrompt(locale: CurriculumLocale): string {
+  return LESSON_FAILED_PROMPT[locale];
+}
+
+export function reviewOpening(locale: CurriculumLocale): string {
+  return REVIEW_OPENING[locale];
+}
+
+export function handsTurnToStudent(speech: string, locale: CurriculumLocale): boolean {
+  const normalized = speech.trim();
+  if (normalized.length === 0) return false;
+  return HANDOFF_PATTERNS[locale].some((pattern) => pattern.test(normalized));
+}
+
+/**
+ * 板書の要約の上限(文字)。
+ *
+ * 板書1枚は最大40手順(`boardStepsMaxCount`)で、`speech` 120字 + `tex` 200字が
+ * 上限だから、詰まると10KB級になる。instructions は毎ターン全部送られるので、
+ * そのまま入れると会話のたびに板書ぶんの入力トークンを払い続けることになる。
+ *
+ * 溢れたときは**先頭から入れて、入らなくなったところで止める**(末尾を落とす)。
+ * 授業は上から積み上がる構造なので、途中で切れても「ここまでは教えた」が読める。
+ * 逆に先頭を落とすと、話の前提だけが消えた飛び飛びの板書が残る。
+ */
+export const lessonRecapMaxLength = 2000;
+
+/** 板書1要素を1行で書き下す。先輩に「何を書いたか」を思い出させるためだけの表現。 */
+function describeBoard(board: BoardStep["board"], locale: CurriculumLocale): string | null {
+  if (board === null) return null;
+  const label = locale === "en" ? "board" : "板書";
+  switch (board.kind) {
+    case "latex":
+      return `${label}: ${board.tex}`;
+    case "text":
+      return `${label}: ${board.body}`;
+    case "plot":
+      return `${label}: y = ${board.fn} (${board.domain.min} .. ${board.domain.max})`;
+    case "triangle":
+      return `${label}: ${locale === "en" ? "triangle" : "三角形"}${
+        board.labels === undefined ? "" : ` ${board.labels.join("")}`
+      }`;
+    case "circle":
+      return `${label}: ${locale === "en" ? "circle" : "円"} r = ${board.r}`;
+    default:
+      return null;
+  }
+}
+
+/**
+ * 送った板書を、先輩が読み返せる形に畳む。
+ * 1行も無ければ**空文字ではなく「無い」と書いた定型句**を返す(上の `NO_LESSON_RECAP`)。
+ */
+export function renderLessonRecap(
+  steps: readonly BoardStep[],
+  locale: CurriculumLocale,
+  maxLength: number = lessonRecapMaxLength,
+): string {
+  const lines: string[] = [];
+  let length = 0;
+
+  // 引用符も本文と同じ言語のものを使う。英語のプロンプトに「」が混ざると、
+  // そこだけ日本語で応答しはじめる(`render.ts` の `phrases` と同じ理由)。
+  const [open, close] = locale === "en" ? ['"', '"'] : ["「", "」"];
+
+  for (const step of steps) {
+    const board = describeBoard(step.board, locale);
+    const line = `${step.index + 1}. ${open}${step.speech}${close}${
+      board === null ? "" : ` / ${board}`
+    }`;
+    if (length + line.length > maxLength) break;
+    lines.push(line);
+    length += line.length + 1;
+  }
+
+  return lines.length === 0 ? NO_LESSON_RECAP[locale] : lines.join("\n");
+}
+
+export type SenpaiConversationInput = {
+  context: SessionContext;
+  /** 会話の残り時間。締めに入る判断に使う(会話プロンプトの変数)。 */
+  remainingSeconds: number;
+  /** 授業で実際にワイヤーへ出した手順。授業前・復習セッションでは空でよい。 */
+  lesson?: readonly BoardStep[];
+};
+
+/**
+ * 教え返しを聞く先輩のシステムプロンプト。
+ *
+ * `SessionContext` と板書の手順を、プロンプトの変数に写すだけの層。
+ * **人格・約束・聞き方は `prompts/senpai_conversation.<locale>.md` にある。**
+ * ここに文言を足したくなったら、それはプロンプト側に書くべきもの。
+ */
+export function senpaiConversationPrompt(input: SenpaiConversationInput): string {
+  const locale = input.context.locale;
+  return conversationSystemPrompt(
+    {
+      photo_summary: input.context.photo_summary,
+      visible_work: input.context.visible_work,
+      allowed_topics: input.context.allowed_topics,
+      question_seeds: input.context.question_seeds,
+      lesson_recap: renderLessonRecap(input.lesson ?? [], locale),
+      remaining_seconds: input.remainingSeconds,
+    },
+    locale,
+  );
+}

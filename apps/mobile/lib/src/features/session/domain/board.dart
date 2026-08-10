@@ -196,6 +196,15 @@ void ensureSequentialStepIndices(BoardLesson lesson) {
 /* data channel(封筒)                                                        */
 /* -------------------------------------------------------------------------- */
 
+/// LiveKit の topic。モバイルはこのtopicだけを板書として読む
+/// (`board.ts` の `boardChannelTopic`。**値がずれたら板書は1行も届かない**ので、
+/// 契約のミラーとしてここに置く)。
+///
+/// 受信は **Text Streams API**(`registerTextStreamHandler` + このtopic)で、
+/// 生の `publishData` は使わない — 既定が LOSSY で、書き忘れると板書が黙って欠ける
+/// (計画書§3-5)。
+const String boardChannelTopic = 'board';
+
 enum BoardCloseReason {
   @JsonValue('completed')
   completed,
@@ -311,6 +320,25 @@ class BoardContractViolation implements Exception {
 class BoardChannelReceiver {
   BoardChannelReceiver({required this.sessionId});
 
+  /// **欠落から復帰するための入口。**途中の `seq` から数え直す。
+  ///
+  /// `seq` はセッション内の通し番号なので、1通落ちるとそれ以降の全メッセージが
+  /// 順序違反になり、そのReceiverは二度と何も受け付けられなくなる。
+  /// 「別の問題に移る」= `board_open` のところを復帰点にして、その封筒の `seq` から
+  /// 数え直せば、**復帰後に起きた欠落もひきつづき検知できる**。
+  ///
+  /// 壊れたReceiverを直すのではなく**作り直す**形にしてあるのは、
+  /// 途中まで積まれた手順を復帰後の板書に持ち越さないため
+  /// (`board_open` は板書を消す信号でもある)。
+  ///
+  /// [sessionId] を `board_open` の中身から取らずに呼び出し側から受け取るのは、
+  /// **宛先の確認を封筒自身に任せないため**。取り違えた部屋からの `board_open` で
+  /// 復帰できてしまうと、`session_id` の検査が素通りする。
+  ///
+  /// **いつ復帰してよいかの判断はここには無い**(それは受信経路 = application層の責務)。
+  factory BoardChannelReceiver.resumingAt({required String sessionId, required int seq}) =>
+      BoardChannelReceiver(sessionId: sessionId).._expectedSeq = seq;
+
   /// 受信側が期待するセッション。接続時に決まる(LiveKitのRoomは1セッション1部屋)。
   final String sessionId;
 
@@ -325,6 +353,12 @@ class BoardChannelReceiver {
 
   /// いま板書が開いているか(= `board_open` は来たが `board_close` がまだ)。
   bool get isOpen => _openBoardId != null;
+
+  /// いま開いている板書のID。
+  ///
+  /// 縮退の記録を**板書1枚につき1件**に間引くために要る(計画書 §10-7)。
+  /// 1回の授業で何十手順も流れるので、これが無いと同じ板書の欠落が連発する。
+  String? get openBoardId => _openBoardId;
 
   /// 1件処理する。契約違反があれば [BoardContractViolation] を投げる。
   ///

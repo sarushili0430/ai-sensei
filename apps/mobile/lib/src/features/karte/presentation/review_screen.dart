@@ -100,7 +100,7 @@ class _ReviewCard extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          // 後輩の声のひとこと。通知文と同じものを見せて、続きだと分かるようにする。
+          // 先輩の声のひとこと。通知文と同じものを見せて、続きだと分かるようにする。
           Text(item.prompt, style: Theme.of(context).textTheme.bodyLarge),
           const SizedBox(height: AppSpacing.sm),
           Text(item.hole.description, style: Theme.of(context).textTheme.bodySmall),

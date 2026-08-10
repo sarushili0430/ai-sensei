@@ -1,5 +1,5 @@
 import 'package:ai_sensei/src/common_widgets/chunky_button.dart';
-import 'package:ai_sensei/src/common_widgets/kohai_face.dart';
+import 'package:ai_sensei/src/common_widgets/senpai_face.dart';
 import 'package:ai_sensei/src/common_widgets/marker_text.dart';
 import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
 import 'package:ai_sensei/src/features/karte/domain/karte.dart';
@@ -47,10 +47,10 @@ void main() {
     });
   });
 
-  group('KohaiFace', () {
+  group('SenpaiFace', () {
     testWidgets('表情ごとに読み上げラベルを持つ', (WidgetTester tester) async {
-      await pump(tester, const KohaiFace(mood: KohaiMood.delighted));
-      expect(find.bySemanticsLabel('後輩が納得しています'), findsOneWidget);
+      await pump(tester, const SenpaiFace(mood: SenpaiMood.delighted));
+      expect(find.bySemanticsLabel('先輩が納得しています'), findsOneWidget);
     });
   });
 

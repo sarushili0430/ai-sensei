@@ -1,7 +1,10 @@
 import {
   type CreateSessionResponse,
+  type SessionMetadata,
+  type SessionProblem,
   type UpdateSessionTopicsResponse,
   createSessionRequestSchema,
+  sessionPhotoParts,
   updateSessionTopicsRequestSchema,
 } from "@ai-sensei/contract";
 import { localeOfTopicId } from "@ai-sensei/curriculum";
@@ -12,7 +15,12 @@ import {
   buildAllowedTopics,
   toLocalDate,
 } from "@ai-sensei/guardrail";
-import { formatAllowedTopics, formatBullets } from "@ai-sensei/prompts";
+import {
+  formatAllowedTopics,
+  formatBullets,
+  formatProblemText,
+  formatVisibleWork,
+} from "@ai-sensei/prompts";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { AppEnv, Bindings } from "../env.ts";
@@ -22,8 +30,10 @@ import { apiError } from "../lib/errors.ts";
 import { type AgentDispatch, createLiveKitToken } from "../lib/livekit.ts";
 import {
   type PhotoAnalysis,
+  type PhotoAnalysisImage,
   detectImageMediaType,
   resolveDetectedTopics,
+  resolveSessionProblem,
   toDetectedTopicPayload,
 } from "../lib/photo-analysis.ts";
 import type { HoleRecord, SessionContext } from "../repository/types.ts";
@@ -77,8 +87,21 @@ sessionsRoute.post("/", async (c) => {
     });
   }
 
-  const photo = form.get("photo");
-  if (meta.kind === "new" && !(photo instanceof File)) {
+  const photo = form.get(sessionPhotoParts.notes);
+  /**
+   * 問題の写真。これは教科書・問題集の紙面 = 著作物なので、**R2に入れない。**
+   */
+  const problemPhoto = form.get(sessionPhotoParts.problem);
+
+  /**
+   * `kind: "new"` に要るのは**どちらか1枚**。両方無いときだけ弾く。
+   *
+   * **ノートを必須にしていた頃、この行が破棄の約束を破っていた。**
+   * ノートが無い生徒には紙面を `photo` 枠に入れる以外の道が無く、
+   * 結果として他者の著作物がR2に保存されていた(理由の全文は
+   * `contract` の `sessionPhotoParts`)。
+   */
+  if (meta.kind === "new" && !(photo instanceof File) && !(problemPhoto instanceof File)) {
     throw apiError("photo_unreadable", { locale });
   }
 
@@ -117,28 +140,63 @@ sessionsRoute.post("/", async (c) => {
   let visibleWork: string[] = [];
   let questionSeeds: string[] = reviewHole ? [reviewHole.desc] : [];
   let analysis: PhotoAnalysis | null = null;
+  let problem: SessionProblem | null = null;
 
   let allowed: AllowedTopics;
   try {
-    if (photo instanceof File) {
-      const image = await photo.arrayBuffer();
+    if (photo instanceof File || problemPhoto instanceof File) {
+      /**
+       * 2枚は**それぞれ独立に**読む。片方が読めなくても、もう片方が読めれば進む。
+       * 形式はクライアントの申告ではなく中身で決める(決められないものを
+       * Vision APIに投げても400が返るだけ)。
+       *
+       * 片方が読めないだけで422にすると、**任意のはずの写真が事実上の必須**になる。
+       * 読めなかった枚数ではなく、**読めた枚数がゼロかどうか**だけを下で見る。
+       */
+      let notesImage: PhotoAnalysisImage | undefined;
+      if (photo instanceof File) {
+        const image = await photo.arrayBuffer();
+        const mediaType = detectImageMediaType(image, photo.type);
+        if (mediaType) {
+          notesImage = { image, contentType: mediaType };
+          // ノートは生徒本人の著作物なので保存する。
+          photoKey = `photos/${deviceId}/${sessionId}`;
+          await c.env.PHOTOS.put(photoKey, image, {
+            httpMetadata: { contentType: mediaType },
+          });
+        } else {
+          log?.warn("notes_photo_unreadable", { session_id: sessionId });
+        }
+      }
 
-      // 形式はクライアントの申告ではなく中身で決める。決められないものを
-      // Vision APIに投げても400が返るだけなので、ここで「読み取れなかった」
-      // として返す(500にしない)。
-      const mediaType = detectImageMediaType(image, photo.type);
-      if (!mediaType) throw apiError("photo_unreadable", { locale });
+      /**
+       * 問題の写真。**ここには `PHOTOS.put` が無い。それが仕様。**
+       *
+       * 教科書・問題集の紙面は他者の著作物なので、解析には送るが保存しない
+       * (計画書 §4-1 / §10-4 を「解析後破棄」で決着させたもの)。
+       * 解析が終われば `problemImage` は参照されなくなり、そのまま捨てられる。
+       */
+      let problemImage: PhotoAnalysisImage | undefined;
+      if (problemPhoto instanceof File) {
+        const bytes = await problemPhoto.arrayBuffer();
+        const problemMediaType = detectImageMediaType(bytes, problemPhoto.type);
+        if (problemMediaType) {
+          problemImage = { image: bytes, contentType: problemMediaType };
+        } else {
+          log?.warn("problem_photo_unreadable", { session_id: sessionId });
+        }
+      }
 
-      photoKey = `photos/${deviceId}/${sessionId}`;
-      await c.env.PHOTOS.put(photoKey, image, {
-        httpMetadata: { contentType: mediaType },
-      });
+      // 読めた写真が1枚も残らなければ、ここで「読み取れなかった」として返す。
+      // 画像なしで解析器を呼ぶと、写真を見ないまま想像で単元を答えることがある。
+      const images = notesImage
+        ? { notes: notesImage, problem: problemImage }
+        : problemImage
+          ? { problem: problemImage }
+          : null;
+      if (!images) throw apiError("photo_unreadable", { locale });
 
-      analysis = await analyzer.analyze({
-        image,
-        contentType: mediaType,
-        locale: conversationLocale,
-      });
+      analysis = await analyzer.analyze({ ...images, locale: conversationLocale });
       if (!analysis.is_math_note) {
         throw apiError("out_of_scope", { locale });
       }
@@ -148,6 +206,25 @@ sessionsRoute.post("/", async (c) => {
       summary = analysis.summary;
       visibleWork = analysis.visible_work;
       questionSeeds = analysis.question_seeds;
+
+      const resolvedProblem = resolveSessionProblem({
+        analysis,
+        hadProblemPhoto: problemImage !== undefined,
+      });
+      problem = resolvedProblem.problem;
+
+      // §0 決定4「問題とノートをセットで送る」が実際に効いているかは、ここでしか観測できない。
+      // not_found が大半なら §4-1 のヒントが弱く、too_long が出るなら解析プロンプトが効いていない。
+      log?.info("problem_resolved", {
+        session_id: sessionId,
+        outcome: resolvedProblem.outcome,
+        source: problem?.source ?? null,
+        // 紙面は保存しない。**残す痕跡も「送られてきた事実」だけ**にする。
+        problem_photo: problemPhoto instanceof File ? "analyzed_and_discarded" : "absent",
+        // ノート無しがどれくらい正規の経路になるかは、ここでしか観測できない。
+        // 大半がこちらに寄るなら、それは「手も付けられない」が中心的な用件だったということ。
+        notes_photo: notesImage ? "stored" : "absent",
+      });
     }
 
     // ユーザーがチップUIで単元を直していれば、そちらを優先する
@@ -177,6 +254,8 @@ sessionsRoute.post("/", async (c) => {
   // 解析の結果をセッションに残す。
   const context: SessionContext = {
     summary,
+    // 写真は残らないので、問題文の保存先はここだけ(理由は SessionContext のコメント)。
+    problem,
     visible_work: visibleWork,
     question_seeds: questionSeeds,
     topics: analysis?.topics ?? [],
@@ -198,6 +277,7 @@ sessionsRoute.post("/", async (c) => {
     context,
     allowed,
     isPremium: user.is_premium,
+    hasNotesPhoto: photoKey !== null,
   });
 
   const dispatch = agentDispatch(c.env, metadata);
@@ -228,9 +308,10 @@ sessionsRoute.post("/", async (c) => {
     kind: meta.kind,
     livekit: { url: c.env.LIVEKIT_URL, token, room: sessionId },
     detected_topics: buildDetectedTopics(allowed, context),
+    problem,
     limits: {
       max_seconds: allowance.maxSeconds,
-      remaining_sessions_today: allowance.remainingToday,
+      lesson_allowed_today: allowance.lessonAllowedToday,
     },
   };
 
@@ -276,6 +357,7 @@ sessionsRoute.patch("/:sessionId/topics", async (c) => {
 
   const context: SessionContext = session.context ?? {
     summary: "",
+    problem: null,
     visible_work: [],
     question_seeds: [],
     topics: [],
@@ -297,6 +379,8 @@ sessionsRoute.patch("/:sessionId/topics", async (c) => {
     context,
     allowed,
     isPremium: user.is_premium,
+    // 写真は解析し直さないので、保存済みのキーの有無がそのまま「ノートがあったか」。
+    hasNotesPhoto: session.photo_key !== null,
   });
 
   const token = await createLiveKitToken({
@@ -310,7 +394,7 @@ sessionsRoute.patch("/:sessionId/topics", async (c) => {
     now: at,
   });
 
-  // このセッションはもう数えられているので、残数は「押さえたあと」の値になる。
+  // このセッションはもう数えられているので、ここで返すのは次の授業を始められるかの可否。
   const sessionsToday = await repository.countSessionsOnDate(deviceId, session.local_date);
 
   const response: UpdateSessionTopicsResponse = {
@@ -318,11 +402,11 @@ sessionsRoute.patch("/:sessionId/topics", async (c) => {
     kind: session.kind,
     livekit: { url: c.env.LIVEKIT_URL, token, room: sessionId },
     detected_topics: buildDetectedTopics(allowed, context),
+    // 写真は解析し直さない。問題文もセッションに残したものをそのまま返す。
+    problem: context.problem ?? null,
     limits: {
       max_seconds: maxSeconds,
-      remaining_sessions_today: premium
-        ? null
-        : Math.max(0, limits.freeSessionsPerDay - sessionsToday),
+      lesson_allowed_today: premium || sessionsToday < limits.freeSessionsPerDay,
     },
   };
 
@@ -355,7 +439,41 @@ function reviewSummary(locale: "ja" | "en", desc: string): string {
   return locale === "en" ? `Last time, ${desc}` : `前回、${desc}`;
 }
 
-/** エージェントがトークンから読む会話文脈。 */
+/**
+ * ノートに書いてあることとしてプロンプトへ渡す値。
+ *
+ * **文言そのものは持たない。**`@ai-sensei/prompts` の {@link formatVisibleWork} が
+ * 唯一の置き場で(`prompts/senpai_*.md` がその文字列を名指ししている)、
+ * ここが決めるのは **`null` を渡すかどうか**だけ。
+ * `problem_text` のときに「埋める場所が2つあると経路で文言が変わる」と書いたのと
+ * 同じ理由で、API側で組み立て直さない。
+ *
+ * `null`(= ノートの写真なし)にするのは `kind: "new"` のときだけ。
+ * 復習セッションはそもそも写真を使わず、文脈は前回の穴なので、
+ * ここで「ノートの写真なし」と言うと**存在しない欠落**を報告することになる。
+ *
+ * **送られたが読めなかったノートも `null` 側に入る。** 先輩から見れば
+ * 「撮っていない」も「読めなかった」も手がかりがゼロという点で同じで、
+ * 「(なし)」= 撮ったが白紙、と言い切るほうが実態から遠い。
+ */
+function studentWorkForPrompt(input: {
+  locale: "ja" | "en";
+  kind: "new" | "review";
+  visibleWork: readonly string[];
+  hasNotesPhoto: boolean;
+}): string {
+  const noNotesPhoto = input.kind === "new" && !input.hasNotesPhoto;
+  return formatVisibleWork(noNotesPhoto ? null : input.visibleWork, input.locale);
+}
+
+/**
+ * エージェントがトークンから読む会話文脈。形は `contract` の {@link SessionMetadata}。
+ *
+ * **戻り値を `SessionMetadata` で型づけしてから文字列化している。**
+ * ここが素の object リテラルだったために `problem_text` の欄が無いことに誰も気づかず、
+ * agent は `photo_summary`(「何が写っているか」の要約)を問題文として流用していた
+ * = 先輩が問題そのものを見ないまま教えていた(計画書 §0 決定4 の未実装)。
+ */
 function buildSessionMetadata(input: {
   sessionId: string;
   locale: "ja" | "en";
@@ -364,8 +482,10 @@ function buildSessionMetadata(input: {
   context: SessionContext;
   allowed: AllowedTopics;
   isPremium: boolean;
+  /** ノートの写真がR2にあるか(= 送られてきたか)。`student_work` の文言が変わる。 */
+  hasNotesPhoto: boolean;
 }): string {
-  return JSON.stringify({
+  const metadata: SessionMetadata = {
     session_id: input.sessionId,
     locale: input.locale,
     kind: input.kind,
@@ -373,12 +493,22 @@ function buildSessionMetadata(input: {
     photo_summary: input.context.summary,
     // 整形済みの断片はそのままプロンプトに貼られる。空のときの
     // プレースホルダまで含めて、会話の言語で揃える。
-    visible_work: formatBullets(input.context.visible_work, input.locale),
+    // 文言そのものは持たない。`formatVisibleWork` と同じで、
+    // **プロンプトが名指ししている文字列は `@ai-sensei/prompts` に集めてある**。
+    // ここが決めるのは「読めたか(= `null` を渡すか)」だけ。
+    problem_text: formatProblemText(input.context.problem?.text ?? null, input.locale),
+    visible_work: studentWorkForPrompt({
+      locale: input.locale,
+      kind: input.kind,
+      visibleWork: input.context.visible_work,
+      hasNotesPhoto: input.hasNotesPhoto,
+    }),
     question_seeds: formatBullets(input.context.question_seeds, input.locale),
     allowed_topics: formatAllowedTopics(allowedTopicList(input.allowed), input.locale),
     allowed_topic_ids: [...input.allowed.primary, ...input.allowed.prerequisite],
     is_premium: input.isPremium,
-  });
+  };
+  return JSON.stringify(metadata);
 }
 
 /**
@@ -390,6 +520,7 @@ function buildDetectedTopics(allowed: AllowedTopics, context: SessionContext) {
   return toDetectedTopicPayload([...allowed.primary], {
     is_math_note: true,
     summary: context.summary,
+    problem_text: context.problem?.text ?? "",
     visible_work: context.visible_work,
     topics: context.topics,
     unreadable: [],

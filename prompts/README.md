@@ -8,11 +8,12 @@
 | id | 使う場所 | 役割 |
 | --- | --- | --- |
 | `photo_analysis` | backend/api(Vision LLM) | ノート写真 → 単元検出・質問の種 |
-| `kohai_conversation` | agent(会話LLM) | 後輩ペルソナ + 会話中のガードレール |
-| `question_types_few_shot` | agent | 質問4型の文体をそろえるfew-shot |
+| `senpai_conversation` | agent(会話LLM) | 先輩ペルソナ + 教え返しのガードレール([ピボット計画 v1](../docs/pivot_plan_v1.md) §2) |
+| `question_types_few_shot` | agent | 教え返しを聞くときの聞き方4型をそろえるfew-shot |
 | `karte_generation` | agent(セッション終了時) | transcript → カルテJSON |
 | `math_speech_hints` | 両方 | 数式音声の補正ヒント(§4(d)) |
 | `senpai_board` | agent(授業モードの板書LLM) | 先輩ペルソナ + 板書JSON生成([ピボット計画 v1](../docs/pivot_plan_v1.md) §3) |
+| `study_plan` | agent(計画モード) | 先輩が**口で聞いて**学習計画を組む / 組み直す(同 §4-3) |
 
 現在のロケールは `ja` と `en` の2つ。**id の数 × 2ロケール**が揃って
 いないとテストが落ちる(片方だけ足すと、その言語のセッションだけ静かに
@@ -22,7 +23,7 @@
 日本語の本文に「英語で答えてください」を足す作りにはしない。足す作りだと
 ペルソナも禁止事項も日本語のまま英語で言い直されるだけで、few-shot は
 日本語の例文のままになる。**文体の見本がない状態**で英語を喋らせると、
-後輩の口調ではなく試験官の口調に寄る。
+先輩の口調ではなく試験官の口調に寄る。
 
 ## TypeScriptからの読み込み
 
@@ -36,10 +37,16 @@ pnpm --filter @ai-sensei/prompts generate   # .md → generated.ts
 `.md` を編集して再生成を忘れると `packages/prompts/src/index.test.ts` が落ちます。
 
 ```ts
-getPrompt("kohai_conversation", "en");        // 言語を指定して取り出す
+getPrompt("senpai_conversation", "en");       // 言語を指定して取り出す
 conversationSystemPrompt(variables, "en");    // few-shot と音声ヒントも英語で同梱
 boardLessonSystemPrompt(variables, "en");     // 先輩(板書)+ 音声ヒント
+studyPlanSystemPrompt(variables, "en");       // 先輩(計画)。音声ヒントは同梱しない
 ```
+
+`study_plan` にだけ音声ヒントを同梱していないのは、あれが**数式の読み上げ**
+(「さんぶんのに」= 2/3)を直すためのもので、計画の聞き取りに出てくる数字が
+**日付・ページ番号・問題集の名前**という別物だからです。計画側で要る聞き取りの注意は
+`study_plan.<locale>.md` に直接書いてあります。
 
 未対応の言語は黙って `ja` に落とします(ここで例外にすると、言語が1つ増えた
 瞬間に会話が始まらなくなるため)。
@@ -50,10 +57,10 @@ boardLessonSystemPrompt(variables, "en");     // 先輩(板書)+ 音声ヒント
 
 ```yaml
 ---
-id: kohai_conversation
+id: senpai_conversation
 locale: ja
 model_role: conversation
-variables: [photo_summary, visible_work, allowed_topics, question_seeds, remaining_seconds]
+variables: [photo_summary, visible_work, allowed_topics, question_seeds, lesson_recap, remaining_seconds]
 ---
 ```
 
@@ -91,12 +98,15 @@ variables: [photo_summary, visible_work, allowed_topics, question_seeds, remaini
 | id | 1番目の扱い |
 | --- | --- |
 | `senpai_board` | **改正後。** 教える。ただし教えっぱなしにせず、必ず説明してもらうところまで行く |
-| `kohai_conversation` `question_types_few_shot` | **改正前のまま。** 後輩は分かっていない側なので、答えを教えることがそもそもできない |
+| `senpai_conversation` `question_types_few_shot` | **改正後。** 説明が詰まったら教える。ただし**先に答えを埋めない** — まず言わせてから(言ってしまうと、そこが穴だったのかが永久に分からなくなる) |
 | `photo_analysis` | **改正前のまま。** 解析器の出力は「何を教えるか」を決めるための材料で、ここに解答が入ると誤読が下流に固定される |
 | `karte_generation` | 対象外(採点しない ≒ 約束3の側の話) |
+| `study_plan` | 対象外(計画は教える場ではない)。効くのは約束3「点数をつけない」のほう |
 
-`@ai-sensei/guardrail` の `containsAnswerLeak()` は**後輩の質問を見るための関数**で、
-先輩の板書には当てません。板書側の二重書きの相手は別で、こちらです:
+`@ai-sensei/guardrail` の `containsAnswerLeak()` は**改正前の約束1を見るための関数**で、
+教える先輩(板書・会話)には**もう当てていません**(agent 側の呼び出しは削除済み)。
+当てたままだと、先輩が詰まった箇所を教えるたびに漏れとして記録され、警告が鳴りっぱなしになります。
+板書側の二重書きの相手は別で、こちらです:
 
 | プロンプトに書くこと | コード側の相手 |
 | --- | --- |
@@ -106,5 +116,33 @@ variables: [photo_summary, visible_work, allowed_topics, question_seeds, remaini
 | 1手順=1行(`\\` を使わない・多行環境を使わない) | `contract` の `tex` の正規表現 / `guardrail` の `row_separator_outside_environment` |
 | 長い式は `=` の前で割って2手順にする | **コード側の相手がまだいない**(計画書 §3-6b。W2でNode側の幅推定を入れるまで、ここはプロンプトだけが守っている) |
 
+学習計画(`study_plan`)の二重書きの相手は、さらに別です:
+
+| プロンプトに書くこと | コード側の相手 |
+| --- | --- |
+| 目標点・達成率を書かない | `contract` の `studyPlanSchema`(`strict()` に置き場が無い) |
+| 1日は合計120分まで / 1項目10〜60分 | `contract` の `planDayMinutesMax` と `planItemMinutes*` |
+| `material` は聞いた教材の**番号** | `contract` の `material` の添字と範囲検査 |
+| 日付は昇順・テスト日を越えない | `contract` の `checkPlanShape` |
+| `topic_ids` は許可リストから選ぶ | `guardrail` の `filterHoleTopicIds()` と同じ照合(**計画向けはまだ無い** — 下記) |
+| 組み直しで `intake` を聞き直さない | **コード側の相手がいない。**ここはプロンプトだけが守っている |
+
+教え返し(`senpai_conversation`)の二重書きの相手は、**いまのところ1つもありません。**
+
+| プロンプトに書くこと | コード側の相手 |
+| --- | --- |
+| 採点しない・「合ってる / 違う」を宣告しない | **無し。**プロンプトだけが守っている |
+| 命令・催促をしない、数字を見せない(約束4) | **無し。**同上 |
+| 先に答えを埋めない(まず言わせる) | **無し。**`containsAnswerLeak()` は当てられない(下記) |
+
+「先に答えを埋めない」に機械の相手がいないのは、**字面では判定できない**からです。
+同じ「答えは2点で交わる」が、生徒が説明したあとなら正しく、説明する前なら違反になる。
+判定に要るのは語句ではなく**ターンの順序**なので、`containsAnswerLeak()` の
+正規表現では原理的に置き換えられません。ここを機械で見るなら、その設計から始めること。
+
+配役が後輩から先輩に変わって**新しく開いた穴**です。後輩は「勉強しろ」と言えませんが、
+先輩は言える立場なので、ここが緩むと素で言います。書き換えるときは弱めないこと。
+
 差し込む定型句も本文と同じ言語で書きます(`(なし)` / `(none)`、
-`後輩:` / `Kohai:`)。日本語が1行混ざると、そこだけ日本語で返ってきます。
+`先輩:` / `Senpai:`、板書の引用符 `「」` / `"`)。
+日本語が1行混ざると、そこだけ日本語で返ってきます。

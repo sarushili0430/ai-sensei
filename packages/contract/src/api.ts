@@ -29,6 +29,102 @@ export type Locale = (typeof locales)[number];
 export const sessionKinds = ["new", "review"] as const;
 export const sessionKindSchema = z.enum(sessionKinds);
 
+/* -------------------------------------------------------------------------- */
+/* 問題文(グラウンディング)                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * POST /v1/sessions の multipart のパート名。
+ *
+ * **2枚の写真は別のものとして扱う。寿命が違うから。**
+ *
+ * | パート | 中身 | 保存 |
+ * | --- | --- | --- |
+ * | `photo` | 生徒のノート(本人の著作物) | R2に保存する |
+ * | `problem_photo` | 教科書・問題集の紙面(**他者の著作物**) | **解析後に破棄する。保存しない** |
+ *
+ * 計画書 §4-1 が「解析には送るが、R2に保存し続けるかは分けて判断する
+ * (解析後破棄なら、将来の出版社交渉でも説明が立つ)」と書き、§10-4 で未決だったもの。
+ * **破棄を既定にした**ので、パート名を分けて「どちらの寿命か」を送信側にも見えるようにする。
+ *
+ * **`kind: "new"` に要るのは、どちらか1枚。両方が無いときだけ弾く。**
+ * どちらも必須ではない:
+ *
+ *   - `problem_photo` だけ … まだ手をつけていない問題を持ってきた場合。
+ *     `visible_work` は空になり、`sessionMetadataSchema.visible_work` には
+ *     「ノートの写真なし」を意味するプレースホルダが入る
+ *   - `photo` だけ … 1枚に問題とノートの両方が写っている場合(§4-1 が「多い」と書いているほう)。
+ *     解析器はノートの写真から問題文を読み取ろうとし、読めなければ問題文なしで進む
+ *
+ * **ノートを必須にしていた頃、この契約は自分自身の破棄の約束を破っていた。**
+ * ノートが無い生徒は、紙面を `photo`(ノート枠)に入れる以外に送る手段が無く、
+ * 結果として**他者の著作物がR2に保存されていた**。破棄を保証する道は
+ * 「紙面をノート枠に入れる動機を消す」ことしかないので、ノートの必須をやめた。
+ *
+ * 「ノートを撮らない生徒を正規の経路として認めることになる」のは**承知のうえ**。
+ * 旧方針(答えを教えない・説明させる)ではノート必須が必然だったが、
+ * いまは教えるプロダクトで、「手も付けられない」は家庭教師の中心的な用件
+ * (デッキ §0 の約束1の改正)。誤読の保険は教え返しフェーズ側にあるので無傷(§1-1)。
+ *
+ * **残る穴**: 生徒が問題を `photo` 枠に入れて送れば、それはノートとして保存される。
+ * 枠の取り違えまでは防げない。防げるのは**取り違える動機**までで、そこは消した。
+ */
+export const sessionPhotoParts = {
+  /** ノートの写真。R2に保存する。 */
+  notes: "photo",
+  /** 問題の写真。**解析後に破棄する。** */
+  problem: "problem_photo",
+} as const;
+
+/**
+ * 読み取った問題文の上限。
+ *
+ * 高校数学の設問は小問つきでも300字程度に収まる。600字は
+ * **紙面を丸ごと書き起こさせないための安全弁**で、目標値ではない。
+ * ページ全体を写すと、章末の解答や解説まで問題文として流れ込み、
+ * 先輩が答えを読み上げるところから授業が始まってしまう。
+ */
+export const problemTextMaxLength = 600;
+
+/**
+ * 問題文をどの写真から読んだか。
+ *
+ * **ヒントの出しどころは「撮る前」に決めた**(2026-08-10)。当初この欄は
+ * 「`null`(読めなかった)のときだけヒントを出す」ために置いたが、それは**解析のあと**になる。
+ * 解析後に出すヒントは、撮り直さないと消えない警告として働き、
+ * **任意のはずの2枚目が事実上の必須になる**(API側で「2枚目が壊れていても422にしない」と
+ * 決めたのと同じ理屈が、UI側から無効化される)。撮る前なら同じ文言が純粋な促しなので、
+ * §4-1「2枚必須にしない」を保ったまま「問題も写っていると先輩が迷子になりません」を出せる。
+ * よってアプリは撮影の確認画面でヒントを**常時**出し、この欄では出しわけない。
+ *
+ * この欄はいま**観測のため**にある。
+ *
+ * どれくらいの生徒が実際に2枚送るかは、この値でしか観測できない。
+ */
+export const problemSources = ["problem_photo", "notes_photo"] as const;
+export const problemSourceSchema = z.enum(problemSources);
+export type ProblemSource = (typeof problemSources)[number];
+
+/**
+ * セッションが扱う問題。**読み取れたときだけ存在する。**
+ *
+ * `text` と `source` を1つのオブジェクトにまとめてあるのは、
+ * 「本文はあるが出どころが無い」という状態を表現できなくするため
+ * (`karte.ts` の `status` / `filled_at` を対で縛っているのと同じ考え方)。
+ */
+export const sessionProblemSchema = z
+  .object({
+    /**
+     * 問題文。**解答・解説は入らない。**
+     * 中身が本当に設問かどうかの照合は contract の仕事ではない
+     * (`topicIdSchema` と同じ分担で、`@ai-sensei/guardrail` 側)。
+     */
+    text: z.string().min(1).max(problemTextMaxLength),
+    source: problemSourceSchema,
+  })
+  .strict();
+export type SessionProblem = z.infer<typeof sessionProblemSchema>;
+
 /** 写真解析で検出した単元。UIではチップで出し、ユーザーが直せる。 */
 export const detectedTopicSchema = z
   .object({
@@ -87,8 +183,11 @@ export const sessionLimitsSchema = z
   .object({
     /** サーバが強制する上限。無料は5分、Premiumは15分。 */
     max_seconds: z.number().int().positive(),
-    /** その日に残っているセッション数。Premiumはnull(無制限)。 */
-    remaining_sessions_today: z.number().int().min(0).nullable(),
+    /**
+     * この応答時点から、今日さらに授業を始められるか。
+     * §6-3「UIに数字は一切出さない」を契約の形で守るため、残数ではなく可否だけを返す。
+     */
+    lesson_allowed_today: z.boolean(),
   })
   .strict();
 
@@ -98,6 +197,16 @@ export const createSessionResponseSchema = z
     kind: sessionKindSchema,
     livekit: liveKitConnectionSchema,
     detected_topics: z.array(detectedTopicSchema).min(1),
+    /**
+     * 解析が読み取った問題。**読めなければ `null`**(それでもセッションは成立する)。
+     *
+     * アプリに返すのは2つの用途のため:
+     *   1. `null` のときだけ §4-1 のヒント(「問題も写っていると〜」)を出す
+     *   2. **読み取った問題文をそのまま見せる。** 誤読が表面化するのがここで最も早い。
+     *      §1-1 の「AIが理解している建て付けのアプリほど誤読が致命傷になる」への、
+     *      授業が始まる前の手当て。
+     */
+    problem: sessionProblemSchema.nullable(),
     limits: sessionLimitsSchema,
   })
   .strict();
@@ -122,6 +231,70 @@ export type UpdateSessionTopicsRequestInput = z.input<typeof updateSessionTopics
 
 /** 返るものは作成時と同じ(session_idは変わらず、トークンだけ出し直す)。 */
 export type UpdateSessionTopicsResponse = CreateSessionResponse;
+
+/**
+ * **LiveKitトークンに載せて agent に渡す会話文脈。**
+ *
+ * HTTPのボディではなく、トークンの `metadata` クレーム(と、名前つきワーカーのときは
+ * ディスパッチのジョブ metadata)に**JSON文字列として**入る。だから「主なエンドポイント」の
+ * 表には出てこないが、**backend/api と agent の間の契約としてはいちばん重い**もので、
+ * ここが会話プロンプトの穴埋めにそのまま流れ込む。
+ *
+ * 型が無いまま運用していた結果、agent は `problem_text` に `photo_summary` を
+ * 流用していた(= **先輩が問題そのものを見ないまま教えていた**)。§0 の決定4
+ * 「問題とノートをセットで送る」が実装されていなかったのは、ここに欄が無かったため。
+ *
+ * **文字列の欄は「整形済みでそのままプロンプトに貼る」もの。**
+ * 空のときのプレースホルダまで含めて、`locale` の言語で揃えて入れる
+ * (日本語の「(なし)」が英語のプロンプトに混ざると、そこだけ日本語で返ってくる)。
+ */
+export const sessionMetadataSchema = z
+  .object({
+    session_id: z.string().min(1),
+    /**
+     * **会話の言語。アプリの表示言語ではなく、扱う単元の課程で決まる**(ADR 0005)。
+     * 復習セッションでは、穴に付いた topic_id の接頭辞から決まる。
+     */
+    locale: localeSchema,
+    kind: sessionKindSchema,
+    max_seconds: z.number().int().positive(),
+    /** 写真解析の要約。「何が写っているか」であって、問題文ではない。 */
+    photo_summary: z.string(),
+    /**
+     * **問題文。空文字は入らない**(`.min(1)`)。
+     *
+     * 読み取れなかった場合も、**その言語のプレースホルダが入った状態で届く**
+     * (日本語なら「(問題の写真なし)」)。agent 側で空を埋める必要はない。
+     * 埋める場所が2つあると、プロンプトが期待する文言と実際に届く文言がずれ、
+     * **先輩が問題を推測で組み立てはじめる**(`prompts/senpai_board.*.md` が
+     * このプレースホルダを名指しで見ている)。
+     */
+    problem_text: z.string().min(1),
+    /**
+     * ノートに書いてあること(整形済みの箇条書き)。**空にならない**(`.min(1)`)。
+     *
+     * `problem_text` と同じ扱いで、**3つの状態が区別できる形で届く**:
+     *
+     *   - 箇条書き … ノートの写真から読み取れた
+     *   - 「(なし)」相当 … ノートは撮ったが、手をつけた形跡が読み取れなかった
+     *   - 「(ノートの写真なし)」相当 … **ノートの写真そのものが無い**
+     *     (問題だけを持ってきた = まだ手をつけていない。`sessionPhotoParts` を参照)
+     *
+     * 3つ目は `problem_photo` だけを送る経路が正規化されたことで生まれた状態で、
+     * **「読み取れなかった」とは別物**。混ぜると、先輩は
+     * 「ノートに何も書いていない生徒」と「ノートを撮らなかった生徒」を同じに扱う。
+     */
+    visible_work: z.string().min(1),
+    /** 整形済みの箇条書き。 */
+    question_seeds: z.string(),
+    /** 整形済みの許可トピック一覧(到達目標つき)。 */
+    allowed_topics: z.string(),
+    /** ガードレールの照合に使う生のID。前提トピックまで含む。 */
+    allowed_topic_ids: z.array(topicIdSchema),
+    is_premium: z.boolean(),
+  })
+  .strict();
+export type SessionMetadata = z.infer<typeof sessionMetadataSchema>;
 
 /** 会話ログ。assistant=後輩の発話、user=ユーザーの説明。 */
 export const transcriptMessageSchema = z

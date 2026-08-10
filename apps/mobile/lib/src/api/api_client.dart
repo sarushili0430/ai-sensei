@@ -35,8 +35,20 @@ class ApiClient {
   Map<String, String> get _headers => <String, String>{'x-device-id': deviceId};
 
   /// 写真を送ってセッションを作る。復習(kind=review)では写真を送らない。
+  ///
+  /// **2枚の写真は別のパートで送る。寿命が違うから**(`api.ts` の `sessionPhotoParts`):
+  ///
+  /// | パート | 中身 | 保存 |
+  /// | --- | --- | --- |
+  /// | `photo` | 生徒のノート(本人の著作物) | R2に保存する |
+  /// | `problem_photo` | 教科書・問題集の紙面(**他者の著作物**) | **解析後に破棄する** |
+  ///
+  /// **どちらの枠に入れたかでしか区別できない。** 問題の紙面をノート枠で送ると、
+  /// サーバはそれをノートとして保存する。だから枠の選択はUIの責務で、
+  /// ここは渡されたものをそのまま対応するパートに載せるだけにしてある。
   Future<SessionStart> createSession({
     File? photo,
+    File? problemPhoto,
     String kind = 'new',
     String locale = 'ja',
     String? holeId,
@@ -53,14 +65,23 @@ class ApiClient {
             if (topicIds != null && topicIds.isNotEmpty) 'topic_ids': topicIds,
           });
 
+    // Content-Type を渡さないと application/octet-stream で送られる。
+    // 撮った写真は image_picker が imageQuality を掛けた時点でJPEGなので、
+    // そう伝える(サーバ側は最終的に中身を見て判断する)。
     if (photo != null) {
-      // Content-Type を渡さないと application/octet-stream で送られる。
-      // 撮った写真は image_picker が imageQuality を掛けた時点でJPEGなので、
-      // そう伝える(サーバ側は最終的に中身を見て判断する)。
       request.files.add(
         await http.MultipartFile.fromPath(
           'photo',
           photo.path,
+          contentType: MediaType('image', 'jpeg'),
+        ),
+      );
+    }
+    if (problemPhoto != null) {
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'problem_photo',
+          problemPhoto.path,
           contentType: MediaType('image', 'jpeg'),
         ),
       );

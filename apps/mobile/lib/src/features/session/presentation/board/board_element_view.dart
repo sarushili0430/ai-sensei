@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../../l10n/strings.dart';
 import '../../domain/board.dart';
+import 'board_speech.dart';
 import 'board_style.dart';
 import 'circle_painter.dart';
 import 'latex_element_view.dart';
@@ -20,7 +22,7 @@ class BoardElementView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return element.when(
+    final Widget drawn = element.when(
       latex: (String tex) => LatexElementView(tex: tex),
       text: (String body) => TextElementView(body: body),
       plot: (String fn, BoardDomain domain, List<PlotMark>? marks) => _GraphicBox(
@@ -32,6 +34,23 @@ class BoardElementView extends StatelessWidget {
           ),
       circle: (BoardPoint center, double r, List<String>? labels) =>
           _GraphicBox(painter: CirclePainter(center: center, r: r, labels: labels)),
+    );
+
+    // **読み上げは1行につき1つ。**
+    //
+    // `Math.tex` は記号ごとにウィジェットを積むので、包まないと
+    // 「エックス」「ハット」「2」…と**バラバラに読まれる**(そもそも
+    // `CustomPaint` の図形は1文字も読まれない)。中の断片を
+    // [ExcludeSemantics] で消して、代わりに1つの文を置く。
+    //
+    // 板書はこのプロダクトの中心(計画書 §3-1)なので、ここが欠けると
+    // 目が見えない生徒には**授業が存在しないのと同じ**になる。
+    // 読み上げは端末側なので、§3-1 が抑えたかったTTSの原価には影響しない。
+    return Semantics(
+      label: describeElement(element, AppStrings.of(context)),
+      // 数式も図形も、指で触って操作するものではない。
+      readOnly: true,
+      child: ExcludeSemantics(child: drawn),
     );
   }
 }

@@ -1,10 +1,11 @@
 # @ai-sensei/agent
 
-後輩AIの会話パイプライン。LiveKit Agents(Node)に乗せる。
+先輩AIのセッション(授業 → 教え返し)。LiveKit Agents(Node)に乗せる。
 
 ```
-VAD(Silero) → 日本語ストリーミングSTT(Deepgram) → Claude(後輩ペルソナ)
-→ TTS(Deepgram Aura-2)。割り込みと相づちはフレームワーク側。
+フェーズ1「授業」   板書LLM(Claude) → 手順単位で LiveKit Text Streams → 直後にTTS
+フェーズ2「教え返し」 VAD(Silero) → STT(Deepgram) → Claude(先輩ペルソナ)
+                     → TTS(Deepgram Aura-2)。割り込みと相づちはフレームワーク側。
 ```
 
 **WebRTCは書かない。** ここで書くのは3つだけ:
@@ -54,7 +55,7 @@ curl -i http://localhost:8081/                    # 200 なら LiveKit に登録
 | 名前つき(`LIVEKIT_AGENT_NAME`) | 明示ディスパッチのみ | `LIVEKIT_AGENT_NAME` に同じ名前 |
 
 **LiveKit Cloud のエージェントホスティングは `LIVEKIT_AGENT_NAME` を自動で入れる。**
-そこへ載せたのにAPI側が空のままだと、部屋は作られるのに後輩が来ず、
+そこへ載せたのにAPI側が空のままだと、部屋は作られるのに先輩が来ず、
 アプリは「聞いています」のまま止まる(会話もカルテも起きない)。
 `job_started` ログが出ていなければ、まずここを疑う。
 
@@ -67,7 +68,7 @@ curl -i http://localhost:8081/                    # 200 なら LiveKit に登録
 明示ディスパッチのときは同じJSONがジョブのmetadataにも載る。
 **先に読めたほうを使う**ので、ディスパッチの仕方を変えても会話は始まる。
 
-**metadataが読めなければ会話を始めずに切断する。** 文脈なしで後輩を喋らせると、
+**metadataが読めなければ会話を始めずに切断する。** 文脈なしで先輩を喋らせると、
 写真と関係ない一般論を聞き始めてしまうので、それくらいなら黙って終える。
 
 ## カルテ生成
@@ -88,7 +89,7 @@ LLMに無理やり穴を作らせない。空のカルテは失敗ではない�
 
 | ended_reason | きっかけ |
 | --- | --- |
-| `completed` | 後輩が締めの言葉を言った(`closing.ts` が検出。読み上げの余白だけ待って閉じる) |
+| `completed` | 締めの言葉を言った(`closing.ts` が検出。読み上げの余白だけ待って閉じる) |
 | `timeout` | サーバが決めた `max_seconds` に達した |
 | `user_left` / `error` | 離脱・エラー |
 
@@ -112,8 +113,9 @@ few-shot も、その言語で書かれたものをそのまま渡す。
 | | 切り替えるもの |
 | --- | --- |
 | STT / TTS | `deepgram` のモデル(`DEEPGRAM_TTS_MODEL_JA` / `_EN`) |
-| プロンプト | `conversationSystemPrompt(vars, locale)` / `karteSystemPrompt(vars, locale)` |
-| transcriptの整形 | ロール名(`後輩:` / `Kohai:`) |
+| プロンプト | `conversationSystemPrompt(vars, locale)` / `boardLessonSystemPrompt(vars, locale)` / `karteSystemPrompt(vars, locale)` |
+| transcriptの整形 | ロール名(`先輩:` / `Senpai:`) |
+| 定型の一言 | `senpai.ts`(冒頭の無音埋め・教え返しへの受け渡し・復習の入り) |
 | ガードレール | 答えの漏れの検出と数式音声の正規化(`normalizeMathSpeech(text, locale)`) |
 
 許可トピックは `locale` を見ずに済む。topic_id の接頭辞がロケールごとに
@@ -123,13 +125,14 @@ few-shot も、その言語で書かれたものをそのまま渡す。
 
 **ここはいちばん静かに壊れる場所。** ワーカーが動いていない・ディスパッチが
 来ない・カルテのLLMが落ちた、のどれが起きてもアプリからは
-「後輩が来ない / カルテが出ない」としか見えない。ジョブの節目を1行1JSONで出す。
+「先輩が来ない / 板書が出ない / カルテが出ない」としか見えない。ジョブの節目を1行1JSONで出す。
 
 | event | いつ | 見かた |
 | --- | --- | --- |
 | `job_started` | ジョブを受け取った | これが無ければディスパッチが届いていない |
 | `context_unreadable` | 文脈が読めない。会話せずに切る | APIのmetadataを疑う |
-| `conversation_started` | 最初の一言を出した | ここまで来れば後輩は喋っている |
+| `conversation_started` | セッションが立ち上がった(授業の**前**) | ここまで来れば先輩は喋れる状態 |
+| `lesson_finished` / `lesson_empty` | 授業1回ぶんの結果 | `lesson_empty` は8/16ゲートを見る指標 |
 | `conversation_ended` | `completed` / `timeout` / `user_left` / `error` | 終わり方と発話数 |
 | `karte_built` / `karte_failed` | カルテ生成 | 穴の数と所要時間 |
 | `complete_posted` / `complete_failed` | APIへの送信 | **失敗するとカルテは表に出ない** |
@@ -142,14 +145,20 @@ few-shot も、その言語で書かれたものをそのまま渡す。
 
 `/complete` は落ちても3回まで送り直す(冪等なので二重にはならない)。
 
-## 答えの漏れについて(既知の限界)
+## 答えの漏れの検知は、もう当てていない
 
-`containsAnswerLeak()` は後輩の発話も見ているが、**realtimeなので発話を差し止められない**。
-検出できるのは事後だけで、いまは `console.warn` に記録してプロンプト調整の材料にする。
+`containsAnswerLeak()` は**改正前の約束1「答えを教えない」を守るための検知**で、
+ピボットで配役が先輩に変わったあとは当てていない
+(ピボット計画 v1 §0 の改正・§8 の「捨てる」列)。
 
-W2のGo/No-Goで、漏れの頻度が問題になるようなら:
+当てたままにすると、**先輩が詰まった箇所を教えるたびに漏れとして記録される**。
+教えるのが仕事なので、ほぼ全セッションで警告が鳴り、本物の異常を見落とす方向にしか働かない。
 
-- 文単位でTTS前にフィルタする(遅延と引き換え)
-- 会話モデルをより指示追従の強いものに上げる
+**改正後に残っている約束は「先に答えを埋めない」**(まず言わせてから教える)だが、
+これは1発話の字面では判定できない — **同じ文が、生徒が説明したあとなら正しく、
+説明する前なら違反になる**。ターンの順序を見る必要があるので、
+正規表現のガードレールでは原理的に置き換えられない。
 
-のどちらかを検討する。
+いま守っているのは `prompts/senpai_conversation.<locale>.md` の約束1だけで、
+**コード側の相手はいない**(`prompts/README.md` の二重書きの表に「無し」と明記してある)。
+ここを機械で見たくなったら、字面ではなく**ターンの順序**を見る設計から始めること。

@@ -133,7 +133,7 @@ class _Section extends StatelessWidget {
 /// あしたの夜、もう一度きいてもいいか。
 ///
 /// **通知の許可を求めるのはアプリ中でここだけ。** 初回起動では聞かない。
-/// 穴が見つかった直後、後輩からのお願いとして尋ねるほうが文脈が立つし、
+/// 穴が見つかった直後、先輩からのお願いとして尋ねるほうが文脈が立つし、
 /// ここで断られても「翌日・3日後・7日後」の価値は伝わっている。
 ///
 /// スイッチをアプリ側に持たないのは、OSの許可がそのまま状態だから。
@@ -195,7 +195,7 @@ class _ReviewReminderCard extends ConsumerWidget {
   }
 }
 
-/// 後輩のあと追い質問(Premium)。
+/// 先輩のあと追い質問(Premium)。
 class _FollowupCard extends StatelessWidget {
   const _FollowupCard({required this.question});
 

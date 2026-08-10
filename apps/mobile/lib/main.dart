@@ -11,11 +11,21 @@ import 'src/features/notifications/application/push_controller.dart';
 import 'src/features/notifications/presentation/push_registration_gate.dart';
 import 'src/l10n/strings.dart';
 import 'src/routing/app_router.dart';
+import 'src/telemetry/telemetry.dart';
 import 'src/theme/app_theme.dart';
 
+/// 起動。**監視の内側で立ち上げる**(計画書 §10-7)。
+///
+/// `SENTRY_DSN` が無いビルドでは [Telemetry.runWithMonitoring] が
+/// 初期化ごと飛ばして `_startApp` をそのまま呼ぶので、手元とCIの挙動は変わらない。
+/// 初期化を挟むのが `WidgetsFlutterBinding.ensureInitialized()` より**後**なのは、
+/// SDKがプラットフォームチャンネルを使うため。
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Telemetry.runWithMonitoring(_startApp);
+}
 
+Future<void> _startApp() async {
   // 向きの制限はネイティブ側(AndroidManifest / Info.plist)に任せている。
   // SystemChrome はプラットフォーム共通で効いてしまい、横向きを許している
   // iPad まで縦に固定してしまうため、ここでは指定しない。

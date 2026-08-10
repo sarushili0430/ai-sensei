@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../common_widgets/chunky_button.dart';
 import '../../../common_widgets/confetti.dart';
 import '../../../common_widgets/entrance.dart';
-import '../../../common_widgets/kohai_face.dart';
+import '../../../common_widgets/senpai_face.dart';
 import '../../../l10n/strings.dart';
 import '../../../routing/routes.dart';
 import '../../../theme/tokens.dart';
@@ -29,7 +29,7 @@ enum ThanksKind {
 /// ここが無いあいだ、購入が通ると**画面が閉じるだけ**だった。お金を払った
 /// 瞬間にアプリが何も言わないのは、いちばん安く直せる不親切なので埋める。
 ///
-/// 祝福画面と同じ文法(紙吹雪 + 後輩のはずみ)で作る。にぎやかにするのは
+/// 祝福画面と同じ文法(紙吹雪 + 先輩のはずみ)で作る。にぎやかにするのは
 /// **ここ1回だけ**で、カルテと復習には祝いの色を持ち込まない(handoff §7)。
 ///
 /// 決済は通ったが entitlement が付いていない場合は、そもそもここへ来ない
@@ -90,7 +90,7 @@ class ThanksScreen extends ConsumerWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
-                  const PopIn(child: KohaiFace(mood: KohaiMood.delighted, size: 140)),
+                  const PopIn(child: SenpaiFace(mood: SenpaiMood.delighted, size: 140)),
                   const SizedBox(height: AppSpacing.lg),
                   FadeSlideIn.staggered(
                     index: 2,

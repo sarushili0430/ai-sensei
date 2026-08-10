@@ -46,12 +46,32 @@ describe("isPremiumNow", () => {
 describe("checkSessionAllowance", () => {
   it("無料ユーザーの1回目は通る", () => {
     const allowance = checkSessionAllowance({ user: user(), sessionsToday: 0, now, limits });
-    expect(allowance).toEqual({ allowed: true, maxSeconds: 300, remainingToday: 0 });
+    expect(allowance).toEqual({ allowed: true, maxSeconds: 300, lessonAllowedToday: false });
+  });
+
+  it("無料枠を使い切るまでは、今日もう一度授業を受けられる", () => {
+    const twoLessonLimits = { ...limits, freeSessionsPerDay: 2 };
+    const first = checkSessionAllowance({
+      user: user(),
+      sessionsToday: 0,
+      now,
+      limits: twoLessonLimits,
+    });
+    const second = checkSessionAllowance({
+      user: user(),
+      sessionsToday: 1,
+      now,
+      limits: twoLessonLimits,
+    });
+
+    expect(first.lessonAllowedToday).toBe(true);
+    expect(second.lessonAllowedToday).toBe(false);
   });
 
   it("無料ユーザーの2回目は止める", () => {
     const allowance = checkSessionAllowance({ user: user(), sessionsToday: 1, now, limits });
     expect(allowance.allowed).toBe(false);
+    expect(allowance.lessonAllowedToday).toBe(false);
   });
 
   it("止めるときは翌日までの秒数を返す(「また明日」と言えるように)", () => {
@@ -68,7 +88,7 @@ describe("checkSessionAllowance", () => {
       now,
       limits,
     });
-    expect(allowance).toEqual({ allowed: true, maxSeconds: 900, remainingToday: null });
+    expect(allowance).toEqual({ allowed: true, maxSeconds: 900, lessonAllowedToday: true });
   });
 });
 
