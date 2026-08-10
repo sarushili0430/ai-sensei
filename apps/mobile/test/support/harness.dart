@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:ai_sensei/src/api/device_id.dart';
 import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
 import 'package:ai_sensei/src/features/karte/domain/karte.dart';
 import 'package:ai_sensei/src/features/monetization/application/entitlement_controller.dart';
@@ -11,6 +12,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// テストで画面を組み立てるための足場。
 ///
@@ -43,6 +45,19 @@ Widget wrapApp(
   );
 }
 
+/// テスト用の `SharedPreferences`。
+///
+/// 本番は main() が起動時に読んで差し込む。保存された設定を見る画面
+/// (言語を持つ設定画面)を組み立てるときは、これを `overrides` に足す。
+/// 忘れると `preferencesProvider` が UnimplementedError を投げる —— 黙って
+/// 既定値で動かないのは、**差し込み忘れに気づけるようにする**ため。
+Future<Object?> preferencesOverride([
+  Map<String, Object> values = const <String, Object>{},
+]) async {
+  SharedPreferences.setMockInitialValues(values);
+  return preferencesProvider.overrideWithValue(await SharedPreferences.getInstance());
+}
+
 /// テストのあいだ、装飾のアニメーションを止める。
 ///
 /// 端末の「アニメーションを減らす」と同じ経路(`AppMotion`)を通すので、
@@ -57,6 +72,31 @@ Widget reduceMotion(BuildContext context, Widget? child) {
     data: MediaQuery.of(context).copyWith(disableAnimations: true),
     child: child ?? const SizedBox.shrink(),
   );
+}
+
+/// 端末側の「アニメーションを減らす」を立てる。
+///
+/// [reduceMotion] は `MaterialApp.builder` に差し込む形なので、**自分で
+/// MaterialApp を作るウィジェット**(本物の `AiSenseiApp`)には届かない。
+/// そちらはOSの設定と同じ経路(accessibilityFeatures)から入れる。
+/// 立てないと後輩の呼吸が回りつづけて `pumpAndSettle` が返らない。
+void reduceMotionOnDevice(WidgetTester tester) {
+  tester.platformDispatcher.accessibilityFeaturesTestValue =
+      const FakeAccessibilityFeatures(disableAnimations: true);
+  addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+}
+
+/// 端末の言語を差し替える。
+///
+/// テストの既定は en-US。`wrapApp` は `locale` を直接渡すので関係ないが、
+/// 端末の言語から解決させる経路(本物の `AiSenseiApp`)ではこれが要る。
+void useDeviceLocale(WidgetTester tester, Locale locale) {
+  tester.platformDispatcher.localesTestValue = <Locale>[locale];
+  tester.platformDispatcher.localeTestValue = locale;
+  addTearDown(() {
+    tester.platformDispatcher.clearLocalesTestValue();
+    tester.platformDispatcher.clearLocaleTestValue();
+  });
 }
 
 /// 本物のルータで組み立てる。

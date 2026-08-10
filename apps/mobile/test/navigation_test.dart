@@ -26,15 +26,17 @@ import 'support/harness.dart';
 /// ここが落ちたら、また同じ形に戻っている。
 void main() {
   /// 起動時に確定する値。本番は main() が差し込む。
-  List<Object?> bootOverrides({
+  Future<List<Object?>> bootOverrides({
     bool onboarded = true,
     bool premium = false,
     ReviewQueue? queue,
     Karte? karte,
-  }) {
+  }) async {
     return <Object?>[
       onboardedProvider.overrideWithValue(onboarded),
       deviceIdProvider.overrideWithValue('dev_test'),
+      // 設定画面が言語の設定を読む。
+      await preferencesOverride(),
       progressControllerProvider.overrideWith(FakeProgressController.new),
       reviewControllerProvider.overrideWith(
         () => FakeReviewController(queue ?? const ReviewQueue(items: [], requiresPremium: false)),
@@ -58,17 +60,17 @@ void main() {
   }
 
   testWidgets('初回起動はオンボーディングから始まる', (WidgetTester tester) async {
-    await pumpRouter(tester, overrides: bootOverrides(onboarded: false));
+    await pumpRouter(tester, overrides: await bootOverrides(onboarded: false));
     expect(find.byType(OnboardingScreen), findsOneWidget);
   });
 
   testWidgets('通過済みならホームから始まる', (WidgetTester tester) async {
-    await pumpRouter(tester, overrides: bootOverrides());
+    await pumpRouter(tester, overrides: await bootOverrides());
     expect(find.byType(HomeScreen), findsOneWidget);
   });
 
   testWidgets('ホーム → 設定 は戻れる', (WidgetTester tester) async {
-    final GoRouter router = await pumpRouter(tester, overrides: bootOverrides());
+    final GoRouter router = await pumpRouter(tester, overrides: await bootOverrides());
 
     await tester.tap(find.byIcon(Icons.settings_outlined));
     await tester.pumpAndSettle();
@@ -83,7 +85,7 @@ void main() {
   testWidgets('通知から復習画面へ直接着地しても、下にホームが積まれている', (WidgetTester tester) async {
     // コールドスタートで go('/review') される経路。push ではないので、
     // ルートを入れ子にしていないとスタックの深さが1になり行き止まりになる。
-    final GoRouter router = await pumpRouter(tester, overrides: bootOverrides());
+    final GoRouter router = await pumpRouter(tester, overrides: await bootOverrides());
 
     router.go(AppRoute.review.path);
     await tester.pumpAndSettle();
@@ -96,7 +98,7 @@ void main() {
   });
 
   testWidgets('復習画面は、穴がひとつも無くても出口がある', (WidgetTester tester) async {
-    final GoRouter router = await pumpRouter(tester, overrides: bootOverrides());
+    final GoRouter router = await pumpRouter(tester, overrides: await bootOverrides());
     router.go(AppRoute.review.path);
     await tester.pumpAndSettle();
 
@@ -111,7 +113,7 @@ void main() {
   testWidgets('無料ユーザーの復習画面からペイウォールに行き、戻ってこられる', (WidgetTester tester) async {
     final GoRouter router = await pumpRouter(
       tester,
-      overrides: bootOverrides(queue: ReviewQueue.locked),
+      overrides: await bootOverrides(queue: ReviewQueue.locked),
     );
     router.go(AppRoute.review.path);
     await tester.pumpAndSettle();
@@ -129,7 +131,7 @@ void main() {
   });
 
   testWidgets('直近のカルテが無いのにカルテ画面へ行くと、ホームへ戻す', (WidgetTester tester) async {
-    final GoRouter router = await pumpRouter(tester, overrides: bootOverrides());
+    final GoRouter router = await pumpRouter(tester, overrides: await bootOverrides());
 
     router.go(AppRoute.karte.path);
     await tester.pumpAndSettle();
@@ -141,7 +143,7 @@ void main() {
   testWidgets('直近のカルテがあればカルテ画面を出す', (WidgetTester tester) async {
     final GoRouter router = await pumpRouter(
       tester,
-      overrides: bootOverrides(karte: sampleKarte),
+      overrides: await bootOverrides(karte: sampleKarte),
     );
 
     router.go(AppRoute.karte.path);

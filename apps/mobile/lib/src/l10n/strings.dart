@@ -277,6 +277,18 @@ class AppStrings {
 
   // --- 設定 ---
   String get settingsTitle => _pick('設定', 'Settings');
+  String get settingsSectionLanguage => _pick('言語', 'Language');
+
+  /// 端末の言語に従う選択肢。言語名(日本語 / English)はその言語自身の
+  /// 表記で出すので、翻訳が要るのはここだけ。
+  String get settingsLanguageSystem => _pick('端末に合わせる', 'Match my device');
+
+  /// 選ぶ前に、画面の文言だけの話ではないことを言う。
+  /// 言語を変えると課程ごとカリキュラムが替わる(ADR 0005)。
+  String get settingsLanguageNote => _pick(
+        '後輩が話す言葉と、単元の分類もこの言語になります',
+        'Your kohai speaks this language, and topics come from that curriculum',
+      );
   String get settingsSectionAccount => _pick('契約', 'Subscription');
   String get settingsSectionNotifications => _pick('通知', 'Notifications');
   String get settingsSectionAbout => _pick('このアプリについて', 'About');

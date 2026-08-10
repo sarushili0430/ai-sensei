@@ -200,6 +200,8 @@ void main() {
       'settings',
       overrides: <Object?>[
         deviceIdProvider.overrideWithValue('11111111-2222-3333-4444-555555555555'),
+        // 言語は既定(端末に合わせる)のまま撮る。
+        await preferencesOverride(),
       ],
     );
   });
