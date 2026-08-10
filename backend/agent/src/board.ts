@@ -14,6 +14,7 @@ import {
   checkBoardLatex,
   latexRejectionGuidanceByLocale,
 } from "@ai-sensei/guardrail";
+import katex from "katex";
 import { BoardLessonStreamParser, BoardStreamError } from "./board-stream.ts";
 import type { JobLogger } from "./log.ts";
 
@@ -158,9 +159,12 @@ export function createTextStreamBoardSink(publisher: TextStreamPublisher): Board
 export type BoardStepRejection = {
   /** 落ちた手順が積まれるはずだった位置(= そのとき送ろうとしていた `index`)。 */
   index: number;
-  /** `latex` は描画できない式、`schema` は契約違反(長さ・形)。 */
-  kind: "latex" | "schema";
-  reason: LatexRejectionReason | "schema";
+  /**
+   * `latex` は描けないコマンド(三段構えの②)、`syntax` は構文の壊れ(③)、
+   * `schema` は契約違反(長さ・形)。
+   */
+  kind: "latex" | "syntax" | "schema";
+  reason: LatexRejectionReason | "syntax" | "schema";
   /** 何が引っかかったか(ログ用)。 */
   detail: string;
   /** **会話の言語で書かれた再生成の指示。**そのままプロンプトに足せる。 */
@@ -180,6 +184,43 @@ const schemaGuidanceByLocale: Record<CurriculumLocale, string> = {
   ja: "手順の形が契約に合っていません。speech は120字以内の話し言葉(数式を入れない)、board は latex / text / plot / triangle / circle のどれか、または null にすること。",
   en: "The step does not match the contract. Keep speech under 120 characters of plain spoken language (no formulas), and make board one of latex / text / plot / triangle / circle, or null.",
 };
+
+/**
+ * 構文が壊れていたときの指示。**「何を直せばよいか」まで書く**
+ * (`latexRejectionGuidanceByLocale` と同じ方針 — 理由だけ渡すと同じ式が返ってくる)。
+ */
+const syntaxGuidanceByLocale: Record<CurriculumLocale, string> = {
+  ja: "数式の構文が壊れています。{ } が対応しているか、\\frac{分子}{分母} や \\sqrt{中身} のように引数を最後まで書いているかを確かめて、式を書き直すこと。",
+  en: "The formula does not parse. Check that every { has a matching }, and that commands like \\frac{numerator}{denominator} and \\sqrt{...} have all of their arguments, then rewrite it.",
+};
+
+/**
+ * 三段構えの③(§3-6)— **KaTeXに実際にパースさせる**。
+ *
+ * ②(`checkBoardLatex`)はコマンドと環境の**名前**しか見ない。だから
+ * `\frac{1}{` のように**許可コマンドだけでできた壊れた式**は素通りする。
+ * それが端末に届くと `flutter_math_fork` がその行を描けず、板書が1行
+ * 「数式を表示できません」に化ける — 授業の途中で1行消えるのは、遅いより悪い。
+ *
+ * `flutter_math_fork` はKaTeXのDart移植なので、Node側で本家に通すと構文エラーは事前に捕まる。
+ * **②の代わりにはならない**(KaTeXが通しても移植版が対応しているとは限らない)ので、
+ * 必ず②を通してから呼ぶこと。
+ *
+ * `strict: "ignore"` にしてあるのは、ここで見たいのが**構文だけ**だから。
+ * 既定の `"warn"` は Unicode などで標準エラーに書き込み、agentのログを汚す
+ * (文字種の判定は②の `japaneseCharacters` が既に済ませている)。
+ */
+export function checkLatexSyntax(tex: string): { ok: true } | { ok: false; detail: string } {
+  try {
+    katex.renderToString(tex, { throwOnError: true, displayMode: false, strict: "ignore" });
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
 
 export type StepVerdict =
   | { ok: true; step: BoardStep }
@@ -231,6 +272,22 @@ export function validateStep(raw: unknown, index: number, locale: CurriculumLoca
           reason: verdict.reason,
           detail: verdict.detail,
           guidance: latexRejectionGuidanceByLocale[locale][verdict.reason],
+          raw,
+        },
+      };
+    }
+
+    // 三段構えの③。**②のあとに置く**(②が名前を、③が構文を見る。順序に意味がある)。
+    const syntax = checkLatexSyntax(board.tex);
+    if (!syntax.ok) {
+      return {
+        ok: false,
+        rejection: {
+          index,
+          kind: "syntax",
+          reason: "syntax",
+          detail: syntax.detail,
+          guidance: syntaxGuidanceByLocale[locale],
           raw,
         },
       };
@@ -489,6 +546,11 @@ export class BoardDelivery {
     const pending: unknown[] = [];
     /** **この呼び出しの中での**位置。LLMの申告と突き合わせるのはこちら。 */
     let position = 0;
+    /**
+     * 見出し。**受け取っても、すぐには `board_open` を送らない**(下の `openIfNeeded`)。
+     * 送るのは最初の手順が検証を通ってから。
+     */
+    let head: { title: unknown; topic_ids: unknown } | null = null;
 
     const iterator = chunks[Symbol.asyncIterator]();
 
@@ -511,22 +573,14 @@ export class BoardDelivery {
               });
               continue;
             }
-            await this.send({
-              type: "board_open",
-              board_id: this.boardId,
-              // 型は封筒スキーマが見る。LLMが変な値を入れたらここで落ちて、
-              // 板書は開かない(壊れた板書を開くよりよい)。
-              title: event.title as string,
-              topic_ids: event.topic_ids as string[],
-            });
-            this.opened = true;
-            this.log?.info("board_opened", { board_id: this.boardId, title: event.title });
+            head = { title: event.title, topic_ids: event.topic_ids };
             continue;
           }
           pending.push(event.raw);
         }
 
-        if (!this.opened) continue;
+        // 見出しが来るまでは手順を出せない(`board_open` が先に要る)。
+        if (head === null && !this.opened) continue;
 
         while (pending.length > 0) {
           if (signal?.aborted === true) {
@@ -580,6 +634,12 @@ export class BoardDelivery {
             break consume;
           }
 
+          // **手順が1つ確定してから板書を開く。**`board_open` は前の板書を消す信号なので、
+          // 中身が1行も無い出力(`steps: []`)や、最初の手順から検証に落ちる出力で
+          // これを送ると、**生徒が読んでいた板書を白紙にしただけで終わる**。
+          // 開くのを1手順ぶん遅らせるコストは見出しの表示が数百ms遅れることだけ。
+          await this.openIfNeeded(head);
+
           await this.send({
             type: "board_step",
             board_id: this.boardId,
@@ -604,11 +664,16 @@ export class BoardDelivery {
         reason = "error";
       }
 
-      // 最後まで読めたのに `title` / `topic_ids` が無かった = 契約違反の出力。
-      // 1件も送っていないので受信側には何も起きないが、**成功として返してはいけない** —
+      // 最後まで読めたのに1手順も積めなかった = 契約違反の出力。
+      // `boardLessonSchema` は `steps` を1件以上に縛っているので、
+      // 「読み切れたが空だった」は成功ではない。1件も送っていないぶん受信側には
+      // 何も起きないが、**成功として返してはいけない** —
       // 呼び出し側が「板書は出た」と思って音声だけ進めてしまう。
-      if (reason === "completed" && !this.opened) {
-        this.log?.warn("board_head_missing", { board_id: this.boardId });
+      if (reason === "completed" && this.sent === before) {
+        this.log?.warn(head === null ? "board_head_missing" : "board_lesson_empty", {
+          board_id: this.boardId,
+          opened: this.opened,
+        });
         reason = "error";
       }
     } catch (error) {
@@ -635,29 +700,61 @@ export class BoardDelivery {
   }
 
   /**
+   * まだ開いていなければ `board_open` を送る。**最初の手順が確定した時点で呼ぶ。**
+   *
+   * 見出しを受け取った時点では送らない理由は、呼び出し元のコメントを参照
+   * (空の出力で生徒の板書を白紙にしないため)。
+   */
+  private async openIfNeeded(head: { title: unknown; topic_ids: unknown } | null): Promise<void> {
+    if (this.opened || head === null) return;
+    await this.send({
+      type: "board_open",
+      board_id: this.boardId,
+      // 型は封筒スキーマが見る。LLMが変な値を入れたらここで落ちて、
+      // 板書は開かない(壊れた板書を開くよりよい)。
+      title: head.title as string,
+      topic_ids: head.topic_ids as string[],
+    });
+    this.opened = true;
+    this.log?.info("board_opened", { board_id: this.boardId, title: head.title });
+  }
+
+  /**
    * 板書を締める。**問題が終わったときに呼ぶ**(1回の説明が終わったときではない)。
    *
    * `board_open` を送っていなければ何も送らない — 開いていない板書の `board_close` は
    * 受信側が「未開封」として捨てるので、`seq` を無駄に進めるぶん害がある。
    * 2回目以降の呼び出しは何もしない(締めの二重送信は受信側で契約違反になる)。
+   *
+   * **送れなかったときは閉じたことにしない。**受信側から見ると板書はまだ開いたままで、
+   * 次の問題の `board_open` を「前の板書が board_close されていません」で弾く —
+   * つまり1回の送信失敗で、**そのセッションの板書が以降ぜんぶ出なくなる**。
+   * 締められなかった事実を状態に残して、呼び出し側が締め直せるようにする
+   * (`send` は成功したときしか `seq` を進めないので、送り直しても番号は飛ばない)。
    */
   async close(reason: BoardCloseReason): Promise<void> {
     if (this.closed) return;
-    this.closed = true;
-    if (!this.opened) return;
+    if (!this.opened) {
+      this.closed = true;
+      return;
+    }
 
-    // `step_count` は**板書1枚で実際に送った数**。末尾の欠落はこれでしか検知できない。
-    await this.send({
-      type: "board_close",
-      board_id: this.boardId,
-      step_count: this.sent,
-      reason,
-    }).catch((error) => {
+    try {
+      // `step_count` は**板書1枚で実際に送った数**。末尾の欠落はこれでしか検知できない。
+      await this.send({
+        type: "board_close",
+        board_id: this.boardId,
+        step_count: this.sent,
+        reason,
+      });
+      this.closed = true;
+    } catch (error) {
       this.log?.warn("board_close_failed", {
         board_id: this.boardId,
+        step_count: this.sent,
         message: error instanceof Error ? error.message : String(error),
       });
-    });
+    }
   }
 
   private result(input: {

@@ -70,7 +70,7 @@ class PlotPainter extends CustomPainter {
     );
 
     _paintAxes(canvas, size, space, minY, maxY);
-    _paintCurve(canvas, space, ys);
+    _paintCurve(canvas, space, ys, minY, maxY);
     _paintMarks(canvas, space);
   }
 
@@ -100,7 +100,13 @@ class PlotPainter extends CustomPainter {
     }
   }
 
-  void _paintCurve(Canvas canvas, BoardCoordinateSpace space, List<double> ys) {
+  void _paintCurve(
+    Canvas canvas,
+    BoardCoordinateSpace space,
+    List<double> ys,
+    double minY,
+    double maxY,
+  ) {
     final Paint curvePaint = Paint()
       ..color = AppColors.blue
       ..style = PaintingStyle.stroke
@@ -110,15 +116,26 @@ class PlotPainter extends CustomPainter {
 
     // 定義域外(NaN)を挟むたびに線を切る。区間ごとに別々のPathとして描く
     // (最後の区間だけ描くと、途中で途切れた関数の前半が消えてしまう)。
+    //
+    // **漸近線も同じように切る。**tan(x) のような関数では、漸近線はふつう
+    // 標本点と標本点の**あいだ**に来るので、両側の標本はどちらも有限のまま
+    // 符号だけが反転する(+1e15 と -1e15 のように)。有限性だけを見て切ると、
+    // その2点が直線で結ばれ、**不連続な場所に「つながっている」という
+    // 数学的に嘘の線**が引かれる。板書は解法そのものなので、この嘘は許容できない。
+    final double span = maxY - minY;
     Path? path;
+    double? previous;
     for (int i = 0; i <= _samples; i++) {
       final double y = ys[i];
-      if (!y.isFinite) {
+      if (!y.isFinite || (previous != null && _jumpsAcrossDiscontinuity(previous, y, span))) {
         if (path != null) {
           canvas.drawPath(path, curvePaint);
           path = null;
         }
-        continue;
+        previous = y.isFinite ? y : null;
+        if (!y.isFinite) {
+          continue;
+        }
       }
       final Offset point = space.toCanvas(_xAt(i), y);
       if (path == null) {
@@ -126,10 +143,28 @@ class PlotPainter extends CustomPainter {
       } else {
         path.lineTo(point.dx, point.dy);
       }
+      previous = y;
     }
     if (path != null) {
       canvas.drawPath(path, curvePaint);
     }
+  }
+
+  /// 隣り合う標本が不連続をまたいだか。
+  ///
+  /// 判定は「**1区間で、描画範囲の半分を超えて飛んだ**」こと。
+  /// 標本は241点あるので、連続な関数なら急勾配でも1区間の差は範囲のごく一部に収まる
+  /// (x^3 を [-10,10] で見ても、端で範囲の1%強でしかない)。
+  /// 半分を超えるのは、実質的に値が飛んでいるとき — つまり不連続点だけ。
+  ///
+  /// 「上端の外と下端の外をまたいだか」では判定できない。描画範囲は
+  /// **全標本から取っている**ので、漸近線の近くの巨大な値がそのまま範囲になり、
+  /// 「範囲の外」が存在しなくなるため。
+  static bool _jumpsAcrossDiscontinuity(double a, double b, double span) {
+    if (!a.isFinite || !b.isFinite || span <= 0) {
+      return false;
+    }
+    return (a - b).abs() > span * 0.5;
   }
 
   void _paintMarks(Canvas canvas, BoardCoordinateSpace space) {

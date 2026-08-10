@@ -9,7 +9,7 @@ import {
   boardStepsMaxCount,
   fixturePath,
 } from "@ai-sensei/contract";
-import { latexRejectionGuidanceByLocale } from "@ai-sensei/guardrail";
+import { checkBoardLatex, latexRejectionGuidanceByLocale } from "@ai-sensei/guardrail";
 import { describe, expect, it, vi } from "vitest";
 import {
   type AppendBoardOptions,
@@ -17,6 +17,7 @@ import {
   BoardChannel,
   type BoardSink,
   type BoardStepRejection,
+  checkLatexSyntax,
   createTextStreamBoardSink,
   defaultMaxRepairAttempts,
   validateStep,
@@ -353,7 +354,12 @@ describe("板書の配送(描けない式)", () => {
     expect(repair).toHaveBeenCalledTimes(1);
   });
 
-  it("直させる側が落ちても、板書は締まる", async () => {
+  /**
+   * **1手順も出せない出力では、`board_open` すら送らない。**
+   * `board_open` は前の板書を消す信号なので、ここで送ると
+   * 「生徒が読んでいた板書を白紙にしただけで、新しい行は1つも出ない」になる。
+   */
+  it("直させる側が落ちても、板書を白紙にしない", async () => {
     const sink = recordingSink();
     const result = await deliverOnce(channelWith(sink), {
       chunks: stream([lessonJson([step(0, rejected)])]),
@@ -362,8 +368,8 @@ describe("板書の配送(描けない式)", () => {
       },
     });
 
-    expect(typesOf(sink.sent)).toEqual(["board_open", "board_close"]);
-    expect(result).toMatchObject({ step_count: 0, reason: "error" });
+    expect(sink.sent).toEqual([]);
+    expect(result).toMatchObject({ step_count: 0, reason: "error", opened: false });
   });
 
   it("契約に合わない手順も、ワイヤーに出る前に落とす", async () => {
@@ -384,7 +390,87 @@ describe("板書の配送(描けない式)", () => {
     expect(result.step_count).toBe(0);
     expect(seen[0]?.kind).toBe("schema");
     expect(seen[0]?.guidance).toContain("speech");
-    expect(typesOf(sink.sent)).toEqual(["board_open", "board_close"]);
+    expect(sink.sent).toEqual([]);
+  });
+
+  /**
+   * **三段構えの③(§3-6)。**②(`checkBoardLatex`)はコマンドの名前しか見ないので、
+   * `\frac{1}{` のように**許可コマンドだけでできた壊れた式**は素通りする。
+   * 端末に届くと `flutter_math_fork` がその行を描けず、板書が1行
+   * 「数式を表示できません」に化ける。
+   */
+  it("許可コマンドだけでも構文が壊れていれば、ワイヤーに出さない", async () => {
+    const sink = recordingSink();
+    const seen: BoardStepRejection[] = [];
+
+    const broken = "\\frac{1}{";
+    // ②は素通りする(コマンドは \frac だけで、許可リストに載っている)
+    expect(checkBoardLatex(broken).ok).toBe(true);
+
+    const result = await deliverOnce(channelWith(sink), {
+      chunks: stream([lessonJson([step(0, "x = 1"), step(1, broken)])]),
+      repair: async (rejection) => {
+        seen.push(rejection);
+        return null;
+      },
+    });
+
+    expect(texOf(sink.sent)).toEqual(["x = 1"]);
+    expect(result).toMatchObject({ step_count: 1, reason: "error" });
+    expect(seen[0]).toMatchObject({ kind: "syntax", reason: "syntax" });
+    // 「何を直せばよいか」まで書いてある(理由だけ渡すと同じ式が返ってくる)
+    expect(seen[0]?.guidance).toContain("{ }");
+  });
+
+  it("構文の指示も会話の言語で渡す", async () => {
+    const sink = recordingSink();
+    let guidance = "";
+
+    await deliverOnce(channelWith(sink, "en"), {
+      chunks: stream([lessonJson([step(0, "\\sqrt{")])]),
+      repair: async (rejection) => {
+        guidance = rejection.guidance;
+        return null;
+      },
+    });
+
+    expect(guidance).toContain("does not parse");
+    expect(guidance).not.toMatch(/[ぁ-んァ-ン一-龯]/);
+  });
+});
+
+/**
+ * 三段構えの③を単体で。**②を置き換えるものではない**(KaTeXが通しても
+ * 移植版が対応しているとは限らない)ので、②で通る式が③でも通ることを確かめておく。
+ */
+describe("checkLatexSyntax", () => {
+  it("括弧の閉じ忘れ・引数の不足を落とす", () => {
+    for (const broken of ["\\frac{1}{", "\\sqrt{", "\\frac", "x^", "}{"]) {
+      expect(checkLatexSyntax(broken).ok, broken).toBe(false);
+    }
+  });
+
+  it("実測で許可した書き方は通す(②のホワイトリストと衝突しない)", () => {
+    const allowed = [
+      "x^2 - 3x + 2 = 0",
+      "\\frac{-b \\pm \\sqrt{D}}{2a}",
+      "{}_{n}\\mathrm{C}_{r}",
+      "\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}",
+      "\\begin{cases} x = 1 \\\\ y = 2 \\end{cases}",
+      "\\Bigl[ x^3 + x^2 \\Bigr]_0^1",
+      "\\lim_{x \\to 0} \\frac{\\sin x}{x}",
+      "\\int_0^1 x^2 \\, dx",
+      "\\sum_{k=1}^{n} k",
+      "\\binom{n}{r}",
+      "\\overrightarrow{AB}",
+      "\\therefore x = 2",
+      "\\because D > 0",
+      "d = \\frac{|{-3}|}{\\sqrt{2}}",
+    ];
+    for (const tex of allowed) {
+      expect(checkBoardLatex(tex).ok, `② ${tex}`).toBe(true);
+      expect(checkLatexSyntax(tex).ok, `③ ${tex}`).toBe(true);
+    }
   });
 });
 
@@ -422,8 +508,12 @@ describe("板書の配送(割り込み)", () => {
     const sink = recordingSink();
     const controller = new AbortController();
 
+    // 1手順ぶんは閉じた状態で止まる(手順が1つも無ければ、そもそも開かない)
+    const json = lessonJson([step(0, "x = 1"), step(1, "y = 2")]);
+    const upToFirstStep = json.slice(0, json.indexOf("},{") + 1);
+
     async function* stalling() {
-      yield lessonJson([step(0, "x = 1")]).slice(0, 90);
+      yield upToFirstStep;
       // ここから先は永久に来ない
       await new Promise(() => undefined);
       yield "";
@@ -438,6 +528,7 @@ describe("板書の配送(割り込み)", () => {
 
     const result = await delivery;
     expect(result.reason).toBe("interrupted");
+    expect(result.step_count).toBe(1);
     expect(sink.sent.at(-1)).toMatchObject({ type: "board_close", reason: "interrupted" });
   });
 
@@ -617,6 +708,81 @@ describe("板書の寿命", () => {
     const refused = await board.append({ chunks: stream([lessonOf(2)]) });
     expect(refused).toMatchObject({ appended: 0, reason: "error", closed: true });
     expect(sink.sent).toHaveLength(sentAfterClose);
+  });
+
+  /**
+   * **締めが送れなかったら、閉じたことにしてはいけない。**
+   * 受信側から見ると板書はまだ開いたままで、次の問題の `board_open` を
+   * 「前の板書が board_close されていません」で弾く —
+   * つまり1回の送信失敗で、そのセッションの板書が以降ぜんぶ出なくなる。
+   */
+  it("board_close の送信に失敗したら、締め直せる状態のまま残す", async () => {
+    const sent: BoardChannelMessage[] = [];
+    let failClose = true;
+    const flaky: BoardSink = {
+      async send(message) {
+        if (failClose && message.type === "board_close") {
+          failClose = false;
+          throw new Error("ストリームが開けない");
+        }
+        sent.push(message);
+      },
+    };
+
+    const board = new BoardChannel({
+      sessionId: "ses_1",
+      locale: "ja",
+      sink: flaky,
+      newBoardId: () => "brd_1",
+    }).startBoard();
+
+    await board.append({ chunks: stream([lessonJson([step(0, "x = 1")])]) });
+    await board.close("completed");
+
+    // 失敗した締めは「閉じた」ことになっていない
+    expect(board.isClosed).toBe(false);
+    expect(typesOf(sent)).toEqual(["board_open", "board_step"]);
+
+    // 締め直せる。seq は消費されていないので番号も飛ばない。
+    await board.close("completed");
+    expect(board.isClosed).toBe(true);
+    expect(typesOf(sent)).toEqual(["board_open", "board_step", "board_close"]);
+    expect(sent.map((message) => message.seq)).toEqual([0, 1, 2]);
+    expect(boardChannelLogSchema.safeParse({ messages: sent }).success).toBe(true);
+  });
+
+  /**
+   * `boardLessonSchema` は `steps` を1件以上に縛っている。読み切れたが空だった出力を
+   * `completed` で返すと、呼び出し側は「板書は出た」と思って音声だけ進める。
+   */
+  it("手順が空の出力は成功にしない(板書も開かない)", async () => {
+    const sink = recordingSink();
+    const board = channelWith(sink).startBoard();
+
+    const result = await board.append({
+      chunks: stream([
+        JSON.stringify({ title: "見出し", topic_ids: ["M1-NIJI-HANBETSU"], steps: [] }),
+      ]),
+    });
+
+    expect(result).toMatchObject({ reason: "error", appended: 0, opened: false });
+    expect(sink.sent).toEqual([]);
+  });
+
+  // 既に開いている板書でも、空の出力は成功にしない(音声だけ先に進むのを防ぐ)
+  it("2回目の出力が空でも成功にしない", async () => {
+    const sink = recordingSink();
+    const board = channelWith(sink).startBoard();
+
+    await board.append({ chunks: stream([lessonJson([step(0, "x = 1")])]) });
+    const empty = await board.append({
+      chunks: stream([
+        JSON.stringify({ title: "見出し", topic_ids: ["M1-NIJI-HANBETSU"], steps: [] }),
+      ]),
+    });
+
+    expect(empty).toMatchObject({ reason: "error", appended: 0, step_count: 1 });
+    expect(typesOf(sink.sent)).toEqual(["board_open", "board_step"]);
   });
 
   // 締めの二重送信は、受信側では「未開封の板書のメッセージ」になる(契約違反)
