@@ -2198,6 +2198,138 @@ JSXGraph が座標を解いて描く</pre>
     </p>
   </div>
 
+  <!-- ---- D-19 全部を図示する ---- -->
+  <div class="panel">
+    <h2>D-19. 「あらゆるケースを全部」— カタログでは届かない。塞ぎ方で届かせる</h2>
+    <p class="lede">
+      増減表・遷移図・円順列・玉・サイコロ — <b>数学の板書は、幾何だけではない。</b>
+      語彙を8個足して、<span class="keep">16種類 × 2モデル × 3回 = 96回</span>で測り直した。
+    </p>
+
+    <h3><span class="tag new">結果</span>16種類すべて描けた。Sonnet は 47/48</h3>
+    <table>
+      <thead><tr><th style="width:22%">種類</th><th style="width:16%">Haiku</th><th style="width:16%">Sonnet</th><th>機械で測った不変量</th></tr></thead>
+      <tbody>
+        <tr><td>三角形の3中線</td><td>○ ○ <span class="care">×語</span></td><td>○ ○ ○</td><td>3本目が交点を通るか</td></tr>
+        <tr><td>タレスの定理</td><td>○ ○ ○</td><td>○ ○ <span class="care">×語</span></td><td>∠APB = 90.000°</td></tr>
+        <tr><td><b>接弦定理</b></td><td><span class="care">×図 ×図 ×図</span></td><td>○ ○ ○</td><td>OA⊥AT / ∠TAB = ∠ACB</td></tr>
+        <tr><td>BD:DC = 3:2</td><td>○ ○ ○</td><td>○ ○ ○</td><td>比が 1.500000</td></tr>
+        <tr><td>直方体の対角線</td><td>○ ○ ○</td><td>○ ○ ○</td><td>3方向すべて違う頂点か</td></tr>
+        <tr><td>y=x² と y=x</td><td>○ ○ ○</td><td>○ ○ ○</td><td>面積 = 1/6</td></tr>
+        <tr><td>サイクロイド</td><td>○ ○ ○</td><td>○ ○ ○</td><td>(0,0)→(2π,0) / 最高点 2</td></tr>
+        <tr><td>回転体</td><td>○ ○ ○</td><td>○ ○ ○</td><td>上下対称 / 切り口 r=2</td></tr>
+        <tr><td><b>座標つきグラフ</b></td><td>○ <span class="care">×図 ×図</span></td><td>○ ○ ○</td><td>頂点(2,-1)・交点(1,0)(3,0)・目盛り</td></tr>
+        <tr><td><b>増減表</b></td><td>○ ○ ○</td><td>○ ○ ○</td><td>極値 x=±1 / 符号 +−+ / 極値 2,−2</td></tr>
+        <tr><td><b>遷移図</b></td><td>○ ○ ○</td><td>○ ○ ○</td><td><b>出る確率の和 = 1</b></td></tr>
+        <tr><td><b>遷移図(自己ループ)</b></td><td>○ ○ ○</td><td>○ ○ ○</td><td>自己ループ 1/4 / 和 = 1</td></tr>
+        <tr><td><b>円順列</b></td><td>○ ○ ○</td><td>○ ○ ○</td><td>6席等間隔 / 固定する人がいる</td></tr>
+        <tr><td><b>玉(袋の中)</b></td><td>○ ○ ○</td><td>○ ○ ○</td><td>赤4・白3 = 7個</td></tr>
+        <tr><td><b>サイコロ</b></td><td>○ <span class="care">×図</span> ○</td><td>○ ○ ○</td><td>目の数と点の数が一致</td></tr>
+        <tr><td><b>6×6 の表</b></td><td>○ ○ ○</td><td>○ ○ ○</td><td>36マス / 和が7のマスが6個</td></tr>
+      </tbody>
+    </table>
+    <table style="margin-top:14px">
+      <thead><tr><th style="width:34%"></th><th style="width:22%">Haiku 4.5</th><th style="width:22%">Sonnet 5</th><th></th></tr></thead>
+      <tbody>
+        <tr><td><b>拾い直せば通った</b></td><td>41/48 = 85%</td><td><b>47/48 = 98%</b></td><td>図まで正しい</td></tr>
+        <tr><td><b>図が黙って間違い</b></td><td><span class="care">6/48 = 13%</span></td><td><b>0/48 = 0%</b></td><td>絵は出る。中身が違う</td></tr>
+      </tbody>
+    </table>
+    <p class="foot-note">
+      <b>この「6件」は中身がちがう。</b>接弦定理の3件は<span class="care">本物の間違い</span>
+      (図が偽のことを主張している)。<b>座標つきグラフの2件とサイコロの1件は「足りない」だけ</b>
+      (目盛りが無い / サイコロを1個しか描かなかった)。<span class="keep">私の3段階は
+      「間違い」と「不足」を同じ箱に入れている</span>ので、13% は厳しめの数字。
+    </p>
+
+    <h3><span class="tag biz">構造</span>板書は3つの家族でできていて、幾何はその1つでしかない</h3>
+    <table>
+      <thead><tr><th style="width:16%">家族</th><th style="width:28%">中身</th><th style="width:28%">書かせないもの(こちらが決める)</th><th>既存ライブラリ</th></tr></thead>
+      <tbody>
+        <tr><td><b>作図</b></td><td>三角形・円・接線・立体・回転体</td><td><b>座標</b>。関係だけ書かせる</td>
+          <td>JSXGraph / GeoGebra が<b>ある</b></td></tr>
+        <tr><td><b>表</b></td><td>増減表・6×6の表</td><td><b>符号・矢印・値</b>。曲線から出す</td>
+          <td><span class="care">無い</span></td></tr>
+        <tr><td><b>図式</b></td><td>遷移図・円順列・玉・サイコロ</td><td><b>位置・並び・目の点</b></td>
+          <td><span class="care">無い</span></td></tr>
+      </tbody>
+    </table>
+    <p class="lede" style="margin-top:18px">
+      <b>今日足した8個の語彙のうち、JSXGraph から貰えるものは0個だった。</b>
+      JSXGraph は幾何と関数描画のライブラリで、<span class="care">表もグラフレイアウトも守備範囲外</span>。
+      <span class="keep">「エンジンを買う」は、縮んでいく側の問題を解いて、伸びていく側を何も解かない。</span>
+      → <b>ソルバは自前。</b>ただし幾何の部分だけは、同じ作図を JSXGraph にも流して
+      座標を突き合わせる<b>検算役</b>として使う(D-17③)。<b>無料のオラクルとして買い、ランタイムとしては買わない。</b>
+    </p>
+
+    <h3><span class="tag care">障害</span>いまの作りでは、種類を1つ増やすたびに Dart の painter が1枚要る</h3>
+    <p class="lede">
+      <code>plot_painter</code> / <code>triangle_painter</code> / <code>circle_painter</code> …
+      <b>5 kinds に painter 5枚</b>。1種類増やすと zodの枝・freezed・painter・
+      <code>board_element_view</code> の分岐・ゴールデンテストで<b>5ファイル前後</b>触ることになる。
+      <span class="care">今日足した語彙は8個。このやり方だと40ファイル増える。</span>
+      <b>語彙が増え続ける前提と、painter を1枚ずつ書く構造が噛み合っていない。</b>
+    </p>
+    <p class="lede">
+      <b>だから「サーバで解いて SVG を送る」(D-13c の B)を採る。</b>
+      契約に増えるのは <span class="keep"><code>figure</code> 1 kind だけ</span>
+      (SVG + 読み上げ文)で、以降の語彙増加は <code>solver.mjs</code> の中で完結し、
+      <b>Flutter 側は1行も増えない</b>。ゴールデンテストも生き残る(SVGは決定的)。
+      <code>solver.mjs</code> はすでに JS で、agent(<code>@ai-sensei/agent</code>)と同じ言語。
+    </p>
+    <p class="foot-note">
+      <b>「自由描画をさせない」は壊れない。</b>
+      <span class="keep">SVG は検証済みJSONからこちらが生成する</span>ので、契約には
+      <b>作図JSON(guardrailが検査する)と描画済みSVG(アプリは描くだけ)の両方</b>を載せればいい。
+      自由な形のものは、どこも通らない。
+    </p>
+
+    <h3><span class="tag new">方針</span>カタログを完成させない。穴が空いたら塞ぐ道を作る</h3>
+    <p class="lede">
+      この会話だけで語彙は <b>2円の交点 → z座標 → 楕円 → 目盛り → 増減表 → 遷移図 → 円順列 →
+      玉 → サイコロ</b> と増え続け、<span class="care">止まる気配がない</span>。
+      <b>閉じたカタログでは「全部」に届かない。</b>届かせ方はこう:
+    </p>
+    <table>
+      <thead><tr><th style="width:26%"></th><th></th></tr></thead>
+      <tbody>
+        <tr><td><b>足す条件</b></td><td><b>機械で検算できる不変量が1本書けること。</b>
+          遷移図なら「出る確率の和が1」、サイコロなら「目の数と点の数が一致」、
+          増減表なら「符号と矢印が曲線から導かれている」。<span class="care">これが書けない図は足さない</span></td></tr>
+        <tr><td><b>1個あたりの値段</b></td><td>実測で <b>30〜60行 + 不変量1本</b>。
+          今日は8個を1回の作業で足して、全部が模範解答で通った</td></tr>
+        <tr><td><b>言い換え</b></td><td><span class="keep">禁止していたのは「描くこと」ではなく、
+          <b>「正しいと機械で言えないものを描くこと」</b></span></td></tr>
+        <tr><td><b>本当に無いとき</b></td><td>言葉と式で説明し、<b>取りこぼしを記録する</b>。
+          そのログが次の語彙の仕様になる</td></tr>
+      </tbody>
+    </table>
+
+    <h3><span class="tag care">自分のバグ</span>96回のうち2件は、モデルではなく私が悪かった</h3>
+    <table>
+      <thead><tr><th style="width:26%">何が起きたか</th><th>何を学んだか</th></tr></thead>
+      <tbody>
+        <tr><td><b><code>{"axes":0}</code> を「知らないキー」と言って落ちた</b>(Sonnet 2件)</td>
+          <td>「軸は要らない」を <code>0</code> で書くのは正しい。
+            <span class="care">私の分岐が <code>else if (it.axes)</code> で、<b>偽になる正しい値</b>を取りこぼした。</span>
+            <b>キーの有無で枝を選ぶ設計が悪い</b> —
+            <span class="keep">本番の契約(<code>board.ts</code>)が <code>kind</code> の
+            discriminated union なのは、まさにこれを避けるため</span>。
+            <b>図のDSLも同じ形に揃える</b></td></tr>
+        <tr><td><b>「すでにある点を目立たせる」操作が無かった</b>(Haiku、別々の問題で2回)</td>
+          <td>モデルは <code>{"pt":"L"}</code>(位置なし)と書いて落ちていた。
+            <b>やりたいことは正しく、書く手段が無かっただけ。</b>
+            <code>{"mark":"G","as":"key"}</code> を足した</td></tr>
+      </tbody>
+    </table>
+    <p class="foot-note">
+      <b>96回のうち、モデルの本物の間違いは接弦定理の3件だけだった。</b>
+      残りは「私の語彙の穴」「私の分岐のバグ」「囲み記号」「順序」。
+      <span class="keep">生の出力を全部残してあるので、ソルバを直すたびに
+      モデルを呼び直さずに採点し直せる</span> — この2件もそうやって見つけた。
+    </p>
+  </div>
+
 </div>
 
 <script>

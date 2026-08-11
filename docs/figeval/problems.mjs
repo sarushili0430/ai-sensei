@@ -172,4 +172,143 @@ export const PROBLEMS = [
       return bad.length ? { ok: false, why: bad.join(' / ') } : { ok: true, why: `(0,0)→(4,2)、上下対称、切り口 r=2` };
     },
   },
+
+  // ---- ここから、作図ではないもの ----
+  {
+    id: 'coords',
+    tag: 'グラフ・座標',
+    prompt: '放物線 y = x^2 - 4x + 3 のグラフを、頂点とx軸との交点の座標がわかるように図示して。',
+    check(r) {
+      const ax = r.draws.find((d) => d.t === 'axes');
+      if (!ax) return { ok: false, why: '座標軸が無い' };
+      const shown = r.draws.filter((d) => d.t === 'pt' && d.coord);
+      if (shown.length < 3) return { ok: false, why: `座標を出した点が ${shown.length} 個(頂点+交点2つで3個ほしい)` };
+      const want = [[2, -1], [1, 0], [3, 0]];
+      const miss = want.filter(([x, y]) => !shown.some((s) => Math.abs(s.p.x - x) < 1e-6 && Math.abs(s.p.y - y) < 1e-6));
+      if (miss.length) return { ok: false, why: `${miss.map((m) => `(${m})`).join(' ')} が出ていない` };
+      if (!ax.ticks || !ax.ticks.length) return { ok: false, why: '目盛りが入っていない' };
+      return { ok: true, why: `頂点(2,-1)・交点(1,0)(3,0)、目盛り ${ax.ticks.length} 個` };
+    },
+  },
+  {
+    id: 'signtable',
+    tag: '増減表',
+    prompt: 'y = x^3 - 3x の増減表をかいて、グラフの概形も示して。',
+    check(r) {
+      const t = r.draws.find((d) => d.t === 'signTable');
+      if (!t) return { ok: false, why: '増減表が無い(signTable を使っていない)' };
+      const c = t.crit;
+      if (c.length !== 2 || Math.abs(c[0] + 1) > 1e-9 || Math.abs(c[1] - 1) > 1e-9) {
+        return { ok: false, why: `極値の x が [${c}](-1, 1 のはず)` };
+      }
+      if (t.sign.join('') !== '+-+') return { ok: false, why: `f' の符号が ${t.sign.join('')}(+-+ のはず)` };
+      const ys = t.values.map((v) => v.y);
+      if (Math.abs(ys[0] - 2) > 1e-4 || Math.abs(ys[1] + 2) > 1e-4) {
+        return { ok: false, why: `極値が ${ys.map((y) => y.toFixed(2))}(2, -2 のはず)` };
+      }
+      if (!r.draws.some((d) => d.t === 'curve')) return { ok: false, why: 'グラフの概形が無い' };
+      return { ok: true, why: `x=-1,1 / 符号 +-+ / 極大2・極小-2 / 矢印 ${t.arrow.join('')}` };
+    },
+  },
+  {
+    id: 'markov',
+    tag: '遷移図',
+    prompt: 'A, B, C の3つの箱があり、毎回次のように移る。Aにいるとき1/2でBへ、1/2でCへ。Bにいるとき1/3でAへ、2/3でCへ。Cにいるときは必ずAへ戻る。この移り方の図をかいて。',
+    check(r) {
+      const s = r.draws.find((d) => d.t === 'states');
+      const e = r.draws.find((d) => d.t === 'edges');
+      if (!s) return { ok: false, why: '状態が無い' };
+      if (!e) return { ok: false, why: '矢印が無い' };
+      if (s.states.length !== 3) return { ok: false, why: `状態が ${s.states.length} 個(3個のはず)` };
+      // **出ていく確率の合計が1**。これが合わない遷移図は、絵として自然でも間違い
+      const bad = [];
+      for (const st of s.states) {
+        const sum = e.edges.filter((x) => x.from === st.name).reduce((a, x) => a + x.value, 0);
+        if (Math.abs(sum - 1) > 1e-9) bad.push(`${st.name} から出る確率の和 = ${sum.toFixed(3)}`);
+      }
+      if (bad.length) return { ok: false, why: bad.join(' / ') };
+      const want = [['A', 'B', 0.5], ['A', 'C', 0.5], ['B', 'A', 1 / 3], ['B', 'C', 2 / 3], ['C', 'A', 1]];
+      const miss = want.filter(([f, t, v]) => !e.edges.some((x) => x.from === f && x.to === t && Math.abs(x.value - v) < 1e-9));
+      if (miss.length) return { ok: false, why: `${miss.map((m) => `${m[0]}→${m[1]}`).join(' ')} が無い/確率違い` };
+      if (e.edges.length !== 5) return { ok: false, why: `矢印が ${e.edges.length} 本(5本のはず)` };
+      return { ok: true, why: '3状態5本、どの状態も出る確率の和が 1' };
+    },
+  },
+  {
+    id: 'selfloop',
+    tag: '遷移図・自己ループ',
+    prompt: '点PははじめA地点にいる。1回の操作で、確率1/4でとどまり、確率3/4でB地点へ移る。B地点からは確率1でA地点へ戻る。この様子を図にして。',
+    check(r) {
+      const s = r.draws.find((d) => d.t === 'states');
+      const e = r.draws.find((d) => d.t === 'edges');
+      if (!s || !e) return { ok: false, why: '状態か矢印が無い' };
+      const loop = e.edges.filter((x) => x.self);
+      if (!loop.length) return { ok: false, why: '自分に戻る矢印が無い(とどまる確率が描けていない)' };
+      if (Math.abs(loop[0].value - 0.25) > 1e-9) return { ok: false, why: `自己ループの確率が ${loop[0].value}(1/4 のはず)` };
+      for (const st of s.states) {
+        const sum = e.edges.filter((x) => x.from === st.name).reduce((a, x) => a + x.value, 0);
+        if (Math.abs(sum - 1) > 1e-9) return { ok: false, why: `${st.name} から出る確率の和 = ${sum.toFixed(3)}` };
+      }
+      return { ok: true, why: `自己ループ 1/4、どの状態も和が 1` };
+    },
+  },
+  {
+    id: 'seats',
+    tag: '円順列',
+    prompt: '6人が丸いテーブルに座る円順列を考えたい。1人を固定して考えることがわかる図をかいて。',
+    check(r) {
+      const s = r.draws.find((d) => d.t === 'seats');
+      if (!s) return { ok: false, why: '丸いテーブルが無い(seats を使っていない)' };
+      if (s.n !== 6) return { ok: false, why: `席が ${s.n} 個(6個のはず)` };
+      if (!s.fix) return { ok: false, why: '固定する人が指定されていない(円順列の要点が出ていない)' };
+      // 席が等間隔か。**こちらが置いているので必ず通るが、通らなければソルバのバグ**
+      const ps = s.seats.map((x) => x.p);
+      const d = ps.map((p, i) => Math.hypot(p.x - ps[(i + 1) % 6].x, p.y - ps[(i + 1) % 6].y));
+      if (Math.max(...d) - Math.min(...d) > 1e-9) return { ok: false, why: '席が等間隔でない' };
+      return { ok: true, why: `6席・等間隔、${s.fix} を固定` };
+    },
+  },
+  {
+    id: 'balls',
+    tag: '玉',
+    prompt: '袋の中に赤玉が4個、白玉が3個入っている。この袋から玉を取り出す問題の図をかいて。',
+    check(r) {
+      const b = r.draws.find((d) => d.t === 'balls');
+      if (!b) return { ok: false, why: '玉が無い(balls を使っていない)' };
+      const n = Object.values(b.kinds).reduce((a, c) => a + c, 0);
+      if (n !== 7) return { ok: false, why: `玉が合計 ${n} 個(7個のはず)` };
+      const vals = Object.values(b.kinds).sort((x, y) => y - x);
+      if (vals[0] !== 4 || vals[1] !== 3) return { ok: false, why: `内訳が ${JSON.stringify(b.kinds)}(4と3のはず)` };
+      if (b.balls.length !== 7) return { ok: false, why: `描かれた玉が ${b.balls.length} 個` };
+      return { ok: true, why: `${JSON.stringify(b.kinds)} = 7個` };
+    },
+  },
+  {
+    id: 'dice',
+    tag: 'サイコロ',
+    prompt: '大小2つのサイコロを振る。大きいほうが2、小さいほうが6の目が出たときの図をかいて。',
+    check(r) {
+      const d = r.draws.find((d) => d.t === 'dice');
+      if (!d) return { ok: false, why: 'サイコロが無い(dice を使っていない)' };
+      const vs = d.faces.map((f) => f.value);
+      if (vs.length !== 2) return { ok: false, why: `サイコロが ${vs.length} 個` };
+      if (!(vs.includes(2) && vs.includes(6))) return { ok: false, why: `目が ${vs}(2と6のはず)` };
+      const bad = d.faces.filter((f) => f.pips.length !== f.value);
+      if (bad.length) return { ok: false, why: '目の数と点の数が合っていない' };
+      return { ok: true, why: `目 ${vs.join(' と ')}、点の数も一致` };
+    },
+  },
+  {
+    id: 'dicetable',
+    tag: 'サイコロの表',
+    prompt: '大小2つのサイコロを振って、出た目の和が7になる場合を、6×6の表で示して。',
+    check(r) {
+      const t = r.draws.find((d) => d.t === 'diceTable');
+      if (!t) return { ok: false, why: '表が無い(diceTable を使っていない)' };
+      if (t.cells.length !== 36) return { ok: false, why: `マスが ${t.cells.length} 個` };
+      if (t.markSum !== 7) return { ok: false, why: `印の条件が 和=${t.markSum}(7のはず)` };
+      if (t.marked !== 6) return { ok: false, why: `印のついたマスが ${t.marked} 個(6個のはず)` };
+      return { ok: true, why: '36マス、和が7のマスが6個' };
+    },
+  },
 ];

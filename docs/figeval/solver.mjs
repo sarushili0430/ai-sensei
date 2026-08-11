@@ -22,8 +22,15 @@ export function compile(src, varName) {
   return (v) => f(v);
 }
 
+// 解いた座標を人に見せる形にする。-0 や 2.0000000001 を出さない。
+const fmt = (v) => {
+  const r = Math.abs(v) < 1e-9 ? 0 : v;
+  return Math.abs(r - Math.round(r)) < 1e-9 ? String(Math.round(r)) : r.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+};
+
 export function solve(items) {
   const pts = {}, circles = {}, lines = {}, curves = {}, draws = [];
+  let states = [];
   const P = (n) => {
     if (!pts[n]) throw new Error('未定義の点: ' + n);
     return pts[n];
@@ -67,7 +74,9 @@ export function solve(items) {
     if (!p) throw new Error('点を決められない: ' + JSON.stringify(it));
     if (!isFinite(p.x) || !isFinite(p.y)) throw new Error('座標が数でない: ' + it.pt);
     pts[it.pt] = p;
-    if (!it.hide) draws.push({ t: 'pt', p, name: it.pt });
+    // **座標は解いた値をこちらが出す。**書く側に数字を書かせない(食い違いようがなくなる)
+    const coord = it.showCoord ? `(${fmt(p.x)}, ${fmt(p.y)})` : undefined;
+    if (!it.hide) draws.push({ t: 'pt', p, name: it.pt, coord });
   }
 
   function defineBox(it) {
@@ -88,7 +97,13 @@ export function solve(items) {
 
   for (const it of items) {
     if (it === null || typeof it !== 'object' || Array.isArray(it)) throw new Error('要素がオブジェクトでない: ' + JSON.stringify(it));
-    if (it.pt || it.pts) definePoint(it);
+    // **すでに定義した点を、あとから目立たせる。**
+    // これが無いせいで、モデルは `{"pt":"L"}`(位置なし)を書いて落ちていた。
+    // モデルの間違いではなく、語彙の穴だったので塞ぐ。
+    if (it.mark) {
+      const names = Array.isArray(it.mark) ? it.mark : [it.mark];
+      names.forEach((n) => draws.push({ t: 'mark', p: P(n), name: n, as: it.as }));
+    } else if (it.pt || it.pts) definePoint(it);
     else if (it.box3) defineBox(it);
     else if (it.circle) {
       const c = P(it.center);
@@ -101,7 +116,103 @@ export function solve(items) {
     } else if (it.seg) draws.push({ t: 'seg', a: P(it.seg[0]), b: P(it.seg[1]), names: it.seg, dash: !!it.dash, label: it.label, as: it.as });
     else if (it.poly) draws.push({ t: 'poly', ps: it.poly.map(P), names: it.poly, fill: !!it.fill, as: it.as });
     else if (it.ellipse) draws.push({ t: 'ellipse', c: P(it.center), rx: it.rx, ry: it.ry, as: it.as, dash: !!it.dash });
-    else if (it.axes) draws.push({ t: 'axes', span: typeof it.axes === 'number' ? [-it.axes, it.axes, -it.axes, it.axes] : it.axes });
+    // **キーの有無で枝を選ぶと、`{"axes":0}` のような「偽になる正しい値」を取りこぼす。**
+    // 実際 Sonnet は「軸は要らない」を `{"axes":0}` と書いてきて、
+    // こちらは「知らないキー」と言って落ちた。**モデルのせいにしていたが、こちらのバグ。**
+    // 本番の契約(board.ts)が `kind` の discriminated union なのは、まさにこれを避けるため。
+    else if (it.axes !== undefined) {
+      if (it.axes === 0 || it.axes === false) continue;        // 「軸は要らない」
+      draws.push({ t: 'axes', span: typeof it.axes === 'number' ? [-it.axes, it.axes, -it.axes, it.axes] : it.axes, ticks: it.ticks });
+    }
+    else if (it.signTable) {
+      // 増減表。**渡ってくるのは極値の x だけ。**
+      // 符号も値も矢印も曲線から出すので、three つが食い違うことがない。
+      const cv = curves[it.signTable];
+      if (!cv) throw new Error('未定義の曲線の増減表: ' + it.signTable);
+      if (!cv.f) throw new Error('y=f(x) の形でない曲線の増減表: ' + it.signTable);
+      const crit = (it.crit || []).slice().sort((a, b) => a - b);
+      const [lo, hi] = cv.domain;
+      for (const c of crit) if (c <= lo || c >= hi) throw new Error(`極値 ${c} が定義域 [${lo},${hi}] の外`);
+      const d1 = (x) => { const h = 1e-5; return (cv.f(x + h) - cv.f(x - h)) / (2 * h); };
+      const cuts = [lo, ...crit, hi];
+      const sign = [];                       // 区間ごとの f' の符号
+      for (let i = 0; i < cuts.length - 1; i++) {
+        const m = (cuts[i] + cuts[i + 1]) / 2, s = d1(m);
+        sign.push(s > 1e-6 ? '+' : s < -1e-6 ? '-' : '0');
+      }
+      draws.push({
+        t: 'signTable', curve: it.signTable, crit,
+        sign,                                                    // 区間の符号
+        arrow: sign.map((s) => (s === '+' ? '↗' : s === '-' ? '↘' : '→')),
+        values: crit.map((c) => ({ x: c, y: cv.f(c), d: d1(c) })),
+      });
+    } else if (it.states) {
+      // 状態は名前だけ受け取り、**並べるのはこちら**(円形に置く)
+      const n = it.states.length;
+      if (n < 2) throw new Error('状態が2つ未満');
+      states = it.states.map((nm, i) => {
+        const a = Math.PI / 2 + (2 * Math.PI * i) / n;
+        const p = { x: 3 * Math.cos(a), y: 3 * Math.sin(a) };
+        pts[nm] = p;
+        return { name: nm, p };
+      });
+      draws.push({ t: 'states', states });
+    } else if (it.edges) {
+      if (!states.length) throw new Error('states より先に edges が来た');
+      const known = new Set(states.map((s) => s.name));
+      const es = it.edges.map(([from, to, prob]) => {
+        if (!known.has(from)) throw new Error('知らない状態: ' + from);
+        if (!known.has(to)) throw new Error('知らない状態: ' + to);
+        const v = compile(String(prob), '_')(0);
+        if (!isFinite(v)) throw new Error('確率が数でない: ' + prob);
+        return { from, to, prob: String(prob), value: v, self: from === to };
+      });
+      draws.push({ t: 'edges', edges: es });
+    } else if (it.seats) {
+      // 円順列。**席の位置はこちらが等間隔に置く。**
+      const n = it.seats, labels = it.labels || [];
+      if (labels.length && labels.length !== n) throw new Error(`席 ${n} に対して名前が ${labels.length} 個`);
+      if (it.fix && !labels.includes(it.fix)) throw new Error('固定する人が名前の中にいない: ' + it.fix);
+      const seats = Array.from({ length: n }, (_, i) => {
+        const a = Math.PI / 2 - (2 * Math.PI * i) / n;      // 時計回り。上から始める
+        return { name: labels[i], p: { x: 3 * Math.cos(a), y: 3 * Math.sin(a) }, fixed: labels[i] === it.fix };
+      });
+      seats.forEach((s) => { if (s.name) pts[s.name] = s.p; });
+      draws.push({ t: 'seats', seats, n, fix: it.fix });
+    } else if (it.balls) {
+      // 玉。**個数だけ受け取り、並べるのはこちら。**
+      const kinds = Object.entries(it.balls);
+      if (!kinds.length) throw new Error('玉が0種類');
+      const list = [];
+      kinds.forEach(([kind, count], ki) => {
+        if (!Number.isInteger(count) || count < 0) throw new Error(`${kind} の個数が整数でない: ${count}`);
+        for (let i = 0; i < count; i++) list.push({ kind, ki });
+      });
+      const cols = Math.ceil(Math.sqrt(list.length)) || 1;
+      list.forEach((b, i) => { b.p = { x: (i % cols) - (cols - 1) / 2, y: -Math.floor(i / cols) }; });
+      draws.push({ t: 'balls', balls: list, kinds: Object.fromEntries(kinds), container: it.container });
+    } else if (it.dice) {
+      // サイコロ。**目の数だけ受け取る。点の並びは目で決まっているので、こちらが置く。**
+      const PIPS = {
+        1: [[0, 0]], 2: [[-1, 1], [1, -1]], 3: [[-1, 1], [0, 0], [1, -1]],
+        4: [[-1, 1], [1, 1], [-1, -1], [1, -1]],
+        5: [[-1, 1], [1, 1], [0, 0], [-1, -1], [1, -1]],
+        6: [[-1, 1], [1, 1], [-1, 0], [1, 0], [-1, -1], [1, -1]],
+      };
+      const faces = it.dice.map((v) => {
+        if (!PIPS[v]) throw new Error('サイコロの目が 1〜6 でない: ' + v);
+        return { value: v, pips: PIPS[v] };
+      });
+      draws.push({ t: 'dice', faces });
+    } else if (it.diceTable) {
+      const cells = [];
+      for (let a = 1; a <= 6; a++) for (let b = 1; b <= 6; b++) {
+        const mark = it.markSum !== undefined ? a + b === it.markSum
+          : it.markDiff !== undefined ? Math.abs(a - b) === it.markDiff : false;
+        cells.push({ a, b, mark });
+      }
+      draws.push({ t: 'diceTable', cells, marked: cells.filter((c) => c.mark).length, markSum: it.markSum });
+    }
     else if (it.curve) {
       curves[it.curve] = normalizeCurve(it);
       if (!it.hidden) draws.push({ t: 'curve', name: it.curve, ps: sample(curves[it.curve]), as: it.as, dash: !!it.dash });

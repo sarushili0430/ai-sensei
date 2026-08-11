@@ -1,3 +1,4 @@
 out/
+out_before/
 .sandbox/
 prompts.tsv

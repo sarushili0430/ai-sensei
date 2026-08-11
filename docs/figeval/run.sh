@@ -28,10 +28,17 @@ while IFS=$'\t' read -r id prompt <&3; do
       f="$OUT/${model}__${id}__${t}.txt"
       [ -s "$f" ] && continue
       (
-        timeout 240 claude -p "$prompt" --model "$model" \
-          --system-prompt "$SPEC" "${NOTOOLS[@]}" \
-          </dev/null > "$f.tmp" 2>"$f.err" \
-          || echo "__CLI_FAILED__" >> "$f.tmp"
+        # プロキシの TLS で弾かれることがある(self-signed certificate detected)。
+        # CA束を渡し、落ちたら少し待って2回まで引き直す。**通信の失敗をモデルの失敗に混ぜない。**
+        for attempt in 1 2 3; do
+          NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt \
+          timeout 240 claude -p "$prompt" --model "$model" \
+            --system-prompt "$SPEC" "${NOTOOLS[@]}" \
+            </dev/null > "$f.tmp" 2>"$f.err" && break
+          grep -q . "$f.tmp" && break        # 中身があるなら通信は成功している
+          sleep $((attempt * 4))
+        done
+        grep -q . "$f.tmp" || echo "__CLI_FAILED__" >> "$f.tmp"
         mv "$f.tmp" "$f"          # 書き終わってから見えるようにする
       ) &
       while [ "$(jobs -rp | wc -l)" -ge 8 ]; do wait -n; done
