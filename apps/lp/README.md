@@ -60,9 +60,19 @@ python3 -m http.server 4173 --directory apps/lp/public
 
 ```bash
 pnpm --filter @ai-sensei/lp exec wrangler login   # 初回だけ
-pnpm --filter @ai-sensei/lp deploy
+pnpm --filter @ai-sensei/lp deploy:production
 # → https://ai-sensei-lp.<subdomain>.workers.dev
 ```
+
+> **`deploy` という名前にはできない。** `pnpm deploy` は pnpm 自身の組み込みコマンドで、
+> 同名のスクリプトがあっても組み込みが勝ちます。`pnpm --filter @ai-sensei/lp deploy` は
+> `ERR_PNPM_INVALID_DEPLOY_TARGET This command requires one parameter` で落ちます。
+> `backend/api` が `deploy:develop` / `deploy:production` なのも同じ理由です。
+> (`run` を挟めば組み込みは避けられますが、それを知らない人が素で `deploy` と打つと
+> 同じところで詰まるので、名前のほうを衝突しないものにしてあります。)
+>
+> **CI(Cloudflare Workers Builds など)のデプロイコマンドにも、同じ名前を入れること。**
+> ここが `pnpm --filter @ai-sensei/lp deploy` のままだと、ビルドは通ってデプロイだけが落ちます。
 
 `build:check`(`wrangler deploy --dry-run`)で、設定とアップロード対象だけを先に確かめられます。
 **上げる前に必ず一度は流すこと** —— `public/` に置いたものは全部そのまま公開されるので、
