@@ -28,9 +28,13 @@ import '../domain/karte.dart';
 /// **回数の数字は出さない**(§6-3)。上限は「先輩の判断」として文章で見せる。
 /// 詳しくは [_EnoughForTodayLine]。
 ///
-/// タブバーは置かない。常設タブに値するのはこの画面だけで、カルテは
-/// セッション直後にだけ意味を持つ一過性の画面だから(タブにすると空タブになる)。
-/// 設定は右上に逃がす。
+/// 当初はタブバーを置かなかった。常設で戻る場所がホームしかなく、カルテは
+/// セッション直後にだけ意味を持つ一過性の画面なので、タブにすると空の場所を
+/// 常設してしまうからだった。このうち**カルテをタブにしない判断はいまも有効**。
+///
+/// ただしピボット(§0)で、ホーム / 自習室(§4-2) / 計画(§4-3)という
+/// 常設で戻れる場所が3つになった。そこで今は下部ナビゲーションを置き、設定も
+/// 右上の小さな入口から同じ大域ナビゲーションへ移している。
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
@@ -106,7 +110,7 @@ class HomeScreen extends ConsumerWidget {
                   label: strings.homeStudyRoom,
                   color: enoughForToday ? AppColors.blue : AppColors.border,
                   foregroundColor: enoughForToday ? Colors.white : AppColors.ink,
-                  onPressed: () => context.push(AppRoute.studyRoom.path),
+                  onPressed: () => context.go(AppRoute.studyRoom.path),
                 ),
               ),
               const SizedBox(height: AppSpacing.sm),
@@ -165,12 +169,6 @@ class _TopRow extends StatelessWidget {
         ),
         // 契約している印。契約が無ければ何も出ない。
         const PremiumChip(),
-        IconButton(
-          onPressed: () => context.push(AppRoute.settings.path),
-          icon: const Icon(Icons.settings_outlined, size: 22),
-          color: AppColors.inkMuted,
-          tooltip: strings.settingsTitle,
-        ),
       ],
     );
   }

@@ -4,16 +4,13 @@ library;
 import 'package:ai_sensei/src/api/device_id.dart';
 import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
 import 'package:ai_sensei/src/features/karte/domain/karte.dart';
-import 'package:ai_sensei/src/features/karte/presentation/home_screen.dart';
-import 'package:ai_sensei/src/features/karte/presentation/karte_screen.dart';
-import 'package:ai_sensei/src/features/karte/presentation/review_screen.dart';
-import 'package:ai_sensei/src/features/monetization/presentation/paywall_screen.dart';
-import 'package:ai_sensei/src/features/monetization/presentation/thanks_screen.dart';
 import 'package:ai_sensei/src/features/onboarding/presentation/onboarding_screen.dart';
 import 'package:ai_sensei/src/features/session/presentation/celebration_screen.dart';
-import 'package:ai_sensei/src/features/settings/presentation/settings_screen.dart';
 import 'package:ai_sensei/src/l10n/strings.dart';
+import 'package:ai_sensei/src/routing/app_router.dart';
+import 'package:ai_sensei/src/routing/routes.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/harness.dart';
@@ -41,6 +38,38 @@ void main() {
   }) async {
     await setSurface(tester);
     await tester.pumpWidget(wrapApp(screen, overrides: overrides));
+    await tester.pumpAndSettle();
+    await capture(tester, name);
+  }
+
+  /// 常設タブ配下の画面を、本番と同じルータ込みで撮る。
+  ///
+  /// 画面だけを `MaterialApp.home` に置くと、下部ナビゲーションが丸ごと
+  /// テスト対象から抜ける。ホームの高さがタブぶん縮んで操作が押し出される壊れ方も
+  /// 見えなくなるので、シェル配下の既存goldenだけはこちらを通す。
+  Future<void> expectRoutedGolden(
+    WidgetTester tester,
+    String location,
+    String name, {
+    ProgressSummary progress = firstRunSummary,
+    ReviewQueue reviews = const ReviewQueue(items: <ReviewQueueItem>[]),
+    List<Object?> overrides = const <Object?>[],
+  }) async {
+    await setSurface(tester);
+    final ProviderContainer container = ProviderContainer(
+      overrides: <Object?>[
+        onboardedProvider.overrideWithValue(true),
+        deviceIdProvider.overrideWithValue('11111111-2222-3333-4444-555555555555'),
+        progressControllerProvider.overrideWith(() => FakeProgressController(progress)),
+        reviewControllerProvider.overrideWith(() => FakeReviewController(reviews)),
+        ...overrides,
+      ].cast(),
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(wrapRouter(container));
+    await tester.pumpAndSettle();
+    container.read(appRouterProvider).go(location);
     await tester.pumpAndSettle();
     await capture(tester, name);
   }
@@ -84,41 +113,35 @@ void main() {
   });
 
   testWidgets('02 ホーム', (WidgetTester tester) async {
-    await expectGolden(
+    await expectRoutedGolden(
       tester,
-      const HomeScreen(),
+      AppRoute.home.path,
       'home',
-      overrides: <Object?>[
-        progressControllerProvider.overrideWith(FakeProgressController.new),
-        reviewControllerProvider.overrideWith(() => FakeReviewController(sampleReviewQueue)),
-      ],
+      progress: sampleSummary,
+      reviews: sampleReviewQueue,
     );
   });
 
   // 初回起動のホーム。押すもののない空白にせず、次の一歩を出しているか。
   testWidgets('02b ホーム(初回起動)', (WidgetTester tester) async {
-    await expectGolden(
+    await expectRoutedGolden(
       tester,
-      const HomeScreen(),
+      AppRoute.home.path,
       'home_first_run',
-      overrides: <Object?>[
-        progressControllerProvider.overrideWith(() => FakeProgressController(firstRunSummary)),
-      ],
+      progress: firstRunSummary,
     );
   });
 
   // 契約している人のホーム。右上に印が出ているか、
   // それが数えている2つ(連続日数・埋めた穴)を押し出していないか。
   testWidgets('02c ホーム(Premium)', (WidgetTester tester) async {
-    await expectGolden(
+    await expectRoutedGolden(
       tester,
-      const HomeScreen(),
+      AppRoute.home.path,
       'home_premium',
-      overrides: <Object?>[
-        progressControllerProvider.overrideWith(() => FakeProgressController(premiumSummary)),
-        reviewControllerProvider.overrideWith(() => FakeReviewController(sampleReviewQueue)),
-        ...premiumOverrides(),
-      ],
+      progress: premiumSummary,
+      reviews: sampleReviewQueue,
+      overrides: premiumOverrides(),
     );
   });
 
@@ -138,9 +161,9 @@ void main() {
   });
 
   testWidgets('04 カルテ', (WidgetTester tester) async {
-    await expectGolden(
+    await expectRoutedGolden(
       tester,
-      const KarteScreen(),
+      AppRoute.karte.path,
       'karte',
       overrides: <Object?>[
         latestKarteControllerProvider.overrideWith(FakeLatestKarteController.new),
@@ -154,43 +177,31 @@ void main() {
   // 「埋めにいく穴」と「埋めた穴」が同じ画面に並んでいるか。
   // 後者がペイウォールの謳う「履歴」で、別画面は作らない。
   testWidgets('05 復習(Premium)', (WidgetTester tester) async {
-    await expectGolden(
+    await expectRoutedGolden(
       tester,
-      const ReviewScreen(),
+      AppRoute.review.path,
       'review',
-      overrides: <Object?>[
-        reviewControllerProvider.overrideWith(
-          () => FakeReviewController(
-            ReviewQueue(
-              items: <ReviewQueueItem>[
-                ReviewQueueItem(
-                  hole: sampleKarte.holes.first,
-                  daysSince: 3,
-                  prompt: '3日前の「判別式のなぜ」、いまなら説明できますか?',
-                  quiz: '判別式を使うと解の個数がわかる理由を説明できる?',
-                ),
-              ],
-              filled: <FilledHole>[sampleFilledHole],
-            ),
+      progress: premiumSummary,
+      reviews: ReviewQueue(
+        items: <ReviewQueueItem>[
+          ReviewQueueItem(
+            hole: sampleKarte.holes.first,
+            daysSince: 3,
+            prompt: '3日前の「判別式のなぜ」、いまなら説明できますか?',
+            quiz: '判別式を使うと解の個数がわかる理由を説明できる?',
           ),
-        ),
-      ],
+        ],
+        filled: <FilledHole>[sampleFilledHole],
+      ),
     );
   });
 
   testWidgets('06 ペイウォール', (WidgetTester tester) async {
-    await expectGolden(tester, const PaywallScreen(), 'paywall');
+    await expectRoutedGolden(tester, AppRoute.paywall.path, 'paywall');
   });
 
   testWidgets('07 設定', (WidgetTester tester) async {
-    await expectGolden(
-      tester,
-      const SettingsScreen(),
-      'settings',
-      overrides: <Object?>[
-        deviceIdProvider.overrideWithValue('11111111-2222-3333-4444-555555555555'),
-      ],
-    );
+    await expectRoutedGolden(tester, AppRoute.settings.path, 'settings');
   });
 
   // 購入のお礼。見たいのは、祝っている画面でも
@@ -199,9 +210,9 @@ void main() {
   // 無料トライアルの見出しは残り日数で変わる = 撮る日で変わるので、
   // golden では撮らない(文言の出し分けは monetization_test.dart で見る)。
   testWidgets('08 購入のお礼', (WidgetTester tester) async {
-    await expectGolden(
+    await expectRoutedGolden(
       tester,
-      const ThanksScreen(),
+      AppRoute.thanks.path,
       'thanks',
       overrides: premiumOverrides(),
     );

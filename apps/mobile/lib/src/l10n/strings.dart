@@ -914,6 +914,15 @@ class AppStrings {
       _ => _pick('数学', 'Math'),
     };
   }
+
+  // --- 下部ナビゲーション ---
+  //
+  // 機能名とは別に持つ。画面タイトルを短くしたくなったとき、タブの読み上げまで
+  // 意図せず変わると、4つの大域的な行き先が端末や言語によって揺れるため。
+  String get navigationHome => _pick('ホーム', 'Home');
+  String get navigationStudyRoom => _pick('自習室', 'Study room');
+  String get navigationPlan => _pick('計画', 'Plan');
+  String get navigationSettings => _pick('設定', 'Settings');
 }
 
 class AppStringsDelegate extends LocalizationsDelegate<AppStrings> {

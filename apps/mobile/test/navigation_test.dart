@@ -1,4 +1,5 @@
 import 'package:ai_sensei/src/api/device_id.dart';
+import 'package:ai_sensei/src/features/capture/presentation/capture_screen.dart';
 import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
 import 'package:ai_sensei/src/features/karte/domain/karte.dart';
 import 'package:ai_sensei/src/features/karte/presentation/home_screen.dart';
@@ -11,12 +12,14 @@ import 'package:ai_sensei/src/features/parent_report/application/parent_report_c
 import 'package:ai_sensei/src/features/parent_report/presentation/parent_report_screen.dart';
 import 'package:ai_sensei/src/features/plan/application/plan_controller.dart';
 import 'package:ai_sensei/src/features/plan/presentation/plan_screen.dart';
+import 'package:ai_sensei/src/features/session/presentation/celebration_screen.dart';
 import 'package:ai_sensei/src/features/settings/presentation/settings_screen.dart';
 import 'package:ai_sensei/src/l10n/strings.dart';
 import 'package:ai_sensei/src/routing/app_router.dart';
 import 'package:ai_sensei/src/routing/routes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
@@ -74,17 +77,31 @@ void main() {
   testWidgets('通過済みならホームから始まる', (WidgetTester tester) async {
     await pumpRouter(tester, overrides: bootOverrides());
     expect(find.byType(HomeScreen), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('main-bottom-navigation')), findsOneWidget);
   });
 
-  testWidgets('ホーム → 設定 は戻れる', (WidgetTester tester) async {
-    final GoRouter router = await pumpRouter(tester, overrides: bootOverrides());
+  testWidgets('狭い端末でも4タブがホームの操作を押し出さない', (WidgetTester tester) async {
+    await setSurface(tester, size: smallPhoneSurface);
+    await pumpRouter(tester, overrides: bootOverrides());
 
-    await tester.tap(find.byIcon(Icons.settings_outlined));
+    expect(find.byKey(const ValueKey<String>('main-bottom-navigation')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('navigation-home')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('navigation-study-room')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('navigation-plan')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('navigation-settings')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('設定は下タブから開き、ホームタブへ戻れる', (WidgetTester tester) async {
+    await pumpRouter(tester, overrides: bootOverrides());
+
+    await tester.tap(find.byKey(const ValueKey<String>('navigation-settings')));
     await tester.pumpAndSettle();
     expect(find.byType(SettingsScreen), findsOneWidget);
 
-    expect(router.canPop(), isTrue, reason: '設定は寄り道なので、戻れなければならない');
-    router.pop();
+    // 設定はもうホームへ積む寄り道ではなく、常設の枝。戻るスタックを
+    // 捏造せず、同じ下部ナビゲーションからホームを選べることを出口にする。
+    await tester.tap(find.byKey(const ValueKey<String>('navigation-home')));
     await tester.pumpAndSettle();
     expect(find.byType(HomeScreen), findsOneWidget);
   });
@@ -104,7 +121,7 @@ void main() {
     expect(find.byType(HomeScreen), findsOneWidget);
   });
 
-  testWidgets('計画へ直接着地しても、下にホームが積まれている', (WidgetTester tester) async {
+  testWidgets('計画へ直接着地しても、ホームタブへ戻れる', (WidgetTester tester) async {
     final GoRouter router = await pumpRouter(
       tester,
       overrides: <Object?>[
@@ -117,10 +134,76 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(PlanScreen), findsOneWidget);
 
-    expect(router.canPop(), isTrue, reason: '計画は作成中でもホームへ戻れなければならない');
-    router.pop();
+    // 計画は独立した常設の枝になったので、ホームを下へ積む必要はない。
+    // それでも直接着地が行き止まりにならないことは、タブそのもので固定する。
+    await tester.tap(find.byKey(const ValueKey<String>('navigation-home')));
     await tester.pumpAndSettle();
     expect(find.byType(HomeScreen), findsOneWidget);
+  });
+
+  testWidgets('タブを切り替えても、ホーム枝の復習履歴を保つ', (WidgetTester tester) async {
+    final GoRouter router = await pumpRouter(
+      tester,
+      overrides: <Object?>[
+        ...bootOverrides(),
+        planControllerProvider.overrideWith(_ReadyPlanController.new),
+      ],
+    );
+
+    router.go(AppRoute.review.path);
+    await tester.pumpAndSettle();
+    expect(find.byType(ReviewScreen), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey<String>('navigation-plan')));
+    await tester.pumpAndSettle();
+    expect(find.byType(PlanScreen), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey<String>('navigation-home')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ReviewScreen), findsOneWidget, reason: '枝を作り直すと復習画面が失われる');
+
+    // 選択中のホームをもう一度押したときは、枝の根へ戻れる。
+    await tester.tap(find.byKey(const ValueKey<String>('navigation-home')));
+    await tester.pumpAndSettle();
+    expect(find.byType(HomeScreen), findsOneWidget);
+  });
+
+  testWidgets('撮影と祝福にはタブを出さない', (WidgetTester tester) async {
+    // 撮影画面は初回フレームでカメラを開く。ここで見たいのは撮影結果ではなく
+    // シェルの外にいることなので、撮らずに戻った結果だけを端末の代わりに返す。
+    const MethodChannel pickerChannel = MethodChannel('plugins.flutter.io/image_picker');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      pickerChannel,
+      (_) async => null,
+    );
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(pickerChannel, null),
+    );
+    mockPermissionHandler();
+
+    final GoRouter router = await pumpRouter(tester, overrides: bootOverrides());
+    router.push(AppRoute.capture.path);
+    await tester.pumpAndSettle();
+    expect(find.byType(CaptureScreen), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('main-bottom-navigation')),
+      findsNothing,
+      reason: '撮影中に別モードへ抜けられてはいけない',
+    );
+
+    router.pop();
+    await tester.pumpAndSettle();
+    expect(find.byType(HomeScreen), findsOneWidget, reason: '撮影をやめたら来た場所へ戻る');
+
+    router.go(AppRoute.celebration.path);
+    await tester.pumpAndSettle();
+    expect(find.byType(CelebrationScreen), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('main-bottom-navigation')),
+      findsNothing,
+      reason: '授業直後にも会話から別モードへ抜けるタブを出さない',
+    );
   });
 
   testWidgets('通知から復習画面へ直接着地しても、下にホームが積まれている', (WidgetTester tester) async {
