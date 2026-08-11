@@ -250,6 +250,17 @@ class AppStrings {
   String get captureAddProblem => _pick('問題を撮る', 'Take the problem');
   String get captureRetake => _pick('撮り直す', 'Retake');
 
+  /// もう一つの入口。**枠ごとに1つずつ持たせる。**
+  ///
+  /// 撮った写真とアルバムの写真で、行き先(= 寿命)は変わらない —
+  /// ノートは保存され、問題の紙面は読み取ったあとに消える(§4-1)。
+  /// **だから画面に1つだけ置くことはできない。** 選んだ1枚がどちらの枠に
+  /// 入るのかが見えていないと、枠を分けている意味がそこで切れる。
+  ///
+  /// 「アルバム」と場所の名前で言う。「ライブラリ」だとiOSの用語、
+  /// 「ギャラリー」だとAndroidの用語で、どちらか片方の生徒に馴染まない。
+  String get capturePickFromLibrary => _pick('アルバムから選ぶ', 'Choose from photos');
+
   /// §4-1 の言い回しそのまま。**ヒントであって要求ではない。**
   /// 1枚に問題とノートの両方が写ることが多いので、2枚必須にすると
   /// 撮影の摩擦だけが増える。
@@ -290,6 +301,20 @@ class AppStrings {
   /// カメラを開けなかったとき(許可はあるが端末側の理由)。許可の話と混ぜない。
   String get captureCameraFailed => _pick('カメラを開けませんでした。もう一度おためしください。',
       "We couldn't open the camera. Please try again.");
+
+  /// アルバムを断られたとき。**カメラの文言を使い回さない。**
+  ///
+  /// 断られたのは写真へのアクセスなので、「カメラを使えませんでした」と返すと
+  /// 設定アプリのどこを開ければいいのか分からなくなる。開く先は同じでも、
+  /// **本人が押した操作の名前で返す。**
+  String get capturePhotosDenied => _pick(
+        '写真を使えませんでした。設定アプリから許可すると、選べるようになります。',
+        "We couldn't open your photos. Allow access in Settings and you'll be able to pick one.",
+      );
+
+  /// アルバムを開けなかったとき(許可はあるが端末側の理由)。
+  String get capturePhotosFailed => _pick('アルバムを開けませんでした。もう一度おためしください。',
+      "We couldn't open your photos. Please try again.");
 
   // --- 会話 ---
   String get sessionListening => _pick('聞いています', 'Listening');

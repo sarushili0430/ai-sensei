@@ -52,6 +52,21 @@ import '../application/capture_controller.dart';
 /// **どちらか1枚で始められる**(§4-1)。1枚に問題とノートの両方が写ることが
 /// 多いので、2枚必須にすると撮影の摩擦だけが増える。ここで出すのは「撮れ」ではなく
 /// 「写っていると迷子になりません」というヒントに留める。
+///
+/// ## アルバムからも入れる理由
+///
+/// **手元にある1枚が、いま撮れるとは限らない。** 塾で撮ったノート、友だちから
+/// 送られてきた問題のスクリーンショット、机を離れてから思い出した問題 —
+/// どれも「撮る」しか入口が無いと、**紙を持ち直して撮り直すか、諦めるか**に
+/// なる。上のカメラを自動で開かない話と同じで、手元にあるものを出せる道を
+/// 塞がないという一点でつながっている。
+///
+/// **枠ごとに入口を持たせる。** 写真の寿命は撮り方ではなく**どちらの枠に
+/// 入れたか**で決まる(ノートは保存・問題の紙面は解析後に破棄)ので、
+/// 「アルバムから選ぶ」を画面に1つだけ置くと、選んだ1枚の行き先が消える。
+///
+/// 撮る操作は動かしていない(枠をタップ = カメラ)。**増やしたのは道であって、
+/// 手数ではない。**
 class CaptureScreen extends ConsumerStatefulWidget {
   const CaptureScreen({super.key});
 
@@ -70,13 +85,13 @@ const Set<String> _kPermissionErrorCodes = <String>{
 };
 
 class _CaptureScreenState extends ConsumerState<CaptureScreen> {
-  /// カメラを断られた。閉じるのではなく、戻し方を出す。
-  bool _cameraDenied = false;
+  /// 写真を出してもらえなかった(許可がない)。閉じるのではなく、戻し方を出す。
+  bool _denied = false;
 
-  /// 許可はあるのにカメラを開けなかった(端末側の理由)。撮り直しの導線を出す。
-  bool _cameraFailed = false;
+  /// 許可はあるのに開けなかった(端末側の理由)。撮り直しの導線を出す。
+  bool _failed = false;
 
-  /// カメラを開いている最中。まだ見せるものが無い。
+  /// カメラ(またはアルバム)を開いている最中。まだ見せるものが無い。
   ///
   /// 「1枚も撮っていない」と区別が要る。撮らずに帰ってきた人には
   /// **枠を見せて留まってもらう**ので、写真の有無だけでは判断できない。
@@ -85,11 +100,16 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
   /// **前回の写真が1フレームだけ見えてしまう**(コントローラは keepAlive)。
   bool _picking = true;
 
-  /// 直近にカメラを開いた枠。開けなかったときの「もう一度」を同じ枠へ戻すため。
+  /// 直近に開いた枠。開けなかったときの「もう一度」を同じ枠へ戻すため。
   ///
   /// カメラの自動起動をやめてからは、**どちらの枠から来たかは本人の選択**なので、
   /// 失敗のたびにノートへ引き戻すと、ノートが無い生徒を無い枠へ送り返すことになる。
   bool _lastPickWasProblem = false;
+
+  /// 直近に開いた入口(カメラ / アルバム)。**文言と「もう一度」の行き先を、
+  /// 本人が押したほうに合わせる**ため。カメラを断られた人に「写真を許可して」と
+  /// 返すのも、その逆も、断られた話の上に的外れが重なる。
+  ImageSource _lastSource = ImageSource.camera;
 
   @override
   void initState() {
@@ -103,52 +123,64 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     });
   }
 
-  /// ノートの写真。**必須ではない**(サーバは `kind: new` でどちらか1枚を要求する)。
-  Future<void> _pickPhoto() => _pick(forProblem: false);
+  /// ノートを撮る。**必須ではない**(サーバは `kind: new` でどちらか1枚を要求する)。
+  Future<void> _takeNotes() => _pick(forProblem: false, source: ImageSource.camera);
 
-  /// 問題の写真。これだけでも始められる(§4-1)。
-  Future<void> _pickProblemPhoto() => _pick(forProblem: true);
+  /// ノートをアルバムから選ぶ。塾で撮ってきた1枚は、ここからしか出せない。
+  Future<void> _chooseNotes() => _pick(forProblem: false, source: ImageSource.gallery);
 
-  Future<void> _pick({required bool forProblem}) async {
+  /// 問題を撮る。これだけでも始められる(§4-1)。
+  Future<void> _takeProblem() => _pick(forProblem: true, source: ImageSource.camera);
+
+  /// 問題をアルバムから選ぶ。送られてきたスクリーンショットもここに入る。
+  Future<void> _chooseProblem() => _pick(forProblem: true, source: ImageSource.gallery);
+
+  /// [source] から1枚もらって、[forProblem] の枠に入れる。
+  ///
+  /// **入口(カメラ/アルバム)は枠を変えない。** どちらから来た1枚も、
+  /// 入った枠のとおりに扱われる(ノートは保存・問題の紙面は解析後に破棄)。
+  ///
+  /// アルバムの1枚はJPEGとは限らない(スクリーンショットはPNG)が、
+  /// サーバが中身の先頭バイトで形式を決め直すので、ここでは撮影と区別しない
+  /// (`photo-analysis.ts` の `detectImageMediaType`)。
+  Future<void> _pick({required bool forProblem, required ImageSource source}) async {
     setState(() {
-      _cameraDenied = false;
-      _cameraFailed = false;
+      _denied = false;
+      _failed = false;
       _picking = true;
       _lastPickWasProblem = forProblem;
+      _lastSource = source;
     });
 
     final XFile? picked;
     try {
-      picked = await ImagePicker().pickImage(
-        source: ImageSource.camera,
-        imageQuality: 85,
-      );
+      picked = await ImagePicker().pickImage(source: source, imageQuality: 85);
     } on PlatformException catch (error, stack) {
-      // ここで拾わないと、initState の postFrameCallback から呼んでいるぶん
-      // 受け取り手がいないまま未処理例外になり、撮影画面ごと落ちる。
-      debugPrint('カメラを開けませんでした(${error.code}): ${error.message}\n$stack');
+      // ここで拾わないと、受け取り手がいないまま未処理例外になり、
+      // 撮影画面ごと落ちる。
+      debugPrint('写真を選べませんでした(${error.code}): ${error.message}\n$stack');
       if (!mounted) return;
       setState(() {
         _picking = false;
         if (_kPermissionErrorCodes.contains(error.code)) {
-          _cameraDenied = true;
+          _denied = true;
         } else {
-          _cameraFailed = true;
+          _failed = true;
         }
       });
       return;
     } on Object catch (error, stack) {
-      // プラグインの想定外(ファイルの読み出し失敗など)。落とさずに撮り直させる。
+      // プラグインの想定外(ファイルの読み出し失敗など)。落とさずにやり直させる。
       debugPrint('写真を取得できませんでした: $error\n$stack');
       if (!mounted) return;
       setState(() {
         _picking = false;
-        _cameraFailed = true;
+        _failed = true;
       });
       return;
     }
 
-    // 撮らずに帰ってきた。許可が無いなら設定への行き方を出す —
+    // 何も選ばずに帰ってきた。許可が無いなら設定への行き方を出す —
     // 何度カメラを開いても結果が同じなので、そこだけは別扱いにする。
     // **枠で出し分けない。** どちらの枠も本人が選んで開いたものなので、
     // 許可が無いことを片方でだけ知らせる理由が無い。
@@ -159,11 +191,20 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     // 本当にやめたい人は、この画面の戻るで降りられる(push で来ている)。
     if (picked == null) {
       if (!mounted) return;
+      // **アルバムをやめただけの人に、許可の話をしない。**
+      // いまのAndroid(フォトピッカー)もiOS(PHPicker)も、選ぶだけなら
+      // アプリに許可が要らない。**要らない許可を照会すると「未許可」が返る**ので、
+      // やめただけの人が毎回「設定から許可を」の画面に落ちることになる。
+      // 本当に断られる経路は、上の `photo_access_denied` で拾ってある。
+      if (source != ImageSource.camera) {
+        setState(() => _picking = false);
+        return;
+      }
       final PermissionStatus status = await _cameraStatus();
       if (!mounted) return;
       setState(() {
         _picking = false;
-        _cameraDenied =
+        _denied =
             status.isDenied || status.isPermanentlyDenied || status.isRestricted;
       });
       return;
@@ -229,20 +270,24 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
   Widget _body(CaptureState state) {
     final AppStrings strings = AppStrings.of(context);
 
-    if (_cameraDenied) {
+    // 断られたのがカメラか写真かで、設定アプリで探すものが変わる。
+    // 行き先(設定アプリ)は同じでも、**本人が押した操作の名前で返す。**
+    final bool fromCamera = _lastSource == ImageSource.camera;
+
+    if (_denied) {
       return _ErrorView(
-        message: strings.captureCameraDenied,
+        message: fromCamera ? strings.captureCameraDenied : strings.capturePhotosDenied,
         retryLabel: strings.captureOpenSettings,
         onRetry: openAppSettings,
       );
     }
 
-    if (_cameraFailed) {
+    if (_failed) {
       return _ErrorView(
-        message: strings.captureCameraFailed,
-        // 開けなかった枠へ戻す。ノートへ固定すると、ノートが無い生徒を
-        // 無い枠へ送り返すことになる。
-        onRetry: () => _pick(forProblem: _lastPickWasProblem),
+        message: fromCamera ? strings.captureCameraFailed : strings.capturePhotosFailed,
+        // 開けなかった枠と入口へ戻す。ノートのカメラへ固定すると、
+        // ノートが無い生徒を無い枠へ送り返すことになる。
+        onRetry: () => _pick(forProblem: _lastPickWasProblem, source: _lastSource),
       );
     }
 
@@ -254,8 +299,10 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
         // 無料・Premiumのどちらも数値は見せず、先輩が今日の学習を締める。
         message: lessonLimitReached ? strings.lessonEnoughForToday : error.message,
         // 日ごとの上限は押し直しても変わらない。無料・Premium とも再試行させない。
-        // 撮り直すのは、直前に開いていた枠(ノートとは限らない)。
-        onRetry: lessonLimitReached ? null : () => _pick(forProblem: _lastPickWasProblem),
+        // 撮り直すのは、直前に開いていた枠と入口(ノートのカメラとは限らない)。
+        onRetry: lessonLimitReached
+            ? null
+            : () => _pick(forProblem: _lastPickWasProblem, source: _lastSource),
       );
     }
     // カメラを開いている最中は、まだ何も見せるものが無い。
@@ -266,8 +313,10 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     if (state.session == null) {
       return _PhotoReview(
         state: state,
-        onRetake: _pickPhoto,
-        onAddProblem: _pickProblemPhoto,
+        onTakeNotes: _takeNotes,
+        onChooseNotes: _chooseNotes,
+        onTakeProblem: _takeProblem,
+        onChooseProblem: _chooseProblem,
         onStart: _analyze,
       );
     }
@@ -307,14 +356,20 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
 class _PhotoReview extends StatelessWidget {
   const _PhotoReview({
     required this.state,
-    required this.onRetake,
-    required this.onAddProblem,
+    required this.onTakeNotes,
+    required this.onChooseNotes,
+    required this.onTakeProblem,
+    required this.onChooseProblem,
     required this.onStart,
   });
 
   final CaptureState state;
-  final VoidCallback onRetake;
-  final VoidCallback onAddProblem;
+  final VoidCallback onTakeNotes;
+
+  /// アルバムから選ぶ。**枠ごとに持つ**(1つにまとめると行き先が消える)。
+  final VoidCallback onChooseNotes;
+  final VoidCallback onTakeProblem;
+  final VoidCallback onChooseProblem;
   final VoidCallback onStart;
 
   @override
@@ -343,7 +398,8 @@ class _PhotoReview extends StatelessWidget {
                   label: strings.capturePhotoNotes,
                   photo: state.photo,
                   emptyLabel: strings.captureTakeNotes,
-                  onTap: onRetake,
+                  onTake: onTakeNotes,
+                  onChoose: onChooseNotes,
                 ),
               ),
               const SizedBox(width: AppSpacing.md),
@@ -352,7 +408,8 @@ class _PhotoReview extends StatelessWidget {
                   label: strings.capturePhotoProblem,
                   photo: state.problemPhoto,
                   emptyLabel: strings.captureAddProblem,
-                  onTap: onAddProblem,
+                  onTake: onTakeProblem,
+                  onChoose: onChooseProblem,
                 ),
               ),
             ],
@@ -387,12 +444,25 @@ class _PhotoReview extends StatelessWidget {
 }
 
 /// 写真1枚ぶんの枠。空のときは撮る、入っているときは撮り直す。
+/// **入口は2つある**(撮る / アルバムから選ぶ)が、行き先はこの枠1つ。
+///
+/// ## 「アルバムから選ぶ」を下に別で置く理由
+///
+/// 押すたびに「撮る? 選ぶ?」と聞く形(アクションシート)にすると、
+/// **いま撮れる人の手数が全員ぶん1つ増える。** この画面はすでに
+/// 「何を撮るか」で1タップ増やしていて、そのときの理屈は
+/// **増えたタップに意味がある**ことだった。撮る人にとって
+/// 「撮るほうを選ぶ」タップには意味が無い。
+///
+/// なので**枠のタップは撮るのまま**にして、選ぶ道はその下に静かに置く。
+/// 撮る人は今までどおり、手元に無い人だけが1つ下を見る。
 class _PhotoSlot extends StatelessWidget {
   const _PhotoSlot({
     required this.label,
     required this.photo,
     required this.emptyLabel,
-    required this.onTap,
+    required this.onTake,
+    required this.onChoose,
   });
 
   final String label;
@@ -400,53 +470,104 @@ class _PhotoSlot extends StatelessWidget {
 
   /// まだ撮っていないときの操作名。撮ったあとは「撮り直す」に変わる。
   final String emptyLabel;
-  final VoidCallback onTap;
+  final VoidCallback onTake;
+
+  /// アルバムから選ぶ。**入っていても出す** — 撮り直すのと同じで、
+  /// 1枚目がぶれていたら選び直せる。
+  final VoidCallback onChoose;
 
   @override
   Widget build(BuildContext context) {
+    final AppStrings strings = AppStrings.of(context);
     final File? file = photo;
-    final String actionLabel = file == null ? emptyLabel : AppStrings.of(context).captureRetake;
+    final String actionLabel = file == null ? emptyLabel : strings.captureRetake;
 
-    return Semantics(
-      button: true,
-      label: '$label・$actionLabel',
-      child: GestureDetector(
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Text(label, style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: AppSpacing.xs),
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(AppRadius.card),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    border: Border.all(color: AppColors.border),
-                    borderRadius: BorderRadius.circular(AppRadius.card),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Text(label, style: Theme.of(context).textTheme.bodySmall),
+        const SizedBox(height: AppSpacing.xs),
+        Expanded(
+          child: Semantics(
+            button: true,
+            label: '$label・$actionLabel',
+            // ラベルに操作名が入っているので、中の文字は読み上げから外す。
+            // 外さないと「ノート・ノートを撮る、ノートを撮る」と2回言う。
+            excludeSemantics: true,
+            child: GestureDetector(
+              onTap: onTake,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(AppRadius.card),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: AppColors.surface,
+                          border: Border.all(color: AppColors.border),
+                          borderRadius: BorderRadius.circular(AppRadius.card),
+                        ),
+                        child: file == null
+                            ? const Center(
+                                child: Icon(
+                                  Icons.add_a_photo_outlined,
+                                  color: AppColors.inkMuted,
+                                ),
+                              )
+                            // 撮ったものが判別できればよいので、拡大せず全体を入れる。
+                            : Image.file(file, fit: BoxFit.cover),
+                      ),
+                    ),
                   ),
-                  child: file == null
-                      ? const Center(
-                          child: Icon(
-                            Icons.add_a_photo_outlined,
-                            color: AppColors.inkMuted,
-                          ),
-                        )
-                      // 撮ったものが判別できればよいので、拡大せず全体を入れる。
-                      : Image.file(file, fit: BoxFit.cover),
-                ),
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    actionLabel,
+                    textAlign: TextAlign.center,
+                    style:
+                        Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.blue),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              actionLabel,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.blue),
-            ),
-          ],
+          ),
         ),
-      ),
+        // **読み上げでは、どちらの枠かまで言う。** 画面では枠の中に居るので
+        // 「ノート」と分かるが、音では「アルバムから選ぶ」が2つ並ぶだけになる。
+        Semantics(
+          button: true,
+          label: '$label・${strings.capturePickFromLibrary}',
+          excludeSemantics: true,
+          child: GestureDetector(
+            onTap: onChoose,
+            // 文字の高さ(12pt)だけが的だと押せない。上下の余白まで的にする。
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  // 撮る操作と字面が似るので、絵で入口の違いを出す。
+                  const Icon(Icons.photo_library_outlined, size: 14, color: AppColors.blue),
+                  const SizedBox(width: AppSpacing.xs),
+                  // 枠は画面の半分しかない。文字が伸びる言語では折り返させる
+                  // (`Row` の直下に置くと、はみ出して縞模様になる)。
+                  Flexible(
+                    child: Text(
+                      strings.capturePickFromLibrary,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: AppColors.blue),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
