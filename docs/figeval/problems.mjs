@@ -186,8 +186,10 @@ export const PROBLEMS = [
       const want = [[2, -1], [1, 0], [3, 0]];
       const miss = want.filter(([x, y]) => !shown.some((s) => Math.abs(s.p.x - x) < 1e-6 && Math.abs(s.p.y - y) < 1e-6));
       if (miss.length) return { ok: false, why: `${miss.map((m) => `(${m})`).join(' ')} が出ていない` };
-      if (!ax.ticks || !ax.ticks.length) return { ok: false, why: '目盛りが入っていない' };
-      return { ok: true, why: `頂点(2,-1)・交点(1,0)(3,0)、目盛り ${ax.ticks.length} 個` };
+      // **目盛りは要求していない。**問題文は「座標がわかるように」なので、
+      // 3点に座標が出ていれば要件は満たしている。ここを必須にしていたのは私の採点が厳しすぎた。
+      const tick = ax.ticks?.length ? `、目盛り ${ax.ticks.length} 個` : '(目盛りなし)';
+      return { ok: true, why: `頂点(2,-1)・交点(1,0)(3,0)${tick}` };
     },
   },
   {

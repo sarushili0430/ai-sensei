@@ -82,7 +82,16 @@ export function solve(items) {
       return;
     }
     let p;
-    if (it.at) p = { x: it.at[0], y: it.at[1] };
+    // **「A から距離4、向き-30°」。**これが無いせいで、モデルは点を手で置いて
+    // 辺に "4" と書くしかなくなり、**実際の長さと合わないラベル**が出ていた
+    // (AB=6 と書いた辺より AC=4 と書いた辺のほうが長い図が出た)。
+    // 長さが決まっている図形は、長さで置かせる。
+    if (it.from && it.dist !== undefined) {
+      const o = P(it.from), a = (it.deg ?? 0) * Math.PI / 180;
+      if (!(it.dist > 0)) throw new Error(`距離が正でない: ${it.dist}`);
+      p = { x: o.x + it.dist * Math.cos(a), y: o.y + it.dist * Math.sin(a) };
+    }
+    else if (it.at) p = { x: it.at[0], y: it.at[1] };
     else if (it.onCircle && it.byLine) p = secondMeet(circles[it.onCircle], L(it.byLine), it.other ? P(it.other) : null);
     else if (it.along) { const ln = L(it.along); p = { x: ln.a.x + (ln.b.x - ln.a.x) * it.k, y: ln.a.y + (ln.b.y - ln.a.y) * it.k }; }
     else if (it.on && it.ratio) {
@@ -159,7 +168,21 @@ export function solve(items) {
         const base = L(it.parallel), q = P(it.through);
         lines[it.line] = { a: q, b: { x: q.x + base.b.x - base.a.x, y: q.y + base.b.y - base.a.y } };
       } else throw new Error('直線の作り方が指定されていない: ' + it.line);
-    } else if (it.seg) draws.push({ t: 'seg', a: P(it.seg[0]), b: P(it.seg[1]), names: it.seg, dash: !!it.dash, label: it.label, as: it.as });
+    } else if (it.seg) {
+      const sa = P(it.seg[0]), sb = P(it.seg[1]), len = Math.hypot(sa.x - sb.x, sa.y - sb.y);
+      // **数字のラベルは、実際の長さと合っていなければ通さない。**
+      // 合わないと「絵は自然、中身は嘘」になる(AB=6 と書いた辺より
+      // AC=4 と書いた辺のほうが長い図が、実際に出た)。
+      const num = typeof it.label === 'string' ? Number(it.label.replace(/[^0-9.]/g, '')) : NaN;
+      if (isFinite(num) && num > 0 && Math.abs(len - num) / num > 0.02) {
+        throw new Error(`${it.seg.join('')} のラベル "${it.label}" と実際の長さ ${len.toFixed(2)} が合わない`);
+      }
+      draws.push({
+        t: 'seg', a: sa, b: sb, names: it.seg, dash: !!it.dash, as: it.as,
+        label: it.showLength ? fmt(len) : it.label,       // showLength ならこちらが書く
+        length: len, part: it.part,
+      });
+    }
     else if (it.poly) draws.push({ t: 'poly', ps: it.poly.map(P), names: it.poly, fill: !!it.fill, as: it.as });
     else if (it.ellipse) draws.push({ t: 'ellipse', c: P(it.center), rx: it.rx, ry: it.ry, as: it.as, dash: !!it.dash });
     // **キーの有無で枝を選ぶと、`{"axes":0}` のような「偽になる正しい値」を取りこぼす。**
@@ -486,6 +509,21 @@ export function solve(items) {
     } else if (it.arc) draws.push({ t: 'arc', a: P(it.arc[0]), o: P(it.arc[1]), b: P(it.arc[2]), names: it.arc, label: it.label });
     else if (it.right) draws.push({ t: 'right', a: P(it.right[0]), o: P(it.right[1]), b: P(it.right[2]), names: it.right });
     else throw new Error('知らないキー: ' + JSON.stringify(Object.keys(it)));
+  }
+
+  // **比のラベル(`part`)は、実際の長さの比と合っていなければ通さない。**
+  // 「BD:DC = 3:2」を長さラベルで書くと必ず食い違う(3 は長さではない)ので、
+  // 比は比として書かせ、比として検算する。
+  const parts = draws.filter((d) => d.t === 'seg' && d.part !== undefined);
+  for (let i = 0; i < parts.length; i++) {
+    for (let j = i + 1; j < parts.length; j++) {
+      const [u, v] = [parts[i], parts[j]];
+      const want = Number(u.part) / Number(v.part), got = u.length / v.length;
+      if (!isFinite(want) || want <= 0) throw new Error(`比が数でない: ${u.part}`);
+      if (Math.abs(got - want) / want > 0.02) {
+        throw new Error(`${u.names.join('')}:${v.names.join('')} を ${u.part}:${v.part} と書いたが、実際は ${got.toFixed(3)}:1`);
+      }
+    }
   }
   return { draws, pts, circles, curves, lines };
 }
