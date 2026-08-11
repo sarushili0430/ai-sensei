@@ -16,6 +16,9 @@ import {
   createSessionResponseSchema,
   karteDraftSchema,
   karteSchema,
+  parentReportQuoteMaxCount,
+  parentReportQuoteMaxLength,
+  parentReportResponseSchema,
   planDayMinutesMax,
   planDaysMaxCount,
   planTurnSchema,
@@ -48,11 +51,78 @@ describe("fixture", () => {
     expect(fixtureFileNames).toContain("create-session-response.en");
     expect(fixtureFileNames).toContain("board-lesson.en");
     expect(fixtureFileNames).toContain("study-plan.en");
+    expect(fixtureFileNames).toContain("parent-report");
+    expect(fixtureFileNames).toContain("parent-report.en");
   });
 
   it("fixturePath がリポジトリ相対パスを返す", () => {
     expect(fixturePath("karte")).toBe("packages/contract/fixtures/karte.json");
     expect(() => readFileSync(resolve(repoRoot, fixturePath("karte")))).not.toThrow();
+  });
+});
+
+describe("親レポートのスキーマ", () => {
+  function response() {
+    return JSON.parse(JSON.stringify(loadFixture("parent-report"))) as {
+      requires_premium: boolean;
+      report: Record<string, unknown> | null;
+    };
+  }
+
+  /**
+   * 禁止したい概念を「画面で出さない」だけにすると、APIには残り、あとから一行で復活する。
+   * 契約が strict で拒否するところまでを、この一覧で固定する。
+   */
+  it("正答率・理解度スコア・偏差値・学習時間ランキング・他ユーザー比較を受け付けない", () => {
+    for (const extra of [
+      { accuracy: 0.82 },
+      { understanding_score: 73 },
+      { deviation_score: 58 },
+      { study_time_rank: 4 },
+      { percentile: 91 },
+    ]) {
+      const broken = response();
+      broken.report = { ...broken.report, ...extra };
+      expect(parentReportResponseSchema.safeParse(broken).success).toBe(false);
+    }
+  });
+
+  it("数値として持つのは埋めた穴と連続日数だけ", () => {
+    const report = response().report;
+    expect(report && Object.keys(report).sort()).toEqual([
+      "explained_topics",
+      "filled_holes",
+      "period",
+      "quotes",
+      "streak_days",
+    ]);
+  });
+
+  it("本人の引用は件数と文字数の両方を制限する", () => {
+    const tooMany = response();
+    if (tooMany.report) {
+      tooMany.report["quotes"] = Array.from(
+        { length: parentReportQuoteMaxCount + 1 },
+        (_, index) => `本人の説明 ${index}`,
+      );
+    }
+    expect(parentReportResponseSchema.safeParse(tooMany).success).toBe(false);
+
+    const tooLong = response();
+    if (tooLong.report) {
+      tooLong.report["quotes"] = ["あ".repeat(parentReportQuoteMaxLength + 1)];
+    }
+    expect(parentReportResponseSchema.safeParse(tooLong).success).toBe(false);
+  });
+
+  it("無料ユーザーは200で返せるが、ロック中の本文は持てない", () => {
+    expect(
+      parentReportResponseSchema.safeParse({ requires_premium: true, report: null }).success,
+    ).toBe(true);
+
+    const leaked = response();
+    leaked.requires_premium = true;
+    expect(parentReportResponseSchema.safeParse(leaked).success).toBe(false);
   });
 });
 

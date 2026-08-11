@@ -1,0 +1,25 @@
+{
+  "requires_premium": false,
+  "report": {
+    "period": {
+      "start_date": "2026-08-01",
+      "end_date": "2026-08-11"
+    },
+    "filled_holes": 2,
+    "streak_days": 4,
+    "explained_topics": [
+      {
+        "topic_id": "A1-QUAD-SOLVE",
+        "name": "The quadratic formula and the discriminant"
+      },
+      {
+        "topic_id": "A2-COORD-CIRCLE",
+        "name": "Circles in the coordinate plane"
+      }
+    ],
+    "quotes": [
+      "The discriminant tells us how many real solutions the equation has",
+      "Comparing the distance from the centre to the line with the radius tells us how many intersections there are"
+    ]
+  }
+}

@@ -160,6 +160,8 @@ class _TopRow extends StatelessWidget {
                   value: progress.filledHoles,
                   label: strings.filledHoles(progress.filledHoles),
                   color: AppColors.blue,
+                  tooltip: strings.parentReportOpen,
+                  onTap: () => context.push(AppRoute.parentReport.path),
                 ),
               ],
             ),
@@ -312,28 +314,48 @@ class _EnoughForTodayLine extends StatelessWidget {
 }
 
 class _Counter extends StatelessWidget {
-  const _Counter({required this.value, required this.label, required this.color});
+  const _Counter({
+    required this.value,
+    required this.label,
+    required this.color,
+    this.tooltip,
+    this.onTap,
+  });
 
   final int value;
   final String label;
   final Color color;
+  final String? tooltip;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
+    final Widget counter = Semantics(
       label: label,
-      child: Row(
-        children: <Widget>[
-          // 数えているのはこの2つだけ(連続日数と埋めた穴)。
-          // 増えたことが見えるように、0から数え上げる。
-          CountUpText(
-            value,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(color: color),
-          ),
-          const SizedBox(width: AppSpacing.xs),
-          Text(label, style: Theme.of(context).textTheme.bodySmall),
-        ],
+      button: onTap != null,
+      child: GestureDetector(
+        key: onTap == null ? null : const ValueKey<String>('parent-report-link'),
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Row(
+          children: <Widget>[
+            // 数えているのはこの2つだけ(連続日数と埋めた穴)。
+            // 増えたことが見えるように、0から数え上げる。
+            CountUpText(
+              value,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(color: color),
+            ),
+            const SizedBox(width: AppSpacing.xs),
+            Text(label, style: Theme.of(context).textTheme.bodySmall),
+          ],
+        ),
       ),
     );
+
+    // ホームへ新しいカードを足すと、狭い端末で授業・自習室の操作を下へ押し出す。
+    // すでにレポートの中心指標である「埋めた穴」を入口にし、見た目の第三カウンターは
+    // 作らない。Tooltipとbutton semanticsで、長押し・読み上げでは行き先も伝える。
+    final String? message = tooltip;
+    return message == null ? counter : Tooltip(message: message, child: counter);
   }
 }

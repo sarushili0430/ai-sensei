@@ -747,6 +747,50 @@ class AppStrings {
   String get studyRoomNudgeBreak => _pick('そろそろ休憩する?', 'Want to take a break?');
   String get studyRoomNudgeLong =>
       _pick('けっこう集中してるね。ひと息ついてきな', "You've been at this a while — go stretch");
+
+  // --- 親レポート(§5-1・§5-2)---
+  //
+  // 親へ届く文章なので、アプリ内だけの短いラベルよりも意味を省略しない。
+  // 数字は「埋めた穴」と「連続日数」だけ。正答率・点数・順位に読める語を置かない。
+  String get parentReportTitle => _pick('今月のレポート', 'This month\'s report');
+  String get parentReportOpen =>
+      _pick('今月の親レポートをひらく', 'Open this month\'s parent report');
+  String parentReportPeriod(String start, String end) => _pick('$start〜$end', '$start – $end');
+  String parentReportFilledLine(int count) =>
+      _pick('今月、埋めた穴: $count', 'Gaps filled this month: $count');
+  String parentReportStreakLine(int days) =>
+      _pick('連続日数: $days日', 'Current streak: $days days');
+  String get parentReportTopicsTitle =>
+      _pick('説明できるようになった単元', 'Topics they can now explain');
+  String get parentReportTopicsEmpty =>
+      _pick('今月は、ここに載る単元がまだありません', 'No topics to list here yet this month');
+  String get parentReportQuotesTitle => _pick('本人の言葉', 'In their own words');
+  String get parentReportQuotesEmpty =>
+      _pick('今月は、ここに載る説明がまだありません', 'No explanation to quote here yet this month');
+  String parentReportQuote(String quote) => _pick('「$quote」', '“$quote”');
+
+  /// ペイウォールの据え置き文言をそのまま埋め込む。
+  /// 価格を2か所に直書きすると、商品を変えた日に親へ古い額を送るため。
+  String get parentReportPriceNote => _pick(
+        'この先も続ける場合の料金は、$paywallPriceです。',
+        'The current price to keep going is $paywallPrice.',
+      );
+
+  String get parentReportPreviewNote => _pick(
+        '下に見えている本文が、そのままメールに入ります。引用も含めて、送る前に確認してください。',
+        'The text below goes into the email exactly as shown. Review every quote before sharing.',
+      );
+  String get parentReportSendEmail => _pick('メールで親に送る', 'Email this to a parent');
+  String get parentReportDraftNote => _pick(
+        'メールの下書きを開くだけです。宛先と送信は、メールアプリで決められます。',
+        'This only opens a draft. You choose the recipient and send it from your mail app.',
+      );
+  String get parentReportMailSubject =>
+      _pick('カタルテ 今月のレポート', 'Katarute — this month\'s report');
+  String get parentReportLocked => _pick(
+        '親レポートは、まだ開いていません。Premiumになると、今月の記録を見てから親に送れます。',
+        'The parent report is not open yet. Premium lets you review this month\'s record before emailing it.',
+      );
 }
 
 class AppStringsDelegate extends LocalizationsDelegate<AppStrings> {

@@ -21,7 +21,10 @@ enum AppRoute {
   review('/review'),
   paywall('/paywall'),
   thanks('/thanks'),
-  settings('/settings');
+  settings('/settings'),
+
+  /// 親レポート(計画書§5-1)。内容を確認してから共有する、戻れる寄り道。
+  parentReport('/parent-report');
 
   const AppRoute(this.path);
 

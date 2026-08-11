@@ -144,6 +144,20 @@ export class MemoryRepository implements Repository {
     return karte ? this.getKarte(karte.id) : null;
   }
 
+  async listKartesOnLocalDates(input: {
+    deviceId: string;
+    fromDate: string;
+    toDate: string;
+  }): Promise<KarteRecord[]> {
+    return [...this.kartes.values()]
+      .filter((karte) => {
+        if (karte.device_id !== input.deviceId) return false;
+        const localDate = this.sessions.get(karte.session_id)?.local_date;
+        return localDate !== undefined && localDate >= input.fromDate && localDate <= input.toDate;
+      })
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }
+
   async listHoles(deviceId: string): Promise<HoleRecord[]> {
     return [...this.holes.values()]
       .filter((hole) => hole.device_id === deviceId)

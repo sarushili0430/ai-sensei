@@ -7,6 +7,8 @@ import 'package:ai_sensei/src/features/karte/presentation/review_screen.dart';
 import 'package:ai_sensei/src/features/monetization/presentation/paywall_screen.dart';
 import 'package:ai_sensei/src/features/monetization/presentation/thanks_screen.dart';
 import 'package:ai_sensei/src/features/onboarding/presentation/onboarding_screen.dart';
+import 'package:ai_sensei/src/features/parent_report/application/parent_report_controller.dart';
+import 'package:ai_sensei/src/features/parent_report/presentation/parent_report_screen.dart';
 import 'package:ai_sensei/src/features/settings/presentation/settings_screen.dart';
 import 'package:ai_sensei/src/l10n/strings.dart';
 import 'package:ai_sensei/src/routing/app_router.dart';
@@ -38,6 +40,9 @@ void main() {
       progressControllerProvider.overrideWith(FakeProgressController.new),
       reviewControllerProvider.overrideWith(
         () => FakeReviewController(queue ?? const ReviewQueue(items: [], requiresPremium: false)),
+      ),
+      parentReportControllerProvider.overrideWith(
+        () => FakeParentReportController(sampleParentReportResponse),
       ),
       if (karte != null)
         latestKarteControllerProvider.overrideWith(() => FakeLatestKarteController(karte)),
@@ -75,6 +80,21 @@ void main() {
     expect(find.byType(SettingsScreen), findsOneWidget);
 
     expect(router.canPop(), isTrue, reason: '設定は寄り道なので、戻れなければならない');
+    router.pop();
+    await tester.pumpAndSettle();
+    expect(find.byType(HomeScreen), findsOneWidget);
+  });
+
+  testWidgets('ホーム → 親レポート は戻れる', (WidgetTester tester) async {
+    final GoRouter router = await pumpRouter(tester, overrides: bootOverrides());
+
+    // 穴の数は既存の進捗表示なので、課金の広告をホームへ増やさずに
+    // 「今月できるようになったこと」の詳細へ自然につなげられる。
+    await tester.tap(find.byKey(const ValueKey<String>('parent-report-link')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ParentReportScreen), findsOneWidget);
+
+    expect(router.canPop(), isTrue, reason: '親レポートは共有前に閉じて戻れなければならない');
     router.pop();
     await tester.pumpAndSettle();
     expect(find.byType(HomeScreen), findsOneWidget);

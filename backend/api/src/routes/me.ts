@@ -1,7 +1,23 @@
-import type { ProgressResponse, ReviewQueueResponse } from "@ai-sensei/contract";
-import { filledHolesLimit } from "@ai-sensei/contract";
+import type {
+  ParentReportResponse,
+  ProgressResponse,
+  ReviewQueueResponse,
+} from "@ai-sensei/contract";
+import {
+  filledHolesLimit,
+  parentReportQuoteMaxCount,
+  parentReportQuoteMaxLength,
+  parentReportTopicMaxCount,
+} from "@ai-sensei/contract";
 import { localeOfTopicId } from "@ai-sensei/curriculum";
-import { buildReviewPrompt, computeProgress, daysBetween, toLocalDate } from "@ai-sensei/guardrail";
+import {
+  buildReviewPrompt,
+  computeParentReport,
+  computeProgress,
+  currentMonthPeriod,
+  daysBetween,
+  toLocalDate,
+} from "@ai-sensei/guardrail";
 import { Hono } from "hono";
 import type { AppEnv } from "../env.ts";
 import { readLimits } from "../env.ts";
@@ -97,6 +113,53 @@ meRoute.get("/reviews", async (c) => {
     .slice(0, filledHolesLimit);
 
   const response: ReviewQueueResponse = { items, filled, requires_premium: false };
+  return c.json(response);
+});
+
+/**
+ * GET /v1/me/parent-report — 今月のカルテを、親へ見せられる形にする。
+ *
+ * 親レポートはPremiumだが、無料ユーザーを402にはしない。復習と同じく
+ * 「まだ開いていない」状態を200で返すと、アプリは失敗画面ではなく
+ * 課金導線として扱える。ロック中は本文を返さず、契約の判別共用体でも漏れを防ぐ。
+ */
+meRoute.get("/parent-report", async (c) => {
+  const { repository, now } = c.get("services");
+  const at = now();
+  const deviceId = c.get("deviceId");
+
+  const user = await repository.ensureUser(deviceId, at);
+  if (!isPremiumNow(user, at)) {
+    const locked: ParentReportResponse = { requires_premium: true, report: null };
+    return c.json(locked);
+  }
+
+  const today = toLocalDate(at);
+  const period = currentMonthPeriod(today);
+  const [sessionDates, holes, kartes] = await Promise.all([
+    repository.sessionDates(deviceId),
+    repository.listHoles(deviceId),
+    repository.listKartesOnLocalDates({
+      deviceId,
+      fromDate: period.start_date,
+      toDate: period.end_date,
+    }),
+  ]);
+
+  const response: ParentReportResponse = {
+    requires_premium: false,
+    report: computeParentReport({
+      today,
+      sessionDates,
+      holes,
+      kartes,
+      limits: {
+        quoteCount: parentReportQuoteMaxCount,
+        quoteLength: parentReportQuoteMaxLength,
+        topicCount: parentReportTopicMaxCount,
+      },
+    }),
+  };
   return c.json(response);
 });
 

@@ -258,6 +258,37 @@ export class D1Repository implements Repository {
     return row ? this.getKarte(row.id) : null;
   }
 
+  async listKartesOnLocalDates(input: {
+    deviceId: string;
+    fromDate: string;
+    toDate: string;
+  }): Promise<KarteRecord[]> {
+    /**
+     * 月の境界は sessions.local_date を正にする。kartes.created_at はUTCなので、
+     * それだけで `2026-08-01` を比較するとJSTの月初9時間を前月へ落としてしまう。
+     * セッションは主キーで結合でき、期間条件は既存の
+     * `idx_sessions_device_date` に乗るので、新しいテーブルもマイグレーションも要らない。
+     */
+    const result = await this.db
+      .prepare(
+        `SELECT kartes.* FROM kartes
+          INNER JOIN sessions ON sessions.id = kartes.session_id
+          WHERE sessions.device_id = ?
+            AND kartes.device_id = ?
+            AND sessions.local_date >= ?
+            AND sessions.local_date <= ?
+          ORDER BY kartes.created_at DESC`,
+      )
+      .bind(input.deviceId, input.deviceId, input.fromDate, input.toDate)
+      .all<KarteRow>();
+    return result.results.map((row) => ({
+      ...row,
+      topic_ids: parseJsonArray(row.topic_ids),
+      said_well: parseJsonArray(row.said_well),
+      term_notes: parseJsonArray(row.term_notes),
+    }));
+  }
+
   async listHoles(deviceId: string): Promise<HoleRecord[]> {
     const result = await this.db
       .prepare("SELECT * FROM holes WHERE device_id = ? ORDER BY created_at")

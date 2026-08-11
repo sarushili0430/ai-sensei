@@ -12,6 +12,7 @@ import '../features/monetization/application/entitlement_controller.dart';
 import '../features/monetization/presentation/paywall_screen.dart';
 import '../features/monetization/presentation/thanks_screen.dart';
 import '../features/onboarding/presentation/onboarding_screen.dart';
+import '../features/parent_report/presentation/parent_report_screen.dart';
 import '../features/session/presentation/celebration_screen.dart';
 import '../features/session/presentation/session_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
@@ -89,6 +90,10 @@ GoRouter appRouter(Ref ref) {
           GoRoute(
             path: AppRoute.settings.segment,
             builder: (_, _) => const SettingsScreen(),
+          ),
+          GoRoute(
+            path: AppRoute.parentReport.segment,
+            builder: (_, _) => const ParentReportScreen(),
           ),
         ],
       ),
