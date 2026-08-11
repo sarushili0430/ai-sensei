@@ -1794,6 +1794,77 @@
     </div>
   </div>
 
+  <!-- ---- D-13c JSXGraphを載せる ---- -->
+  <div class="panel">
+    <h2>D-13c. JSXGraph をアプリに載せる — 却下が雑だった。3案で比べ直す</h2>
+    <p class="lede">
+      「WebViewは重い」で流したが、条件を確かめたら<b>そこまで悪くない</b>。
+      とくに<span class="keep">読み上げは問題にならない</span> — 作図の手順はこちら側が持っているので、
+      <code>Semantics</code> に自前の文言を載せればいい。<b>前に挙げた懸念のうち1つは私の間違い。</b>
+      一方で、調べて分かった<b>効きそうな事実が2つ</b>あった。
+    </p>
+    <div class="opts" style="margin-bottom:20px">
+      <div class="opt">
+        <h3><span class="tag new">事実</span>板書はもともとサーバ発</h3>
+        <p class="why">図を作るのは agent(Node/TypeScript)。<b>JSXGraph と同じ言語</b>で、
+          端末を待たずに走らせられる。</p>
+      </div>
+      <div class="opt">
+        <h3><span class="tag new">事実</span>配送はすでにテキスト</h3>
+        <p class="why">板書は LiveKit の Text Streams API で流れている。
+          <b>SVG はテキストなので、いまの経路にそのまま乗る</b>。新しい通信は要らない。</p>
+      </div>
+    </div>
+
+    <table>
+      <thead><tr><th style="width:20%">案</th><th style="width:32%">良いところ</th><th>引き受けるもの</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>A. WebViewで<br>アプリに載せる</b><br><span class="small">提案どおり</span></td>
+          <td><b>solverを書かなくていい。</b>JSXGraphは<b>増分で足すのが得意</b>
+            (<code>board.create()</code>を呼ぶだけ)なので、
+            <span class="keep">「図が育つ」設計にそのまま合う</span>。
+            JSを同梱すればオフラインでも動く。色も線種も指定できるのでチョーク表現も可</td>
+          <td><span class="care">板書は <code>SingleChildScrollView</code> の中</span> —
+            スクロールの中のplatform viewは合成とタッチが噛みやすい(<b>最大のリスク・要実測</b>)。
+            <span class="care">ゴールデンテストが効かなくなる</span>
+            (<code>session_board_test.dart</code> の見張りを失う)。
+            メモリは1問1つなので許容。ライセンス要確認</td>
+        </tr>
+        <tr>
+          <td><b>B. サーバで走らせて<br>SVGを送る</b><br><span class="stat done">推し</span></td>
+          <td><b>solverもWebViewも要らない。</b>Flutter側は SVG を描くだけ。
+            <span class="keep">ゴールデンテストが効く</span>(SVGは決定的)。
+            読み上げ文もサーバが一緒に送れる。
+            <b>ストア掲載画像やLPにも同じSVGが使える</b></td>
+          <td>agent に JSXGraph を走らせる土台が要る(DOMの代替)。
+            1手順ごとに全体を描き直して送る(数KBなので実害は小さい)。
+            <span class="care">端末側で幅に合わせて組み直せない</span>(SVGは伸縮するので影響は限定的)</td>
+        </tr>
+        <tr>
+          <td><b>C. Dartで自前</b><br><span class="small">いま試している形</span></td>
+          <td>全部こちらの制御下。依存が増えない。テストも効く</td>
+          <td><span class="care">solverを書き続けることになる。</span>
+            <b>この会話で分かったとおり、必要な語彙は問題を見るたびに増える</b></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p class="foot-note">
+      <b>順番の提案: A で確かめて、B で出す。</b>
+      A は<b>いちばん速く試せる</b>ので、まず「JSXGraph でうちの図が全部描けるか」を
+      WebViewで確認する(この会話で出た18枚を流し込むだけ)。
+      <span class="keep">描けると分かったら、同じ作図コードをサーバへ移して B にする</span> —
+      A で書いたJSがそのまま資産になるので、捨てる作業がない。
+      <b>C は、A も B も不発だったときの退路</b>として置いておく。
+    </p>
+    <p class="foot-note">
+      <span class="care">なお、いま <code>webview</code> も <code>flutter_svg</code> も入っていない</span>
+      (<code>pubspec.yaml</code>)。どちらの案でも依存が1つ増える。
+      <b>増えるのが1つだけなのは B のほう</b>(SVGだけ)で、A は WebView と JS の同梱の両方になる。
+    </p>
+  </div>
+
   <!-- ---- D-14 色分け ---- -->
   <div class="panel">
     <h2>D-14. 線の色分け — 生の色ではなく「役割」で書かせる</h2>
