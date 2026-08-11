@@ -1238,15 +1238,19 @@
 
     <h2 style="font-size:14px;margin-top:22px">この場で解いて描いたもの(下の図は、上のJSONから計算した結果)</h2>
     <p class="lede" style="margin-bottom:0">
-      いずれも<b>点の座標は1つも書いていない</b>。書いてあるのは「円の上の何度」「中点」「重心」だけで、
-      位置はこのページのスクリプトが計算している。実装でも同じことを Dart 側でやる。
+      いずれも<b>点の座標はほとんど書いていない</b>。書いてあるのは「円の上の何度」「中点」「重心」
+      「2円の交点」「垂線」だけで、位置はこのページのスクリプトが計算している。
+      <b>後半3枚は実際の入試問題の図</b>で、実装でも同じことを Dart 側でやる。
     </p>
     <div class="demos" id="figure-demos"></div>
 
     <p class="foot-note">
-      <b>3つ目に注目してほしい。</b>3本の中線が1点で交わっているのは、偶然でも目分量でもなく
-      <code>centroid</code> が計算した点だから。<span class="care">生の座標をLLMに書かせていたら、
-      ここは必ずズレる</span> — そして<b>ズレた重心は、重心を教える図として最悪</b>。
+      <b>3枚目と5枚目が要点。</b>3本の中線が1点で交わるのは目分量ではなく <code>centroid</code> が
+      計算した点だから。5枚目の <b>AD ∥ BC はどこにも指定していない</b>のに、
+      出来上がった図では向きの差が <b>0.000°</b> —
+      <b>証明すべき結論が、作図の結果として勝手に現れている</b>。
+      <span class="keep">これは正しく作図できていることの、いちばん強い証拠</span>でもある
+      (<span class="care">生の座標をLLMに書かせていたら、ここは必ずズレる</span>)。
     </p>
   </div>
 
@@ -1488,6 +1492,199 @@
     </p>
   </div>
 
+  <!-- ---- D-10 組み合わせ爆発 ---- -->
+  <div class="panel">
+    <h2>D-10. 組み合わせは無限 — だからカタログの中身は「絵」ではなく「型」にする</h2>
+    <p class="lede">
+      問題が複雑になれば配置の組み合わせは無限に出る。<b>その通りで、これがカタログの設計を決める。</b>
+      絵を並べたカタログは、この時点で負ける — <span class="care">枚数がいくらあっても、次の問題の配置がそこに無い</span>。
+      なので<b>カタログに入れるのは1枚の絵ではなく、スロットの空いた作図の型</b>にする。
+    </p>
+
+    <div class="opts">
+      <div class="opt">
+        <h3><span class="tag ux">負ける</span>絵のカタログ</h3>
+        <p class="why">
+          <code>en-shuhenkaku-01.png</code> のような<b>完成した絵</b>を並べる。
+        </p>
+        <div class="mini"><p class="small" style="color:var(--ink)">
+          配置が1つ違えば別の絵が要る → <span class="care">枚数が配置の数だけ要る = 無限</span>。
+          人のレビューも1枚ずつ必要。<b>「過不足なく」が原理的に決まらない。</b>
+        </p></div>
+      </div>
+      <div class="opt pick">
+        <h3><span class="tag new">勝てる</span>型のカタログ</h3>
+        <p class="why">
+          <b>作図の手順を、数値だけ空けた状態で置く。</b>絵ではなくD-6のスクリプト。
+        </p>
+        <div class="mini"><p class="small" style="color:var(--ink)">
+          <b>型の数は定理の数だけ = 有限。</b>配置の無限はスロットが吸収する。
+          <span class="keep">人のレビューは型に1回で済む</span> —
+          構成で正しさが決まるので、<b>どの数値を入れても正しい</b>。
+        </p></div>
+      </div>
+    </div>
+
+    <pre class="schema" style="margin-top:18px">figures/<b>en-shuhenkaku</b>.json        <i>// 円周角の定理。1つの型が、配置の無限をぜんぶ受ける</i>
+{
+  <b>topic_ids</b>: ["MA-ZUKEI-EN"],   <i>// 索引は既存の許可リストと同じ topic_id</i>
+  <b>slots</b>: { a: 205, b: 335, p: 75 },   <i>// ← ここだけ先輩が決める(既定値つき)</i>
+  <b>alt</b>: "円Oの上に点A、B、P。∠APB と中心角∠AOB",  <i>// 読み上げは人が書く</i>
+  <b>items</b>: [
+    { pt: "O", at: [0,0] }, { circle: "C", center: "O", r: 5 },
+    { pt: "A", on: "C", deg: <b>$a</b> }, { pt: "B", on: "C", deg: <b>$b</b> },
+    { pt: "P", on: "C", deg: <b>$p</b> },
+    { seg: ["P","A"] }, { seg: ["P","B"] }, { arc: ["A","P","B"], label: "θ" }
+  ]
+}
+
+<i>// 授業中に先輩が書くのは、これだけ。図そのものは書かない</i>
+{ "kind": "figure_ref", "id": "<b>en-shuhenkaku</b>", "slots": { "p": 110 } }</pre>
+
+    <p class="foot-note" style="margin-bottom:22px">
+      <b>これで「過不足なく」が機械で決まる。</b>
+      <b>不足</b>= 許可リストにある <code>topic_id</code> のうち、図が要るのに型が1つも無いもの。
+      <b>過剰</b>= どの <code>topic_id</code> にも紐づかない型。
+      どちらも <code>packages/curriculum</code> の <code>topic_ids</code> と突き合わせれば
+      <span class="keep">テストで検出できる</span>(<code>topic-guard.ts</code> や
+      <code>checkIntegrity</code> と同じやり方)。
+    </p>
+
+    <h2 style="font-size:14px">では、型はいくつ要るのか</h2>
+    <p class="lede">図が効く30単元に必要な型を数えると、<b>おおよそ50前後</b>。無限ではなく、数え切れる。</p>
+    <table>
+      <thead><tr><th style="width:13%">課程</th><th style="width:10%">型の数</th><th>中身</th></tr></thead>
+      <tbody>
+        <tr><td>数学I</td><td><b>10</b></td>
+          <td>放物線(平方完成)/ 定義域つき放物線 / 判別式3態 / 二次不等式の解の範囲 /
+            直角三角形の三角比 / 単位円と動径 / 正弦定理(外接円つき)/ 余弦定理 / 三角形の面積 /
+            <span class="small">+ 箱ひげ図・散布図は<b>グラフ系で別扱い</b></span></td></tr>
+        <tr><td>数学A</td><td><b>11</b></td>
+          <td>五心5つ(重心・内心・外心・垂心・傍心)/ 円周角 / 接弦定理 / 円に内接する四角形 /
+            方べき(内部)/ 方べき(外部)/ 円の接線</td></tr>
+        <tr><td>数学II</td><td><b>13</b></td>
+          <td>点と直線の距離 / 円と直線の位置関係3態 / 領域(直線)/ 領域(円)/
+            指数・対数のグラフ / 三角関数のグラフ / 単位円で解を読む / 加法定理 /
+            接線と接点 / 増減表と曲線 / 面積(x軸と)/ 面積(2曲線)</td></tr>
+        <tr><td>数学B</td><td><b>2</b></td><td>二項分布の棒 / 正規分布と確率の面積</td></tr>
+        <tr><td>数学III</td><td><b>5</b></td>
+          <td>漸近線つきグラフ / 凹凸と変曲点 / 区分求積の短冊 / 回転体 <span class="small">(空間)</span> / 極限の挙動</td></tr>
+        <tr><td>数学C</td><td><b>9</b></td>
+          <td>ベクトルの和・差 / 内積の射影 / 位置ベクトルと内分点 / 空間ベクトル(直方体)<span class="small">(空間)</span> /
+            複素数平面と極形式 / 楕円 / 双曲線 / 放物線(2次曲線)/ 媒介変数</td></tr>
+        <tr><td><b>合計</b></td><td><b>50</b></td>
+          <td>うち<span class="care">空間は2つだけ</span>(回転体・直方体)。
+            <b>ここだけは型にできない</b>ので、D-8の絵のカタログで持つ</td></tr>
+      </tbody>
+    </table>
+
+    <p class="foot-note">
+      <b>結果として、方針が1つ変わる。</b>D-8では「カタログ = 画像生成が効く場所」と書いたが、
+      <span class="care">組み合わせの話を通すと、平面図形のカタログは画像で作ってはいけない</span> —
+      配置ごとに1枚要る絵は、この無限に負ける。<b>平面は型(作図)のカタログ、空間だけ絵のカタログ</b>。
+      そして型のカタログを作るということは、<b>D-6のsolverを先に書くということ</b>でもある
+      (型を解く仕組みがsolverそのものなので)。<b>順番は「プロンプト → solver + 型50個 → 空間の絵」</b>に変わる。
+    </p>
+  </div>
+
+  <!-- ---- D-11 型でも届かない問題 ---- -->
+  <div class="panel">
+    <h2>D-11. 型ですら届かない問題 — そこで効くのは語彙のほう</h2>
+    <p class="lede">
+      チェバの定理の練習問題(三角形と3本のチェバ線)は<b>定番の配置</b>なので型で書ける。
+      けれど<b>その次に来る入試問題は、型に無い</b>。
+      たとえば「AD と BE が F で<b>垂直に</b>交わる。BD:DC = 3:2」という配置は、
+      <span class="care">どの定理の標準図でもない</span> — その問題のためだけの配置で、
+      当然そんな型は用意できない。
+    </p>
+    <p class="lede">
+      <b>ここが分岐点だった。</b>この配置は<b>型では書けないが、作図でなら書ける</b> —
+      上の4枚目がそれで、実際に灘中の問題の図をこのページで組み立てている。
+      効いているのは型の数ではなく、<b>部品の語彙</b>のほう:
+    </p>
+    <ul class="limits" style="margin-bottom:18px">
+      <li><span class="n">1</span><span><b>内分点</b> — 「BD:DC = 3:2」が <code>{ on:["B","C"], ratio:[3,2] }</code> とそのまま書ける</span></li>
+      <li><span class="n">2</span><span><b>垂線</b> — 「BE は AD に垂直」が、<b>条件ではなく作り方</b>として書ける</span></li>
+      <li><span class="n">3</span><span><b>交点</b> — E も F も、座標ではなく「どの2本の交わり」かで決まる</span></li>
+    </ul>
+
+    <p class="lede">
+      つまり<b>3段になっていて、下ほど強い</b>。カタログは中段のショートカットにすぎず、
+      <span class="care">solverの代わりにはならない</span>。
+    </p>
+    <table>
+      <thead><tr><th style="width:16%">段</th><th style="width:26%">覆える範囲</th><th>限界</th></tr></thead>
+      <tbody>
+        <tr><td><b>絵</b><br><span class="small">1枚の画像</span></td>
+          <td>その配置ちょうど1つ</td>
+          <td><span class="care">配置が1つ違えば別の絵が要る。</span>入試問題には原理的に追いつかない</td></tr>
+        <tr><td><b>型</b><br><span class="small">スロット付きの作図</span></td>
+          <td>定理の標準図(約50)。数値が変わっても同じ図でいい場面</td>
+          <td><span class="care">「その問題のための配置」には型が無い。</span>チェバの練習問題までは届き、灘中の問題には届かない</td></tr>
+        <tr><td><b>作図</b><br><span class="small">部品を自由に組む</span></td>
+          <td><b>作図の手順に書き下せるものすべて。</b>灘中の図もここ</td>
+          <td>手順に書けない配置は残る(条件を<b>同時に</b>満たす形を探すタイプ)。ただし<b>入試問題の多くは作図の手順に書ける</b></td></tr>
+      </tbody>
+    </table>
+
+    <p class="lede" style="margin-top:20px">
+      <b>残る本当のリスクは、語彙ではなく「順序を思いつけるか」。</b>
+      灘中の図を描くには、先輩が<b>「E は、B を通り AD に垂直な直線と AC の交点」だと気づく</b>必要がある。
+      これは書き写しではなく<b>幾何の読み替え</b>で、間違えれば図も間違う。
+      <span class="care">ここだけは、スキーマでは守れない。</span>
+    </p>
+    <p class="foot-note">
+      <b>ただし、これは測れる。</b>過去問から図つきの問題を数十問集めて、
+      「作図の手順を書かせて、解けた図が原図と同じ構造か」を機械で照合できる
+      (点の個数・どの線分上にどの点があるか・直角の位置)。
+      <b>正しさが検証できるのが作図の利点</b>なので、<span class="keep">精度は数字で出せる</span> —
+      画像生成でこれをやろうとすると、照合する相手がピクセルしか無い。
+    </p>
+    <p class="foot-note">
+      <b>もうひとつ、実務上の救い。</b>教科書の図は<b>そもそも縮尺どおりではない</b>。
+      灘中の図も「AB:CF = 3:2」を満たすようには描かれていない —
+      <b>満たすべきは、点がどの線分の上にあるかという構造と、直角の印だけ</b>。
+      数値は文章とラベルが持つ。<span class="keep">だから作図が満たすべき条件は、見た目より少ない。</span>
+    </p>
+  </div>
+
+  <!-- ---- D-12 どこまで行けたか ---- -->
+  <div class="panel">
+    <h2>D-12. 実際に試した5問 — 境界はここだった</h2>
+    <p class="lede">
+      出してもらった問題を順に作図で書いてみた結果、<b>境界は「難しさ」ではなかった</b>。
+      灘中も東大も書けて、書けないのは<b>図そのものが答えになっている</b>ときだけだった。
+    </p>
+    <table>
+      <thead><tr><th style="width:26%">問題</th><th style="width:13%">結果</th><th>なぜそうなるか</th></tr></thead>
+      <tbody>
+        <tr><td>チェバの定理 の練習</td><td><span class="stat done">型で書ける</span></td>
+          <td>三角形と3本のチェバ線は<b>定理の標準図</b>。数値が変わっても図は同じなので、型1つで足りる</td></tr>
+        <tr><td>2016 灘中 1日目</td><td><span class="stat done">作図で書ける</span></td>
+          <td>型は無い。<b>「内分点」「垂線」「交点」の3語で書き下せる。</b>BD:DC = 3:2 も垂直も、図の上で厳密に成立する</td></tr>
+        <tr><td>接線と弦の作る角(証明)</td><td><span class="stat done">作図で書ける</span></td>
+          <td><b>2円の交点</b>と<b>直線と円のもう一方の交点</b>が要る(語彙を2つ足した)。
+            <span class="keep">結論の AD ∥ BC は指定していないのに 0.000° で出る</span> — 作図が正しい証拠にもなる</td></tr>
+        <tr><td>2019 東大 理系 第2問</td><td><span class="stat judge">半分</span></td>
+          <td><b>配置は書ける</b>(正方形・辺上の3点・2つの三角形)。ただし
+            <span class="care">P・Q・R の位置は「面積がどちらも 1/3」から解いて出す数</span>で、作図では決まらない。
+            <b>作図は「解いた結果を図にする」ところまで</b></td></tr>
+        <tr><td>2020 東大 理系 第2問</td><td><span class="stat gap">図が答え</span></td>
+          <td><span class="care">そもそも問題文に図が無い。</span>要るのは
+            「2 ≤ △ABX+△BCX+△CAX ≤ 3 を満たす X の範囲」という<b>答えの図</b>で、
+            <b>解かないと形が決まらない</b>。ただし<b>解けたあとなら書ける</b> —
+            領域の境界が何であるかさえ分かれば、頂点は三角形から作図できる</td></tr>
+      </tbody>
+    </table>
+    <p class="foot-note">
+      <b>結論。作図の語彙は「解いた結果を表現する」ためのもので、解く力そのものではない。</b>
+      そしてそれで困らない — <span class="keep">先輩はどのみち、教えるために問題を解いている</span>。
+      図が描けないのは<b>解けていないときだけ</b>で、それは図の問題ではなく授業の問題になる。
+      <b>足りない語彙が出てきたら足す</b>(今回2つ足した)という進み方でよく、
+      <span class="care">最初から全部そろえる必要はない</span>。
+    </p>
+  </div>
+
 </div>
 
 <script>
@@ -1558,47 +1755,199 @@
         { seg: ['A', 'L'] }, { seg: ['B', 'M'] }, { seg: ['C', 'N'] },
         { pt: 'G', centroid: ['A', 'B', 'C'] }
       ]
+    },
+    {
+      title: '2016 灘中 1日目',
+      note: '型では書けない。作図なら書ける',
+      src: [
+        '{ pt: "B", at: [0,0] } { pt: "C", at: [10,0] } { pt: "A", at: [3.2,8] }',
+        '{ poly: ["A","B","C"] }',
+        '{ pt: "D", on: ["B","C"], ratio: [3,2] }   ← BD:DC = 3:2',
+        '{ line: "L", through: "B", perp: ["A","D"] } ← BE は AD に垂直',
+        '{ pt: "E", meet: [["A","C"], "L"] }',
+        '{ pt: "F", meet: [["A","D"], "L"] }',
+        '{ seg: ["A","D"] } { seg: ["B","E"] }',
+        '{ right: ["A","F","B"] }',
+        '{ poly: ["F","D","C","E"], fill: true }  ← 四角形FDCE'
+      ],
+      cap: '<b>Eの座標は書いていない。</b>「Bを通りADに垂直な直線と、ACの交点」と宣言しただけ。<b>垂直も 3:2 も、図の上で厳密に成立している。</b>',
+      items: [
+        { pt: 'B', at: [0, 0] }, { pt: 'C', at: [10, 0] }, { pt: 'A', at: [3.2, 8] },
+        { poly: ['A', 'B', 'C'] },
+        { pt: 'D', on: ['B', 'C'], ratio: [3, 2] },
+        { line: 'L', through: 'B', perp: ['A', 'D'] },
+        { pt: 'E', meet: [['A', 'C'], 'L'] },
+        { pt: 'F', meet: [['A', 'D'], 'L'] },
+        { seg: ['A', 'D'] }, { seg: ['B', 'E'] },
+        { right: ['A', 'F', 'B'] },
+        { poly: ['F', 'D', 'C', 'E'], fill: true }
+      ]
+    },
+    {
+      title: '接線と弦の作る角(証明)',
+      note: '数A 円の性質 — 2円が交わる',
+      src: [
+        '{ pt: "O", at: [0,0] }   { circle: "K", center: "O", r: 3 }',
+        '{ pt: "O2", at: [4.5,0.6] } { circle: "K2", center: "O2", r: 3.4 }',
+        '{ pts: ["P","Q"], meetCircles: ["K","K2"] }  ← 2円の交点',
+        '{ pt: "A", on: "K", deg: 190 }',
+        '{ pt: "B", onCircle: "K2", byLine: ["A","P"], other: "P" } ← 直線APと',
+        '{ pt: "C", onCircle: "K2", byLine: ["A","Q"], other: "Q" }    円O′の交点',
+        '{ line: "T", through: "A", perp: ["O","A"] }  ← A での接線 =',
+        '{ pt: "D", along: "T", k: 1.15 }                 OA に垂直',
+        '{ seg: ["A","B"] } { seg: ["A","C"] } { seg: ["B","C"] }'
+      ],
+      cap: '',
+      items: [
+        { pt: 'O', at: [0, 0] }, { circle: 'K', center: 'O', r: 3 },
+        { pt: 'O2', at: [4.5, 0.6] }, { circle: 'K2', center: 'O2', r: 3.4 },
+        { pts: ['P', 'Q'], meetCircles: ['K', 'K2'] },
+        { pt: 'A', on: 'K', deg: 190 },
+        { pt: 'B', onCircle: 'K2', byLine: ['A', 'P'], other: 'P' },
+        { pt: 'C', onCircle: 'K2', byLine: ['A', 'Q'], other: 'Q' },
+        { line: 'T', through: 'A', perp: ['O', 'A'] },
+        { pt: 'D', along: 'T', k: 1.15 },
+        { pt: 'D2', along: 'T', k: -0.55, hide: true },
+        { seg: ['A', 'B'] }, { seg: ['A', 'C'] }, { seg: ['B', 'C'] },
+        { seg: ['D', 'D2'] }
+      ]
+    },
+    {
+      title: '2019 東大 理系 第2問',
+      note: '正方形とP・Q・R。位置は先輩が解いて決める',
+      src: [
+        '{ pt: "A", at:[0,1] } { pt: "B", at:[1,1] }',
+        '{ pt: "C", at:[1,0] } { pt: "D", at:[0,0] }',
+        '{ poly: ["A","B","C","D"] }',
+        '{ pt: "P", on:["A","B"], ratio:[0.833, 0.167] }  ← AP',
+        '{ pt: "Q", on:["A","D"], ratio:[0.8,   0.2  ] }  ← AQ',
+        '{ pt: "R", on:["D","C"], ratio:[0.625, 0.375] }  ← DR',
+        '{ poly: ["A","P","Q"], fill: true }',
+        '{ poly: ["P","Q","R"], fill: true }'
+      ],
+      cap: '',
+      items: [
+        { pt: 'A', at: [0, 1] }, { pt: 'B', at: [1, 1] },
+        { pt: 'C', at: [1, 0] }, { pt: 'D', at: [0, 0] },
+        { poly: ['A', 'B', 'C', 'D'] },
+        { pt: 'P', on: ['A', 'B'], ratio: [0.8333, 0.1667] },
+        { pt: 'Q', on: ['A', 'D'], ratio: [0.8, 0.2] },
+        { pt: 'R', on: ['D', 'C'], ratio: [0.625, 0.375] },
+        { poly: ['A', 'P', 'Q'], fill: true },
+        { poly: ['P', 'Q', 'R'], fill: true }
+      ]
     }
   ];
 
+  // 東大の図は「面積 1/3 が2つとも成り立っているか」が要点。出来上がった座標から測る。
+  (function () {
+    var d = DEMOS[5], m = {};
+    solve(d.items).forEach(function (o) { if (o.t === 'pt') m[o.name] = o.p; });
+    function area(p, q, r) {
+      return Math.abs(p.x * (q.y - r.y) + q.x * (r.y - p.y) + r.x * (p.y - q.y)) / 2;
+    }
+    d.cap = '<b>P・Q・R の位置は、作図では決まらない</b> — 「面積がどちらも 1/3」から' +
+      '<b>先輩が解いて</b>出す数。作図の役目は、出た数を図にすることだけ。' +
+      '<span style="color:#1c7a4a;font-weight:700">この図の △APQ = ' + area(m.A, m.P, m.Q).toFixed(3) +
+      '、△PQR = ' + area(m.P, m.Q, m.R).toFixed(3) + '</span>(どちらも 1/3 = 0.333)。';
+  })();
+
+  // 接弦定理の図は「AD ∥ BC を指定していないのに、そうなる」ことが要点なので、
+  // 出来上がった図から2本の向きを測って、そのままキャプションに出す。
+  (function () {
+    var d = DEMOS[4], m = {};
+    solve(d.items).forEach(function (o) { if (o.t === 'pt') m[o.name] = o.p; });
+    var ad = Math.atan2(m.D.y - m.A.y, m.D.x - m.A.x);
+    var bc = Math.atan2(m.C.y - m.B.y, m.C.x - m.B.x);
+    var deg = Math.abs(((ad - bc) * 180 / Math.PI + 180) % 180);
+    if (deg > 90) deg = 180 - deg;
+    d.cap = '<b>AD ∥ BC は、どこにも指定していない。</b>' +
+      'それでも出来上がった図では2本の向きの差が <b>' + deg.toFixed(3) + '°</b>。' +
+      '<b>証明すべき結論が、作図の結果として現れている。</b>';
+  })();
+
   // --- 作図を解く(実装では figure_solver.dart になる部分) ---
   function solve(items) {
-    var pts = {}, circles = {}, draws = [];
+    var pts = {}, circles = {}, lines = {}, draws = [];
     function P(n) { return pts[n]; }
+    // 直線の指定は「2点の名前」か「名前つき直線」のどちらでもよい
+    function L(spec) {
+      if (typeof spec === 'string') return lines[spec];
+      return { a: P(spec[0]), b: P(spec[1]) };
+    }
+    function definePoint(it) {
+      if (it.pts && it.meetCircles) {
+        // 2円の交点。作図の基本操作(定規とコンパスの「コンパス」側)
+        var both = meetCircles(circles[it.meetCircles[0]], circles[it.meetCircles[1]]);
+        if (!both) return;                          // 交わらない → 描けない
+        it.pts.forEach(function (nm, i) {
+          pts[nm] = both[i];
+          draws.push({ t: 'pt', p: both[i], name: nm });
+        });
+        return;
+      }
+      var p;
+      if (it.at) { p = { x: it.at[0], y: it.at[1] }; }
+      else if (it.onCircle && it.byLine) {
+        // 直線と円の、もう一方の交点(`other` ではないほう)
+        p = secondMeet(circles[it.onCircle], L(it.byLine), P(it.other));
+      }
+      else if (it.along) {
+        var ln = lines[it.along];
+        p = { x: ln.a.x + (ln.b.x - ln.a.x) * it.k, y: ln.a.y + (ln.b.y - ln.a.y) * it.k };
+      }
+      else if (it.on && it.ratio) {
+        // 線分を m:n に内分する点。「BD:DC = 3:2」がそのまま書ける
+        var s = P(it.on[0]), e = P(it.on[1]), k = it.ratio[0] / (it.ratio[0] + it.ratio[1]);
+        p = { x: s.x + (e.x - s.x) * k, y: s.y + (e.y - s.y) * k };
+      }
+      else if (it.on) {
+        var kc = circles[it.on], a = it.deg * Math.PI / 180;
+        p = { x: kc.c.x + kc.r * Math.cos(a), y: kc.c.y + kc.r * Math.sin(a) };
+      }
+      else if (it.mid) { var u = P(it.mid[0]), v = P(it.mid[1]); p = { x: (u.x + v.x) / 2, y: (u.y + v.y) / 2 }; }
+      else if (it.centroid) {
+        var g = it.centroid.map(P);
+        p = { x: (g[0].x + g[1].x + g[2].x) / 3, y: (g[0].y + g[1].y + g[2].y) / 3 };
+      }
+      else if (it.meet) { p = meet(L(it.meet[0]), L(it.meet[1])); }
+      if (!p) return;
+      pts[it.pt] = p;
+      if (!it.hide) draws.push({ t: 'pt', p: p, name: it.pt });
+    }
+
+    // **点の定義を先に見る。** `pt` は `onCircle` など他のキーも持つので、
+    // 円や直線の定義より後ろに置くと、そちらの枝に吸い込まれる。
     items.forEach(function (it) {
-      if (it.circle) {
+      if (it.pt || it.pts) {
+        definePoint(it);
+      } else if (it.circle) {
         var c = P(it.center);
         circles[it.circle] = { c: c, r: it.r };
         draws.push({ t: 'circle', c: c, r: it.r });
-      } else if (it.pt) {
-        var p;
-        if (it.at) { p = { x: it.at[0], y: it.at[1] }; }
-        else if (it.on) {
-          var k = circles[it.on], a = it.deg * Math.PI / 180;
-          p = { x: k.c.x + k.r * Math.cos(a), y: k.c.y + k.r * Math.sin(a) };
-        }
-        else if (it.mid) { var u = P(it.mid[0]), v = P(it.mid[1]); p = { x: (u.x + v.x) / 2, y: (u.y + v.y) / 2 }; }
-        else if (it.centroid) {
-          var g = it.centroid.map(P);
-          p = { x: (g[0].x + g[1].x + g[2].x) / 3, y: (g[0].y + g[1].y + g[2].y) / 3 };
-        }
-        else if (it.meet) { p = meet(P(it.meet[0][0]), P(it.meet[0][1]), P(it.meet[1][0]), P(it.meet[1][1])); }
-        if (!p) return;
-        pts[it.pt] = p;
-        draws.push({ t: 'pt', p: p, name: it.pt });
+      } else if (it.line) {
+        // { line:"L", through:"B", perp:["A","D"] } — B を通り AD に垂直な直線
+        var base = L(it.perp), q = P(it.through);
+        var dx = base.b.x - base.a.x, dy = base.b.y - base.a.y;
+        lines[it.line] = { a: q, b: { x: q.x - dy, y: q.y + dx } };
       } else if (it.seg) {
-        draws.push({ t: 'seg', a: P(it.seg[0]), b: P(it.seg[1]), dash: !!it.dash });
+        draws.push({
+          t: 'seg', a: P(it.seg[0]), b: P(it.seg[1]), dash: !!it.dash, label: it.label
+        });
       } else if (it.poly) {
-        draws.push({ t: 'poly', ps: it.poly.map(P) });
+        draws.push({ t: 'poly', ps: it.poly.map(P), fill: !!it.fill });
       } else if (it.arc) {
         draws.push({ t: 'arc', a: P(it.arc[0]), o: P(it.arc[1]), b: P(it.arc[2]), label: it.label });
+      } else if (it.right) {
+        draws.push({ t: 'right', a: P(it.right[0]), o: P(it.right[1]), b: P(it.right[2]) });
       }
     });
     return draws;
   }
 
-  function meet(a, b, c, d) {
-    var x1 = b.x - a.x, y1 = b.y - a.y, x2 = d.x - c.x, y2 = d.y - c.y;
+  function meet(l1, l2) {
+    var a = l1.a, x1 = l1.b.x - a.x, y1 = l1.b.y - a.y;
+    var c = l2.a, x2 = l2.b.x - c.x, y2 = l2.b.y - c.y;
     var den = x1 * y2 - y1 * x2;
     if (Math.abs(den) < 1e-9) return null;      // 平行。実装では「描けない」に落とす
     var t = ((c.x - a.x) * y2 - (c.y - a.y) * x2) / den;
@@ -1634,7 +1983,18 @@
           (d.dash ? ' stroke-dasharray="5 4"' : '') + '/>';
       } else if (d.t === 'poly') {
         out += '<path d="M' + d.ps.map(function (p) { return X(p.x) + ' ' + Y(p.y); }).join(' L') +
-          ' Z" fill="none" stroke="' + CH + '" stroke-width="1.8" stroke-linejoin="round"/>';
+          ' Z" fill="' + (d.fill ? 'rgba(237,234,224,.22)' : 'none') +
+          '" stroke="' + CH + '" stroke-width="1.8" stroke-linejoin="round"/>';
+      } else if (d.t === 'right') {
+        // 直角の印。2方向へ同じ長さだけ進んだ正方形。
+        var m = 9;
+        var u1 = norm(d.a, d.o), u2 = norm(d.b, d.o);
+        var ax = +X(d.o.x), ay = +Y(d.o.y);
+        var p1 = [ax + u1.x * m, ay - u1.y * m], p2 = [ax + u2.x * m, ay - u2.y * m];
+        out += '<path d="M' + p1[0].toFixed(1) + ' ' + p1[1].toFixed(1) +
+          ' L' + (p1[0] + u2.x * m).toFixed(1) + ' ' + (p1[1] - u2.y * m).toFixed(1) +
+          ' L' + p2[0].toFixed(1) + ' ' + p2[1].toFixed(1) +
+          '" fill="none" stroke="' + DIM + '" stroke-width="1.3"/>';
       } else if (d.t === 'arc') {
         var r = 22;
         var a1 = Math.atan2(d.a.y - d.o.y, d.a.x - d.o.x), a2 = Math.atan2(d.b.y - d.o.y, d.b.x - d.o.x);
@@ -1658,6 +2018,42 @@
         '" font-size="11" text-anchor="middle">' + d.name + '</text>';
     });
     return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img">' + out + '</svg>';
+  }
+
+  // 2円の交点。交わらなければ null(実装では「描けない」に落とす)
+  function meetCircles(k1, k2) {
+    var dx = k2.c.x - k1.c.x, dy = k2.c.y - k1.c.y, d = Math.hypot(dx, dy);
+    if (d > k1.r + k2.r || d < Math.abs(k1.r - k2.r) || d === 0) return null;
+    var a = (k1.r * k1.r - k2.r * k2.r + d * d) / (2 * d);
+    var h = Math.sqrt(Math.max(k1.r * k1.r - a * a, 0));
+    var mx = k1.c.x + a * dx / d, my = k1.c.y + a * dy / d;
+    return [
+      { x: mx - h * dy / d, y: my + h * dx / d },   // 上側
+      { x: mx + h * dy / d, y: my - h * dx / d }    // 下側
+    ];
+  }
+
+  // 直線と円の交点のうち、`other` ではないほう
+  function secondMeet(k, line, other) {
+    var ux = line.b.x - line.a.x, uy = line.b.y - line.a.y, n = Math.hypot(ux, uy);
+    ux /= n; uy /= n;
+    var wx = line.a.x - k.c.x, wy = line.a.y - k.c.y;
+    var b = ux * wx + uy * wy, cc = wx * wx + wy * wy - k.r * k.r;
+    var disc = b * b - cc;
+    if (disc < 0) return null;                       // 交わらない
+    var s = Math.sqrt(disc);
+    var cands = [-b + s, -b - s].map(function (t) {
+      return { x: line.a.x + t * ux, y: line.a.y + t * uy };
+    });
+    if (!other) return cands[0];
+    return Math.hypot(cands[0].x - other.x, cands[0].y - other.y) >
+      Math.hypot(cands[1].x - other.x, cands[1].y - other.y) ? cands[0] : cands[1];
+  }
+
+  // o から a へ向かう単位ベクトル(数学座標のまま。yの反転は描く側で行う)
+  function norm(a, o) {
+    var dx = a.x - o.x, dy = a.y - o.y, n = Math.hypot(dx, dy) || 1;
+    return { x: dx / n, y: dy / n };
   }
 
   var host = document.getElementById('figure-demos');
