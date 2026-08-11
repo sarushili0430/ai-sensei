@@ -2083,6 +2083,121 @@ JSXGraph が座標を解いて描く</pre>
     </p>
   </div>
 
+  <!-- ---- D-18 実際に測った ---- -->
+  <div class="panel">
+    <h2>D-18. 測った — Sonnet と Haiku に、実際に48回描かせた</h2>
+    <p class="lede">
+      D-17で「測るまで私の“できます”を当てにするな」と書いたので、<b>測った。</b>
+      <span class="keep">8問 × 2モデル × 3回 = 48回</span>。会話は1往復だけ(一発勝負)。
+      使ったのは <code>claude-sonnet-5</code> と <code>claude-haiku-4-5</code> —
+      <b>実際に採用を考えている2つ、そのもの。</b>
+    </p>
+
+    <h3><span class="tag new">結果</span>8種類すべて、両モデルとも描けた</h3>
+    <table>
+      <thead><tr><th style="width:26%">問題</th><th style="width:20%">Haiku 4.5</th><th style="width:20%">Sonnet 5</th><th>何を測ったか(図から機械で測る量)</th></tr></thead>
+      <tbody>
+        <tr><td>三角形の3中線</td><td>○ ○ ○</td><td>○ ○ ○</td><td>3本目が交点を通るか(重心と一致するか)</td></tr>
+        <tr><td>タレスの定理</td><td><span class="care">×語</span> ○ ○</td><td>○ ○ <span class="care">×語</span></td><td>∠APB が 90.000° になるか</td></tr>
+        <tr><td><b>接弦定理</b></td><td><span class="care">×図</span> ○ <span class="care">×図</span></td><td>○ ○ ○</td><td>OA⊥AT か / ∠TAB = ∠ACB か</td></tr>
+        <tr><td>BD:DC = 3:2</td><td>○ ○ ○</td><td>○ ○ ○</td><td>D が BC 上か / 比が 1.500000 か</td></tr>
+        <tr><td>直方体の対角線</td><td>○ ○ ○</td><td>○ ○ ○</td><td>3方向すべて違う頂点を結んでいるか</td></tr>
+        <tr><td>y=x² と y=x</td><td>○ ○ ○</td><td>○ ○ ○</td><td>塗った面積が 1/6 になるか</td></tr>
+        <tr><td>サイクロイド</td><td>○ ○ ○</td><td>○ ○ ○</td><td>(0,0)→(2π,0) / 最高点 y=2 か</td></tr>
+        <tr><td>y=√x の回転体</td><td>○ ○ ○</td><td>○ ○ ○</td><td>上下対称か / 切り口の半径が 2 か</td></tr>
+      </tbody>
+    </table>
+    <p class="foot-note">
+      <b>「描けた」ではなく「図が正しい」で採点している。</b>どれも
+      <span class="keep">作図で組み立てたときだけ成り立ち、座標を当てずっぽうで書くと崩れる量</span>を選んだ。
+      たとえば中線の問題は、2本の交点として G を置かせて、<b>3本目がそこを通るかどうか</b>を見る。
+    </p>
+
+    <h3><span class="tag biz">数字</span>3つに分けて数える。混ぜると「直せば動く」を「動く」と読み違える</h3>
+    <table>
+      <thead><tr><th style="width:34%"></th><th style="width:22%">Haiku 4.5</th><th style="width:22%">Sonnet 5</th><th>意味</th></tr></thead>
+      <tbody>
+        <tr><td><b>そのまま流せた</b></td><td>19/24 = <b>79%</b></td><td>12/24 = <b>50%</b></td>
+          <td>出力がそのまま JSON</td></tr>
+        <tr><td><b>拾い直せば通った</b></td><td>21/24 = <b>88%</b></td><td>23/24 = <b>96%</b></td>
+          <td>最初の配列だけ取れば、図まで正しい</td></tr>
+        <tr><td><b>図が黙って間違い</b></td><td><span class="care">2/24 = 8%</span></td><td><b>0/24 = 0%</b></td>
+          <td><span class="care">絵は出る。でも中身が違う</span></td></tr>
+      </tbody>
+    </table>
+    <p class="lede" style="margin-top:18px">
+      <b>Sonnet の「50%」は figure の質ではない。</b>24回中11回、<code>```json</code> で囲ってきただけ
+      (Haiku は3回)。<span class="keep">これは prefill か structured outputs で消える</span> —
+      返答を <code>[</code> から始めさせれば、囲みようがない。
+      <b>見るべきは下2行。</b>
+    </p>
+
+    <h3><span class="tag new">中身</span>落ちた4件。3件は「大声で落ちる」、1種類だけが危ない</h3>
+    <table>
+      <thead><tr><th style="width:16%">どちら</th><th style="width:30%">何をした</th><th>どう直すか</th></tr></thead>
+      <tbody>
+        <tr><td>Sonnet<br><span style="font-size:11px">タレス #3</span></td>
+          <td><code>{"circle":"K","center":"O"}</code> を、<b>O を定義する前に書いた</b></td>
+          <td><b>ソルバが落ちる = 気づける。</b>エラー文を付けて1回投げ直せば、まず直る。
+            <span class="keep">絵は出ないので、間違った図が生徒に届くことはない</span></td></tr>
+        <tr><td>Haiku<br><span style="font-size:11px">タレス #1</span></td>
+          <td>正しい図を書いたあとに <code>{"pt":"P","as":"key"}</code> を足した —
+            <b>すでにある点を、あとから目立たせたかった</b></td>
+          <td><span class="care">これはモデルの間違いではなく、こちらの語彙の穴。</span>
+            <b>「定義済みの点を強調する」操作が無い。</b>足せば消える failure</td></tr>
+        <tr><td><b>Haiku</b><br><span style="font-size:11px">接弦定理 #1,#3</span></td>
+          <td><b>接点 T を、接線の反対側に置いた。</b>
+            ∠TAB=160°(∠ACB=20°)、∠TAB=120°(∠ACB=60°) — <span class="care">どちらも補角</span></td>
+          <td><span class="care">絵は完全に自然に出る。そして定理が図の上で成り立っていない。</span>
+            <b>これが唯一こわい種類</b></td></tr>
+      </tbody>
+    </table>
+    <p class="lede" style="margin-top:18px">
+      <b>そして直し方は、D-17 と同じ結論に戻ってくる:「手で置ける値を残さない」。</b>
+      いま T は「接線上の適当な点」としてモデルに置かせている。だから<b>裏表を間違えられる</b>。
+      <span class="keep">接線を <code>{"tangentAt":"A","toward":"B"}</code> のように
+      「どちら側か」で書かせれば、補角は表現できなくなる</span> — 選べないものは、間違えられない。
+    </p>
+
+    <h3><span class="tag biz">結論</span>Sonnet。ただし差は「モデル」より「語彙」で埋まる</h3>
+    <table>
+      <thead><tr><th style="width:22%"></th><th style="width:39%">Sonnet 5</th><th>Haiku 4.5</th></tr></thead>
+      <tbody>
+        <tr><td><b>今回の成績</b></td><td>図の間違い <b>0/24</b></td><td>図の間違い <span class="care">2/24(接弦定理に集中)</span></td></tr>
+        <tr><td><b>1図あたり概算</b></td>
+          <td>約 <b>1.6円</b>(導入価格なら約1.1円 / 2026-08-31まで)</td>
+          <td>約 <b>0.5円</b></td></tr>
+        <tr><td><b>効く手</b></td>
+          <td colspan="2"><b>仕様は毎回同じ文字列なので、prompt caching が丸ごと効く。</b>
+            <span class="keep">上の入力ぶんはほぼ消えるので、実際の差は出力ぶんだけ</span></td></tr>
+      </tbody>
+    </table>
+    <p class="foot-note">
+      <b>私の推し:まず Sonnet で出す。</b>0/24 は小さい標本だが、
+      <span class="care">「黙って間違える」は生徒に直接届く失敗</span>で、ここだけは値段で買う価値がある。
+      そのうえで<b>接線の語彙を直してから Haiku を測り直す</b> — 落ちた2件はどちらも同じ穴なので、
+      塞げば Haiku が届く可能性は十分ある。<b>値段が3倍ちがうのだから、測り直す価値はある。</b>
+    </p>
+    <p class="foot-note">
+      <b>測り方の断り。</b><b>①</b> Claude Code の <code>-p</code> に
+      <code>--system-prompt</code> で仕様を渡した。素の Messages API 呼び出しではない。
+      <b>②</b> 24回/モデルは<b>少ない</b>。79% と 50% のような差は、この標本では動く。
+      <b>③</b> 問題は私が選んだ8問で、仕様の例文(平行四辺形)とは重ならないようにした。
+      <span class="care">それでも「私が書いた語彙で、私が選んだ問題を測った」ことは変わらない。</span>
+      <b>次は原図つきの過去問30〜50問でやる(D-17の①〜④)。</b>
+    </p>
+    <p class="foot-note">
+      <b>測り方を2回間違えた。</b>1回目、両モデルが「8問まとめて答える」出力を出した。
+      モデルが採点用ファイルを読みに行ったのだと判断して、そう報告した — <b>これは誤診だった。</b>
+      本当の原因は <code>while read ... done &lt; prompts.tsv</code> の中で
+      <code>claude -p</code> を起動したこと。<span class="care">claude が標準入力を引き継いで、
+      残りの7問を自分で読み込んでいた。</span>モデルは指示どおりに動いていて、
+      <b>問題文に他の問題がくっついていただけだった。</b>
+      <code>&lt;/dev/null</code> で塞いで測り直したのが上の数字。
+      <span class="keep">ここでも、疑うべきは相手ではなく自分の測り方だった。</span>
+    </p>
+  </div>
+
 </div>
 
 <script>
