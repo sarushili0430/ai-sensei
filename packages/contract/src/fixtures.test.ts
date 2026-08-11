@@ -16,11 +16,17 @@ import {
   createSessionResponseSchema,
   karteDraftSchema,
   karteSchema,
+  parentReportQuoteMaxCount,
+  parentReportQuoteMaxLength,
+  parentReportResponseSchema,
   planDayMinutesMax,
   planDaysMaxCount,
   planTurnSchema,
+  sessionMetadataSchema,
   studyPlanDraftSchema,
   studyPlanSchema,
+  studyRoomVisitMaxSeconds,
+  studyRoomVisitRequestSchema,
 } from "./index.ts";
 
 const repoRoot = resolve(import.meta.dirname, "..", "..", "..");
@@ -47,11 +53,110 @@ describe("fixture", () => {
     expect(fixtureFileNames).toContain("create-session-response.en");
     expect(fixtureFileNames).toContain("board-lesson.en");
     expect(fixtureFileNames).toContain("study-plan.en");
+    expect(fixtureFileNames).toContain("parent-report");
+    expect(fixtureFileNames).toContain("parent-report.en");
   });
 
   it("fixturePath がリポジトリ相対パスを返す", () => {
     expect(fixturePath("karte")).toBe("packages/contract/fixtures/karte.json");
     expect(() => readFileSync(resolve(repoRoot, fixturePath("karte")))).not.toThrow();
+  });
+});
+
+describe("親レポートのスキーマ", () => {
+  function response() {
+    return JSON.parse(JSON.stringify(loadFixture("parent-report"))) as {
+      requires_premium: boolean;
+      report: Record<string, unknown> | null;
+    };
+  }
+
+  /**
+   * 禁止したい概念を「画面で出さない」だけにすると、APIには残り、あとから一行で復活する。
+   * 契約が strict で拒否するところまでを、この一覧で固定する。
+   */
+  it("正答率・理解度スコア・偏差値・学習時間ランキング・他ユーザー比較を受け付けない", () => {
+    for (const extra of [
+      { accuracy: 0.82 },
+      { understanding_score: 73 },
+      { deviation_score: 58 },
+      { study_time_rank: 4 },
+      { percentile: 91 },
+    ]) {
+      const broken = response();
+      broken.report = { ...broken.report, ...extra };
+      expect(parentReportResponseSchema.safeParse(broken).success).toBe(false);
+    }
+  });
+
+  it("数値として持つのは埋めた穴と連続日数だけ", () => {
+    const report = response().report;
+    expect(report && Object.keys(report).sort()).toEqual([
+      "explained_topics",
+      "filled_holes",
+      "period",
+      "quotes",
+      "streak_days",
+    ]);
+  });
+
+  it("本人の引用は件数と文字数の両方を制限する", () => {
+    const tooMany = response();
+    if (tooMany.report) {
+      tooMany.report["quotes"] = Array.from(
+        { length: parentReportQuoteMaxCount + 1 },
+        (_, index) => `本人の説明 ${index}`,
+      );
+    }
+    expect(parentReportResponseSchema.safeParse(tooMany).success).toBe(false);
+
+    const tooLong = response();
+    if (tooLong.report) {
+      tooLong.report["quotes"] = ["あ".repeat(parentReportQuoteMaxLength + 1)];
+    }
+    expect(parentReportResponseSchema.safeParse(tooLong).success).toBe(false);
+  });
+
+  it("無料ユーザーは200で返せるが、ロック中の本文は持てない", () => {
+    expect(
+      parentReportResponseSchema.safeParse({ requires_premium: true, report: null }).success,
+    ).toBe(true);
+
+    const leaked = response();
+    leaked.requires_premium = true;
+    expect(parentReportResponseSchema.safeParse(leaked).success).toBe(false);
+  });
+});
+
+describe("自習室滞在のスキーマ", () => {
+  it("本文は滞在秒数と日付だけに閉じる", () => {
+    expect(
+      studyRoomVisitRequestSchema.safeParse(loadFixture("study-room-visit-request")).success,
+    ).toBe(true);
+    expect(
+      studyRoomVisitRequestSchema.safeParse({
+        ...(loadFixture("study-room-visit-request") as object),
+        topic_id: "M1-NIJI-HANBETSU",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("負数・端数・長すぎる申告を弾く", () => {
+    for (const duration_seconds of [-1, 0, 1.5, studyRoomVisitMaxSeconds + 1]) {
+      expect(
+        studyRoomVisitRequestSchema.safeParse({ duration_seconds, visited_on: "2026-08-03" })
+          .success,
+      ).toBe(false);
+    }
+  });
+
+  it("見た目だけ日付らしい存在しない日を弾く", () => {
+    expect(
+      studyRoomVisitRequestSchema.safeParse({
+        duration_seconds: 60,
+        visited_on: "2026-02-30",
+      }).success,
+    ).toBe(false);
   });
 });
 
@@ -552,6 +657,39 @@ describe("APIスキーマ", () => {
     const parsed = createSessionRequestSchema.parse({});
     expect(parsed.kind).toBe("new");
     expect(parsed.locale).toBe("ja");
+  });
+
+  /**
+   * 写真の問題と復習の穴は別の根拠。新規授業に穴を混ぜるのは弾く一方、
+   * 新しいagentを先に出す窓では、古いAPIが作る欄なしの復習も読めなければならない。
+   */
+  it("session metadata は欄のない旧reviewを読み、新規授業への穴の混入を弾く", () => {
+    const metadata = loadFixture("session-metadata") as Record<string, unknown>;
+    const reviewHole = {
+      topic_id: "M1-NIJI-GURAFU",
+      desc: "平方完成の理由で説明が止まった",
+      evidence: "形をそろえるため、だと思う",
+    };
+
+    expect(sessionMetadataSchema.safeParse(metadata).success).toBe(true);
+    const legacyReviewMetadata = JSON.parse(
+      JSON.stringify({ ...metadata, kind: "review", review_hole: undefined }),
+    ) as Record<string, unknown>;
+    expect("review_hole" in legacyReviewMetadata).toBe(false);
+    expect(
+      sessionMetadataSchema.safeParse(legacyReviewMetadata).success,
+      "古いAPIは review_hole というキー自体を送らない",
+    ).toBe(true);
+    expect(
+      sessionMetadataSchema.safeParse({ ...metadata, kind: "review", review_hole: null }).success,
+    ).toBe(true);
+    expect(
+      sessionMetadataSchema.safeParse({ ...metadata, kind: "review", review_hole: reviewHole })
+        .success,
+    ).toBe(true);
+    expect(sessionMetadataSchema.safeParse({ ...metadata, review_hole: reviewHole }).success).toBe(
+      false,
+    );
   });
 
   it("detected_topics が空のセッション作成レスポンスは無効", () => {

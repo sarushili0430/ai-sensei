@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:ai_sensei/src/features/karte/domain/karte.dart';
+import 'package:ai_sensei/src/features/parent_report/domain/parent_report.dart';
+import 'package:ai_sensei/src/features/plan/domain/study_plan.dart';
 import 'package:ai_sensei/src/features/session/domain/board.dart';
 import 'package:ai_sensei/src/features/session/domain/session.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -144,6 +146,88 @@ void main() {
     });
   });
 
+  group('親レポートのfixture', () {
+    test('parent-report.json をパースできる', () {
+      final ParentReportResponse response = ParentReportResponse.fromJson(
+        loadFixture('parent-report'),
+      );
+
+      expect(response.requiresPremium, isFalse);
+      expect(response.report, isNotNull);
+      expect(response.report!.filledHoles, 2);
+      expect(response.report!.streakDays, 4);
+      expect(response.report!.explainedTopics.first.topicId, 'M1-NIJI-HANBETSU');
+      expect(response.report!.quotes.first, contains('判別式'));
+    });
+
+    test('parent-report.en.json をパースできる(海外向け課程)', () {
+      final ParentReportResponse response = ParentReportResponse.fromJson(
+        loadFixture('parent-report.en'),
+      );
+
+      expect(response.report!.explainedTopics.first.topicId, 'A1-QUAD-SOLVE');
+      expect(response.report!.explainedTopics.first.name, contains('discriminant'));
+      expect(response.report!.quotes.first, contains('real solutions'));
+    });
+  });
+
+  group('自習室滞在のfixture', () {
+    test('送るのは滞在秒数と日付だけ', () {
+      final Map<String, dynamic> visit = loadFixture('study-room-visit-request');
+
+      expect(visit.keys.toSet(), <String>{'duration_seconds', 'visited_on'});
+      expect(visit['duration_seconds'], isPositive);
+      expect(visit['visited_on'], '2026-08-03');
+      // 板書・単元・発話を混ぜないことが、原価ゼロとプライバシーの境界。
+      expect(visit.containsKey('topic_id'), isFalse);
+      expect(visit.containsKey('board'), isFalse);
+      expect(visit.containsKey('transcript'), isFalse);
+    });
+  });
+
+  group('学習計画のfixture', () {
+    test('日ごとの項目・休む日・口頭での組み直しを読める', () {
+      final StudyPlan plan = StudyPlan.fromJson(loadFixture('study-plan'));
+
+      expect(plan.source, PlanSource.senpai);
+      expect(plan.intake.scope.topicIds, contains('M2-SANKAKU-KAHO'));
+      expect(plan.days.where((PlanDay day) => day.items.isEmpty), isNotEmpty);
+      expect(plan.days.first.items.first.status, PlanItemStatus.done);
+      expect(plan.revisions.single.reason, PlanRevisionReason.behind);
+      expect(plan.revisions.single.said, '風邪ひいて3日できなかった');
+    });
+
+    // テンプレートへの縮退は失敗ではなく、先輩が定型案を出して会話を終えられる
+    // 正式な経路。Flutter側が `senpai` しか読めないと、最も必要な障害時だけ
+    // 保存済みの計画を表示できなくなるので英語fixtureでも固定する。
+    test('英語のテンプレート計画を読める', () {
+      final StudyPlan plan = StudyPlan.fromJson(loadFixture('study-plan.en'));
+
+      expect(plan.source, PlanSource.template);
+      expect(plan.intake.examName, 'the fall midterm');
+      expect(plan.days.expand((PlanDay day) => day.items), isNotEmpty);
+    });
+
+    test('計画セッションの接続情報を読める', () {
+      final PlanSessionStart session = PlanSessionStart.fromJson(
+        loadFixture('create-plan-session-response'),
+      );
+
+      expect(session.planSessionId, isNotEmpty);
+      expect(session.livekit.room, session.planSessionId);
+      expect(session.currentPlan, isNull);
+    });
+
+    test('現在の計画レスポンスを読める', () {
+      final StudyPlan plan = StudyPlan.fromJson(
+        loadFixture('plan-response')['plan'] as Map<String, dynamic>,
+      );
+
+      expect(plan.intake.examDate, '2026-09-10');
+      expect(plan.days.single.items.single.minutes, 40);
+    });
+  });
+
   group('設計上の約束', () {
     // 点数のフィールドが生えたら、fixtureに現れる前にここで気づきたい
     test('カルテのfixtureに点数・正答率のキーがない', () {
@@ -162,6 +246,47 @@ void main() {
         progress.keys.toSet(),
         <String>{'streak_days', 'filled_holes', 'open_holes', 'last_session_date'},
       );
+    });
+
+    test('親レポートが持つ数値は埋めた穴と連続日数だけ', () {
+      final Map<String, dynamic> report =
+          loadFixture('parent-report')['report'] as Map<String, dynamic>;
+
+      expect(
+        report.keys.toSet(),
+        <String>{'period', 'filled_holes', 'streak_days', 'explained_topics', 'quotes'},
+      );
+      for (final String forbidden in <String>[
+        'score',
+        'accuracy',
+        'deviation_score',
+        'understanding_score',
+        'study_time_rank',
+        'percentile',
+      ]) {
+        expect(report.containsKey(forbidden), isFalse, reason: '$forbidden は親へ渡さない');
+      }
+    });
+
+    test('学習計画に点数・正答率・達成率のキーがない', () {
+      final Map<String, dynamic> plan = loadFixture('study-plan');
+      final String encoded = jsonEncode(plan);
+
+      for (final String forbidden in <String>[
+        'score',
+        'accuracy',
+        'rate',
+        'percent',
+        'percentage',
+        'points',
+        'level',
+      ]) {
+        expect(
+          encoded.contains('"$forbidden"'),
+          isFalse,
+          reason: '$forbidden は持たない',
+        );
+      }
     });
   });
 

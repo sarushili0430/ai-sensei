@@ -104,22 +104,30 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     // §2「1回1問」。残りをリストにせず、先頭の1件だけを大きく出す。
     final ReviewQueueItem? item = data.items.isEmpty ? null : data.items.first;
     final bool notYet = item != null && _notYetHoleId == item.hole.id;
-    final ApiException? lessonError = notYet && _showLessonError ? capture.error : null;
-    final bool lessonLimitReached = lessonError != null &&
+    final ApiException? lessonError = notYet && _showLessonError
+        ? capture.error
+        : null;
+    final bool premiumRequired =
+        !progress.isPremium || lessonError?.isPremiumRequired == true;
+    final bool lessonLimitReached =
+        lessonError != null &&
         (lessonError.isFreeLimitReached || lessonError.isFairUseLimitReached);
     final bool lessonAllowedToday =
-        progress.limits.lessonAllowedToday && !lessonLimitReached;
+        !premiumRequired &&
+        progress.limits.lessonAllowedToday &&
+        !lessonLimitReached;
     // エラーの code が返った競合時は、直前の進捗よりサーバの判定を優先する。
     final bool showUpgrade = lessonError?.isFairUseLimitReached == true
         ? false
-        : lessonError?.isFreeLimitReached == true
-            ? true
-            : !progress.isPremium;
+        : premiumRequired || lessonError?.isFreeLimitReached == true;
 
     String? errorMessage;
     if (!notYet && _answerFailed) {
       errorMessage = strings.errorGeneric;
-    } else if (notYet && _showLessonError && !lessonLimitReached) {
+    } else if (notYet &&
+        _showLessonError &&
+        !lessonLimitReached &&
+        !premiumRequired) {
       // 日次上限以外は、撮影画面と同じくサーバの理由をそのまま出す。
       final String message = lessonError?.message ?? strings.errorGeneric;
       errorMessage = message.isEmpty ? strings.errorGeneric : message;
@@ -138,7 +146,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
             errorMessage: errorMessage,
             onSaidIt: () => _answer(item),
             onNotYet: () => _chooseNotYet(item),
-            // 無料でも、その日の授業枠が残っていればそのまま先輩を呼ぶ。
+            // 声を使う復習授業はPremium。契約と日次枠の両方が通るときだけ呼ぶ。
             onAskSenpai: () => _startLesson(item),
             onUpgrade: _openPaywall,
             onLater: _later,
@@ -163,7 +171,9 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
     final AsyncValue<ReviewQueue> queue = ref.watch(reviewControllerProvider);
-    final AsyncValue<ProgressSummary> progress = ref.watch(progressControllerProvider);
+    final AsyncValue<ProgressSummary> progress = ref.watch(
+      progressControllerProvider,
+    );
     final CaptureState capture = ref.watch(captureControllerProvider);
 
     return Scaffold(
@@ -181,7 +191,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
           error: (Object error, StackTrace stack) => _Message(
             text: strings.errorGeneric,
             primaryLabel: strings.errorRetry,
-            onPrimary: () => ref.read(reviewControllerProvider.notifier).refresh(),
+            onPrimary: () =>
+                ref.read(reviewControllerProvider.notifier).refresh(),
           ),
           data: (ReviewQueue data) {
             if (data.isEmpty) {
@@ -190,8 +201,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
             // **進捗の取得で小テストを人質に取らない。**
             //
             // 小テストは「1問・テキストで10秒」が売りで、答えるのに要るのは
-            // キューだけ。進捗を使うのは「先輩に聞く」を出せるかの判定
-            // (`lessonAllowedToday`)だけなので、そちらが取れなくても
+            // キューだけ。進捗を使うのは「先輩に聞く」のPremium判定と
+            // `lessonAllowedToday`だけなので、そちらが取れなくても
             // 言えた / まだ言えない は答えられなければならない。
             //
             // 取れていないあいだは「枠が無い」側に倒す。授業へ進ませてから
@@ -251,12 +262,18 @@ class _ReviewCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           if (notYet) ...<Widget>[
+            // 「まだ」を咎めず、ここから先は先輩が引き取る。
+            Text(
+              strings.reviewNotYetLead,
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+            const SizedBox(height: AppSpacing.md),
             if (lessonAllowedToday) ...<Widget>[
-              // 咎めるのではなく、ここから先は先輩が引き取る。
-              Text(strings.reviewNotYetLead, style: Theme.of(context).textTheme.bodyLarge),
-              const SizedBox(height: AppSpacing.md),
               if (errorMessage != null) ...<Widget>[
-                Text(errorMessage!, style: Theme.of(context).textTheme.bodySmall),
+                Text(
+                  errorMessage!,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
                 const SizedBox(height: AppSpacing.md),
               ],
               ChunkyButton(
@@ -264,17 +281,31 @@ class _ReviewCard extends StatelessWidget {
                 onPressed: isBusy ? null : onAskSenpai,
               ),
             ] else ...<Widget>[
-              // 「まだ」を責めず、上限は先輩が今日の学習を締める判断として伝える。
-              Text(strings.lessonEnoughForToday, style: Theme.of(context).textTheme.bodySmall),
-              if (showUpgrade)
+              if (showUpgrade) ...<Widget>[
+                // 小テストは閉じない。従量原価が始まる音声授業だけが境界だと伝える。
+                Text(
+                  strings.reviewVoicePremium,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
                 TextButton(
                   onPressed: onUpgrade,
                   style: TextButton.styleFrom(
                     foregroundColor: AppColors.blue,
                     visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.sm,
+                    ),
                   ),
-                  child: Text(strings.homeUnlock, style: Theme.of(context).textTheme.bodySmall),
+                  child: Text(
+                    strings.homeUnlock,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              ] else
+                // Premiumのフェアユース上限は、先輩が今日の学習を締める判断として伝える。
+                Text(
+                  strings.lessonEnoughForToday,
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
             ],
             const SizedBox(height: AppSpacing.sm),
@@ -330,7 +361,10 @@ class _FilledSection extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.sm),
         if (filled.isEmpty)
-          Text(strings.reviewFilledEmpty, style: Theme.of(context).textTheme.bodySmall)
+          Text(
+            strings.reviewFilledEmpty,
+            style: Theme.of(context).textTheme.bodySmall,
+          )
         else
           // 埋めた穴は、ピンクではなく黄で引き直される。
           // 上から順に引くことで、積み上がってきたものとして見える。

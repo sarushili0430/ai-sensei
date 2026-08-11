@@ -1,11 +1,16 @@
+import { studyRoomDailyMaxSeconds } from "@ai-sensei/contract";
+import type { StudyPlan } from "@ai-sensei/contract";
 import type {
   HoleRecord,
   KarteRecord,
+  PlanSessionRecord,
   Repository,
   ReviewScheduleRecord,
   SessionContext,
   SessionRecord,
   SessionReservation,
+  StudyRoomDailyRecord,
+  StudyRoomVisitWrite,
   UserRecord,
 } from "./types.ts";
 
@@ -19,6 +24,9 @@ export class MemoryRepository implements Repository {
   readonly kartes = new Map<string, KarteRecord>();
   readonly holes = new Map<string, HoleRecord>();
   readonly schedules: ReviewScheduleRecord[] = [];
+  readonly studyRoomDays = new Map<string, StudyRoomDailyRecord>();
+  readonly planSessions = new Map<string, PlanSessionRecord>();
+  readonly plans = new Map<string, StudyPlan>();
 
   async ensureUser(deviceId: string, now: Date): Promise<UserRecord> {
     const existing = this.users.get(deviceId);
@@ -144,6 +152,20 @@ export class MemoryRepository implements Repository {
     return karte ? this.getKarte(karte.id) : null;
   }
 
+  async listKartesOnLocalDates(input: {
+    deviceId: string;
+    fromDate: string;
+    toDate: string;
+  }): Promise<KarteRecord[]> {
+    return [...this.kartes.values()]
+      .filter((karte) => {
+        if (karte.device_id !== input.deviceId) return false;
+        const localDate = this.sessions.get(karte.session_id)?.local_date;
+        return localDate !== undefined && localDate >= input.fromDate && localDate <= input.toDate;
+      })
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }
+
   async listHoles(deviceId: string): Promise<HoleRecord[]> {
     return [...this.holes.values()]
       .filter((hole) => hole.device_id === deviceId)
@@ -156,7 +178,7 @@ export class MemoryRepository implements Repository {
 
   async markHoleFilled(holeId: string, filledAt: string): Promise<void> {
     const hole = this.holes.get(holeId);
-    if (!hole) return;
+    if (!hole || hole.status !== "open") return;
     this.holes.set(holeId, { ...hole, status: "filled", filled_at: filledAt });
   }
 
@@ -170,5 +192,98 @@ export class MemoryRepository implements Repository {
       this.schedules.splice(this.schedules.indexOf(entry), 1);
     }
     return cancelled;
+  }
+
+  async recordStudyRoomVisit(input: {
+    deviceId: string;
+    localDate: string;
+    durationSeconds: number;
+    visitId: string;
+    recordedAt: string;
+  }): Promise<StudyRoomVisitWrite> {
+    const key = `${input.deviceId}/${input.localDate}`;
+    const existing = this.studyRoomDays.get(key);
+
+    // 本番D1と同じく、直前の退室イベントと日次上限は書き換えない。
+    // ここで別の振る舞いにすると、ルートテストだけが二重加算を見逃す。
+    if (
+      existing &&
+      (existing.last_visit_id === input.visitId ||
+        existing.total_seconds >= studyRoomDailyMaxSeconds)
+    ) {
+      return { recorded: false, daily: existing };
+    }
+
+    const daily: StudyRoomDailyRecord = {
+      device_id: input.deviceId,
+      local_date: input.localDate,
+      total_seconds: Math.min(
+        studyRoomDailyMaxSeconds,
+        (existing?.total_seconds ?? 0) + input.durationSeconds,
+      ),
+      last_visit_id: input.visitId,
+      updated_at: input.recordedAt,
+    };
+    this.studyRoomDays.set(key, daily);
+    return { recorded: true, daily };
+  }
+
+  async createPlanSession(session: PlanSessionRecord): Promise<void> {
+    this.planSessions.set(session.id, session);
+  }
+
+  async getPlanSession(planSessionId: string): Promise<PlanSessionRecord | null> {
+    return this.planSessions.get(planSessionId) ?? null;
+  }
+
+  async getCurrentPlan(deviceId: string): Promise<StudyPlan | null> {
+    const session = [...this.planSessions.values()]
+      .filter((entry) => entry.device_id === deviceId && entry.plan_id !== null)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+    return session?.plan_id ? (this.plans.get(session.plan_id) ?? null) : null;
+  }
+
+  async getPlan(planId: string): Promise<StudyPlan | null> {
+    return this.plans.get(planId) ?? null;
+  }
+
+  async completePlanSession(input: {
+    sessionId: string;
+    completedAt: string;
+    durationSeconds: number;
+    plan: StudyPlan;
+  }): Promise<boolean> {
+    const session = this.planSessions.get(input.sessionId);
+    if (!session || session.status !== "open") return false;
+
+    const currentSession = [...this.planSessions.values()]
+      .filter((entry) => entry.device_id === session.device_id && entry.plan_id !== null)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+    if (currentSession?.plan_id && currentSession.plan_id !== input.plan.id) {
+      // D1のUNIQUE(device_id)と同じ競合を再現する。テスト用実装だけ後勝ちにすると、
+      // 二重に開いた初回セッションが本番で既存計画を上書きしない性質を検査できない。
+      this.planSessions.set(input.sessionId, {
+        ...session,
+        status: "completed",
+        completed_at: input.completedAt,
+        duration_seconds: input.durationSeconds,
+        plan_id: currentSession.plan_id,
+      });
+      return false;
+    }
+
+    /**
+     * 確認から2つのMap更新までawaitを挟まない。テスト実装でも本番D1と同じく、
+     * complete の再送が別内容で現行計画を上書きできない境界を保つため。
+     */
+    this.plans.set(input.plan.id, input.plan);
+    this.planSessions.set(input.sessionId, {
+      ...session,
+      status: "completed",
+      completed_at: input.completedAt,
+      duration_seconds: input.durationSeconds,
+      plan_id: input.plan.id,
+    });
+    return true;
   }
 }

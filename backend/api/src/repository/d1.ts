@@ -1,12 +1,17 @@
+import { studyRoomDailyMaxSeconds } from "@ai-sensei/contract";
+import { type StudyPlan, studyPlanSchema } from "@ai-sensei/contract";
 import type { D1Database } from "../cloudflare.ts";
 import type {
   HoleRecord,
   KarteRecord,
+  PlanSessionRecord,
   Repository,
   ReviewScheduleRecord,
   SessionContext,
   SessionRecord,
   SessionReservation,
+  StudyRoomDailyRecord,
+  StudyRoomVisitWrite,
   UserRecord,
 } from "./types.ts";
 
@@ -26,6 +31,13 @@ type KarteRow = Omit<KarteRecord, "topic_ids" | "said_well" | "term_notes"> & {
   topic_ids: string;
   said_well: string;
   term_notes: string;
+};
+type StudyPlanRow = Omit<StudyPlan, "intake" | "days" | "revisions"> & {
+  intake: string;
+  days: string;
+  revisions: string;
+  device_id: string;
+  updated_at: string;
 };
 
 export class D1Repository implements Repository {
@@ -259,6 +271,37 @@ export class D1Repository implements Repository {
     return row ? this.getKarte(row.id) : null;
   }
 
+  async listKartesOnLocalDates(input: {
+    deviceId: string;
+    fromDate: string;
+    toDate: string;
+  }): Promise<KarteRecord[]> {
+    /**
+     * 月の境界は sessions.local_date を正にする。kartes.created_at はUTCなので、
+     * それだけで `2026-08-01` を比較するとJSTの月初9時間を前月へ落としてしまう。
+     * セッションは主キーで結合でき、期間条件は既存の
+     * `idx_sessions_device_date` に乗るので、新しいテーブルもマイグレーションも要らない。
+     */
+    const result = await this.db
+      .prepare(
+        `SELECT kartes.* FROM kartes
+          INNER JOIN sessions ON sessions.id = kartes.session_id
+          WHERE sessions.device_id = ?
+            AND kartes.device_id = ?
+            AND sessions.local_date >= ?
+            AND sessions.local_date <= ?
+          ORDER BY kartes.created_at DESC`,
+      )
+      .bind(input.deviceId, input.deviceId, input.fromDate, input.toDate)
+      .all<KarteRow>();
+    return result.results.map((row) => ({
+      ...row,
+      topic_ids: parseJsonArray(row.topic_ids),
+      said_well: parseJsonArray(row.said_well),
+      term_notes: parseJsonArray(row.term_notes),
+    }));
+  }
+
   async listHoles(deviceId: string): Promise<HoleRecord[]> {
     const result = await this.db
       .prepare("SELECT * FROM holes WHERE device_id = ? ORDER BY created_at")
@@ -277,7 +320,7 @@ export class D1Repository implements Repository {
 
   async markHoleFilled(holeId: string, filledAt: string): Promise<void> {
     await this.db
-      .prepare("UPDATE holes SET status = 'filled', filled_at = ? WHERE id = ?")
+      .prepare("UPDATE holes SET status = 'filled', filled_at = ? WHERE id = ? AND status = 'open'")
       .bind(filledAt, holeId)
       .run();
   }
@@ -304,12 +347,173 @@ export class D1Repository implements Repository {
     await this.db.prepare("DELETE FROM review_schedules WHERE hole_id = ?").bind(holeId).run();
     return result.results;
   }
+
+  async recordStudyRoomVisit(input: {
+    deviceId: string;
+    localDate: string;
+    durationSeconds: number;
+    visitId: string;
+    recordedAt: string;
+  }): Promise<StudyRoomVisitWrite> {
+    const write = this.db
+      .prepare(
+        `INSERT INTO study_room_daily
+           (device_id, local_date, total_seconds, last_visit_id, updated_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(device_id, local_date) DO UPDATE SET
+           total_seconds = MIN(?, study_room_daily.total_seconds + excluded.total_seconds),
+           last_visit_id = excluded.last_visit_id,
+           updated_at = excluded.updated_at
+         WHERE study_room_daily.last_visit_id <> excluded.last_visit_id
+           AND study_room_daily.total_seconds < ?`,
+      )
+      .bind(
+        input.deviceId,
+        input.localDate,
+        input.durationSeconds,
+        input.visitId,
+        input.recordedAt,
+        studyRoomDailyMaxSeconds,
+        studyRoomDailyMaxSeconds,
+      );
+    const read = this.db
+      .prepare("SELECT * FROM study_room_daily WHERE device_id = ? AND local_date = ?")
+      .bind(input.deviceId, input.localDate);
+
+    /**
+     * 加算と読み取りを同じbatchに入れる。構造化ログへ出す日次合計が、直後の別訪問を
+     * 偶然読んだ値にならないようにするため。UPSERTの1文が加算の原子性を担い、
+     * `last_visit_id` が同じならchanges=0なので二重送信も同じ経路で判定できる。
+     */
+    const results = await this.db.batch<StudyRoomDailyRecord>([write, read]);
+    const writeResult = results[0];
+    if (!writeResult) throw new Error("自習室の日次集計結果がありません");
+    const changes = studyRoomChangesOf(writeResult.meta);
+
+    const daily = results[1]?.results[0];
+    if (!daily) throw new Error("自習室の日次集計を読み取れません");
+    return { recorded: changes > 0, daily };
+  }
+
+  async createPlanSession(session: PlanSessionRecord): Promise<void> {
+    await this.db
+      .prepare(
+        `INSERT INTO plan_sessions
+           (id, device_id, locale, status, created_at, completed_at, duration_seconds, plan_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        session.id,
+        session.device_id,
+        session.locale,
+        session.status,
+        session.created_at,
+        session.completed_at,
+        session.duration_seconds,
+        session.plan_id,
+      )
+      .run();
+  }
+
+  async getPlanSession(planSessionId: string): Promise<PlanSessionRecord | null> {
+    return this.db
+      .prepare("SELECT * FROM plan_sessions WHERE id = ?")
+      .bind(planSessionId)
+      .first<PlanSessionRecord>();
+  }
+
+  async getCurrentPlan(deviceId: string): Promise<StudyPlan | null> {
+    const row = await this.db
+      .prepare("SELECT * FROM study_plans WHERE device_id = ?")
+      .bind(deviceId)
+      .first<StudyPlanRow>();
+    return row ? toStudyPlan(row) : null;
+  }
+
+  async getPlan(planId: string): Promise<StudyPlan | null> {
+    const row = await this.db
+      .prepare("SELECT * FROM study_plans WHERE id = ?")
+      .bind(planId)
+      .first<StudyPlanRow>();
+    return row ? toStudyPlan(row) : null;
+  }
+
+  async completePlanSession(input: {
+    sessionId: string;
+    completedAt: string;
+    durationSeconds: number;
+    plan: StudyPlan;
+  }): Promise<boolean> {
+    const { plan } = input;
+    const save = this.db
+      .prepare(
+        `INSERT INTO study_plans
+           (id, device_id, created_at, updated_at, source, intake, days, revisions)
+         SELECT ?, plan_sessions.device_id, ?, ?, ?, ?, ?, ?
+           FROM plan_sessions
+          WHERE plan_sessions.id = ? AND plan_sessions.status = 'open'
+         ON CONFLICT(device_id) DO UPDATE SET
+           updated_at = excluded.updated_at,
+           source = excluded.source,
+           intake = excluded.intake,
+           days = excluded.days,
+           revisions = excluded.revisions
+         WHERE study_plans.id = excluded.id`,
+      )
+      .bind(
+        plan.id,
+        plan.created_at,
+        input.completedAt,
+        plan.source,
+        JSON.stringify(plan.intake),
+        JSON.stringify(plan.days),
+        JSON.stringify(plan.revisions),
+        input.sessionId,
+      );
+    const finish = this.db
+      .prepare(
+        `UPDATE plan_sessions
+            SET status = 'completed',
+                completed_at = ?,
+                duration_seconds = ?,
+                plan_id = (
+                  SELECT id FROM study_plans WHERE device_id = plan_sessions.device_id
+                )
+          WHERE id = ?
+            AND status = 'open'
+            AND EXISTS (
+              SELECT 1 FROM study_plans WHERE device_id = plan_sessions.device_id
+            )`,
+      )
+      .bind(input.completedAt, input.durationSeconds, input.sessionId);
+
+    /**
+     * 保存と完了印が別々に成功すると、再送時に「完了済みだが計画が無い」か
+     * 「計画は変わったがセッションはopen」が生まれる。D1 batch の原子性で2文を束ね、
+     * 先に完了した再送では1文目の SELECT が0件になって現行計画を上書きしない。
+     * また初回の部屋が二重に開かれ、別々のplan idで同時にcompleteされても、後着の
+     * UPSERTはWHEREで更新を拒む。既存idを差し替えると、先着セッションの外部キーが
+     * 切れるだけでなく「同じ計画を組み直した」という履歴の連続性まで失うため。
+     * finish側は実際に端末へ保存されたidを引き直し、後着セッションも安全に閉じる。
+     */
+    const results = await this.db.batch([save, finish]);
+    const saveResult = results[0];
+    if (!saveResult) throw new Error("計画の保存結果がありません");
+    return changesOf(saveResult.meta) > 0;
+  }
 }
 
 /** metaの形が変わったとき、全員を上限到達として黙って止めずに異常を表へ出す。 */
 function changesOf(meta: Record<string, unknown>): number {
   const changes = meta["changes"];
   if (typeof changes !== "number") throw new Error("授業枠のINSERT件数を読み取れません");
+  return changes;
+}
+
+/** 二重送信を成功扱いのまま見分けるため、D1が返した書き込み件数を必ず検査する。 */
+function studyRoomChangesOf(meta: Record<string, unknown>): number {
+  const changes = meta["changes"];
+  if (typeof changes !== "number") throw new Error("自習室のUPSERT件数を読み取れません");
   return changes;
 }
 
@@ -345,4 +549,19 @@ function parseJsonArray(value: string | null): string[] {
   } catch {
     return [];
   }
+}
+
+/**
+ * JSON列を個別に型アサーションすると、壊れた行がAPIレスポンスまで抜ける。
+ * 保存後の計画は将来の親レポートも読む一次データなので、契約全体で検証してから返す。
+ */
+function toStudyPlan(row: StudyPlanRow): StudyPlan {
+  return studyPlanSchema.parse({
+    id: row.id,
+    created_at: row.created_at,
+    source: row.source,
+    intake: JSON.parse(row.intake) as unknown,
+    days: JSON.parse(row.days) as unknown,
+    revisions: JSON.parse(row.revisions) as unknown,
+  });
 }

@@ -44,7 +44,10 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
         context.go(AppRoute.home.path);
         return;
       }
-      ref.read(sessionControllerProvider.notifier).connect(session);
+      ref.read(sessionControllerProvider.notifier).connect(
+            session,
+            locale: Localizations.localeOf(context).languageCode,
+          );
     });
   }
 
@@ -417,8 +420,10 @@ class _SessionFailed extends ConsumerWidget {
               if (session != null)
                 ChunkyButton(
                   label: strings.sessionRetry,
-                  onPressed: () =>
-                      ref.read(sessionControllerProvider.notifier).retry(session),
+                  onPressed: () => ref.read(sessionControllerProvider.notifier).retry(
+                        session,
+                        locale: Localizations.localeOf(context).languageCode,
+                      ),
                 ),
               GhostButton(
                 label: strings.sessionBackHome,

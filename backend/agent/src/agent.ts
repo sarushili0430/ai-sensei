@@ -1,5 +1,4 @@
 import type { BoardStep, CompleteSessionRequest } from "@ai-sensei/contract";
-import { boardLessonSystemPrompt } from "@ai-sensei/prompts";
 import { type JobContext, type JobProcess, defineAgent, voice } from "@livekit/agents";
 import * as anthropic from "@livekit/agents-plugin-anthropic";
 import * as deepgram from "@livekit/agents-plugin-deepgram";
@@ -12,7 +11,12 @@ import {
 } from "./board.ts";
 import { closingGraceMs, isClosingUtterance } from "./closing.ts";
 import { type AgentConfig, loadConfig } from "./config.ts";
-import { type SessionContext, remainingSeconds, resolveSessionContext } from "./context.ts";
+import {
+  type AgentContext,
+  type SessionContext,
+  remainingSeconds,
+  resolveAgentContext,
+} from "./context.ts";
 import {
   buildKarte,
   createAnthropicClient,
@@ -22,13 +26,14 @@ import {
 } from "./karte.ts";
 import { boardCloseReasonFor, createAnthropicLessonClient, runBoardLesson } from "./lesson.ts";
 import { JobLogger } from "./log.ts";
+import { runPlanSession } from "./plan-session.ts";
 import {
-  handsTurnToStudent,
   lessonFailedPrompt,
-  openingFiller,
   reviewOpening,
+  senpaiBoardLessonPrompt,
   senpaiConversationPrompt,
-  teachBackPrompt,
+  startsWithBoardLesson,
+  teachBackFallback,
 } from "./senpai.ts";
 import { TranscriptCollector } from "./transcript.ts";
 
@@ -83,11 +88,11 @@ export default defineAgent({
     await ctx.connect();
     const participant = await ctx.waitForParticipant();
 
-    let context: SessionContext;
+    let context: AgentContext;
     try {
       // 参加者metadata(自動ディスパッチ)とジョブmetadata(明示ディスパッチ)の
       // どちらで来ても読めるようにする。
-      context = resolveSessionContext([participant.metadata, ctx.job.metadata]);
+      context = resolveAgentContext([participant.metadata, ctx.job.metadata]);
     } catch (error) {
       // 文脈なしで喋らせると、写真と関係ない一般論を教え始めてしまう。
       // それくらいなら黙って終える。
@@ -96,13 +101,22 @@ export default defineAgent({
       return;
     }
 
+    if (context.kind === "plan") {
+      // 計画は同じ声・同じLiveKitを使うが授業ではない。板書・カルテ・教え返しへ
+      // 入る前に分岐し、計画を授業回数や穴へ混ぜない。
+      log = log.child({ plan_session_id: context.plan_session_id });
+      await runPlanSession({ ctx, config, context, startedAt, log });
+      return;
+    }
+
     log = log.child({ session_id: context.session_id });
 
-    // 授業モードに入るかは `kind` で決める。
-    // **`review` は今回いじらない** — 復習は前回の穴を聞き直す会話で、
-    // 板書つきで教え直すかどうかは計画書 §2 の「詰まったら授業モードへ」の
-    // 判断が要る(小テストが入ってから決める)。
-    const lessonMode = context.kind === "new";
+    // 穴が届いた復習も板書授業から始める。`review` は小テストで「まだ」→「先輩に聞く」を
+    // 選んだ**あと**のセッションなので、前回の穴をもう一度聞くだけの会話へ戻すと、
+    // §2 の「詰まったら授業モードへ」がここで途切れる。写真の代わりに何を根拠に
+    // 教えるかは `senpaiBoardLessonPrompt()` が review_hole から組み立てる。
+    // 欄が無い復習は、古いAPIと共存する窓なので従来の会話へ安全に縮退する。
+    const lessonMode = startsWithBoardLesson(context);
 
     const collector = new TranscriptCollector(startedAt, context);
 
@@ -202,7 +216,10 @@ export default defineAgent({
         log,
       });
     } else {
-      // 復習は板書を出さない(前回の穴を聞き直す会話)。最初の一言だけこちらから。
+      // 新しいagentを先に出した窓では、古いAPIの復習metadataに review_hole が無い。
+      // 根拠なしの板書を作らず従来の聞き直し会話へ落とし、窓が閉じないまま運用が
+      // 続いても気づけるよう縮退を必ず記録する。
+      log.warn("review_hole_missing", { kind: context.kind });
       session.say(reviewOpening(context.locale));
     }
 
@@ -358,7 +375,7 @@ async function teachWithBoard(options: TeachOptions): Promise<BoardDelivery | un
     // 接続直後に必ず入っている値なので、ここに来るのはフレームワーク側の異常。
     log.warn("board_publisher_missing");
     agent.endLesson();
-    session.say(lessonFailedPrompt(context.locale));
+    session.say(lessonFailedPrompt(context.locale, context.kind));
     return undefined;
   }
 
@@ -374,33 +391,22 @@ async function teachWithBoard(options: TeachOptions): Promise<BoardDelivery | un
   });
   const board = channel.startBoard();
 
-  // 冒頭の無音を埋める。最初の手順が出るまでの数秒がまるごと沈黙になる(§3-2)。
-  // **読み上げ終わりまで待つ。**待たないと、この一言と最初の手順の読み上げが
-  // 同時に走って、生徒には先輩が2人いるように聞こえる。
-  //
-  // TODO(§3-2): 本来はここを**事前生成の音声アセット**にする(TTS呼び出しゼロ)。
-  // アセットはまだ存在しないので、暫定で固定文言をTTSに通している。
-  // §4-2 の自習室モード(原価ゼロ)の声かけと同じ仕組みになるので、
-  // アセットを作るときは両方まとめて用意すること。
-  await sayAndWait(session, openingFiller(context.locale), log);
+  // 冒頭の一言はモバイルが同梱アセットから鳴らす(§3-2)。ここでも同じ文を
+  // `session.say()` すると、固定文に毎回 Deepgram の従量原価が戻るだけでなく、
+  // ローカル音声と重なって「先輩が2人いる」ように聞こえる。agent はすぐ板書生成へ
+  // 入り、最初の手順または発話が届いた時点でモバイル側がアセットを止める。
 
   const lesson = await runBoardLesson({
     llm: createAnthropicLessonClient({
       apiKey: config.ANTHROPIC_API_KEY,
       model: config.LLM_MODEL_BOARD,
     }),
-    system: boardLessonSystemPrompt(
-      {
-        // **どちらもそのまま渡す。**読めなかったとき・ノートが無いときの文言は
-        // 契約側(backend/api)が会話の言語で入れてくる。ここで埋め直すと、
-        // プロンプトが名指しで見ているプレースホルダとずれる(`context.ts` の理由)。
-        problem_text: context.problem_text,
-        student_work: context.visible_work,
-        allowed_topics: context.allowed_topics,
-        remaining_seconds: remainingSeconds(context, startedAt, new Date()),
-      },
-      context.locale,
-    ),
+    // 新規は写真の問題、復習は review_hole を根拠にする。どちらも同じ板書規約を
+    // 通すが、穴を problem_text に偽装しない(`senpai.ts` の設計判断)。
+    system: senpaiBoardLessonPrompt({
+      context,
+      remainingSeconds: remainingSeconds(context, startedAt, new Date()),
+    }),
     locale: context.locale,
     delivery: board,
     signal,
@@ -440,7 +446,7 @@ async function teachWithBoard(options: TeachOptions): Promise<BoardDelivery | un
   if (lesson.step_count === 0) {
     // 1行も出せなかった。教わっていないことの説明は求められない。
     log.warn("lesson_empty", { board_id: lesson.board_id, reason: lesson.reason });
-    session.say(lessonFailedPrompt(context.locale));
+    session.say(lessonFailedPrompt(context.locale, context.kind));
     return board;
   }
 
@@ -449,12 +455,10 @@ async function teachWithBoard(options: TeachOptions): Promise<BoardDelivery | un
     return board;
   }
 
-  // 板書の最後の手順がもう番を渡していれば、同じことを二度言わない。
-  // 成功した授業では毎回そうなる(`senpai_board.*.md` がそう指示している)。
-  const last = lesson.steps.at(-1);
-  if (last === undefined || !handsTurnToStudent(last.speech, context.locale)) {
-    session.say(teachBackPrompt(context.locale));
-  }
+  // プロンプトが番を渡し忘れても「教えて終わり」にしない。一方、もう渡して
+  // いるときは同じ問いを二度重ねない。実際に配送できた手順だけで決める。
+  const fallback = teachBackFallback(context, lesson.steps);
+  if (fallback !== null) session.say(fallback);
 
   return board;
 }

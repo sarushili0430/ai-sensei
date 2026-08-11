@@ -115,7 +115,7 @@ few-shot も、その言語で書かれたものをそのまま渡す。
 | STT / TTS | `deepgram` のモデル(`DEEPGRAM_TTS_MODEL_JA` / `_EN`) |
 | プロンプト | `conversationSystemPrompt(vars, locale)` / `boardLessonSystemPrompt(vars, locale)` / `karteSystemPrompt(vars, locale)` |
 | transcriptの整形 | ロール名(`先輩:` / `Senpai:`) |
-| 定型の一言 | `senpai.ts`(冒頭の無音埋め・教え返しへの受け渡し・復習の入り) |
+| 定型の一言 | `senpai.ts`(教え返しへの受け渡し・復習の入り)。冒頭の無音埋めだけはモバイルの同梱アセット |
 | ガードレール | 答えの漏れの検出と数式音声の正規化(`normalizeMathSpeech(text, locale)`) |
 
 許可トピックは `locale` を見ずに済む。topic_id の接頭辞がロケールごとに
@@ -132,6 +132,7 @@ few-shot も、その言語で書かれたものをそのまま渡す。
 | `job_started` | ジョブを受け取った | これが無ければディスパッチが届いていない |
 | `context_unreadable` | 文脈が読めない。会話せずに切る | APIのmetadataを疑う |
 | `conversation_started` | セッションが立ち上がった(授業の**前**) | ここまで来れば先輩は喋れる状態 |
+| `review_hole_missing` | 古いAPIが作った復習。板書なし会話へ縮退 | APIのデプロイ後も続くなら版ずれを疑う |
 | `lesson_finished` / `lesson_empty` | 授業1回ぶんの結果 | `lesson_empty` は8/16ゲートを見る指標 |
 | `conversation_ended` | `completed` / `timeout` / `user_left` / `error` | 終わり方と発話数 |
 | `karte_built` / `karte_failed` | カルテ生成 | 穴の数と所要時間 |

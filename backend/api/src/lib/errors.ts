@@ -23,8 +23,11 @@ const messages: Record<ApiErrorCode, { ja: string; en: string; status: number }>
     status: 429,
   },
   premium_required: {
-    ja: "先輩に声で聞き直す授業モードはPremiumの機能です。小テストは無料で使えます。",
-    en: "Calling your senpai back by voice uses Premium lesson mode. The quick quiz stays free.",
+    // 計画モードと声で聞き直す授業は、同じ `premium_required` を返す。
+    // 有料側の機能名を固定すると別の導線で誤案内になるため汎用にしつつ、
+    // 無料で残る小テストとカルテは明示して、すべて閉じたようには見せない。
+    ja: "この機能はPremiumで利用できます。無料のままでも、小テストと今日のカルテは使えます。",
+    en: "This feature is available with Premium. Quick quizzes and today's karte stay free.",
     status: 402,
   },
   photo_unreadable: {

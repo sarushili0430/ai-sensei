@@ -67,6 +67,9 @@ dependencies:
   # メンテが薄いリスクへの保険は `packages/guardrail` の許可コマンド照合と
   # agent側のKaTeXパースで取る(§3-6の三段構え。このパッケージ自体は縛らない)。
   flutter_math_fork: ^0.7.4
+  # 授業冒頭と自習室の短い一言は、同梱アセットだけを再生する。
+  # URLを渡さないので通信もTTS従量原価も発生しない(計画書§3-2 / §4-2)。
+  just_audio: ^0.10.6
 
 dev_dependencies:
   flutter_test:
@@ -86,6 +89,10 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    # 現在の m4a は無音プレースホルダ。実音声への差し替え手順は同ディレクトリの
+    # README に置く。ディレクトリ指定なので、日英の片方を宣言し忘れない。
+    - assets/audio/
   fonts:
     # 丸ゴシック(handoff §7)。SIL OFL 1.1。
     # golden test はこのフォントを読み込んで描画するので、

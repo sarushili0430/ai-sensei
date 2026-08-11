@@ -3,6 +3,8 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { fileURLToPath } from "node:url";
+import type { StudyPlan } from "@ai-sensei/contract";
+import { studyRoomDailyMaxSeconds, studyRoomVisitMaxSeconds } from "@ai-sensei/contract";
 import { describe, expect, it } from "vitest";
 import type { D1Database, D1PreparedStatement, D1Result } from "../src/cloudflare.ts";
 import { D1Repository } from "../src/repository/d1.ts";
@@ -394,6 +396,200 @@ describeWithSqlite("D1の授業枠", () => {
           .all()
           .map((row) => row["day_seq"]),
       ).toEqual([0, 0, 0]);
+    } finally {
+      database.close();
+    }
+  });
+});
+
+describeWithSqlite("D1の自習室日次集計", () => {
+  it("0006は既存表を変えず、日次集計の表だけを追加する", async () => {
+    const database = openDatabase();
+    try {
+      const entries = await migrations();
+      const sixthIndex = entries.findIndex((entry) => entry.name === "0006_study_room.sql");
+      if (sixthIndex < 0) throw new Error("0006マイグレーションがありません");
+
+      apply(database, entries.slice(0, sixthIndex));
+      const sessionsBefore = database.prepare("PRAGMA table_info(sessions)").all();
+      apply(database, [entries[sixthIndex]!]);
+
+      expect(database.prepare("PRAGMA table_info(sessions)").all()).toEqual(sessionsBefore);
+      expect(
+        database
+          .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+          .get("study_room_daily"),
+      ).toMatchObject({ name: "study_room_daily" });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("同じ退室イベントを二重加算せず、別訪問は同じ日の1行へ足す", async () => {
+    const database = openDatabase();
+    try {
+      apply(database, await migrations());
+      const repository = new D1Repository(new SQLiteD1Database(database));
+      await repository.ensureUser("device_a", new Date("2026-08-03T13:00:00.000Z"));
+      const firstInput = {
+        deviceId: "device_a",
+        localDate: "2026-08-03",
+        durationSeconds: 600,
+        visitId: "00000000-0000-4000-8000-000000000001",
+        recordedAt: "2026-08-03T13:10:00.000Z",
+      };
+
+      expect(await repository.recordStudyRoomVisit(firstInput)).toMatchObject({
+        recorded: true,
+        daily: { total_seconds: 600 },
+      });
+      expect(await repository.recordStudyRoomVisit(firstInput)).toMatchObject({
+        recorded: false,
+        daily: { total_seconds: 600 },
+      });
+      expect(
+        await repository.recordStudyRoomVisit({
+          ...firstInput,
+          durationSeconds: 900,
+          visitId: "00000000-0000-4000-8000-000000000002",
+          recordedAt: "2026-08-03T14:00:00.000Z",
+        }),
+      ).toMatchObject({
+        recorded: true,
+        daily: { total_seconds: 1500 },
+      });
+
+      expect(
+        database.prepare("SELECT COUNT(*) AS count FROM study_room_daily").get(),
+      ).toMatchObject({ count: 1 });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("異なるUUIDでも日次安全上限に達したあとは書き換えない", async () => {
+    const database = openDatabase();
+    try {
+      apply(database, await migrations());
+      const repository = new D1Repository(new SQLiteD1Database(database));
+      await repository.ensureUser("device_a", new Date("2026-08-03T13:00:00.000Z"));
+
+      const writes = [];
+      for (let index = 1; index <= 4; index += 1) {
+        writes.push(
+          await repository.recordStudyRoomVisit({
+            deviceId: "device_a",
+            localDate: "2026-08-03",
+            durationSeconds: studyRoomVisitMaxSeconds,
+            visitId: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+            recordedAt: `2026-08-03T${String(index).padStart(2, "0")}:00:00.000Z`,
+          }),
+        );
+      }
+
+      expect(writes.map((write) => write.recorded)).toEqual([true, true, true, false]);
+      expect(writes.at(-1)?.daily).toMatchObject({
+        total_seconds: studyRoomDailyMaxSeconds,
+      });
+    } finally {
+      database.close();
+    }
+  });
+});
+
+describeWithSqlite("D1の学習計画", () => {
+  it("計画保存とセッション完了を一括し、再送では現行計画を上書きしない", async () => {
+    const database = openDatabase();
+    try {
+      apply(database, await migrations());
+      const repository = new D1Repository(new SQLiteD1Database(database));
+      await repository.ensureUser("device_a", new Date("2026-08-03T13:00:00.000Z"));
+      await repository.createPlanSession({
+        id: "plan_session_1",
+        device_id: "device_a",
+        locale: "ja",
+        status: "open",
+        created_at: "2026-08-03T13:00:00.000Z",
+        completed_at: null,
+        duration_seconds: null,
+        plan_id: null,
+      });
+      await repository.createPlanSession({
+        id: "plan_session_2",
+        device_id: "device_a",
+        locale: "ja",
+        status: "open",
+        created_at: "2026-08-03T13:00:01.000Z",
+        completed_at: null,
+        duration_seconds: null,
+        plan_id: null,
+      });
+      const plan: StudyPlan = {
+        id: "plan_1",
+        created_at: "2026-08-03T13:03:00.000Z",
+        source: "senpai",
+        intake: {
+          exam_name: "中間テスト",
+          exam_date: "2026-08-10",
+          scope: { topic_ids: ["M2-SANKAKU-KAHO"], said: "三角関数" },
+          materials: ["4STEP"],
+        },
+        days: [
+          {
+            date: "2026-08-04",
+            items: [
+              {
+                topic_id: "M2-SANKAKU-KAHO",
+                what: "例題を一周する",
+                material: 0,
+                minutes: 30,
+                status: "todo",
+              },
+            ],
+          },
+        ],
+        revisions: [],
+      };
+
+      expect(
+        await repository.completePlanSession({
+          sessionId: "plan_session_1",
+          completedAt: "2026-08-03T13:03:00.000Z",
+          durationSeconds: 180,
+          plan,
+        }),
+      ).toBe(true);
+      expect(await repository.getCurrentPlan("device_a")).toEqual(plan);
+
+      const conflicting = { ...plan, source: "template" as const };
+      expect(
+        await repository.completePlanSession({
+          sessionId: "plan_session_1",
+          completedAt: "2026-08-03T13:04:00.000Z",
+          durationSeconds: 240,
+          plan: conflicting,
+        }),
+      ).toBe(false);
+      expect(await repository.getCurrentPlan("device_a")).toEqual(plan);
+      expect(await repository.getPlanSession("plan_session_1")).toMatchObject({
+        status: "completed",
+        plan_id: plan.id,
+      });
+
+      const competingPlan = { ...plan, id: "plan_2", source: "template" as const };
+      expect(
+        await repository.completePlanSession({
+          sessionId: "plan_session_2",
+          completedAt: "2026-08-03T13:05:00.000Z",
+          durationSeconds: 300,
+          plan: competingPlan,
+        }),
+      ).toBe(false);
+      expect(await repository.getCurrentPlan("device_a")).toEqual(plan);
+      expect(await repository.getPlanSession("plan_session_2")).toMatchObject({
+        status: "completed",
+        plan_id: plan.id,
+      });
     } finally {
       database.close();
     }

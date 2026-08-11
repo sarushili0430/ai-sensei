@@ -6,6 +6,8 @@ import 'package:http_parser/http_parser.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../features/karte/domain/karte.dart';
+import '../features/parent_report/domain/parent_report.dart';
+import '../features/plan/domain/study_plan.dart';
 import '../features/session/domain/session.dart';
 import 'device_id.dart';
 
@@ -15,8 +17,11 @@ part 'api_client.g.dart';
 ///
 /// 認証は匿名デバイスID(`X-Device-Id`)だけ。アカウント作成を要求しない。
 class ApiClient {
-  ApiClient({required this.baseUrl, required this.deviceId, http.Client? client})
-      : _client = client ?? http.Client();
+  ApiClient({
+    required this.baseUrl,
+    required this.deviceId,
+    http.Client? client,
+  }) : _client = client ?? http.Client();
 
   final String baseUrl;
   final String deviceId;
@@ -87,9 +92,9 @@ class ApiClient {
       );
     }
 
-    final http.Response response = await http.Response
-        .fromStream(await _client.send(request))
-        .timeout(_uploadTimeout);
+    final http.Response response = await http.Response.fromStream(
+      await _client.send(request),
+    ).timeout(_uploadTimeout);
     return SessionStart.fromJson(_decode(response));
   }
 
@@ -110,7 +115,10 @@ class ApiClient {
             ..._headers,
             'content-type': 'application/json; charset=utf-8',
           },
-          body: jsonEncode(<String, dynamic>{'locale': locale, 'topic_ids': topicIds}),
+          body: jsonEncode(<String, dynamic>{
+            'locale': locale,
+            'topic_ids': topicIds,
+          }),
         )
         .timeout(_timeout);
     return SessionStart.fromJson(_decode(response));
@@ -165,8 +173,18 @@ class ApiClient {
     return ReviewQueue.fromJson(_decode(response));
   }
 
+  Future<ParentReportResponse> fetchParentReport() async {
+    final http.Response response = await _client
+        .get(Uri.parse('$baseUrl/v1/me/parent-report'), headers: _headers)
+        .timeout(_timeout);
+    return ParentReportResponse.fromJson(_decode(response));
+  }
+
   /// 小テストの自己申告。**声も接続も使わない**(原価ゼロ)。
-  Future<ReviewAnswer> answerReview(String holeId, ReviewOutcome outcome) async {
+  Future<ReviewAnswer> answerReview(
+    String holeId,
+    ReviewOutcome outcome,
+  ) async {
     final http.Response response = await _client
         .post(
           Uri.parse('$baseUrl/v1/me/reviews/$holeId'),
@@ -185,11 +203,69 @@ class ApiClient {
     return ReviewAnswer.fromJson(_decode(response));
   }
 
+  /// 自習室が非表示になるとき、その滞在を1回だけ記録する。
+  ///
+  /// 本文は秒数とローカル日付だけ。板書・単元・発話をここへ足すと、無料の
+  /// 自習室が学習内容の送信経路に変わるので、このメソッドの引数にも持たせない。
+  /// [idempotencyKey] は本文の情報ではなく、戻る・バックグラウンド・disposeが
+  /// 同じ退室を同時に見ても二重加算しないための配送用UUID。
+  Future<void> recordStudyRoomVisit({
+    required int durationSeconds,
+    required DateTime startedAt,
+    required String idempotencyKey,
+  }) async {
+    final http.Response response = await _client
+        .post(
+          Uri.parse('$baseUrl/v1/me/study-room'),
+          headers: <String, String>{
+            ..._headers,
+            'content-type': 'application/json; charset=utf-8',
+            'idempotency-key': idempotencyKey,
+          },
+          body: jsonEncode(<String, dynamic>{
+            'duration_seconds': durationSeconds,
+            // 時刻は指標に不要。日次の境界だけを端末のローカル日付で伝える。
+            'visited_on': _localDate(startedAt),
+          }),
+        )
+        .timeout(_timeout);
+
+    // 成功は204で本文が無い。共通の_decodeへ通すと空文字をJSONとして読んで
+    // 失敗するので、エラーのときだけ既存のApiExceptionへ変換する。
+    if (response.statusCode >= 400) _decode(response);
+  }
+
+  /// 計画を作る音声ルームを開く。授業セッションとは別なので写真もkindも送らない。
+  Future<PlanSessionStart> createPlanSession({String locale = 'ja'}) async {
+    final http.Response response = await _client
+        .post(
+          Uri.parse('$baseUrl/v1/plans'),
+          headers: <String, String>{
+            ..._headers,
+            'content-type': 'application/json; charset=utf-8',
+          },
+          body: jsonEncode(<String, dynamic>{'locale': locale}),
+        )
+        .timeout(_timeout);
+    return PlanSessionStart.fromJson(_decode(response));
+  }
+
+  /// 現行計画。未作成は404ではなく `plan: null` なので、そのまま作成導線へ移れる。
+  Future<StudyPlan?> fetchPlan() async {
+    final http.Response response = await _client
+        .get(Uri.parse('$baseUrl/v1/me/plan'), headers: _headers)
+        .timeout(_timeout);
+    final Map<String, dynamic> body = _decode(response);
+    final Map<String, dynamic>? plan = body['plan'] as Map<String, dynamic>?;
+    return plan == null ? null : StudyPlan.fromJson(plan);
+  }
+
   Map<String, dynamic> _decode(http.Response response) {
     final Map<String, dynamic> body =
         jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
     if (response.statusCode >= 400) {
-      final Map<String, dynamic> error = body['error'] as Map<String, dynamic>? ?? const {};
+      final Map<String, dynamic> error =
+          body['error'] as Map<String, dynamic>? ?? const {};
       throw ApiException(
         code: error['code'] as String? ?? 'internal_error',
         // サーバの文言をそのまま出す。煽らない文体で書かれている。
@@ -201,8 +277,17 @@ class ApiClient {
   }
 }
 
+String _localDate(DateTime value) {
+  String twoDigits(int part) => part.toString().padLeft(2, '0');
+  return '${value.year.toString().padLeft(4, '0')}-${twoDigits(value.month)}-${twoDigits(value.day)}';
+}
+
 class ApiException implements Exception {
-  const ApiException({required this.code, required this.message, this.retryAfterSeconds});
+  const ApiException({
+    required this.code,
+    required this.message,
+    this.retryAfterSeconds,
+  });
 
   final String code;
   final String message;
@@ -211,16 +296,24 @@ class ApiException implements Exception {
   bool get isFreeLimitReached => code == 'free_limit_reached';
   bool get isFairUseLimitReached => code == 'fair_use_limit_reached';
   bool get isPremiumRequired => code == 'premium_required';
-  bool get isPhotoUnreadable => code == 'photo_unreadable' || code == 'out_of_scope';
+  bool get isPhotoUnreadable =>
+      code == 'photo_unreadable' || code == 'out_of_scope';
   bool get isHoleNotFound => code == 'hole_not_found';
 
   @override
   String toString() => 'ApiException($code): $message';
 }
 
+/// API例外の型をファイル外へ漏らさず、課金導線に必要なcode判定だけを公開する。
+/// 文字列の `toString()` を上位で解析すると、文言を直しただけで分岐が壊れるため。
+bool isPremiumRequiredApiError(Object error) =>
+    error is ApiException && error.isPremiumRequired;
+
 /// `--dart-define=API_BASE_URL=...` で差し替える。
-const String apiBaseUrl =
-    String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:8787');
+const String apiBaseUrl = String.fromEnvironment(
+  'API_BASE_URL',
+  defaultValue: 'http://localhost:8787',
+);
 
 @Riverpod(keepAlive: true)
 ApiClient apiClient(Ref ref) {

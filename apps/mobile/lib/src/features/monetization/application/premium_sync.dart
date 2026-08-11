@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../karte/application/karte_controllers.dart';
+import '../../parent_report/application/parent_report_controller.dart';
 // Entitlement は entitlement_controller が domain ごと re-export している。
 import 'entitlement_controller.dart';
 
@@ -17,8 +18,9 @@ part 'premium_sync.g.dart';
 ///   - サーバ側の `users.is_premium` — RevenueCatのwebhookが書く(数秒遅れ)
 ///
 /// そして画面が出し分けに使っているのは**サーバ側**のほう(ホームと
-/// 復習画面の授業可否・セッション開始の可否)。それを持つ
+/// 復習画面の授業可否・セッション開始の可否、親レポートのロック)。
 /// ProgressController は keepAlive で、起動時に一度読んだきり誰も読み直さない。
+/// 親レポートも、ペイウォールが上に載っている間はロック済みの応答を保持する。
 ///
 /// つまりここが無いと、**買った直後はアプリを再起動するまで無料のまま**になる。
 /// webhookが200で届いていてもD1がPremiumになっていても、アプリの手元にある
@@ -83,6 +85,12 @@ class PremiumSync extends _$PremiumSync {
       if (server == expectPremium || attempt >= backoff.length) break;
       await Future<void>.delayed(backoff[attempt]);
     }
+
+    // 親レポートも同じサーバ側のPremium判定を読む。entitlementが変わった直後に
+    // 取り直すだけでは、webhook前のロック応答をもう一度つかむことがあるため、
+    // 上の待ち合わせが終わった時点でもキャッシュを捨てる。autoDisposeなので、
+    // 画面を一度も開いていない人のために新しい通信を始めることはない。
+    ref.invalidate(parentReportControllerProvider);
   }
 
   /// webhookを待つ間隔。合計でおよそ15秒ぶん。

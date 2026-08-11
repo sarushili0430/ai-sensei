@@ -12,25 +12,35 @@ import '../features/monetization/application/entitlement_controller.dart';
 import '../features/monetization/presentation/paywall_screen.dart';
 import '../features/monetization/presentation/thanks_screen.dart';
 import '../features/onboarding/presentation/onboarding_screen.dart';
+import '../features/parent_report/presentation/parent_report_screen.dart';
 import '../features/session/presentation/celebration_screen.dart';
 import '../features/session/presentation/session_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
 import '../features/study_room/presentation/study_room_screen.dart';
+import '../features/plan/presentation/plan_screen.dart';
+import 'main_navigation_shell.dart';
 import 'routes.dart';
 
 part 'app_router.g.dart';
 
 /// 画面遷移(docs/wireframe_v1.html の「画面遷移」に対応)。
 ///
-/// 遷移を2種類に分けている。混ぜると行き止まりができる。
+/// 遷移を「常設の場所」と「授業の線」に分けている。混ぜると行き止まりか、
+/// 授業中の抜け道ができる。
 ///
-/// **一方通行(`go`)** — 撮影 → 会話 → 祝福 → カルテ。
-///   会話に引き返せてはいけないので、スタックごと置き換える。
-///   このためセッションと祝福だけは `/` の子にしない(ホームを下に積まない)。
+/// **常設の場所** — ホーム / 自習室 / 計画 / 設定。
+///   ピボット(計画書§0・§4)で戻る場所が増えたため、枝ごとの履歴を保つ
+///   [StatefulShellRoute.indexedStack] に載せる。カルテは授業直後だけの画面なので、
+///   常設タブにはせずホーム枝の子に残す。
 ///
-/// **寄り道(`push`)** — ホーム ⇄ 復習 / 設定、カルテ・復習 ⇄ ペイウォール。
+/// **ホーム枝の寄り道(`push`)** — 復習 / カルテ / ペイウォール / お礼 / 親レポート。
 ///   戻れることが前提の画面。`/` の子ルートにしてあるので、
 ///   通知タップで `go('/review')` されたときもホームが下に入り、戻るが効く。
+///
+/// **授業の線** — 撮影 → 会話 → 祝福。
+///   3画面ともシェルの外なので、板書の途中でタブから抜けられない。撮影だけは
+///   `push` で入り、撮るのをやめれば元のホーム / 自習室へ戻れる。会話以降は
+///   `go` でスタックを置き換え、終わった会話へ引き返せないようにする。
 @Riverpod(keepAlive: true)
 GoRouter appRouter(Ref ref) {
   // 初回起動はオンボーディングから。約束(答えは教えない)を先に伝えたい。
@@ -43,56 +53,81 @@ GoRouter appRouter(Ref ref) {
         path: AppRoute.onboarding.path,
         builder: (_, _) => const OnboardingScreen(),
       ),
-      GoRoute(
-        path: AppRoute.home.path,
-        builder: (_, _) => const HomeScreen(),
-        routes: <RouteBase>[
-          GoRoute(
-            path: AppRoute.capture.segment,
-            builder: (_, _) => const CaptureScreen(),
+      StatefulShellRoute.indexedStack(
+        builder: (_, _, StatefulNavigationShell navigationShell) =>
+            MainNavigationShell(navigationShell: navigationShell),
+        branches: <StatefulShellBranch>[
+          StatefulShellBranch(
+            routes: <RouteBase>[
+              GoRoute(
+                path: AppRoute.home.path,
+                builder: (_, _) => const HomeScreen(),
+                routes: <RouteBase>[
+                  GoRoute(
+                    path: AppRoute.karte.segment,
+                    builder: (_, _) => const KarteScreen(),
+                    // 直近のカルテが無いのにこの画面に来ても、出せるものが無い。
+                    // 「うまくいきませんでした」を理由なく見せるより、ホームへ戻す。
+                    redirect: (_, _) => ref.read(latestKarteControllerProvider) == null
+                        ? AppRoute.home.path
+                        : null,
+                  ),
+                  GoRoute(
+                    path: AppRoute.review.segment,
+                    builder: (_, _) => const ReviewScreen(),
+                  ),
+                  GoRoute(
+                    path: AppRoute.paywall.segment,
+                    builder: (_, _) => const PaywallScreen(),
+                  ),
+                  GoRoute(
+                    path: AppRoute.thanks.segment,
+                    builder: (_, GoRouterState state) =>
+                        ThanksScreen(restored: state.uri.queryParameters['restored'] == '1'),
+                    // 契約が無いのに祝わない。決済は通ったが entitlement が付いて
+                    // いない場合(ダッシュボードの設定漏れ)がここに来る。紙吹雪を
+                    // 見せてから使えないのが、いちばん落差が大きい。
+                    redirect: (_, _) =>
+                        ref.read(isPremiumProvider) ? null : AppRoute.home.path,
+                  ),
+                  GoRoute(
+                    path: AppRoute.parentReport.segment,
+                    builder: (_, _) => const ParentReportScreen(),
+                  ),
+                ],
+              ),
+            ],
           ),
-          // 自習室。**ホームを下に積んだまま**にする(§4-2)。
-          //
-          // 自習室から「先輩、ちょっといい?」を押すと、この上に撮影が push される。
-          // 自習室が下に残っているので、撮るのをやめても自習に戻れる
-          // (= 課金の切れ目で引き返せる。これを `go` にすると、
-          //  ためらった人が自習室ごと失う)。
-          GoRoute(
-            path: AppRoute.studyRoom.segment,
-            builder: (_, _) => const StudyRoomScreen(),
+          StatefulShellBranch(
+            routes: <RouteBase>[
+              GoRoute(
+                path: AppRoute.studyRoom.path,
+                builder: (_, _) => const StudyRoomScreen(),
+              ),
+            ],
           ),
-          GoRoute(
-            path: AppRoute.karte.segment,
-            builder: (_, _) => const KarteScreen(),
-            // 直近のカルテが無いのにこの画面に来ても、出せるものが無い。
-            // 「うまくいきませんでした」を理由なく見せるより、ホームへ戻す。
-            redirect: (_, _) =>
-                ref.read(latestKarteControllerProvider) == null ? AppRoute.home.path : null,
+          StatefulShellBranch(
+            routes: <RouteBase>[
+              GoRoute(
+                path: AppRoute.plan.path,
+                builder: (_, _) => const PlanScreen(),
+              ),
+            ],
           ),
-          GoRoute(
-            path: AppRoute.review.segment,
-            builder: (_, _) => const ReviewScreen(),
-          ),
-          GoRoute(
-            path: AppRoute.paywall.segment,
-            builder: (_, _) => const PaywallScreen(),
-          ),
-          GoRoute(
-            path: AppRoute.thanks.segment,
-            builder: (_, GoRouterState state) =>
-                ThanksScreen(restored: state.uri.queryParameters['restored'] == '1'),
-            // 契約が無いのに祝わない。決済は通ったが entitlement が付いて
-            // いない場合(ダッシュボードの設定漏れ)がここに来る。紙吹雪を
-            // 見せてから使えないのが、いちばん落差が大きい。
-            redirect: (_, _) => ref.read(isPremiumProvider) ? null : AppRoute.home.path,
-          ),
-          GoRoute(
-            path: AppRoute.settings.segment,
-            builder: (_, _) => const SettingsScreen(),
+          StatefulShellBranch(
+            routes: <RouteBase>[
+              GoRoute(
+                path: AppRoute.settings.path,
+                builder: (_, _) => const SettingsScreen(),
+              ),
+            ],
           ),
         ],
       ),
-      // 会話中とその直後。戻る先を持たせない。
+      // 撮影は戻れるが、タブは見せない。ホーム / 自習室から push された
+      // 元の枝は下に残るので、撮るのをやめても来た場所を失わない。
+      GoRoute(path: AppRoute.capture.path, builder: (_, _) => const CaptureScreen()),
+      // 会話中とその直後。戻る先もタブも持たせない。
       GoRoute(path: AppRoute.session.path, builder: (_, _) => const SessionScreen()),
       GoRoute(
         path: AppRoute.celebration.path,

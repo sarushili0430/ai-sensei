@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MemoryRepository } from "./memory.ts";
-import type { SessionRecord } from "./types.ts";
+import type { KarteRecord, SessionRecord } from "./types.ts";
 
 function session(id: string, overrides: Partial<SessionRecord> = {}): SessionRecord {
   return {
@@ -94,5 +94,43 @@ describe("MemoryRepository.reserveSessionSlot", () => {
       await repository.reserveSessionSlot({ session: session("retried"), maxPerDay: 1 }),
     ).toEqual({ reserved: true, sessionsToday: 1 });
     expect(repository.sessions.size).toBe(1);
+  });
+});
+
+describe("MemoryRepository.listKartesOnLocalDates", () => {
+  it("UTCの作成日ではなく、セッションのlocal_dateで期間を絞る", async () => {
+    const repository = new MemoryRepository();
+    await repository.reserveSessionSlot({
+      session: session("month_start", {
+        local_date: "2026-08-01",
+        // UTCでは前日でも、JSTのセッション日としては8月1日。
+        created_at: "2026-07-31T15:30:00.000Z",
+      }),
+      maxPerDay: 1,
+    });
+    await repository.reserveSessionSlot({
+      session: session("previous_month", { local_date: "2026-07-31" }),
+      maxPerDay: 1,
+    });
+
+    const karte = (id: string, sessionId: string): KarteRecord => ({
+      id,
+      session_id: sessionId,
+      device_id: "device_a",
+      created_at: "2026-07-31T15:30:00.000Z",
+      topic_ids: ["M1-NIJI-HANBETSU"],
+      said_well: ["判別式の意味を説明した"],
+      term_notes: [],
+      followup_question: null,
+    });
+    await repository.insertKarte(karte("kar_august", "month_start"), []);
+    await repository.insertKarte(karte("kar_july", "previous_month"), []);
+
+    const result = await repository.listKartesOnLocalDates({
+      deviceId: "device_a",
+      fromDate: "2026-08-01",
+      toDate: "2026-08-31",
+    });
+    expect(result.map((entry) => entry.id)).toEqual(["kar_august"]);
   });
 });

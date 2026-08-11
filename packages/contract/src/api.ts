@@ -7,6 +7,7 @@ import {
   reviewOutcomeSchema,
   topicIdSchema,
 } from "./karte.ts";
+import { planDateSchema, planSourceSchema, studyPlanDraftSchema, studyPlanSchema } from "./plan.ts";
 
 /**
  * backend/api ↔ apps/mobile ↔ agent の契約。
@@ -21,6 +22,11 @@ export const apiPaths = {
   reviewQueue: "/v1/me/reviews",
   answerReview: (holeId: string) => `/v1/me/reviews/${holeId}`,
   revenueCatWebhook: "/v1/webhooks/revenuecat",
+  parentReport: "/v1/me/parent-report",
+  studyRoomVisit: "/v1/me/study-room",
+  createPlanSession: "/v1/plans",
+  completePlanSession: (planSessionId: string) => `/v1/plans/${planSessionId}/complete`,
+  plan: "/v1/me/plan",
 } as const;
 
 export const locales = ["ja", "en"] as const;
@@ -294,8 +300,38 @@ export const sessionMetadataSchema = z
     /** ガードレールの照合に使う生のID。前提トピックまで含む。 */
     allowed_topic_ids: z.array(topicIdSchema),
     is_premium: z.boolean(),
+    /**
+     * 復習で**今回教え直す穴だけ**。新しいAPIは復習で1件、新規授業で `null` を送る。
+     *
+     * `problem_text` に穴の説明を詰める案は採らない。復習には問題の写真が無く、
+     * 問題文を装うと `senpai_board.*.md` の「写っていない問題を作らない」という
+     * 境界が意味を失うため。写真の事実と、前回の説明から得た観測は型でも分ける。
+     *
+     * 前回のカルテ全体ではなく `desc` と `evidence` だけを運ぶ。`said_well` や
+     * 別の穴まで渡すと、1回1穴の復習が前回セッション全体の再講義へ広がる。
+     * `topic_id` は主題を示し、実際に触れてよい前提範囲は従来どおり
+     * `allowed_topic_ids` が担う。中身の照合をここへ持ち込まないのは、contract は
+     * 構造と上限、照合は guardrail という依存方向を守るため。
+     *
+     * **欄そのものはローリングデプロイのため省略可能。** APIとagentは別々に
+     * デプロイされるので、新しいagentが先に出た窓では古いAPIのmetadataにこの欄が無い。
+     * `undefined` も読めるようにし、agent側で従来の板書なし会話へ縮退させる。
+     */
+    review_hole: z
+      .object({
+        topic_id: topicIdSchema,
+        desc: z.string().min(1).max(200),
+        evidence: z.string().max(500).nullable(),
+      })
+      .strict()
+      .nullable()
+      .optional(),
   })
-  .strict();
+  .strict()
+  .refine((metadata) => metadata.kind === "review" || metadata.review_hole == null, {
+    message: "review でないときは review_hole を入れないでください",
+    path: ["review_hole"],
+  });
 export type SessionMetadata = z.infer<typeof sessionMetadataSchema>;
 
 /** 会話ログ。assistant=後輩の発話、user=ユーザーの説明。 */
@@ -422,6 +458,54 @@ export const progressResponseSchema = z
   .strict();
 export type ProgressResponse = z.infer<typeof progressResponseSchema>;
 
+/* -------------------------------------------------------------------------- */
+/* 自習室の滞在時間                                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * 1回の自習室滞在として受け入れる上端。
+ *
+ * 先輩は25分で休憩を勧めるので、6時間は通常利用を切らないために十分広い。
+ * それを越える値は、端末時計が動いたか、バックグラウンド化を取りこぼした値として
+ * 指標から外す。クライアントの申告をそのまま足すと、数台の壊れた時計だけで
+ * 「滞在時間が伸びた」という材料が作れてしまうため、上限は共有契約に置く。
+ */
+export const studyRoomVisitMaxSeconds = 6 * 60 * 60;
+
+/**
+ * 1日ぶんの合算上限。異なる退室イベントを3回までは上の最大値のまま積める。
+ *
+ * これは生徒に見せる利用制限ではなく、運営指標を壊さないための安全弁。
+ * `/v1/me/progress` には載せず、D1と構造化ログだけが読む。
+ */
+export const studyRoomDailyMaxSeconds = 3 * studyRoomVisitMaxSeconds;
+
+/**
+ * 同じ退室イベントを二重加算しないためのHTTPヘッダー。
+ *
+ * 本文を「滞在秒数と日付だけ」に保ったまま配送上の冪等性を持たせるため、
+ * UUIDは学習データではなくヘッダーに置く。板書・単元・発話との関連は持たない。
+ */
+export const studyRoomVisitIdempotencyHeader = "idempotency-key";
+export const studyRoomVisitIdempotencyKeySchema = z.string().uuid();
+
+const calendarDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine((value) => {
+    const date = new Date(`${value}T00:00:00.000Z`);
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  }, "実在する日付を YYYY-MM-DD で指定してください");
+
+export const studyRoomVisitRequestSchema = z
+  .object({
+    duration_seconds: z.number().int().min(1).max(studyRoomVisitMaxSeconds),
+    /** 端末のローカル日付。時刻を送らず、日次集計の境界だけを伝える。 */
+    visited_on: calendarDateSchema,
+  })
+  .strict();
+export type StudyRoomVisitRequest = z.infer<typeof studyRoomVisitRequestSchema>;
+
 /** エラー。クライアントは code で分岐する(messageは表示用で変わりうる)。 */
 export const apiErrorCodes = [
   "unauthorized",
@@ -452,3 +536,80 @@ export const apiErrorSchema = z
   })
   .strict();
 export type ApiError = z.infer<typeof apiErrorSchema>;
+
+/* -------------------------------------------------------------------------- */
+/* 計画モード                                                                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * `sessionKinds` に `plan` を足さず、計画は専用セッションとして扱う。
+ *
+ * 授業セッションの `kind` は D1 の CHECK 制約と {@link sessionMetadataSchema} の
+ * `problem_text` / `visible_work` / `allowed_topic_ids` に結びついている。そこへ計画を混ぜるには、
+ * 稼働中の `sessions` テーブルを作り直すか、授業の必須文脈をすべて任意にする必要がある。
+ * 前者はデプロイ中の旧 Worker を壊し、後者は「問題を見ずに教える」を型で再び許してしまう。
+ * また計画は何度も組み直して生き続けるので、授業回数・連続日数に数える性質でもない。
+ * 同じ LiveKit を使うことより、寿命と集計の境界を守ることを優先して契約を分けた。
+ */
+export const createPlanSessionRequestSchema = z
+  .object({
+    locale: localeSchema.default("ja"),
+  })
+  .strict();
+export type CreatePlanSessionRequest = z.infer<typeof createPlanSessionRequestSchema>;
+export type CreatePlanSessionRequestInput = z.input<typeof createPlanSessionRequestSchema>;
+
+/** LiveKitトークンに載せる、計画モード専用の会話文脈。 */
+export const planSessionMetadataSchema = z
+  .object({
+    plan_session_id: z.string().min(1),
+    /** 授業 metadata との取り違えを、agent の入口で即座に検知する判別子。 */
+    kind: z.literal("plan"),
+    locale: localeSchema,
+    max_seconds: z.number().int().positive(),
+    /** LLMに相対日付を推測させないため、APIが確定したローカル日付を渡す。 */
+    today: planDateSchema,
+    /** 組み直しでは事実を聞き直さないため、いまの計画を会話開始時に固定して渡す。 */
+    current_plan: studyPlanSchema.nullable(),
+  })
+  .strict();
+export type PlanSessionMetadata = z.infer<typeof planSessionMetadataSchema>;
+
+export const createPlanSessionResponseSchema = z
+  .object({
+    plan_session_id: z.string().min(1),
+    livekit: liveKitConnectionSchema,
+    /** 画面は接続前から「新規」と「組み直し」を同じ事実で判断できる。 */
+    current_plan: studyPlanSchema.nullable(),
+  })
+  .strict();
+export type CreatePlanSessionResponse = z.infer<typeof createPlanSessionResponseSchema>;
+
+/**
+ * POST /v1/plans/{id}/complete — 計画 agent が内部トークンで呼ぶ。
+ * LLMが出した形は {@link studyPlanDraftSchema} のまま受け、ID・時刻・状態はAPIだけが付ける。
+ */
+export const completePlanSessionRequestSchema = z
+  .object({
+    plan: studyPlanDraftSchema,
+    source: planSourceSchema,
+    duration_seconds: z.number().int().min(0),
+    ended_reason: z.enum(["completed", "timeout", "user_left", "error"]),
+  })
+  .strict();
+export type CompletePlanSessionRequest = z.infer<typeof completePlanSessionRequestSchema>;
+
+export const completePlanSessionResponseSchema = z
+  .object({
+    plan: studyPlanSchema,
+  })
+  .strict();
+export type CompletePlanSessionResponse = z.infer<typeof completePlanSessionResponseSchema>;
+
+/** GET /v1/me/plan。計画がまだ無いことはエラーではなく、最初の聞き取りへの入口。 */
+export const planResponseSchema = z
+  .object({
+    plan: studyPlanSchema.nullable(),
+  })
+  .strict();
+export type PlanResponse = z.infer<typeof planResponseSchema>;

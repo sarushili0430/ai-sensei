@@ -1,0 +1,25 @@
+{
+  "requires_premium": false,
+  "report": {
+    "period": {
+      "start_date": "2026-08-01",
+      "end_date": "2026-08-11"
+    },
+    "filled_holes": 2,
+    "streak_days": 4,
+    "explained_topics": [
+      {
+        "topic_id": "M1-NIJI-HANBETSU",
+        "name": "二次方程式の判別式と実数解の個数"
+      },
+      {
+        "topic_id": "M2-ZUKEI-ENCHOKU",
+        "name": "円と直線の位置関係"
+      }
+    ],
+    "quotes": [
+      "判別式は、実数解が何個あるかを調べるために使います",
+      "中心から直線までの距離と半径を比べれば、交点の個数がわかります"
+    ]
+  }
+}

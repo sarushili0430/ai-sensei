@@ -28,13 +28,13 @@ import '../domain/karte.dart';
 /// **回数の数字は出さない**(§6-3)。上限は「先輩の判断」として文章で見せる。
 /// 詳しくは [_EnoughForTodayLine]。
 ///
-/// 計画モード(§4-3)の導線は**まだ置いていない**。画面がまだ無く、
-/// 押しても何も起きない入口をハブに並べると「押せば進む」が崩れるため。
-/// 画面ができたら、ここに4つ目として足す。
+/// 当初はタブバーを置かなかった。常設で戻る場所がホームしかなく、カルテは
+/// セッション直後にだけ意味を持つ一過性の画面なので、タブにすると空の場所を
+/// 常設してしまうからだった。このうち**カルテをタブにしない判断はいまも有効**。
 ///
-/// タブバーは置かない。常設タブに値するのはこの画面だけで、カルテは
-/// セッション直後にだけ意味を持つ一過性の画面だから(タブにすると空タブになる)。
-/// 設定は右上に逃がす。
+/// ただしピボット(§0)で、ホーム / 自習室(§4-2) / 計画(§4-3)という
+/// 常設で戻れる場所が3つになった。そこで今は下部ナビゲーションを置き、設定も
+/// 右上の小さな入口から同じ大域ナビゲーションへ移している。
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
@@ -110,7 +110,7 @@ class HomeScreen extends ConsumerWidget {
                   label: strings.homeStudyRoom,
                   color: enoughForToday ? AppColors.blue : AppColors.border,
                   foregroundColor: enoughForToday ? Colors.white : AppColors.ink,
-                  onPressed: () => context.push(AppRoute.studyRoom.path),
+                  onPressed: () => context.go(AppRoute.studyRoom.path),
                 ),
               ),
               const SizedBox(height: AppSpacing.sm),
@@ -160,6 +160,8 @@ class _TopRow extends StatelessWidget {
                   value: progress.filledHoles,
                   label: strings.filledHoles(progress.filledHoles),
                   color: AppColors.blue,
+                  tooltip: strings.parentReportOpen,
+                  onTap: () => context.push(AppRoute.parentReport.path),
                 ),
               ],
             ),
@@ -167,12 +169,6 @@ class _TopRow extends StatelessWidget {
         ),
         // 契約している印。契約が無ければ何も出ない。
         const PremiumChip(),
-        IconButton(
-          onPressed: () => context.push(AppRoute.settings.path),
-          icon: const Icon(Icons.settings_outlined, size: 22),
-          color: AppColors.inkMuted,
-          tooltip: strings.settingsTitle,
-        ),
       ],
     );
   }
@@ -312,28 +308,48 @@ class _EnoughForTodayLine extends StatelessWidget {
 }
 
 class _Counter extends StatelessWidget {
-  const _Counter({required this.value, required this.label, required this.color});
+  const _Counter({
+    required this.value,
+    required this.label,
+    required this.color,
+    this.tooltip,
+    this.onTap,
+  });
 
   final int value;
   final String label;
   final Color color;
+  final String? tooltip;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
+    final Widget counter = Semantics(
       label: label,
-      child: Row(
-        children: <Widget>[
-          // 数えているのはこの2つだけ(連続日数と埋めた穴)。
-          // 増えたことが見えるように、0から数え上げる。
-          CountUpText(
-            value,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(color: color),
-          ),
-          const SizedBox(width: AppSpacing.xs),
-          Text(label, style: Theme.of(context).textTheme.bodySmall),
-        ],
+      button: onTap != null,
+      child: GestureDetector(
+        key: onTap == null ? null : const ValueKey<String>('parent-report-link'),
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Row(
+          children: <Widget>[
+            // 数えているのはこの2つだけ(連続日数と埋めた穴)。
+            // 増えたことが見えるように、0から数え上げる。
+            CountUpText(
+              value,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(color: color),
+            ),
+            const SizedBox(width: AppSpacing.xs),
+            Text(label, style: Theme.of(context).textTheme.bodySmall),
+          ],
+        ),
       ),
     );
+
+    // ホームへ新しいカードを足すと、狭い端末で授業・自習室の操作を下へ押し出す。
+    // すでにレポートの中心指標である「埋めた穴」を入口にし、見た目の第三カウンターは
+    // 作らない。Tooltipとbutton semanticsで、長押し・読み上げでは行き先も伝える。
+    final String? message = tooltip;
+    return message == null ? counter : Tooltip(message: message, child: counter);
   }
 }

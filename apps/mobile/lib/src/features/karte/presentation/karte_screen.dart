@@ -12,7 +12,9 @@ import '../../../theme/tokens.dart';
 import '../../notifications/application/push_controller.dart';
 import '../../notifications/data/push_repository.dart';
 import '../application/karte_controllers.dart';
+import '../application/lesson_hole_candidate.dart';
 import '../domain/karte.dart';
+import 'hole_self_report_prompt.dart';
 
 /// カルテ画面。
 ///
@@ -26,7 +28,8 @@ class KarteScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final AppStrings strings = AppStrings.of(context);
     final Karte? karte = ref.watch(latestKarteControllerProvider);
-    final bool showPaywall = ref.watch(sessionOutcomeControllerProvider).showPaywall;
+    final SessionOutcome outcome = ref.watch(sessionOutcomeControllerProvider);
+    final bool showPaywall = outcome.showPaywall;
 
     // 直近のカルテが無いときはルータがホームへ戻す(app_router.dart の redirect)。
     // ここに来るのはその1フレームぶんなので、エラー文言は出さない。
@@ -84,6 +87,10 @@ class KarteScreen extends ConsumerWidget {
               const SizedBox(height: AppSpacing.lg),
               _FollowupCard(question: karte.followupQuestion!),
             ],
+            if (outcome.isNewLesson) ...<Widget>[
+              const SizedBox(height: AppSpacing.lg),
+              _LessonHoleSelfReport(karte: karte),
+            ],
             const SizedBox(height: AppSpacing.xl),
             if (karte.holes.isNotEmpty) const _ReviewReminderCard(),
             const SizedBox(height: AppSpacing.lg),
@@ -103,6 +110,49 @@ class KarteScreen extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 授業で扱った内容と重なる、**過去の穴**だけをカルテのあとに聞く。
+///
+/// 祝福画面に置かないのは、そこがまだカルテを受け取っている途中で、
+/// `said_well`(候補を絞る根拠)が揃っていないことがあるため。カルテの本文を読んだ
+/// 直後なら、何について自己申告しているかも見失わない。
+///
+/// キューの取得失敗は黙って省略する。今日のカルテを読むことまで止めて再試行を
+/// 求めると、任意の聞き直しがカルテ閲覧の関門になり、催促に変わる。
+class _LessonHoleSelfReport extends ConsumerStatefulWidget {
+  const _LessonHoleSelfReport({required this.karte});
+
+  final Karte karte;
+
+  @override
+  ConsumerState<_LessonHoleSelfReport> createState() => _LessonHoleSelfReportState();
+}
+
+class _LessonHoleSelfReportState extends ConsumerState<_LessonHoleSelfReport> {
+  bool _dismissed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (_dismissed) return const SizedBox.shrink();
+
+    final ReviewQueue? queue = ref.watch(reviewControllerProvider).value;
+    if (queue == null) return const SizedBox.shrink();
+    final ReviewQueueItem? candidate = selectLessonHoleCandidate(
+      karte: widget.karte,
+      queue: queue,
+    );
+    if (candidate == null) return const SizedBox.shrink();
+
+    return HoleSelfReportPrompt(
+      hole: candidate.hole,
+      showLaterHint: true,
+      // 「まだ」はこのカルテでの問いを閉じるだけ。穴も通知もそのまま残り、
+      // 復習画面からいつでも同じ選択に戻れる。
+      onNotYet: () => setState(() => _dismissed = true),
+      onFilled: () => setState(() => _dismissed = true),
     );
   }
 }

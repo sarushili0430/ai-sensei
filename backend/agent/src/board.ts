@@ -325,15 +325,15 @@ export type HeadVerdict = { ok: true } | { ok: false; rejection: BoardHeadReject
 const topicGuidanceByLocale: Record<CurriculumLocale, (outside: string) => string> = {
   ja: (outside) =>
     [
-      `topic_ids に、この写真の許可リストに無い単元が入っています(${outside})。`,
+      `topic_ids に、このセッションの許可リストに無い単元が入っています(${outside})。`,
       "許可リストの中から選び直し、板書の中身もその範囲で組み立て直すこと。",
-      "リストには写真の単元とその前提が入っているので、前提に戻るのは構いません。",
+      "リストには今回の主題とその前提が入っているので、前提に戻るのは構いません。",
     ].join(""),
   en: (outside) =>
     [
-      `topic_ids contains a unit that is not in the allowed list for this photo (${outside}). `,
+      `topic_ids contains a unit that is not in the allowed list for this session (${outside}). `,
       "Pick again from the allowed list, and rebuild the board within that range. ",
-      "The list already contains the photo's unit plus its prerequisites, so going back to a prerequisite is fine.",
+      "The list already contains this lesson's target plus its prerequisites, so going back to a prerequisite is fine.",
     ].join(""),
 };
 

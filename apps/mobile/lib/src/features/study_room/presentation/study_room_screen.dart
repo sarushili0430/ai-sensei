@@ -3,7 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uuid/uuid.dart';
 
+import '../../../api/api_client.dart';
+import '../../../audio/prerendered_audio.dart';
 import '../../../common_widgets/chunky_button.dart';
 import '../../../common_widgets/senpai_face.dart';
 import '../../../common_widgets/typing_text.dart';
@@ -13,15 +16,24 @@ import '../../../theme/motion.dart';
 import '../../../theme/tokens.dart';
 import '../../session/presentation/board/board_view.dart';
 import '../application/last_board_controller.dart';
+import '../application/senpai_nudge_audio.dart';
 import '../domain/last_board.dart';
 import '../domain/senpai_nudge.dart';
 
 /// 自習室(計画書§4-2)。
 ///
-/// **マイクを開かない。STTもTTSもサーバ通信も動かさない。**
-/// これがこのモードを無料で置ける唯一の根拠なので、ここに
-/// 「録る・送る・生成する」を1つでも足したら、無料である説明が崩れる。
-/// この画面が触っている外部は `LastBoardController`(手元のメモリ)だけ。
+/// **マイクを開かない。STTもTTSもLLMもLiveKitも動かさず、滞在中はサーバ通信しない。**
+///
+/// この画面が外に触るのは2つだけで、**どちらも滞在時間に比例しない**:
+///   - **同梱したプリレンダ音声の再生**(§4-2の声かけ)。端末内で鳴らすだけで、
+///     録音も送信も生成もしない。何回鳴っても従量原価は1円も増えない
+///   - **退室・非表示のときに1回だけ送る、滞在秒数とローカル日付**
+///     (§4-2の「滞在時間を原価ゼロで積める」= OneSignal賞の材料)。
+///     板書・単元・発話は送らず、失敗は黙って捨てる。増えるのは小さなD1書き込み1回だけ
+///
+/// つまり計画書§6-1の従量原価(STT / TTS / LLM / LiveKit)は1つも起動しないので、
+/// §6-3の「原価が発生する生成・音声だけが有料」という一行はこのまま保てる。
+/// 裏を返せば、ここに**「録る・生成する」を1つでも足したら、無料である説明が崩れる**。
 ///
 /// 置いているのは3つ。§4-2 の「画面に先輩がいる。さっきの板書が残っている。
 /// タイマーが回っている」をそのまま画面にしたもの:
@@ -29,8 +41,11 @@ import '../domain/senpai_nudge.dart';
 ///   - 先輩と、たまの声かけ(経過時間から引く。録音でも通信でもない)
 ///   - 「先輩、ちょっといい?」= **課金の切れ目**。押すと授業モードが立ち上がる
 ///
-/// 授業モードと違って、ここは**戻れる**画面にしてある(ルータで `/` の子)。
-/// 詰まって先輩を呼びかけてやめた人が、自習室ごと失わないようにするため。
+/// 授業モードと違って、ここは**戻れる**画面にしてある。ピボット前は `/` の子に
+/// 積んでいたが、いまは常設タブの独立した枝。それでも撮影だけは `push` し、
+/// 詰まって先輩を呼びかけてやめた人が、自習室ごと失わない約束は変えていない。
+/// 枝はタブを離れても破棄されないため、Stateの生成から破棄までを1訪問とみなさず、
+/// **最前面に見えている区間ごと**に開始時刻と冪等キーを作り直す。
 class StudyRoomScreen extends ConsumerStatefulWidget {
   const StudyRoomScreen({super.key});
 
@@ -38,83 +53,278 @@ class StudyRoomScreen extends ConsumerStatefulWidget {
   ConsumerState<StudyRoomScreen> createState() => _StudyRoomScreenState();
 }
 
-class _StudyRoomScreenState extends ConsumerState<StudyRoomScreen> {
+class _StudyRoomScreenState extends ConsumerState<StudyRoomScreen>
+    with WidgetsBindingObserver {
   /// 自習を始めた時刻。
   ///
   /// **経過秒を1ずつ足し込まない。** 足し込む持ち方にすると、塗り直しを
   /// 止めた瞬間に時間そのものが止まる(下の [didChangeDependencies] 参照)。
   /// 始めた時刻さえ持っていれば、経過時間はいつでもその場で計算できる。
-  final DateTime _startedAt = DateTime.now();
+  late final DateTime Function() _now;
+  late DateTime _startedAt;
+  late String _visitId;
 
   Timer? _ticker;
   bool _configured = false;
+  bool _reported = false;
+  bool _routeVisible = true;
+  bool _appVisible = true;
+  bool _coveredByPush = false;
+  bool _foreground = true;
+  SenpaiNudgeAudio? _nudgeAudio;
+
+  @override
+  void initState() {
+    super.initState();
+    _now = ref.read(studyRoomClockProvider);
+    _beginVisit();
+    WidgetsBinding.instance.addObserver(this);
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_configured) return;
-    _configured = true;
+    if (!_configured) {
+      _configured = true;
+      _nudgeAudio = SenpaiNudgeAudio(ref.read(prerenderedAudioProvider));
+    }
+
+    // StatefulShellRouteの各枝では、自習室のModalRouteはタブを離れても
+    // その枝の中ではcurrentのまま。`ModalRoute.isCurrent`だけを見ると、ホームを
+    // 見ている間も滞在が続いてしまう。indexedStackが非選択の枝へ付ける
+    // TickerModeを、タブ上で実際に見えているかの通知として使う。
+    final bool routeVisible = TickerMode.valuesOf(context).enabled;
+    if (_routeVisible != routeVisible) {
+      _routeVisible = routeVisible;
+      // 依存変更の直後には必ずbuildが続く。ここでsetStateまで呼ぶと同じフレームを
+      // 二重に予約するので、状態の区切りだけを先に反映する。
+      _syncForeground(rebuild: false);
+    }
+
+    _startTickerIfNeeded();
+  }
+
+  void _startTickerIfNeeded() {
+    if (!_foreground || _ticker != null || AppMotion.isReduced(context)) return;
 
     // 1秒ごとに塗り直す。**「動かさない」設定では回さない**(ADR 0004 の経路)。
     //
-    // 時計を止めるのは乱暴に見えるが、ここでの経過時間は「先輩がいて、板書が
+    // 再描画を止めるのは乱暴に見えるが、画面上の経過時間は「先輩がいて、板書が
     // 残っていて、タイマーが回っている」という場をつくる**装飾**であって、
-    // 何かを測って知らせる装置ではない(自習室に達成の目盛りは持ち込まない)。
+    // 累計を知らせる装置ではない(自習室に達成の目盛りは持ち込まない)。
     // だから `AppMotion` の作法どおり、止めるときは途中で凍らせるのではなく
     // **終わった状態**を描く — `_startedAt` からその場で計算するので、
     // 勝手には進まないが、画面が塗り直されるたびに正しい時刻になる。
+    // 退室時の計測も同じ `_startedAt` と壁時計の差をその場で取るので、tickerを
+    // 回さないreduce motion経路でも時間は失われない。tickerのtick数は指標に使わない。
     //
     // ここを通し忘れると、widget test の `pumpAndSettle` が返らなくなる
     // (1秒ごとにフレームを積み続けるループになるため)。
-    if (AppMotion.isReduced(context)) return;
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {});
+      if (!mounted || !_foreground) return;
+
+      final Duration elapsed = _elapsed();
+      final SenpaiNudge next = SenpaiNudge.forElapsed(elapsed);
+      final SenpaiNudgeAudio? nudgeAudio = _nudgeAudio;
+      if (nudgeAudio != null && next != nudgeAudio.current) {
+        unawaited(
+          nudgeAudio.moveTo(
+            next,
+            languageCode: Localizations.localeOf(context).languageCode,
+          ),
+        );
+      }
+      setState(() {});
     });
+  }
+
+  void _beginVisit() {
+    _startedAt = _now();
+    _visitId = const Uuid().v4();
+    _reported = false;
+  }
+
+  void _syncForeground({required bool rebuild}) {
+    final bool foreground = _routeVisible && _appVisible && !_coveredByPush;
+    if (_foreground == foreground) return;
+    _foreground = foreground;
+
+    if (!foreground) {
+      // 見えない時間を表示にも送信にも混ぜない。Timerを止めるだけでは
+      // `_startedAt` との差が伸び続けるため、ここで今の訪問を閉じる。
+      _ticker?.cancel();
+      _ticker = null;
+      _reportOnce();
+      unawaited(_nudgeAudio?.stop() ?? Future<void>.value());
+      return;
+    }
+
+    // 同じStateへ戻ってきても新しい訪問。IDを使い回すと、2回目のPOSTは
+    // サーバの冪等キーに同じ訪問と判定され、正しく分けた滞在まで捨てられる。
+    _beginVisit();
+    final SenpaiNudgeAudio? nudgeAudio = _nudgeAudio;
+    if (nudgeAudio != null) {
+      unawaited(
+        nudgeAudio.moveTo(
+          SenpaiNudge.start,
+          languageCode: Localizations.localeOf(context).languageCode,
+          audible: false,
+        ),
+      );
+    }
+    _startTickerIfNeeded();
+    if (rebuild && mounted) setState(() {});
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // inactiveは通知センター等で一時的にフォーカスを失っただけでも来る。
+    // 本当に見えなくなったhidden / pausedだけを退室として扱い、短い中断で
+    // 自習を勝手に終わらせない。
+    if (state == AppLifecycleState.hidden || state == AppLifecycleState.paused) {
+      if (!_appVisible) return;
+      _appVisible = false;
+      _syncForeground(rebuild: true);
+      return;
+    }
+    if (state == AppLifecycleState.resumed && !_appVisible) {
+      _appVisible = true;
+      _syncForeground(rebuild: true);
+    }
   }
 
   @override
   void dispose() {
+    // 親ごと差し替えられた経路など、戻る通知を受けない破棄の最後の保険。
+    // 他の経路が先に送っていても_reportedが二重送信を止める。
+    _reportOnce();
+    WidgetsBinding.instance.removeObserver(this);
     _ticker?.cancel();
+    unawaited(_nudgeAudio?.stop() ?? Future<void>.value());
     super.dispose();
+  }
+
+  Duration _elapsed() {
+    final Duration elapsed = _now().difference(_startedAt);
+    // 滞在中に端末時計が巻き戻った値は送らない。サーバ側にも同じく
+    // 正数・上端の検査を置き、クライアントだけを信用しない。
+    return elapsed.isNegative ? Duration.zero : elapsed;
+  }
+
+  Future<void> _openCapture() async {
+    if (_coveredByPush) return;
+    _coveredByPush = true;
+    _syncForeground(rebuild: true);
+
+    try {
+      await context.push<void>(AppRoute.capture.path);
+    } finally {
+      if (mounted) {
+        _coveredByPush = false;
+        // 撮影をやめて戻った場合だけ、新しい訪問をここから始める。撮影から授業へ
+        // `go` した場合は自習室ごと破棄されるので、古い会話へ戻る入口は作らない。
+        _syncForeground(rebuild: true);
+      }
+    }
+  }
+
+  void _reportOnce() {
+    if (_reported) return;
+    // 1秒未満で送らない訪問も、ここで閉じたこと自体は覚える。閉じずに残すと、
+    // タブの裏にいた時間をdispose時の差分へ混ぜてしまう。再び最前面になれば
+    // `_beginVisit` がfalseへ戻すため、その後の有効な滞在は失われない。
+    _reported = true;
+
+    final int durationSeconds = _elapsed().inSeconds;
+    // 1秒未満の画面遷移は滞在として意味がなく、0は共有契約でも無効。
+    // 送信は捨てるが、戻ったときは新しい訪問として0から測り直す。
+    if (durationSeconds < 1) return;
+    // POSTを待つ間にタブへ戻ると、次の訪問が同じState上で始まる。フィールドを
+    // Futureの中から読むと、新しい開始時刻・IDで古い秒数を送る競合になるため、
+    // 閉じた訪問の値をここで写し取る。
+    final DateTime startedAt = _startedAt;
+    final String visitId = _visitId;
+    unawaited(
+      _sendVisit(
+        durationSeconds,
+        startedAt: startedAt,
+        visitId: visitId,
+      ),
+    );
+  }
+
+  Future<void> _sendVisit(
+    int durationSeconds, {
+    required DateTime startedAt,
+    required String visitId,
+  }) async {
+    try {
+      await ref
+          .read(apiClientProvider)
+          .recordStudyRoomVisit(
+            durationSeconds: durationSeconds,
+            startedAt: startedAt,
+            idempotencyKey: visitId,
+          );
+    } catch (_) {
+      // 計測の再試行・エラー表示はしない。自習を終える操作を指標のために
+      // 止めるほうが、欠けた1件より大きく体験を壊すため、ここで捨てる。
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
-    // 読むのは手元のメモリだけ。**LiveKitにつなぎ直したりAPIを叩いたりしない**
-    // (それをした瞬間、このモードが無料である根拠が消える)。
+    // 滞在中に読むのは手元のメモリだけ。**LiveKitにつなぎ直したりAPIを叩いたりしない**。
+    // APIを呼ぶ唯一の場所は、非表示時に通る_reportOnceの先に閉じてある。
     final LastBoard board = ref.watch(lastBoardControllerProvider);
-    final Duration elapsed = DateTime.now().difference(_startedAt);
+    final Duration elapsed = _elapsed();
+    final SenpaiNudge nudge = SenpaiNudge.forElapsed(elapsed);
 
-    return Scaffold(
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              _TopRow(elapsed: elapsed),
-              const SizedBox(height: AppSpacing.md),
-              // 板書に画面を明け渡す。先輩と操作は下に寄せる。
-              Expanded(child: _Board(board: board)),
-              const SizedBox(height: AppSpacing.md),
-              _SenpaiRow(nudge: SenpaiNudge.forElapsed(elapsed)),
-              const SizedBox(height: AppSpacing.md),
-              ChunkyButton(
-                label: strings.studyRoomAsk,
-                // **ここが課金の切れ目**(§4-2)。この先で撮影 → 授業モードに入り、
-                // 従量原価が発生する。`push` なので、撮るのをやめれば自習室に戻る。
-                onPressed: () => context.push(AppRoute.capture.path),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              // マイクを開いていないことを、黙っていないで書く。
-              // 「先輩が隣にいる画面」は、聞かれていると誤解されうる形をしている。
-              Text(
-                strings.studyRoomMicOff,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ],
+    return PopScope<Object?>(
+      // システムの戻る・スワイプバックはボタンのcallbackを通らない。
+      // pop成立後の通知とdisposeの両方を受けても_reportOnceで1件に畳む。
+      onPopInvokedWithResult: (bool didPop, Object? _) {
+        if (didPop) _reportOnce();
+      },
+      child: Scaffold(
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                _TopRow(
+                  elapsed: elapsed,
+                  onLeave: () {
+                    _reportOnce();
+                    context.closeOrGoHome();
+                  },
+                ),
+                const SizedBox(height: AppSpacing.md),
+                // 板書に画面を明け渡す。先輩と操作は下に寄せる。
+                Expanded(child: _Board(board: board)),
+                const SizedBox(height: AppSpacing.md),
+                _SenpaiRow(nudge: nudge),
+                const SizedBox(height: AppSpacing.md),
+                ChunkyButton(
+                  label: strings.studyRoomAsk,
+                  // **ここが課金の切れ目**(§4-2)。撮影が上に載ると自習室は
+                  // 非表示になるので、その直前を退室として1回だけ記録する。
+                  // pushの完了も同じ前面管理へ戻すので、撮影をやめたあとは開始時刻と
+                  // 冪等キーを新しくした別訪問として、また正しく数えられる。
+                  onPressed: _openCapture,
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                // マイクを開いていないことを、黙っていないで書く。
+                // 「先輩が隣にいる画面」は、聞かれていると誤解されうる形をしている。
+                Text(
+                  strings.studyRoomMicOff,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -124,9 +334,10 @@ class _StudyRoomScreenState extends ConsumerState<StudyRoomScreen> {
 
 /// 経過時間と、出口。
 class _TopRow extends StatelessWidget {
-  const _TopRow({required this.elapsed});
+  const _TopRow({required this.elapsed, required this.onLeave});
 
   final Duration elapsed;
+  final VoidCallback onLeave;
 
   @override
   Widget build(BuildContext context) {
@@ -141,26 +352,36 @@ class _TopRow extends StatelessWidget {
             child: Text(
               strings.studyRoomElapsed(elapsed.inSeconds),
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: AppColors.inkMuted,
-                    // 桁ごとに幅が変わると、1秒ごとに数字が左右に揺れる。
-                    fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
-                  ),
+                color: AppColors.inkMuted,
+                // 桁ごとに幅が変わると、1秒ごとに数字が左右に揺れる。
+                fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+              ),
             ),
           ),
         ),
         const Spacer(),
         TextButton(
-          onPressed: () => context.closeOrGoHome(),
+          onPressed: onLeave,
           style: TextButton.styleFrom(
             foregroundColor: AppColors.inkMuted,
             visualDensity: VisualDensity.compact,
           ),
-          child: Text(strings.studyRoomLeave, style: Theme.of(context).textTheme.bodySmall),
+          child: Text(
+            strings.studyRoomLeave,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
         ),
       ],
     );
   }
 }
+
+/// 表示タイマーと退室時の計測が同じ時計を見るための差し替え口。
+///
+/// widget testの`pump(Duration)`はTimerを進めても壁時計を進めない環境がある。
+/// 実時間のsleepに頼るテストは遅く不安定になるので、時計だけをRiverpodで差し替える。
+final Provider<DateTime Function()> studyRoomClockProvider =
+    Provider<DateTime Function()>((Ref _) => DateTime.now);
 
 /// さっきの板書。**この画面の主役**(§4-2)。
 ///
@@ -244,10 +465,9 @@ class _Board extends StatelessWidget {
 /// **マイクは開いていない。** ここに出ているのは録音でも生成でもなく、
 /// 経過時間から引いた定型のせりふ([SenpaiNudge])。
 ///
-/// TODO(§4-2): 計画書が求めているのは「事前生成した音声アセットの再生
-/// (TTS呼び出しゼロ)」。アセットがまだ無いので、この段では吹き出しだけにしてある。
-/// アセットが用意できたら、[SenpaiNudge] が切り替わった瞬間に対応する音声を鳴らす
-/// (鳴らすのは再生だけなので、原価ゼロは崩れない)。
+/// [SenpaiNudge] が切り替わった瞬間だけ、対応する同梱アセットも1回鳴らす。
+/// 吹き出しは消さない。消音モード・音声オフ・アセット欠落のどれでも、文字だけで
+/// 同じ声かけが成立しなければ、装飾だった音が導線へ昇格してしまうため。
 class _SenpaiRow extends StatelessWidget {
   const _SenpaiRow({required this.nudge});
 

@@ -12,11 +12,14 @@ part 'karte_controllers.g.dart';
 @Riverpod(keepAlive: true)
 class ProgressController extends _$ProgressController {
   @override
-  Future<ProgressSummary> build() => ref.read(apiClientProvider).fetchProgress();
+  Future<ProgressSummary> build() =>
+      ref.read(apiClientProvider).fetchProgress();
 
   Future<void> refresh() async {
     state = const AsyncValue<ProgressSummary>.loading();
-    state = await AsyncValue.guard(() => ref.read(apiClientProvider).fetchProgress());
+    state = await AsyncValue.guard(
+      () => ref.read(apiClientProvider).fetchProgress(),
+    );
   }
 
   /// セッション作成後の可否を、そのレスポンスから引き継ぐ。
@@ -27,7 +30,9 @@ class ProgressController extends _$ProgressController {
     final ProgressSummary previous = state.value ?? ProgressSummary.empty;
     state = AsyncValue<ProgressSummary>.data(
       previous.copyWith(
-        limits: previous.limits.copyWith(lessonAllowedToday: lessonAllowedToday),
+        limits: previous.limits.copyWith(
+          lessonAllowedToday: lessonAllowedToday,
+        ),
       ),
     );
   }
@@ -37,9 +42,7 @@ class ProgressController extends _$ProgressController {
   void applyFromSession(Progress progress) {
     final ProgressSummary previous = state.value ?? ProgressSummary.empty;
     state = AsyncValue<ProgressSummary>.data(
-      previous.copyWith(
-        progress: progress,
-      ),
+      previous.copyWith(progress: progress),
     );
   }
 }
@@ -52,19 +55,24 @@ class ReviewController extends _$ReviewController {
 
   Future<void> refresh() async {
     state = const AsyncValue<ReviewQueue>.loading();
-    state = await AsyncValue.guard(() => ref.read(apiClientProvider).fetchReviews());
+    state = await AsyncValue.guard(
+      () => ref.read(apiClientProvider).fetchReviews(),
+    );
   }
 
   /// 小テストの自己申告を送り、成功したら次の1問へ進めるためキューを読み直す。
   Future<bool> answer(String holeId, ReviewOutcome outcome) async {
     try {
-      final ReviewAnswer answer =
-          await ref.read(apiClientProvider).answerReview(holeId, outcome);
+      final ReviewAnswer answer = await ref
+          .read(apiClientProvider)
+          .answerReview(holeId, outcome);
 
       // 「言えた」で穴が埋まったときだけ、応答に入っている進捗をそのまま使う。
       // 再取得するとキューとホームで反映の瞬間がずれるため、セッション直後と同じ扱いにする。
       if (outcome == ReviewOutcome.saidIt) {
-        ref.read(progressControllerProvider.notifier).applyFromSession(answer.progress);
+        ref
+            .read(progressControllerProvider.notifier)
+            .applyFromSession(answer.progress);
       }
 
       await refresh();
@@ -103,13 +111,23 @@ class SessionOutcomeController extends _$SessionOutcomeController {
     final String? sessionId = state.sessionId;
     if (sessionId == null) return false;
 
-    final SessionResult? result =
-        await ref.read(apiClientProvider).fetchSessionResult(sessionId);
+    final SessionResult? result = await ref
+        .read(apiClientProvider)
+        .fetchSessionResult(sessionId);
     if (result == null) return false;
 
     ref.read(latestKarteControllerProvider.notifier).set(result.karte);
-    ref.read(progressControllerProvider.notifier).applyFromSession(result.progress);
-    state = SessionOutcome(showPaywall: result.showPaywall, sessionId: sessionId);
+    ref
+        .read(progressControllerProvider.notifier)
+        .applyFromSession(result.progress);
+    // keepAliveの復習キューには、前回読んだopen状態が残りうる。カルテ画面で
+    // 「今回と重なる過去の穴」を選ぶ前に、完了後の状態を取り直させる。
+    ref.invalidate(reviewControllerProvider);
+    state = SessionOutcome(
+      showPaywall: result.showPaywall,
+      sessionId: sessionId,
+      kind: state.kind,
+    );
     return true;
   }
 }
@@ -120,6 +138,7 @@ class SessionOutcome {
     this.showPaywall = false,
     this.resultMissing = false,
     this.sessionId,
+    this.kind,
   });
 
   /// 初回カルテで穴が見えた直後だけ true。
@@ -130,6 +149,12 @@ class SessionOutcome {
 
   /// あとからカルテを取りに行くためのセッションID。
   final String? sessionId;
+
+  /// 授業後だけ過去の穴を聞き直すために、会話画面の寿命を越えて持つ種類。
+  /// `SessionStart` の契約を通った値だけが入り、画面側で推測し直さない。
+  final String? kind;
+
+  bool get isNewLesson => kind == 'new';
 }
 
 /// 直近のカルテ。セッション完了時に置かれ、カルテ画面が読む。

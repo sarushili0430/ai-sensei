@@ -380,6 +380,10 @@ class AppStrings {
       );
   String get reviewAskSenpai => _pick('先輩に聞く', 'Ask senpai');
   String get reviewLater => _pick('あとにする', 'Later');
+  String get reviewVoicePremium => _pick(
+        '声で先輩に聞き直す授業はPremiumです。小テストは無料のまま使えます。',
+        'Calling your senpai back by voice uses Premium lesson mode. Quick quizzes stay free.',
+      );
 
   /// 埋めた穴のセクション。ペイウォールが謳う「履歴」はここで果たす。
   String reviewFilledTitle(int count) =>
@@ -718,9 +722,9 @@ class AppStrings {
   // **マイクを開かない。STTもTTSもサーバ通信も動かさない。** それが原価ゼロの根拠なので、
   // ここの文言は「先輩が黙って隣にいる」以上のことを約束しない。
   //
-  // 下の声かけは、いまはテキストの吹き出しだけ。計画書§4-2 は
-  // 「事前生成した音声アセットの再生(TTS呼び出しゼロ)」を求めているが、
-  // アセットがまだ無いので、この段では文字で出す。
+  // 下の声かけは、文字を正本として残し、切り替わる瞬間だけ同梱音声も鳴らす。
+  // 消音モード・音声オフ・アセット欠落でも成立させるため、音だけにはしない。
+  // 録音・通信・生成は無く、TTS呼び出しもゼロ(原価ゼロの根拠を崩さない)。
   String get studyRoomTitle => _pick('自習室', 'Study room');
 
   /// 経過時間。数字そのものなので日英で変えない(`12:34`)。
@@ -770,6 +774,155 @@ class AppStrings {
   String get studyRoomNudgeBreak => _pick('そろそろ休憩する?', 'Want to take a break?');
   String get studyRoomNudgeLong =>
       _pick('けっこう集中してるね。ひと息ついてきな', "You've been at this a while — go stretch");
+
+  // --- 親レポート(§5-1・§5-2)---
+  //
+  // 親へ届く文章なので、アプリ内だけの短いラベルよりも意味を省略しない。
+  // 数字は「埋めた穴」と「連続日数」だけ。正答率・点数・順位に読める語を置かない。
+  String get parentReportTitle => _pick('今月のレポート', 'This month\'s report');
+  String get parentReportOpen =>
+      _pick('今月の親レポートをひらく', 'Open this month\'s parent report');
+  String parentReportPeriod(String start, String end) => _pick('$start〜$end', '$start – $end');
+  String parentReportFilledLine(int count) =>
+      _pick('今月、埋めた穴: $count', 'Gaps filled this month: $count');
+  String parentReportStreakLine(int days) =>
+      _pick('連続日数: $days日', 'Current streak: $days days');
+  String get parentReportTopicsTitle =>
+      _pick('説明できるようになった単元', 'Topics they can now explain');
+  String get parentReportTopicsEmpty =>
+      _pick('今月は、ここに載る単元がまだありません', 'No topics to list here yet this month');
+  String get parentReportQuotesTitle => _pick('本人の言葉', 'In their own words');
+  String get parentReportQuotesEmpty =>
+      _pick('今月は、ここに載る説明がまだありません', 'No explanation to quote here yet this month');
+  String parentReportQuote(String quote) => _pick('「$quote」', '“$quote”');
+
+  /// 親へ渡す料金。**数字は Offering から取れたときだけ**書く。
+  ///
+  /// 据え置き価格を持つと、RevenueCat側の商品を変えた日にメールだけ古い額になる。
+  /// 取れないときは推測せず、ストアの購入画面が正だと伝える。
+  String parentReportPriceNote({String? plan, String? price}) {
+    if (plan == null || price == null) {
+      return _pick(
+        '料金はストアの購入画面で確認できます。',
+        'The current price is shown in the store purchase screen.',
+      );
+    }
+    final String line = paywallPriceLine(plan, price);
+    return _pick(
+      'この先も続ける場合の料金は、$lineです。',
+      'The current price to keep going is $line.',
+    );
+  }
+
+  String get parentReportPreviewNote => _pick(
+        '下に見えている本文が、そのままメールに入ります。引用も含めて、送る前に確認してください。',
+        'The text below goes into the email exactly as shown. Review every quote before sharing.',
+      );
+  String get parentReportSendEmail => _pick('メールで親に送る', 'Email this to a parent');
+  String get parentReportDraftNote => _pick(
+        'メールの下書きを開くだけです。宛先と送信は、メールアプリで決められます。',
+        'This only opens a draft. You choose the recipient and send it from your mail app.',
+      );
+  String get parentReportMailSubject =>
+      _pick('カタルテ 今月のレポート', 'Katarute — this month\'s report');
+  String get parentReportLocked => _pick(
+        '親レポートは、まだ開いていません。Premiumになると、今月の記録を見てから親に送れます。',
+        'The parent report is not open yet. Premium lets you review this month\'s record before emailing it.',
+      );
+
+  // --- 穴の自己申告(計画書§2) ---
+  //
+  // **採点者は本人だけ。**「まだ」を失敗・減点・連続記録の喪失に結びつけず、
+  // 何も変わらない選択肢として同じ場所に置く。残数や達成率も出さない。
+  String get holeSelfReportQuestion =>
+      _pick('これ、言えるようになった?', 'Can you explain this now?');
+  String get holeSelfReportNoPressure => _pick(
+        '決めるのはあなたです。「まだ」を選んでも、穴も記録もそのままです。',
+        'You decide. Choosing “not yet” leaves your gap and record unchanged.',
+      );
+  String get holeSelfReportLater => _pick(
+        '今は決めなくても、あとで復習画面から選べます。',
+        'You can leave this for now and choose later from the review screen.',
+      );
+  String get holeSelfReportFilling =>
+      _pick('カルテに反映しています…', 'Updating your karte…');
+
+  // --- 学習計画(§4-3。有料・音声で作る)---
+  //
+  // 入力欄のラベルは置かない。日付・範囲・教材は先輩が順に口で聞き、
+  // 画面の文言は「話し始める」と、できた計画を読むための見出しだけにする。
+  String get planTitle => _pick('学習計画', 'Study plan');
+  String get planIntroTitle =>
+      _pick('テストまで、一緒に組もっか。', "Let's map out the test.");
+  String get planIntroBody => _pick(
+    'テストの日、範囲、使っている教材を、先輩がひとつずつ聞きます。入力欄はありません。',
+    'Your senpai asks for the date, the range, and what you study from — one at a time, out loud.',
+  );
+  String get planCreate => _pick('先輩と計画をつくる', 'Make a plan with senpai');
+  String get planRebuild => _pick('口で組み直す', 'Rebuild it out loud');
+  String get planConnecting => _pick('先輩を呼んでいます', 'Calling your senpai');
+  String get planListening => _pick('聞いています', 'Listening');
+  String get planSaving => _pick('計画をまとめています', 'Putting your plan together');
+  String get planEndConversation => _pick('今日はここまで', "Let's stop here");
+  String get planLoadFailed => _pick(
+    '計画を読み込めませんでした。電波の届くところでもう一度お願いします。',
+    "We couldn't load your plan. Please try again with a better connection.",
+  );
+  String get planConnectionFailed => _pick(
+    'うまくつながりませんでした。マイクと電波を確かめてみてください。',
+    "We couldn't connect. Check your mic and connection, then try again.",
+  );
+  String get planSenpaiUnavailable => _pick(
+    '先輩を呼べませんでした。少し時間をおいて、もう一度お願いします。',
+    "Your senpai couldn't join. Please try again in a moment.",
+  );
+  String get planResultPending => _pick(
+    '新しい計画をまだ受け取れていません。前の計画はこのまま残しています。',
+    "The new plan hasn't arrived yet. Your previous plan is still here.",
+  );
+  String planRevisionNote(String said) =>
+      _pick('「$said」を受けて組み直しました。', 'Rebuilt after: “$said”');
+  String planExamDate(String date) => _pick('テスト: $date', 'Test: $date');
+  String get planScope => _pick('範囲', 'Range');
+  String get planMaterials => _pick('使う教材', 'Materials');
+  String get planNoMaterials =>
+      _pick('教材なし。ノートで進めます', 'No book needed — use your notes');
+  String get planRestDay => _pick('休む日', 'Day off');
+  String planMinutes(int minutes) => _pick('$minutes分', '$minutes min');
+  String planItemStatus(String status) => switch (status) {
+    'done' => _pick('できた', 'Done'),
+    'moved' => _pick('組み直した', 'Moved'),
+    _ => _pick('これから', 'Up next'),
+  };
+
+  /// topic_id の接頭辞は課程を表す(ADR 0005)。割合や理解度を作らず、科目名だけを出す。
+  String planSubject(String topicId) {
+    final String code = topicId.split('-').first;
+    return switch (code) {
+      'M1' => _pick('数学I', 'Mathematics I'),
+      'MA' => _pick('数学A', 'Mathematics A'),
+      'M2' => _pick('数学II', 'Mathematics II'),
+      'MB' => _pick('数学B', 'Mathematics B'),
+      'M3' => _pick('数学III', 'Mathematics III'),
+      'MC' => _pick('数学C', 'Mathematics C'),
+      'A1' => 'Algebra 1',
+      'GE' => 'Geometry',
+      'A2' => 'Algebra 2',
+      'PC' => 'Precalculus',
+      'CL' => 'Calculus',
+      'ST' => 'Statistics',
+      _ => _pick('数学', 'Math'),
+    };
+  }
+
+  // --- 下部ナビゲーション ---
+  //
+  // 機能名とは別に持つ。画面タイトルを短くしたくなったとき、タブの読み上げまで
+  // 意図せず変わると、4つの大域的な行き先が端末や言語によって揺れるため。
+  String get navigationHome => _pick('ホーム', 'Home');
+  String get navigationStudyRoom => _pick('自習室', 'Study room');
+  String get navigationPlan => _pick('計画', 'Plan');
+  String get navigationSettings => _pick('設定', 'Settings');
 }
 
 class AppStringsDelegate extends LocalizationsDelegate<AppStrings> {

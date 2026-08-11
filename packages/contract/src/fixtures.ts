@@ -1,16 +1,24 @@
 import type { ZodTypeAny } from "zod";
 import {
   apiErrorSchema,
+  completePlanSessionRequestSchema,
+  completePlanSessionResponseSchema,
   completeSessionRequestSchema,
   completeSessionResponseSchema,
+  createPlanSessionRequestSchema,
+  createPlanSessionResponseSchema,
   createSessionRequestSchema,
   createSessionResponseSchema,
+  planResponseSchema,
+  planSessionMetadataSchema,
   progressResponseSchema,
   reviewQueueResponseSchema,
   sessionMetadataSchema,
+  studyRoomVisitRequestSchema,
 } from "./api.ts";
 import { boardChannelLogSchema, boardLessonSchema } from "./board.ts";
 import { karteSchema } from "./karte.ts";
+import { parentReportResponseSchema } from "./parent-report.ts";
 import { planTurnSchema, studyPlanSchema } from "./plan.ts";
 
 /**
@@ -41,6 +49,15 @@ export const fixtureSchemas = {
   // (計画は聞き取りの会話の途中で生まれるので、LLMの単位は「計画」ではなく「1ターン」)。
   "study-plan": studyPlanSchema,
   "study-plan-turn": planTurnSchema,
+  "parent-report": parentReportResponseSchema,
+  // 自習室から出るときの1回だけ送る。学習内容を混ぜないこともfixtureの形で固定する。
+  "study-room-visit-request": studyRoomVisitRequestSchema,
+  "create-plan-session-request": createPlanSessionRequestSchema,
+  "create-plan-session-response": createPlanSessionResponseSchema,
+  "plan-session-metadata": planSessionMetadataSchema,
+  "complete-plan-session-request": completePlanSessionRequestSchema,
+  "complete-plan-session-response": completePlanSessionResponseSchema,
+  "plan-response": planResponseSchema,
 } satisfies Record<string, ZodTypeAny>;
 
 export type FixtureName = keyof typeof fixtureSchemas;
@@ -61,6 +78,7 @@ export const fixtureFileSchemas: Record<string, FixtureName> = {
   "karte.en": "karte",
   "board-lesson.en": "board-lesson",
   "study-plan.en": "study-plan",
+  "parent-report.en": "parent-report",
 };
 
 export const fixtureFileNames = Object.keys(fixtureFileSchemas);

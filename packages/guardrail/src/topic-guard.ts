@@ -26,7 +26,7 @@ export type AllowedTopics = {
  * 1つのセッションで前提を何段たどるか。**プロンプトが先輩に約束している段数と同じ値。**
  *
  * `prompts/senpai_board.{ja,en}.md` は許可リストについて
- * 「写真の単元と**その前提が2段ぶん**入っています」と書いている。
+ * 「今回の主題と**その前提が2段ぶん**入っています」と書いている。
  * 先輩は「判別式が出てこなかったなら判別式から」教えるために前提へ戻るので、
  * **前提へ戻れることは授業モードの本体**(戻れないと、詰まった生徒を連れて行けない)。
  *
@@ -119,7 +119,7 @@ export const rejectionReasons = [
   "malformed_topic_id",
   /** 形は正しいがカリキュラムマップにない(大学数学・他教科など)。 */
   "unknown_topic_id",
-  /** カリキュラム内だが、この写真の許可リストに入っていない。 */
+  /** カリキュラム内だが、このセッションの許可リストに入っていない。 */
   "topic_not_allowed",
 ] as const;
 export type RejectionReason = (typeof rejectionReasons)[number];

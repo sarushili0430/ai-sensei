@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { type SessionMetadata, fixturePath } from "@ai-sensei/contract";
+import { type PlanSessionMetadata, type SessionMetadata, fixturePath } from "@ai-sensei/contract";
 
 const repoRoot = resolve(import.meta.dirname, "..", "..", "..");
 
@@ -15,4 +15,12 @@ export const sessionMetadataFixture = JSON.parse(
 
 export function sessionMetadataJson(overrides: Partial<SessionMetadata> = {}): string {
   return JSON.stringify({ ...sessionMetadataFixture, ...overrides });
+}
+
+export const planSessionMetadataFixture = JSON.parse(
+  readFileSync(resolve(repoRoot, fixturePath("plan-session-metadata")), "utf8"),
+) as PlanSessionMetadata;
+
+export function planSessionMetadataJson(overrides: Partial<PlanSessionMetadata> = {}): string {
+  return JSON.stringify({ ...planSessionMetadataFixture, ...overrides });
 }

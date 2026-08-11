@@ -2,11 +2,18 @@ import type { SessionMetadata } from "@ai-sensei/contract";
 import { describe, expect, it } from "vitest";
 import {
   InvalidSessionContextError,
+  readAgentContext,
   readSessionContext,
   remainingSeconds,
+  resolveAgentContext,
   resolveSessionContext,
 } from "./context.ts";
-import { sessionMetadataFixture, sessionMetadataJson } from "./test-support.ts";
+import {
+  planSessionMetadataFixture,
+  planSessionMetadataJson,
+  sessionMetadataFixture,
+  sessionMetadataJson,
+} from "./test-support.ts";
 
 const metadata = sessionMetadataJson();
 
@@ -84,9 +91,11 @@ describe("readSessionContext", () => {
   });
 
   // fixtureに欄が増えたときも自動で検査対象になる。agent側でdefaultを足すと、
-  // その欄を消したケースが通って契約ドリフトを再び隠すため、全欄を1つずつ削る。
-  it("共有契約の必須項目をagent側で補わない", () => {
+  // その欄を消したケースが通って契約ドリフトを再び隠すため、必須欄を1つずつ削る。
+  // review_holeだけは、古いAPIと共存するデプロイの窓のため意図的に省略可能。
+  it("review_hole以外の共有契約の必須項目をagent側で補わない", () => {
     for (const field of Object.keys(sessionMetadataFixture) as (keyof SessionMetadata)[]) {
+      if (field === "review_hole") continue;
       expect(() => readSessionContext(withoutField(field)), field).toThrow(
         InvalidSessionContextError,
       );
@@ -138,5 +147,28 @@ describe("remainingSeconds", () => {
 
   it("超過しても負にならない", () => {
     expect(remainingSeconds(context, startedAt, new Date("2026-08-03T13:10:00.000Z"))).toBe(0);
+  });
+});
+
+describe("計画セッション文脈", () => {
+  it("専用fixtureを授業metadataを緩めずに読める", () => {
+    const context = readAgentContext(planSessionMetadataJson());
+    expect(context.kind).toBe("plan");
+    if (context.kind !== "plan") throw new Error("計画文脈ではありません");
+    expect(context.plan_session_id).toBe(planSessionMetadataFixture.plan_session_id);
+    expect(context.current_plan).toBeNull();
+  });
+
+  it("壊れた計画metadataは会話を始めない", () => {
+    expect(() => readAgentContext(planSessionMetadataJson({ max_seconds: 0 }))).toThrow(
+      InvalidSessionContextError,
+    );
+  });
+
+  it("参加者とジョブのどちらに載っても計画を判別する", () => {
+    expect(resolveAgentContext([undefined, planSessionMetadataJson()]).kind).toBe("plan");
+    expect(resolveAgentContext([sessionMetadataJson(), planSessionMetadataJson()]).kind).toBe(
+      "new",
+    );
   });
 });

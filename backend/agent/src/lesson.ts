@@ -209,8 +209,9 @@ function textOfSseLine(line: string): string | null {
 
 /** 板書を出す指示。systemと同じ言語で頼む(混ぜると出力の言語が揺れる)。 */
 const lessonInstruction: Record<CurriculumLocale, string> = {
-  ja: "この問題の板書レッスンのJSONだけを返してください。",
-  en: "Return only the board lesson JSON for this problem.",
+  // 「問題」と呼ばない。復習は写真なしで、前回の穴そのものを教え直す授業だから。
+  ja: "この授業の板書レッスンのJSONだけを返してください。",
+  en: "Return only the board lesson JSON for this lesson.",
 };
 
 /**
@@ -249,7 +250,7 @@ const repairInstruction: Record<CurriculumLocale, (rejection: BoardStepRejection
 const headRepairInstruction: Record<CurriculumLocale, (rejection: BoardHeadRejection) => string> = {
   ja: (rejection) =>
     [
-      "板書の見出しが、この写真の許可トピックから外れています。**見出しだけ**を書き直してください。",
+      "板書の見出しが、このセッションの許可トピックから外れています。**見出しだけ**を書き直してください。",
       "返すのは `title` と `topic_ids` だけのJSONオブジェクト1つです。",
       "`steps` は入れない、前置きを書かない、コードフェンスで囲まない。",
       "",
@@ -258,7 +259,7 @@ const headRepairInstruction: Record<CurriculumLocale, (rejection: BoardHeadRejec
     ].join("\n"),
   en: (rejection) =>
     [
-      "The board title is outside the allowed topics for this photo. Rewrite **only the head**.",
+      "The board title is outside the allowed topics for this session. Rewrite **only the head**.",
       "Return a single JSON object with just `title` and `topic_ids`.",
       "No `steps`, no preamble, no code fence.",
       "",

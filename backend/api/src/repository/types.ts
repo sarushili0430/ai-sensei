@@ -1,4 +1,4 @@
-import type { HoleSeverity, SessionProblem } from "@ai-sensei/contract";
+import type { HoleSeverity, Locale, SessionProblem, StudyPlan } from "@ai-sensei/contract";
 
 export type UserRecord = {
   device_id: string;
@@ -103,6 +103,45 @@ export type ReviewScheduleRecord = {
 };
 
 /**
+ * 自習室の運営指標。**アプリへ返すモデルではない。**
+ *
+ * 1訪問1行にすると、よく使う人ほどD1の行数が際限なく増える。必要なのは
+ * 「日ごとの滞在時間がどう伸びたか」なので、ユーザー×ローカル日付の1行へ合算する。
+ * `last_visit_id` は学習内容ではなく、同じ退室イベントを二重加算しない配送用UUID。
+ */
+export type StudyRoomDailyRecord = {
+  device_id: string;
+  local_date: string;
+  total_seconds: number;
+  last_visit_id: string;
+  updated_at: string;
+};
+
+export type StudyRoomVisitWrite = {
+  /** false は直前と同じ退室イベント、または日次安全上限に達した申告。 */
+  recorded: boolean;
+  daily: StudyRoomDailyRecord;
+};
+
+/**
+ * 計画を作るための音声セッション。授業セッションとは別の寿命・集計で持つ。
+ *
+ * 計画を `sessions` に混ぜると、計画を組み直した日まで連続学習日に数えられ、
+ * 「授業をした日」という親への説明が嘘になる。LiveKitを使う点だけは同じでも、
+ * プロダクト上の出来事は別なのでレコードも分ける。
+ */
+export type PlanSessionRecord = {
+  id: string;
+  device_id: string;
+  locale: Locale;
+  status: "open" | "completed";
+  created_at: string;
+  completed_at: string | null;
+  duration_seconds: number | null;
+  plan_id: string | null;
+};
+
+/**
  * 永続化の境界。
  *
  * ルートはこのインターフェースにだけ依存する。本番はD1、テストはメモリ実装。
@@ -155,10 +194,48 @@ export type Repository = {
   /** セッションに紐づくカルテ。/complete の再送判定と、アプリの結果取得に使う。 */
   getKarteBySession(sessionId: string): Promise<{ karte: KarteRecord; holes: HoleRecord[] } | null>;
 
+  /**
+   * 親レポートに載せる期間のカルテ。
+   * `created_at` のUTC日付ではなくセッションの `local_date` で絞る。月初の深夜に
+   * 作ったカルテを前月へ落とすと、ホームのstreakと親レポートで日付が食い違うため。
+   */
+  listKartesOnLocalDates(input: {
+    deviceId: string;
+    fromDate: string;
+    toDate: string;
+  }): Promise<KarteRecord[]>;
+
   listHoles(deviceId: string): Promise<HoleRecord[]>;
   getHole(holeId: string): Promise<HoleRecord | null>;
+  /** open → filled の最初の更新だけを反映する。再送で filled_at を動かさない。 */
   markHoleFilled(holeId: string, filledAt: string): Promise<void>;
 
   insertReviewSchedules(entries: ReviewScheduleRecord[]): Promise<void>;
   cancelReviewSchedules(holeId: string): Promise<ReviewScheduleRecord[]>;
+
+  recordStudyRoomVisit(input: {
+    deviceId: string;
+    localDate: string;
+    durationSeconds: number;
+    visitId: string;
+    recordedAt: string;
+  }): Promise<StudyRoomVisitWrite>;
+
+  /** 計画セッションには日次の授業枠を使わない。Premium判定はルート側で行う。 */
+  createPlanSession(session: PlanSessionRecord): Promise<void>;
+  getPlanSession(planSessionId: string): Promise<PlanSessionRecord | null>;
+  /** 組み直し前の事実を音声セッションへ渡すため、ユーザーごとの現行計画を読む。 */
+  getCurrentPlan(deviceId: string): Promise<StudyPlan | null>;
+  /** complete の再送では、そのセッションが実際に保存した計画を返す。 */
+  getPlan(planId: string): Promise<StudyPlan | null>;
+  /**
+   * 計画の置換とセッション完了を同じ原子的操作にする。
+   * false は別の同時リクエストが先に完了したという意味で、呼び出し側は保存済みを返す。
+   */
+  completePlanSession(input: {
+    sessionId: string;
+    completedAt: string;
+    durationSeconds: number;
+    plan: StudyPlan;
+  }): Promise<boolean>;
 };
