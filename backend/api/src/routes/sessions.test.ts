@@ -79,7 +79,7 @@ describe("POST /v1/sessions", () => {
     expect(metadata.allowed_topic_ids).toContain("M2-ZUKEI-ENCHOKU");
     // 前提トピックまで深掘りを許す
     expect(metadata.allowed_topic_ids).toContain("M1-NIJI-HANBETSU");
-    expect(metadata.max_seconds).toBe(300);
+    expect(metadata.max_seconds).toBe(1200);
   });
 
   // 名前つきワーカーのときは、トークンでディスパッチしないと部屋に誰も来ない
@@ -130,7 +130,7 @@ describe("POST /v1/sessions", () => {
     expect(body.error.retry_after_seconds).toBeGreaterThan(0);
   });
 
-  it("Premiumは制限にかからず、会話時間の上限も長い", async () => {
+  it("Premiumは通常利用の2回目まで通り、無料と同じ20分を使える", async () => {
     await services.repository.ensureUser(testDeviceId, new Date());
     await services.repository.setPremium({
       deviceId: testDeviceId,
@@ -144,8 +144,31 @@ describe("POST /v1/sessions", () => {
     expect(second.status).toBe(201);
 
     const body = (await second.json()) as CreateSessionResponse;
-    expect(body.limits.max_seconds).toBe(900);
+    expect(body.limits.max_seconds).toBe(1200);
     expect(body.limits.lesson_allowed_today).toBe(true);
+  });
+
+  it("Premiumは3回を使ったあとの4回目をフェアユースとして止める", async () => {
+    await services.repository.ensureUser(testDeviceId, new Date());
+    await services.repository.setPremium({
+      deviceId: testDeviceId,
+      isPremium: true,
+      expiresAt: null,
+      rcAppUserId: "rc_1",
+    });
+
+    for (let count = 0; count < 3; count += 1) {
+      expect((await post(createSessionForm())).status).toBe(201);
+    }
+
+    const fourth = await post(createSessionForm());
+    expect(fourth.status).toBe(429);
+    const body = (await fourth.json()) as {
+      error: { code: string; message: string; retry_after_seconds: number };
+    };
+    expect(body.error.code).toBe("fair_use_limit_reached");
+    expect(body.error.message).not.toMatch(/[0-9０-９]/);
+    expect(body.error.retry_after_seconds).toBeGreaterThan(0);
   });
 
   it("数学のノートでなければ撮り直しを促す", async () => {
@@ -899,7 +922,7 @@ describe("PATCH /v1/sessions/{id}/topics", () => {
     expect(response.status).toBe(404);
   });
 
-  it("Premiumは会話時間の上限が長いまま", async () => {
+  it("Premiumも会話時間の上限は20分のまま", async () => {
     await services.repository.ensureUser(testDeviceId, new Date());
     await services.repository.setPremium({
       deviceId: testDeviceId,
@@ -913,7 +936,7 @@ describe("PATCH /v1/sessions/{id}/topics", () => {
       topic_ids: ["M2-ZUKEI-ENCHOKU"],
     });
     const body = (await response.json()) as CreateSessionResponse;
-    expect(body.limits.max_seconds).toBe(900);
+    expect(body.limits.max_seconds).toBe(1200);
     expect(body.limits.lesson_allowed_today).toBe(true);
   });
 });

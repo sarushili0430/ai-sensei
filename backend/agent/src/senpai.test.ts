@@ -11,6 +11,7 @@ import {
   senpaiConversationPrompt,
   teachBackPrompt,
 } from "./senpai.ts";
+import { sessionMetadataJson } from "./test-support.ts";
 
 /**
  * 教え返しフェーズのうち、**agent 側にしか置けないもの**のテスト。
@@ -23,12 +24,13 @@ import {
  */
 
 const context = readSessionContext(
-  JSON.stringify({
+  sessionMetadataJson({
     session_id: "ses_1",
     problem_text: "x^2 - 3x + 2 = 0 を解け",
     max_seconds: 900,
     photo_summary: "円と直線の位置関係",
     visible_work: "- 中心と直線の距離を求めている",
+    question_seeds: "",
     allowed_topics: "- M2-ZUKEI-ENCHOKU",
     allowed_topic_ids: ["M2-ZUKEI-ENCHOKU"],
   }),
@@ -36,12 +38,15 @@ const context = readSessionContext(
 
 /** ノートを撮らずに問題だけを持ってきた、英語のセッション(§4-1 の正規の経路)。 */
 const englishContext = readSessionContext(
-  JSON.stringify({
+  sessionMetadataJson({
     session_id: "ses_2",
     problem_text: "Solve x^2 - 3x + 2 = 0",
     locale: "en",
     max_seconds: 900,
+    photo_summary: "",
     visible_work: "(no photo of their notes)",
+    question_seeds: "",
+    allowed_topics: "",
     allowed_topic_ids: ["M2-ZUKEI-ENCHOKU"],
   }),
 );

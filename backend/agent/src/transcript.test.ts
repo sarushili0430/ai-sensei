@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { readSessionContext } from "./context.ts";
+import { sessionMetadataJson } from "./test-support.ts";
 import { TranscriptCollector, renderTranscript } from "./transcript.ts";
 
 const context = readSessionContext(
-  JSON.stringify({
+  sessionMetadataJson({
     session_id: "ses_1",
     problem_text: "x^2 - 3x + 2 = 0 を解け",
     visible_work: "- 因数分解しかけて止まっている",
     max_seconds: 300,
+    photo_summary: "",
+    question_seeds: "",
+    allowed_topics: "",
     allowed_topic_ids: ["M2-ZUKEI-ENCHOKU"],
   }),
 );
@@ -94,12 +98,15 @@ describe("renderTranscript", () => {
 
 describe("英語のセッション", () => {
   const englishContext = readSessionContext(
-    JSON.stringify({
+    sessionMetadataJson({
       session_id: "ses_en",
       problem_text: "x^2 - 3x + 2 = 0 を解け",
       visible_work: "- 因数分解しかけて止まっている",
       locale: "en",
       max_seconds: 300,
+      photo_summary: "",
+      question_seeds: "",
+      allowed_topics: "",
       allowed_topic_ids: ["A2-COORD-CIRCLE"],
     }),
   );

@@ -116,7 +116,10 @@ class HomeScreen extends ConsumerWidget {
               const SizedBox(height: AppSpacing.sm),
               FadeSlideIn.staggered(
                 index: 5,
-                child: _EnoughForTodayLine(show: enoughForToday),
+                child: _EnoughForTodayLine(
+                  show: enoughForToday,
+                  showUpgrade: !data.isPremium,
+                ),
               ),
             ],
           ),
@@ -179,13 +182,16 @@ class _TopRow extends StatelessWidget {
 ///
 /// 穴がゼロのときは代わりに「最初の1枚から始まる」と書く。
 /// 初回起動のホームが、押すもののない空白にならないように。
-class _OpenHolesCard extends StatelessWidget {
+///
+/// **穴の件数は出さない。** 未完了の数は、穴を資産ではなく借金に見せる。
+/// 複数あるときも、次に向き合う内容が分かれば十分なので直近の1件だけを出す。
+class _OpenHolesCard extends ConsumerWidget {
   const _OpenHolesCard({required this.progress});
 
   final Progress progress;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final AppStrings strings = AppStrings.of(context);
 
     if (progress.openHoles == 0) {
@@ -195,6 +201,12 @@ class _OpenHolesCard extends StatelessWidget {
         style: Theme.of(context).textTheme.bodySmall,
       );
     }
+
+    // 無料では復習キューの中身が隠れるので、会話直後のカルテも候補にする。
+    // 両方に同じ穴がいても、日付で選ぶだけなので表示は1件のまま変わらない。
+    final ReviewQueue? queue = ref.watch(reviewControllerProvider).value;
+    final Karte? latestKarte = ref.watch(latestKarteControllerProvider);
+    final Hole? recentHole = _mostRecentOpenHole(queue, latestKarte);
 
     return GestureDetector(
       onTap: () => context.push(AppRoute.review.path),
@@ -219,7 +231,7 @@ class _OpenHolesCard extends StatelessWidget {
                 children: <Widget>[
                   Text(strings.reviewTitle, style: Theme.of(context).textTheme.titleMedium),
                   Text(
-                    strings.openHoles(progress.openHoles),
+                    recentHole?.description ?? strings.homeOpenHoleLabel,
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
@@ -230,6 +242,23 @@ class _OpenHolesCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Hole? _mostRecentOpenHole(ReviewQueue? queue, Karte? latestKarte) {
+    Hole? mostRecent;
+    final List<Hole> candidates = <Hole>[
+      if (queue != null)
+        for (final ReviewQueueItem item in queue.items) item.hole,
+      if (latestKarte != null) ...latestKarte.holes,
+    ];
+
+    for (final Hole hole in candidates) {
+      if (hole.status != HoleStatus.open) continue;
+      if (mostRecent == null || hole.createdAt.isAfter(mostRecent.createdAt)) {
+        mostRecent = hole;
+      }
+    }
+    return mostRecent;
   }
 }
 
@@ -244,12 +273,13 @@ class _OpenHolesCard extends StatelessWidget {
 ///     そもそも普段は出す数字が無い
 ///
 /// **残っているあいだは何も出さない。** 「まだ大丈夫です」も残数の匂わせになる。
-/// 出すのは先輩が締めたときだけで、そのときだけ契約への道を隣に置く
-/// (隠しはしない — HAMMが見るのは誠実さのほう)。
+/// 出すのは先輩が締めたときだけ。無料なら契約への道も置くが、Premium の
+/// フェアユース上限では、すでに契約している人へ課金導線を重ねない。
 class _EnoughForTodayLine extends StatelessWidget {
-  const _EnoughForTodayLine({required this.show});
+  const _EnoughForTodayLine({required this.show, required this.showUpgrade});
 
   final bool show;
+  final bool showUpgrade;
 
   @override
   Widget build(BuildContext context) {
@@ -266,15 +296,16 @@ class _EnoughForTodayLine extends StatelessWidget {
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodySmall,
         ),
-        TextButton(
-          onPressed: () => context.push(AppRoute.paywall.path),
-          style: TextButton.styleFrom(
-            foregroundColor: AppColors.blue,
-            visualDensity: VisualDensity.compact,
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+        if (showUpgrade)
+          TextButton(
+            onPressed: () => context.push(AppRoute.paywall.path),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.blue,
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+            ),
+            child: Text(strings.homeUnlock, style: Theme.of(context).textTheme.bodySmall),
           ),
-          child: Text(strings.homeUnlock, style: Theme.of(context).textTheme.bodySmall),
-        ),
       ],
     );
   }

@@ -161,8 +161,9 @@ export function testBindings(overrides: Partial<Bindings> = {}): Bindings {
     REVENUECAT_WEBHOOK_AUTH: "test-webhook-auth",
     INTERNAL_API_TOKEN: internalToken,
     FREE_SESSIONS_PER_DAY: "1",
-    FREE_SESSION_MAX_SECONDS: "300",
-    PREMIUM_SESSION_MAX_SECONDS: "900",
+    PREMIUM_SESSIONS_PER_DAY: "3",
+    FREE_SESSION_MAX_SECONDS: "1200",
+    PREMIUM_SESSION_MAX_SECONDS: "1200",
     // テスト出力を1リクエスト1行で埋めない。失敗のログは残す。
     LOG_LEVEL: "error",
     ...overrides,

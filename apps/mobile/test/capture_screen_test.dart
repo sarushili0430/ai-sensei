@@ -69,9 +69,26 @@ void main() {
   });
 
   /// `problem` を返すAPIクライアント。null なら「読めなかった」。
-  List<Object?> apiOverrides({Map<String, dynamic>? problem, List<http.BaseRequest>? calls}) {
+  List<Object?> apiOverrides({
+    Map<String, dynamic>? problem,
+    List<http.BaseRequest>? calls,
+    String? errorCode,
+    String? errorMessage,
+  }) {
     final MockClient client = MockClient((http.Request request) async {
       calls?.add(request);
+      if (errorCode != null) {
+        return http.Response.bytes(
+          utf8.encode(jsonEncode(<String, dynamic>{
+            'error': <String, dynamic>{
+              'code': errorCode,
+              'message': errorMessage ?? 'server error',
+            },
+          })),
+          429,
+          headers: <String, String>{'content-type': 'application/json; charset=utf-8'},
+        );
+      }
       final Map<String, dynamic> body = <String, dynamic>{
         'session_id': 'ses_1',
         'kind': 'new',
@@ -90,7 +107,7 @@ void main() {
           },
         ],
         'problem': problem,
-        'limits': <String, dynamic>{'max_seconds': 300, 'lesson_allowed_today': false},
+        'limits': <String, dynamic>{'max_seconds': 1200, 'lesson_allowed_today': false},
       };
       return http.Response.bytes(
         utf8.encode(jsonEncode(body)),
@@ -110,12 +127,19 @@ void main() {
     WidgetTester tester, {
     Map<String, dynamic>? problem,
     List<http.BaseRequest>? calls,
+    String? errorCode,
+    String? errorMessage,
     Size size = phoneSurface,
   }) async {
     await pumpApp(
       tester,
       const CaptureScreen(),
-      overrides: apiOverrides(problem: problem, calls: calls),
+      overrides: apiOverrides(
+        problem: problem,
+        calls: calls,
+        errorCode: errorCode,
+        errorMessage: errorMessage,
+      ),
       size: size,
     );
   }
@@ -275,5 +299,23 @@ void main() {
     expect(find.text(ja.captureProblemTitle), findsNothing);
     // 行き止まりにもしない。単元の確認まで進んでいる。
     expect(find.text(ja.captureConfirmHint), findsOneWidget);
+  });
+
+  testWidgets('Premium のフェアユース上限は、先輩が締めて再試行させない',
+      (WidgetTester tester) async {
+    const String serverMessage = '上限3回です。Premiumを購入してください。';
+    await pumpCapture(
+      tester,
+      errorCode: 'fair_use_limit_reached',
+      errorMessage: serverMessage,
+    );
+
+    await tester.tap(find.text(ja.captureStart));
+    await pumpUntil(tester, find.text(ja.captureFairUseLimitReached));
+
+    expect(find.text(ja.captureFairUseLimitReached), findsOneWidget);
+    expect(find.text(serverMessage), findsNothing);
+    expect(find.text(ja.errorRetry), findsNothing);
+    expect(find.text(ja.paywallCta), findsNothing);
   });
 }

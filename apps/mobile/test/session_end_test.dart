@@ -236,7 +236,7 @@ class FakeCaptureController extends CaptureController {
           kind: 'new',
           livekit: LiveKitConnection(url: 'wss://example', token: 't', room: 'ses_1'),
           detectedTopics: <DetectedTopic>[],
-          limits: SessionLimits(maxSeconds: 300, lessonAllowedToday: true),
+          limits: SessionLimits(maxSeconds: 1200, lessonAllowedToday: true),
         ),
       );
 }

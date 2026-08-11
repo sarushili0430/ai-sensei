@@ -204,7 +204,7 @@ void main() {
 
     SessionState teaching(List<String> lines, {String? gapReason}) => SessionState(
       phase: SessionPhase.senpaiTeaching,
-      remainingSeconds: 900,
+      remainingSeconds: 1200,
       board: BoardSnapshot(
         title: '判別式',
         gapReason: gapReason,
@@ -247,7 +247,7 @@ void main() {
         tester,
         SessionState(
           phase: SessionPhase.explainBack,
-          remainingSeconds: 900,
+          remainingSeconds: 1200,
           board: taught.board,
         ),
       );
@@ -295,7 +295,7 @@ void main() {
         tester,
         const SessionState(
           phase: SessionPhase.senpaiTeaching,
-          remainingSeconds: 900,
+          remainingSeconds: 1200,
           board: BoardSnapshot(
             title: '判別式',
             steps: <BoardStep>[
@@ -367,7 +367,7 @@ void main() {
       SessionState packed({SessionPhase phase = SessionPhase.senpaiTeaching, String? gapReason}) =>
           SessionState(
             phase: phase,
-            remainingSeconds: 900,
+            remainingSeconds: 1200,
             board: BoardSnapshot(
               title: '判別式で解の個数を見る',
               gapReason: gapReason,
@@ -426,7 +426,7 @@ void main() {
     testWidgets('板書が無ければ、画面はこれまでのまま', (WidgetTester tester) async {
       await pumpSession(
         tester,
-        const SessionState(phase: SessionPhase.listening, remainingSeconds: 900),
+        const SessionState(phase: SessionPhase.listening, remainingSeconds: 1200),
       );
 
       expect(find.byType(BoardElementView), findsNothing);
@@ -445,7 +445,7 @@ class FakeCaptureController extends CaptureController {
       kind: 'new',
       livekit: LiveKitConnection(url: 'wss://example', token: 't', room: 'ses_1'),
       detectedTopics: <DetectedTopic>[],
-      limits: SessionLimits(maxSeconds: 900, lessonAllowedToday: true),
+      limits: SessionLimits(maxSeconds: 1200, lessonAllowedToday: true),
     ),
   );
 }

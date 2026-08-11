@@ -189,6 +189,7 @@ class ApiException implements Exception {
   final int? retryAfterSeconds;
 
   bool get isFreeLimitReached => code == 'free_limit_reached';
+  bool get isFairUseLimitReached => code == 'fair_use_limit_reached';
   bool get isPremiumRequired => code == 'premium_required';
   bool get isPhotoUnreadable => code == 'photo_unreadable' || code == 'out_of_scope';
 

@@ -1,5 +1,5 @@
+import { type SessionMetadata, sessionMetadataSchema } from "@ai-sensei/contract";
 import { formatBullets } from "@ai-sensei/prompts";
-import { z } from "zod";
 
 /**
  * backend/api が LiveKit トークンの metadata に載せた会話文脈。
@@ -7,47 +7,13 @@ import { z } from "zod";
  * 「写真の解釈」と「触れてよいトピック」がここに入っている。
  * 別チャネルで渡すと、トークンと文脈がずれたセッションが生まれうるので、
  * トークンと同じ経路で運ぶ。
+ *
+ * 受信側だけで形を定義すると、APIとの改名・必須化のずれを既定値で隠してしまう。
+ * そのため検証は共有契約そのものを使い、agent固有の整形は検証後にだけ行う。
  */
-export const sessionContextSchema = z
-  .object({
-    session_id: z.string().min(1),
-    locale: z.enum(["ja", "en"]).default("ja"),
-    kind: z.enum(["new", "review"]).default("new"),
-    /** サーバが強制する会話の上限秒数(無料5分 / Premium15分)。 */
-    max_seconds: z.number().int().positive(),
-    photo_summary: z.string().default(""),
-    /**
-     * **問題文。既定値を持たせない。**
-     *
-     * 契約(`sessionMetadataSchema.problem_text`)が `.min(1)` で、読み取れなかったときも
-     * **その言語のプレースホルダ「(問題の写真なし)」が入った状態で届く**。
-     * だからここで空を埋める必要はないし、埋めてはいけない — 文言を作る場所が2つあると、
-     * `senpai_board.<locale>.md` が名指しで見ている文字列と1文字ずれ、
-     * 「推測で組み立てるな」の指示が発火しないまま
-     * **先輩が自分で作った問題を教えはじめる**。
-     *
-     * 欠けて届いたら、それは backend/api と agent の版がずれている。**会話を始めない。**
-     */
-    problem_text: z.string().min(1),
-    /**
-     * ノートから読み取れた作業(整形済み)。**既定値を持たせない。**
-     *
-     * 契約側は3つの状態を区別して送ってくる(箇条書き / 「(なし)」 /
-     * 「(ノートの写真なし)」)。ここで空を埋めると
-     * **「ノートに何も書いていない生徒」と「ノートを撮らなかった生徒」が同じになり**、
-     * 先輩は持っていない生徒に「ノート見せて」と言い出す。
-     * 文言は `@ai-sensei/prompts` の `formatVisibleWork()` にしか無い。
-     */
-    visible_work: z.string().min(1),
-    question_seeds: z.string().default(""),
-    allowed_topics: z.string().default(""),
-    /** ガードレール照合に使う許可リスト。 */
-    allowed_topic_ids: z.array(z.string()).default([]),
-    is_premium: z.boolean().default(false),
-  })
-  .passthrough();
+export const sessionContextSchema = sessionMetadataSchema;
 
-export type SessionContext = z.infer<typeof sessionContextSchema>;
+export type SessionContext = SessionMetadata;
 
 export class InvalidSessionContextError extends Error {}
 
@@ -84,8 +50,9 @@ export function readSessionContext(metadata: string | undefined | null): Session
  * 契約が `.min(1)` を保証していて、**プレースホルダも契約側が入れてくる**ので
  * こちらでは触らない(埋める場所が2つあると文言がずれる)。
  *
- * `question_seeds` は契約側が空を許しているぶん、ここで受ける。空の節が残ると
- * モデルが「読めなかった」と解釈して、写真の話を推測で埋めにいく。
+ * `question_seeds` は欄そのものは必須だが、契約側が空文字を許しているぶん、
+ * 検証後にここで整える。空の節が残るとモデルが「読めなかった」と解釈して、
+ * 写真の話を推測で埋めにいく。
  * `formatBullets([])` を借りているのは、**文言を1か所に保つ**ため —
  * backend/api が同じ関数で組み立てているので、ここで別の文字列を書かないかぎりずれない。
  */

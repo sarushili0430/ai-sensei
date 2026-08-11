@@ -16,6 +16,12 @@ const messages: Record<ApiErrorCode, { ja: string; en: string; status: number }>
     en: "That's all for today. Come back tomorrow and tell me the rest.",
     status: 402,
   },
+  fair_use_limit_reached: {
+    // Premiumの上限値は見せず、§6-3どおり先輩が学習を締める言い方にする。
+    ja: "今日はここまでにしよっか。詰め込みすぎても入らないから、また明日続きをやろう。",
+    en: "Let's stop here for today. Cramming more won't help it stick, so let's continue tomorrow.",
+    status: 429,
+  },
   premium_required: {
     ja: "穴の復習はPremiumの機能です。無料のままでも、今日のカルテは見られます。",
     en: "Reviewing past gaps is a Premium feature. Today's karte stays free.",

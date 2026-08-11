@@ -4,6 +4,7 @@ import {
   type SessionProblem,
   type UpdateSessionTopicsResponse,
   createSessionRequestSchema,
+  sessionMetadataSchema,
   sessionPhotoParts,
   updateSessionTopicsRequestSchema,
 } from "@ai-sensei/contract";
@@ -25,7 +26,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { AppEnv, Bindings } from "../env.ts";
 import { readLimits } from "../env.ts";
-import { checkSessionAllowance, isPremiumNow } from "../lib/entitlement.ts";
+import { canStartSessionToday, checkSessionAllowance, isPremiumNow } from "../lib/entitlement.ts";
 import { apiError } from "../lib/errors.ts";
 import { type AgentDispatch, createLiveKitToken } from "../lib/livekit.ts";
 import {
@@ -81,7 +82,7 @@ sessionsRoute.post("/", async (c) => {
   const allowance = checkSessionAllowance({ user, sessionsToday, now: at, limits });
 
   if (!allowance.allowed) {
-    throw apiError("free_limit_reached", {
+    throw apiError(allowance.reason, {
       locale,
       retryAfterSeconds: allowance.retryAfterSeconds,
     });
@@ -107,7 +108,7 @@ sessionsRoute.post("/", async (c) => {
 
   const sessionId = newId("ses");
 
-  // 無料枠の判定と行の作成が離れていると、同時に2本投げられたときに
+  // 授業枠の判定と行の作成が離れていると、同時に2本投げられたときに
   // 両方が「今日はまだ0回」を見て通ってしまう。写真のアップロードと解析に
   // 数秒かかるぶん窓が広いので、**先に行を作って枠を押さえる**。
   // 解析に失敗したら下で消すので、失敗が枠を食うこともない。
@@ -237,7 +238,7 @@ sessionsRoute.post("/", async (c) => {
       throw apiError("photo_unreadable", { locale });
     }
   } catch (error) {
-    // 押さえた枠を返す。読み取れなかった写真で今日の1回を失わせない。
+    // 押さえた枠を返す。読み取れなかった写真で今日の授業枠を失わせない。
     await repository.deleteSession(sessionId);
 
     // 「写真が読めない」は想定内(ユーザーに文言が返る)。
@@ -406,7 +407,7 @@ sessionsRoute.patch("/:sessionId/topics", async (c) => {
     problem: context.problem ?? null,
     limits: {
       max_seconds: maxSeconds,
-      lesson_allowed_today: premium || sessionsToday < limits.freeSessionsPerDay,
+      lesson_allowed_today: canStartSessionToday({ user, sessionsToday, now: at, limits }),
     },
   };
 
@@ -469,10 +470,11 @@ function studentWorkForPrompt(input: {
 /**
  * エージェントがトークンから読む会話文脈。形は `contract` の {@link SessionMetadata}。
  *
- * **戻り値を `SessionMetadata` で型づけしてから文字列化している。**
+ * **`SessionMetadata` で型検査し、共有スキーマで実行時検証してから文字列化する。**
  * ここが素の object リテラルだったために `problem_text` の欄が無いことに誰も気づかず、
  * agent は `photo_summary`(「何が写っているか」の要約)を問題文として流用していた
  * = 先輩が問題そのものを見ないまま教えていた(計画書 §0 決定4 の未実装)。
+ * 型は実行時には消えるので、検証なしでは壊れた封筒をトークンへ載せてしまう。
  */
 function buildSessionMetadata(input: {
   sessionId: string;
@@ -485,7 +487,7 @@ function buildSessionMetadata(input: {
   /** ノートの写真がR2にあるか(= 送られてきたか)。`student_work` の文言が変わる。 */
   hasNotesPhoto: boolean;
 }): string {
-  const metadata: SessionMetadata = {
+  const metadata = sessionMetadataSchema.parse({
     session_id: input.sessionId,
     locale: input.locale,
     kind: input.kind,
@@ -507,7 +509,7 @@ function buildSessionMetadata(input: {
     allowed_topics: formatAllowedTopics(allowedTopicList(input.allowed), input.locale),
     allowed_topic_ids: [...input.allowed.primary, ...input.allowed.prerequisite],
     is_premium: input.isPremium,
-  };
+  } satisfies SessionMetadata);
   return JSON.stringify(metadata);
 }
 

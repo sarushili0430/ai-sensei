@@ -210,10 +210,15 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
 
     final ApiException? error = state.error;
     if (error != null) {
+      final bool lessonLimitReached =
+          error.isFreeLimitReached || error.isFairUseLimitReached;
       return _ErrorView(
-        message: error.message,
-        // 無料枠に当たったときは、再試行ボタンを出さない(押しても同じ結果なので)
-        onRetry: error.isFreeLimitReached ? null : _pickPhoto,
+        // Premium の上限値やサーバ都合ではなく、先輩が今日の学習を締める言葉にする。
+        message: error.isFairUseLimitReached
+            ? strings.captureFairUseLimitReached
+            : error.message,
+        // 日ごとの上限は押し直しても変わらない。無料・Premium とも再試行させない。
+        onRetry: lessonLimitReached ? null : _pickPhoto,
       );
     }
     // カメラを開いている最中は、まだ何も見せるものが無い。

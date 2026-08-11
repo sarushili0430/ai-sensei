@@ -181,7 +181,7 @@ export const liveKitConnectionSchema = z
 
 export const sessionLimitsSchema = z
   .object({
-    /** サーバが強制する上限。無料は5分、Premiumは15分。 */
+    /** サーバが強制する上限。無料・Premiumとも、15〜20分の授業を完走できる最長20分。 */
     max_seconds: z.number().int().positive(),
     /**
      * この応答時点から、今日さらに授業を始められるか。
@@ -403,6 +403,7 @@ export type ProgressResponse = z.infer<typeof progressResponseSchema>;
 export const apiErrorCodes = [
   "unauthorized",
   "free_limit_reached",
+  "fair_use_limit_reached",
   "premium_required",
   "photo_unreadable",
   "out_of_scope",
@@ -420,7 +421,7 @@ export const apiErrorSchema = z
         code: apiErrorCodeSchema,
         /** ユーザーにそのまま出せる日本語/英語の文言。煽らない文体で書く。 */
         message: z.string().min(1),
-        /** 再試行の目安秒数(rate_limited / free_limit_reached のとき)。 */
+        /** 再試行の目安秒数(日次上限 / rate_limited のとき)。 */
         retry_after_seconds: z.number().int().min(0).optional(),
       })
       .strict(),

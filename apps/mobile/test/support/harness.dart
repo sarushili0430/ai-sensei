@@ -263,21 +263,21 @@ final Karte sampleKarte = Karte(
 const Progress sampleProgress = Progress(
   streakDays: 3,
   filledHoles: 4,
-  openHoles: 1,
+  openHoles: 2,
   lastSessionDate: '2026-08-03',
 );
 
 const ProgressSummary sampleSummary = ProgressSummary(
   progress: sampleProgress,
   isPremium: false,
-  limits: SessionLimits(maxSeconds: 300, lessonAllowedToday: true),
+  limits: SessionLimits(maxSeconds: 1200, lessonAllowedToday: true),
 );
 
 /// 初回起動のホーム。数えるものが何も無い状態。
 const ProgressSummary firstRunSummary = ProgressSummary(
   progress: Progress.empty,
   isPremium: false,
-  limits: SessionLimits(maxSeconds: 300, lessonAllowedToday: true),
+  limits: SessionLimits(maxSeconds: 1200, lessonAllowedToday: true),
 );
 
 /// 今日はもう授業をしない日のホーム(§6-3「先輩の判断」)。
@@ -288,18 +288,21 @@ const ProgressSummary firstRunSummary = ProgressSummary(
 const ProgressSummary exhaustedSummary = ProgressSummary(
   progress: sampleProgress,
   isPremium: false,
-  limits: SessionLimits(maxSeconds: 300, lessonAllowedToday: false),
+  limits: SessionLimits(maxSeconds: 1200, lessonAllowedToday: false),
 );
 
-/// 契約している人のホーム。授業可否は常に true で返る。
-///
-/// entitlement だけ Premium にして進捗を無料のままにすると、
-/// 「Premium の印」と「今日はここまで」が同じ画面に並ぶ。
-/// 実機では起きない組み合わせなので、golden に写してはいけない。
+/// 契約していて、まだ授業を始められる人のホーム。
 const ProgressSummary premiumSummary = ProgressSummary(
   progress: sampleProgress,
   isPremium: true,
-  limits: SessionLimits(maxSeconds: 300, lessonAllowedToday: true),
+  limits: SessionLimits(maxSeconds: 1200, lessonAllowedToday: true),
+);
+
+/// Premium のフェアユース上限。締めの言葉は出すが、課金導線は出してはいけない。
+const ProgressSummary premiumExhaustedSummary = ProgressSummary(
+  progress: sampleProgress,
+  isPremium: true,
+  limits: SessionLimits(maxSeconds: 1200, lessonAllowedToday: false),
 );
 
 /// 契約している状態。
@@ -340,6 +343,30 @@ final FilledHole sampleFilledHole = FilledHole(
     filledAt: DateTime.utc(2026, 8, 2, 13, 24, 7),
   ),
   daysSinceFilled: 1,
+);
+
+/// ホームに出す復習候補。古い穴も混ぜ、カードが件数ではなく直近の内容を選ぶ状態にする。
+final ReviewQueue sampleReviewQueue = ReviewQueue(
+  requiresPremium: false,
+  items: <ReviewQueueItem>[
+    ReviewQueueItem(
+      hole: Hole(
+        id: 'hol_old',
+        topicId: 'M1-NIJI-GURAFU',
+        description: '平方完成を「なぜ」するのか、で説明が止まった',
+        severity: HoleSeverity.high,
+        status: HoleStatus.open,
+        createdAt: DateTime.utc(2026, 8, 1, 12, 10),
+      ),
+      daysSince: 3,
+      prompt: '3日前の「平方完成のなぜ」、いまなら説明できますか?',
+    ),
+    ReviewQueueItem(
+      hole: sampleKarte.holes.first,
+      daysSince: 1,
+      prompt: 'きのうの「判別式の意味」、もう一度きいてもいいですか?',
+    ),
+  ],
 );
 
 // --- プロバイダの差し替え ---

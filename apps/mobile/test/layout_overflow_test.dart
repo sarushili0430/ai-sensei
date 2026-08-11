@@ -92,6 +92,7 @@ void main() {
         locale: locale,
         overrides: <Object?>[
           progressControllerProvider.overrideWith(FakeProgressController.new),
+          reviewControllerProvider.overrideWith(() => FakeReviewController(sampleReviewQueue)),
         ],
       );
     });
@@ -106,6 +107,7 @@ void main() {
           progressControllerProvider.overrideWith(
             () => FakeProgressController(exhaustedSummary),
           ),
+          reviewControllerProvider.overrideWith(() => FakeReviewController(sampleReviewQueue)),
         ],
       );
     });

@@ -27,10 +27,12 @@ compatibility_flags = ["nodejs_compat"]
 # -----------------------------------------------------------------------------
 [vars]
 ENVIRONMENT = "local"
-# 無料枠と会話上限はサーバ側で強制する(クライアント改竄対策)
+# 無料枠と会話上限はサーバ側で強制する(クライアント改竄対策)。
+# 1回の質はプランで変えず20分、Premiumは通常1〜2回に当たらない3回/日を異常利用の保険にする。
 FREE_SESSIONS_PER_DAY = "1"
-FREE_SESSION_MAX_SECONDS = "300"
-PREMIUM_SESSION_MAX_SECONDS = "900"
+PREMIUM_SESSIONS_PER_DAY = "3"
+FREE_SESSION_MAX_SECONDS = "1200"
+PREMIUM_SESSION_MAX_SECONDS = "1200"
 LLM_PROVIDER = "anthropic"
 LLM_MODEL_VISION = "claude-sonnet-5"
 REVENUECAT_ENTITLEMENT_ID = "premium"
@@ -61,9 +63,11 @@ workers_dev = true             # https://ai-sensei-api-develop.<subdomain>.worke
 
 [env.develop.vars]
 ENVIRONMENT = "develop"
+# varsは環境間で継承されないため、本番と同じ授業品質・フェアユース条件を明示する。
 FREE_SESSIONS_PER_DAY = "1"
-FREE_SESSION_MAX_SECONDS = "300"
-PREMIUM_SESSION_MAX_SECONDS = "900"
+PREMIUM_SESSIONS_PER_DAY = "3"
+FREE_SESSION_MAX_SECONDS = "1200"
+PREMIUM_SESSION_MAX_SECONDS = "1200"
 LLM_PROVIDER = "anthropic"
 LLM_MODEL_VISION = "claude-sonnet-5"
 REVENUECAT_ENTITLEMENT_ID = "premium"
@@ -96,9 +100,11 @@ workers_dev = true
 
 [env.production.vars]
 ENVIRONMENT = "production"
+# varsは環境間で継承されないため、開発環境と同じ授業品質・フェアユース条件を明示する。
 FREE_SESSIONS_PER_DAY = "1"
-FREE_SESSION_MAX_SECONDS = "300"
-PREMIUM_SESSION_MAX_SECONDS = "900"
+PREMIUM_SESSIONS_PER_DAY = "3"
+FREE_SESSION_MAX_SECONDS = "1200"
+PREMIUM_SESSION_MAX_SECONDS = "1200"
 LLM_PROVIDER = "anthropic"
 LLM_MODEL_VISION = "claude-sonnet-5"
 REVENUECAT_ENTITLEMENT_ID = "premium"

@@ -5,7 +5,7 @@ import { buildReviewPrompt, computeProgress, daysBetween, toLocalDate } from "@a
 import { Hono } from "hono";
 import type { AppEnv } from "../env.ts";
 import { readLimits } from "../env.ts";
-import { isPremiumNow } from "../lib/entitlement.ts";
+import { canStartSessionToday, isPremiumNow } from "../lib/entitlement.ts";
 import type { HoleRecord } from "../repository/types.ts";
 
 export const meRoute = new Hono<AppEnv>();
@@ -32,7 +32,7 @@ meRoute.get("/progress", async (c) => {
     is_premium: premium,
     limits: {
       max_seconds: premium ? limits.premiumSessionMaxSeconds : limits.freeSessionMaxSeconds,
-      lesson_allowed_today: premium || sessionsToday < limits.freeSessionsPerDay,
+      lesson_allowed_today: canStartSessionToday({ user, sessionsToday, now: at, limits }),
     },
   };
   return c.json(response);

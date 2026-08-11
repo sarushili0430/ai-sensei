@@ -40,7 +40,7 @@ Map<String, dynamic> _sessionJson(
           'confidence': topicId == topicIds.first ? 0.92 : 0.41,
         },
     ],
-    'limits': <String, dynamic>{'max_seconds': 300, 'lesson_allowed_today': false},
+    'limits': <String, dynamic>{'max_seconds': 1200, 'lesson_allowed_today': false},
   };
 }
 

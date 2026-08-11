@@ -2,10 +2,10 @@ import type { Limits } from "../env.ts";
 import type { UserRecord } from "../repository/types.ts";
 
 /**
- * 無料枠の判定。**サーバ側で数える**(クライアント改竄対策・handoff §5)。
+ * 授業枠の判定。**サーバ側で数える**(クライアント改竄対策・handoff §5)。
  *
- * Free    : 1日1セッション / 会話は最長5分 / 当日のカルテ閲覧まで
- * Premium : セッション無制限 / 穴の復習と履歴 / あと追い質問
+ * Free    : 1日1セッション / Premiumと同じ最長20分 / 当日のカルテ閲覧まで
+ * Premium : 通常の1日1〜2回には当たらない非表示のフェアユース上限 / 最長20分
  */
 
 export function isPremiumNow(user: UserRecord | null, now: Date): boolean {
@@ -16,7 +16,28 @@ export function isPremiumNow(user: UserRecord | null, now: Date): boolean {
 
 export type SessionAllowance =
   | { allowed: true; maxSeconds: number; lessonAllowedToday: boolean }
-  | { allowed: false; lessonAllowedToday: false; retryAfterSeconds: number };
+  | {
+      allowed: false;
+      lessonAllowedToday: false;
+      retryAfterSeconds: number;
+      reason: "free_limit_reached" | "fair_use_limit_reached";
+    };
+
+type SessionLimitInput = {
+  user: UserRecord | null;
+  sessionsToday: number;
+  now: Date;
+  limits: Limits;
+};
+
+/** 上限の数値を返さず、いま授業を始められるかだけを共有する。 */
+export function canStartSessionToday(input: SessionLimitInput): boolean {
+  const premium = isPremiumNow(input.user, input.now);
+  const sessionsPerDay = premium
+    ? input.limits.premiumSessionsPerDay
+    : input.limits.freeSessionsPerDay;
+  return input.sessionsToday < sessionsPerDay;
+}
 
 /**
  * そのデバイスが今セッションを始められるかを判定する。
@@ -31,26 +52,25 @@ export function checkSessionAllowance(input: {
   timezoneOffsetMinutes?: number;
 }): SessionAllowance {
   const premium = isPremiumNow(input.user, input.now);
-  if (premium) {
-    return {
-      allowed: true,
-      maxSeconds: input.limits.premiumSessionMaxSeconds,
-      lessonAllowedToday: true,
-    };
-  }
-
-  const remaining = input.limits.freeSessionsPerDay - input.sessionsToday;
+  const sessionsPerDay = premium
+    ? input.limits.premiumSessionsPerDay
+    : input.limits.freeSessionsPerDay;
+  const remaining = sessionsPerDay - input.sessionsToday;
   if (remaining <= 0) {
     return {
       allowed: false,
       lessonAllowedToday: false,
       retryAfterSeconds: secondsUntilLocalMidnight(input.now, input.timezoneOffsetMinutes ?? 540),
+      // Premiumを無料枠として扱うと、モバイルが誤って課金導線へ分岐するため理由を分ける。
+      reason: premium ? "fair_use_limit_reached" : "free_limit_reached",
     };
   }
 
   return {
     allowed: true,
-    maxSeconds: input.limits.freeSessionMaxSeconds,
+    maxSeconds: premium
+      ? input.limits.premiumSessionMaxSeconds
+      : input.limits.freeSessionMaxSeconds,
     // 成功したセッションは直後に予約される。§6-3の方針どおり、残数ではなく次の授業の可否だけを渡す。
     lessonAllowedToday: remaining > 1,
   };

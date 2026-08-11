@@ -504,12 +504,19 @@ void main() {
         tester,
         const HomeScreen(),
         overrides: <Object?>[
-          progressControllerProvider.overrideWith(FakeProgressController.new),
+          progressControllerProvider.overrideWith(
+            () => FakeProgressController(premiumExhaustedSummary),
+          ),
+          reviewControllerProvider.overrideWith(() => FakeReviewController(sampleReviewQueue)),
           ...premiumOverrides(),
         ],
       );
 
       expect(find.text(ja.premiumBadge), findsOneWidget);
+      expect(find.text(sampleKarte.holes.first.description), findsOneWidget);
+      expect(find.textContaining('残っている穴'), findsNothing);
+      expect(find.text(ja.homeEnoughForToday), findsOneWidget);
+      expect(find.text(ja.homeUnlock), findsNothing);
     });
 
     testWidgets('契約していなければ何も出ない', (WidgetTester tester) async {
@@ -518,6 +525,7 @@ void main() {
         const HomeScreen(),
         overrides: <Object?>[
           progressControllerProvider.overrideWith(FakeProgressController.new),
+          reviewControllerProvider.overrideWith(() => FakeReviewController(sampleReviewQueue)),
         ],
       );
 

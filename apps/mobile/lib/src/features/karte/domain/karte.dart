@@ -94,7 +94,7 @@ abstract class SessionLimits with _$SessionLimits {
   factory SessionLimits.fromJson(Map<String, dynamic> json) => _$SessionLimitsFromJson(json);
 
   static const SessionLimits unknown =
-      SessionLimits(maxSeconds: 300, lessonAllowedToday: true);
+      SessionLimits(maxSeconds: 1200, lessonAllowedToday: true);
 }
 
 /// `GET /v1/me/progress` の全体。ホームが読む。
