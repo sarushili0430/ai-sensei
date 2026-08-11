@@ -44,7 +44,7 @@ class ProgressController extends _$ProgressController {
   }
 }
 
-/// 復習キュー(プッシュ起点)。無料ユーザーには空で返る。
+/// 復習キュー(プッシュ起点)。小テストと1/3/7日の再訪は無料でも中身を返す。
 @Riverpod(keepAlive: true)
 class ReviewController extends _$ReviewController {
   @override
@@ -53,6 +53,30 @@ class ReviewController extends _$ReviewController {
   Future<void> refresh() async {
     state = const AsyncValue<ReviewQueue>.loading();
     state = await AsyncValue.guard(() => ref.read(apiClientProvider).fetchReviews());
+  }
+
+  /// 小テストの自己申告を送り、成功したら次の1問へ進めるためキューを読み直す。
+  Future<bool> answer(String holeId, ReviewOutcome outcome) async {
+    try {
+      final ReviewAnswer answer =
+          await ref.read(apiClientProvider).answerReview(holeId, outcome);
+
+      // 「言えた」で穴が埋まったときだけ、応答に入っている進捗をそのまま使う。
+      // 再取得するとキューとホームで反映の瞬間がずれるため、セッション直後と同じ扱いにする。
+      if (outcome == ReviewOutcome.saidIt) {
+        ref.read(progressControllerProvider.notifier).applyFromSession(answer.progress);
+      }
+
+      await refresh();
+      return state.when(
+        data: (_) => true,
+        error: (_, _) => false,
+        loading: () => false,
+      );
+    } catch (error, stack) {
+      debugPrint('小テストの自己申告を送れませんでした: $error\n$stack');
+      return false;
+    }
   }
 }
 

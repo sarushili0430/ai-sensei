@@ -20,13 +20,85 @@ import '../domain/karte.dart';
 ///
 /// どの状態でも必ず出口を持たせる。ここは通知から直接着地しうる画面なので、
 /// 「読み込み中のまま」「文言だけ」で行き止まりにすると本当に戻れなくなる。
-class ReviewScreen extends ConsumerWidget {
+class ReviewScreen extends ConsumerStatefulWidget {
   const ReviewScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ReviewScreen> createState() => _ReviewScreenState();
+}
+
+class _ReviewScreenState extends ConsumerState<ReviewScreen> {
+  /// 「まだ」を選んだ穴。キューが次へ進めばIDが変わるので、自動で質問状態に戻る。
+  String? _notYetHoleId;
+  bool _isAnswering = false;
+  bool _answerFailed = false;
+  bool _showLessonError = false;
+
+  Future<void> _answer(ReviewQueueItem item) async {
+    setState(() {
+      _isAnswering = true;
+      _answerFailed = false;
+    });
+
+    final bool succeeded = await ref
+        .read(reviewControllerProvider.notifier)
+        .answer(item.hole.id, ReviewOutcome.saidIt);
+    if (!mounted) return;
+
+    setState(() {
+      _isAnswering = false;
+      _answerFailed = !succeeded;
+      if (succeeded) _notYetHoleId = null;
+    });
+  }
+
+  void _chooseNotYet(ReviewQueueItem item) {
+    // 「まだ」だけではサーバへ送らない。穴はopenのまま、次の行き先を本人が選べる。
+    setState(() {
+      _notYetHoleId = item.hole.id;
+      _answerFailed = false;
+      _showLessonError = false;
+    });
+  }
+
+  void _later() {
+    setState(() {
+      _notYetHoleId = null;
+      _showLessonError = false;
+    });
+  }
+
+  void _openPaywall() {
+    setState(() => _showLessonError = false);
+    context.push(AppRoute.paywall.path);
+  }
+
+  Future<void> _startLesson(ReviewQueueItem item) async {
+    setState(() => _showLessonError = false);
+
+    // 復習授業は写真を使わず、この穴を起点にサーバ側でセッションを作る。
+    final SessionStart? session = await ref
+        .read(captureControllerProvider.notifier)
+        .startReview(
+          item.hole.id,
+          locale: Localizations.localeOf(context).languageCode,
+        );
+    if (!mounted) return;
+
+    // 会話は一方通行。戻る先を持たせない。
+    if (session != null) {
+      context.go(AppRoute.session.path);
+    } else {
+      // startReview は失敗理由を CaptureState に残す。黙って元の画面に留めない。
+      setState(() => _showLessonError = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
     final AsyncValue<ReviewQueue> queue = ref.watch(reviewControllerProvider);
+    final CaptureState capture = ref.watch(captureControllerProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -46,24 +118,47 @@ class ReviewScreen extends ConsumerWidget {
             onPrimary: () => ref.read(reviewControllerProvider.notifier).refresh(),
           ),
           data: (ReviewQueue data) {
-            if (data.requiresPremium) {
-              return _Message(
-                text: strings.reviewLocked,
-                primaryLabel: strings.paywallCta,
-                onPrimary: () => context.push(AppRoute.paywall.path),
-              );
-            }
             if (data.isEmpty) {
               return _Message(text: strings.reviewEmpty);
             }
+
+            // §2「1回1問」。残りをリストにせず、先頭の1件だけを大きく出す。
+            final ReviewQueueItem? item = data.items.isEmpty ? null : data.items.first;
+            final bool notYet = item != null && _notYetHoleId == item.hole.id;
+            String? errorMessage;
+            if (!notYet && _answerFailed) {
+              errorMessage = strings.errorGeneric;
+            } else if (notYet && _showLessonError) {
+              // 撮影画面と同じく、サーバの文言をそのまま出す。
+              // フェアユース上限だけは、数字ではなく先輩が締める言葉に置き換える。
+              final error = capture.error;
+              errorMessage = error == null
+                  ? strings.errorGeneric
+                  : error.isFairUseLimitReached
+                      ? strings.captureFairUseLimitReached
+                      : error.message;
+              if (errorMessage.isEmpty) errorMessage = strings.errorGeneric;
+            }
+
             return ListView(
               padding: const EdgeInsets.all(AppSpacing.lg),
               children: <Widget>[
-                for (final ReviewQueueItem item in data.items) ...<Widget>[
-                  _ReviewCard(item: item),
+                if (item != null) ...<Widget>[
+                  _ReviewCard(
+                    item: item,
+                    notYet: notYet,
+                    isBusy: _isAnswering || (notYet && capture.isSubmitting),
+                    errorMessage: errorMessage,
+                    onSaidIt: () => _answer(item),
+                    onNotYet: () => _chooseNotYet(item),
+                    // 小テストはここまで無料。原価が発生する音声を呼ぶ瞬間だけ課金を分ける。
+                    onAskSenpai:
+                        data.lessonRequiresPremium ? _openPaywall : () => _startLesson(item),
+                    onLater: _later,
+                  ),
                   const SizedBox(height: AppSpacing.md),
                 ],
-                if (data.items.isEmpty)
+                if (item == null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: AppSpacing.md),
                     child: Text(
@@ -82,13 +177,29 @@ class ReviewScreen extends ConsumerWidget {
   }
 }
 
-class _ReviewCard extends ConsumerWidget {
-  const _ReviewCard({required this.item});
+class _ReviewCard extends StatelessWidget {
+  const _ReviewCard({
+    required this.item,
+    required this.notYet,
+    required this.isBusy,
+    required this.onSaidIt,
+    required this.onNotYet,
+    required this.onAskSenpai,
+    required this.onLater,
+    this.errorMessage,
+  });
 
   final ReviewQueueItem item;
+  final bool notYet;
+  final bool isBusy;
+  final VoidCallback onSaidIt;
+  final VoidCallback onNotYet;
+  final VoidCallback onAskSenpai;
+  final VoidCallback onLater;
+  final String? errorMessage;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
@@ -100,27 +211,44 @@ class _ReviewCard extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          // 先輩の声のひとこと。通知文と同じものを見せて、続きだと分かるようにする。
-          Text(item.prompt, style: Theme.of(context).textTheme.bodyLarge),
-          const SizedBox(height: AppSpacing.sm),
-          Text(item.hole.description, style: Theme.of(context).textTheme.bodySmall),
-          const SizedBox(height: AppSpacing.md),
-          ChunkyButton(
-            label: strings.reviewStart,
-            onPressed: () async {
-              // 復習は写真を使わず、この穴を起点にサーバ側でセッションを作る。
-              final SessionStart? session = await ref
-                  .read(captureControllerProvider.notifier)
-                  .startReview(
-                    item.hole.id,
-                    locale: Localizations.localeOf(context).languageCode,
-                  );
-              // 会話は一方通行。戻る先を持たせない。
-              if (session != null && context.mounted) {
-                context.go(AppRoute.session.path);
-              }
-            },
-          ),
+          if (notYet) ...<Widget>[
+            // 咎めるのではなく、ここから先は先輩が引き取る。
+            Text(strings.reviewNotYetLead, style: Theme.of(context).textTheme.bodyLarge),
+            const SizedBox(height: AppSpacing.md),
+            if (errorMessage != null) ...<Widget>[
+              Text(errorMessage!, style: Theme.of(context).textTheme.bodySmall),
+              const SizedBox(height: AppSpacing.md),
+            ],
+            ChunkyButton(
+              label: strings.reviewAskSenpai,
+              onPressed: isBusy ? null : onAskSenpai,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            GhostButton(
+              label: strings.reviewLater,
+              onPressed: isBusy ? null : onLater,
+            ),
+          ] else ...<Widget>[
+            // 先輩の声のひとこと。通知文と同じものを見せて、続きだと分かるようにする。
+            Text(item.prompt, style: Theme.of(context).textTheme.bodySmall),
+            const SizedBox(height: AppSpacing.md),
+            Text(item.quiz, style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: AppSpacing.lg),
+            if (errorMessage != null) ...<Widget>[
+              Text(errorMessage!, style: Theme.of(context).textTheme.bodySmall),
+              const SizedBox(height: AppSpacing.md),
+            ],
+            ChunkyButton(
+              label: strings.reviewSaidIt,
+              onPressed: isBusy ? null : onSaidIt,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            // 「まだ」は選んでも損しない選択肢。約束3を GhostButton の形にする。
+            GhostButton(
+              label: strings.reviewNotYet,
+              onPressed: isBusy ? null : onNotYet,
+            ),
+          ],
         ],
       ),
     );

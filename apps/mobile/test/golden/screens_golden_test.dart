@@ -162,31 +162,19 @@ void main() {
         reviewControllerProvider.overrideWith(
           () => FakeReviewController(
             ReviewQueue(
-              requiresPremium: false,
+              lessonRequiresPremium: false,
               items: <ReviewQueueItem>[
                 ReviewQueueItem(
                   hole: sampleKarte.holes.first,
                   daysSince: 3,
                   prompt: '3日前の「判別式のなぜ」、いまなら説明できますか?',
+                  quiz: '判別式を使うと解の個数がわかる理由を説明できる?',
                 ),
               ],
               filled: <FilledHole>[sampleFilledHole],
             ),
           ),
         ),
-      ],
-    );
-  });
-
-  // 無料ユーザー。「使えない」ではなく「まだ開いていない」として見えているか。
-  // ホームへの出口が残っているかも、ここで見る。
-  testWidgets('05b 復習(無料)', (WidgetTester tester) async {
-    await expectGolden(
-      tester,
-      const ReviewScreen(),
-      'review_locked',
-      overrides: <Object?>[
-        reviewControllerProvider.overrideWith(() => FakeReviewController(ReviewQueue.locked)),
       ],
     );
   });
