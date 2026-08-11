@@ -93,19 +93,22 @@ describe("GET /v1/me/progress", () => {
   });
 
   it("無料ユーザーが今日の枠を使ったあとは授業不可を返す", async () => {
-    await services.repository.createSession({
-      id: "ses_today",
-      device_id: testDeviceId,
-      kind: "new",
-      status: "open",
-      created_at: "2026-08-03T13:00:00.000Z",
-      completed_at: null,
-      local_date: "2026-08-03",
-      photo_key: null,
-      topic_ids: [],
-      hole_id: null,
-      duration_seconds: null,
-      context: null,
+    await services.repository.reserveSessionSlot({
+      session: {
+        id: "ses_today",
+        device_id: testDeviceId,
+        kind: "new",
+        status: "open",
+        created_at: "2026-08-03T13:00:00.000Z",
+        completed_at: null,
+        local_date: "2026-08-03",
+        photo_key: null,
+        topic_ids: [],
+        hole_id: null,
+        duration_seconds: null,
+        context: null,
+      },
+      maxPerDay: 1,
     });
 
     const body = (await (await get("/v1/me/progress")).json()) as ProgressResponse;
@@ -123,19 +126,22 @@ describe("GET /v1/me/progress", () => {
   it("Premiumも3回を使ったあとは今日の授業不可だけを返す", async () => {
     await makePremium();
     for (let count = 0; count < 3; count += 1) {
-      await services.repository.createSession({
-        id: `ses_premium_${count}`,
-        device_id: testDeviceId,
-        kind: "new",
-        status: "completed",
-        created_at: "2026-08-03T13:00:00.000Z",
-        completed_at: "2026-08-03T13:20:00.000Z",
-        local_date: "2026-08-03",
-        photo_key: null,
-        topic_ids: [],
-        hole_id: null,
-        duration_seconds: 1200,
-        context: null,
+      await services.repository.reserveSessionSlot({
+        session: {
+          id: `ses_premium_${count}`,
+          device_id: testDeviceId,
+          kind: "new",
+          status: "completed",
+          created_at: "2026-08-03T13:00:00.000Z",
+          completed_at: "2026-08-03T13:20:00.000Z",
+          local_date: "2026-08-03",
+          photo_key: null,
+          topic_ids: [],
+          hole_id: null,
+          duration_seconds: 1200,
+          context: null,
+        },
+        maxPerDay: 3,
       });
     }
 

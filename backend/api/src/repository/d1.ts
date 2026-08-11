@@ -6,6 +6,7 @@ import type {
   ReviewScheduleRecord,
   SessionContext,
   SessionRecord,
+  SessionReservation,
   UserRecord,
 } from "./types.ts";
 
@@ -72,13 +73,18 @@ export class D1Repository implements Repository {
     return row?.count ?? 0;
   }
 
-  async createSession(session: SessionRecord): Promise<void> {
-    await this.db
+  async reserveSessionSlot(input: {
+    session: SessionRecord;
+    maxPerDay: number;
+  }): Promise<SessionReservation> {
+    const { session } = input;
+    const insert = this.db
       .prepare(
         `INSERT INTO sessions
            (id, device_id, kind, status, created_at, completed_at, local_date,
             photo_key, topic_ids, hole_id, duration_seconds, context)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          WHERE (SELECT COUNT(*) FROM sessions WHERE device_id = ? AND local_date = ?) < ?`,
       )
       .bind(
         session.id,
@@ -93,8 +99,34 @@ export class D1Repository implements Repository {
         session.hole_id,
         session.duration_seconds,
         session.context ? JSON.stringify(session.context) : null,
-      )
-      .run();
+        session.device_id,
+        session.local_date,
+        input.maxPerDay,
+      );
+    const count = this.db
+      .prepare("SELECT COUNT(*) AS count FROM sessions WHERE device_id = ? AND local_date = ?")
+      .bind(session.device_id, session.local_date);
+
+    /**
+     * 上限確認とINSERTは同じSQL文に入れる。SQLiteでは1文が原子的に実行され、
+     * 書き込みも直列化されるため、同時実行は同じ古いCOUNTを見たまま両方通れない。
+     *
+     * day_seqのUNIQUE INDEXは意図的に使わない。デプロイはマイグレーションが先なので、
+     * 列を書かない旧Workerが既定値0を重ねる窓でINDEXがあると、2行目から失敗するため。
+     * batchは同じトランザクションでINSERTと件数取得を行い、changesが0なら上限到達とする。
+     */
+    const results = await this.db.batch<{ count: number }>([insert, count]);
+    const insertResult = results[0];
+    if (!insertResult) throw new Error("授業枠のINSERT結果がありません");
+    const changes = changesOf(insertResult.meta);
+
+    const countResult = results[1];
+    const sessionsToday = countResult?.results[0]?.count;
+    if (typeof sessionsToday !== "number") {
+      throw new Error("授業枠の確保後の件数を読み取れません");
+    }
+    if (changes === 0) return { reserved: false };
+    return { reserved: true, sessionsToday };
   }
 
   async updateSessionTopics(input: {
@@ -272,6 +304,13 @@ export class D1Repository implements Repository {
     await this.db.prepare("DELETE FROM review_schedules WHERE hole_id = ?").bind(holeId).run();
     return result.results;
   }
+}
+
+/** metaの形が変わったとき、全員を上限到達として黙って止めずに異常を表へ出す。 */
+function changesOf(meta: Record<string, unknown>): number {
+  const changes = meta["changes"];
+  if (typeof changes !== "number") throw new Error("授業枠のINSERT件数を読み取れません");
+  return changes;
 }
 
 type HoleRow = Omit<HoleRecord, "desc"> & { description: string };

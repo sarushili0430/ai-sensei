@@ -16,6 +16,7 @@ import {
   type TestServices,
   analysisFixture,
   analysisFixtureEn,
+  concurrencyBarrier,
   createSessionForm,
   problemPhotoFile,
   testBindings,
@@ -851,6 +852,68 @@ describe("無料枠の押さえ方", () => {
     await post(createSessionForm());
     // 解析中にはもう行がある = 同時に来た2本目は無料枠に弾かれる
     expect(sessionsDuringAnalysis).toBe(1);
+  });
+});
+
+describe("同時実行の授業枠", () => {
+  it("無料は同時に3本投げても1本しか通らない", async () => {
+    const wait = concurrencyBarrier(3);
+    const repository = services.repository;
+    const original = repository.ensureUser.bind(repository);
+    repository.ensureUser = async (deviceId: string, now: Date) => {
+      const user = await original(deviceId, now);
+      await wait();
+      return user;
+    };
+
+    const responses = await Promise.all(Array.from({ length: 3 }, () => post(createSessionForm())));
+    expect(responses.map((response) => response.status).sort((a, b) => a - b)).toEqual([
+      201, 402, 402,
+    ]);
+
+    const rejected = responses.filter((response) => response.status === 402);
+    const errors = await Promise.all(
+      rejected.map((response) => response.json() as Promise<{ error: { code: string } }>),
+    );
+    expect(errors.map((body) => body.error.code)).toEqual([
+      "free_limit_reached",
+      "free_limit_reached",
+    ]);
+    expect(repository.sessions.size).toBe(1);
+  });
+
+  it("Premiumは同時に5本投げても3本しか通らない", async () => {
+    const repository = services.repository;
+    await repository.ensureUser(testDeviceId, new Date());
+    await repository.setPremium({
+      deviceId: testDeviceId,
+      isPremium: true,
+      expiresAt: null,
+      rcAppUserId: "rc_1",
+    });
+
+    const wait = concurrencyBarrier(5);
+    const original = repository.ensureUser.bind(repository);
+    repository.ensureUser = async (deviceId: string, now: Date) => {
+      const user = await original(deviceId, now);
+      await wait();
+      return user;
+    };
+
+    const responses = await Promise.all(Array.from({ length: 5 }, () => post(createSessionForm())));
+    expect(responses.map((response) => response.status).sort((a, b) => a - b)).toEqual([
+      201, 201, 201, 429, 429,
+    ]);
+
+    const rejected = responses.filter((response) => response.status === 429);
+    const errors = await Promise.all(
+      rejected.map((response) => response.json() as Promise<{ error: { code: string } }>),
+    );
+    expect(errors.map((body) => body.error.code)).toEqual([
+      "fair_use_limit_reached",
+      "fair_use_limit_reached",
+    ]);
+    expect(repository.sessions.size).toBe(3);
   });
 });
 
