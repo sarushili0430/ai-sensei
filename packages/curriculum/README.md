@@ -13,7 +13,7 @@
 | `hs_math_en` | `data/curriculum.intl.v0.json` | Algebra 1 / Geometry / Algebra 2 / Precalculus / Calculus / Statistics | 57 |
 | `jhs_math_ja` | `data/curriculum.jhs-math.v0.json` | 中学数学(第1〜3学年 × 数と式 / 図形 / 関数 / データの活用) | 27 |
 | `jhs_english_ja` | `data/curriculum.jhs-english.v0.json` | 中学英語(文法事項 / 文構造 / 音声) | 25 |
-| `hs_english_ja` | `data/curriculum.hs-english.v0.json` | 英語コミュニケーションI・II / 論理・表現I | 24 |
+| `hs_english_ja` | `data/curriculum.hs-english.v0.json` | 英語コミュニケーションI・II / 論理・表現I | 32 |
 
 1つの track は `{ locale, subject, stage }` を持つ(`src/schema.ts` の `tracks`)。
 
@@ -160,12 +160,11 @@ topicLabel(findTopic("M2-ZUKEI-ENCHOKU")!); // "数学II"
 学年ごとに割った27件。`jhs_english_ja` は解説の付録7「外国語の言語材料」から
 文法事項・文構造を起こした25件で、**学年は `grade_hint`(表示専用)にしか無い**。
 
-`hs_english_ja` は**文法項目の一覧を持たない**。指導要領は高校英語の言語材料を
-「中学校の言語材料＋次に示すもの」という参照形式で書いており、その一覧
-(解説の付録9)が手元のPDFに入っていないため。代わりに本文に完全に載っている
-「5領域 × 論理の型」で24件を構成し、文法の穴は `prerequisites` で
-中学英語(`JE-*`)を指している。付録9を入手したら E1/E2 に文法トピックを足し、
-`prerequisites` を貼り替えること(その旨はデータの `note` にも書いてある)。
+`hs_english_ja` は「5領域 × 論理の型」(解説本文)と、付録9の文法事項8項目
+(不定詞 / 関係代名詞 / 関係副詞 / 接続詞 / 助動詞 / 前置詞 / 時制及び相 / 仮定法)で
+32件。**付録9の高校の欄は「中学校の言語材料に加えて扱うもの」だけを示す**ので、
+中学と重なる7項目は複製せず、`prerequisites` で中学英語(`JE-*`)を指している
+(中学に無いのは関係副詞だけ)。
 
 ### キーワードの書き方(英語の課程)
 
