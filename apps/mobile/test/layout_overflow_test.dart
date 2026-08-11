@@ -9,7 +9,6 @@ import 'package:ai_sensei/src/features/monetization/presentation/thanks_screen.d
 import 'package:ai_sensei/src/features/onboarding/presentation/onboarding_screen.dart';
 import 'package:ai_sensei/src/features/session/presentation/celebration_screen.dart';
 import 'package:ai_sensei/src/features/settings/presentation/settings_screen.dart';
-import 'package:ai_sensei/src/features/study_room/presentation/study_room_screen.dart';
 import 'package:ai_sensei/src/l10n/strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -110,10 +109,6 @@ void main() {
           reviewControllerProvider.overrideWith(() => FakeReviewController(sampleReviewQueue)),
         ],
       );
-    });
-
-    testWidgets('自習室 ($lang)', (WidgetTester tester) async {
-      await expectNoOverflow(tester, const StudyRoomScreen(), locale: locale);
     });
 
     testWidgets('祝福 ($lang)', (WidgetTester tester) async {

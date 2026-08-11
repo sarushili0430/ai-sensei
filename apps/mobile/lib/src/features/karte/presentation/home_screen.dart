@@ -16,14 +16,18 @@ import '../domain/karte.dart';
 /// ホーム。
 ///
 /// ここは**ハブ**であって、カメラの起動ボタンではない。ピボット(計画書§2)で
-/// コアループが「後輩に説明する」から「先輩に教わる → 教え返す」に変わり、
-/// モードが増えたので、入口が1本(撮る)から3本に組み替わっている。
+/// コアループが「後輩に説明する」から「先輩に教わる → 教え返す」に変わっている。
 ///
 /// 数えているもの(連続日数と埋めた穴)は据え置き。
-/// XP・レベル・偏差値は出さない(§5-2)。入口は3つ:
+/// XP・レベル・偏差値は出さない(§5-2)。入口は2つ:
 ///   - 今日の入口「先輩に教わる」(撮る → 授業モード。従量原価が発生する側 — §4-1)
-///   - 「自習室に入る」(無料・原価ゼロ — §4-2)
 ///   - きのうの続き(埋めていない穴 → 復習)
+///
+/// **画面のいちばん下に置く操作は、いつでも1つだけ。** 以前はここに授業と自習室の
+/// 2本を並べ、先輩が今日を締めた日は色を入れ替えて「押せるほう」を示していた。
+/// 自習室を畳んだいまは入れ替えるものが無いので、**同じ場所のボタンの中身を
+/// 差し替える**([_PrimaryAction])。締めた日に押せる先が残っているなら復習へ、
+/// 埋める穴も無ければ、そこで初めて押せないボタンとして休みを見せる。
 ///
 /// **回数の数字は出さない**(§6-3)。上限は「先輩の判断」として文章で見せる。
 /// 詳しくは [_EnoughForTodayLine]。
@@ -31,10 +35,7 @@ import '../domain/karte.dart';
 /// 当初はタブバーを置かなかった。常設で戻る場所がホームしかなく、カルテは
 /// セッション直後にだけ意味を持つ一過性の画面なので、タブにすると空の場所を
 /// 常設してしまうからだった。このうち**カルテをタブにしない判断はいまも有効**。
-///
-/// ただしピボット(§0)で、ホーム / 自習室(§4-2) / 計画(§4-3)という
-/// 常設で戻れる場所が3つになった。そこで今は下部ナビゲーションを置き、設定も
-/// 右上の小さな入口から同じ大域ナビゲーションへ移している。
+/// いまはホーム / 計画 / 設定の3枝を下部ナビゲーションで行き来する。
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
@@ -77,7 +78,10 @@ class HomeScreen extends ConsumerWidget {
                     FadeSlideIn.staggered(
                       index: 1,
                       child: Text(
-                        strings.homeGreeting,
+                        // 締めた日だけ、あいさつも問いかけから労いへ変える。
+                        // 「どこでつまずいた?」と聞いておいて撮らせないのは、
+                        // 呼びかけと操作が食い違っている。
+                        enoughForToday ? strings.homeGreetingDone : strings.homeGreeting,
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
@@ -90,32 +94,14 @@ class HomeScreen extends ConsumerWidget {
               const SizedBox(height: AppSpacing.md),
               FadeSlideIn.staggered(
                 index: 3,
-                child: ChunkyButton(
-                  label: strings.homeLesson,
-                  onPressed:
-                      enoughForToday ? null : () => context.push(AppRoute.capture.path),
+                child: _PrimaryAction(
+                  enoughForToday: enoughForToday,
+                  hasOpenHoles: data.progress.openHoles > 0,
                 ),
               ),
               const SizedBox(height: AppSpacing.sm),
-              // 自習室。**授業が閉まっていても、ここは開いている。**
-              // 原価ゼロなので閉める理由が無いし、上限に当たった人の
-              // 行き先がホームで途切れないようにするため(§4-2)。
-              //
-              // 先輩が締めた日だけ、こちらが主役の色になる。閉まった授業と
-              // 同じ灰色のまま並べると、**押せるほうがどちらか見て分からない**
-              // (押せないボタンと、押せるボタンが同じ見た目になる)。
               FadeSlideIn.staggered(
                 index: 4,
-                child: ChunkyButton(
-                  label: strings.homeStudyRoom,
-                  color: enoughForToday ? AppColors.blue : AppColors.border,
-                  foregroundColor: enoughForToday ? Colors.white : AppColors.ink,
-                  onPressed: () => context.go(AppRoute.studyRoom.path),
-                ),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              FadeSlideIn.staggered(
-                index: 5,
                 child: _EnoughForTodayLine(
                   show: enoughForToday,
                   showUpgrade: !data.isPremium,
@@ -125,6 +111,48 @@ class HomeScreen extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 画面の下でいつも同じ場所に居る、今日の1手。
+///
+/// **並べない。差し替える。** ボタンを2本並べると、片方が押せない日に
+/// 「押せるほうがどちらか」を色だけで見分けさせることになる。同じ場所の
+/// ラベルと行き先が変わるほうが、読まずに押しても間違いが起きない。
+///
+/// | 状態 | ラベル | 行き先 |
+/// | --- | --- | --- |
+/// | 授業ができる | 先輩に教わる | 撮影(`push` — やめれば戻れる) |
+/// | 締めた・穴がある | 埋めにいく穴 | 復習(無料。原価が発生しない側) |
+/// | 締めた・穴が無い | 先輩に教わる(押せない) | — |
+///
+/// 締めた日の行き先を復習にしているのは、**上限に当たった人の道をホームで
+/// 途切れさせない**ため(自習室が担っていた役目のうち、コアループの内側に
+/// 元からあったのはこちら)。復習は既に見つかった穴を埋め直すだけなので、
+/// 授業のような従量原価は発生しない。
+class _PrimaryAction extends StatelessWidget {
+  const _PrimaryAction({required this.enoughForToday, required this.hasOpenHoles});
+
+  final bool enoughForToday;
+  final bool hasOpenHoles;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppStrings strings = AppStrings.of(context);
+
+    if (enoughForToday && hasOpenHoles) {
+      return ChunkyButton(
+        key: const ValueKey<String>('home-primary-review'),
+        label: strings.reviewTitle,
+        onPressed: () => context.push(AppRoute.review.path),
+      );
+    }
+
+    return ChunkyButton(
+      key: const ValueKey<String>('home-primary-lesson'),
+      label: strings.homeLesson,
+      onPressed: enoughForToday ? null : () => context.push(AppRoute.capture.path),
     );
   }
 }
@@ -178,6 +206,10 @@ class _TopRow extends StatelessWidget {
 ///
 /// 穴がゼロのときは代わりに「最初の1枚から始まる」と書く。
 /// 初回起動のホームが、押すもののない空白にならないように。
+///
+/// 先輩が今日を締めた日は、すぐ下の [_PrimaryAction] も同じ復習画面へ行く。
+/// **重ねているのは意図**で、このカードは「何が残っているか」を出す説明、
+/// 下のボタンは「それをやる」操作。行き先が同じでも、読む順に並んでいる。
 ///
 /// **穴の件数は出さない。** 未完了の数は、穴を資産ではなく借金に見せる。
 /// 複数あるときも、次に向き合う内容が分かれば十分なので直近の1件だけを出す。
@@ -271,6 +303,9 @@ class _OpenHolesCard extends ConsumerWidget {
 /// **残っているあいだは何も出さない。** 「まだ大丈夫です」も残数の匂わせになる。
 /// 出すのは先輩が締めたときだけ。無料なら契約への道も置くが、Premium の
 /// フェアユース上限では、すでに契約している人へ課金導線を重ねない。
+///
+/// 締めた日はあいさつも [AppStrings.homeGreetingDone] に変わっているので、
+/// ここは**同じことを繰り返さない**説明に徹する(「今日はここまで」の理由)。
 class _EnoughForTodayLine extends StatelessWidget {
   const _EnoughForTodayLine({required this.show, required this.showUpgrade});
 
@@ -346,7 +381,7 @@ class _Counter extends StatelessWidget {
       ),
     );
 
-    // ホームへ新しいカードを足すと、狭い端末で授業・自習室の操作を下へ押し出す。
+    // ホームへ新しいカードを足すと、狭い端末で今日の1手を下へ押し出す。
     // すでにレポートの中心指標である「埋めた穴」を入口にし、見た目の第三カウンターは
     // 作らない。Tooltipとbutton semanticsで、長押し・読み上げでは行き先も伝える。
     final String? message = tooltip;

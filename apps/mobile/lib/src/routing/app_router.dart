@@ -16,7 +16,6 @@ import '../features/parent_report/presentation/parent_report_screen.dart';
 import '../features/session/presentation/celebration_screen.dart';
 import '../features/session/presentation/session_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
-import '../features/study_room/presentation/study_room_screen.dart';
 import '../features/plan/presentation/plan_screen.dart';
 import 'main_navigation_shell.dart';
 import 'routes.dart';
@@ -28,10 +27,10 @@ part 'app_router.g.dart';
 /// 遷移を「常設の場所」と「授業の線」に分けている。混ぜると行き止まりか、
 /// 授業中の抜け道ができる。
 ///
-/// **常設の場所** — ホーム / 自習室 / 計画 / 設定。
-///   ピボット(計画書§0・§4)で戻る場所が増えたため、枝ごとの履歴を保つ
-///   [StatefulShellRoute.indexedStack] に載せる。カルテは授業直後だけの画面なので、
-///   常設タブにはせずホーム枝の子に残す。
+/// **常設の場所** — ホーム / 計画 / 設定。
+///   枝ごとの履歴を保つ [StatefulShellRoute.indexedStack] に載せる。カルテは
+///   授業直後だけの画面なので、常設タブにはせずホーム枝の子に残す。
+///   自習室は畳んだ(コアループの外にあり、常設で戻る場所を1つ余分にしていた)。
 ///
 /// **ホーム枝の寄り道(`push`)** — 復習 / カルテ / ペイウォール / お礼 / 親レポート。
 ///   戻れることが前提の画面。`/` の子ルートにしてあるので、
@@ -39,7 +38,7 @@ part 'app_router.g.dart';
 ///
 /// **授業の線** — 撮影 → 会話 → 祝福。
 ///   3画面ともシェルの外なので、板書の途中でタブから抜けられない。撮影だけは
-///   `push` で入り、撮るのをやめれば元のホーム / 自習室へ戻れる。会話以降は
+///   `push` で入り、撮るのをやめれば元のホームへ戻れる。会話以降は
 ///   `go` でスタックを置き換え、終わった会話へ引き返せないようにする。
 @Riverpod(keepAlive: true)
 GoRouter appRouter(Ref ref) {
@@ -101,14 +100,6 @@ GoRouter appRouter(Ref ref) {
           StatefulShellBranch(
             routes: <RouteBase>[
               GoRoute(
-                path: AppRoute.studyRoom.path,
-                builder: (_, _) => const StudyRoomScreen(),
-              ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: <RouteBase>[
-              GoRoute(
                 path: AppRoute.plan.path,
                 builder: (_, _) => const PlanScreen(),
               ),
@@ -124,8 +115,8 @@ GoRouter appRouter(Ref ref) {
           ),
         ],
       ),
-      // 撮影は戻れるが、タブは見せない。ホーム / 自習室から push された
-      // 元の枝は下に残るので、撮るのをやめても来た場所を失わない。
+      // 撮影は戻れるが、タブは見せない。push した元の枝は下に残るので、
+      // 撮るのをやめても来た場所を失わない。
       GoRoute(path: AppRoute.capture.path, builder: (_, _) => const CaptureScreen()),
       // 会話中とその直後。戻る先もタブも持たせない。
       GoRoute(path: AppRoute.session.path, builder: (_, _) => const SessionScreen()),

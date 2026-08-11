@@ -7,13 +7,15 @@ import 'package:go_router/go_router.dart';
 /// カルテなどをホーム枝 `/` の**子ルート**として組んである(`app_router.dart`)。
 /// 子にしておくと `go('/review')` でもホームが下に積まれるので、
 /// 通知タップでアプリが起動したときにも戻るボタンが効く。
+///
+/// 常設タブは**ホーム / 計画 / 設定の3つだけ**。自習室(旧 `/study-room`)は
+/// コアループ(撮る → 教わる → 教え返す → カルテ → 復習)の外にあり、
+/// 「先輩が隣にいてタイマーが回る」だけの滞在先だったので畳んだ。
+/// 授業の板書はカルテに残るようにしたので、板書を読み返す行き先は失っていない。
 enum AppRoute {
   onboarding('/onboarding'),
   home('/'),
   capture('/capture'),
-
-  /// 自習室(計画書§4-2)。無料・原価ゼロの、常設タブの滞在先。
-  studyRoom('/study-room'),
   session('/session'),
   celebration('/celebration'),
   karte('/karte'),

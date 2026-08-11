@@ -4,15 +4,11 @@ import {
   type ProgressResponse,
   type ReviewAnswerResponse,
   type ReviewQueueResponse,
-  type StudyRoomVisitRequest,
   filledHolesLimit,
   parentReportQuoteMaxCount,
   parentReportQuoteMaxLength,
   parentReportTopicMaxCount,
   reviewAnswerRequestSchema,
-  studyRoomVisitIdempotencyHeader,
-  studyRoomVisitIdempotencyKeySchema,
-  studyRoomVisitRequestSchema,
 } from "@ai-sensei/contract";
 import { localeOfTopicId } from "@ai-sensei/curriculum";
 import {
@@ -223,57 +219,6 @@ meRoute.post("/reviews/:holeId", async (c) => {
   return c.json(response);
 });
 
-/**
- * POST /v1/me/study-room — 自習室を非表示にするときの1回だけ届く運営指標。
- *
- * 滞在中は一切通信せず、本文も秒数とローカル日付だけに閉じる。板書・単元・発話を
- * 混ぜると「原価ゼロの自習室」が授業データの収集経路へ変わるため、strictな共有契約で弾く。
- * 集計値はアプリへ返さない。進捗に足すと、約束2が許していない「学習時間」という
- * 3つ目の数字をホームへ出せる契約になってしまうため。
- */
-meRoute.post("/study-room", async (c) => {
-  const { repository, now } = c.get("services");
-  const at = now();
-  const deviceId = c.get("deviceId");
-  const parsed = studyRoomVisitRequestSchema.safeParse(await c.req.json().catch(() => null));
-  const visitId = studyRoomVisitIdempotencyKeySchema.safeParse(
-    c.req.header(studyRoomVisitIdempotencyHeader),
-  );
-
-  /**
-   * 端末時計は信用しない。ただしUTCの前日・翌日は、世界のどのローカル日付でも
-   * 正常に起こりうるので許す。ここを「サーバと同じ日」だけにすると、海外課程を
-   * 正式対応しているのに日付変更線付近の利用が丸ごと欠落する。
-   */
-  if (!parsed.success || !visitId.success || !isPlausibleVisitDate(parsed.data.visited_on, at)) {
-    // アプリはこの応答を表示せず捨てる。内部の契約違反なので、ユーザーを責める
-    // photo_unreadable等の文言へ誤分類せず、汎用の400に留める。
-    return c.json({ error: { code: "internal_error", message: "unexpected payload" } }, 400);
-  }
-
-  await repository.ensureUser(deviceId, at);
-  const body: StudyRoomVisitRequest = parsed.data;
-  const write = await repository.recordStudyRoomVisit({
-    deviceId,
-    localDate: body.visited_on,
-    durationSeconds: body.duration_seconds,
-    visitId: visitId.data,
-    recordedAt: at.toISOString(),
-  });
-
-  // D1が正本だが、賞の申請前に「滞在時間が伸びた」をWorkers Logsからも
-  // すぐ確認できるよう1行にする。visit_idとdevice_idは指標に不要なので出さない。
-  c.get("log")?.info("study_room_visit", {
-    visited_on: body.visited_on,
-    duration_seconds: body.duration_seconds,
-    daily_total_seconds: write.daily.total_seconds,
-    recorded: write.recorded,
-  });
-
-  // クライアントに返す指標は無い。204なら、UIへ数字を運ぶ型も生まれない。
-  return c.body(null, 204);
-});
-
 /** D1の行 → 契約の Hole。evidence / quiz は null を持たせず、キーごと落とす。 */
 function toHole(hole: HoleRecord): Hole {
   return {
@@ -291,11 +236,4 @@ function toHole(hole: HoleRecord): Hole {
 
 function severityRank(severity: string): number {
   return severity === "high" ? 3 : severity === "medium" ? 2 : 1;
-}
-
-function isPlausibleVisitDate(visitedOn: string, now: Date): boolean {
-  const serverDate = now.toISOString().slice(0, 10);
-  const visitedAtUtc = Date.parse(`${visitedOn}T00:00:00.000Z`);
-  const serverAtUtc = Date.parse(`${serverDate}T00:00:00.000Z`);
-  return Math.abs(visitedAtUtc - serverAtUtc) <= 24 * 60 * 60 * 1000;
 }
