@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
 import 'package:ai_sensei/src/features/karte/domain/karte.dart';
 import 'package:ai_sensei/src/features/monetization/application/entitlement_controller.dart';
+import 'package:ai_sensei/src/features/parent_report/application/parent_report_controller.dart';
+import 'package:ai_sensei/src/features/parent_report/domain/parent_report.dart';
 import 'package:ai_sensei/src/l10n/strings.dart';
 import 'package:ai_sensei/src/routing/app_router.dart';
 import 'package:ai_sensei/src/theme/app_theme.dart';
@@ -305,6 +307,30 @@ const ProgressSummary premiumExhaustedSummary = ProgressSummary(
   limits: SessionLimits(maxSeconds: 1200, lessonAllowedToday: false),
 );
 
+/// 親が読む今月のレポート。
+///
+/// 引用は画面上のプレビューとメール本文が同じかを検査する核なので、要約に
+/// 置き換えず、本人が授業中に説明した形の文章をそのまま入れる。
+final ParentReportResponse sampleParentReportResponse = ParentReportResponse(
+  requiresPremium: false,
+  report: ParentReport(
+    period: ParentReportPeriod(
+      startDate: DateTime(2026, 8),
+      endDate: DateTime(2026, 8, 11),
+    ),
+    filledHoles: 4,
+    streakDays: 3,
+    explainedTopics: const <ParentReportTopic>[
+      ParentReportTopic(topicId: 'M2-ZUKEI-ENCHOKU', name: '円と直線'),
+      ParentReportTopic(topicId: 'M1-NIJI-HANBETSU', name: '二次方程式の判別式'),
+    ],
+    quotes: const <String>[
+      '中心と直線の距離と半径を比べれば、交点の数が分かると説明できた',
+      '判別式は、方程式を解き切る前に共有点の数を判断するために使う',
+    ],
+  ),
+);
+
 /// 契約している状態。
 ///
 /// 期限は固定の**ローカル日時**にする。`DateTime.utc` にすると、走らせる
@@ -418,6 +444,16 @@ class FakeReviewController extends ReviewController {
 
   @override
   Future<ReviewQueue> build() async => _queue;
+}
+
+class FakeParentReportController extends ParentReportController {
+  FakeParentReportController(this._response);
+
+  final ParentReportResponse _response;
+
+  /// 共有内容を固定し、widget test がネットワークへ出ないようにする。
+  @override
+  Future<ParentReportResponse> build() async => _response;
 }
 
 /// 契約の状態を差し替える。SDKを呼ばずに Premium の画面を組むために使う。

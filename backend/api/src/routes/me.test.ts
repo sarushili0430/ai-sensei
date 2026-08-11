@@ -1,5 +1,14 @@
-import type { ProgressResponse, ReviewQueueResponse } from "@ai-sensei/contract";
-import { progressResponseSchema, reviewQueueResponseSchema } from "@ai-sensei/contract";
+import type {
+  ParentReportResponse,
+  ProgressResponse,
+  ReviewQueueResponse,
+} from "@ai-sensei/contract";
+import {
+  parentReportQuoteMaxCount,
+  parentReportResponseSchema,
+  progressResponseSchema,
+  reviewQueueResponseSchema,
+} from "@ai-sensei/contract";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../app.ts";
 import type { HoleRecord, KarteRecord } from "../repository/types.ts";
@@ -272,5 +281,147 @@ describe("復習キューの言語", () => {
     const response = await get("/v1/me/reviews");
     const body = (await response.json()) as ReviewQueueResponse;
     expect(body.items[0]?.prompt).toContain("いまなら説明できますか?");
+  });
+});
+
+async function seedReportKarte(input: {
+  id: string;
+  localDate: string;
+  createdAt: string;
+  topicIds: string[];
+  saidWell: string[];
+  holes?: HoleRecord[];
+}): Promise<void> {
+  const sessionId = `ses_${input.id}`;
+  const reservation = await services.repository.reserveSessionSlot({
+    session: {
+      id: sessionId,
+      device_id: testDeviceId,
+      kind: "new",
+      status: "completed",
+      created_at: input.createdAt,
+      completed_at: input.createdAt,
+      local_date: input.localDate,
+      photo_key: null,
+      topic_ids: input.topicIds,
+      hole_id: null,
+      duration_seconds: 900,
+      context: null,
+    },
+    // これは原価上限のテストではなく、月次集計の履歴を作る足場。
+    maxPerDay: 99,
+  });
+  if (!reservation.reserved) throw new Error("親レポート用セッションを作れませんでした");
+
+  await services.repository.insertKarte(
+    {
+      id: input.id,
+      session_id: sessionId,
+      device_id: testDeviceId,
+      created_at: input.createdAt,
+      topic_ids: input.topicIds,
+      said_well: input.saidWell,
+      term_notes: [],
+      followup_question: null,
+    },
+    input.holes ?? [],
+  );
+}
+
+describe("GET /v1/me/parent-report", () => {
+  it("無料ユーザーには本文を漏らさず、ロック状態を200で返す", async () => {
+    const response = await get("/v1/me/parent-report");
+    expect(response.status).toBe(200);
+
+    const body = (await response.json()) as ParentReportResponse;
+    expect(parentReportResponseSchema.safeParse(body).success).toBe(true);
+    expect(body).toEqual({ requires_premium: true, report: null });
+  });
+
+  it("Premiumには今月の実績と本人の言葉だけを返す", async () => {
+    await makePremium();
+
+    await seedReportKarte({
+      id: "kar_july",
+      localDate: "2026-07-31",
+      createdAt: "2026-07-31T11:00:00.000Z",
+      topicIds: ["M1-NIJI-GURAFU"],
+      saidWell: ["先月の説明は今月へ混ぜない"],
+      holes: [
+        {
+          id: "hol_july",
+          device_id: testDeviceId,
+          karte_id: "kar_july",
+          topic_id: "M1-NIJI-GURAFU",
+          desc: "平方完成の理由で説明が止まった",
+          severity: "medium",
+          evidence: null,
+          status: "filled",
+          created_at: "2026-07-31T11:00:00.000Z",
+          filled_at: "2026-07-31T12:00:00.000Z",
+        },
+      ],
+    });
+    await seedReportKarte({
+      id: "kar_august_1",
+      localDate: "2026-08-01",
+      createdAt: "2026-08-01T11:00:00.000Z",
+      topicIds: ["M1-NIJI-HANBETSU"],
+      saidWell: [],
+    });
+    await seedReportKarte({
+      id: "kar_august_2",
+      localDate: "2026-08-02",
+      createdAt: "2026-08-02T11:00:00.000Z",
+      topicIds: ["M2-ZUKEI-ENCHOKU"],
+      saidWell: ["同じ説明", "距離と半径を比べれば交点の個数がわかります", "古い4件目"],
+      holes: [
+        {
+          id: "hol_august",
+          device_id: testDeviceId,
+          karte_id: "kar_august_2",
+          topic_id: "M1-NIJI-HANBETSU",
+          desc: "判別式の意味で説明が止まった",
+          severity: "medium",
+          evidence: null,
+          status: "filled",
+          created_at: "2026-08-01T11:00:00.000Z",
+          filled_at: "2026-08-02T12:00:00.000Z",
+        },
+      ],
+    });
+    await seedReportKarte({
+      id: "kar_august_3",
+      localDate: "2026-08-03",
+      createdAt: "2026-08-03T11:00:00.000Z",
+      topicIds: ["M1-NIJI-HANBETSU"],
+      saidWell: ["判別式は実数解の個数を調べるものです", "同じ説明"],
+    });
+
+    const response = await get("/v1/me/parent-report");
+    const body = (await response.json()) as ParentReportResponse;
+    expect(parentReportResponseSchema.safeParse(body).success).toBe(true);
+    expect(body.requires_premium).toBe(false);
+    if (body.requires_premium) throw new Error("Premiumの親レポートがロックされています");
+
+    expect(body.report.period).toEqual({ start_date: "2026-08-01", end_date: "2026-08-03" });
+    expect(body.report.filled_holes).toBe(1);
+    expect(body.report.streak_days).toBe(4);
+    expect(body.report.explained_topics).toEqual([
+      { topic_id: "M1-NIJI-HANBETSU", name: "二次方程式の判別式と実数解の個数" },
+      { topic_id: "M2-ZUKEI-ENCHOKU", name: "円と直線の位置関係" },
+    ]);
+    expect(body.report.quotes).toEqual([
+      "判別式は実数解の個数を調べるものです",
+      "同じ説明",
+      "距離と半径を比べれば交点の個数がわかります",
+    ]);
+    expect(body.report.quotes).toHaveLength(parentReportQuoteMaxCount);
+    expect(body.report.quotes).not.toContain("先月の説明は今月へ混ぜない");
+    expect(Object.keys(body.report)).not.toContain("accuracy");
+  });
+
+  it("デバイスIDがなければ401", async () => {
+    expect((await app.request("/v1/me/parent-report", {}, bindings)).status).toBe(401);
   });
 });

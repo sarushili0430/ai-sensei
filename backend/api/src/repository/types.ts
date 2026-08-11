@@ -154,6 +154,17 @@ export type Repository = {
   /** セッションに紐づくカルテ。/complete の再送判定と、アプリの結果取得に使う。 */
   getKarteBySession(sessionId: string): Promise<{ karte: KarteRecord; holes: HoleRecord[] } | null>;
 
+  /**
+   * 親レポートに載せる期間のカルテ。
+   * `created_at` のUTC日付ではなくセッションの `local_date` で絞る。月初の深夜に
+   * 作ったカルテを前月へ落とすと、ホームのstreakと親レポートで日付が食い違うため。
+   */
+  listKartesOnLocalDates(input: {
+    deviceId: string;
+    fromDate: string;
+    toDate: string;
+  }): Promise<KarteRecord[]>;
+
   listHoles(deviceId: string): Promise<HoleRecord[]>;
   getHole(holeId: string): Promise<HoleRecord | null>;
   markHoleFilled(holeId: string, filledAt: string): Promise<void>;

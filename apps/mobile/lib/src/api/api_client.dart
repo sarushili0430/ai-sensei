@@ -6,6 +6,7 @@ import 'package:http_parser/http_parser.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../features/karte/domain/karte.dart';
+import '../features/parent_report/domain/parent_report.dart';
 import '../features/session/domain/session.dart';
 import 'device_id.dart';
 
@@ -163,6 +164,13 @@ class ApiClient {
         .get(Uri.parse('$baseUrl/v1/me/reviews'), headers: _headers)
         .timeout(_timeout);
     return ReviewQueue.fromJson(_decode(response));
+  }
+
+  Future<ParentReportResponse> fetchParentReport() async {
+    final http.Response response = await _client
+        .get(Uri.parse('$baseUrl/v1/me/parent-report'), headers: _headers)
+        .timeout(_timeout);
+    return ParentReportResponse.fromJson(_decode(response));
   }
 
   Map<String, dynamic> _decode(http.Response response) {

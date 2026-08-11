@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:ai_sensei/src/features/karte/domain/karte.dart';
+import 'package:ai_sensei/src/features/parent_report/domain/parent_report.dart';
 import 'package:ai_sensei/src/features/session/domain/board.dart';
 import 'package:ai_sensei/src/features/session/domain/session.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -144,6 +145,31 @@ void main() {
     });
   });
 
+  group('親レポートのfixture', () {
+    test('parent-report.json をパースできる', () {
+      final ParentReportResponse response = ParentReportResponse.fromJson(
+        loadFixture('parent-report'),
+      );
+
+      expect(response.requiresPremium, isFalse);
+      expect(response.report, isNotNull);
+      expect(response.report!.filledHoles, 2);
+      expect(response.report!.streakDays, 4);
+      expect(response.report!.explainedTopics.first.topicId, 'M1-NIJI-HANBETSU');
+      expect(response.report!.quotes.first, contains('判別式'));
+    });
+
+    test('parent-report.en.json をパースできる(海外向け課程)', () {
+      final ParentReportResponse response = ParentReportResponse.fromJson(
+        loadFixture('parent-report.en'),
+      );
+
+      expect(response.report!.explainedTopics.first.topicId, 'A1-QUAD-SOLVE');
+      expect(response.report!.explainedTopics.first.name, contains('discriminant'));
+      expect(response.report!.quotes.first, contains('real solutions'));
+    });
+  });
+
   group('設計上の約束', () {
     // 点数のフィールドが生えたら、fixtureに現れる前にここで気づきたい
     test('カルテのfixtureに点数・正答率のキーがない', () {
@@ -162,6 +188,26 @@ void main() {
         progress.keys.toSet(),
         <String>{'streak_days', 'filled_holes', 'open_holes', 'last_session_date'},
       );
+    });
+
+    test('親レポートが持つ数値は埋めた穴と連続日数だけ', () {
+      final Map<String, dynamic> report =
+          loadFixture('parent-report')['report'] as Map<String, dynamic>;
+
+      expect(
+        report.keys.toSet(),
+        <String>{'period', 'filled_holes', 'streak_days', 'explained_topics', 'quotes'},
+      );
+      for (final String forbidden in <String>[
+        'score',
+        'accuracy',
+        'deviation_score',
+        'understanding_score',
+        'study_time_rank',
+        'percentile',
+      ]) {
+        expect(report.containsKey(forbidden), isFalse, reason: '$forbidden は親へ渡さない');
+      }
     });
   });
 
