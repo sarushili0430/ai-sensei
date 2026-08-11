@@ -79,6 +79,15 @@ Capabilities のうち、このアプリで**触るもの**:
 | Push Notifications | **有効にする** | `onesignal_flutter`。既定はオフ |
 | App Groups | **有効にする** | OneSignal の Notification Service Extension と共有する(下の 1-2-1) |
 
+> **In-App Purchase は Xcode 側にも記録を置いてある。**
+> `apps/mobile/ios/Runner.xcodeproj` の Runner ターゲットの `SystemCapabilities` に
+> `com.apple.InAppPurchase` が入っている(Xcode の Signing & Capabilities で
+> **In-App Purchase** を足したのと同じ状態)。この Capability は entitlements に
+> 鍵を増やさない — つまり `Runner.entitlements` を見ても付いているかは分からない
+> ので、確認するときは `project.pbxproj` を見ること。
+> 自動署名はここを見て App ID 側の Capability を揃えるため、
+> ポータル側が既定で有効でも記録は残す。
+
 **触らないもの**(付けると審査で用途を聞かれるだけ損):
 
 Sign in with Apple(アカウントを作らない)、Associated Domains、
