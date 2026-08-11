@@ -1398,6 +1398,96 @@
     </p>
   </div>
 
+  <!-- ---- D-9 1枚のまとめ ---- -->
+  <div class="panel" id="figure-decision">
+    <h2>D-9. 図をどう作るか — 判断の全体</h2>
+    <p class="lede">3つの方法は競合ではなく<b>担当が違う</b>。分かれ目は「その生徒の1問に固有かどうか」の一点。</p>
+
+    <svg class="map" viewBox="0 0 1000 610" role="img"
+         aria-label="図の作り方の判断図。生徒の1問に固有な図は作図ソルバー、定理の定番の図と空間図形は事前生成のカタログ。実行時の画像生成は採らない。">
+      <defs>
+        <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7"
+                orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#7a7d87"/></marker>
+      </defs>
+      <g font-family="Hiragino Sans, system-ui, sans-serif">
+
+        <text x="20" y="26" font-size="11" fill="#7a7d87" letter-spacing="1.5">図が要る場面</text>
+        <text x="560" y="26" font-size="11" fill="#7a7d87" letter-spacing="1.5">作り方</text>
+
+        <!-- 場面1 -->
+        <rect x="20" y="40" width="380" height="86" rx="9" fill="#fff" stroke="#1f2126" stroke-width="1.5"/>
+        <text x="40" y="70" font-size="14" font-weight="700" fill="#1f2126">その生徒の1問に固有</text>
+        <text x="40" y="93" font-size="12" fill="#7a7d87">撮ってきた「この三角形」/ この関数のグラフ /</text>
+        <text x="40" y="112" font-size="12" fill="#7a7d87">いま解いている式に合わせた図</text>
+
+        <!-- 場面2 -->
+        <rect x="20" y="152" width="380" height="86" rx="9" fill="#fff" stroke="#1f2126" stroke-width="1.5"/>
+        <text x="40" y="182" font-size="14" font-weight="700" fill="#1f2126">定理・概念の定番の図</text>
+        <text x="40" y="205" font-size="12" fill="#7a7d87">円周角の定理 / 三角形の五心 / 単位円と動径 /</text>
+        <text x="40" y="224" font-size="12" fill="#7a7d87">方べきの定理 — 問題が変わっても図は同じ</text>
+
+        <!-- 場面3 -->
+        <rect x="20" y="264" width="380" height="86" rx="9" fill="#fff" stroke="#1f2126" stroke-width="1.5"/>
+        <text x="40" y="294" font-size="14" font-weight="700" fill="#1f2126">空間図形</text>
+        <text x="40" y="317" font-size="12" fill="#7a7d87">直方体 / 正四面体 / 切断 / 回転体 —</text>
+        <text x="40" y="336" font-size="12" fill="#7a7d87"><tspan font-weight="700" fill="#1f2126">配置が定番の繰り返し</tspan>なので種類が知れている</text>
+
+        <!-- 方法A -->
+        <rect x="560" y="40" width="420" height="86" rx="9" fill="#eff0f3" stroke="#1c7a4a" stroke-width="2"/>
+        <text x="582" y="70" font-size="14" font-weight="700" fill="#1f2126">作図(figure_solver)</text>
+        <text x="582" y="93" font-size="12" fill="#7a7d87">先輩が「関係」を書き、位置はこちらが計算する。</text>
+        <text x="582" y="112" font-size="12" fill="#1c7a4a" font-weight="700">正しさが構造で保証される・原価ゼロ・読み上げ可</text>
+
+        <!-- 方法B -->
+        <rect x="560" y="152" width="420" height="198" rx="9" fill="#eff0f3" stroke="#1c7a4a" stroke-width="2"/>
+        <text x="582" y="182" font-size="14" font-weight="700" fill="#1f2126">カタログ(事前生成 + 人が1度見る)</text>
+        <text x="582" y="205" font-size="12" fill="#7a7d87">単元ごとに定番の図を先に作っておく。授業中は</text>
+        <text x="582" y="224" font-size="12" fill="#7a7d87">先輩が<tspan font-weight="700" fill="#1f2126">IDを選ぶだけ</tspan>。</text>
+        <text x="582" y="253" font-size="12" fill="#1c7a4a" font-weight="700">正しさは人が保証・待ち時間ゼロ・実行時の原価ゼロ</text>
+        <rect x="582" y="268" width="376" height="64" rx="7" fill="#fff" stroke="#c6c8d0" stroke-width="1.2"/>
+        <text x="598" y="290" font-size="12" font-weight="700" fill="#1f2126">← 画像生成AIが効くのはここ</text>
+        <text x="598" y="311" font-size="11.5" fill="#7a7d87">速く作れることが、そのまま枚数になる。人が通すので</text>
+        <text x="598" y="326" font-size="11.5" fill="#7a7d87">正しさは担保される</text>
+
+        <!-- 矢印 -->
+        <g fill="none" stroke="#7a7d87" stroke-width="1.6" marker-end="url(#ar2)">
+          <path d="M400 83 L554 83"/>
+          <path d="M400 195 L554 210"/>
+          <path d="M400 307 C480 307 480 260 554 240"/>
+        </g>
+
+        <!-- 採らない -->
+        <rect x="20" y="392" width="960" height="92" rx="9" fill="#fff" stroke="#c2402a"
+              stroke-width="1.5" stroke-dasharray="7 5"/>
+        <text x="42" y="422" font-size="14" font-weight="700" fill="#c2402a">✗ 採らない — 授業中に、その場で画像生成させる</text>
+        <text x="42" y="447" font-size="12" fill="#1f2126"><tspan font-weight="700">検証できない。</tspan>出てくるのはピクセルなので「点は本当に円の上か」を機械で確かめられない。気づけるのは、すでに分かっている人だけ</text>
+        <text x="42" y="469" font-size="12" fill="#7a7d87">加えて、1手順ごとの生成待ちが板書のテンポを切り、従量課金が原価に乗り、ラスタ画像は読み上げから消える</text>
+
+        <!-- カバレッジ -->
+        <text x="20" y="524" font-size="11" fill="#7a7d87" letter-spacing="1.5">図が効く30単元の埋まり方</text>
+        <g>
+          <rect x="20" y="536" width="960" height="30" rx="6" fill="#eff0f3"/>
+          <rect x="20" y="536" width="192" height="30" rx="6" fill="#1f2126"/>
+          <rect x="212" y="536" width="352" height="30" fill="#5747b8" opacity=".75"/>
+          <rect x="564" y="536" width="352" height="30" fill="#1c7a4a" opacity=".75"/>
+          <rect x="916" y="536" width="64" height="30" fill="#c6c8d0"/>
+          <text x="34" y="556" font-size="11.5" fill="#fff" font-weight="700">いま 6</text>
+          <text x="226" y="556" font-size="11.5" fill="#fff" font-weight="700">カタログで先に埋まる(定理の説明で足りるぶん)</text>
+          <text x="578" y="556" font-size="11.5" fill="#fff" font-weight="700">作図で埋まる(その1問に合わせた図)</text>
+          <text x="924" y="556" font-size="11" fill="#7a7d87">データ2</text>
+        </g>
+        <text x="20" y="586" font-size="11.5" fill="#7a7d87">※ 箱ひげ図・散布図の2単元は<tspan font-weight="700" fill="#1f2126">図形ではなくグラフ</tspan>なので、どちらでもなく別の器になる。カタログと作図は重なる部分があり、幅は厳密な比率ではない</text>
+      </g>
+    </svg>
+
+    <p class="foot-note">
+      <b>やる順は「プロンプト → カタログ → 作図」。</b>
+      カタログはsolverを書かずに作れて、しかも<b>空間図形に唯一手が届く</b>ので先。作図はその後でいい。
+      ただし<b>D-1のプロンプト修正だけは、どちらより先</b> —
+      どちらを作っても、<span class="care">見本が無ければ先輩は図を出さない</span>。
+    </p>
+  </div>
+
 </div>
 
 <script>
