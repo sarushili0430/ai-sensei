@@ -8,6 +8,7 @@ import {
   progressResponseSchema,
   reviewQueueResponseSchema,
   sessionMetadataSchema,
+  studyRoomVisitRequestSchema,
 } from "./api.ts";
 import { boardChannelLogSchema, boardLessonSchema } from "./board.ts";
 import { karteSchema } from "./karte.ts";
@@ -41,6 +42,8 @@ export const fixtureSchemas = {
   // (計画は聞き取りの会話の途中で生まれるので、LLMの単位は「計画」ではなく「1ターン」)。
   "study-plan": studyPlanSchema,
   "study-plan-turn": planTurnSchema,
+  // 自習室から出るときの1回だけ送る。学習内容を混ぜないこともfixtureの形で固定する。
+  "study-room-visit-request": studyRoomVisitRequestSchema,
 } satisfies Record<string, ZodTypeAny>;
 
 export type FixtureName = keyof typeof fixtureSchemas;

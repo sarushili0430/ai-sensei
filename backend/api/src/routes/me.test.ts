@@ -1,6 +1,11 @@
 import type { ProgressResponse, ReviewQueueResponse } from "@ai-sensei/contract";
-import { progressResponseSchema, reviewQueueResponseSchema } from "@ai-sensei/contract";
-import { beforeEach, describe, expect, it } from "vitest";
+import {
+  progressResponseSchema,
+  reviewQueueResponseSchema,
+  studyRoomDailyMaxSeconds,
+  studyRoomVisitMaxSeconds,
+} from "@ai-sensei/contract";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../app.ts";
 import type { HoleRecord, KarteRecord } from "../repository/types.ts";
 import { type TestServices, testBindings, testDeviceId, testServices } from "../test-support.ts";
@@ -15,6 +20,28 @@ beforeEach(() => {
 
 function get(path: string) {
   return app.request(path, { headers: { "x-device-id": testDeviceId } }, bindings);
+}
+
+const visitId = "00000000-0000-4000-8000-000000000001";
+
+function postStudyRoom(
+  body: unknown,
+  idempotencyKey: string | null = visitId,
+  requestBindings = bindings,
+) {
+  return app.request(
+    "/v1/me/study-room",
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-device-id": testDeviceId,
+        ...(idempotencyKey ? { "idempotency-key": idempotencyKey } : {}),
+      },
+      body: JSON.stringify(body),
+    },
+    requestBindings,
+  );
 }
 
 async function seedHole(overrides: Partial<HoleRecord> = {}): Promise<HoleRecord> {
@@ -131,6 +158,144 @@ describe("GET /v1/me/progress", () => {
 
   it("デバイスIDがなければ401", async () => {
     expect((await app.request("/v1/me/progress", {}, bindings)).status).toBe(401);
+  });
+});
+
+describe("POST /v1/me/study-room", () => {
+  it("日次の内部指標へ積み、アプリには数字を返さない", async () => {
+    const response = await postStudyRoom({ duration_seconds: 25 * 60, visited_on: "2026-08-03" });
+
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe("");
+    expect([...services.repository.studyRoomDays.values()]).toEqual([
+      {
+        device_id: testDeviceId,
+        local_date: "2026-08-03",
+        total_seconds: 25 * 60,
+        last_visit_id: visitId,
+        updated_at: "2026-08-03T13:24:07.000Z",
+      },
+    ]);
+  });
+
+  it.each([
+    ["負数", -1],
+    ["0秒", 0],
+    ["端数", 1.5],
+    ["上端超過", studyRoomVisitMaxSeconds + 1],
+  ])("%sの滞在秒数を弾く", async (_case, durationSeconds) => {
+    const response = await postStudyRoom({
+      duration_seconds: durationSeconds,
+      visited_on: "2026-08-03",
+    });
+
+    expect(response.status).toBe(400);
+    expect(services.repository.studyRoomDays.size).toBe(0);
+  });
+
+  it.each(["2026-02-30", "2026/08/03", "2026-08-01", "2026-08-05"])(
+    "存在しない日・形式違い・端末時計のずれを弾く: %s",
+    async (visitedOn) => {
+      const response = await postStudyRoom({ duration_seconds: 60, visited_on: visitedOn });
+
+      expect(response.status).toBe(400);
+      expect(services.repository.studyRoomDays.size).toBe(0);
+    },
+  );
+
+  it.each(["2026-08-02", "2026-08-04"])(
+    "UTCの前日・翌日は海外端末の正常なローカル日付として受け入れる: %s",
+    async (visitedOn) => {
+      expect((await postStudyRoom({ duration_seconds: 60, visited_on: visitedOn })).status).toBe(
+        204,
+      );
+    },
+  );
+
+  it("本文に板書・単元などを混ぜた申告を弾く(strict)", async () => {
+    const response = await postStudyRoom({
+      duration_seconds: 60,
+      visited_on: "2026-08-03",
+      topic_id: "M1-NIJI-HANBETSU",
+    });
+
+    expect(response.status).toBe(400);
+    expect(services.repository.studyRoomDays.size).toBe(0);
+  });
+
+  it("配送用UUIDが無い・壊れている申告を弾く", async () => {
+    const body = { duration_seconds: 60, visited_on: "2026-08-03" };
+
+    expect((await postStudyRoom(body, null)).status).toBe(400);
+    expect((await postStudyRoom(body, "same-visit")).status).toBe(400);
+    expect(services.repository.studyRoomDays.size).toBe(0);
+  });
+
+  it("同じ退室イベントが二重に届いても1回分しか足さない", async () => {
+    expect((await postStudyRoom({ duration_seconds: 600, visited_on: "2026-08-03" })).status).toBe(
+      204,
+    );
+    // 同じUUIDで本文が変わっても、再送として扱う。本文を鍵にすると同じ秒数の
+    // 別訪問と区別できず、逆にUUIDを本文へ足すと「秒数と日付だけ」を破るため。
+    expect((await postStudyRoom({ duration_seconds: 900, visited_on: "2026-08-03" })).status).toBe(
+      204,
+    );
+
+    const daily = [...services.repository.studyRoomDays.values()][0];
+    expect(daily).toMatchObject({ total_seconds: 600 });
+  });
+
+  it("別の退室イベントは同じ日の1行へ合算する", async () => {
+    await postStudyRoom({ duration_seconds: 600, visited_on: "2026-08-03" });
+    await postStudyRoom(
+      { duration_seconds: 900, visited_on: "2026-08-03" },
+      "00000000-0000-4000-8000-000000000002",
+    );
+
+    expect(services.repository.studyRoomDays.size).toBe(1);
+    expect([...services.repository.studyRoomDays.values()][0]).toMatchObject({
+      total_seconds: 1500,
+    });
+  });
+
+  it("異なるUUIDを連投されても日次上限より増やさない", async () => {
+    for (let index = 1; index <= 4; index += 1) {
+      await postStudyRoom(
+        { duration_seconds: studyRoomVisitMaxSeconds, visited_on: "2026-08-03" },
+        `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      );
+    }
+
+    expect([...services.repository.studyRoomDays.values()][0]).toMatchObject({
+      total_seconds: studyRoomDailyMaxSeconds,
+    });
+  });
+
+  it("構造化ログは集計に要る数値だけを1行にし、識別子を載せない", async () => {
+    const lines: string[] = [];
+    const sink = vi.spyOn(console, "log").mockImplementation((line) => lines.push(String(line)));
+    try {
+      const response = await postStudyRoom(
+        { duration_seconds: 300, visited_on: "2026-08-03" },
+        visitId,
+        testBindings({ LOG_LEVEL: "info" }),
+      );
+      expect(response.status).toBe(204);
+
+      const event = lines
+        .map((line) => JSON.parse(line) as Record<string, unknown>)
+        .find((line) => line["event"] === "study_room_visit");
+      expect(event).toMatchObject({
+        visited_on: "2026-08-03",
+        duration_seconds: 300,
+        daily_total_seconds: 300,
+        recorded: true,
+      });
+      expect(event).not.toHaveProperty("visit_id");
+      expect(event).not.toHaveProperty("device");
+    } finally {
+      sink.mockRestore();
+    }
   });
 });
 

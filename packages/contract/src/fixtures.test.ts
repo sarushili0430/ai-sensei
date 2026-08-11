@@ -21,6 +21,8 @@ import {
   planTurnSchema,
   studyPlanDraftSchema,
   studyPlanSchema,
+  studyRoomVisitMaxSeconds,
+  studyRoomVisitRequestSchema,
 } from "./index.ts";
 
 const repoRoot = resolve(import.meta.dirname, "..", "..", "..");
@@ -52,6 +54,38 @@ describe("fixture", () => {
   it("fixturePath がリポジトリ相対パスを返す", () => {
     expect(fixturePath("karte")).toBe("packages/contract/fixtures/karte.json");
     expect(() => readFileSync(resolve(repoRoot, fixturePath("karte")))).not.toThrow();
+  });
+});
+
+describe("自習室滞在のスキーマ", () => {
+  it("本文は滞在秒数と日付だけに閉じる", () => {
+    expect(
+      studyRoomVisitRequestSchema.safeParse(loadFixture("study-room-visit-request")).success,
+    ).toBe(true);
+    expect(
+      studyRoomVisitRequestSchema.safeParse({
+        ...(loadFixture("study-room-visit-request") as object),
+        topic_id: "M1-NIJI-HANBETSU",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("負数・端数・長すぎる申告を弾く", () => {
+    for (const duration_seconds of [-1, 0, 1.5, studyRoomVisitMaxSeconds + 1]) {
+      expect(
+        studyRoomVisitRequestSchema.safeParse({ duration_seconds, visited_on: "2026-08-03" })
+          .success,
+      ).toBe(false);
+    }
+  });
+
+  it("見た目だけ日付らしい存在しない日を弾く", () => {
+    expect(
+      studyRoomVisitRequestSchema.safeParse({
+        duration_seconds: 60,
+        visited_on: "2026-02-30",
+      }).success,
+    ).toBe(false);
   });
 });
 

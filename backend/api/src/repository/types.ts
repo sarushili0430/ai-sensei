@@ -102,6 +102,27 @@ export type ReviewScheduleRecord = {
 };
 
 /**
+ * 自習室の運営指標。**アプリへ返すモデルではない。**
+ *
+ * 1訪問1行にすると、よく使う人ほどD1の行数が際限なく増える。必要なのは
+ * 「日ごとの滞在時間がどう伸びたか」なので、ユーザー×ローカル日付の1行へ合算する。
+ * `last_visit_id` は学習内容ではなく、同じ退室イベントを二重加算しない配送用UUID。
+ */
+export type StudyRoomDailyRecord = {
+  device_id: string;
+  local_date: string;
+  total_seconds: number;
+  last_visit_id: string;
+  updated_at: string;
+};
+
+export type StudyRoomVisitWrite = {
+  /** false は直前と同じ退室イベント、または日次安全上限に達した申告。 */
+  recorded: boolean;
+  daily: StudyRoomDailyRecord;
+};
+
+/**
  * 永続化の境界。
  *
  * ルートはこのインターフェースにだけ依存する。本番はD1、テストはメモリ実装。
@@ -160,4 +181,12 @@ export type Repository = {
 
   insertReviewSchedules(entries: ReviewScheduleRecord[]): Promise<void>;
   cancelReviewSchedules(holeId: string): Promise<ReviewScheduleRecord[]>;
+
+  recordStudyRoomVisit(input: {
+    deviceId: string;
+    localDate: string;
+    durationSeconds: number;
+    visitId: string;
+    recordedAt: string;
+  }): Promise<StudyRoomVisitWrite>;
 };
