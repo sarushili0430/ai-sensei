@@ -20,7 +20,7 @@ import '../data/support_links.dart';
 ///   - 契約の管理と購入の復元(ホームから移した)
 ///   - 通知のオン/オフ
 ///   - プライバシーポリシー・利用規約(サブスクを載せる以上、審査で見られる)
-///   - 不適切な質問の報告(AI生成物を含むアプリの導線 — handoff §5)
+///   - 不適切な質問の報告(AI生成物を含むアプリの導線)
 ///   - 問い合わせのときに聞かれる端末IDとバージョン
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});

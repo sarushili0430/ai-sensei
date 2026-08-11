@@ -17,30 +17,6 @@ enum PrerenderedAudioCue {
     enTranscript: "Okay, let's take a look at this together.",
     jaAsset: 'assets/audio/lesson_opening.ja.m4a',
     enAsset: 'assets/audio/lesson_opening.en.m4a',
-  ),
-
-  /// 自習室に入って10分が経ち、`SenpaiNudge.going` へ切り替わった瞬間。
-  studyRoomGoing(
-    jaTranscript: '順調?',
-    enTranscript: "How's it going?",
-    jaAsset: 'assets/audio/study_room_going.ja.m4a',
-    enAsset: 'assets/audio/study_room_going.en.m4a',
-  ),
-
-  /// 自習室に入って25分が経ち、休憩を提案する瞬間。
-  studyRoomBreak(
-    jaTranscript: 'そろそろ休憩する?',
-    enTranscript: 'Want to take a break?',
-    jaAsset: 'assets/audio/study_room_break.ja.m4a',
-    enAsset: 'assets/audio/study_room_break.en.m4a',
-  ),
-
-  /// 自習室に入って50分が経ち、いったん席を立つよう勧める瞬間。
-  studyRoomLong(
-    jaTranscript: 'けっこう集中してるね。ひと息ついてきな。',
-    enTranscript: "You've been at this a while. Go stretch.",
-    jaAsset: 'assets/audio/study_room_long.ja.m4a',
-    enAsset: 'assets/audio/study_room_long.en.m4a',
   );
 
   const PrerenderedAudioCue({

@@ -83,13 +83,12 @@ void main() {
     expect(find.byKey(const ValueKey<String>('main-bottom-navigation')), findsOneWidget);
   });
 
-  testWidgets('狭い端末でも4タブがホームの操作を押し出さない', (WidgetTester tester) async {
+  testWidgets('狭い端末でも3タブがホームの操作を押し出さない', (WidgetTester tester) async {
     await setSurface(tester, size: smallPhoneSurface);
     await pumpRouter(tester, overrides: bootOverrides());
 
     expect(find.byKey(const ValueKey<String>('main-bottom-navigation')), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('navigation-home')), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('navigation-study-room')), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('navigation-plan')), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('navigation-settings')), findsOneWidget);
     expect(tester.takeException(), isNull);

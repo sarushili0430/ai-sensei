@@ -39,7 +39,7 @@ apps/lp/
 - **価格を書いていません。** 金額は RevenueCat の Offering から引く実装なので、ページに焼くと
   ダッシュボードで値段を変えた瞬間にストアの決済画面と食い違います(`strings.dart` の
   `paywallPricePending` と同じ判断)。
-- 「アニメーションを減らす」設定を通します([ADR 0004](../../docs/adr/0004-motion-and-onboarding.md))。
+- 「アニメーションを減らす」設定を通します([ADR 0004](../../docs/adr.md#adr-0004))。
 
 ## 手元で見る
 

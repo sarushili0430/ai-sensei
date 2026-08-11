@@ -1,5 +1,5 @@
 /**
- * 授業冒頭と自習室の短い一言を、Deepgram で同梱 m4a に差し替える。
+ * 授業冒頭の短い一言を、Deepgram で同梱 m4a に差し替える。
  *
  * backend/agent の `deepgram.TTS` と同じ `/v1/speak`、`Token` 認証、モデル既定値を
  * 使う。違うのは出力だけで、リアルタイム会話の PCM ではなく保存向け AAC を受け、
@@ -31,24 +31,6 @@ export const prerenderedCueSources = [
       en: "Okay, let's take a look at this together.",
     },
     file: { ja: "lesson_opening.ja.m4a", en: "lesson_opening.en.m4a" },
-  },
-  {
-    id: "study_room_going",
-    text: { ja: "順調?", en: "How's it going?" },
-    file: { ja: "study_room_going.ja.m4a", en: "study_room_going.en.m4a" },
-  },
-  {
-    id: "study_room_break",
-    text: { ja: "そろそろ休憩する?", en: "Want to take a break?" },
-    file: { ja: "study_room_break.ja.m4a", en: "study_room_break.en.m4a" },
-  },
-  {
-    id: "study_room_long",
-    text: {
-      ja: "けっこう集中してるね。ひと息ついてきな。",
-      en: "You've been at this a while. Go stretch.",
-    },
-    file: { ja: "study_room_long.ja.m4a", en: "study_room_long.en.m4a" },
   },
 ] as const satisfies readonly CueSource[];
 

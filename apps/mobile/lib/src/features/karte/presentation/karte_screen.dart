@@ -11,16 +11,20 @@ import '../../../routing/routes.dart';
 import '../../../theme/tokens.dart';
 import '../../notifications/application/push_controller.dart';
 import '../../notifications/data/push_repository.dart';
+import '../../session/presentation/board/board_view.dart';
 import '../application/karte_controllers.dart';
+import '../application/last_board_controller.dart';
 import '../application/lesson_hole_candidate.dart';
 import '../domain/karte.dart';
+import '../domain/last_board.dart';
 import 'hole_self_report_prompt.dart';
 
 /// カルテ画面。
 ///
-/// **静かな画面**にする(handoff §7「騒がしい/静かの分離」)。
-/// 内省する場所なので、祝福画面のにぎやかさを持ち込まない。
-/// 点数は出さない。穴は「これから埋まる場所」として提示する。
+/// - **静かな画面**にする。祝福画面のにぎやかさを持ち込まない
+/// - 点数は出さない。穴は「これから埋まる場所」として出す
+/// - 読む順は 結論(言えたこと・穴・用語メモ)→ 根拠([_BoardSection])→ 操作
+/// - 板書を先頭に置かないのは、長い板書が結論を画面の外へ押し出すため
 class KarteScreen extends ConsumerWidget {
   const KarteScreen({super.key});
 
@@ -83,6 +87,7 @@ class KarteScreen extends ConsumerWidget {
                     .toList(growable: false),
               ),
             ],
+            const _BoardSection(),
             if (karte.followupQuestion != null) ...<Widget>[
               const SizedBox(height: AppSpacing.lg),
               _FollowupCard(question: karte.followupQuestion!),
@@ -153,6 +158,56 @@ class _LessonHoleSelfReportState extends ConsumerState<_LessonHoleSelfReport> {
       // 復習画面からいつでも同じ選択に戻れる。
       onNotYet: () => setState(() => _dismissed = true),
       onFilled: () => setState(() => _dismissed = true),
+    );
+  }
+}
+
+/// 授業で先輩が書いた板書。**授業の寿命を超えて読み返せる唯一の場所**。
+///
+/// - 会話画面の板書は AutoDispose で消える。残るのは [LastBoardController] だけ
+/// - 板書が無ければ見出しごと出さない。空の見出しは壊れて見える
+/// - **カードに入れない**(囲わない・内側に余白を足さない)。理由は下の2つ
+/// - `latexMinScale`(70%)は実効幅340ptの実測値。カードを足すと311ptへ落ち、
+///   収まると確認した式が横スクロールになる。しかも `debugPrint` にしか出ない
+/// - 右端フェードは板書が `AppColors.background` に直接乗る前提の色
+/// - 「ここが板書だ」は囲いではなく見出しが示す([_Section] と同じ形)
+class _BoardSection extends ConsumerWidget {
+  const _BoardSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AppStrings strings = AppStrings.of(context);
+    final LastBoard board = ref.watch(lastBoardControllerProvider);
+    if (board.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      // **`start` にしない。** 子が自然幅まで痩せ、縮小率が下がって横スクロールが増える。
+      // 授業モードの `_BoardStage` も同じ理由で `stretch`。
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        const SizedBox(height: AppSpacing.lg),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            strings.karteBoardTitle,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        BoardView(steps: board.steps),
+        // とぎれた印は、**板書の最後の行の下**に置く。見出しの横や画面の隅ではなく、
+        // 読み進めた人が「続きがない」ことに気づく場所に置きたい([LastBoard.truncated])。
+        if (board.showsTruncation) ...<Widget>[
+          const SizedBox(height: AppSpacing.sm),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              strings.karteBoardTruncated,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

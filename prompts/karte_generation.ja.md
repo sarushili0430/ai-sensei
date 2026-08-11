@@ -12,7 +12,7 @@ variables: [photo_summary, allowed_topics, transcript, is_premium]
 **採点結果ではありません。** 生徒が自分の理解の状態を見るための記録です。
 点数・正答率・評価は一切書かないでください。
 
-## 評価の観点(handoff §4(c) のルーブリック)
+## 評価の観点(ルーブリック)
 
 1. 結論から言えたか
 2. 「なぜ」を言えたか

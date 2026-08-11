@@ -8,7 +8,7 @@ import '../../../api/api_client.dart';
 import '../../../audio/prerendered_audio.dart';
 import '../../../telemetry/telemetry.dart';
 import '../../karte/application/karte_controllers.dart';
-import '../../study_room/application/last_board_controller.dart';
+import '../../karte/application/last_board_controller.dart';
 import '../domain/board.dart';
 import '../domain/session.dart';
 import 'board_inbox.dart';
@@ -441,11 +441,11 @@ class SessionController extends _$SessionController {
   /// **フェーズも一緒に動かす。**板書が届いた = 先輩が書いている最中なので、
   /// 授業モードに入っていないなら、ここで入る(会話が締めに入っていれば触らない)。
   ///
-  /// ## 授業の外から板書を読むときの約束(自習室モード・計画書§4-2)
+  /// ## 授業の外から板書を読むときの約束(カルテの「先輩が書いたもの」)
   ///
   /// この会話画面はAutoDisposeなので、離れた瞬間に [SessionState.board] ごと消える。
   /// 授業の寿命を超えて残すぶんは `lastBoardControllerProvider`
-  /// (`features/study_room/application/last_board_controller.dart`)に書き出す。
+  /// (`features/karte/application/last_board_controller.dart`)に書き出す。
   /// **書き込むのはここだけ。**読む側([LastBoardController] を watch する側)への約束:
   ///
   ///   - 型は `List<BoardStep>`。**板書が1枚も無ければ空リスト**(nullにはならない)
@@ -469,7 +469,7 @@ class SessionController extends _$SessionController {
 
     // **`board_close` のときだけではなく、変わるたびに渡す。** 締めが来るのは
     // 問題が終わったときだけなので、途中で会話を終えた板書はそれでは届かない。
-    // `truncated` を渡さないと、とぎれた板書が健全な板書として自習室に残る。
+    // `truncated` を渡さないと、とぎれた板書が健全な板書としてカルテに残る。
     ref.read(lastBoardControllerProvider.notifier).set(
           board.steps,
           truncated: board.hasGap,

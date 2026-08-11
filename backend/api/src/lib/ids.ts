@@ -33,7 +33,7 @@ function encodeTime(milliseconds: number, length: number): string {
 }
 
 /**
- * 匿名デバイスID。アカウント作成を要求しない方針(handoff §5)なので、
+ * 匿名デバイスID。アカウント作成を要求しない方針なので、
  * クライアントが生成したUUIDをそのまま受け取る。形だけ検証する。
  */
 export function isValidDeviceId(value: string | undefined | null): value is string {

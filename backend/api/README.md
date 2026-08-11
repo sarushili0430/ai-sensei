@@ -15,14 +15,14 @@ Cloudflare Workers + Hono。セッション作成・カルテ保存・課金webh
 | POST | `/v1/webhooks/revenuecat` | 共有シークレット | entitlement同期 |
 | GET | `/health` | なし | 死活確認。どの環境かを名乗る(`{"ok":true,"environment":"production"}`) |
 
-認証は**匿名デバイスID**(handoff §5)。アカウント作成を要求しないので、
+認証は**匿名デバイスID**。アカウント作成を要求しないので、
 クライアントが生成したUUIDを `X-Device-Id` で送るだけ。
 
 `/complete` だけは agent が呼ぶ内部エンドポイントで、共有シークレット1本
 (`INTERNAL_API_TOKEN`)で通している。**これは静的・無期限・スコープ無しなので、
 セッションスコープの短命トークンに移す予定**。当面このままにする判断と、
 素直に見えて成立しない経路(LiveKitトークンの `metadata` はアプリから読める)は
-[ADR 0003](../../docs/adr/0003-internal-api-auth.md) に書いてある。
+[ADR 0003](../../docs/adr.md#adr-0003) に書いてある。
 
 ## ローカル開発
 
@@ -159,7 +159,7 @@ await app.request("/v1/sessions", { method: "POST", body: form }, testBindings()
 Vision LLMに渡すカリキュラムマップ(日本の数学I〜C / 海外の Algebra 1〜)と
 プロンプト本体を選ぶ。解析器が別の課程の `topic_id` を返しても落とす。
 チップUIに出る科目名も、そのままその課程の言語で返る
-([ADR 0005](../../docs/adr/0005-locale-curricula.md))。
+([ADR 0005](../../docs/adr.md#adr-0005))。
 
 **穴の言語は `topic_id` から引く。** `locale` をDBに持たない代わりに、
 `M2-...`(日本)/ `A2-...`(海外)の接頭辞でその穴の言語が決まる。復習の通知文

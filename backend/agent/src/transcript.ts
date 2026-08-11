@@ -7,7 +7,7 @@ import type { SessionContext } from "./context.ts";
 /**
  * 会話ログの収集。
  *
- * transcriptがそのままカルテの材料になる(handoff §5 データ設計)。
+ * transcriptがそのままカルテの材料になる(データ設計)。
  * ユーザーの発話には数式音声の正規化をかけてから積む。
  *
  * **答えの漏れは、もう見ていない。**`containsAnswerLeak()` は

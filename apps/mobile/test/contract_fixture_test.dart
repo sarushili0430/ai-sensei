@@ -171,20 +171,6 @@ void main() {
     });
   });
 
-  group('自習室滞在のfixture', () {
-    test('送るのは滞在秒数と日付だけ', () {
-      final Map<String, dynamic> visit = loadFixture('study-room-visit-request');
-
-      expect(visit.keys.toSet(), <String>{'duration_seconds', 'visited_on'});
-      expect(visit['duration_seconds'], isPositive);
-      expect(visit['visited_on'], '2026-08-03');
-      // 板書・単元・発話を混ぜないことが、原価ゼロとプライバシーの境界。
-      expect(visit.containsKey('topic_id'), isFalse);
-      expect(visit.containsKey('board'), isFalse);
-      expect(visit.containsKey('transcript'), isFalse);
-    });
-  });
-
   group('学習計画のfixture', () {
     test('日ごとの項目・休む日・口頭での組み直しを読める', () {
       final StudyPlan plan = StudyPlan.fromJson(loadFixture('study-plan'));
