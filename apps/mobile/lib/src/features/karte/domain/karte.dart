@@ -169,11 +169,6 @@ abstract class ReviewQueue with _$ReviewQueue {
     /// 埋めた穴(新しい順)。通算の件数はホームのカウンターのほうが正で、
     /// ここには直近ぶんしか載らない。
     @Default(<FilledHole>[]) List<FilledHole> filled,
-
-    /// 小テストのあと、音声で先輩を呼び直す授業モードにPremiumが要るか。
-    /// 旧名は復習キュー自体をロックする意味だったが、いまは小テストが無料で
-    /// Premiumが要るのは音声だけと意味が反転したため、名前も分けている。
-    @JsonKey(name: 'lesson_requires_premium') required bool lessonRequiresPremium,
   }) = _ReviewQueue;
 
   factory ReviewQueue.fromJson(Map<String, dynamic> json) => _$ReviewQueueFromJson(json);

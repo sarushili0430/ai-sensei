@@ -51,16 +51,15 @@ meRoute.get("/progress", async (c) => {
  * 返すのは2つ。「埋めにいく穴」(open)と「埋めた穴」(filled)。
  * 小テストと1/3/7日の通知は無料(ピボット計画 §6-3)で、別画面も作らない。
  *
- * 原価が発生するのは音声だけなので、Premiumを要求するのは小テストのあとに
- * 「先輩を呼び直す」ほうだけ。ここを閉じると、無料ユーザーが自分で予約された
- * 通知をタップしてペイウォールに着地してしまう。
+ * 音声で「先輩を呼び直す」ときも、通常の授業と同じ日次枠を使う。
+ * 可否は `/progress` の `limits.lesson_allowed_today` が正なので、ここに別名の
+ * フラグを重ねない。同じことを2か所で持つと、片方だけ更新されて分岐がずれるため。
  */
 meRoute.get("/reviews", async (c) => {
   const { repository, now } = c.get("services");
   const at = now();
   const deviceId = c.get("deviceId");
 
-  const user = await repository.ensureUser(deviceId, at);
   const today = toLocalDate(at);
   const holes = await repository.listHoles(deviceId);
   const items = holes
@@ -104,7 +103,6 @@ meRoute.get("/reviews", async (c) => {
   const response: ReviewQueueResponse = {
     items,
     filled,
-    lesson_requires_premium: !isPremiumNow(user, at),
   };
   return c.json(response);
 });

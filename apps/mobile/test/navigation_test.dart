@@ -38,7 +38,7 @@ void main() {
       progressControllerProvider.overrideWith(FakeProgressController.new),
       reviewControllerProvider.overrideWith(
         () => FakeReviewController(
-          queue ?? const ReviewQueue(items: [], lessonRequiresPremium: false),
+          queue ?? const ReviewQueue(items: []),
         ),
       ),
       if (karte != null)
@@ -110,12 +110,12 @@ void main() {
     expect(find.byType(HomeScreen), findsOneWidget);
   });
 
-  testWidgets('無料でも小テストを開き、まだ言えない後にだけペイウォールへ行く',
+  testWidgets('無料でも枠が残っていれば、まだ言えない後に授業導線を出す',
       (WidgetTester tester) async {
     final GoRouter router = await pumpRouter(
       tester,
       overrides: bootOverrides(
-        queue: sampleReviewQueue.copyWith(lessonRequiresPremium: true),
+        queue: sampleReviewQueue,
       ),
     );
     router.go(AppRoute.review.path);
@@ -130,15 +130,9 @@ void main() {
     await tester.tap(find.text(strings.reviewNotYet));
     await tester.pumpAndSettle();
     expect(find.text(strings.reviewNotYetLead), findsOneWidget);
-
-    await tester.tap(find.text(strings.reviewAskSenpai));
-    await tester.pumpAndSettle();
-    expect(find.byType(PaywallScreen), findsOneWidget);
-    expect(router.canPop(), isTrue, reason: 'ペイウォールは閉じられなければならない');
-
-    router.pop();
-    await tester.pumpAndSettle();
-    expect(find.byType(ReviewScreen), findsOneWidget, reason: '来た場所に戻す');
+    expect(find.text(strings.reviewAskSenpai), findsOneWidget);
+    expect(find.byType(PaywallScreen), findsNothing);
+    expect(router.canPop(), isTrue);
   });
 
   testWidgets('直近のカルテが無いのにカルテ画面へ行くと、ホームへ戻す', (WidgetTester tester) async {

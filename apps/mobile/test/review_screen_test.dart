@@ -28,13 +28,14 @@ void main() {
     WidgetTester tester,
     FakeReviewController review, {
     _RecordingCaptureController? capture,
+    ProgressSummary progress = sampleSummary,
   }) async {
     await setSurface(tester);
     final ProviderContainer container = ProviderContainer(
       overrides: <Object?>[
         onboardedProvider.overrideWithValue(true),
         deviceIdProvider.overrideWithValue('dev_review_test'),
-        progressControllerProvider.overrideWith(FakeProgressController.new),
+        progressControllerProvider.overrideWith(() => FakeProgressController(progress)),
         reviewControllerProvider.overrideWith(() => review),
         if (capture != null)
           captureControllerProvider.overrideWith(() => capture),
@@ -52,9 +53,7 @@ void main() {
 
   testWidgets('無料ユーザーでも問題文と二択が出て、まだペイウォールには着かない',
       (WidgetTester tester) async {
-    final FakeReviewController review = FakeReviewController(
-      sampleReviewQueue.copyWith(lessonRequiresPremium: true),
-    );
+    final FakeReviewController review = FakeReviewController(sampleReviewQueue);
     await pumpReview(tester, review);
 
     expect(find.byType(ReviewScreen), findsOneWidget);
@@ -114,10 +113,9 @@ void main() {
     expect(review.answerCalls, isEmpty);
   });
 
-  testWidgets('Premiumは「先輩に聞く」で復習セッションを作る', (WidgetTester tester) async {
-    final FakeReviewController review = FakeReviewController(
-      sampleReviewQueue.copyWith(lessonRequiresPremium: false),
-    );
+  testWidgets('無料ユーザーも枠が残っていれば復習セッションを作る',
+      (WidgetTester tester) async {
+    final FakeReviewController review = FakeReviewController(sampleReviewQueue);
     final _RecordingCaptureController capture = _RecordingCaptureController();
     await pumpReview(tester, review, capture: capture);
 
@@ -133,11 +131,51 @@ void main() {
     expect(find.byType(SessionScreen), findsOneWidget);
   });
 
-  testWidgets('復習セッションを作れなければ、サーバの理由を画面に出す',
+  testWidgets('無料の枠を使い切っていれば、締めの文言とPremium導線を出す',
       (WidgetTester tester) async {
+    final FakeReviewController review = FakeReviewController(sampleReviewQueue);
+    final _RecordingCaptureController capture = _RecordingCaptureController();
+    await pumpReview(
+      tester,
+      review,
+      capture: capture,
+      progress: exhaustedSummary,
+    );
+
+    await tester.tap(find.text(ja.reviewNotYet));
+    await tester.pumpAndSettle();
+
+    expect(find.text(ja.lessonEnoughForToday), findsOneWidget);
+    expect(find.text(ja.reviewAskSenpai), findsNothing);
+    expect(find.text(ja.homeUnlock), findsOneWidget);
+    expect(find.byType(PaywallScreen), findsNothing);
+    expect(capture.startReviewCalls, isEmpty, reason: '枠がないのにサーバへ押し込まない');
+
+    await tester.tap(find.text(ja.homeUnlock));
+    await tester.pumpAndSettle();
+    expect(find.byType(PaywallScreen), findsOneWidget);
+  });
+
+  testWidgets('Premiumのフェアユース上限では、締めの文言だけを出す',
+      (WidgetTester tester) async {
+    final FakeReviewController review = FakeReviewController(sampleReviewQueue);
+    await pumpReview(tester, review, progress: premiumExhaustedSummary);
+
+    await tester.tap(find.text(ja.reviewNotYet));
+    await tester.pumpAndSettle();
+
+    expect(find.text(ja.lessonEnoughForToday), findsOneWidget);
+    expect(find.text(ja.reviewAskSenpai), findsNothing);
+    expect(find.text(ja.homeUnlock), findsNothing);
+    expect(find.byType(PaywallScreen), findsNothing);
+  });
+
+  testWidgets('開始直前に無料枠が消費されても、数字を隠して締める',
+      (WidgetTester tester) async {
+    const String serverMessage = '本日の残り回数は0/1です。';
     const ApiException failure = ApiException(
       code: 'free_limit_reached',
-      message: '今日はここまでにしよっか。明日また続きやろう。',
+      message: serverMessage,
     );
     final FakeReviewController review = FakeReviewController(sampleReviewQueue);
     final _RecordingCaptureController capture = _RecordingCaptureController(failure: failure);
@@ -148,8 +186,37 @@ void main() {
     await tester.tap(find.text(ja.reviewAskSenpai));
     await tester.pumpAndSettle();
 
-    expect(find.text(failure.message), findsOneWidget);
+    expect(find.text(ja.lessonEnoughForToday), findsOneWidget);
+    expect(find.text(serverMessage), findsNothing);
+    expect(find.text(ja.homeUnlock), findsOneWidget);
+    expect(find.byType(PaywallScreen), findsNothing);
     expect(find.byType(ReviewScreen), findsOneWidget);
+  });
+
+  testWidgets('開始直前にPremium上限に当たっても課金導線を出さない',
+      (WidgetTester tester) async {
+    const ApiException failure = ApiException(
+      code: 'fair_use_limit_reached',
+      message: '上限3回です。Premiumを購入してください。',
+    );
+    final FakeReviewController review = FakeReviewController(sampleReviewQueue);
+    final _RecordingCaptureController capture = _RecordingCaptureController(failure: failure);
+    await pumpReview(
+      tester,
+      review,
+      capture: capture,
+      progress: premiumSummary,
+    );
+
+    await tester.tap(find.text(ja.reviewNotYet));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(ja.reviewAskSenpai));
+    await tester.pumpAndSettle();
+
+    expect(find.text(ja.lessonEnoughForToday), findsOneWidget);
+    expect(find.text(failure.message), findsNothing);
+    expect(find.text(ja.homeUnlock), findsNothing);
+    expect(find.byType(PaywallScreen), findsNothing);
   });
 }
 

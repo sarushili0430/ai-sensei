@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../api/api_client.dart';
 import '../../../common_widgets/chunky_button.dart';
 import '../../../common_widgets/marker_text.dart';
 import '../../../l10n/strings.dart';
@@ -94,10 +95,75 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     }
   }
 
+  Widget _content({
+    required AppStrings strings,
+    required ReviewQueue data,
+    required ProgressSummary progress,
+    required CaptureState capture,
+  }) {
+    // §2「1回1問」。残りをリストにせず、先頭の1件だけを大きく出す。
+    final ReviewQueueItem? item = data.items.isEmpty ? null : data.items.first;
+    final bool notYet = item != null && _notYetHoleId == item.hole.id;
+    final ApiException? lessonError = notYet && _showLessonError ? capture.error : null;
+    final bool lessonLimitReached = lessonError != null &&
+        (lessonError.isFreeLimitReached || lessonError.isFairUseLimitReached);
+    final bool lessonAllowedToday =
+        progress.limits.lessonAllowedToday && !lessonLimitReached;
+    // エラーの code が返った競合時は、直前の進捗よりサーバの判定を優先する。
+    final bool showUpgrade = lessonError?.isFairUseLimitReached == true
+        ? false
+        : lessonError?.isFreeLimitReached == true
+            ? true
+            : !progress.isPremium;
+
+    String? errorMessage;
+    if (!notYet && _answerFailed) {
+      errorMessage = strings.errorGeneric;
+    } else if (notYet && _showLessonError && !lessonLimitReached) {
+      // 日次上限以外は、撮影画面と同じくサーバの理由をそのまま出す。
+      final String message = lessonError?.message ?? strings.errorGeneric;
+      errorMessage = message.isEmpty ? strings.errorGeneric : message;
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      children: <Widget>[
+        if (item != null) ...<Widget>[
+          _ReviewCard(
+            item: item,
+            notYet: notYet,
+            isBusy: _isAnswering || (notYet && capture.isSubmitting),
+            lessonAllowedToday: lessonAllowedToday,
+            showUpgrade: showUpgrade,
+            errorMessage: errorMessage,
+            onSaidIt: () => _answer(item),
+            onNotYet: () => _chooseNotYet(item),
+            // 無料でも、その日の授業枠が残っていればそのまま先輩を呼ぶ。
+            onAskSenpai: () => _startLesson(item),
+            onUpgrade: _openPaywall,
+            onLater: _later,
+          ),
+          const SizedBox(height: AppSpacing.md),
+        ],
+        if (item == null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.md),
+            child: Text(
+              strings.reviewEmpty,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+        const SizedBox(height: AppSpacing.lg),
+        _FilledSection(filled: data.filled),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
     final AsyncValue<ReviewQueue> queue = ref.watch(reviewControllerProvider);
+    final AsyncValue<ProgressSummary> progress = ref.watch(progressControllerProvider);
     final CaptureState capture = ref.watch(captureControllerProvider);
 
     return Scaffold(
@@ -121,54 +187,19 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
             if (data.isEmpty) {
               return _Message(text: strings.reviewEmpty);
             }
-
-            // §2「1回1問」。残りをリストにせず、先頭の1件だけを大きく出す。
-            final ReviewQueueItem? item = data.items.isEmpty ? null : data.items.first;
-            final bool notYet = item != null && _notYetHoleId == item.hole.id;
-            String? errorMessage;
-            if (!notYet && _answerFailed) {
-              errorMessage = strings.errorGeneric;
-            } else if (notYet && _showLessonError) {
-              // 撮影画面と同じく、サーバの文言をそのまま出す。
-              // フェアユース上限だけは、数字ではなく先輩が締める言葉に置き換える。
-              final error = capture.error;
-              errorMessage = error == null
-                  ? strings.errorGeneric
-                  : error.isFairUseLimitReached
-                      ? strings.captureFairUseLimitReached
-                      : error.message;
-              if (errorMessage.isEmpty) errorMessage = strings.errorGeneric;
-            }
-
-            return ListView(
-              padding: const EdgeInsets.all(AppSpacing.lg),
-              children: <Widget>[
-                if (item != null) ...<Widget>[
-                  _ReviewCard(
-                    item: item,
-                    notYet: notYet,
-                    isBusy: _isAnswering || (notYet && capture.isSubmitting),
-                    errorMessage: errorMessage,
-                    onSaidIt: () => _answer(item),
-                    onNotYet: () => _chooseNotYet(item),
-                    // 小テストはここまで無料。原価が発生する音声を呼ぶ瞬間だけ課金を分ける。
-                    onAskSenpai:
-                        data.lessonRequiresPremium ? _openPaywall : () => _startLesson(item),
-                    onLater: _later,
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                ],
-                if (item == null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                    child: Text(
-                      strings.reviewEmpty,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ),
-                const SizedBox(height: AppSpacing.lg),
-                _FilledSection(filled: data.filled),
-              ],
+            return progress.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (Object error, StackTrace stack) => _Message(
+                text: strings.errorGeneric,
+                primaryLabel: strings.errorRetry,
+                onPrimary: () => ref.read(progressControllerProvider.notifier).refresh(),
+              ),
+              data: (ProgressSummary summary) => _content(
+                strings: strings,
+                data: data,
+                progress: summary,
+                capture: capture,
+              ),
             );
           },
         ),
@@ -182,9 +213,12 @@ class _ReviewCard extends StatelessWidget {
     required this.item,
     required this.notYet,
     required this.isBusy,
+    required this.lessonAllowedToday,
+    required this.showUpgrade,
     required this.onSaidIt,
     required this.onNotYet,
     required this.onAskSenpai,
+    required this.onUpgrade,
     required this.onLater,
     this.errorMessage,
   });
@@ -192,9 +226,12 @@ class _ReviewCard extends StatelessWidget {
   final ReviewQueueItem item;
   final bool notYet;
   final bool isBusy;
+  final bool lessonAllowedToday;
+  final bool showUpgrade;
   final VoidCallback onSaidIt;
   final VoidCallback onNotYet;
   final VoidCallback onAskSenpai;
+  final VoidCallback onUpgrade;
   final VoidCallback onLater;
   final String? errorMessage;
 
@@ -212,17 +249,32 @@ class _ReviewCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           if (notYet) ...<Widget>[
-            // 咎めるのではなく、ここから先は先輩が引き取る。
-            Text(strings.reviewNotYetLead, style: Theme.of(context).textTheme.bodyLarge),
-            const SizedBox(height: AppSpacing.md),
-            if (errorMessage != null) ...<Widget>[
-              Text(errorMessage!, style: Theme.of(context).textTheme.bodySmall),
+            if (lessonAllowedToday) ...<Widget>[
+              // 咎めるのではなく、ここから先は先輩が引き取る。
+              Text(strings.reviewNotYetLead, style: Theme.of(context).textTheme.bodyLarge),
               const SizedBox(height: AppSpacing.md),
+              if (errorMessage != null) ...<Widget>[
+                Text(errorMessage!, style: Theme.of(context).textTheme.bodySmall),
+                const SizedBox(height: AppSpacing.md),
+              ],
+              ChunkyButton(
+                label: strings.reviewAskSenpai,
+                onPressed: isBusy ? null : onAskSenpai,
+              ),
+            ] else ...<Widget>[
+              // 「まだ」を責めず、上限は先輩が今日の学習を締める判断として伝える。
+              Text(strings.lessonEnoughForToday, style: Theme.of(context).textTheme.bodySmall),
+              if (showUpgrade)
+                TextButton(
+                  onPressed: onUpgrade,
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.blue,
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                  ),
+                  child: Text(strings.homeUnlock, style: Theme.of(context).textTheme.bodySmall),
+                ),
             ],
-            ChunkyButton(
-              label: strings.reviewAskSenpai,
-              onPressed: isBusy ? null : onAskSenpai,
-            ),
             const SizedBox(height: AppSpacing.sm),
             GhostButton(
               label: strings.reviewLater,

@@ -154,7 +154,6 @@ void main() {
           reviewControllerProvider.overrideWith(
             () => FakeReviewController(
               ReviewQueue(
-                lessonRequiresPremium: false,
                 items: <ReviewQueueItem>[
                   ReviewQueueItem(
                     hole: sampleKarte.holes.first,

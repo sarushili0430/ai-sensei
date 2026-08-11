@@ -207,7 +207,7 @@ zod側がタプル(`z.tuple`)なのは、**同種の値の固定長列は配列�
 | POST | `/v1/sessions` | mobile(写真 + meta を multipart で) |
 | POST | `/v1/sessions/{id}/complete` | agent(内部トークン必須) |
 | GET | `/v1/me/progress` | mobile(ホーム画面) |
-| GET | `/v1/me/reviews` | mobile(無料の小テスト。音声授業の要否は `lesson_requires_premium`) |
+| GET | `/v1/me/reviews` | mobile(無料の小テスト。音声授業の可否は `/v1/me/progress` の `limits.lesson_allowed_today`) |
 | POST | `/v1/me/reviews/{holeId}` | mobile(小テストの自己申告) |
 | POST | `/v1/webhooks/revenuecat` | RevenueCat |
 

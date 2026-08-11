@@ -347,7 +347,6 @@ final FilledHole sampleFilledHole = FilledHole(
 
 /// ホームに出す復習候補。古い穴も混ぜ、カードが件数ではなく直近の内容を選ぶ状態にする。
 final ReviewQueue sampleReviewQueue = ReviewQueue(
-  lessonRequiresPremium: false,
   items: <ReviewQueueItem>[
     ReviewQueueItem(
       hole: Hole(

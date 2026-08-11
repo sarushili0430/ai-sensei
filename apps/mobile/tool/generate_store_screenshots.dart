@@ -426,7 +426,6 @@ final List<_Shot> _shots = <_Shot>[
       reviewControllerProvider.overrideWith(
         () => FakeReviewController(
           ReviewQueue(
-            lessonRequiresPremium: false,
             items: <ReviewQueueItem>[
               ReviewQueueItem(
                 hole: sampleKarte.holes.first,

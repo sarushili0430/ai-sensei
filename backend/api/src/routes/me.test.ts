@@ -150,7 +150,7 @@ describe("GET /v1/me/progress", () => {
 });
 
 describe("GET /v1/me/reviews", () => {
-  it("無料ユーザーにも復習キューを返し、音声授業だけPremiumと示す", async () => {
+  it("無料ユーザーにも復習キューを返し、授業可否は混ぜない", async () => {
     await seedHole();
     const response = await get("/v1/me/reviews");
     expect(response.status).toBe(200);
@@ -158,15 +158,14 @@ describe("GET /v1/me/reviews", () => {
     const body = (await response.json()) as ReviewQueueResponse;
     expect(reviewQueueResponseSchema.safeParse(body).success).toBe(true);
     expect(body.items).toHaveLength(1);
-    expect(body.lesson_requires_premium).toBe(true);
+    expect(body).not.toHaveProperty("lesson_requires_premium");
+    expect(body).not.toHaveProperty("lesson_allowed_today");
   });
 
-  it("Premiumには穴と後輩の一言を返す", async () => {
-    await makePremium();
+  it("穴と先輩の一言を返す", async () => {
     await seedHole();
 
     const body = (await (await get("/v1/me/reviews")).json()) as ReviewQueueResponse;
-    expect(body.lesson_requires_premium).toBe(false);
     expect(body.items).toHaveLength(1);
     expect(body.items[0]?.days_since).toBe(3);
     expect(body.items[0]?.prompt).toBe(
@@ -240,7 +239,6 @@ describe("GET /v1/me/reviews", () => {
 
     const body = (await (await get("/v1/me/reviews")).json()) as ReviewQueueResponse;
     expect(body.filled).toHaveLength(1);
-    expect(body.lesson_requires_premium).toBe(true);
   });
 
   it("古い穴から順に並べる", async () => {

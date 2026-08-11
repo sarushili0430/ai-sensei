@@ -399,15 +399,6 @@ export const reviewQueueResponseSchema = z
      * ここは直近 {@link filledHolesLimit} 件までしか載らない。
      */
     filled: z.array(filledHoleSchema).max(filledHolesLimit),
-    /**
-     * 小テストのあと、音声で先輩を呼び直す授業モードにPremiumが要るか。
-     *
-     * 旧名 `requires_premium` は「復習キューそのものがPremium限定で、無料なら空」
-     * という意味だった。いまは小テストを無料で開き、Premiumが要るのは音声だけなので
-     * 意味が反転している。名前を据え置くと既存クライアントが無料の小テストにも
-     * ペイウォールを出し続けるため、読み手が必ず見直す新しい名前にする。
-     */
-    lesson_requires_premium: z.boolean(),
   })
   .strict();
 export type ReviewQueueResponse = z.infer<typeof reviewQueueResponseSchema>;

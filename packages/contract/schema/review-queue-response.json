@@ -194,15 +194,11 @@
             "additionalProperties": false
           },
           "maxItems": 30
-        },
-        "lesson_requires_premium": {
-          "type": "boolean"
         }
       },
       "required": [
         "items",
-        "filled",
-        "lesson_requires_premium"
+        "filled"
       ],
       "additionalProperties": false
     }

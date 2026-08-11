@@ -292,7 +292,7 @@ class _EnoughForTodayLine extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         Text(
-          strings.homeEnoughForToday,
+          strings.lessonEnoughForToday,
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodySmall,
         ),

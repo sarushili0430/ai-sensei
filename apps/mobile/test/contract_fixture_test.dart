@@ -137,7 +137,6 @@ void main() {
     test('review-queue-response.json をパースできる', () {
       final ReviewQueue queue = ReviewQueue.fromJson(loadFixture('review-queue-response'));
 
-      expect(queue.lessonRequiresPremium, isFalse);
       expect(queue.items, hasLength(2));
       expect(queue.items.first.daysSince, 3);
       expect(queue.items.first.prompt, contains('いまなら説明できますか'));

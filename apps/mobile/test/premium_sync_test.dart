@@ -28,7 +28,7 @@ const List<Duration> _noWait = <Duration>[
   Duration.zero,
 ];
 
-/// `/v1/me/progress` と `/v1/me/reviews` を返す偽サーバ。
+/// `/v1/me/progress` を返す偽サーバ。
 ///
 /// [freeResponses] 回目までは無料で返し、それ以降はPremiumで返す。
 /// webhookが届くまでの遅れを、回数で作るためのもの。
@@ -37,7 +37,6 @@ class _FakeServer {
 
   int freeResponses;
   int progressCalls = 0;
-  int reviewCalls = 0;
 
   bool get _premium => progressCalls > freeResponses;
 
@@ -56,14 +55,6 @@ class _FakeServer {
           'max_seconds': 1200,
           'lesson_allowed_today': _premium,
         },
-      });
-    }
-    if (request.url.path.endsWith('/v1/me/reviews')) {
-      reviewCalls += 1;
-      return _json(<String, dynamic>{
-        'items': <dynamic>[],
-        'filled': <dynamic>[],
-        'lesson_requires_premium': !_premium,
       });
     }
     return http.Response('{"error":{"code":"not_found","message":""}}', 404);
@@ -136,10 +127,6 @@ void main() {
 
       // ここが false のままなのが、報告されたバグそのもの。
       expect(container.read(progressControllerProvider).value?.isPremium, isTrue);
-      expect(
-        container.read(reviewControllerProvider).value?.lessonRequiresPremium,
-        isFalse,
-      );
     });
 
     // webhookは購入の数秒後に届く。1回読んで諦めると、届く前のものを掴む。

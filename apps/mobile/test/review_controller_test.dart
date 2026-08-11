@@ -40,7 +40,6 @@ Map<String, dynamic> _queueJson({required bool answered}) => <String, dynamic>{
               },
             ],
       'filled': <dynamic>[],
-      'lesson_requires_premium': false,
     };
 
 http.Response _json(Map<String, dynamic> body, {int status = 200}) => http.Response.bytes(

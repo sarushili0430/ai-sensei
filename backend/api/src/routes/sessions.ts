@@ -62,12 +62,6 @@ sessionsRoute.post("/", async (c) => {
   const user = await repository.ensureUser(deviceId, at);
   const localDate = toLocalDate(at);
 
-  // 小テストは無料だが、音声で先輩を呼び直す復習セッションはPremium機能。
-  // レスポンスのフラグだけに任せると、hole_idを使ってここを直接呼べてしまう。
-  if (meta.kind === "review" && !isPremiumNow(user, at)) {
-    throw apiError("premium_required", { locale });
-  }
-
   // 復習セッションは写真を使わず、対象の穴から単元を引く。
   // 他人の穴IDを渡されても動かないよう、所有者をここで確かめる。
   let reviewHole: HoleRecord | null = null;
