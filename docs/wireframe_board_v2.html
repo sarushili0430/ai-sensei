@@ -1865,6 +1865,81 @@
     </p>
   </div>
 
+  <!-- ---- D-13d コードを書かせない ---- -->
+  <div class="panel">
+    <h2>D-13d. AIに JSXGraph のコードを書かせるのか — 書かせない</h2>
+    <p class="lede">
+      <b>ここが分かれ目。</b>先輩に JS を書かせて、それを実行する形にすると、
+      <span class="care">この製品がいちばん大事にしてきた前提が全部こわれる</span>。
+    </p>
+    <table>
+      <thead><tr><th style="width:28%">こわれるもの</th><th>なぜ</th></tr></thead>
+      <tbody>
+        <tr><td><b>自由描画をさせない</b></td>
+          <td><code>board.ts</code> の冒頭の約束そのもの。<span class="care">JSのコードは自由描画の極み</span>で、
+            SVGもcanvasコマンドも受け取らないと決めた意味が消える</td></tr>
+        <tr><td><b>検証できる</b></td>
+          <td>スキーマで縛れるのは<b>データだから</b>。
+            <span class="care">任意のコードは zod では検査できない</span> —
+            構文エラー・無いメソッド・止まらないループが素通りする</td></tr>
+        <tr><td><b>幻覚がワイヤーに流れない</b></td>
+          <td>いまは「LLMが出した値を検査してから配る」構造。
+            コードを実行する形は、<b>モデルの出力をそのまま実行する</b>ことになる</td></tr>
+      </tbody>
+    </table>
+
+    <p class="lede" style="margin-top:20px">
+      <b>なので、JSXGraph は「エンジン」であって「入口」ではない。</b>
+      先輩が書くのは<b>これまでどおりJSON</b>で、それを<b>こちらのコードが</b>
+      JSXGraph の呼び出しに翻訳する。翻訳する部分は<b>私たちが書いた固定のコード</b>で、
+      先輩は1行もJSを書かない。
+    </p>
+
+    <pre class="schema">先輩が書く(検査できるJSON・閉じた語彙)
+  { "cmd": "Intersect", "name": "F", "args": ["AD", "BE"] }
+        ↓  <i>zod で検査。知らない cmd は弾く</i>
+こちらの翻訳(固定コード・30通りの分岐)
+  board.create('intersection', [AD, BE], { name: 'F' })
+        ↓
+JSXGraph が座標を解いて描く</pre>
+
+    <p class="foot-note" style="margin-bottom:20px">
+      <b>そして、命令の名前だけは GeoGebra から借りる。</b>
+      <code>Intersect</code> / <code>Midpoint</code> / <code>Perpendicular</code> —
+      <span class="keep">LLMがいちばん多く見てきた言い方</span>なので、
+      こちらが考えた独自の名前より正しく書ける見込みが高い。
+      <b>形はJSONのまま、名前だけ本家に寄せる</b>ので、検査も閉じた語彙も失わない。
+    </p>
+
+    <div class="opts">
+      <div class="opt pick">
+        <h3><span class="tag new">結論</span>契約を先に決める。エンジンは後で選べる</h3>
+        <p class="why">
+          先輩が書くものが<b>JSONで固定</b>なら、その裏で座標を解くのが
+          <b>JSXGraph でも、Dartの自前コードでも、どちらでもいい</b>。
+        </p>
+        <div class="mini"><p class="small" style="color:var(--ink)">
+          <span class="keep">エンジンの選択は、あとから差し替えられる実装の話に落ちる。</span>
+          いま決めるべきなのは<b>契約(命令の一覧)だけ</b>で、
+          A案・B案・C案のどれを選ぶかは<b>先送りしてよい</b>。
+        </p></div>
+      </div>
+      <div class="opt">
+        <h3><span class="tag biz">見直し</span>JSXGraphの旨みは、思ったより小さい</h3>
+        <p class="why">
+          翻訳するコードはどのみち書く。命令1つにつき
+          <b>スキーマ・翻訳・読み上げ文</b>の3つが要るのは、どちらのエンジンでも同じ。
+        </p>
+        <div class="mini"><p class="small" style="color:var(--ink)">
+          JSXGraphが省いてくれるのは<b>幾何の計算だけ</b>。
+          <span class="care">今日書いた交点・垂線・中点・2円の交点は、合わせて150行ほどだった</span> —
+          <b>大変なのは計算ではなく、語彙が増え続けること</b>のほう。
+          そこはJSXGraphのほうが強い(命令が最初から揃っている)。
+        </p></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ---- D-14 色分け ---- -->
   <div class="panel">
     <h2>D-14. 線の色分け — 生の色ではなく「役割」で書かせる</h2>
