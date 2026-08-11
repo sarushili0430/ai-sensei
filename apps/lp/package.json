@@ -1,0 +1,16 @@
+{
+  "name": "@ai-sensei/lp",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "紹介ページ(日英2枚・素のHTML/CSS)。Cloudflare Workers の静的アセットとして配信する",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "build:check": "wrangler deploy --dry-run"
+  },
+  "devDependencies": {
+    "wrangler": "^4.118.0"
+  }
+}

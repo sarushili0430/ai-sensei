@@ -1,8 +1,10 @@
 packages:
   - "packages/*"
   - "backend/*"
+  - "apps/lp" # 紹介ページ。wrangler で配信するので、ここから deploy を叩けるようにする
 
-# apps/mobile は Flutter なので、このワークスペースには入れない。
+# apps/* をまとめて入れないのは、apps/mobile が Flutter だから。
+# JSのワークスペースに入れてよいのは apps/lp だけなので、名指しで足している。
 
 # ビルドスクリプトの実行を許可する依存(pnpm 10 は既定でブロックする)。
 # 追加するときは、なぜ必要かを1行添えること。

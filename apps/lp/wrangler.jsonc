@@ -1,0 +1,45 @@
+// =============================================================================
+// apps/lp — 紹介ページ(Cloudflare Workers の静的アセット)
+// =============================================================================
+// 配信するのは public/ の中身だけ。ワーカーのコード(main)は持たない、
+// アセットonlyのデプロイ。
+//
+//   pnpm --filter @ai-sensei/lp deploy        # 公開
+//   pnpm --filter @ai-sensei/lp dev           # 手元で確認(http://localhost:8787)
+//   pnpm --filter @ai-sensei/lp build:check   # 設定とアップロード対象の確認だけ
+//
+// **backend/api と違って環境を分けていない。** あちらは develop の事故が本番の
+// カルテを壊さないようにD1/R2/KVごと分けているが、こちらは読み取り専用の
+// 静的ファイルで、壊れる状態を持たない。公開前に中身を見たいときは
+// `wrangler versions upload` を使うと、本番URLを差し替えずにプレビューURLだけ
+// もらえる(環境を増やすより、こちらのほうが取り違えが起きない)。
+//
+// 設定の書式は backend/api/wrangler.toml と揃っていないが、これは意図的で、
+// Cloudflare が新規プロジェクトに勧めているのが jsonc のため。
+// 既存のtomlを書き換えてまで揃える理由はないので、そのままにしてある。
+// =============================================================================
+{
+  "name": "ai-sensei-lp",
+  "compatibility_date": "2026-01-01",
+
+  // https://ai-sensei-lp.<subdomain>.workers.dev で出る。
+  // 独自ドメインを当てたら false にして "routes" を足すこと
+  // (workers.dev を残すと、そちらが野良のURLとして生き続ける)。
+  "workers_dev": true,
+
+  "assets": {
+    // **リポジトリのファイルを配らないために public/ を切ってある。**
+    // ここを "." にすると wrangler.jsonc・README.md・node_modules まで
+    // 公開先に上がる。サイトに出すものだけを public/ に置くこと。
+    "directory": "./public",
+
+    // /en → /en/ に寄せる。既定値だが、日英2枚の入口がここに懸かっているので明示する。
+    "html_handling": "auto-trailing-slash",
+
+    // 404ページはまだ用意していないので、素の404を返す。
+    // public/404.html を足したら "404-page" に変えること。
+    // "single-page-application" にはしない —— 存在しないURLで
+    // トップページが200で返ると、検索エンジンに重複ページとして拾われる。
+    "not_found_handling": "none"
+  }
+}
