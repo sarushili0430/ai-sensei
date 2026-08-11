@@ -155,6 +155,7 @@ void main() {
           onboardedProvider.overrideWithValue(true),
           deviceIdProvider.overrideWithValue('dev_test'),
           progressControllerProvider.overrideWith(FakeProgressController.new),
+          reviewControllerProvider.overrideWith(() => FakeReviewController(sampleReviewQueue)),
         ].cast(),
       );
       addTearDown(container.dispose);

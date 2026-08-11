@@ -166,11 +166,10 @@ class AppStrings {
 
   String streakDays(int days) => _pick('$days日つづけて説明中', '$days-day streak');
   String filledHoles(int count) => _pick('埋めた穴 $count', '$count gaps filled');
-  String openHoles(int count) => _pick('残っている穴 $count', '$count gaps open');
 
   /// ホームの復習カード。再訪の起点で、通知の着地先でもある。
-  String get homeOpenHoleLabel => _pick('埋めていない穴', 'A gap still open');
-  String homeOpenHoleMore(int count) => _pick('ほかに $count こ', '$count more');
+  /// 詳細がまだ手元に無い短い間も、件数に逃げず内容のカードとして見せる。
+  String get homeOpenHoleLabel => _pick('前に見つけた単元', 'A topic you found before');
 
   /// 今日はもう授業をしない、という**先輩の判断**(§6-3)。
   ///
@@ -252,6 +251,12 @@ class AppStrings {
   /// カメラを開けなかったとき(許可はあるが端末側の理由)。許可の話と混ぜない。
   String get captureCameraFailed => _pick('カメラを開けませんでした。もう一度おためしください。',
       "We couldn't open the camera. Please try again.");
+
+  /// Premium のフェアユース上限。数や課金導線ではなく、先輩の判断として締める。
+  String get captureFairUseLimitReached => _pick(
+        '今日はここまでにしよっか。詰め込みすぎても入らないから。明日また続きやろう。',
+        "Let's call it a day. Cramming more won't stick — we'll pick this up tomorrow.",
+      );
 
   // --- 会話 ---
   String get sessionListening => _pick('聞いています', 'Listening');
@@ -458,8 +463,8 @@ class AppStrings {
   String get paywallRowSessions => _pick('セッション', 'Sessions');
   String get paywallRowKarte => _pick('カルテ', 'Karte');
   String get paywallRowFollowup => _pick('先輩のあと追い質問', 'Follow-up questions');
-  String get paywallOncePerDay => _pick('1日1回', 'Once a day');
-  String get paywallUnlimited => _pick('無制限', 'Unlimited');
+  String get paywallEverydayOne => _pick('毎日1問', 'One question every day');
+  String get paywallEverydayQuestions => _pick('毎日、何問でも', 'Questions every day');
   String get paywallTodayOnly => _pick('当日のみ', 'Today only');
   String get paywallHistory => _pick('穴の復習と履歴', 'Review and history');
 

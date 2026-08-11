@@ -63,6 +63,9 @@ void main() {
 
       expect(find.text('無料のまま続ける'), findsOneWidget);
       expect(find.text('登録は自動更新されます。いつでも解約できます'), findsOneWidget);
+      expect(find.text('毎日1問'), findsOneWidget);
+      expect(find.text('毎日、何問でも'), findsOneWidget);
+      expect(find.text('無制限'), findsNothing);
     });
   });
 

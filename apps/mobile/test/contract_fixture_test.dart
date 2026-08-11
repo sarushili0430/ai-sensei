@@ -56,7 +56,8 @@ void main() {
       expect(session.sessionId, isNotEmpty);
       expect(session.livekit.room, session.sessionId);
       expect(session.detectedTopics, hasLength(2));
-      expect(session.limits.maxSeconds, 300);
+      // 共有fixtureは契約の形を確かめるもの。運用上限の既定値はサーバ設定が正なので固定しない。
+      expect(session.limits.maxSeconds, isPositive);
       expect(session.limits.lessonAllowedToday, isFalse);
     });
 

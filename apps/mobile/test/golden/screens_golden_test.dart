@@ -90,6 +90,7 @@ void main() {
       'home',
       overrides: <Object?>[
         progressControllerProvider.overrideWith(FakeProgressController.new),
+        reviewControllerProvider.overrideWith(() => FakeReviewController(sampleReviewQueue)),
       ],
     );
   });
@@ -115,6 +116,7 @@ void main() {
       'home_premium',
       overrides: <Object?>[
         progressControllerProvider.overrideWith(() => FakeProgressController(premiumSummary)),
+        reviewControllerProvider.overrideWith(() => FakeReviewController(sampleReviewQueue)),
         ...premiumOverrides(),
       ],
     );

@@ -335,8 +335,8 @@ class _ComparisonTable extends StatelessWidget {
         _row(
           context,
           strings.paywallRowSessions,
-          strings.paywallOncePerDay,
-          strings.paywallUnlimited,
+          strings.paywallEverydayOne,
+          strings.paywallEverydayQuestions,
         ),
         _row(context, strings.paywallRowKarte, strings.paywallTodayOnly, strings.paywallHistory),
         _row(context, strings.paywallRowFollowup, '—', strings.paywallIncluded),
