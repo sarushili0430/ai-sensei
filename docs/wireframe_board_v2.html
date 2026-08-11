@@ -156,6 +156,27 @@
   .side .frames{display:flex;gap:30px;flex-wrap:wrap}
   .side .text{flex:1;min-width:330px}
 
+  /* ---------- 図形カタログ ---------- */
+  .cat{display:grid;grid-template-columns:repeat(auto-fill,minmax(172px,1fr));gap:14px;margin-top:14px}
+  .cat figure{margin:0;border:1.5px solid var(--wire);border-radius:9px;overflow:hidden;
+    background:var(--paper)}
+  .cat .art{display:block;width:100%;height:auto}
+  .cat figcaption{padding:7px 9px}
+  .cat figcaption b{display:block;font-size:12px;line-height:1.35}
+  .cat figcaption span{display:block;color:var(--mut);font-size:10.5px;line-height:1.4;margin-top:2px}
+  .cat.can figure{border-color:var(--ink)}
+  .cat.can .art{background:var(--board)}
+  .cat.can figcaption b::before{content:"○ ";color:var(--new)}
+  .cat.cant .art{background:var(--fill)}
+  .cat.cant figcaption b::before{content:"✗ ";color:var(--ux)}
+  .limits{margin:0;padding:0;list-style:none;display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px 22px;font-size:12.5px}
+  .limits li{display:flex;gap:9px;line-height:1.5}
+  .limits .n{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:var(--mut);
+    border:1px solid var(--wire);border-radius:3px;padding:0 4px;height:fit-content;flex:none;
+    line-height:1.7}
+  .limits b{font-weight:700}
+
   /* ---------- 表 ---------- */
   table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
   td,th{border-bottom:1px solid var(--wire);padding:8px 6px;text-align:left;vertical-align:top}
@@ -833,6 +854,306 @@
       <b>3つに共通しているのは「作る筋は通っているが、読む側の配線が無い」</b>という形。
       計画・レポート・復習はどれも単体では完成していて、互いを知らない。
       次に足すとしたら新しい画面ではなく、<b>ホームと自習室から他へ伸びる線</b>だと思う。
+    </p>
+  </div>
+
+  <!-- ================================================================
+       D. 図形の表現力
+       ================================================================ -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <defs>
+      <marker id="vec" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5"
+              orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#4a4a55"/></marker>
+      <pattern id="hatch" width="7" height="7" patternTransform="rotate(45)"
+               patternUnits="userSpaceOnUse">
+        <line x1="0" y1="0" x2="0" y2="7" stroke="#9a9aa6" stroke-width="1.4"/>
+      </pattern>
+    </defs>
+  </svg>
+
+  <div class="divider">
+    <h2>D. 図形の表現力 — 描かれない理由と、描けないものの一覧</h2>
+    <p class="lede">
+      「図を描いてくれない」と「平面図形・空間図形がひどい」は<b>別々の問題</b>だった。
+      前者はプロンプトの問題で今日直せる。後者は契約の問題で、
+      <b>いまの5要素では高校数学の図の大半が原理的に描けない</b>。
+      事前に分かる形にしたのが以下。
+    </p>
+  </div>
+
+  <!-- ---- D-1 なぜ描かれないか ---- -->
+  <div class="panel">
+    <h2>D-1. なぜ描かれないか — 3つとも、絵を出させない側の理由だった</h2>
+    <p class="lede">契約もガードレールも図形を弾いていない。落としているのは<b>プロンプトと、記憶の畳み方</b>。</p>
+    <table>
+      <thead><tr><th style="width:26%">原因</th><th style="width:12%">効き</th><th>中身</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>見本に図形が1つも無い</b></td><td><span class="stat gap">いちばん重い</span></td>
+          <td><code>senpai_board.ja.md</code> の見本に出てくる要素を数えると <b>latex が5・text が1・図形は0</b>(英語版も同じ)。
+              LLMは表よりも見本を真似る。<span class="care">1度も見たことのない形は出てこない。</span></td>
+        </tr>
+        <tr>
+          <td><b>「いつ図にするか」が書いていない</b></td><td><span class="stat gap">重い</span></td>
+          <td>388行のプロンプトのうち、図形に触れているのは<b>要素表の3行だけ</b>。
+              「同じ説明を繰り返さない — 数値を入れてみる、<b>図にする</b>、逆から考える」と一箇所あるが、
+              どの単元で何を描くかの指示は無い</td>
+        </tr>
+        <tr>
+          <td><b>描いた図が、記憶から消える</b></td><td><span class="stat gap">効く</span></td>
+          <td><code>describeBoard</code>(<code>senpai.ts:208</code>)が過去の板書を1行に畳むとき、
+              <span class="care">三角形は座標が全部消えて「三角形 ABC」、円は中心が消えて「円 r = 3」になる。</span>
+              先輩は<b>自分がどこに何を描いたか読み返せない</b>ので、図の続きを描けない</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="foot-note">
+      1と2は<b>プロンプトだけで直る</b>(見本を3つ足して、単元ごとの目安を1節書く)。
+      3は <code>describeBoard</code> に座標を残すだけ。<b>どれも契約に触らない。</b>
+      ただしこれで描けるようになるのは、次のD-2で「○」が付いているものだけ。
+    </p>
+  </div>
+
+  <!-- ---- D-2 描ける / 描けない ---- -->
+  <div class="panel">
+    <h2>D-2. 描けるもの3つと、描けないもの</h2>
+    <p class="lede">
+      いまの図形プリミティブは <code>plot</code> / <code>triangle</code> / <code>circle</code> の3つだけ
+      (<code>latex</code> と <code>text</code> は文字)。<b>この3つが単独で置けるだけ</b>で、組み合わせはできない。
+    </p>
+
+    <div class="cat can">
+      <figure>
+        <svg class="art" viewBox="0 0 172 108" aria-label="関数のグラフ。放物線と2つの交点の印">
+          <g stroke="#a8ada4" stroke-width="1"><path d="M16 88 H156"/><path d="M86 14 V100"/></g>
+          <path d="M46 22 Q86 122 126 22" fill="none" stroke="#edeae0" stroke-width="2"
+                stroke-linecap="round"/>
+          <circle cx="58" cy="88" r="3" fill="#edeae0"/><circle cx="114" cy="88" r="3" fill="#edeae0"/>
+          <text x="52" y="103" fill="#a8ada4" font-size="9">α</text>
+          <text x="110" y="103" fill="#a8ada4" font-size="9">β</text>
+        </svg>
+        <figcaption><b>plot</b><span>y = f(x) を1本。定義域と、印を打つ点</span></figcaption>
+      </figure>
+      <figure>
+        <svg class="art" viewBox="0 0 172 108" aria-label="三角形。頂点ラベルと直角の印">
+          <path d="M32 90 L86 22 L140 90 Z" fill="none" stroke="#edeae0" stroke-width="2"
+                stroke-linejoin="round"/>
+          <path d="M44 90 a13 13 0 0 1 7 -16" fill="none" stroke="#a8ada4" stroke-width="1.3"/>
+          <text x="80" y="17" fill="#a8ada4" font-size="10">A</text>
+          <text x="22" y="100" fill="#a8ada4" font-size="10">B</text>
+          <text x="144" y="100" fill="#a8ada4" font-size="10">C</text>
+        </svg>
+        <figcaption><b>triangle</b><span>頂点3つ・ラベル3つ・角の印(直角も)</span></figcaption>
+      </figure>
+      <figure>
+        <svg class="art" viewBox="0 0 172 108" aria-label="円。中心と半径">
+          <circle cx="86" cy="54" r="34" fill="none" stroke="#edeae0" stroke-width="2"/>
+          <circle cx="86" cy="54" r="2.5" fill="#edeae0"/>
+          <path d="M86 54 L120 54" stroke="#a8ada4" stroke-width="1.3" stroke-dasharray="3 3"/>
+          <text x="99" y="49" fill="#a8ada4" font-size="10">r</text>
+        </svg>
+        <figcaption><b>circle</b><span>中心と半径。ラベル</span></figcaption>
+      </figure>
+    </div>
+
+    <p class="foot-note" style="margin-bottom:6px">
+      <b>以下は全部、いまは描けない。</b>どれも高校数学では図が主役の単元で、
+      <span class="care">式や言葉で代用すると、まさに「わかった気」だけが残る</span>ところ。
+    </p>
+
+    <div class="cat cant">
+      <figure>
+        <svg class="art" viewBox="0 0 172 108" aria-label="円周角。円と2本の弦">
+          <circle cx="86" cy="56" r="36" fill="none" stroke="#4a4a55" stroke-width="1.8"/>
+          <path d="M86 20 L54 82 M86 20 L118 82 M54 82 L118 82" stroke="#4a4a55" stroke-width="1.8"
+                fill="none"/>
+          <path d="M78 33 a14 14 0 0 0 16 0" fill="none" stroke="#7a7d87" stroke-width="1.3"/>
+        </svg>
+        <figcaption><b>円周角・弦</b><span>数A 円の性質 / 円に線が引けない</span></figcaption>
+      </figure>
+      <figure>
+        <svg class="art" viewBox="0 0 172 108" aria-label="曲線と接線">
+          <path d="M20 96 C58 14 112 14 152 84" fill="none" stroke="#4a4a55" stroke-width="1.8"/>
+          <path d="M44 30 H132" stroke="#4a4a55" stroke-width="1.8" stroke-dasharray="5 4"/>
+          <circle cx="86" cy="30" r="3.2" fill="#4a4a55"/>
+        </svg>
+        <figcaption><b>接線</b><span>数II 微分係数と接線 / 曲線に線を重ねられない</span></figcaption>
+      </figure>
+      <figure>
+        <svg class="art" viewBox="0 0 172 108" aria-label="定積分の面積">
+          <path d="M38 88 Q86 16 134 88 Z" fill="url(#hatch)" stroke="none"/>
+          <path d="M38 88 Q86 16 134 88" fill="none" stroke="#4a4a55" stroke-width="1.8"/>
+          <path d="M16 88 H156" stroke="#4a4a55" stroke-width="1.5"/>
+        </svg>
+        <figcaption><b>面積の塗り</b><span>数II 定積分と面積 / 塗りが無い</span></figcaption>
+      </figure>
+      <figure>
+        <svg class="art" viewBox="0 0 172 108" aria-label="不等式の領域">
+          <path d="M20 84 L152 30 L152 14 L20 14 Z" fill="url(#hatch)" stroke="none"/>
+          <path d="M20 84 L152 30" stroke="#4a4a55" stroke-width="1.8" stroke-dasharray="5 4"/>
+          <g stroke="#7a7d87" stroke-width="1"><path d="M16 96 H156"/><path d="M30 10 V100"/></g>
+        </svg>
+        <figcaption><b>領域</b><span>数II 軌跡と領域 / 直線も塗りも無い</span></figcaption>
+      </figure>
+      <figure>
+        <svg class="art" viewBox="0 0 172 108" aria-label="ベクトルの和">
+          <g stroke="#4a4a55" stroke-width="1.8" fill="none" marker-end="url(#vec)">
+            <path d="M32 88 L96 88"/><path d="M32 88 L70 34"/><path d="M32 88 L134 34"/>
+          </g>
+          <path d="M96 88 L134 34 M70 34 L134 34" stroke="#9a9aa6" stroke-width="1"
+                stroke-dasharray="3 3"/>
+        </svg>
+        <figcaption><b>ベクトル</b><span>数C ベクトル3単元 / 矢印が無い</span></figcaption>
+      </figure>
+      <figure>
+        <svg class="art" viewBox="0 0 172 108" aria-label="平行四辺形と対角線">
+          <path d="M28 86 L64 26 L146 26 L110 86 Z" fill="none" stroke="#4a4a55" stroke-width="1.8"
+                stroke-linejoin="round"/>
+          <path d="M28 86 L146 26 M64 26 L110 86" stroke="#9a9aa6" stroke-width="1.2"
+                stroke-dasharray="4 3"/>
+        </svg>
+        <figcaption><b>四角形・多角形</b><span>数A 図形の性質 / 3点しか置けない</span></figcaption>
+      </figure>
+      <figure>
+        <svg class="art" viewBox="0 0 172 108" aria-label="単位円と動径">
+          <circle cx="86" cy="56" r="34" fill="none" stroke="#4a4a55" stroke-width="1.8"/>
+          <g stroke="#7a7d87" stroke-width="1"><path d="M40 56 H132"/><path d="M86 10 V102"/></g>
+          <path d="M86 56 L112 30" stroke="#4a4a55" stroke-width="1.8"/>
+          <path d="M104 56 a18 18 0 0 0 -5 -12" fill="none" stroke="#4a4a55" stroke-width="1.3"/>
+          <text x="106" y="72" fill="#7a7d87" font-size="10">θ</text>
+        </svg>
+        <figcaption><b>単位円と動径</b><span>数I 三角比の拡張 / 円に半径が引けない</span></figcaption>
+      </figure>
+      <figure>
+        <svg class="art" viewBox="0 0 172 108" aria-label="直方体">
+          <path d="M34 40 L34 86 L108 86 L108 40 Z" fill="none" stroke="#4a4a55" stroke-width="1.8"/>
+          <path d="M34 40 L64 20 L138 20 L108 40" fill="none" stroke="#4a4a55" stroke-width="1.8"/>
+          <path d="M108 86 L138 66 L138 20" fill="none" stroke="#4a4a55" stroke-width="1.8"/>
+          <path d="M34 86 L64 66 L138 66 M64 66 L64 20" fill="none" stroke="#9a9aa6"
+                stroke-width="1.2" stroke-dasharray="4 3"/>
+        </svg>
+        <figcaption><b>空間図形</b><span>数I・数C / 座標に z が無い</span></figcaption>
+      </figure>
+    </div>
+  </div>
+
+  <!-- ---- D-3 限界の一覧 ---- -->
+  <div class="panel">
+    <h2>D-3. 限界の一覧 — 事前に知っておく10項目</h2>
+    <p class="lede">
+      契約(<code>board.ts</code>)と描画(<code>*_painter.dart</code>)を読んで確定させたもの。
+      <b>1番がいちばん効く</b>で、これがある限り2〜10を個別に足しても平面図形は解けない。
+    </p>
+    <ul class="limits">
+      <li><span class="n">1</span><span><b>重ねられない。</b>1要素 = 1つの図で、それぞれ独立した箱(高さ180)に<b>別々の縮尺で</b>描かれる。円と三角形を同じ絵にできない。外接円も内接円も原理的に無理</span></li>
+      <li><span class="n">2</span><span><b>線分が引けない。</b>任意の2点を結べるのは三角形の3辺だけ。中線・垂線・接線・弦・対角線・補助線が全部引けない</span></li>
+      <li><span class="n">3</span><span><b>点が打てない。</b>単独の点は <code>plot</code> の <code>marks</code> だけ = <b>関数の上にしか置けない</b></span></li>
+      <li><span class="n">4</span><span><b>多角形が無い。</b>四角形・台形・正n角形。頂点はちょうど3つと <code>z.tuple</code> で固定されている</span></li>
+      <li><span class="n">5</span><span><b>塗れない。</b>面積も領域も確率も、範囲を示す手段が無い</span></li>
+      <li><span class="n">6</span><span><b>矢印が無い。</b>ベクトルが描けない(数C の3単元が丸ごと該当)</span></li>
+      <li><span class="n">7</span><span><b>z が無い。</b><code>boardPointSchema</code> は <code>{x, y}</code>。空間図形は<b>ゼロ</b></span></li>
+      <li><span class="n">8</span><span><b>plot は y = f(x) が1本だけ。</b>2本目も、縦線 x = a も、媒介変数も、極座標も無い。楕円・双曲線は<b>関数で書けないので描けない</b></span></li>
+      <li><span class="n">9</span><span><b>角の印は三角形の頂点だけ。</b>円周角も、2直線の交角も示せない</span></li>
+      <li><span class="n">10</span><span><b>数直線が無い。</b>不等式の解を数直線で見せられない</span></li>
+    </ul>
+  </div>
+
+  <!-- ---- D-4 カリキュラム対応 ---- -->
+  <div class="panel">
+    <h2>D-4. カリキュラム52単元に当てると</h2>
+    <p class="lede">
+      <code>packages/curriculum</code> の52単元のうち、<b>図が主役または図があると効くのは30単元</b>。
+      そのうち<b>いまのまま描けるのは6</b>、部分的が5、<b>残り19は手が出ない</b>。
+    </p>
+    <table>
+      <thead><tr><th style="width:15%">判定</th><th style="width:8%">数</th><th>単元</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="stat done">描ける</span></td><td><b>6</b></td>
+          <td>二次関数のグラフと平方完成 / 判別式と実数解の個数 / 指数法則と対数の定義 /
+              三角方程式・不等式と<b>グラフ</b> / 増減表と極値 / いろいろな関数の微分
+              <span class="small">— どれも <code>plot</code> 1本で足りるもの</span></td>
+        </tr>
+        <tr>
+          <td><span class="stat judge">半分</span></td><td><b>5</b></td>
+          <td>二次関数の最大・最小<span class="small">(定義域の区間が示せない)</span> /
+              二次不等式<span class="small">(解の範囲を塗れない)</span> /
+              正弦定理・余弦定理<span class="small">(三角形は描けるが外接円を重ねられない = 正弦定理の本質が描けない)</span> /
+              数列と関数の極限 / 正規分布<span class="small">(曲線は描けるが確率の面積が塗れない)</span></td>
+        </tr>
+        <tr>
+          <td><span class="stat gap">描けない</span></td><td><b>19</b></td>
+          <td><b>平面図形</b>: 三角比の定義と拡張 / 三角形の性質と五心 / 円の性質 / 方べきの定理と作図 /
+              点と直線の距離 / 円と直線の位置関係 / 軌跡と領域<br>
+              <b>解析</b>: 微分係数と接線 / 定積分と面積 / 微分法の応用 / 面積・体積と区分求積 /
+              2次曲線と媒介変数表示 / 複素数平面と極形式<br>
+              <b>ベクトル</b>: ベクトルの演算と内積 / 位置ベクトルと図形への応用 / 空間ベクトル<br>
+              <b>空間</b>: 三角形の面積と空間図形への応用<br>
+              <b>データ</b>: 代表値と四分位・箱ひげ図 / 分散・標準偏差と相関</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="foot-note">
+      <b>「平面図形・空間図形がひどい」は、実装の粗さではなく契約の範囲そのもの。</b>
+      数A「図形の性質」3単元と数C「ベクトル」3単元は、<span class="care">1つも描けない</span>。
+      いま <code>plot</code> で足りているのは<b>関数のグラフだけ</b>で、
+      それはたまたま「1本の曲線」が1プリミティブに収まっているから。
+    </p>
+  </div>
+
+  <!-- ---- D-5 提案 ---- -->
+  <div class="panel">
+    <h2>D-5. どう埋めるか</h2>
+    <p class="lede">3段に分けて考えている。<b>1段目は今日やれて、2段目が本命</b>。3段目は「やらない」と決めるほうの判断。</p>
+    <div class="opts">
+
+      <div class="opt pick">
+        <h3><span class="tag new">すぐ</span>1. プロンプトを直す</h3>
+        <p class="why">
+          見本に <code>plot</code> / <code>triangle</code> / <code>circle</code> を1つずつ足し、
+          「単元ごとに、いつ図にするか」を1節書く。<code>describeBoard</code> に座標を残す。
+          <b>契約に触らない。</b>
+        </p>
+        <div class="mini"><p class="small" style="color:var(--ink)">
+          効果は<b>D-4の「描ける6単元 + 半分5単元」まで</b>。
+          いま描けるはずのものが描かれていない、という<b>取りこぼしだけ</b>が直る。
+        </p></div>
+      </div>
+
+      <div class="opt pick">
+        <h3><span class="tag new">本命</span>2. 図を「1枚の絵」にする</h3>
+        <p class="why">
+          <code>segment</code> や <code>polygon</code> を<b>要素として並べても意味が無い</b>(限界1)。
+          要るのは<b>1つの図の中に複数の部品を置ける器</b> —
+          <code>figure { items: [point, segment, polygon, circle, arc, arrow, label] }</code>。
+          縮尺は器が1つ持つ。
+        </p>
+        <div class="mini"><p class="small" style="color:var(--ink)">
+          これで平面図形・ベクトル・領域・接線が<b>まとめて</b>入る。
+          <b>「自由描画をさせない」という原則は壊れない</b> — 部品は列挙型のままで、
+          LLMが吐くのは相変わらずパラメータだけ。増えるのは<b>部品を組み合わせる自由</b>だけ。
+        </p></div>
+      </div>
+
+      <div class="opt">
+        <h3><span class="tag biz">判断</span>3. 空間図形は、やらないと決める</h3>
+        <p class="why">
+          3Dの投影をLLMにパラメータで吐かせるのは、平面と桁が違う難しさ
+          (見え隠れ・投影角・補助線)。<b>やるなら別の作り</b>になる。
+        </p>
+        <div class="mini"><p class="small" style="color:var(--ink)">
+          正直な選択肢は2つ。<b>(a)</b> 空間の単元を許可リストから外して「まだ教えられない」と言う。
+          <b>(b)</b> 図なしで式と言葉だけで教える、と決める。
+          <span class="care">いまは(b)を黙ってやっている状態</span>で、それがいちばん悪い —
+          生徒は先輩が図を出せないことを知らない。
+        </p></div>
+      </div>
+
+    </div>
+    <p class="foot-note">
+      <b>順番は 1 → 2。</b>1をやらずに2をやると、器を足しても見本が無いので相変わらず描かれない
+      (いまと同じことが、もっと大きな契約の上で起きる)。
+      逆に1だけで止めると、D-4の19単元は永久に描けないままになる。
     </p>
   </div>
 
