@@ -1581,9 +1581,11 @@
     <p class="foot-note">
       <b>結果として、方針が1つ変わる。</b>D-8では「カタログ = 画像生成が効く場所」と書いたが、
       <span class="care">組み合わせの話を通すと、平面図形のカタログは画像で作ってはいけない</span> —
-      配置ごとに1枚要る絵は、この無限に負ける。<b>平面は型(作図)のカタログ、空間だけ絵のカタログ</b>。
+      配置ごとに1枚要る絵は、この無限に負ける。<b>カタログに入れるのは型(作図)のほう</b>。
       そして型のカタログを作るということは、<b>D-6のsolverを先に書くということ</b>でもある
-      (型を解く仕組みがsolverそのものなので)。<b>順番は「プロンプト → solver + 型50個 → 空間の絵」</b>に変わる。
+      (型を解く仕組みがsolverそのものなので)。<b>順番は「プロンプト → solver + 型50個」</b>に変わる。
+      <span class="small">(この時点では「空間だけは絵のカタログ」と考えていた。<b>D-13で取り下げる</b> —
+      空間も作図で通った)</span>
     </p>
   </div>
 
@@ -1669,6 +1671,10 @@
           <td><b>配置は書ける</b>(正方形・辺上の3点・2つの三角形)。ただし
             <span class="care">P・Q・R の位置は「面積がどちらも 1/3」から解いて出す数</span>で、作図では決まらない。
             <b>作図は「解いた結果を図にする」ところまで</b></td></tr>
+        <tr><td>直方体 ABCD-EFGH</td><td><span class="stat done">作図で書ける</span></td>
+          <td><b>空間も同じだった。</b>3次元の座標を投影するだけで、
+            <span class="keep">隠れ線(破線)は輪郭から機械的に決まる</span>。
+            しかも頂点が点として残るので、対角線・中点・断面を<b>そのまま足せる</b>。詳細はD-13</td></tr>
         <tr><td>2020 東大 理系 第2問</td><td><span class="stat gap">図が答え</span></td>
           <td><span class="care">そもそも問題文に図が無い。</span>要るのは
             「2 ≤ △ABX+△BCX+△CAX ≤ 3 を満たす X の範囲」という<b>答えの図</b>で、
@@ -1682,6 +1688,45 @@
       図が描けないのは<b>解けていないときだけ</b>で、それは図の問題ではなく授業の問題になる。
       <b>足りない語彙が出てきたら足す</b>(今回2つ足した)という進み方でよく、
       <span class="care">最初から全部そろえる必要はない</span>。
+    </p>
+  </div>
+
+  <!-- ---- D-13 空間図形の訂正 ---- -->
+  <div class="panel">
+    <h2>D-13. 訂正 — 空間図形も、作図で書ける</h2>
+    <p class="lede">
+      <span class="care">ここまで「空間図形は作図では届かないので、絵のカタログで持つ」と書いてきた。これは間違いだった。</span>
+      直方体を実際に書いてみたら、<b>2次元とまったく同じ形で通った</b>(上の7枚目・8枚目)。
+    </p>
+    <table>
+      <thead><tr><th style="width:26%">要ったもの</th><th>中身</th></tr></thead>
+      <tbody>
+        <tr><td><b>座標に z を足す</b></td>
+          <td><code>boardPointSchema</code> を <code>{x,y}</code> から <code>{x,y,z}</code> にするだけ。
+            <span class="keep">LLM が書くのは3次元の座標で、どう見えるかは書かない</span></td></tr>
+        <tr><td><b>投影を1つに固定する</b></td>
+          <td>斜投影を<b>こちら側で1つ決め打つ</b>。黒板に描く立体の見え方はこれで足りる。
+            <span class="care">「どの角度から見るか」をLLMに決めさせない</span>ので、
+            見え方が毎回変わることもない</td></tr>
+        <tr><td><b>隠れ線を計算する</b></td>
+          <td>投影した頂点の<b>輪郭(凸包)の内側に落ちて、かつ奥にある頂点</b>から出る辺を破線にする。
+            <span class="keep">破線はどこにも指定していない</span> — 立体の向きや形を変えれば、破線も自動でついてくる</td></tr>
+      </tbody>
+    </table>
+    <p class="lede" style="margin-top:20px">
+      <b>そして「型か作図か」も、ここで解けた。</b>
+      直方体は <code>box3</code> という<b>型</b>だが、<span class="keep">頂点を名前つきの点として残す</span>ので、
+      そのあと<b>2次元と同じ語彙で作図を続けられる</b> —
+      8枚目では空間対角線 BH と、底面の中点 M と、断面 BCM を足している。
+      <b>型は作図の中に置ける。</b>排他ではなかった。
+    </p>
+    <p class="foot-note">
+      <b>残るのは、まっすぐでないものだけ。</b>球の断面と回転体は輪郭が曲線になるので、
+      頂点と辺だけでは足りない(輪郭線そのものを計算する必要がある)。
+      <b>高校数学の空間図形の大半は多面体</b>(直方体・角錐・正四面体・切断)なので、
+      <span class="keep">z を足して投影を決めるだけで、そこはまとめて入る</span>。
+      <span class="care">D-5の「空間はやらないと決める」と、D-8・D-9の「空間だけ絵のカタログ」は取り下げる。</span>
+      絵のカタログが要るのは、<b>回転体と球の断面だけ</b>になった。
     </p>
   </div>
 
@@ -1836,6 +1881,44 @@
         { poly: ['A', 'P', 'Q'], fill: true },
         { poly: ['P', 'Q', 'R'], fill: true }
       ]
+    },
+    {
+      title: '直方体 ABCD-EFGH',
+      note: '空間図形。3D座標を投影するだけ',
+      src: [
+        '{ box3: "K", size: [4, 2.4, 2.2],',
+        '  labels: ["A","B","C","D","E","F","G","H"] }',
+        '',
+        '← 隠れ線(E から出る3辺)は指定していない。',
+        '   「輪郭の内側に落ちて、かつ奥にある頂点」',
+        '   として機械的に決まる'
+      ],
+      cap: '<b>破線を指定していない。</b>どの辺が隠れるかは、投影した8点の輪郭から計算した結果。' +
+        '<b>立体の向きを変えても、破線は自動でついてくる。</b>',
+      items: [
+        { box3: 'K', size: [4, 2.4, 2.2], labels: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'] }
+      ]
+    },
+    {
+      title: '直方体の上で、作図を続ける',
+      note: '型を置いたあとに、そのまま部品を足せる',
+      src: [
+        '{ box3: "K", size: [4, 2.4, 2.2],',
+        '  labels: ["A","B","C","D","E","F","G","H"] }',
+        '{ seg: ["B","H"] }        ← 空間対角線',
+        '{ pt: "M", mid: ["F","G"] }  ← 底面の辺の中点',
+        '{ seg: ["B","M"] } { seg: ["C","M"] }',
+        '{ poly: ["B","C","M"], fill: true }  ← 断面'
+      ],
+      cap: '<b>直方体は「型」だが、行き止まりではない。</b>頂点が名前つきの点として残るので、' +
+        '中点も対角線も断面も、<b>2次元のときと同じ語彙で続けられる</b>。',
+      items: [
+        { box3: 'K', size: [4, 2.4, 2.2], labels: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'] },
+        { seg: ['B', 'H'] },
+        { pt: 'M', mid: ['F', 'G'] },
+        { seg: ['B', 'M'] }, { seg: ['C', 'M'] },
+        { poly: ['B', 'C', 'M'], fill: true }
+      ]
     }
   ];
 
@@ -1916,11 +1999,43 @@
       if (!it.hide) draws.push({ t: 'pt', p: p, name: it.pt });
     }
 
+    // 直方体。**3D座標を投影するだけ**で、隠れる辺も機械的に決まる。
+    // 頂点は名前つきの点として登録されるので、**このあと普通の作図を続けられる**
+    // (対角線を引く・中点を取る、など)。型と作図は排他ではない。
+    function defineBox(it) {
+      var w = it.size[0], h = it.size[1], d = it.size[2];
+      // A背上左 B前上左 C前上右 D背上右 E背下左 F前下左 G前下右 H背下右
+      var v3 = [[0, h, d], [0, h, 0], [w, h, 0], [w, h, d],
+                [0, 0, d], [0, 0, 0], [w, 0, 0], [w, 0, d]];
+      var pv = v3.map(project);
+      // **隠れる頂点は「輪郭の内側に落ちて、かつ奥にあるもの」。**
+      // 直方体では内側に2つ落ちる(手前と奥)ので、奥行きで選ぶ。
+      var hull = convexHull(pv), hidden = -1, far = -Infinity;
+      pv.forEach(function (p, i) {
+        if (hull.indexOf(p) >= 0) return;
+        if (v3[i][2] > far) { far = v3[i][2]; hidden = i; }
+      });
+      it.labels.forEach(function (nm, i) {
+        pts[nm] = pv[i];
+        draws.push({ t: 'pt', p: pv[i], name: nm, small: true });
+      });
+      var edges = [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4],
+                   [0, 4], [1, 5], [2, 6], [3, 7]];
+      edges.forEach(function (e) {
+        draws.push({
+          t: 'seg', a: pv[e[0]], b: pv[e[1]],
+          dash: e[0] === hidden || e[1] === hidden      // 隠れ線
+        });
+      });
+    }
+
     // **点の定義を先に見る。** `pt` は `onCircle` など他のキーも持つので、
     // 円や直線の定義より後ろに置くと、そちらの枝に吸い込まれる。
     items.forEach(function (it) {
       if (it.pt || it.pts) {
         definePoint(it);
+      } else if (it.box3) {
+        defineBox(it);
       } else if (it.circle) {
         var c = P(it.center);
         circles[it.circle] = { c: c, r: it.r };
@@ -2010,14 +2125,45 @@
         }
       }
     });
-    // 点とその名前は最後に重ねる(線の上に出す)
-    draws.forEach(function (d) {
-      if (d.t !== 'pt') return;
+    // 点とその名前は最後に重ねる(線の上に出す)。
+    // **ラベルは図の重心から外向きに逃がす** — 真上固定だと、頂点が上にある図で線と重なる。
+    var ptDraws = draws.filter(function (d) { return d.t === 'pt'; });
+    var cx = 0, cy = 0;
+    ptDraws.forEach(function (d) { cx += d.p.x; cy += d.p.y; });
+    cx /= (ptDraws.length || 1); cy /= (ptDraws.length || 1);
+    ptDraws.forEach(function (d) {
+      var vx = d.p.x - cx, vy = d.p.y - cy, n = Math.hypot(vx, vy);
+      var ox = n < 1e-6 ? 0 : (vx / n) * 13, oy = n < 1e-6 ? 11 : -(vy / n) * 13;
       out += '<circle cx="' + X(d.p.x) + '" cy="' + Y(d.p.y) + '" r="3" fill="' + CH + '"/>' +
-        '<text x="' + X(d.p.x) + '" y="' + (+Y(d.p.y) - 8).toFixed(1) + '" fill="' + DIM +
-        '" font-size="11" text-anchor="middle">' + d.name + '</text>';
+        '<text x="' + (+X(d.p.x) + ox).toFixed(1) + '" y="' + (+Y(d.p.y) + oy + 4).toFixed(1) +
+        '" fill="' + DIM + '" font-size="11" text-anchor="middle">' + d.name + '</text>';
     });
     return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img">' + out + '</svg>';
+  }
+
+  // 3D → 2D。**斜投影を1つに固定する**(黒板に描く立体の見え方はこれで足りる)。
+  // LLM は3次元の座標だけを書き、どう見えるかはこちらが決める。
+  function project(p) {
+    var k = 0.56, a = 40 * Math.PI / 180;
+    return { x: p[0] + p[2] * k * Math.cos(a), y: p[1] + p[2] * k * Math.sin(a) };
+  }
+
+  // 凸包(単調鎖法)。隠れ線を機械的に決めるために使う。
+  function convexHull(ps) {
+    var s = ps.slice().sort(function (u, v) { return u.x - v.x || u.y - v.y; });
+    function half(list) {
+      var out = [];
+      list.forEach(function (p) {
+        while (out.length > 1 && cross(out[out.length - 2], out[out.length - 1], p) <= 0) out.pop();
+        out.push(p);
+      });
+      out.pop();
+      return out;
+    }
+    function cross(o, a, b) {
+      return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+    }
+    return half(s).concat(half(s.reverse()));
   }
 
   // 2円の交点。交わらなければ null(実装では「描けない」に落とす)
