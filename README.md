@@ -19,8 +19,9 @@
 (エレベーターピッチ・やらないことリスト・トレードオフスライダー)。スプリントの入口で読んでください。
 2026-08-09に「先輩AIが板書つきで教える → 教え返させる」へ差し替えた経緯と設計は
 [`docs/pivot_plan_v1.md`](docs/pivot_plan_v1.md) にまとめてあります。
-画面設計と**画面遷移図**は [`docs/wireframe_v1.html`](docs/wireframe_v1.html)、ビジュアル方針は
-[`docs/design_direction_v0.html`](docs/design_direction_v0.html) を参照してください。
+ビジュアル方針は [`docs/design_direction_v0.html`](docs/design_direction_v0.html)、
+**画面遷移**は `apps/mobile/lib/src/routing/app_router.dart` の冒頭が正です
+(ワイヤーフレームは実装に追い越されたので畳みました)。
 アプリアイコン・ストア掲載スクリーンショット・App Store提出メタデータ(説明文・キーワード・審査メモ)も
 同じ `design_direction_v0.html` の後半にまとめてあります。スクショの実物は
 [`docs/store/screenshots/`](docs/store/screenshots)、生成はどちらも
@@ -39,7 +40,7 @@ packages/contract/  APIとカルテと板書(`board.ts`)のスキーマ + fixtur
 packages/curriculum/高校数学カリキュラムマップ(純JSON。日本の課程と海外の課程を別に持つ)
 packages/guardrail/ topic_idホワイトリスト照合・板書LaTeXのコマンド照合・数式音声の正規化などの純関数
 prompts/            システムプロンプトとfew-shot(`<id>.<locale>.md`。日英で別本。板書つき授業は`senpai_board.*.md`)
-docs/               企画資料・ワイヤーフレーム・ADR
+docs/               企画資料・デザイン方針・意思決定の記録(`adr.md`)
 scripts/            リポジトリ全体の検証スクリプト
 ```
 
