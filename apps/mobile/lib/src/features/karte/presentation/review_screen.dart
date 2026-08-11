@@ -11,6 +11,7 @@ import '../../capture/application/capture_controller.dart';
 import '../../session/domain/session.dart';
 import '../application/karte_controllers.dart';
 import '../domain/karte.dart';
+import 'hole_self_report_prompt.dart';
 
 /// 復習画面(ホームのカード、またはプッシュ通知が起点)。
 ///
@@ -107,23 +108,51 @@ class _ReviewCard extends ConsumerWidget {
           const SizedBox(height: AppSpacing.md),
           ChunkyButton(
             label: strings.reviewStart,
-            onPressed: () async {
-              // 復習は写真を使わず、この穴を起点にサーバ側でセッションを作る。
-              final SessionStart? session = await ref
-                  .read(captureControllerProvider.notifier)
-                  .startReview(
-                    item.hole.id,
-                    locale: Localizations.localeOf(context).languageCode,
-                  );
-              // 会話は一方通行。戻る先を持たせない。
-              if (session != null && context.mounted) {
-                context.go(AppRoute.session.path);
-              }
-            },
+            // ここではまだマイクを開かない。本人の「言えた」だけで終える道を
+            // 先に出し、「まだ。先輩と見直す」を選んだときだけ会話を作る。
+            onPressed: () => _openSelfReport(context, ref),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _openSelfReport(BuildContext context, WidgetRef ref) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (BuildContext sheetContext) => SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+          AppSpacing.lg,
+          AppSpacing.lg,
+          AppSpacing.lg,
+          AppSpacing.lg + MediaQuery.viewInsetsOf(sheetContext).bottom,
+        ),
+        child: HoleSelfReportPrompt(
+          hole: item.hole,
+          onFilled: () => Navigator.of(sheetContext).pop(),
+          // 「まだ」は閉じるだけ。openのまま残るので、何も失わない。
+          onNotYet: () => Navigator.of(sheetContext).pop(),
+          onReview: () async {
+            Navigator.of(sheetContext).pop();
+            await _startReview(context, ref);
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _startReview(BuildContext context, WidgetRef ref) async {
+    // 復習は写真を使わず、この穴を起点にサーバ側でセッションを作る。
+    final SessionStart? session = await ref
+        .read(captureControllerProvider.notifier)
+        .startReview(
+          item.hole.id,
+          locale: Localizations.localeOf(context).languageCode,
+        );
+    // 会話は一方通行。戻る先を持たせない。
+    if (session != null && context.mounted) context.go(AppRoute.session.path);
   }
 }
 

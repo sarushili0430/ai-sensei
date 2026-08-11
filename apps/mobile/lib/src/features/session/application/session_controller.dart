@@ -124,6 +124,7 @@ class SessionController extends _$SessionController {
   Timer? _ticker;
   Timer? _senpaiWatchdog;
   String? _sessionId;
+  String? _sessionKind;
 
   /// 板書の受信。接続のたびに作り直す(板書はセッションをまたがない)。
   BoardInbox? _boardInbox;
@@ -190,6 +191,7 @@ class SessionController extends _$SessionController {
 
   Future<void> connect(SessionStart session) async {
     _sessionId = session.sessionId;
+    _sessionKind = session.kind;
 
     // セッション作成後に、今日さらに授業を始められるかはサーバが確定している。
     // ホームへ戻ったときに古い可否を見せないよう、その真偽値をそのまま引き継ぐ。
@@ -535,7 +537,7 @@ class SessionController extends _$SessionController {
     if (!talked) return;
 
     if (sessionId == null) {
-      _publish(const SessionOutcome(resultMissing: true));
+      _publish(SessionOutcome(resultMissing: true, kind: _sessionKind));
       state = state.copyWith(phase: SessionPhase.finished, resultMissing: true);
       return;
     }
@@ -551,21 +553,34 @@ class SessionController extends _$SessionController {
 
       if (result == null) {
         // 生成が間に合わなかった。祝福は見せて、カルテは祝福画面が取りに行く。
-        _publish(SessionOutcome(resultMissing: true, sessionId: sessionId));
+        _publish(
+          SessionOutcome(resultMissing: true, sessionId: sessionId, kind: _sessionKind),
+        );
         state = state.copyWith(phase: SessionPhase.finished, resultMissing: true);
         return;
       }
 
       ref.read(latestKarteControllerProvider.notifier).set(result.karte);
       ref.read(progressControllerProvider.notifier).applyFromSession(result.progress);
-      _publish(SessionOutcome(showPaywall: result.showPaywall, sessionId: sessionId));
+      // 復習キューはkeepAlive。前回のopen状態から候補を選ばないよう、
+      // 次にカルテ/復習画面が読むときは完了後の状態を取り直させる。
+      ref.invalidate(reviewControllerProvider);
+      _publish(
+        SessionOutcome(
+          showPaywall: result.showPaywall,
+          sessionId: sessionId,
+          kind: _sessionKind,
+        ),
+      );
       state = state.copyWith(
         phase: SessionPhase.finished,
         showPaywall: result.showPaywall,
       );
     } catch (error) {
       if (!ref.mounted) return;
-      _publish(SessionOutcome(resultMissing: true, sessionId: sessionId));
+      _publish(
+        SessionOutcome(resultMissing: true, sessionId: sessionId, kind: _sessionKind),
+      );
       state = state.copyWith(
         phase: SessionPhase.finished,
         resultMissing: true,

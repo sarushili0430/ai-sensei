@@ -165,6 +165,21 @@ class ApiClient {
     return ReviewQueue.fromJson(_decode(response));
   }
 
+  /// 本人の自己申告で穴を埋める。
+  ///
+  /// 成否だけの操作なので、成功時の204を無理にJSONへ変換しない。穴と進捗は
+  /// 呼び出し側が読み直す。ここでレスポンス用の別モデルを持つと、通知の取消まで
+  /// 終わったサーバの状態と、手元で組み立てた穴の状態がずれうるため。
+  Future<void> fillHole(String holeId) async {
+    final http.Response response = await _client
+        .post(
+          Uri.parse('$baseUrl/v1/me/holes/${Uri.encodeComponent(holeId)}/filled'),
+          headers: _headers,
+        )
+        .timeout(_timeout);
+    if (response.statusCode >= 400) _decode(response);
+  }
+
   Map<String, dynamic> _decode(http.Response response) {
     final Map<String, dynamic> body =
         jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;

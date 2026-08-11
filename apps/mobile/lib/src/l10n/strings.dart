@@ -747,6 +747,29 @@ class AppStrings {
   String get studyRoomNudgeBreak => _pick('そろそろ休憩する?', 'Want to take a break?');
   String get studyRoomNudgeLong =>
       _pick('けっこう集中してるね。ひと息ついてきな', "You've been at this a while — go stretch");
+
+  // --- 穴の自己申告(計画書§2) ---
+  //
+  // **採点者は本人だけ。**「まだ」を失敗・減点・連続記録の喪失に結びつけず、
+  // 何も変わらない選択肢として同じ場所に置く。残数や達成率も出さない。
+  String get holeSelfReportQuestion =>
+      _pick('これ、言えるようになった?', 'Can you explain this now?');
+  String get holeSelfReportCanSay =>
+      _pick('言えるようになった', 'I can explain it now');
+  String get holeSelfReportNotYet =>
+      _pick('まだ。今日はそのまま', 'Not yet. Leave it for now');
+  String get holeSelfReportNoPressure => _pick(
+        '決めるのはあなたです。「まだ」を選んでも、穴も記録もそのままです。',
+        'You decide. Choosing “not yet” leaves your gap and record unchanged.',
+      );
+  String get holeSelfReportLater => _pick(
+        '今は決めなくても、あとで復習画面から選べます。',
+        'You can leave this for now and choose later from the review screen.',
+      );
+  String get holeSelfReportReviewWithSenpai =>
+      _pick('先輩といっしょに見直す', 'Review it with your senpai');
+  String get holeSelfReportFilling =>
+      _pick('カルテに反映しています…', 'Updating your karte…');
 }
 
 class AppStringsDelegate extends LocalizationsDelegate<AppStrings> {
