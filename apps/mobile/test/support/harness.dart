@@ -71,13 +71,16 @@ Widget reduceMotion(BuildContext context, Widget? child) {
 /// ルータを先に取り出せるように、コンテナは呼び出し側で作って渡す。
 /// `ProviderScope` で作り直すと、ルータの `redirect` が見ている provider と
 /// 画面が見ている provider が別のコンテナになってしまう。
-Widget wrapRouter(ProviderContainer container) {
+///
+/// [locale] を受けるのは、ストア掲載スクショ(`tool/generate_store_screenshots.dart`)が
+/// 日英の同じ画面を**下部タブごと**撮るため。テストは既定の日本語のままでよい。
+Widget wrapRouter(ProviderContainer container, {Locale locale = const Locale('ja')}) {
   return UncontrolledProviderScope(
     container: container,
     child: MaterialApp.router(
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
-      locale: const Locale('ja'),
+      locale: locale,
       supportedLocales: AppStrings.supportedLocales,
       localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
         AppStringsDelegate(),

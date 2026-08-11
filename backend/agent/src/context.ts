@@ -29,7 +29,7 @@ export class InvalidSessionContextError extends Error {}
  * この授業の教科。**板書に使える要素と、同梱する音声補正ヒントを決める。**
  *
  * metadata に教科の欄は無い。`allowed_topic_ids` の接頭辞から引く
- * (ADR 0006 — 課程・言語・教科・学校段階はすべて topic_id ひとつから決まる)。
+ * (ADR 0007 — 課程・言語・教科・学校段階はすべて topic_id ひとつから決まる)。
  * 契約を増やさずに済むので、APIとagentのデプロイ順を気にしなくてよい。
  *
  * 許可トピックが空のセッションは {@link readSessionContext} が弾くので、

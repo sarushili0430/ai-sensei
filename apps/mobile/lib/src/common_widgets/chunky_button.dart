@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../theme/tokens.dart';
 
-/// 厚みのあるボタン(handoff §7)。
+/// 厚みのあるボタン。
 ///
 /// Duolingoから借りるのは「文法」であって「語彙」ではない。
 /// 押すと沈み込む触感だけを借り、色と言葉はこのアプリのものにする。

@@ -182,7 +182,7 @@ void main() {
     expect(find.text(ja.onboardingCta), findsOneWidget);
   });
 
-  // 審査員が見るのは英語版(handoff §3-7)。日本語で組んだ余白に
+  // 審査員が見るのは英語版。日本語で組んだ余白に
   // 長い英文を流し込むとはみ出す。4枚とも通しで踏む。
   testWidgets('英語ロケールでも4枚とも組める', (WidgetTester tester) async {
     const AppStrings en = AppStrings(Locale('en'));

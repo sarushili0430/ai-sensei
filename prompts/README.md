@@ -3,7 +3,7 @@
 システムプロンプトとfew-shot。**Markdownが正**で、差分レビューできるようにここに置く。
 
 ファイル名は `<id>.<locale>.md`。**言語ごとに別本**を持つ
-([ADR 0005](../docs/adr/0005-locale-curricula.md))。
+([ADR 0005](../docs/adr.md#adr-0005))。
 
 | id | 使う場所 | 役割 |
 | --- | --- | --- |

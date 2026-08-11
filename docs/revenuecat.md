@@ -270,7 +270,7 @@ Premium は**2つの経路で別々に**更新される。ここがこのアプ�
 復習画面の授業可否(`/v1/me/progress` の `is_premium` /
 `limits.lesson_allowed_today`)、セッション開始の可否
 (`free_limit_reached` / `fair_use_limit_reached`)。
-判定を持たせないのは、クライアントの申告で上限を緩められないようにするため(§handoff 5)。
+判定を持たせないのは、クライアントの申告で上限を緩められないようにするため。
 
 それを読む `ProgressController` は `keepAlive` で、
 **起動時に一度読んだきり**誰も読み直さない。だから購入したあとに読み直す配線が要る。

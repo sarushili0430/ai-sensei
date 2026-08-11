@@ -8,7 +8,7 @@ import type { CurriculumLocale } from "@ai-sensei/curriculum";
  * 罪悪感で煽る文面(「記録が途切れます」等)は作らない。
  */
 
-/** 各段の日数。handoff §3-5。 */
+/** 各段の日数。 */
 export const reviewStepDays = [1, 3, 7] as const;
 export type ReviewStep = 1 | 2 | 3;
 
@@ -77,7 +77,7 @@ export function nextReviewStep(current: ReviewStep): ReviewStep | null {
 }
 
 /**
- * 遅延したときに落とす順(handoff §8のソロ運用ルール)。
+ * 遅延したときに落とす順(ソロ運用ルール)。
  * 3段階 → 翌日のみ、に縮小するためのフラグ。
  */
 export function activeStepDays(reduced = false): readonly number[] {

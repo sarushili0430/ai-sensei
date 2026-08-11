@@ -23,7 +23,6 @@ export const apiPaths = {
   answerReview: (holeId: string) => `/v1/me/reviews/${holeId}`,
   revenueCatWebhook: "/v1/webhooks/revenuecat",
   parentReport: "/v1/me/parent-report",
-  studyRoomVisit: "/v1/me/study-room",
   createPlanSession: "/v1/plans",
   completePlanSession: (planSessionId: string) => `/v1/plans/${planSessionId}/complete`,
   plan: "/v1/me/plan",
@@ -76,6 +75,14 @@ export const sessionKindSchema = z.enum(sessionKinds);
  *
  * **残る穴**: 生徒が問題を `photo` 枠に入れて送れば、それはノートとして保存される。
  * 枠の取り違えまでは防げない。防げるのは**取り違える動機**までで、そこは消した。
+ *
+ * ただし動機が消えたのは契約の上だけで、しばらくのあいだUI側に残っていた。
+ * アプリの撮影画面は入った瞬間に**ノートのカメラ**を開いていたので、
+ * ノートが無い生徒は問題の枠を一度も見ないままシャッターの前に立ち、
+ * 手元にある紙面をノート枠に入れていた。**枠を先に見せて選ばせる**ように
+ * 変えて、ここも塞いである(`capture_screen.dart`)。
+ * 入口を作り直すときは、**カメラを自動で開かないこと**が破棄の約束の一部だと
+ * 思って扱ってください。
  */
 export const sessionPhotoParts = {
   /** ノートの写真。R2に保存する。 */
@@ -103,7 +110,12 @@ export const problemTextMaxLength = 600;
  * **任意のはずの2枚目が事実上の必須になる**(API側で「2枚目が壊れていても422にしない」と
  * 決めたのと同じ理屈が、UI側から無効化される)。撮る前なら同じ文言が純粋な促しなので、
  * §4-1「2枚必須にしない」を保ったまま「問題も写っていると先輩が迷子になりません」を出せる。
- * よってアプリは撮影の確認画面でヒントを**常時**出し、この欄では出しわけない。
+ * よってアプリは撮影の確認画面でヒントを出し、この欄では出しわけない。
+ *
+ * 画面側では**埋まっている枠**でヒントを選んでいる(まだ1枚も無い人には
+ * 「どちらか1枚で始められる」、ノートだけ撮った人には上の促し)。これは
+ * **どちらも撮る前に出る言葉**なので、ここで言う「解析後に出すと2枚目が
+ * 事実上の必須になる」とは別の軸の話。
  *
  * この欄はいま**観測のため**にある。
  *
@@ -159,7 +171,7 @@ export type DetectedTopic = z.infer<typeof detectedTopicSchema>;
  * 学校段階。**写真解析と計画の聞き取りで、見る課程を半分に絞る**ために使う。
  *
  * 端末が設定から送る。DBには持たない — 再インストールで選び直しになる代わりに、
- * マイグレーションが要らない(ADR 0006)。
+ * マイグレーションが要らない(ADR 0007)。
  *
  * **既定は `high_school`。** これを送らない古いアプリは、今までどおり
  * 高校の課程だけを見る。
@@ -480,54 +492,6 @@ export const progressResponseSchema = z
   })
   .strict();
 export type ProgressResponse = z.infer<typeof progressResponseSchema>;
-
-/* -------------------------------------------------------------------------- */
-/* 自習室の滞在時間                                                           */
-/* -------------------------------------------------------------------------- */
-
-/**
- * 1回の自習室滞在として受け入れる上端。
- *
- * 先輩は25分で休憩を勧めるので、6時間は通常利用を切らないために十分広い。
- * それを越える値は、端末時計が動いたか、バックグラウンド化を取りこぼした値として
- * 指標から外す。クライアントの申告をそのまま足すと、数台の壊れた時計だけで
- * 「滞在時間が伸びた」という材料が作れてしまうため、上限は共有契約に置く。
- */
-export const studyRoomVisitMaxSeconds = 6 * 60 * 60;
-
-/**
- * 1日ぶんの合算上限。異なる退室イベントを3回までは上の最大値のまま積める。
- *
- * これは生徒に見せる利用制限ではなく、運営指標を壊さないための安全弁。
- * `/v1/me/progress` には載せず、D1と構造化ログだけが読む。
- */
-export const studyRoomDailyMaxSeconds = 3 * studyRoomVisitMaxSeconds;
-
-/**
- * 同じ退室イベントを二重加算しないためのHTTPヘッダー。
- *
- * 本文を「滞在秒数と日付だけ」に保ったまま配送上の冪等性を持たせるため、
- * UUIDは学習データではなくヘッダーに置く。板書・単元・発話との関連は持たない。
- */
-export const studyRoomVisitIdempotencyHeader = "idempotency-key";
-export const studyRoomVisitIdempotencyKeySchema = z.string().uuid();
-
-const calendarDateSchema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/)
-  .refine((value) => {
-    const date = new Date(`${value}T00:00:00.000Z`);
-    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
-  }, "実在する日付を YYYY-MM-DD で指定してください");
-
-export const studyRoomVisitRequestSchema = z
-  .object({
-    duration_seconds: z.number().int().min(1).max(studyRoomVisitMaxSeconds),
-    /** 端末のローカル日付。時刻を送らず、日次集計の境界だけを伝える。 */
-    visited_on: calendarDateSchema,
-  })
-  .strict();
-export type StudyRoomVisitRequest = z.infer<typeof studyRoomVisitRequestSchema>;
 
 /** エラー。クライアントは code で分岐する(messageは表示用で変わりうる)。 */
 export const apiErrorCodes = [

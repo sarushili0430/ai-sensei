@@ -588,7 +588,7 @@ void main() {
   });
 
   // 契約している印。**ランクや称号に見えたら失敗**(数えるのは連続日数と
-  // 埋めた穴だけ — handoff §7)。ここでは出る/出ないだけを見る。
+  // 埋めた穴だけ)。ここでは出る/出ないだけを見る。
   group('Premium の印', () {
     const AppStrings ja = AppStrings(Locale('ja'));
 

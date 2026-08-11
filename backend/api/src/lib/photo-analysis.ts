@@ -301,7 +301,7 @@ export function toDetectedTopicPayload(
         course: topic.course,
         unit: topic.unit,
         topic: topic.topic,
-        // チップに出す短い課程名。作るのはカリキュラム側の1関数だけ(ADR 0006)
+        // チップに出す短い課程名。作るのはカリキュラム側の1関数だけ(ADR 0007)
         label: topicLabel(topic),
         // キーワード推定にフォールバックした分は、確信度を明示的に低くする
         confidence: confidenceById.get(topicId) ?? 0.4,

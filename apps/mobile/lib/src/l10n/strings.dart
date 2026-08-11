@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 
-/// 日英2ロケール(handoff §3-7 審査員対応)。
+/// 日英2ロケール(審査員対応)。
 ///
 /// arb + codegen を使わず手書きにしているのは、`flutter test` を
 /// codegenなしで通せるようにするため(リポジトリ単体で動くことがNext Genの要件)。
@@ -67,8 +67,12 @@ class AppStrings {
   /// 2枚目。何をする時間なのかを、先に絵で見せる。
   /// 4行はピボット計画 §2 のコアループそのもの(撮る → 教わる → 教え返す → 穴が残る)。
   String get onboardingHowTitle => _pick('やることは、これだけ。', 'This is all you do.');
-  String get onboardingStepCapture => _pick('わからない問題とノートを撮る',
-      'Photograph the problem you are stuck on, with your notes');
+  /// **ノートを条件にしない。** 「問題とノートを撮る」と書くと、解けなくて
+  /// ノートが無い生徒は初回の説明の時点で「自分向けではない」と読む
+  /// (手も付けられないは家庭教師の中心的な用件。`api.ts` の `sessionPhotoParts`)。
+  /// ノートがあるほうが良いことは変わらないので、括弧で残す。
+  String get onboardingStepCapture => _pick('わからない問題を撮る(ノートがあれば一緒に)',
+      "Photograph the problem you are stuck on (with your notes, if you have them)");
   String get onboardingStepTaught => _pick(
       '先輩が板書つきで教えてくれる', 'Your senpai teaches you, working it out on the board');
   String get onboardingStepExplain =>
@@ -155,14 +159,18 @@ class AppStrings {
   String get homeGreeting =>
       _pick('今日は、どこでつまずいた?', 'Where did you get stuck today?');
 
+  /// 先輩が今日を締めた日のあいさつ。
+  ///
+  /// 問いかけのまま置くと、「どこでつまずいた?」と聞いておいて撮らせない
+  /// 画面になる。呼びかけと、その下で押せる操作を食い違わせない。
+  String get homeGreetingDone =>
+      _pick('今日はよくがんばったね', 'You put in good work today');
+
   /// 今日の入口。撮る → 授業モード(§4-1。従量原価が発生する側)。
   ///
   /// **「ノートを撮る」とは書かない。** 撮るのは手段で、
   /// ここでユーザーが選んでいるのは「教わる」こと。
   String get homeLesson => _pick('先輩に教わる', 'Get taught by your senpai');
-
-  /// 自習室の入口(§4-2。無料・原価ゼロ)。
-  String get homeStudyRoom => _pick('自習室に入る', 'Go to the study room');
 
   String streakDays(int days) => _pick('$days日つづけて説明中', '$days-day streak');
   String filledHoles(int count) => _pick('埋めた穴 $count', '$count gaps filled');
@@ -199,8 +207,27 @@ class AppStrings {
 
   // --- 撮ったものの確認(解析の前) ---
 
+  /// まだ1枚も撮っていないときの見出し。**カメラより先に出る。**
+  ///
+  /// 「ノートを撮ってください」ではなく**手元にあるものを聞く**。ノートが無いのは
+  /// 不足ではなく、そういう状態だという建て付けにするため。以前は画面に入った瞬間に
+  /// ノートのカメラが開いていて、解けなかった生徒は問題の枠を見ないまま
+  /// シャッターの前に立っていた(`capture_screen.dart` のコメント)。
+  String get captureChooseTitle => _pick('何が手元にある?', 'What do you have?');
+
   /// 解析はセッションを作る = 今日の1回を使う操作なので、その前に一度だけ挟む。
   String get captureReviewTitle => _pick('撮れました', 'Got it');
+
+  /// 1枚も撮っていないときのヒント。**ノートが無いことを、先に許しておく。**
+  ///
+  /// ここで黙っていると、解けなかった生徒には紙面をノート枠に入れる以外の道が
+  /// 見えない(`api.ts` の `sessionPhotoParts` が「残る穴」と書いたもの)。
+  /// **咎めない・理由を聞かない。**「まだ手をつけていないなら」とだけ置いて、
+  /// 当てはまる人が自分で拾えるようにする。
+  String get captureEitherIsFine => _pick(
+        'どちらか1枚で始められます。まだ手をつけていないなら、問題だけで大丈夫。',
+        "Either one is enough to start. If you haven't tried it yet, just the problem is fine.",
+      );
 
   /// 枠の見出し。**ノートを「任意」に見せ替えない。**
   ///
@@ -208,8 +235,14 @@ class AppStrings {
   /// 持ってきた生徒のため)、**あるほうが良いことは変わっていない** —
   /// どこで手が止まったかが、先輩の切り分けの出発点になる。
   /// 「任意」と書くと、撮れる人まで撮らなくなる。
+  ///
+  /// 問題の側からも「(任意)」を外した。**片方にだけ付いていると、
+  /// もう片方が必須に読める。** ノートが無い生徒にとっては、唯一出せるものが
+  /// 「任意」と書かれ、出せないものが必須に見える — 逆さまになる。
+  /// どちらか1枚でよいことは [captureEitherIsFine] が言うので、
+  /// 枠は名前だけにしておく。
   String get capturePhotoNotes => _pick('ノート', 'Your notes');
-  String get capturePhotoProblem => _pick('問題(任意)', 'The problem (optional)');
+  String get capturePhotoProblem => _pick('問題', 'The problem');
 
   /// まだ撮っていない枠の操作名。
   /// **「問題も撮る」とは書かない** — ノートを撮らない人には「も」が合わない。
@@ -220,6 +253,9 @@ class AppStrings {
   /// §4-1 の言い回しそのまま。**ヒントであって要求ではない。**
   /// 1枚に問題とノートの両方が写ることが多いので、2枚必須にすると
   /// 撮影の摩擦だけが増える。
+  ///
+  /// **ノートを撮った人にだけ出す。** 問題を先に撮った人(= ノートが無い人)に
+  /// 「問題も写っていると」と言うと、もう撮ったものを催促することになる。
   String get captureProblemHint => _pick(
         '問題も写っていると、先輩が迷子になりません',
         "If the problem is in the shot too, your senpai won't get lost",
@@ -242,9 +278,12 @@ class AppStrings {
       _pick('先輩は、この問題だと思っています', 'This is the problem your senpai sees');
 
   /// カメラを断られたとき。黙ってホームに戻さない。
+  ///
+  /// **どちらの枠から来たかを書かない。** ノートが無くて問題を撮ろうとした人に
+  /// 「ノートを撮れます」と返すと、断られた話の上に的外れが重なる。
   String get captureCameraDenied => _pick(
-        'カメラを使えませんでした。設定アプリから許可すると、ノートを撮れます。',
-        "We couldn't use the camera. Allow it in Settings to photograph your notes.",
+        'カメラを使えませんでした。設定アプリから許可すると、撮れるようになります。',
+        "We couldn't use the camera. Allow it in Settings and you'll be able to take the photo.",
       );
   String get captureOpenSettings => _pick('設定をひらく', 'Open Settings');
 
@@ -368,6 +407,23 @@ class AppStrings {
   String get karteRetry => _pick('言い直してみる', 'Explain it again');
   String get karteDone => _pick('今日はここまで', "That's it for today");
 
+  /// カルテに残る板書。
+  ///
+  /// 授業中の板書は会話画面と一緒に消えるので、**授業の寿命を超えて読み返せる
+  /// 場所はカルテだけ**。「言えたこと」と「穴」が会話の結果なら、これは
+  /// 会話の途中で先輩が書いたものそのもので、穴の話をしている最中に
+  /// 「どこの話か」を指し直せる。板書が1枚も無い会話では節ごと出さない。
+  String get karteBoardTitle => _pick('先輩が書いたもの', 'What your senpai wrote');
+
+  /// 板書が途中で切れていることの印(配送の欠落)。
+  ///
+  /// **失敗を報告する文にしない。** ユーザーには直せないし、カルテは
+  /// 配送の失敗を蒸し返す場所ではない。それでも黙ってはいけないのは、
+  /// 黙ると計画書§3-6b が横スクロールを却下した理由 —「これで全部だ」と
+  /// 誤読させる — をそのまま再現するから。事実を一行だけ置く。
+  String get karteBoardTruncated =>
+      _pick('ここから先は残っていません', "The rest of this board wasn't saved");
+
   // --- 復習 ---
   String get reviewTitle => _pick('埋めにいく穴', 'Gaps to fill');
   String get reviewSaidIt => _pick('言えた', 'I could explain it');
@@ -434,7 +490,7 @@ class AppStrings {
   String get settingsPrivacy => _pick('プライバシーポリシー', 'Privacy policy');
   String get settingsTerms => _pick('利用規約', 'Terms of use');
 
-  /// AI生成物の報告導線。App Review で見られる(handoff §5)。
+  /// AI生成物の報告導線。App Review で見られる。
   ///
   /// **報告してほしい中身が、憲法改正で変わった。** 旧版は
   /// 「答えを教えてしまっている」を報告理由に挙げていたが、いまは答えを教えるのが
@@ -587,8 +643,8 @@ class AppStrings {
 
   /// 契約している印。ホーム右上と設定に出す。
   ///
-  /// **ランクや称号ではない。** 数えるのは連続日数と埋めた穴だけなので
-  /// (handoff §7)、ここは「今どっちの状態か」の表示に留める。
+  /// **ランクや称号ではない。** 数えるのは連続日数と埋めた穴だけなので、
+  /// ここは「今どっちの状態か」の表示に留める。
   /// 商品名なので日英で変えない。
   String get premiumBadge => 'Premium';
   String get premiumActive => _pick('有効', 'Active');
@@ -742,64 +798,6 @@ class AppStrings {
           '<': ' less than ', '>': ' greater than ', '(': ' open bracket ',
           ')': ' close bracket ',
         };
-
-  // --- 自習室(§4-2。無料・原価ゼロ)---
-  //
-  // **マイクを開かない。STTもTTSもサーバ通信も動かさない。** それが原価ゼロの根拠なので、
-  // ここの文言は「先輩が黙って隣にいる」以上のことを約束しない。
-  //
-  // 下の声かけは、文字を正本として残し、切り替わる瞬間だけ同梱音声も鳴らす。
-  // 消音モード・音声オフ・アセット欠落でも成立させるため、音だけにはしない。
-  // 録音・通信・生成は無く、TTS呼び出しもゼロ(原価ゼロの根拠を崩さない)。
-  String get studyRoomTitle => _pick('自習室', 'Study room');
-
-  /// 経過時間。数字そのものなので日英で変えない(`12:34`)。
-  String studyRoomElapsed(int seconds) {
-    final String minutes = (seconds ~/ 60).toString().padLeft(2, '0');
-    final String rest = (seconds % 60).toString().padLeft(2, '0');
-    return '$minutes:$rest';
-  }
-
-  /// 経過時間の読み上げ。秒まで読み上げても意味がないので分だけ渡す。
-  String studyRoomElapsedLabel(int minutes) =>
-      _pick('自習をはじめて$minutes分', '$minutes minutes into this session');
-
-  /// 自習室でだけ、顔の既定のラベル(「先輩が待っています」)を上書きする。
-  /// ここで価値になっているのは待つことではなく**となりにいること**(§4-2)。
-  String get studyRoomSenpaiHere =>
-      _pick('先輩がとなりにいます', 'Your senpai is here with you');
-
-  /// 残っている板書。**この画面の主役**(§4-2「さっきの板書が残っている」)。
-  String get studyRoomBoardTitle => _pick('さっきの板書', 'The board from earlier');
-  String get studyRoomBoardEmpty => _pick(
-        '板書はまだありません。先輩に1問教わると、ここに残ります。',
-        'Nothing on the board yet. Once your senpai teaches you a question, it stays here.',
-      );
-
-  /// 板書が途中で切れていることの印(配送の欠落)。
-  ///
-  /// **失敗を報告する文にしない。** ユーザーには直せないし、自習室は
-  /// 配送の失敗を蒸し返す場所ではない。それでも黙ってはいけないのは、
-  /// 黙ると計画書§3-6b が横スクロールを却下した理由 —「これで全部だ」と
-  /// 誤読させる — をそのまま再現するから。事実を一行だけ置く。
-  String get studyRoomBoardTruncated =>
-      _pick('ここから先は残っていません', "The rest of this board wasn't saved");
-
-  /// **ここが課金の切れ目**(§4-2)。押すと授業モードが立ち上がる。
-  String get studyRoomAsk => _pick('先輩、ちょっといい?', 'Senpai, got a minute?');
-  String get studyRoomLeave => _pick('自習をおえる', 'Finish studying');
-
-  /// マイクを開いていないことは、黙っていないで書く。
-  /// 「先輩が隣にいる画面」は、聞かれていると誤解されうる形をしている。
-  String get studyRoomMicOff => _pick('マイクは開いていません', 'Your mic is off');
-
-  /// 先輩の声かけ。経過時間から引く(タイマーを増やさない)。
-  String get studyRoomNudgeStart => _pick('じゃ、やってこっか。わからなくなったら呼んで',
-      "Alright, get to it. Call me when you get stuck");
-  String get studyRoomNudgeGoing => _pick('順調?', "How's it going?");
-  String get studyRoomNudgeBreak => _pick('そろそろ休憩する?', 'Want to take a break?');
-  String get studyRoomNudgeLong =>
-      _pick('けっこう集中してるね。ひと息ついてきな', "You've been at this a while — go stretch");
 
   // --- 親レポート(§5-1・§5-2)---
   //
@@ -958,9 +956,8 @@ class AppStrings {
   // --- 下部ナビゲーション ---
   //
   // 機能名とは別に持つ。画面タイトルを短くしたくなったとき、タブの読み上げまで
-  // 意図せず変わると、4つの大域的な行き先が端末や言語によって揺れるため。
+  // 意図せず変わると、3つの大域的な行き先が端末や言語によって揺れるため。
   String get navigationHome => _pick('ホーム', 'Home');
-  String get navigationStudyRoom => _pick('自習室', 'Study room');
   String get navigationPlan => _pick('計画', 'Plan');
   String get navigationSettings => _pick('設定', 'Settings');
 }

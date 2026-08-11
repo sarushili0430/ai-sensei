@@ -122,7 +122,7 @@ function boardPromptId(subject: PromptSubject): PromptId {
 /** システムプロンプトを組むときの授業の文脈。 */
 export type PromptContext = {
   locale?: PromptLocale;
-  /** 授業の教科。`subjectOfTopicId(topic_id)` で引ける(ADR 0006)。 */
+  /** 授業の教科。`subjectOfTopicId(topic_id)` で引ける(ADR 0007)。 */
   subject: PromptSubject;
 };
 

@@ -60,7 +60,7 @@ void main() {
   });
 
   // 中学は学年、高校は科目。学習指導要領の区切りがそうなっているため、
-  // ラベルが非対称になるのは意図どおり(ADR 0006)。
+  // ラベルが非対称になるのは意図どおり(ADR 0007)。
   test('中学の単元は学年、高校の単元は科目名で出る', () {
     const AppStrings ja = AppStrings(Locale('ja'));
     expect(ja.planSubject('J1-KAZUSHIKI-SEIFU'), '中1 数学');

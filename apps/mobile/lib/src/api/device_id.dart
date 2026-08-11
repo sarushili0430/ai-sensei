@@ -4,7 +4,7 @@ import 'package:uuid/uuid.dart';
 
 part 'device_id.g.dart';
 
-/// 匿名デバイスID(handoff §5)。
+/// 匿名デバイスID。
 ///
 /// アカウント作成を要求しないので、初回起動時にUUIDを作って保存するだけ。
 /// これでApp Reviewの「アカウント削除」要件も回避できる。

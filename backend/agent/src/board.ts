@@ -572,7 +572,7 @@ export class BoardChannel {
   private readonly sessionId: string;
   private readonly locale: CurriculumLocale;
   /**
-   * 授業の教科。**許可トピックの接頭辞から決まる**(ADR 0006)ので、
+   * 授業の教科。**許可トピックの接頭辞から決まる**(ADR 0007)ので、
    * 呼び出し側が別に持たなくてよい。数学しか無かった頃と同じ既定は `math`。
    */
   private readonly subject: CurriculumSubject;

@@ -9,7 +9,6 @@ import 'package:ai_sensei/src/features/monetization/presentation/thanks_screen.d
 import 'package:ai_sensei/src/features/onboarding/presentation/onboarding_screen.dart';
 import 'package:ai_sensei/src/features/session/presentation/celebration_screen.dart';
 import 'package:ai_sensei/src/features/settings/presentation/settings_screen.dart';
-import 'package:ai_sensei/src/features/study_room/presentation/study_room_screen.dart';
 import 'package:ai_sensei/src/l10n/strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -57,7 +56,7 @@ void main() {
   }
 
   // 英語は日本語の1.5〜2倍の長さになる。日本語で組んだ余白は英語で必ず破れるので、
-  // 両方通す(審査員が見るのは英語版・handoff §3-7)。
+  // 両方通す(審査員が見るのは英語版)。
   for (final Locale locale in <Locale>[const Locale('ja'), const Locale('en')]) {
     final String lang = locale.languageCode;
 
@@ -110,10 +109,6 @@ void main() {
           reviewControllerProvider.overrideWith(() => FakeReviewController(sampleReviewQueue)),
         ],
       );
-    });
-
-    testWidgets('自習室 ($lang)', (WidgetTester tester) async {
-      await expectNoOverflow(tester, const StudyRoomScreen(), locale: locale);
     });
 
     testWidgets('祝福 ($lang)', (WidgetTester tester) async {
