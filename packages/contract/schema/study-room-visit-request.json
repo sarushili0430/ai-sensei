@@ -1,0 +1,25 @@
+{
+  "$ref": "#/definitions/study-room-visit-request",
+  "definitions": {
+    "study-room-visit-request": {
+      "type": "object",
+      "properties": {
+        "duration_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 21600
+        },
+        "visited_on": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        }
+      },
+      "required": [
+        "duration_seconds",
+        "visited_on"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

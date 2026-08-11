@@ -1,3 +1,4 @@
+import { studyRoomDailyMaxSeconds } from "@ai-sensei/contract";
 import type {
   HoleRecord,
   KarteRecord,
@@ -6,6 +7,8 @@ import type {
   SessionContext,
   SessionRecord,
   SessionReservation,
+  StudyRoomDailyRecord,
+  StudyRoomVisitWrite,
   UserRecord,
 } from "./types.ts";
 
@@ -19,6 +22,7 @@ export class MemoryRepository implements Repository {
   readonly kartes = new Map<string, KarteRecord>();
   readonly holes = new Map<string, HoleRecord>();
   readonly schedules: ReviewScheduleRecord[] = [];
+  readonly studyRoomDays = new Map<string, StudyRoomDailyRecord>();
 
   async ensureUser(deviceId: string, now: Date): Promise<UserRecord> {
     const existing = this.users.get(deviceId);
@@ -184,5 +188,39 @@ export class MemoryRepository implements Repository {
       this.schedules.splice(this.schedules.indexOf(entry), 1);
     }
     return cancelled;
+  }
+
+  async recordStudyRoomVisit(input: {
+    deviceId: string;
+    localDate: string;
+    durationSeconds: number;
+    visitId: string;
+    recordedAt: string;
+  }): Promise<StudyRoomVisitWrite> {
+    const key = `${input.deviceId}/${input.localDate}`;
+    const existing = this.studyRoomDays.get(key);
+
+    // 本番D1と同じく、直前の退室イベントと日次上限は書き換えない。
+    // ここで別の振る舞いにすると、ルートテストだけが二重加算を見逃す。
+    if (
+      existing &&
+      (existing.last_visit_id === input.visitId ||
+        existing.total_seconds >= studyRoomDailyMaxSeconds)
+    ) {
+      return { recorded: false, daily: existing };
+    }
+
+    const daily: StudyRoomDailyRecord = {
+      device_id: input.deviceId,
+      local_date: input.localDate,
+      total_seconds: Math.min(
+        studyRoomDailyMaxSeconds,
+        (existing?.total_seconds ?? 0) + input.durationSeconds,
+      ),
+      last_visit_id: input.visitId,
+      updated_at: input.recordedAt,
+    };
+    this.studyRoomDays.set(key, daily);
+    return { recorded: true, daily };
   }
 }

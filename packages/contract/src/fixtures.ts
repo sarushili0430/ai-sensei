@@ -8,6 +8,7 @@ import {
   progressResponseSchema,
   reviewQueueResponseSchema,
   sessionMetadataSchema,
+  studyRoomVisitRequestSchema,
 } from "./api.ts";
 import { boardChannelLogSchema, boardLessonSchema } from "./board.ts";
 import { karteSchema } from "./karte.ts";
@@ -43,6 +44,8 @@ export const fixtureSchemas = {
   "study-plan": studyPlanSchema,
   "study-plan-turn": planTurnSchema,
   "parent-report": parentReportResponseSchema,
+  // 自習室から出るときの1回だけ送る。学習内容を混ぜないこともfixtureの形で固定する。
+  "study-room-visit-request": studyRoomVisitRequestSchema,
 } satisfies Record<string, ZodTypeAny>;
 
 export type FixtureName = keyof typeof fixtureSchemas;

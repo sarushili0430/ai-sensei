@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:ai_sensei/src/api/api_client.dart';
 import 'package:ai_sensei/src/api/device_id.dart';
 import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
 import 'package:ai_sensei/src/features/karte/presentation/home_screen.dart';
@@ -13,6 +16,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 import 'support/harness.dart';
 
@@ -144,18 +149,110 @@ void main() {
       await pumpApp(tester, const StudyRoomScreen());
       expect(find.text(ja.studyRoomAsk), findsOneWidget);
     });
+
+    testWidgets('バックグラウンド化とdisposeが重なっても1回だけ送る', (WidgetTester tester) async {
+      DateTime now = DateTime(2026, 8, 3, 21);
+      final List<http.Request> calls = <http.Request>[];
+      final MockClient server = MockClient((http.Request request) async {
+        calls.add(request);
+        return http.Response('', 204);
+      });
+      addTearDown(
+        () => tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed),
+      );
+
+      await pumpApp(
+        tester,
+        const StudyRoomScreen(),
+        overrides: <Object?>[
+          studyRoomClockProvider.overrideWithValue(() => now),
+          apiClientProvider.overrideWithValue(
+            ApiClient(baseUrl: 'http://test', deviceId: 'device-1', client: server),
+          ),
+        ],
+      );
+
+      // 1秒未満は契約上送れないが、ここで送信済み扱いにすると、戻ったあとの
+      // 95秒まで失う。短い非表示は捨てても、次の有効な退室は残す。
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(calls, isEmpty);
+
+      now = now.add(const Duration(minutes: 1, seconds: 35));
+
+      // 非表示への状態遷移と、その後の親ルート差し替えによるdisposeが重なっても
+      // 同じ退室は1件だけ。OSごとの通知順に依存させない。
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+
+      expect(calls, hasLength(1));
+      expect(calls.single.url.path, '/v1/me/study-room');
+      expect(calls.single.headers['idempotency-key'], matches(RegExp(r'^[0-9a-f-]{36}$')));
+      expect(jsonDecode(calls.single.body), <String, dynamic>{
+        'duration_seconds': 95,
+        'visited_on': '2026-08-03',
+      });
+    });
+
+    testWidgets('計測の送信に失敗しても自習室を壊さない', (WidgetTester tester) async {
+      DateTime now = DateTime(2026, 8, 3, 21);
+      final MockClient server = MockClient(
+        (_) async => http.Response(
+          '{"error":{"code":"internal_error","message":"temporary"}}',
+          500,
+          headers: <String, String>{'content-type': 'application/json'},
+        ),
+      );
+      addTearDown(
+        () => tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed),
+      );
+
+      await pumpApp(
+        tester,
+        const StudyRoomScreen(),
+        overrides: <Object?>[
+          studyRoomClockProvider.overrideWithValue(() => now),
+          apiClientProvider.overrideWithValue(
+            ApiClient(baseUrl: 'http://test', deviceId: 'device-1', client: server),
+          ),
+        ],
+      );
+      now = now.add(const Duration(minutes: 5));
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(StudyRoomScreen), findsOneWidget);
+      expect(find.text(ja.studyRoomMicOff), findsOneWidget);
+    });
   });
 
   group('導線', () {
     testWidgets('ホーム → 自習室 は戻れる', (WidgetTester tester) async {
       // 自習室は寄り道(`/` の子)。`go` で入る形にすると、
       // 自習をやめた人の戻り先が無くなる。
+      DateTime now = DateTime(2026, 8, 3, 21);
+      final List<http.Request> calls = <http.Request>[];
+      final MockClient server = MockClient((http.Request request) async {
+        calls.add(request);
+        return http.Response('', 204);
+      });
       final ProviderContainer container = ProviderContainer(
         overrides: <Object?>[
           onboardedProvider.overrideWithValue(true),
           deviceIdProvider.overrideWithValue('dev_test'),
           progressControllerProvider.overrideWith(FakeProgressController.new),
           reviewControllerProvider.overrideWith(() => FakeReviewController(sampleReviewQueue)),
+          studyRoomClockProvider.overrideWithValue(() => now),
+          apiClientProvider.overrideWithValue(
+            ApiClient(baseUrl: 'http://test', deviceId: 'dev_test', client: server),
+          ),
         ].cast(),
       );
       addTearDown(container.dispose);
@@ -170,9 +267,13 @@ void main() {
       final GoRouter router = container.read(appRouterProvider);
       expect(router.canPop(), isTrue, reason: '自習をやめたら、ホームへ戻れなければならない');
 
+      now = now.add(const Duration(minutes: 3));
       await tester.tap(find.text(ja.studyRoomLeave));
       await tester.pumpAndSettle();
       expect(find.byType(HomeScreen), findsOneWidget);
+      // ボタン・PopScope・disposeの3経路が同じpopを見ても、送るのは1回だけ。
+      expect(calls, hasLength(1));
+      expect(jsonDecode(calls.single.body), containsPair('duration_seconds', 3 * 60));
     });
   });
 }

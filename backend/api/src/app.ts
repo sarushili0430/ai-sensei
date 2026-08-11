@@ -29,7 +29,10 @@ export function createApp(options: CreateAppOptions = {}) {
 
   app.use(
     "*",
-    cors({ origin: "*", allowHeaders: ["content-type", "authorization", "x-device-id"] }),
+    cors({
+      origin: "*",
+      allowHeaders: ["content-type", "authorization", "x-device-id", "idempotency-key"],
+    }),
   );
 
   // 全リクエストに1行。**遅い・落ちるがここだけで分かる**ようにしておく。

@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { fileURLToPath } from "node:url";
+import { studyRoomDailyMaxSeconds, studyRoomVisitMaxSeconds } from "@ai-sensei/contract";
 import { describe, expect, it } from "vitest";
 import type { D1Database, D1PreparedStatement, D1Result } from "../src/cloudflare.ts";
 import { D1Repository } from "../src/repository/d1.ts";
@@ -394,6 +395,101 @@ describeWithSqlite("D1の授業枠", () => {
           .all()
           .map((row) => row["day_seq"]),
       ).toEqual([0, 0, 0]);
+    } finally {
+      database.close();
+    }
+  });
+});
+
+describeWithSqlite("D1の自習室日次集計", () => {
+  it("0008は既存表を変えず、日次集計の表だけを追加する", async () => {
+    const database = openDatabase();
+    try {
+      const entries = await migrations();
+      const eighthIndex = entries.findIndex((entry) => entry.name === "0008_study_room.sql");
+      if (eighthIndex < 0) throw new Error("0008マイグレーションがありません");
+
+      apply(database, entries.slice(0, eighthIndex));
+      const sessionsBefore = database.prepare("PRAGMA table_info(sessions)").all();
+      apply(database, [entries[eighthIndex]!]);
+
+      expect(database.prepare("PRAGMA table_info(sessions)").all()).toEqual(sessionsBefore);
+      expect(
+        database
+          .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+          .get("study_room_daily"),
+      ).toMatchObject({ name: "study_room_daily" });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("同じ退室イベントを二重加算せず、別訪問は同じ日の1行へ足す", async () => {
+    const database = openDatabase();
+    try {
+      apply(database, await migrations());
+      const repository = new D1Repository(new SQLiteD1Database(database));
+      await repository.ensureUser("device_a", new Date("2026-08-03T13:00:00.000Z"));
+      const firstInput = {
+        deviceId: "device_a",
+        localDate: "2026-08-03",
+        durationSeconds: 600,
+        visitId: "00000000-0000-4000-8000-000000000001",
+        recordedAt: "2026-08-03T13:10:00.000Z",
+      };
+
+      expect(await repository.recordStudyRoomVisit(firstInput)).toMatchObject({
+        recorded: true,
+        daily: { total_seconds: 600 },
+      });
+      expect(await repository.recordStudyRoomVisit(firstInput)).toMatchObject({
+        recorded: false,
+        daily: { total_seconds: 600 },
+      });
+      expect(
+        await repository.recordStudyRoomVisit({
+          ...firstInput,
+          durationSeconds: 900,
+          visitId: "00000000-0000-4000-8000-000000000002",
+          recordedAt: "2026-08-03T14:00:00.000Z",
+        }),
+      ).toMatchObject({
+        recorded: true,
+        daily: { total_seconds: 1500 },
+      });
+
+      expect(
+        database.prepare("SELECT COUNT(*) AS count FROM study_room_daily").get(),
+      ).toMatchObject({ count: 1 });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("異なるUUIDでも日次安全上限に達したあとは書き換えない", async () => {
+    const database = openDatabase();
+    try {
+      apply(database, await migrations());
+      const repository = new D1Repository(new SQLiteD1Database(database));
+      await repository.ensureUser("device_a", new Date("2026-08-03T13:00:00.000Z"));
+
+      const writes = [];
+      for (let index = 1; index <= 4; index += 1) {
+        writes.push(
+          await repository.recordStudyRoomVisit({
+            deviceId: "device_a",
+            localDate: "2026-08-03",
+            durationSeconds: studyRoomVisitMaxSeconds,
+            visitId: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+            recordedAt: `2026-08-03T${String(index).padStart(2, "0")}:00:00.000Z`,
+          }),
+        );
+      }
+
+      expect(writes.map((write) => write.recorded)).toEqual([true, true, true, false]);
+      expect(writes.at(-1)?.daily).toMatchObject({
+        total_seconds: studyRoomDailyMaxSeconds,
+      });
     } finally {
       database.close();
     }
