@@ -1,5 +1,16 @@
 import '../../../l10n/strings.dart';
+import '../domain/entitlement.dart';
 import '../domain/purchase_outcome.dart';
+
+/// プランの期間名。ペイウォールのカードと、祝福画面の一行が
+/// **同じ言い方**をするように1か所に置く。
+extension PlanPeriodLabel on PlanPeriod {
+  String label(AppStrings strings) => switch (this) {
+    PlanPeriod.weekly => strings.planWeekly,
+    PlanPeriod.monthly => strings.planMonthly,
+    PlanPeriod.yearly => strings.planYearly,
+  };
+}
 
 /// 失敗の分類を文言にする。
 ///
