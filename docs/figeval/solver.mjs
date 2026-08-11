@@ -97,9 +97,23 @@ export function solve(items) {
     else if (it.on && it.ratio) {
       const s = P(it.on[0]), e = P(it.on[1]), k = it.ratio[0] / (it.ratio[0] + it.ratio[1]);
       p = { x: s.x + (e.x - s.x) * k, y: s.y + (e.y - s.y) * k };
+    } else if (it.onCurve !== undefined) {
+      // 曲線上の点。媒介変数(y=f(x) なら x)の値で指す。
+      const cv = curves[it.onCurve];
+      if (!cv) throw new Error(`未定義の曲線: ${it.onCurve}(ある曲線: ${Object.keys(curves).join(',') || 'なし'})`);
+      const t = it.t ?? (Array.isArray(it.at) ? it.at[0] : it.at);
+      if (typeof t !== 'number') throw new Error('曲線上の点は t に媒介変数の値を書く');
+      p = { x: cv.px(t), y: cv.py(t) };
     } else if (it.on) {
       const kc = circles[it.on];
-      if (!kc) throw new Error('未定義の円: ' + it.on);
+      if (!kc) {
+        // **円と曲線で名前空間が同じなので、取り違えるとここへ来る。**
+        // どちらがあるかを出して、書き直せるようにする(黙って落とさない)。
+        const hint = curves[it.on]
+          ? `— ${it.on} は曲線です。曲線上の点は {"pt":..,"onCurve":"${it.on}","t":..} で指します`
+          : `(いまある円: ${Object.keys(circles).join(', ') || 'なし'})`;
+        throw new Error(`未定義の円: ${it.on} ${hint}`);
+      }
       const a = it.deg * Math.PI / 180;
       p = { x: kc.c.x + kc.r * Math.cos(a), y: kc.c.y + kc.r * Math.sin(a) };
     } else if (it.mid) { const u = P(it.mid[0]), v = P(it.mid[1]); p = { x: (u.x + v.x) / 2, y: (u.y + v.y) / 2 }; }
@@ -173,7 +187,12 @@ export function solve(items) {
       // **数字のラベルは、実際の長さと合っていなければ通さない。**
       // 合わないと「絵は自然、中身は嘘」になる(AB=6 と書いた辺より
       // AC=4 と書いた辺のほうが長い図が、実際に出た)。
-      const num = typeof it.label === 'string' ? Number(it.label.replace(/[^0-9.]/g, '')) : NaN;
+      // **長さとみなすのは「数字だけ(単位つき可)」のラベルに限る。**
+      // 最初これを「数字以外を捨てて数にする」で書いたら、`"x+y=4"` を 4、
+      // `"y = 1/2"` を 12 と読んで、**式のラベルを長さ違いとして落としていた。**
+      // 検算は、確実に長さを指しているときだけ効かせる。
+      const m = typeof it.label === 'string' ? it.label.trim().match(/^(\d+(?:\.\d+)?)\s*(cm|mm|m|km)?$/) : null;
+      const num = m ? Number(m[1]) : NaN;
       if (isFinite(num) && num > 0 && Math.abs(len - num) / num > 0.02) {
         throw new Error(`${it.seg.join('')} のラベル "${it.label}" と実際の長さ ${len.toFixed(2)} が合わない`);
       }
@@ -191,6 +210,9 @@ export function solve(items) {
     // 本番の契約(board.ts)が `kind` の discriminated union なのは、まさにこれを避けるため。
     else if (it.axes !== undefined) {
       if (it.axes === 0 || it.axes === false) continue;        // 「軸は要らない」
+      // 原点を置く。**軸を描いたら O は在る**のが自然で、
+      // 無いせいで「O から線を引く」が両モデルとも落ちていた。
+      pts.O = pts.O ?? { x: 0, y: 0 };
       draws.push({ t: 'axes', span: typeof it.axes === 'number' ? [-it.axes, it.axes, -it.axes, it.axes] : it.axes, ticks: it.ticks });
     }
     else if (it.signTable) {
@@ -292,7 +314,11 @@ export function solve(items) {
     } else if (it.unitCircle) {
       // 単位円。三角方程式・不等式はこれで説明する。
       // **角度だけ受け取り、(cosθ, sinθ) はこちらが出す。**
-      circles.__unit = { c: { x: 0, y: 0 }, r: 1 };
+      // **名前で参照できるようにしておく。**内部名 `__unit` にしていたせいで、
+      // モデルが `{"pt":"P","on":"unitCircle","deg":30}` と書いて落ちていた。
+      // 原点 O も置く(半径や動径を引きたくなるのは自然なので)。
+      pts.O = pts.O ?? { x: 0, y: 0 };
+      circles.unitCircle = { c: { x: 0, y: 0 }, r: 1 };
       const marks = (it.angles || []).map((deg) => {
         const a = deg * Math.PI / 180;
         const p = { x: Math.cos(a), y: Math.sin(a) };
@@ -315,6 +341,15 @@ export function solve(items) {
         };
       });
       draws.push({ t: 'numberLine', span, ticks: it.ticks, ranges, marks: it.marks });
+    } else if (it.ranges) {
+      // `ranges` を別の要素として書いてくることがある。**直前の数直線に足す。**
+      // ここを「知らないキー」で落としていたが、書き方として自然なので受ける。
+      const nl = [...draws].reverse().find((d) => d.t === 'numberLine');
+      if (!nl) throw new Error('ranges の前に numberLine がない');
+      it.ranges.forEach((r) => nl.ranges.push({
+        from: r.from ?? -Infinity, to: r.to ?? Infinity,
+        closedFrom: !!r.closedFrom, closedTo: !!r.closedTo, as: r.as,
+      }));
     } else if (it.region) {
       // 不等式の表す領域。**式と不等号だけ受け取り、内外の判定はこちらがやる。**
       // 連立は配列で渡す。半平面も円の内外も、これ1つで入る。
@@ -418,6 +453,8 @@ export function solve(items) {
       } else throw new Error('知らない2次曲線: ' + conic);
     } else if (it.complexPlane) {
       // 複素数平面。**回転・実数倍の結果はこちらが計算する。**
+      // 原点は必ず置く(原点との線分を引きたくなるのが普通で、無いと落ちていた)。
+      pts.O = pts.O ?? { x: 0, y: 0 };
       const zs = {};
       Object.entries(it.points || {}).forEach(([nm, v]) => {
         zs[nm] = { x: v[0], y: v[1] };

@@ -18,7 +18,12 @@ for (const f of readdirSync(OUT).filter((n) => n.endsWith('.txt')).sort()) {
   // 空ファイル = まだ走っている。**失敗と数えない**(数えると成功率が嘘になる)
   if (!raw) { continue; }
   // **通信の失敗をモデルの失敗に混ぜない。**分母から外し、件数だけ別に出す。
-  if (raw.includes('__CLI_FAILED__')) { rows.push({ ...row, level: 'cli', why: 'API/プロキシ側で失敗' }); continue; }
+  // CLI が本文として "API Error: ..." を吐くことがある。**これも通信の失敗。**
+  // 中身があるかどうかで見分けると、エラー文をモデルの回答として数えてしまう。
+  if (raw.includes('__CLI_FAILED__') || /^API Error:/m.test(raw)) {
+    rows.push({ ...row, level: 'cli', why: raw.split('\n')[0].slice(0, 70) });
+    continue;
+  }
 
   // **2通りで採点する。**
   //   strict … 出てきた文字がそのまま JSON。運用ではこれをそのまま流したい

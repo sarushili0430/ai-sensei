@@ -2330,6 +2330,140 @@ JSXGraph が座標を解いて描く</pre>
     </p>
   </div>
 
+  <!-- ---- D-20 全単元 ---- -->
+  <div class="panel">
+    <h2>D-20. 高校数学の全単元を通す — 32種類、全部届いた</h2>
+    <p class="lede">
+      2022年度の学習指導要領の全単元(数I・A・II・B・III・C)について典型問題を調べ、
+      板書に要る図を洗い出して、描けないものを足した。
+      <span class="keep">語彙は 30 個あまり、問題は 32 種類</span>。
+      対応表は <code>docs/figeval/units.md</code> に出典つきで置いた。
+    </p>
+
+    <h3><span class="tag new">結果</span>32/32 種類、両モデルとも到達</h3>
+    <table>
+      <thead><tr><th style="width:14%">科目</th><th style="width:30%">単元</th><th>足した語彙</th></tr></thead>
+      <tbody>
+        <tr><td rowspan="3"><b>数I</b></td><td>数と式</td><td><code>numberLine</code>(不等式・絶対値)、<code>venn</code></td></tr>
+        <tr><td>二次関数</td><td><code>showCoord</code>(頂点・交点の座標)、<code>ticks</code></td></tr>
+        <tr><td><b>データの分析</b></td><td><code>boxplot</code> <code>histogram</code> <code>scatter</code> —
+          <span class="care">単元まるごと図で、1つも持っていなかった</span></td></tr>
+        <tr><td rowspan="3"><b>数A</b></td><td>図形の性質</td><td><code>bisect</code>(角の二等分線)、<code>perpBisect</code></td></tr>
+        <tr><td>場合の数と確率</td><td><code>tree</code>(樹形図)、<code>venn</code></td></tr>
+        <tr><td>数学と人間の活動</td><td><code>lattice</code>(格子点)</td></tr>
+        <tr><td rowspan="3"><b>数II</b></td><td>図形と方程式</td><td><code>region</code>(不等式の表す領域・連立)</td></tr>
+        <tr><td><b>三角関数</b></td><td><code>unitCircle</code> —
+          <span class="care">三角方程式・不等式は単位円で説明するのが定石なのに、無かった</span></td></tr>
+        <tr><td>指数・対数関数</td><td><code>asymptote</code></td></tr>
+        <tr><td rowspan="2"><b>数B</b></td><td>数列</td><td><code>lattice</code> <code>groups</code>(群数列の区切り)</td></tr>
+        <tr><td>統計的な推測</td><td><code>normal</code>(正規分布と斜線部)</td></tr>
+        <tr><td rowspan="2"><b>数III</b></td><td>微分法</td><td><code>signTable</code> に凹凸(f″・変曲点)</td></tr>
+        <tr><td>積分法</td><td><code>riemann</code>(区分求積の短冊)</td></tr>
+        <tr><td rowspan="2"><b>数C</b></td><td><b>ベクトル</b></td><td><code>vec</code> —
+          <span class="care">ベクトルは矢印そのものなのに、矢印が無かった</span></td></tr>
+        <tr><td>平面上の曲線と複素数平面</td><td><code>conic</code>(焦点・準線・漸近線)、
+          <code>polar</code>、<code>complexPlane</code></td></tr>
+      </tbody>
+    </table>
+    <p class="foot-note">
+      <b>どれも「モデルが書いた数字」ではなく「こちらが計算した値」と突き合わせる。</b>
+      箱ひげ図は<b>データだけ</b>もらって五数要約をこちらが出す。散布図は相関係数、
+      正規分布は斜線部の面積、双曲線は焦点と漸近線、複素数平面は回転後の点。
+      <span class="keep">要約した数字をモデルに書かせない</span>ので、食い違いようがない。
+    </p>
+
+    <h3><span class="tag care">発見</span>穴 → 塞ぐ → また出る、を3回まわした</h3>
+    <p class="lede">
+      <b>角の二等分線の問題が、両モデルとも0/3で落ちた。</b>
+      調べたら<span class="care">モデルではなく私の語彙が原因</span>だった。
+    </p>
+    <table>
+      <thead><tr><th style="width:8%">回</th><th style="width:36%">何が起きたか</th><th>塞ぎ方</th></tr></thead>
+      <tbody>
+        <tr><td><b>①</b></td>
+          <td>「AB=6, AC=4」を書く手段が無い。モデルは点を目分量で置いて辺に <code>"6"</code> <code>"4"</code> と書き、
+            <span class="care">実際は 6.52 と 7.11 — <b>「4」と書いた辺のほうが長い図</b></span>が出た</td>
+          <td><code>{"pt":"C","from":"A","dist":4,"deg":-30}</code> を足す。
+            <b>長さが決まっている図形は、長さで置かせる</b></td></tr>
+        <tr><td><b>②</b></td>
+          <td>ラベルが嘘をつけたままなのが根本問題</td>
+          <td>数字の <code>label</code> を<b>実際の長さと突き合わせて、合わなければ落とす</b>。
+            <code>showLength</code> ならこちらが書く</td></tr>
+        <tr><td><b>③</b></td>
+          <td>②を入れたら、今度は「BD:DC = 3:2」の <code>"3"</code> が落ちた。
+            <b>比は長さではない</b>のに、比を書く手段が無かった</td>
+          <td><code>{"seg":["B","D"],"part":3}</code> を足し、
+            <span class="keep">part どうしの比が実際の長さの比と合っているか</span>を検算する</td></tr>
+      </tbody>
+    </table>
+    <p class="lede" style="margin-top:18px">
+      <b>角の二等分線は 0/3 → 6/6 になった。</b>
+      そして<span class="keep">この3回で見つかった穴は、どれも「言いたいことを書く手段が無くて、
+      近いもので代用した」</span>という同じ形をしていた。
+      <b><code>×図</code>(絵は出るが中身が違う)が出たら、まずモデルではなく語彙を疑う。</b>
+    </p>
+
+    <h3><span class="tag biz">成績</span>32種類 × 2モデル × 3回 = 192回</h3>
+    <table>
+      <thead><tr><th style="width:34%"></th><th style="width:22%">Haiku 4.5</th><th style="width:22%">Sonnet 5</th><th></th></tr></thead>
+      <tbody>
+        <tr><td><b>単元カバレッジ</b></td><td colspan="2" style="text-align:center"><b>32/32 種類</b></td>
+          <td>1回でも正しく描けたか</td></tr>
+        <tr><td><b>拾い直せば通った</b></td><td>83/94 = 88%</td><td><b>91/95 = 96%</b></td><td>図まで正しい</td></tr>
+        <tr><td><b>図が黙って間違い</b></td><td><span class="care">7/94 = 7%</span></td><td><b>1/95 = 1%</b></td><td>絵は出る。中身が違う</td></tr>
+      </tbody>
+    </table>
+    <p class="foot-note">
+      通信で落ちた3件は分母から外した(モデルの成績ではない)。
+      Sonnet の唯一の <code>×図</code> は「座標を3つ出すところを1つしか出さなかった」= <b>不足</b>で、
+      嘘の図ではない。<span class="care">Haiku の7件には、|x−1|&lt;3 の解を −2〜3 と描いた
+      本物の間違いが含まれる</span>。
+    </p>
+
+    <h3><span class="tag care">訂正</span>「検算を入れたら黙った間違いが消えた」は、測定を最後まで見たら成り立たなかった</h3>
+    <p class="lede">
+      途中経過で Haiku の <code>×図</code> が 0/52 だったので「検算が効いた」と書いたが、
+      <b>最後まで回したら 7/94 = 7% で、入れる前(4/54 ≒ 7%)と変わらなかった。</b>
+      <span class="care">途中経過を結論にしていた。</span>
+    </p>
+    <p class="lede">
+      <b>実際に効いたのは、集計値ではなく特定の失敗の形。</b>
+      <span class="keep">「長さの嘘」は<b>書けなくなった</b></span> — Sonnet が AG に <code>"2"</code>
+      (実際は 4.64)と書いた回は、いま <code>×語</code> で落ちて絵が出ない。前なら出ていた。
+      <b>角の二等分線も 0/3 → 6/6。</b>
+      <span class="care">効き目は「率が下がる」ではなく「その形の間違いが表現できなくなる」で出る。
+      率で測ろうとしたのが間違いだった。</span>
+    </p>
+    <p class="foot-note">
+      <b>ここが設計の要点。</b>「正しく描かせる」のは難しいが、
+      <span class="keep">「その間違いを書けなくする」のは、不変量を1本足すだけでできる</span>。
+      <b>不変量が書けない図は足さない</b>という条件(D-19)は、そのための入口検査。
+    </p>
+
+    <h3><span class="tag new">体制</span>穴が空いたときに、何をどの順でやるか</h3>
+    <table>
+      <thead><tr><th style="width:8%"></th><th></th></tr></thead>
+      <tbody>
+        <tr><td><b>1</b></td><td><code>units.md</code> に「どの単元で要るか」を書く</td></tr>
+        <tr><td><b>2</b></td><td><b>機械で検算できる不変量を1本決める。</b><span class="care">決まらないなら足さない</span></td></tr>
+        <tr><td><b>3</b></td><td><code>spec.md</code> に書式を足す(<b>モデルが読むのはここだけ</b>)</td></tr>
+        <tr><td><b>4</b></td><td><code>solver.mjs</code> に実装する。<span class="keep">一貫していなければならない値は、書かせずに計算する</span></td></tr>
+        <tr><td><b>5</b></td><td><code>problems.mjs</code> に典型問題と不変量を足し、<b>自作の模範解答で通ることを先に確かめる</b></td></tr>
+        <tr><td><b>6</b></td><td><code>run.sh</code> を回す。生の出力は残るので、<span class="keep">ソルバを直すたびにモデルを呼ばずに採点し直せる</span></td></tr>
+      </tbody>
+    </table>
+    <p class="foot-note">
+      <b>まだやっていないこと。</b>
+      <b>①</b> 本番の契約(<code>board.ts</code>)には <code>figure</code> の枝がまだ無い。
+      <span class="care">先にプロンプトへ入れると、検証を通らない出力を作らせることになる</span>ので入れていない
+      (D-19 の「サーバで解いて SVG を送る」を先にやる)。
+      <b>②</b> 問題は私が作った32問で、<b>原図つきの過去問ではない</b>。
+      <span class="keep">次は実際の入試問題の原図と突き合わせる</span>(D-17 の①〜④)。
+      <b>③</b> 1問あたり3回では、率の細かい差は動く。<b>カバレッジ(32/32)は動かないが、
+      パーセントは目安として読んでほしい。</b>
+    </p>
+  </div>
+
 </div>
 
 <script>
