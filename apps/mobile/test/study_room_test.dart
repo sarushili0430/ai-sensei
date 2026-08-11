@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:ai_sensei/src/api/api_client.dart';
 import 'package:ai_sensei/src/api/device_id.dart';
+import 'package:ai_sensei/src/features/capture/presentation/capture_screen.dart';
 import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
 import 'package:ai_sensei/src/features/karte/presentation/home_screen.dart';
 import 'package:ai_sensei/src/features/session/domain/board.dart';
@@ -14,6 +15,7 @@ import 'package:ai_sensei/src/l10n/strings.dart';
 import 'package:ai_sensei/src/routing/app_router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
@@ -172,8 +174,8 @@ void main() {
         ],
       );
 
-      // 1秒未満は契約上送れないが、ここで送信済み扱いにすると、戻ったあとの
-      // 95秒まで失う。短い非表示は捨てても、次の有効な退室は残す。
+      // 1秒未満の訪問は契約上送れない。そこで最初の訪問は閉じるが、resumedで
+      // 新しい訪問を始めるので、戻ったあとの95秒は次の退室で残せる。
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pump();
@@ -197,6 +199,39 @@ void main() {
         'duration_seconds': 95,
         'visited_on': '2026-08-03',
       });
+    });
+
+    testWidgets('1秒未満で離れた訪問を、背後の時間で水増ししない',
+        (WidgetTester tester) async {
+      DateTime now = DateTime(2026, 8, 3, 21);
+      final List<http.Request> calls = <http.Request>[];
+      final MockClient server = MockClient((http.Request request) async {
+        calls.add(request);
+        return http.Response('', 204);
+      });
+      addTearDown(
+        () => tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed),
+      );
+
+      await pumpApp(
+        tester,
+        const StudyRoomScreen(),
+        overrides: <Object?>[
+          studyRoomClockProvider.overrideWithValue(() => now),
+          apiClientProvider.overrideWithValue(
+            ApiClient(baseUrl: 'http://test', deviceId: 'device-1', client: server),
+          ),
+        ],
+      );
+
+      // 0秒の訪問はPOSTしない。ただし閉じた印を残さないと、この30分後の
+      // disposeが「自習していた30分」として誤送信してしまう。
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      now = now.add(const Duration(minutes: 30));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+
+      expect(calls, isEmpty);
     });
 
     testWidgets('計測の送信に失敗しても自習室を壊さない', (WidgetTester tester) async {
@@ -234,11 +269,10 @@ void main() {
   });
 
   group('導線', () {
-    testWidgets('ホーム → 自習室 は戻れる', (WidgetTester tester) async {
-      // 自習室は寄り道(`/` の子)。`go` で入る形にすると、
-      // 自習をやめた人の戻り先が無くなる。
-      DateTime now = DateTime(2026, 8, 3, 21);
-      final List<http.Request> calls = <http.Request>[];
+    ProviderContainer navigationContainer({
+      required DateTime Function() clock,
+      required List<http.Request> calls,
+    }) {
       final MockClient server = MockClient((http.Request request) async {
         calls.add(request);
         return http.Response('', 204);
@@ -249,13 +283,25 @@ void main() {
           deviceIdProvider.overrideWithValue('dev_test'),
           progressControllerProvider.overrideWith(FakeProgressController.new),
           reviewControllerProvider.overrideWith(() => FakeReviewController(sampleReviewQueue)),
-          studyRoomClockProvider.overrideWithValue(() => now),
+          studyRoomClockProvider.overrideWithValue(clock),
           apiClientProvider.overrideWithValue(
             ApiClient(baseUrl: 'http://test', deviceId: 'dev_test', client: server),
           ),
         ].cast(),
       );
       addTearDown(container.dispose);
+      return container;
+    }
+
+    testWidgets('下タブでホーム → 自習室 → ホームへ戻れる', (WidgetTester tester) async {
+      // 自習室は独立した常設の枝になった。戻り先をNavigatorの履歴で捏造せず、
+      // 下タブと明示的な「自習室を出る」のどちらからもホームへ帰れるようにする。
+      DateTime now = DateTime(2026, 8, 3, 21);
+      final List<http.Request> calls = <http.Request>[];
+      final ProviderContainer container = navigationContainer(
+        clock: () => now,
+        calls: calls,
+      );
 
       await tester.pumpWidget(wrapRouter(container));
       await tester.pumpAndSettle();
@@ -264,9 +310,6 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(StudyRoomScreen), findsOneWidget);
 
-      final GoRouter router = container.read(appRouterProvider);
-      expect(router.canPop(), isTrue, reason: '自習をやめたら、ホームへ戻れなければならない');
-
       now = now.add(const Duration(minutes: 3));
       await tester.tap(find.text(ja.studyRoomLeave));
       await tester.pumpAndSettle();
@@ -274,6 +317,92 @@ void main() {
       // ボタン・PopScope・disposeの3経路が同じpopを見ても、送るのは1回だけ。
       expect(calls, hasLength(1));
       expect(jsonDecode(calls.single.body), containsPair('duration_seconds', 3 * 60));
+    });
+
+    testWidgets('タブを離れた時間を混ぜず、戻るたび新しい訪問にする',
+        (WidgetTester tester) async {
+      DateTime now = DateTime(2026, 8, 3, 21);
+      final List<http.Request> calls = <http.Request>[];
+      final ProviderContainer container = navigationContainer(
+        clock: () => now,
+        calls: calls,
+      );
+
+      await tester.pumpWidget(wrapRouter(container));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey<String>('navigation-study-room')));
+      await tester.pumpAndSettle();
+
+      now = now.add(const Duration(minutes: 2));
+      await tester.tap(find.byKey(const ValueKey<String>('navigation-home')));
+      await tester.pumpAndSettle();
+      expect(calls, hasLength(1));
+      expect(jsonDecode(calls[0].body), containsPair('duration_seconds', 2 * 60));
+      final String firstVisitId = calls[0].headers['idempotency-key']!;
+
+      // ホームを見ていた30分は自習ではない。枝のStateは残っていても、
+      // 戻った瞬間の表示と次のPOSTは0から始まる必要がある。
+      now = now.add(const Duration(minutes: 30));
+      await tester.tap(find.byKey(const ValueKey<String>('navigation-study-room')));
+      await tester.pumpAndSettle();
+      expect(find.text(ja.studyRoomElapsed(0)), findsOneWidget);
+
+      now = now.add(const Duration(minutes: 3));
+      await tester.tap(find.byKey(const ValueKey<String>('navigation-home')));
+      await tester.pumpAndSettle();
+      expect(calls, hasLength(2));
+      expect(jsonDecode(calls[1].body), containsPair('duration_seconds', 3 * 60));
+      expect(calls[1].headers['idempotency-key'], isNot(firstVisitId));
+    });
+
+    testWidgets('撮影をやめて戻ったあとは、新しい訪問として記録する',
+        (WidgetTester tester) async {
+      // 撮影結果はこのテストの対象ではない。カメラを閉じた状態だけを返し、
+      // 「先輩、ちょっといい?」のpushとpopを本物のルータで通す。
+      const MethodChannel pickerChannel = MethodChannel('plugins.flutter.io/image_picker');
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(pickerChannel, (_) async => null);
+      addTearDown(
+        () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(pickerChannel, null),
+      );
+      mockPermissionHandler();
+
+      DateTime now = DateTime(2026, 8, 3, 21);
+      final List<http.Request> calls = <http.Request>[];
+      final ProviderContainer container = navigationContainer(
+        clock: () => now,
+        calls: calls,
+      );
+      final GoRouter router = container.read(appRouterProvider);
+
+      await tester.pumpWidget(wrapRouter(container));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey<String>('navigation-study-room')));
+      await tester.pumpAndSettle();
+
+      now = now.add(const Duration(minutes: 2));
+      await tester.tap(find.text(ja.studyRoomAsk));
+      await tester.pumpAndSettle();
+      expect(find.byType(CaptureScreen), findsOneWidget);
+      expect(calls, hasLength(1));
+      expect(jsonDecode(calls[0].body), containsPair('duration_seconds', 2 * 60));
+      final String firstVisitId = calls[0].headers['idempotency-key']!;
+
+      // 撮影画面にいた30分は自習時間へ足さない。pop後の0表示は、開始時刻を
+      // 戻った時点へ置き直せたことも固定する。
+      now = now.add(const Duration(minutes: 30));
+      router.pop();
+      await tester.pumpAndSettle();
+      expect(find.byType(StudyRoomScreen), findsOneWidget);
+      expect(find.text(ja.studyRoomElapsed(0)), findsOneWidget);
+
+      now = now.add(const Duration(minutes: 3));
+      await tester.tap(find.byKey(const ValueKey<String>('navigation-home')));
+      await tester.pumpAndSettle();
+      expect(calls, hasLength(2));
+      expect(jsonDecode(calls[1].body), containsPair('duration_seconds', 3 * 60));
+      expect(calls[1].headers['idempotency-key'], isNot(firstVisitId));
     });
   });
 }

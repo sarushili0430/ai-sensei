@@ -41,8 +41,11 @@ import '../domain/senpai_nudge.dart';
 ///   - 先輩と、たまの声かけ(経過時間から引く。録音でも通信でもない)
 ///   - 「先輩、ちょっといい?」= **課金の切れ目**。押すと授業モードが立ち上がる
 ///
-/// 授業モードと違って、ここは**戻れる**画面にしてある(ルータで `/` の子)。
-/// 詰まって先輩を呼びかけてやめた人が、自習室ごと失わないようにするため。
+/// 授業モードと違って、ここは**戻れる**画面にしてある。ピボット前は `/` の子に
+/// 積んでいたが、いまは常設タブの独立した枝。それでも撮影だけは `push` し、
+/// 詰まって先輩を呼びかけてやめた人が、自習室ごと失わない約束は変えていない。
+/// 枝はタブを離れても破棄されないため、Stateの生成から破棄までを1訪問とみなさず、
+/// **最前面に見えている区間ごと**に開始時刻と冪等キーを作り直す。
 class StudyRoomScreen extends ConsumerStatefulWidget {
   const StudyRoomScreen({super.key});
 
@@ -58,29 +61,51 @@ class _StudyRoomScreenState extends ConsumerState<StudyRoomScreen>
   /// 止めた瞬間に時間そのものが止まる(下の [didChangeDependencies] 参照)。
   /// 始めた時刻さえ持っていれば、経過時間はいつでもその場で計算できる。
   late final DateTime Function() _now;
-  late final DateTime _startedAt;
-  late final String _visitId;
+  late DateTime _startedAt;
+  late String _visitId;
 
   Timer? _ticker;
   bool _configured = false;
   bool _reported = false;
+  bool _routeVisible = true;
+  bool _appVisible = true;
+  bool _coveredByPush = false;
+  bool _foreground = true;
   SenpaiNudgeAudio? _nudgeAudio;
 
   @override
   void initState() {
     super.initState();
     _now = ref.read(studyRoomClockProvider);
-    _startedAt = _now();
-    _visitId = const Uuid().v4();
+    _beginVisit();
     WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_configured) return;
-    _configured = true;
-    _nudgeAudio = SenpaiNudgeAudio(ref.read(prerenderedAudioProvider));
+    if (!_configured) {
+      _configured = true;
+      _nudgeAudio = SenpaiNudgeAudio(ref.read(prerenderedAudioProvider));
+    }
+
+    // StatefulShellRouteの各枝では、自習室のModalRouteはタブを離れても
+    // その枝の中ではcurrentのまま。`ModalRoute.isCurrent`だけを見ると、ホームを
+    // 見ている間も滞在が続いてしまう。indexedStackが非選択の枝へ付ける
+    // TickerModeを、タブ上で実際に見えているかの通知として使う。
+    final bool routeVisible = TickerMode.valuesOf(context).enabled;
+    if (_routeVisible != routeVisible) {
+      _routeVisible = routeVisible;
+      // 依存変更の直後には必ずbuildが続く。ここでsetStateまで呼ぶと同じフレームを
+      // 二重に予約するので、状態の区切りだけを先に反映する。
+      _syncForeground(rebuild: false);
+    }
+
+    _startTickerIfNeeded();
+  }
+
+  void _startTickerIfNeeded() {
+    if (!_foreground || _ticker != null || AppMotion.isReduced(context)) return;
 
     // 1秒ごとに塗り直す。**「動かさない」設定では回さない**(ADR 0004 の経路)。
     //
@@ -95,22 +120,17 @@ class _StudyRoomScreenState extends ConsumerState<StudyRoomScreen>
     //
     // ここを通し忘れると、widget test の `pumpAndSettle` が返らなくなる
     // (1秒ごとにフレームを積み続けるループになるため)。
-    if (AppMotion.isReduced(context)) return;
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
+      if (!mounted || !_foreground) return;
 
       final Duration elapsed = _elapsed();
       final SenpaiNudge next = SenpaiNudge.forElapsed(elapsed);
       final SenpaiNudgeAudio? nudgeAudio = _nudgeAudio;
       if (nudgeAudio != null && next != nudgeAudio.current) {
-        // push された別画面の背後でも Timer 自体は生きている。時刻の段階だけは
-        // 進めるが、見えていない自習室から突然声を出さない。
-        final bool visible = ModalRoute.of(context)?.isCurrent ?? true;
         unawaited(
           nudgeAudio.moveTo(
             next,
             languageCode: Localizations.localeOf(context).languageCode,
-            audible: visible,
           ),
         );
       }
@@ -118,14 +138,58 @@ class _StudyRoomScreenState extends ConsumerState<StudyRoomScreen>
     });
   }
 
+  void _beginVisit() {
+    _startedAt = _now();
+    _visitId = const Uuid().v4();
+    _reported = false;
+  }
+
+  void _syncForeground({required bool rebuild}) {
+    final bool foreground = _routeVisible && _appVisible && !_coveredByPush;
+    if (_foreground == foreground) return;
+    _foreground = foreground;
+
+    if (!foreground) {
+      // 見えない時間を表示にも送信にも混ぜない。Timerを止めるだけでは
+      // `_startedAt` との差が伸び続けるため、ここで今の訪問を閉じる。
+      _ticker?.cancel();
+      _ticker = null;
+      _reportOnce();
+      unawaited(_nudgeAudio?.stop() ?? Future<void>.value());
+      return;
+    }
+
+    // 同じStateへ戻ってきても新しい訪問。IDを使い回すと、2回目のPOSTは
+    // サーバの冪等キーに同じ訪問と判定され、正しく分けた滞在まで捨てられる。
+    _beginVisit();
+    final SenpaiNudgeAudio? nudgeAudio = _nudgeAudio;
+    if (nudgeAudio != null) {
+      unawaited(
+        nudgeAudio.moveTo(
+          SenpaiNudge.start,
+          languageCode: Localizations.localeOf(context).languageCode,
+          audible: false,
+        ),
+      );
+    }
+    _startTickerIfNeeded();
+    if (rebuild && mounted) setState(() {});
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // inactiveは通知センター等で一時的にフォーカスを失っただけでも来る。
     // 本当に見えなくなったhidden / pausedだけを退室として扱い、短い中断で
     // 自習を勝手に終わらせない。
-    if (state == AppLifecycleState.hidden ||
-        state == AppLifecycleState.paused) {
-      _reportOnce();
+    if (state == AppLifecycleState.hidden || state == AppLifecycleState.paused) {
+      if (!_appVisible) return;
+      _appVisible = false;
+      _syncForeground(rebuild: true);
+      return;
+    }
+    if (state == AppLifecycleState.resumed && !_appVisible) {
+      _appVisible = true;
+      _syncForeground(rebuild: true);
     }
   }
 
@@ -147,26 +211,60 @@ class _StudyRoomScreenState extends ConsumerState<StudyRoomScreen>
     return elapsed.isNegative ? Duration.zero : elapsed;
   }
 
+  Future<void> _openCapture() async {
+    if (_coveredByPush) return;
+    _coveredByPush = true;
+    _syncForeground(rebuild: true);
+
+    try {
+      await context.push<void>(AppRoute.capture.path);
+    } finally {
+      if (mounted) {
+        _coveredByPush = false;
+        // 撮影をやめて戻った場合だけ、新しい訪問をここから始める。撮影から授業へ
+        // `go` した場合は自習室ごと破棄されるので、古い会話へ戻る入口は作らない。
+        _syncForeground(rebuild: true);
+      }
+    }
+  }
+
   void _reportOnce() {
     if (_reported) return;
+    // 1秒未満で送らない訪問も、ここで閉じたこと自体は覚える。閉じずに残すと、
+    // タブの裏にいた時間をdispose時の差分へ混ぜてしまう。再び最前面になれば
+    // `_beginVisit` がfalseへ戻すため、その後の有効な滞在は失われない。
+    _reported = true;
 
     final int durationSeconds = _elapsed().inSeconds;
     // 1秒未満の画面遷移は滞在として意味がなく、0は共有契約でも無効。
-    // まだ送っていないので_reportedは立てない。入室直後にOSダイアログ等で
-    // 一度だけ非表示になって戻った場合、その後の本当の滞在まで捨てないため。
+    // 送信は捨てるが、戻ったときは新しい訪問として0から測り直す。
     if (durationSeconds < 1) return;
-    _reported = true;
-    unawaited(_sendVisit(durationSeconds));
+    // POSTを待つ間にタブへ戻ると、次の訪問が同じState上で始まる。フィールドを
+    // Futureの中から読むと、新しい開始時刻・IDで古い秒数を送る競合になるため、
+    // 閉じた訪問の値をここで写し取る。
+    final DateTime startedAt = _startedAt;
+    final String visitId = _visitId;
+    unawaited(
+      _sendVisit(
+        durationSeconds,
+        startedAt: startedAt,
+        visitId: visitId,
+      ),
+    );
   }
 
-  Future<void> _sendVisit(int durationSeconds) async {
+  Future<void> _sendVisit(
+    int durationSeconds, {
+    required DateTime startedAt,
+    required String visitId,
+  }) async {
     try {
       await ref
           .read(apiClientProvider)
           .recordStudyRoomVisit(
             durationSeconds: durationSeconds,
-            startedAt: _startedAt,
-            idempotencyKey: _visitId,
+            startedAt: startedAt,
+            idempotencyKey: visitId,
           );
     } catch (_) {
       // 計測の再試行・エラー表示はしない。自習を終える操作を指標のために
@@ -213,13 +311,9 @@ class _StudyRoomScreenState extends ConsumerState<StudyRoomScreen>
                   label: strings.studyRoomAsk,
                   // **ここが課金の切れ目**(§4-2)。撮影が上に載ると自習室は
                   // 非表示になるので、その直前を退室として1回だけ記録する。
-                  onPressed: () {
-                    _reportOnce();
-                    // push では自習室が背後に残るため、dispose 任せでは今の一言が
-                    // 撮影画面まで続く。自分が始めた音だけをここで止める。
-                    unawaited(_nudgeAudio?.stop() ?? Future<void>.value());
-                    context.push(AppRoute.capture.path);
-                  },
+                  // pushの完了も同じ前面管理へ戻すので、撮影をやめたあとは開始時刻と
+                  // 冪等キーを新しくした別訪問として、また正しく数えられる。
+                  onPressed: _openCapture,
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 // マイクを開いていないことを、黙っていないで書く。
