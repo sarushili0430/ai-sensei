@@ -72,7 +72,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 /// 自前のペイウォール。
 ///
 /// RevenueCat の Offering が取れていれば、その価格でプランを出す。
-/// 取れていなければ据え置きの文言だけを出して、購入ボタンは押せなくする
+/// 取れていなければ価格を約束しない文言だけを出して、購入ボタンは押せなくする
 /// (押せるのに買えない、が一番わるい)。
 class _ManualPaywall extends ConsumerStatefulWidget {
   const _ManualPaywall();
@@ -87,14 +87,6 @@ class _ManualPaywallState extends ConsumerState<_ManualPaywall> {
   PlanPeriod? _selected;
   String? _message;
   bool _busy = false;
-
-  SubscriptionPlan? _planFor(List<SubscriptionPlan> plans) {
-    if (plans.isEmpty) return null;
-    for (final SubscriptionPlan plan in plans) {
-      if (plan.period == (_selected ?? PlanPeriod.monthly)) return plan;
-    }
-    return plans.first;
-  }
 
   Future<void> _purchase(SubscriptionPlan plan) async {
     final AppStrings strings = AppStrings.of(context);
@@ -149,7 +141,8 @@ class _ManualPaywallState extends ConsumerState<_ManualPaywall> {
     final AppStrings strings = AppStrings.of(context);
     final AsyncValue<Entitlement> entitlement = ref.watch(entitlementControllerProvider);
     final List<SubscriptionPlan> plans = entitlement.value?.plans ?? const <SubscriptionPlan>[];
-    final SubscriptionPlan? selected = _planFor(plans);
+    final SubscriptionPlan? selected =
+        planForPeriod(plans, _selected ?? PlanPeriod.monthly);
 
     return Scaffold(
       body: SafeArea(
@@ -166,10 +159,11 @@ class _ManualPaywallState extends ConsumerState<_ManualPaywall> {
                   const SizedBox(height: AppSpacing.lg),
                   Text(strings.paywallTitle, style: Theme.of(context).textTheme.displaySmall),
                   const SizedBox(height: AppSpacing.sm),
-                  // Offering が取れていないあいだは据え置きの文言を出す。
-                  // ストアの値段を騙らないよう、取れたら必ずそちらへ差し替える。
+                  // Offering が取れていないあいだは、価格を約束しない文言に落とす。
+                  // ストアの値段もトライアルも、取れていない状態からは作らない。
                   if (plans.isEmpty)
-                    Text(strings.paywallPrice, style: Theme.of(context).textTheme.bodyLarge)
+                    Text(strings.paywallPriceUnavailable,
+                        style: Theme.of(context).textTheme.bodyLarge)
                   else
                     ...plans.map(
                       (SubscriptionPlan plan) => Padding(
@@ -254,12 +248,6 @@ class _PlanCard extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
-  String _label(AppStrings strings) => switch (plan.period) {
-    PlanPeriod.weekly => strings.planWeekly,
-    PlanPeriod.monthly => strings.planMonthly,
-    PlanPeriod.yearly => strings.planYearly,
-  };
-
   @override
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
@@ -287,7 +275,8 @@ class _PlanCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text(_label(strings), style: Theme.of(context).textTheme.titleMedium),
+                    Text(plan.period.label(strings),
+                        style: Theme.of(context).textTheme.titleMedium),
                     if (plan.hasFreeTrial)
                       Text(
                         strings.planFreeTrial(plan.freeTrialDays),

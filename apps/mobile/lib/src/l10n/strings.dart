@@ -443,8 +443,30 @@ class AppStrings {
 
   // --- ペイウォール ---
   String get paywallTitle => _pick('穴を、埋めきる。', 'Fill every gap.');
-  String get paywallPrice => _pick(
-      'Premium ¥580/月 ・ はじめの7日間は無料', 'Premium ¥580/month · First 7 days free');
+
+  /// Premium の一行紹介。**数字は Offering が返した文字列だけ**を置く。
+  ///
+  /// 期間を「/月」と自前で書かないのは、週額の商品に付けると嘘になるから。
+  /// プラン名([planMonthly] など)をそのまま並べる。
+  /// 日英で語順が同じなので `_pick` しない([premiumBadge] と同じ)。
+  String paywallPriceLine(String plan, String price) => 'Premium $plan $price';
+
+  /// 価格がまだ読めていないとき(祝福画面)。**代わりの数字を書かない。**
+  ///
+  /// 据え置きの「¥580/月」を出すと、ダッシュボードで値段を変えた瞬間に、
+  /// この行と次に出るストアの決済画面が食い違ったまま購入を決めさせることになる。
+  /// 比較表の Premium 欄([paywallEverydayQuestions])と同じことだけを言う。
+  String get paywallPricePending => _pick('Premium なら、毎日つづけて何問も聞けます',
+      'With Premium you can ask several questions a day');
+
+  /// 自前ペイウォールで Offering が取れなかったとき。
+  ///
+  /// 購入ボタンが押せない状態なので、**押せない理由まで言う**。
+  /// ここも数字は出さない。トライアルの有無も Offering が持っているので、
+  /// 「はじめの7日間は無料」も同じく書けない。
+  String get paywallPriceUnavailable => _pick(
+      'いまは金額を読み込めていません。少しあとで、もう一度ひらいてみてください。',
+      "We can't load the price right now. Please try opening this again in a moment.");
 
   /// ペイウォールを**開く**ボタン(復習画面など)。ここで無料日数を約束しない。
   /// ストアの商品にトライアルが付いているかは、Offering を読むまで分からない。

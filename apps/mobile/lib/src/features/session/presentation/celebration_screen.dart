@@ -13,6 +13,8 @@ import '../../../routing/routes.dart';
 import '../../../theme/tokens.dart';
 import '../../karte/application/karte_controllers.dart';
 import '../../karte/domain/karte.dart';
+import '../../monetization/application/entitlement_controller.dart';
+import '../../monetization/presentation/purchase_messages.dart';
 
 /// 祝福画面(説明中とカルテの間)。
 ///
@@ -194,13 +196,9 @@ class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
                           ),
                   ),
                   if (showPaywall)
-                    Padding(
-                      padding: const EdgeInsets.only(top: AppSpacing.sm),
-                      child: Text(
-                        strings.paywallPrice,
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
+                    const Padding(
+                      padding: EdgeInsets.only(top: AppSpacing.sm),
+                      child: _PremiumLine(),
                     ),
                   // カルテを待っているあいだの逃げ道。この画面は戻る先を持たない
                   // ので、待つ以外にできることが無いと行き止まりになる。
@@ -215,6 +213,54 @@ class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// ペイウォールに進む人へ出す、Premium の一行。
+///
+/// **価格もトライアルも Offering から引く。** 据え置きの数字を書くと、
+/// ダッシュボードで値段やトライアルを変えた瞬間に、この行と次に出るストアの
+/// 決済画面が食い違う。ユーザーは食い違ったまま買うかどうかを決めることになる。
+///
+/// この画面に来た時点で Offering の取得が終わっていないことがある
+/// (ホームを踏まずにセッションへ入った場合や、通信が遅い場合)。
+/// **間に合っていないあいだは数字を出さない。** あとから正しい数字に
+/// 差し替わるほうが、間違った数字を見せるよりよい。
+class _PremiumLine extends ConsumerWidget {
+  const _PremiumLine();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AppStrings strings = AppStrings.of(context);
+    final List<SubscriptionPlan> plans =
+        ref.watch(entitlementControllerProvider).value?.plans ?? const <SubscriptionPlan>[];
+    final SubscriptionPlan? plan = planForPeriod(plans, PlanPeriod.monthly);
+    final TextStyle? style = Theme.of(context).textTheme.bodySmall;
+
+    if (plan == null) {
+      return Text(
+        strings.paywallPricePending,
+        textAlign: TextAlign.center,
+        style: style,
+      );
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text(
+          strings.paywallPriceLine(plan.period.label(strings), plan.priceString),
+          textAlign: TextAlign.center,
+          style: style,
+        ),
+        if (plan.hasFreeTrial)
+          Text(
+            strings.planFreeTrial(plan.freeTrialDays),
+            textAlign: TextAlign.center,
+            style: style,
+          ),
+      ],
     );
   }
 }
