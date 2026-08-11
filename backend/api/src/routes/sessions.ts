@@ -26,7 +26,13 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { AppEnv, Bindings } from "../env.ts";
 import { readLimits } from "../env.ts";
-import { canStartSessionToday, checkSessionAllowance, isPremiumNow } from "../lib/entitlement.ts";
+import {
+  canStartSessionToday,
+  isPremiumNow,
+  limitReachedAllowance,
+  reservedAllowance,
+  sessionsPerDay,
+} from "../lib/entitlement.ts";
 import { apiError } from "../lib/errors.ts";
 import { type AgentDispatch, createLiveKitToken } from "../lib/livekit.ts";
 import {
@@ -60,6 +66,19 @@ sessionsRoute.post("/", async (c) => {
   const locale = meta.locale;
 
   const user = await repository.ensureUser(deviceId, at);
+  /**
+   * 事実: toLocalDateの既定はJST固定(+540分)で、クライアントの申告ではなく
+   * サーバが受信時刻から作る。同じ瞬間に届いた2本は必ず同じlocal_dateになり、
+   * 一意制約の鍵がリクエストごとにぶれることはない。
+   *
+   * 判断: ずれ得るのはJSTの日付境界をまたぐ数ミリ秒だけで、その2本は本当に別の日に属する。
+   * 両方通るのはCOUNTで数えていた頃と同じで、1日あたりの原価を守る上限の趣旨も壊れない。
+   * 反対に、クライアント申告からlocal_dateを作った瞬間、日付を1つずらすだけで新しい枠が生え、
+   * この上限は無力になる。一意制約が防げるのは同じ日の中の二重取りだけ。
+   *
+   * 将来ユーザーのタイムゾーンに追随するなら、オフセットの出どころをサーバが決めることを
+   * 前提にし、countSessionsOnDateの表示と一意制約の判定を同じ日付規則へ一緒に動かす。
+   */
   const localDate = toLocalDate(at);
 
   // 復習(穴の再説明)はPremium機能。/v1/me/reviews でキューを隠すだけだと、
@@ -78,15 +97,7 @@ sessionsRoute.post("/", async (c) => {
     }
   }
 
-  const sessionsToday = await repository.countSessionsOnDate(deviceId, localDate);
-  const allowance = checkSessionAllowance({ user, sessionsToday, now: at, limits });
-
-  if (!allowance.allowed) {
-    throw apiError(allowance.reason, {
-      locale,
-      retryAfterSeconds: allowance.retryAfterSeconds,
-    });
-  }
+  const maxPerDay = sessionsPerDay({ user, now: at, limits });
 
   const photo = form.get(sessionPhotoParts.notes);
   /**
@@ -108,23 +119,37 @@ sessionsRoute.post("/", async (c) => {
 
   const sessionId = newId("ses");
 
-  // 授業枠の判定と行の作成が離れていると、同時に2本投げられたときに
-  // 両方が「今日はまだ0回」を見て通ってしまう。写真のアップロードと解析に
-  // 数秒かかるぶん窓が広いので、**先に行を作って枠を押さえる**。
-  // 解析に失敗したら下で消すので、失敗が枠を食うこともない。
-  await repository.createSession({
-    id: sessionId,
-    device_id: deviceId,
-    kind: meta.kind,
-    status: "open",
-    created_at: at.toISOString(),
-    completed_at: null,
-    local_date: localDate,
-    photo_key: null,
-    topic_ids: [],
-    hole_id: reviewHole?.id ?? null,
-    duration_seconds: null,
-    context: null,
+  // 条件付きINSERTが上限の確認と行の作成を1操作で行うため、同時投稿も同じ枠を取れない。
+  // 写真のアップロードと解析より先に押さえ、解析に失敗したら下で行ごと消して枠を返す。
+  const reservation = await repository.reserveSessionSlot({
+    session: {
+      id: sessionId,
+      device_id: deviceId,
+      kind: meta.kind,
+      status: "open",
+      created_at: at.toISOString(),
+      completed_at: null,
+      local_date: localDate,
+      photo_key: null,
+      topic_ids: [],
+      hole_id: reviewHole?.id ?? null,
+      duration_seconds: null,
+      context: null,
+    },
+    maxPerDay,
+  });
+  if (!reservation.reserved) {
+    const limitReached = limitReachedAllowance({ user, now: at, limits });
+    throw apiError(limitReached.reason, {
+      locale,
+      retryAfterSeconds: limitReached.retryAfterSeconds,
+    });
+  }
+  const allowance = reservedAllowance({
+    user,
+    sessionsToday: reservation.sessionsToday,
+    now: at,
+    limits,
   });
   /**
    * 会話の言語。**アプリの表示言語ではなく、扱う単元の課程で決まる。**

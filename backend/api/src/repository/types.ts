@@ -50,6 +50,25 @@ export type SessionRecord = {
   context: SessionContext | null;
 };
 
+/**
+ * 授業枠の確保の結果。**数えてから入れるのではなく、入れられたかどうかで判定する。**
+ *
+ * 数えた件数ではなく `reserved` を返すのは、呼び出し側に「まだ空いているか」を
+ * 判断させないため。件数を渡すと、そこからもう一度上限と比べる書き方に戻れてしまう。
+ */
+export type SessionReservation =
+  | {
+      reserved: true;
+      /**
+       * 押さえた分を含む、その日の本数。
+       *
+       * 上限の判定には使わない(判定はもう終わっている)。`lesson_allowed_today` =
+       * 「今日もう一度始められるか」を組み立てるためだけの値。
+       */
+      sessionsToday: number;
+    }
+  | { reserved: false };
+
 export type HoleRecord = {
   id: string;
   device_id: string;
@@ -99,8 +118,19 @@ export type Repository = {
     rcAppUserId: string | null;
   }): Promise<void>;
 
+  /**
+   * 表示用。枠の判定には使わないこと。数えてから入れると、同時実行が同じ件数を見て上限を抜ける。
+   */
   countSessionsOnDate(deviceId: string, localDate: string): Promise<number>;
-  createSession(session: SessionRecord): Promise<void>;
+  /**
+   * セッション行を作る道はこの操作だけにする。枠の確認と作成を分ける道を残すと、
+   * 将来また「数えてから入れる」が書けてしまうため。
+   */
+  reserveSessionSlot(input: {
+    session: SessionRecord;
+    /** その日に許す本数(無料1 / Premium 3)。 */
+    maxPerDay: number;
+  }): Promise<SessionReservation>;
   /** 写真解析のあとに、確定した単元と写真キー、会話の文脈を書き戻す。 */
   updateSessionTopics(input: {
     sessionId: string;

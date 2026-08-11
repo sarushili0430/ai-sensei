@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { UserRecord } from "../repository/types.ts";
 import {
-  checkSessionAllowance,
   isPremiumNow,
+  limitReachedAllowance,
+  reservedAllowance,
   secondsUntilLocalMidnight,
+  sessionsPerDay,
   shouldShowPaywall,
 } from "./entitlement.ts";
 
@@ -48,23 +50,25 @@ describe("isPremiumNow", () => {
   });
 });
 
-describe("checkSessionAllowance", () => {
+describe("sessionsPerDay / reservedAllowance / limitReachedAllowance", () => {
   it("無料ユーザーの1回目は通る", () => {
-    const allowance = checkSessionAllowance({ user: user(), sessionsToday: 0, now, limits });
+    const freeUser = user();
+    expect(sessionsPerDay({ user: freeUser, now, limits })).toBe(1);
+    const allowance = reservedAllowance({ user: freeUser, sessionsToday: 1, now, limits });
     expect(allowance).toEqual({ allowed: true, maxSeconds: 1200, lessonAllowedToday: false });
   });
 
   it("無料枠を使い切るまでは、今日もう一度授業を受けられる", () => {
     const twoLessonLimits = { ...limits, freeSessionsPerDay: 2 };
-    const first = checkSessionAllowance({
+    const first = reservedAllowance({
       user: user(),
-      sessionsToday: 0,
+      sessionsToday: 1,
       now,
       limits: twoLessonLimits,
     });
-    const second = checkSessionAllowance({
+    const second = reservedAllowance({
       user: user(),
-      sessionsToday: 1,
+      sessionsToday: 2,
       now,
       limits: twoLessonLimits,
     });
@@ -74,7 +78,8 @@ describe("checkSessionAllowance", () => {
   });
 
   it("無料ユーザーの2回目は止める", () => {
-    const allowance = checkSessionAllowance({ user: user(), sessionsToday: 1, now, limits });
+    expect(sessionsPerDay({ user: user(), now, limits })).toBe(1);
+    const allowance = limitReachedAllowance({ user: user(), now, limits });
     expect(allowance).toMatchObject({
       allowed: false,
       lessonAllowedToday: false,
@@ -83,17 +88,18 @@ describe("checkSessionAllowance", () => {
   });
 
   it("止めるときは翌日までの秒数を返す(「また明日」と言えるように)", () => {
-    const allowance = checkSessionAllowance({ user: user(), sessionsToday: 1, now, limits });
-    if (allowance.allowed) throw new Error("止まっていない");
+    const allowance = limitReachedAllowance({ user: user(), now, limits });
     // 22:24:07 JST → 翌0:00まで 1時間35分53秒
     expect(allowance.retryAfterSeconds).toBe(5753);
   });
 
   it("Premiumは通常利用の1日1〜2回ではフェアユース上限に当たらない", () => {
-    for (const sessionsToday of [0, 1, 2]) {
-      const allowance = checkSessionAllowance({
-        user: user({ is_premium: true }),
-        sessionsToday,
+    const premiumUser = user({ is_premium: true });
+    expect(sessionsPerDay({ user: premiumUser, now, limits })).toBe(3);
+    for (const sessionsBeforeReservation of [0, 1, 2]) {
+      const allowance = reservedAllowance({
+        user: premiumUser,
+        sessionsToday: sessionsBeforeReservation + 1,
         now,
         limits,
       });
@@ -102,12 +108,9 @@ describe("checkSessionAllowance", () => {
   });
 
   it("Premiumは3回を使ったあとの4回目を翌日まで止める", () => {
-    const allowance = checkSessionAllowance({
-      user: user({ is_premium: true }),
-      sessionsToday: 3,
-      now,
-      limits,
-    });
+    const premiumUser = user({ is_premium: true });
+    expect(sessionsPerDay({ user: premiumUser, now, limits })).toBe(3);
+    const allowance = limitReachedAllowance({ user: premiumUser, now, limits });
     expect(allowance).toEqual({
       allowed: false,
       lessonAllowedToday: false,
@@ -117,12 +120,14 @@ describe("checkSessionAllowance", () => {
   });
 
   it("無料とPremiumで1回の上限時間を変えない", () => {
-    const premium = checkSessionAllowance({
+    const free = reservedAllowance({ user: user(), sessionsToday: 1, now, limits });
+    const premium = reservedAllowance({
       user: user({ is_premium: true }),
-      sessionsToday: 0,
+      sessionsToday: 1,
       now,
       limits,
     });
+    expect(free.maxSeconds).toBe(1200);
     expect(premium).toEqual({ allowed: true, maxSeconds: 1200, lessonAllowedToday: true });
   });
 });

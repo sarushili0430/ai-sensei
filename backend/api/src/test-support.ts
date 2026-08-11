@@ -190,6 +190,26 @@ export function testServices(options: { now?: Date; analysis?: PhotoAnalysis } =
   };
 }
 
+/**
+ * N本が揃うまで全員を止め、揃ったら同じタイミングで進ませる関門。
+ *
+ * 素のPromise.allだけでは、c.req.formData()などが通るマイクロタスク数が揃わず、
+ * 1本目が先に走り切ってしまう。その場合は壊れた「数えてから入れる」実装でも
+ * [201, 402, 402]になり、同時実行の穴を再現できないため、確保直前で明示的に揃える。
+ */
+export function concurrencyBarrier(count: number): () => Promise<void> {
+  let arrived = 0;
+  let open!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return async () => {
+    arrived += 1;
+    if (arrived >= count) open();
+    await gate;
+  };
+}
+
 /** JPEGとして通るだけの最小のバイト列(SOIマーカー + APP0)。 */
 export const JPEG_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
 

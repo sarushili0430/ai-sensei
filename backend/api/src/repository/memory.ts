@@ -5,6 +5,7 @@ import type {
   ReviewScheduleRecord,
   SessionContext,
   SessionRecord,
+  SessionReservation,
   UserRecord,
 } from "./types.ts";
 
@@ -59,8 +60,23 @@ export class MemoryRepository implements Repository {
     ).length;
   }
 
-  async createSession(session: SessionRecord): Promise<void> {
-    this.sessions.set(session.id, session);
+  async reserveSessionSlot(input: {
+    session: SessionRecord;
+    maxPerDay: number;
+  }): Promise<SessionReservation> {
+    const sessionsToday = [...this.sessions.values()].filter(
+      (session) =>
+        session.device_id === input.session.device_id &&
+        session.local_date === input.session.local_date,
+    ).length;
+    if (sessionsToday >= input.maxPerDay) return { reserved: false };
+
+    /**
+     * JavaScriptは単一スレッドなので、確認から挿入までawaitを挟まなければこの区間は原子的になる。
+     * ここにawaitを足すと、その隙間で別のリクエストが同じ「まだ空きがある」を見て通る。
+     */
+    this.sessions.set(input.session.id, input.session);
+    return { reserved: true, sessionsToday: sessionsToday + 1 };
   }
 
   async updateSessionTopics(input: {

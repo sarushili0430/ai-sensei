@@ -6,6 +6,7 @@ import type {
   ReviewScheduleRecord,
   SessionContext,
   SessionRecord,
+  SessionReservation,
   UserRecord,
 } from "./types.ts";
 
@@ -72,13 +73,20 @@ export class D1Repository implements Repository {
     return row?.count ?? 0;
   }
 
-  async createSession(session: SessionRecord): Promise<void> {
-    await this.db
+  async reserveSessionSlot(input: {
+    session: SessionRecord;
+    maxPerDay: number;
+  }): Promise<SessionReservation> {
+    const { session } = input;
+    const insert = this.db
       .prepare(
         `INSERT INTO sessions
            (id, device_id, kind, status, created_at, completed_at, local_date,
-            photo_key, topic_ids, hole_id, duration_seconds, context)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            photo_key, topic_ids, hole_id, duration_seconds, context, day_seq)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                (SELECT COALESCE(MAX(day_seq), -1) + 1
+                   FROM sessions WHERE device_id = ? AND local_date = ?)
+          WHERE (SELECT COUNT(*) FROM sessions WHERE device_id = ? AND local_date = ?) < ?`,
       )
       .bind(
         session.id,
@@ -93,8 +101,36 @@ export class D1Repository implements Repository {
         session.hole_id,
         session.duration_seconds,
         session.context ? JSON.stringify(session.context) : null,
-      )
-      .run();
+        session.device_id,
+        session.local_date,
+        session.device_id,
+        session.local_date,
+        input.maxPerDay,
+      );
+    const count = this.db
+      .prepare("SELECT COUNT(*) AS count FROM sessions WHERE device_id = ? AND local_date = ?")
+      .bind(session.device_id, session.local_date);
+
+    /**
+     * 解析に失敗した行はdeleteSessionで消すため、COUNTを次のday_seqにすると、
+     * 消した穴の番号を再利用して残っている行とUNIQUE制約で衝突する。
+     * MAX+1なら穴が空いても衝突せず、上限そのものはWHEREのCOUNTが判定する。
+     *
+     * batchは同じトランザクションでINSERTと件数取得を行う。UNIQUE制約違反は
+     * 条件付きINSERTが先に防ぐべき想定外なので、上限到達へ変換せずそのまま伝播させる。
+     */
+    const results = await this.db.batch<{ count: number }>([insert, count]);
+    const insertResult = results[0];
+    if (!insertResult) throw new Error("授業枠のINSERT結果がありません");
+    const changes = changesOf(insertResult.meta);
+
+    const countResult = results[1];
+    const sessionsToday = countResult?.results[0]?.count;
+    if (typeof sessionsToday !== "number") {
+      throw new Error("授業枠の確保後の件数を読み取れません");
+    }
+    if (changes === 0) return { reserved: false };
+    return { reserved: true, sessionsToday };
   }
 
   async updateSessionTopics(input: {
@@ -271,6 +307,13 @@ export class D1Repository implements Repository {
     await this.db.prepare("DELETE FROM review_schedules WHERE hole_id = ?").bind(holeId).run();
     return result.results;
   }
+}
+
+/** metaの形が変わったとき、全員を上限到達として黙って止めずに異常を表へ出す。 */
+function changesOf(meta: Record<string, unknown>): number {
+  const changes = meta["changes"];
+  if (typeof changes !== "number") throw new Error("授業枠のINSERT件数を読み取れません");
+  return changes;
 }
 
 type HoleRow = Omit<HoleRecord, "desc"> & { description: string };
