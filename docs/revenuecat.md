@@ -70,7 +70,8 @@ await const PurchasesRepository().configure(appUserId: deviceId);
 
 ### Products
 
-ストアに作った商品IDをそのまま登録する。
+ストアに作った商品IDをそのまま登録する
+(何をいくらで作るかは [`pricing.md`](pricing.md))。
 
 | 期間 | RevenueCatのパッケージ識別子 |
 | --- | --- |
