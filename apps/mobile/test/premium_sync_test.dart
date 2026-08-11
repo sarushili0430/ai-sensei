@@ -6,6 +6,8 @@ import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart'
 import 'package:ai_sensei/src/features/karte/domain/karte.dart';
 import 'package:ai_sensei/src/features/monetization/application/entitlement_controller.dart';
 import 'package:ai_sensei/src/features/monetization/application/premium_sync.dart';
+import 'package:ai_sensei/src/features/parent_report/application/parent_report_controller.dart';
+import 'package:ai_sensei/src/features/parent_report/domain/parent_report.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -37,6 +39,7 @@ class _FakeServer {
 
   int freeResponses;
   int progressCalls = 0;
+  int parentReportCalls = 0;
 
   bool get _premium => progressCalls > freeResponses;
 
@@ -54,6 +57,28 @@ class _FakeServer {
         'limits': <String, dynamic>{
           'max_seconds': 1200,
           'lesson_allowed_today': _premium,
+        },
+      });
+    }
+    if (request.url.path.endsWith('/v1/me/parent-report')) {
+      parentReportCalls += 1;
+      if (!_premium) {
+        return _json(<String, dynamic>{
+          'requires_premium': true,
+          'report': null,
+        });
+      }
+      return _json(<String, dynamic>{
+        'requires_premium': false,
+        'report': <String, dynamic>{
+          'period': <String, dynamic>{
+            'start_date': '2026-08-01',
+            'end_date': '2026-08-11',
+          },
+          'filled_holes': 2,
+          'streak_days': 4,
+          'explained_topics': <dynamic>[],
+          'quotes': <dynamic>[],
         },
       });
     }
@@ -127,6 +152,37 @@ void main() {
 
       // ここが false のままなのが、報告されたバグそのもの。
       expect(container.read(progressControllerProvider).value?.isPremium, isTrue);
+    });
+
+    test('サーバ側がPremiumへ追いついたら、親レポートのロック応答も捨てる', () async {
+      final _FakeServer server = _FakeServer();
+      final ProviderContainer container = _container(server);
+      await container.read(progressControllerProvider.future);
+
+      // ペイウォールが上に載っても画面は破棄されないので、ロック済みproviderを
+      // listenしたままにして実際のスタックと同じ寿命を作る。
+      final ProviderSubscription<AsyncValue<ParentReportResponse>> subscription =
+          container.listen<AsyncValue<ParentReportResponse>>(
+        parentReportControllerProvider,
+        (_, _) {},
+      );
+      addTearDown(subscription.close);
+      expect(
+        (await container.read(parentReportControllerProvider.future)).requiresPremium,
+        isTrue,
+      );
+
+      await container
+          .read(premiumSyncProvider.notifier)
+          .sync(expectPremium: true, backoff: _noWait);
+      await Future<void>.delayed(Duration.zero);
+
+      final ParentReportResponse refreshed = await container.read(
+        parentReportControllerProvider.future,
+      );
+      expect(refreshed.requiresPremium, isFalse);
+      expect(refreshed.report, isNotNull);
+      expect(server.parentReportCalls, 2);
     });
 
     // webhookは購入の数秒後に届く。1回読んで諦めると、届く前のものを掴む。

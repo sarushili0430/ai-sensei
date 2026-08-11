@@ -1,9 +1,11 @@
+import 'package:ai_sensei/src/features/monetization/application/entitlement_controller.dart';
 import 'package:ai_sensei/src/features/parent_report/application/parent_report_controller.dart';
 import 'package:ai_sensei/src/features/parent_report/data/parent_report_mail.dart';
 import 'package:ai_sensei/src/features/parent_report/domain/parent_report.dart';
 import 'package:ai_sensei/src/features/parent_report/presentation/parent_report_screen.dart';
 import 'package:ai_sensei/src/l10n/strings.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
@@ -114,4 +116,63 @@ void main() {
     expect(find.text(strings.paywallCta), findsOneWidget);
     expect(find.text(strings.parentReportSendEmail), findsNothing);
   });
+
+  testWidgets('画面を開いたままPremiumになったら、ロック済みの応答を取り直す',
+      (WidgetTester tester) async {
+    final _ParentReportSource source = _ParentReportSource();
+    await pumpApp(
+      tester,
+      const ParentReportScreen(),
+      overrides: <Object?>[
+        parentReportControllerProvider.overrideWith(
+          () => _ReloadingParentReportController(source),
+        ),
+        entitlementControllerProvider.overrideWith(_MutableEntitlementController.new),
+      ],
+    );
+
+    final AppStrings strings = AppStrings.of(
+      tester.element(find.byType(ParentReportScreen)),
+    );
+    expect(find.textContaining(strings.parentReportLocked), findsOneWidget);
+
+    final ProviderContainer container = ProviderScope.containerOf(
+      tester.element(find.byType(ParentReportScreen)),
+    );
+    final _MutableEntitlementController entitlement = container
+        .read(entitlementControllerProvider.notifier) as _MutableEntitlementController;
+    entitlement.becomePremium();
+    await tester.pumpAndSettle();
+
+    expect(source.loads, 2);
+    expect(find.text(strings.parentReportSendEmail), findsOneWidget);
+    expect(find.textContaining(strings.parentReportLocked), findsNothing);
+  });
+}
+
+class _MutableEntitlementController extends EntitlementController {
+  @override
+  Future<Entitlement> build() async => Entitlement.free;
+
+  void becomePremium() {
+    state = const AsyncValue<Entitlement>.data(Entitlement(isPremium: true));
+  }
+}
+
+class _ParentReportSource {
+  int loads = 0;
+
+  ParentReportResponse load() {
+    loads += 1;
+    return loads == 1 ? ParentReportResponse.locked : sampleParentReportResponse;
+  }
+}
+
+class _ReloadingParentReportController extends ParentReportController {
+  _ReloadingParentReportController(this.source);
+
+  final _ParentReportSource source;
+
+  @override
+  Future<ParentReportResponse> build() async => source.load();
 }

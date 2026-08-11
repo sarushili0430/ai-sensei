@@ -9,6 +9,7 @@ import 'package:ai_sensei/src/features/monetization/presentation/paywall_screen.
 import 'package:ai_sensei/src/features/monetization/presentation/thanks_screen.dart';
 import 'package:ai_sensei/src/features/onboarding/presentation/onboarding_screen.dart';
 import 'package:ai_sensei/src/features/parent_report/application/parent_report_controller.dart';
+import 'package:ai_sensei/src/features/parent_report/domain/parent_report.dart';
 import 'package:ai_sensei/src/features/parent_report/presentation/parent_report_screen.dart';
 import 'package:ai_sensei/src/features/plan/application/plan_controller.dart';
 import 'package:ai_sensei/src/features/plan/presentation/plan_screen.dart';
@@ -38,6 +39,7 @@ void main() {
     bool premium = false,
     ReviewQueue? queue,
     Karte? karte,
+    ParentReportController Function()? parentReportController,
   }) {
     return <Object?>[
       onboardedProvider.overrideWithValue(onboarded),
@@ -49,7 +51,8 @@ void main() {
         ),
       ),
       parentReportControllerProvider.overrideWith(
-        () => FakeParentReportController(sampleParentReportResponse),
+        parentReportController ??
+            () => FakeParentReportController(sampleParentReportResponse),
       ),
       if (karte != null)
         latestKarteControllerProvider.overrideWith(() => FakeLatestKarteController(karte)),
@@ -119,6 +122,40 @@ void main() {
     router.pop();
     await tester.pumpAndSettle();
     expect(find.byType(HomeScreen), findsOneWidget);
+  });
+
+  testWidgets('Premiumのままペイウォールから戻っても親レポートを取り直す',
+      (WidgetTester tester) async {
+    final _NavigationParentReportSource source = _NavigationParentReportSource();
+    final GoRouter router = await pumpRouter(
+      tester,
+      overrides: bootOverrides(
+        premium: true,
+        parentReportController: () => _NavigationParentReportController(source),
+      ),
+    );
+    router.go(AppRoute.parentReport.path);
+    await tester.pumpAndSettle();
+
+    final AppStrings strings = AppStrings.of(
+      tester.element(find.byType(ParentReportScreen)),
+    );
+    expect(find.textContaining(strings.parentReportLocked), findsOneWidget);
+    expect(source.loads, 1);
+
+    await tester.tap(find.text(strings.paywallCta));
+    await tester.pumpAndSettle();
+    expect(find.byType(PaywallScreen), findsOneWidget);
+
+    // すでにPremiumだったため entitlement の false → true 通知は来ない。
+    // この場合も、ペイウォールを閉じた境界でロック応答を捨てる必要がある。
+    router.pop();
+    await tester.pumpAndSettle();
+
+    expect(source.loads, 2);
+    expect(find.byType(ParentReportScreen), findsOneWidget);
+    expect(find.text(strings.parentReportPreviewNote), findsOneWidget);
+    expect(find.textContaining(strings.parentReportLocked), findsNothing);
   });
 
   testWidgets('計画へ直接着地しても、ホームタブへ戻れる', (WidgetTester tester) async {
@@ -359,4 +396,22 @@ class _ReadyPlanController extends PlanController {
 
   @override
   Future<void> load() async {}
+}
+
+class _NavigationParentReportSource {
+  int loads = 0;
+
+  ParentReportResponse load() {
+    loads += 1;
+    return loads == 1 ? ParentReportResponse.locked : sampleParentReportResponse;
+  }
+}
+
+class _NavigationParentReportController extends ParentReportController {
+  _NavigationParentReportController(this.source);
+
+  final _NavigationParentReportSource source;
+
+  @override
+  Future<ParentReportResponse> build() async => source.load();
 }

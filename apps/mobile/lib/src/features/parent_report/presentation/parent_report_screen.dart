@@ -21,6 +21,33 @@ import '../domain/parent_report.dart';
 class ParentReportScreen extends ConsumerWidget {
   const ParentReportScreen({super.key});
 
+  void _refreshLockedReport(WidgetRef ref) {
+    // RevenueCatは**再取得のきっかけ**にだけ使う。ここでロック済みの本文を
+    // クライアント判断で開くと、webhookが届いていないサーバとの有料境界がずれる。
+    // Premiumになっても、最後に本文を返してよいと決めるのは再取得先のAPI。
+    if (!ref.read(isPremiumProvider)) return;
+
+    final AsyncValue<ParentReportResponse> current = ref.read(
+      parentReportControllerProvider,
+    );
+    if (current.value?.requiresPremium == false) return;
+
+    // `refresh()`を古いNotifierへ投げるのではなく、応答を持つproviderごと捨てる。
+    // StatefulShellRouteをまたぐpushでは画面が組み直される場合があり、古い
+    // Notifierの完了を待つと、新しい画面が読んでいるロック応答には届かないため。
+    // invalidateなら、いまwatchしている画面のbuildが必ず新しいGETを始める。
+    ref.invalidate(parentReportControllerProvider);
+  }
+
+  Future<void> _openPaywall(BuildContext context, WidgetRef ref) async {
+    await context.push<void>(AppRoute.paywall.path);
+    if (!context.mounted) return;
+
+    // SDKの通知を取りこぼしても、「この画面から課金へ行って戻った」という
+    // 確実な境界でもう一度見る。キャンセル時はPremiumでないので通信を増やさない。
+    _refreshLockedReport(ref);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AppStrings strings = AppStrings.of(context);
@@ -36,6 +63,15 @@ class ParentReportScreen extends ConsumerWidget {
       plans,
       PlanPeriod.monthly,
     );
+
+    ref.listen<bool>(isPremiumProvider, (bool? previous, bool next) {
+      if (!next || previous == true) return;
+
+      // RevenueCatのペイウォールはこの画面の上に載るので、購入中もロック済みの
+      // providerは生きている。Premiumへ変わった瞬間に読み直さないと、お礼を
+      // 閉じても古い200応答(`requires_premium: true`)がそのまま残る。
+      _refreshLockedReport(ref);
+    });
 
     return Scaffold(
       appBar: AppBar(
@@ -62,7 +98,7 @@ class ParentReportScreen extends ConsumerWidget {
                     '${strings.parentReportLocked}\n\n'
                     '${strings.parentReportPriceNote(plan: pricePlan?.period.label(strings), price: pricePlan?.priceString)}',
                 primaryLabel: strings.paywallCta,
-                onPrimary: () => context.push(AppRoute.paywall.path),
+                onPrimary: () => _openPaywall(context, ref),
               );
             }
             return _ReportBody(report: report, pricePlan: pricePlan);
