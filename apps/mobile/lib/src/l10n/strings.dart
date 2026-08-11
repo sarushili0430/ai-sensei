@@ -464,7 +464,16 @@ class AppStrings {
   String get paywallRowKarte => _pick('カルテ', 'Karte');
   String get paywallRowFollowup => _pick('先輩のあと追い質問', 'Follow-up questions');
   String get paywallEverydayOne => _pick('毎日1問', 'One question every day');
-  String get paywallEverydayQuestions => _pick('毎日、何問でも', 'Questions every day');
+
+  /// Premium のセッション枠。
+  ///
+  /// **「何問でも」と書いてはいけない。**`PREMIUM_SESSIONS_PER_DAY` の
+  /// フェアユース上限があるので、無制限を約束すると**買ったあとにAPIが断る**。
+  /// §6-3 が数字を隠せと言っているのは**利用中の残数表示**の話であって、
+  /// 買うかどうかを決める場所で嘘をついてよいという意味ではない
+  /// (HAMM の「誠実なペイウォール」に正面から反する)。
+  /// 通常利用では一度も当たらない上限なので、**当たらないことを言う**。
+  String get paywallEverydayQuestions => _pick('毎日、続けて何問も', 'Several questions a day');
   String get paywallTodayOnly => _pick('当日のみ', 'Today only');
   String get paywallHistory => _pick('穴の復習と履歴', 'Review and history');
 
