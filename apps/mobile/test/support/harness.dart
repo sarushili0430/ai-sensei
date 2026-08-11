@@ -373,7 +373,6 @@ final FilledHole sampleFilledHole = FilledHole(
 
 /// ホームに出す復習候補。古い穴も混ぜ、カードが件数ではなく直近の内容を選ぶ状態にする。
 final ReviewQueue sampleReviewQueue = ReviewQueue(
-  requiresPremium: false,
   items: <ReviewQueueItem>[
     ReviewQueueItem(
       hole: Hole(
@@ -386,11 +385,13 @@ final ReviewQueue sampleReviewQueue = ReviewQueue(
       ),
       daysSince: 3,
       prompt: '3日前の「平方完成のなぜ」、いまなら説明できますか?',
+      quiz: '平方完成をする理由を説明できる?',
     ),
     ReviewQueueItem(
       hole: sampleKarte.holes.first,
       daysSince: 1,
       prompt: 'きのうの「判別式の意味」、もう一度きいてもいいですか?',
+      quiz: '判別式を使うと解の個数がわかる理由を説明できる?',
     ),
   ],
 );
@@ -438,12 +439,37 @@ class FakeSessionOutcomeController extends SessionOutcomeController {
 }
 
 class FakeReviewController extends ReviewController {
-  FakeReviewController(this._queue);
+  FakeReviewController(
+    this._queue, {
+    this.queueAfterAnswer,
+    this.answerSucceeds = true,
+  });
 
-  final ReviewQueue _queue;
+  ReviewQueue _queue;
+
+  /// 回答後に画面へ返すキュー。テストごとに「次の1問」や空の状態を差し替える。
+  ReviewQueue? queueAfterAnswer;
+  bool answerSucceeds;
+
+  /// 画面が送った自己申告。`notYet` を送っていないこともここで確認できる。
+  final List<(String, ReviewOutcome)> answerCalls = <(String, ReviewOutcome)>[];
 
   @override
   Future<ReviewQueue> build() async => _queue;
+
+  /// 本物のAPIへ落とさず、呼び出し内容と回答後のキューだけを再現する。
+  @override
+  Future<bool> answer(String holeId, ReviewOutcome outcome) async {
+    answerCalls.add((holeId, outcome));
+    if (!answerSucceeds) return false;
+
+    final ReviewQueue? next = queueAfterAnswer;
+    if (next != null) {
+      _queue = next;
+      state = AsyncValue<ReviewQueue>.data(next);
+    }
+    return true;
+  }
 }
 
 class FakeParentReportController extends ParentReportController {

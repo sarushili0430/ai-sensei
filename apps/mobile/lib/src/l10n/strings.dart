@@ -176,8 +176,8 @@ class AppStrings {
   /// 「本日の残り回数 0/3」とは書かない。数字を見せた瞬間に不満になるし、
   /// 見えていれば残りの使い道を計算し始める。上限は制限ではなく
   /// 「詰め込みすぎても入らない」という先生の判断として出す。
-  String get homeEnoughForToday => _pick(
-        '今日はここまでにしよっか。詰め込みすぎても入らないから、明日また続きやろう。',
+  String get lessonEnoughForToday => _pick(
+        '今日はここまでにしよっか。詰め込みすぎても入らないから。明日また続きやろう。',
         "Let's call it a day. Cramming more won't stick — we'll pick this up tomorrow.",
       );
 
@@ -251,12 +251,6 @@ class AppStrings {
   /// カメラを開けなかったとき(許可はあるが端末側の理由)。許可の話と混ぜない。
   String get captureCameraFailed => _pick('カメラを開けませんでした。もう一度おためしください。',
       "We couldn't open the camera. Please try again.");
-
-  /// Premium のフェアユース上限。数や課金導線ではなく、先輩の判断として締める。
-  String get captureFairUseLimitReached => _pick(
-        '今日はここまでにしよっか。詰め込みすぎても入らないから。明日また続きやろう。',
-        "Let's call it a day. Cramming more won't stick — we'll pick this up tomorrow.",
-      );
 
   // --- 会話 ---
   String get sessionListening => _pick('聞いています', 'Listening');
@@ -376,9 +370,20 @@ class AppStrings {
 
   // --- 復習 ---
   String get reviewTitle => _pick('埋めにいく穴', 'Gaps to fill');
-  String get reviewStart => _pick('30秒で説明する', 'Explain in 30 seconds');
-  String get reviewLocked =>
-      _pick('穴の復習はPremiumの機能です', 'Reviewing past gaps is a Premium feature');
+  String get reviewSaidIt => _pick('言えた', 'I could explain it');
+  String get reviewNotYet => _pick('まだ言えない', 'Not yet');
+
+  /// 「まだ」は失点ではない。先輩が引き取る言い方にして、選んだ人を咎めない。
+  String get reviewNotYetLead => _pick(
+        'じゃあ、先輩ともう一回見てみよっか',
+        "Let's go through it together, then",
+      );
+  String get reviewAskSenpai => _pick('先輩に聞く', 'Ask senpai');
+  String get reviewLater => _pick('あとにする', 'Later');
+  String get reviewVoicePremium => _pick(
+        '声で先輩に聞き直す授業はPremiumです。小テストは無料のまま使えます。',
+        'Calling your senpai back by voice uses Premium lesson mode. Quick quizzes stay free.',
+      );
 
   /// 埋めた穴のセクション。ペイウォールが謳う「履歴」はここで果たす。
   String reviewFilledTitle(int count) =>
@@ -443,8 +448,30 @@ class AppStrings {
 
   // --- ペイウォール ---
   String get paywallTitle => _pick('穴を、埋めきる。', 'Fill every gap.');
-  String get paywallPrice => _pick(
-      'Premium ¥580/月 ・ はじめの7日間は無料', 'Premium ¥580/month · First 7 days free');
+
+  /// Premium の一行紹介。**数字は Offering が返した文字列だけ**を置く。
+  ///
+  /// 期間を「/月」と自前で書かないのは、週額の商品に付けると嘘になるから。
+  /// プラン名([planMonthly] など)をそのまま並べる。
+  /// 日英で語順が同じなので `_pick` しない([premiumBadge] と同じ)。
+  String paywallPriceLine(String plan, String price) => 'Premium $plan $price';
+
+  /// 価格がまだ読めていないとき(祝福画面)。**代わりの数字を書かない。**
+  ///
+  /// 据え置きの「¥580/月」を出すと、ダッシュボードで値段を変えた瞬間に、
+  /// この行と次に出るストアの決済画面が食い違ったまま購入を決めさせることになる。
+  /// 比較表の Premium 欄([paywallEverydayQuestions])と同じことだけを言う。
+  String get paywallPricePending => _pick('Premium なら、毎日つづけて何問も聞けます',
+      'With Premium you can ask several questions a day');
+
+  /// 自前ペイウォールで Offering が取れなかったとき。
+  ///
+  /// 購入ボタンが押せない状態なので、**押せない理由まで言う**。
+  /// ここも数字は出さない。トライアルの有無も Offering が持っているので、
+  /// 「はじめの7日間は無料」も同じく書けない。
+  String get paywallPriceUnavailable => _pick(
+      'いまは金額を読み込めていません。少しあとで、もう一度ひらいてみてください。',
+      "We can't load the price right now. Please try opening this again in a moment.");
 
   /// ペイウォールを**開く**ボタン(復習画面など)。ここで無料日数を約束しない。
   /// ストアの商品にトライアルが付いているかは、Offering を読むまで分からない。
@@ -769,12 +796,23 @@ class AppStrings {
       _pick('今月は、ここに載る説明がまだありません', 'No explanation to quote here yet this month');
   String parentReportQuote(String quote) => _pick('「$quote」', '“$quote”');
 
-  /// ペイウォールの据え置き文言をそのまま埋め込む。
-  /// 価格を2か所に直書きすると、商品を変えた日に親へ古い額を送るため。
-  String get parentReportPriceNote => _pick(
-        'この先も続ける場合の料金は、$paywallPriceです。',
-        'The current price to keep going is $paywallPrice.',
+  /// 親へ渡す料金。**数字は Offering から取れたときだけ**書く。
+  ///
+  /// 据え置き価格を持つと、RevenueCat側の商品を変えた日にメールだけ古い額になる。
+  /// 取れないときは推測せず、ストアの購入画面が正だと伝える。
+  String parentReportPriceNote({String? plan, String? price}) {
+    if (plan == null || price == null) {
+      return _pick(
+        '料金はストアの購入画面で確認できます。',
+        'The current price is shown in the store purchase screen.',
       );
+    }
+    final String line = paywallPriceLine(plan, price);
+    return _pick(
+      'この先も続ける場合の料金は、$lineです。',
+      'The current price to keep going is $line.',
+    );
+  }
 
   String get parentReportPreviewNote => _pick(
         '下に見えている本文が、そのままメールに入ります。引用も含めて、送る前に確認してください。',
@@ -798,10 +836,6 @@ class AppStrings {
   // 何も変わらない選択肢として同じ場所に置く。残数や達成率も出さない。
   String get holeSelfReportQuestion =>
       _pick('これ、言えるようになった?', 'Can you explain this now?');
-  String get holeSelfReportCanSay =>
-      _pick('言えるようになった', 'I can explain it now');
-  String get holeSelfReportNotYet =>
-      _pick('まだ。今日はそのまま', 'Not yet. Leave it for now');
   String get holeSelfReportNoPressure => _pick(
         '決めるのはあなたです。「まだ」を選んでも、穴も記録もそのままです。',
         'You decide. Choosing “not yet” leaves your gap and record unchanged.',
@@ -810,8 +844,6 @@ class AppStrings {
         '今は決めなくても、あとで復習画面から選べます。',
         'You can leave this for now and choose later from the review screen.',
       );
-  String get holeSelfReportReviewWithSenpai =>
-      _pick('先輩といっしょに見直す', 'Review it with your senpai');
   String get holeSelfReportFilling =>
       _pick('カルテに反映しています…', 'Updating your karte…');
 

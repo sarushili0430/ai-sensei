@@ -17,6 +17,7 @@
                 "photo_unreadable",
                 "out_of_scope",
                 "session_not_found",
+                "hole_not_found",
                 "rate_limited",
                 "internal_error"
               ]

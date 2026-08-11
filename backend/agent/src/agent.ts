@@ -277,6 +277,9 @@ export default defineAgent({
       log.info("karte_uncertainty_hole_added", { session_id: context.session_id });
     }
 
+    // review_outcome はここでは立てない。言えたかどうかを決めるのは本人で、
+    // 会話から推測すると §2 が却下した「AIによる採点」になる。
+    // 申告はアプリの二択から届く。
     const body: CompleteSessionRequest = {
       transcript,
       karte,

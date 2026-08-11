@@ -4,6 +4,7 @@ import {
   karteDraftSchema,
   karteSchema,
   progressSchema,
+  reviewOutcomeSchema,
   topicIdSchema,
 } from "./karte.ts";
 import { planDateSchema, planSourceSchema, studyPlanDraftSchema, studyPlanSchema } from "./plan.ts";
@@ -19,9 +20,9 @@ export const apiPaths = {
   completeSession: (sessionId: string) => `/v1/sessions/${sessionId}/complete`,
   progress: "/v1/me/progress",
   reviewQueue: "/v1/me/reviews",
+  answerReview: (holeId: string) => `/v1/me/reviews/${holeId}`,
   revenueCatWebhook: "/v1/webhooks/revenuecat",
   parentReport: "/v1/me/parent-report",
-  fillHole: (holeId: string) => `/v1/me/holes/${holeId}/filled`,
   studyRoomVisit: "/v1/me/study-room",
   createPlanSession: "/v1/plans",
   completePlanSession: (planSessionId: string) => `/v1/plans/${planSessionId}/complete`,
@@ -357,6 +358,13 @@ export const completeSessionRequestSchema = z
     duration_seconds: z.number().int().min(0),
     /** 会話が最後まで行かずに切れた場合。カルテは作るが穴の重み付けを控えめにする。 */
     ended_reason: z.enum(["completed", "timeout", "user_left", "error"]),
+    /**
+     * `kind: "review"` のセッションでのみ意味を持つ、本人の申告。
+     * 省略が既定で、その場合は「埋めない」。穴が埋まるのは `"said_it"` が明示されたときだけ。
+     * 接続しただけで戻ったセッション(発話ゼロ・`ended_reason: "user_left"`)では
+     * この欄が立たず、穴はopenのまま残る。
+     */
+    review_outcome: reviewOutcomeSchema.optional(),
   })
   .strict();
 export type CompleteSessionRequest = z.infer<typeof completeSessionRequestSchema>;
@@ -392,13 +400,19 @@ export const reviewQueueItemSchema = z
     days_since: z.number().int().min(0),
     /** 通知文と同じ、後輩の声のひとこと。 */
     prompt: z.string().min(1).max(200),
+    /**
+     * 10秒で答える1問。レスポンスでは必須にし、旧データの
+     * `hole.quiz ?? hole.desc` はサーバ側で解決する。クライアントに分岐を
+     * 持たせると、画面ごとに別の出題を見せてしまうため。
+     */
+    quiz: z.string().min(1).max(200),
   })
   .strict();
 export type ReviewQueueItem = z.infer<typeof reviewQueueItemSchema>;
 
 /**
- * 埋まった穴。ペイウォールが謳う Premium の「履歴」はこれで果たす。
- * 別画面の履歴は作らず、復習画面の下半分に置く(埋めにいく穴 ↔ 埋めた穴)。
+ * 埋まった穴。別画面の履歴は作らず、無料の復習画面の下半分に置く
+ * (埋めにいく穴 ↔ 埋めた穴)。小テストで埋めた手応えも同じ場所に積み上げる。
  */
 export const filledHoleSchema = z
   .object({
@@ -421,11 +435,19 @@ export const reviewQueueResponseSchema = z
      * ここは直近 {@link filledHolesLimit} 件までしか載らない。
      */
     filled: z.array(filledHoleSchema).max(filledHolesLimit),
-    /** 無料ユーザーには空配列を返し、これをtrueにする(復習はPremium)。 */
-    requires_premium: z.boolean(),
   })
   .strict();
 export type ReviewQueueResponse = z.infer<typeof reviewQueueResponseSchema>;
+
+/** 小テストの自己申告。サーバは正誤を採点せず、本人の二択だけを受け取る。 */
+export const reviewAnswerRequestSchema = z.object({ outcome: reviewOutcomeSchema }).strict();
+export type ReviewAnswerRequest = z.infer<typeof reviewAnswerRequestSchema>;
+
+/** 自己申告の直後に、穴とホームのカウンターを更新するための応答。 */
+export const reviewAnswerResponseSchema = z
+  .object({ hole: holeSchema, progress: progressSchema })
+  .strict();
+export type ReviewAnswerResponse = z.infer<typeof reviewAnswerResponseSchema>;
 
 export const progressResponseSchema = z
   .object({
@@ -493,6 +515,7 @@ export const apiErrorCodes = [
   "photo_unreadable",
   "out_of_scope",
   "session_not_found",
+  "hole_not_found",
   "rate_limited",
   "internal_error",
 ] as const;

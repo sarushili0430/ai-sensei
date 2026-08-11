@@ -34,6 +34,7 @@
 
 ```
 apps/mobile/        Flutter (iOS先行) + Riverpod 3 + livekit_client
+apps/lp/            紹介ページ(日英2枚・素のHTML/CSS)。Cloudflare Workers の静的アセットとして配信
 backend/api/        Cloudflare Workers + Hono — セッション作成 / カルテ保存 / 課金webhook
 backend/agent/      LiveKit Agents — VAD・STT・LLM・TTSの会話パイプライン + 板書生成(先輩キャラ)
 packages/contract/  APIとカルテと板書(`board.ts`)のスキーマ + fixture(モバイル/サーバ双方で契約を検証)

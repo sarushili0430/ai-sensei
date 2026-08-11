@@ -1,15 +1,11 @@
-import 'package:ai_sensei/src/api/api_client.dart';
 import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
 import 'package:ai_sensei/src/features/karte/application/lesson_hole_candidate.dart';
 import 'package:ai_sensei/src/features/karte/domain/karte.dart';
 import 'package:ai_sensei/src/features/karte/presentation/karte_screen.dart';
-import 'package:ai_sensei/src/features/karte/presentation/review_screen.dart';
 import 'package:ai_sensei/src/l10n/strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 
 import 'support/harness.dart';
 
@@ -44,17 +40,18 @@ final Karte lessonKarte = sampleKarte.copyWith(
 );
 
 final ReviewQueue lessonQueue = ReviewQueue(
-  requiresPremium: false,
   items: <ReviewQueueItem>[
     ReviewQueueItem(
       hole: sameTopicButUnrelatedHole,
       daysSince: 1,
       prompt: '前の穴を、いまなら説明できますか?',
+      quiz: '解の公式で符号を変える理由を言える?',
     ),
     ReviewQueueItem(
       hole: relevantHole,
       daysSince: 2,
       prompt: '前の穴を、いまなら説明できますか?',
+      quiz: '判別式を使う理由を言える?',
     ),
   ],
 );
@@ -63,14 +60,16 @@ class RecordingReviewController extends ReviewController {
   RecordingReviewController(this.initial);
 
   final ReviewQueue initial;
-  String? filledHoleId;
+  String? answeredHoleId;
+  ReviewOutcome? answeredOutcome;
 
   @override
   Future<ReviewQueue> build() async => initial;
 
   @override
-  Future<void> fillHole(String holeId) async {
-    filledHoleId = holeId;
+  Future<bool> answer(String holeId, ReviewOutcome outcome) async {
+    answeredHoleId = holeId;
+    answeredOutcome = outcome;
     final ReviewQueue current = state.value ?? initial;
     state = AsyncValue<ReviewQueue>.data(
       current.copyWith(
@@ -79,29 +78,12 @@ class RecordingReviewController extends ReviewController {
             .toList(growable: false),
       ),
     );
+    return true;
   }
 }
 
 void main() {
   const AppStrings ja = AppStrings(Locale('ja'));
-
-  test('自己申告APIは穴IDを含むPOSTを送り、本文のない成功を受け取れる', () async {
-    late http.Request sent;
-    final ApiClient client = ApiClient(
-      baseUrl: 'http://test',
-      deviceId: 'device-1',
-      client: MockClient((http.Request request) async {
-        sent = request;
-        return http.Response('', 204);
-      }),
-    );
-
-    await client.fillHole('hol_1');
-
-    expect(sent.method, 'POST');
-    expect(sent.url.path, '/v1/me/holes/hol_1/filled');
-    expect(sent.headers['x-device-id'], 'device-1');
-  });
 
   group('授業後に聞く穴の選び方', () {
     test('topic_idだけで全件を出さず、「言えたこと」と具体語が重なる1件だけを選ぶ', () {
@@ -123,13 +105,18 @@ void main() {
         holes: <Hole>[currentHole],
       );
       final ReviewQueue onlyCurrent = ReviewQueue(
-        requiresPremium: false,
         items: <ReviewQueueItem>[
-          ReviewQueueItem(hole: currentHole, daysSince: 0, prompt: '今回の穴'),
+          ReviewQueueItem(
+            hole: currentHole,
+            daysSince: 0,
+            prompt: '今回の穴',
+            quiz: '今回の穴を言える?',
+          ),
           ReviewQueueItem(
             hole: sameTopicButUnrelatedHole,
             daysSince: 1,
             prompt: '関係しない過去の穴',
+            quiz: '解の公式で符号を変える理由を言える?',
           ),
         ],
       );
@@ -177,11 +164,11 @@ void main() {
       expect(find.text(sameTopicButUnrelatedHole.description), findsNothing);
       expect(find.text(ja.holeSelfReportLater), findsOneWidget);
 
-      await tester.tap(find.text(ja.holeSelfReportNotYet));
+      await tester.tap(find.text(ja.reviewNotYet));
       await tester.pumpAndSettle();
 
       expect(find.text(ja.holeSelfReportQuestion), findsNothing);
-      expect(controller.filledHoleId, isNull);
+      expect(controller.answeredHoleId, isNull);
     });
 
     testWidgets('「言えるようになった」を選んだときだけ自己申告APIの操作へ渡す', (
@@ -191,10 +178,11 @@ void main() {
         tester,
       );
 
-      await tester.tap(find.text(ja.holeSelfReportCanSay));
+      await tester.tap(find.text(ja.reviewSaidIt));
       await tester.pumpAndSettle();
 
-      expect(controller.filledHoleId, relevantHole.id);
+      expect(controller.answeredHoleId, relevantHole.id);
+      expect(controller.answeredOutcome, ReviewOutcome.saidIt);
       expect(find.text(ja.holeSelfReportQuestion), findsNothing);
     });
 
@@ -209,63 +197,9 @@ void main() {
       await pumpLessonKarte(tester, locale: const Locale('en'));
 
       expect(find.text(en.holeSelfReportQuestion), findsOneWidget);
-      expect(find.text(en.holeSelfReportCanSay), findsOneWidget);
-      expect(find.text(en.holeSelfReportNotYet), findsOneWidget);
+      expect(find.text(en.reviewSaidIt), findsOneWidget);
+      expect(find.text(en.reviewNotYet), findsOneWidget);
       expect(find.text(en.holeSelfReportLater), findsOneWidget);
-    });
-  });
-
-  group('復習画面', () {
-    Future<RecordingReviewController> pumpReview(WidgetTester tester) async {
-      final RecordingReviewController controller = RecordingReviewController(
-        ReviewQueue(
-          requiresPremium: false,
-          items: <ReviewQueueItem>[
-            ReviewQueueItem(
-              hole: relevantHole,
-              daysSince: 2,
-              prompt: 'いまなら言える?',
-            ),
-          ],
-        ),
-      );
-      await pumpApp(
-        tester,
-        const ReviewScreen(),
-        overrides: <Object?>[
-          reviewControllerProvider.overrideWith(() => controller),
-        ],
-      );
-      return controller;
-    }
-
-    testWidgets('音声セッションの前に自己申告を聞き、「まだ」はopenのまま閉じる', (
-      WidgetTester tester,
-    ) async {
-      final RecordingReviewController controller = await pumpReview(tester);
-
-      await tester.tap(find.text(ja.reviewStart));
-      await tester.pumpAndSettle();
-      expect(find.text(ja.holeSelfReportQuestion), findsOneWidget);
-      expect(find.text(ja.holeSelfReportReviewWithSenpai), findsOneWidget);
-
-      await tester.tap(find.text(ja.holeSelfReportNotYet));
-      await tester.pumpAndSettle();
-
-      expect(controller.filledHoleId, isNull);
-      expect(find.text(relevantHole.description), findsOneWidget);
-    });
-
-    testWidgets('声を出さずに「言える」を選ぶと、その穴だけを埋める', (WidgetTester tester) async {
-      final RecordingReviewController controller = await pumpReview(tester);
-
-      await tester.tap(find.text(ja.reviewStart));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text(ja.holeSelfReportCanSay));
-      await tester.pumpAndSettle();
-
-      expect(controller.filledHoleId, relevantHole.id);
-      expect(find.text(ja.reviewEmpty), findsOneWidget);
     });
   });
 }

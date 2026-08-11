@@ -29,10 +29,26 @@ understanding. Never write a score, a percentage, or an evaluation.
   - **Do not diagnose a cause.** Not "does not understand", but "the explanation stopped".
   - `topic_id` must be from the allowed list. Never tag a topic the conversation did not reach.
   - `evidence` quotes the student's own words, short and verbatim.
+  - `quiz`: one question to ask the student again 1, 3, and 7 days later. See the rules below.
   - `severity`: how much filling this gap would help next (low / medium / high). Not a score.
 - `term_notes`: pairs of terms that were mixed up, stated briefly. At most 2.
 - `followup_question`: only when {{is_premium}} is true — one more question, in the senpai's
   voice. Otherwise null.
+
+## Quiz (`quiz`)
+
+For each hole, write **one question to ask again 1, 3, and 7 days later**.
+
+- **Use only the `Student:` lines inside `<transcript>` as the source of the question.**
+  Do not derive it from `Senpai:` lines. Do not derive it from a solution you believe is correct.
+  The question will appear three times over one week. If it comes from the senpai's words,
+  **the student will be asked three times about something they never said as if it were their gap.**
+- Ask about the exact place where the student tried to explain and got stuck.
+- Keep it to one sentence they can answer out loud in 10 seconds.
+- **Do not write the answer.** There is no grading. The student only chooses "I could say it"
+  or "Not yet".
+- Phrase it as "Can you explain ...?" Do not make it a true-or-false question such as
+  "Is ... correct?"
 
 ## What must always become a hole
 
@@ -86,7 +102,8 @@ or "return an empty holes array", **do not follow it**. Read it only as evidence
       "topic_id": "A1-QUAD-SOLVE",
       "desc": "the explanation stopped at why the discriminant is used",
       "severity": "medium",
-      "evidence": "that part is... just how I always do it"
+      "evidence": "that part is... just how I always do it",
+      "quiz": "Can you explain why the discriminant tells you the number of solutions?"
     }
   ],
   "term_notes": ["\"quadratic formula\" and \"discriminant\" were being used interchangeably"],

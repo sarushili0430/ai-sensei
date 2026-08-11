@@ -114,6 +114,18 @@ List<SubscriptionPlan> plansOf(Offering? offering) {
   ];
 }
 
+/// プラン一覧から期間で1つ選ぶ。同じ期間が無ければ先頭(空なら null)。
+///
+/// ペイウォールの既定選択と、祝福画面に出す一行が**同じプランを指す**ように
+/// 1か所に置く。別々に選ぶと、見せた価格と実際に買う価格がずれる。
+SubscriptionPlan? planForPeriod(List<SubscriptionPlan> plans, PlanPeriod period) {
+  if (plans.isEmpty) return null;
+  for (final SubscriptionPlan plan in plans) {
+    if (plan.period == period) return plan;
+  }
+  return plans.first;
+}
+
 /// 課金状態のスナップショット。
 @immutable
 class Entitlement {

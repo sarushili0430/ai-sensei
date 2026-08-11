@@ -23,10 +23,11 @@ const messages: Record<ApiErrorCode, { ja: string; en: string; status: number }>
     status: 429,
   },
   premium_required: {
-    // 計画も復習も「原価が発生するものだけが有料」という同じ境界にある。
-    // 機能名を固定すると、別のPremium導線から復習の説明が出て利用者を迷わせる。
-    ja: "この機能はPremiumで利用できます。無料のままでも、今日のカルテは見られます。",
-    en: "This feature is available with Premium. Today's karte stays free.",
+    // 計画モードと声で聞き直す授業は、同じ `premium_required` を返す。
+    // 有料側の機能名を固定すると別の導線で誤案内になるため汎用にしつつ、
+    // 無料で残る小テストとカルテは明示して、すべて閉じたようには見せない。
+    ja: "この機能はPremiumで利用できます。無料のままでも、小テストと今日のカルテは使えます。",
+    en: "This feature is available with Premium. Quick quizzes and today's karte stay free.",
     status: 402,
   },
   photo_unreadable: {
@@ -42,6 +43,11 @@ const messages: Record<ApiErrorCode, { ja: string; en: string; status: number }>
   session_not_found: {
     ja: "このセッションは見つかりませんでした。",
     en: "Session not found.",
+    status: 404,
+  },
+  hole_not_found: {
+    ja: "この穴は見つかりませんでした。復習画面を開き直してみてください。",
+    en: "We couldn't find this gap. Please reopen the review screen.",
     status: 404,
   },
   rate_limited: {

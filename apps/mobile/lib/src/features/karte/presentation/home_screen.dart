@@ -200,7 +200,7 @@ class _OpenHolesCard extends ConsumerWidget {
       );
     }
 
-    // 無料では復習キューの中身が隠れるので、会話直後のカルテも候補にする。
+    // キューの取得前・失敗時にも内容を出せるよう、会話直後のカルテも候補にする。
     // 両方に同じ穴がいても、日付で選ぶだけなので表示は1件のまま変わらない。
     final ReviewQueue? queue = ref.watch(reviewControllerProvider).value;
     final Karte? latestKarte = ref.watch(latestKarteControllerProvider);
@@ -290,7 +290,7 @@ class _EnoughForTodayLine extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         Text(
-          strings.homeEnoughForToday,
+          strings.lessonEnoughForToday,
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodySmall,
         ),

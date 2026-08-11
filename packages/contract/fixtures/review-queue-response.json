@@ -12,7 +12,8 @@
       },
       "topic_id": "M1-NIJI-GURAFU",
       "days_since": 3,
-      "prompt": "3日前の「平方完成のなぜ」、いまなら説明できますか?"
+      "prompt": "3日前の「平方完成のなぜ」、いまなら説明できますか?",
+      "quiz": "平方完成をする理由を説明できる?"
     },
     {
       "hole": {
@@ -26,7 +27,8 @@
       },
       "topic_id": "M1-NIJI-HANBETSU",
       "days_since": 1,
-      "prompt": "きのうの「判別式の意味」、もう一度きいてもいいですか?"
+      "prompt": "きのうの「判別式の意味」、もう一度きいてもいいですか?",
+      "quiz": "判別式を使うと解の個数がわかる理由を説明できる?"
     }
   ],
   "filled": [
@@ -43,6 +45,5 @@
       "topic_id": "M2-ZUKEI-ENCHOKU",
       "days_since_filled": 1
     }
-  ],
-  "requires_premium": false
+  ]
 }

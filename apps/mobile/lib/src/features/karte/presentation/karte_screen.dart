@@ -139,7 +139,7 @@ class _LessonHoleSelfReportState extends ConsumerState<_LessonHoleSelfReport> {
     if (_dismissed) return const SizedBox.shrink();
 
     final ReviewQueue? queue = ref.watch(reviewControllerProvider).value;
-    if (queue == null || queue.requiresPremium) return const SizedBox.shrink();
+    if (queue == null) return const SizedBox.shrink();
     final ReviewQueueItem? candidate = selectLessonHoleCandidate(
       karte: widget.karte,
       queue: queue,

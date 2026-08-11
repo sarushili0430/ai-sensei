@@ -1,14 +1,15 @@
-import type {
-  ParentReportResponse,
-  ProgressResponse,
-  ReviewQueueResponse,
-  StudyRoomVisitRequest,
-} from "@ai-sensei/contract";
 import {
+  type Hole,
+  type ParentReportResponse,
+  type ProgressResponse,
+  type ReviewAnswerResponse,
+  type ReviewQueueResponse,
+  type StudyRoomVisitRequest,
   filledHolesLimit,
   parentReportQuoteMaxCount,
   parentReportQuoteMaxLength,
   parentReportTopicMaxCount,
+  reviewAnswerRequestSchema,
   studyRoomVisitIdempotencyHeader,
   studyRoomVisitIdempotencyKeySchema,
   studyRoomVisitRequestSchema,
@@ -63,21 +64,17 @@ meRoute.get("/progress", async (c) => {
  * GET /v1/me/reviews — 復習画面(プッシュ起点)。
  *
  * 返すのは2つ。「埋めにいく穴」(open)と「埋めた穴」(filled)。
- * 後者がペイウォールの謳う Premium の「履歴」で、別画面は作らない。
+ * 小テストと1/3/7日の通知は無料(ピボット計画 §6-3)で、別画面も作らない。
  *
- * 復習はPremium機能なので、無料ユーザーには空配列を返す。
- * エラーにはしない(「使えない」ではなく「まだ開いていない」として見せる)。
+ * 音声で「先輩を呼び直す」ときはPremiumかつ通常の授業と同じ日次枠を使う。
+ * 契約判定はセッション作成側、日次の可否は `/progress` の
+ * `limits.lesson_allowed_today` が正なので、キューに別名のフラグを重ねない。
+ * 同じことを2か所で持つと、片方だけ更新されて分岐がずれるため。
  */
 meRoute.get("/reviews", async (c) => {
   const { repository, now } = c.get("services");
   const at = now();
   const deviceId = c.get("deviceId");
-
-  const user = await repository.ensureUser(deviceId, at);
-  if (!isPremiumNow(user, at)) {
-    const locked: ReviewQueueResponse = { items: [], filled: [], requires_premium: true };
-    return c.json(locked);
-  }
 
   const today = toLocalDate(at);
   const holes = await repository.listHoles(deviceId);
@@ -95,6 +92,8 @@ meRoute.get("/reviews", async (c) => {
           daysSince,
           locale: localeOfTopicId(hole.topic_id),
         }),
+        // 旧データには出題が無い。クライアントに分岐を持たせると画面ごとに違う問いが出る。
+        quiz: hole.quiz ?? hole.desc,
       };
     })
     // 古い穴 → 深い穴の順。放置されたものから声をかける。
@@ -117,7 +116,10 @@ meRoute.get("/reviews", async (c) => {
     // ここは画面に出すぶんだけを載せる。
     .slice(0, filledHolesLimit);
 
-  const response: ReviewQueueResponse = { items, filled, requires_premium: false };
+  const response: ReviewQueueResponse = {
+    items,
+    filled,
+  };
   return c.json(response);
 });
 
@@ -169,34 +171,56 @@ meRoute.get("/parent-report", async (c) => {
 });
 
 /**
- * POST /v1/me/holes/{holeId}/filled — 本人の自己申告だけで穴を埋める。
+ * POST /v1/me/reviews/{holeId} — 10秒小テストの自己申告。
  *
- * カルテや会話ログから自動判定しない。計画書 §2 が採点者を本人に限定しているのは、
- * AIの誤読を「正しく理解した」に変えて、その誤りを1/3/7日の通知で強化しないため。
- * このルートが受け取る事実は、ボタンを押したことだけ。
+ * ここは**採点ではない**。サーバは正誤を判定せず、本人の申告をそのまま記録するだけ。
+ * `not_yet` は失敗ではないので、何も減らさず、何も記録しない。「まだ」を選んだ
+ * 回数を数えると、それ自体が点数になってしまう。
  */
-meRoute.post("/holes/:holeId/filled", async (c) => {
+meRoute.post("/reviews/:holeId", async (c) => {
   const { repository, scheduler, now } = c.get("services");
+  const at = now();
   const deviceId = c.get("deviceId");
-  const target = await repository.getHole(c.req.param("holeId"));
 
-  // 存在しないIDと他人のIDを同じ404に畳む。違う応答にすると、匿名デバイス認証でも
-  // hole_idを順に試して他人の学習記録が存在するかだけは調べられてしまう。
-  // 復習セッション開始時と同じく、所有者はリクエストのdevice_idと突き合わせる。
-  if (!target || target.device_id !== deviceId) throw apiError("session_not_found");
-
-  // UPDATEは open のときだけ効くので、再送で「埋めた日」が今日へ動かない。
-  // 一方、通知の掃除は filled でも毎回通す。状態更新の直後に処理が途切れた再送で
-  // ここを飛ばすと、画面では埋まっているのに3日後の通知だけが届くため。
-  await repository.markHoleFilled(target.id, now().toISOString());
-  const cancelled = await repository.cancelReviewSchedules(target.id);
-  for (const entry of cancelled) {
-    if (entry.external_id) await scheduler.cancel(entry.external_id);
+  const parsed = reviewAnswerRequestSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    return c.json(
+      {
+        error: {
+          code: "internal_error",
+          message: "回答を読み取れませんでした。もう一度選んでみてください。",
+        },
+      },
+      400,
+    );
   }
 
-  // クライアントは復習キューと進捗をサーバから読み直す。ここで穴を返して
-  // もう1つの状態を持たせると、取消まで終わった事実と画面の状態がずれうる。
-  return c.body(null, 204);
+  const hole = await repository.getHole(c.req.param("holeId"));
+  // 存在の有無と所有者の違いを同じ404にして、他人の穴を触らせず、存在も漏らさない。
+  if (!hole || hole.device_id !== deviceId) throw apiError("hole_not_found");
+
+  // openのときだけ動かすことで、「言えた」の再送でも二重に数えず、通知も再取消ししない。
+  if (parsed.data.outcome === "said_it" && hole.status === "open") {
+    await repository.markHoleFilled(hole.id, at.toISOString());
+    const cancelled = await repository.cancelReviewSchedules(hole.id);
+    for (const entry of cancelled) {
+      if (entry.external_id) await scheduler.cancel(entry.external_id);
+    }
+  }
+
+  // `not_yet` では上の保存処理を一切通らない。openの穴と通知をそのまま残す。
+  const [sessionDates, holes] = await Promise.all([
+    repository.sessionDates(deviceId),
+    repository.listHoles(deviceId),
+  ]);
+  const currentHole = holes.find((candidate) => candidate.id === hole.id);
+  if (!currentHole) throw apiError("hole_not_found");
+
+  const response: ReviewAnswerResponse = {
+    hole: toHole(currentHole),
+    progress: computeProgress(sessionDates, holes, toLocalDate(at)),
+  };
+  return c.json(response);
 });
 
 /**
@@ -250,14 +274,15 @@ meRoute.post("/study-room", async (c) => {
   return c.body(null, 204);
 });
 
-/** D1の行 → 契約の Hole。evidence は null を持たせず、キーごと落とす。 */
-function toHole(hole: HoleRecord) {
+/** D1の行 → 契約の Hole。evidence / quiz は null を持たせず、キーごと落とす。 */
+function toHole(hole: HoleRecord): Hole {
   return {
     id: hole.id,
     topic_id: hole.topic_id,
     desc: hole.desc,
     severity: hole.severity,
     ...(hole.evidence ? { evidence: hole.evidence } : {}),
+    ...(hole.quiz ? { quiz: hole.quiz } : {}),
     status: hole.status,
     created_at: hole.created_at,
     filled_at: hole.filled_at,

@@ -219,8 +219,8 @@ export class D1Repository implements Repository {
         this.db
           .prepare(
             `INSERT INTO holes
-               (id, device_id, karte_id, topic_id, description, severity, evidence, status, created_at, filled_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+               (id, device_id, karte_id, topic_id, description, severity, evidence, quiz, status, created_at, filled_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .bind(
             hole.id,
@@ -230,6 +230,7 @@ export class D1Repository implements Repository {
             hole.desc,
             hole.severity,
             hole.evidence,
+            hole.quiz,
             hole.status,
             hole.created_at,
             hole.filled_at,

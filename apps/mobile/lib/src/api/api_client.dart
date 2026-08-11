@@ -17,8 +17,11 @@ part 'api_client.g.dart';
 ///
 /// 認証は匿名デバイスID(`X-Device-Id`)だけ。アカウント作成を要求しない。
 class ApiClient {
-  ApiClient({required this.baseUrl, required this.deviceId, http.Client? client})
-      : _client = client ?? http.Client();
+  ApiClient({
+    required this.baseUrl,
+    required this.deviceId,
+    http.Client? client,
+  }) : _client = client ?? http.Client();
 
   final String baseUrl;
   final String deviceId;
@@ -89,9 +92,9 @@ class ApiClient {
       );
     }
 
-    final http.Response response = await http.Response
-        .fromStream(await _client.send(request))
-        .timeout(_uploadTimeout);
+    final http.Response response = await http.Response.fromStream(
+      await _client.send(request),
+    ).timeout(_uploadTimeout);
     return SessionStart.fromJson(_decode(response));
   }
 
@@ -112,7 +115,10 @@ class ApiClient {
             ..._headers,
             'content-type': 'application/json; charset=utf-8',
           },
-          body: jsonEncode(<String, dynamic>{'locale': locale, 'topic_ids': topicIds}),
+          body: jsonEncode(<String, dynamic>{
+            'locale': locale,
+            'topic_ids': topicIds,
+          }),
         )
         .timeout(_timeout);
     return SessionStart.fromJson(_decode(response));
@@ -174,19 +180,27 @@ class ApiClient {
     return ParentReportResponse.fromJson(_decode(response));
   }
 
-  /// 本人の自己申告で穴を埋める。
-  ///
-  /// 成否だけの操作なので、成功時の204を無理にJSONへ変換しない。穴と進捗は
-  /// 呼び出し側が読み直す。ここでレスポンス用の別モデルを持つと、通知の取消まで
-  /// 終わったサーバの状態と、手元で組み立てた穴の状態がずれうるため。
-  Future<void> fillHole(String holeId) async {
+  /// 小テストの自己申告。**声も接続も使わない**(原価ゼロ)。
+  Future<ReviewAnswer> answerReview(
+    String holeId,
+    ReviewOutcome outcome,
+  ) async {
     final http.Response response = await _client
         .post(
-          Uri.parse('$baseUrl/v1/me/holes/${Uri.encodeComponent(holeId)}/filled'),
-          headers: _headers,
+          Uri.parse('$baseUrl/v1/me/reviews/$holeId'),
+          headers: <String, String>{
+            ..._headers,
+            'content-type': 'application/json; charset=utf-8',
+          },
+          body: jsonEncode(<String, dynamic>{
+            'outcome': switch (outcome) {
+              ReviewOutcome.saidIt => 'said_it',
+              ReviewOutcome.notYet => 'not_yet',
+            },
+          }),
         )
         .timeout(_timeout);
-    if (response.statusCode >= 400) _decode(response);
+    return ReviewAnswer.fromJson(_decode(response));
   }
 
   /// 自習室が非表示になるとき、その滞在を1回だけ記録する。
@@ -250,7 +264,8 @@ class ApiClient {
     final Map<String, dynamic> body =
         jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
     if (response.statusCode >= 400) {
-      final Map<String, dynamic> error = body['error'] as Map<String, dynamic>? ?? const {};
+      final Map<String, dynamic> error =
+          body['error'] as Map<String, dynamic>? ?? const {};
       throw ApiException(
         code: error['code'] as String? ?? 'internal_error',
         // サーバの文言をそのまま出す。煽らない文体で書かれている。
@@ -268,7 +283,11 @@ String _localDate(DateTime value) {
 }
 
 class ApiException implements Exception {
-  const ApiException({required this.code, required this.message, this.retryAfterSeconds});
+  const ApiException({
+    required this.code,
+    required this.message,
+    this.retryAfterSeconds,
+  });
 
   final String code;
   final String message;
@@ -277,7 +296,9 @@ class ApiException implements Exception {
   bool get isFreeLimitReached => code == 'free_limit_reached';
   bool get isFairUseLimitReached => code == 'fair_use_limit_reached';
   bool get isPremiumRequired => code == 'premium_required';
-  bool get isPhotoUnreadable => code == 'photo_unreadable' || code == 'out_of_scope';
+  bool get isPhotoUnreadable =>
+      code == 'photo_unreadable' || code == 'out_of_scope';
+  bool get isHoleNotFound => code == 'hole_not_found';
 
   @override
   String toString() => 'ApiException($code): $message';
@@ -289,8 +310,10 @@ bool isPremiumRequiredApiError(Object error) =>
     error is ApiException && error.isPremiumRequired;
 
 /// `--dart-define=API_BASE_URL=...` で差し替える。
-const String apiBaseUrl =
-    String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:8787');
+const String apiBaseUrl = String.fromEnvironment(
+  'API_BASE_URL',
+  defaultValue: 'http://localhost:8787',
+);
 
 @Riverpod(keepAlive: true)
 ApiClient apiClient(Ref ref) {

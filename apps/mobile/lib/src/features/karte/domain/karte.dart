@@ -27,6 +27,16 @@ enum HoleStatus {
   filled,
 }
 
+/// 小テストはAIが採点せず、言えたかどうかを本人が申告する。
+/// [notYet] は失点ではなく、先輩に引き取ってもらうための選択肢。
+/// 選んだ人を咎めない(約束3)。
+enum ReviewOutcome {
+  @JsonValue('said_it')
+  saidIt,
+  @JsonValue('not_yet')
+  notYet,
+}
+
 @freezed
 abstract class Hole with _$Hole {
   const factory Hole({
@@ -127,6 +137,10 @@ abstract class ReviewQueueItem with _$ReviewQueueItem {
 
     /// 先輩の声のひとこと。通知文と同じ。
     required String prompt,
+
+    /// 1/3/7日後にたずねる**1問**。出題元は本人が説明した内容(§2)。
+    /// 旧データのフォールバックはサーバ側で解決済みなので、ここでは必ず入っている。
+    required String quiz,
   }) = _ReviewQueueItem;
 
   factory ReviewQueueItem.fromJson(Map<String, dynamic> json) =>
@@ -155,13 +169,19 @@ abstract class ReviewQueue with _$ReviewQueue {
     /// 埋めた穴(新しい順)。通算の件数はホームのカウンターのほうが正で、
     /// ここには直近ぶんしか載らない。
     @Default(<FilledHole>[]) List<FilledHole> filled,
-    @JsonKey(name: 'requires_premium') required bool requiresPremium,
   }) = _ReviewQueue;
 
   factory ReviewQueue.fromJson(Map<String, dynamic> json) => _$ReviewQueueFromJson(json);
 
-  static const ReviewQueue locked = ReviewQueue(items: <ReviewQueueItem>[], requiresPremium: true);
-
   /// 見せるものが何もない状態。空だと分かる文言を出すために使う。
   bool get isEmpty => items.isEmpty && filled.isEmpty;
+}
+
+/// `POST /v1/me/reviews/{holeId}` の応答。
+/// 穴とホームのカウンターを、追加の取得なしで同じ応答から更新する。
+@freezed
+abstract class ReviewAnswer with _$ReviewAnswer {
+  const factory ReviewAnswer({required Hole hole, required Progress progress}) = _ReviewAnswer;
+
+  factory ReviewAnswer.fromJson(Map<String, dynamic> json) => _$ReviewAnswerFromJson(json);
 }

@@ -6,7 +6,12 @@ import '../domain/parent_report.dart';
 /// UI用と共有用を別々に組み立てると、画面には無い引用がメールにだけ混ざる余地ができる。
 /// **この返り値を画面にも全文表示する**ことで、本人が送る内容を確認してから
 /// メールアプリへ進める形を保つ。
-String buildParentReportText(ParentReport report, AppStrings strings) {
+String buildParentReportText(
+  ParentReport report,
+  AppStrings strings, {
+  String? plan,
+  String? price,
+}) {
   final List<String> lines = <String>[
     strings.parentReportTitle,
     strings.parentReportPeriod(
@@ -31,7 +36,7 @@ String buildParentReportText(ParentReport report, AppStrings strings) {
       for (final String quote in report.quotes)
         strings.parentReportQuote(quote),
     '',
-    strings.parentReportPriceNote,
+    strings.parentReportPriceNote(plan: plan, price: price),
   ];
   return lines.join('\n');
 }

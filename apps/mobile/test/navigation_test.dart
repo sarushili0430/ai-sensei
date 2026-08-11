@@ -41,7 +41,9 @@ void main() {
       deviceIdProvider.overrideWithValue('dev_test'),
       progressControllerProvider.overrideWith(FakeProgressController.new),
       reviewControllerProvider.overrideWith(
-        () => FakeReviewController(queue ?? const ReviewQueue(items: [], requiresPremium: false)),
+        () => FakeReviewController(
+          queue ?? const ReviewQueue(items: []),
+        ),
       ),
       parentReportControllerProvider.overrideWith(
         () => FakeParentReportController(sampleParentReportResponse),
@@ -149,24 +151,37 @@ void main() {
     expect(find.byType(HomeScreen), findsOneWidget);
   });
 
-  testWidgets('無料ユーザーの復習画面からペイウォールに行き、戻ってこられる', (WidgetTester tester) async {
+  testWidgets('無料の小テストから、声で聞き直す授業のPremium導線へ進める',
+      (WidgetTester tester) async {
     final GoRouter router = await pumpRouter(
       tester,
-      overrides: bootOverrides(queue: ReviewQueue.locked),
+      overrides: bootOverrides(
+        queue: sampleReviewQueue,
+      ),
     );
     router.go(AppRoute.review.path);
     await tester.pumpAndSettle();
 
     final AppStrings strings = AppStrings.of(tester.element(find.byType(ReviewScreen)));
-    expect(find.text(strings.reviewLocked), findsOneWidget);
+    expect(find.text(sampleReviewQueue.items.first.quiz), findsOneWidget);
+    expect(find.text(strings.reviewSaidIt), findsOneWidget);
+    expect(find.text(strings.reviewNotYet), findsOneWidget);
+    expect(find.byType(PaywallScreen), findsNothing, reason: '小テスト自体は無料');
 
-    await tester.tap(find.text(strings.paywallCta));
+    await tester.tap(find.text(strings.reviewNotYet));
     await tester.pumpAndSettle();
-    expect(router.canPop(), isTrue, reason: 'ペイウォールは閉じられなければならない');
+    expect(find.text(strings.reviewNotYetLead), findsOneWidget);
+    expect(find.text(strings.reviewVoicePremium), findsOneWidget);
+    expect(find.text(strings.reviewAskSenpai), findsNothing);
+    expect(find.text(strings.homeUnlock), findsOneWidget);
+    expect(find.byType(PaywallScreen), findsNothing);
 
-    router.pop();
+    // 無料なのは自己申告の小テストまで。音声授業を直接始める旧導線を
+    // ナビゲーションテストに残すと、サーバのPremium境界との不一致を再導入してしまう。
+    await tester.tap(find.text(strings.homeUnlock));
     await tester.pumpAndSettle();
-    expect(find.byType(ReviewScreen), findsOneWidget, reason: '来た場所に戻す');
+    expect(find.byType(PaywallScreen), findsOneWidget);
+    expect(router.canPop(), isTrue);
   });
 
   testWidgets('直近のカルテが無いのにカルテ画面へ行くと、ホームへ戻す', (WidgetTester tester) async {

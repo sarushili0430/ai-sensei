@@ -12,11 +12,14 @@ part 'karte_controllers.g.dart';
 @Riverpod(keepAlive: true)
 class ProgressController extends _$ProgressController {
   @override
-  Future<ProgressSummary> build() => ref.read(apiClientProvider).fetchProgress();
+  Future<ProgressSummary> build() =>
+      ref.read(apiClientProvider).fetchProgress();
 
   Future<void> refresh() async {
     state = const AsyncValue<ProgressSummary>.loading();
-    state = await AsyncValue.guard(() => ref.read(apiClientProvider).fetchProgress());
+    state = await AsyncValue.guard(
+      () => ref.read(apiClientProvider).fetchProgress(),
+    );
   }
 
   /// セッション作成後の可否を、そのレスポンスから引き継ぐ。
@@ -27,7 +30,9 @@ class ProgressController extends _$ProgressController {
     final ProgressSummary previous = state.value ?? ProgressSummary.empty;
     state = AsyncValue<ProgressSummary>.data(
       previous.copyWith(
-        limits: previous.limits.copyWith(lessonAllowedToday: lessonAllowedToday),
+        limits: previous.limits.copyWith(
+          lessonAllowedToday: lessonAllowedToday,
+        ),
       ),
     );
   }
@@ -37,14 +42,12 @@ class ProgressController extends _$ProgressController {
   void applyFromSession(Progress progress) {
     final ProgressSummary previous = state.value ?? ProgressSummary.empty;
     state = AsyncValue<ProgressSummary>.data(
-      previous.copyWith(
-        progress: progress,
-      ),
+      previous.copyWith(progress: progress),
     );
   }
 }
 
-/// 復習キュー(プッシュ起点)。無料ユーザーには空で返る。
+/// 復習キュー(プッシュ起点)。小テストと1/3/7日の再訪は無料でも中身を返す。
 @Riverpod(keepAlive: true)
 class ReviewController extends _$ReviewController {
   @override
@@ -52,20 +55,36 @@ class ReviewController extends _$ReviewController {
 
   Future<void> refresh() async {
     state = const AsyncValue<ReviewQueue>.loading();
-    state = await AsyncValue.guard(() => ref.read(apiClientProvider).fetchReviews());
+    state = await AsyncValue.guard(
+      () => ref.read(apiClientProvider).fetchReviews(),
+    );
   }
 
-  /// 「言えるようになった」という本人の申告を反映する。
-  ///
-  /// APIの成功を受けて手元の配列だけを移し替えない。サーバでは同時に
-  /// 1/3/7日の通知も取り消しているので、成功後に復習キューと進捗を読み直し、
-  /// **サーバが完了した状態**を画面の正にする。再送はAPI側が冪等に受ける。
-  Future<void> fillHole(String holeId) async {
-    await ref.read(apiClientProvider).fillHole(holeId);
-    await Future.wait<void>(<Future<void>>[
-      refresh(),
-      ref.read(progressControllerProvider.notifier).refresh(),
-    ]);
+  /// 小テストの自己申告を送り、成功したら次の1問へ進めるためキューを読み直す。
+  Future<bool> answer(String holeId, ReviewOutcome outcome) async {
+    try {
+      final ReviewAnswer answer = await ref
+          .read(apiClientProvider)
+          .answerReview(holeId, outcome);
+
+      // 「言えた」で穴が埋まったときだけ、応答に入っている進捗をそのまま使う。
+      // 再取得するとキューとホームで反映の瞬間がずれるため、セッション直後と同じ扱いにする。
+      if (outcome == ReviewOutcome.saidIt) {
+        ref
+            .read(progressControllerProvider.notifier)
+            .applyFromSession(answer.progress);
+      }
+
+      await refresh();
+      return state.when(
+        data: (_) => true,
+        error: (_, _) => false,
+        loading: () => false,
+      );
+    } catch (error, stack) {
+      debugPrint('小テストの自己申告を送れませんでした: $error\n$stack');
+      return false;
+    }
   }
 }
 
@@ -92,12 +111,15 @@ class SessionOutcomeController extends _$SessionOutcomeController {
     final String? sessionId = state.sessionId;
     if (sessionId == null) return false;
 
-    final SessionResult? result =
-        await ref.read(apiClientProvider).fetchSessionResult(sessionId);
+    final SessionResult? result = await ref
+        .read(apiClientProvider)
+        .fetchSessionResult(sessionId);
     if (result == null) return false;
 
     ref.read(latestKarteControllerProvider.notifier).set(result.karte);
-    ref.read(progressControllerProvider.notifier).applyFromSession(result.progress);
+    ref
+        .read(progressControllerProvider.notifier)
+        .applyFromSession(result.progress);
     // keepAliveの復習キューには、前回読んだopen状態が残りうる。カルテ画面で
     // 「今回と重なる過去の穴」を選ぶ前に、完了後の状態を取り直させる。
     ref.invalidate(reviewControllerProvider);

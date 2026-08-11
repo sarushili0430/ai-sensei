@@ -298,7 +298,7 @@ describe("POST /v1/sessions", () => {
   });
 });
 
-// レビュー指摘: 復習はPremium機能なのに、hole_idを直接渡せば無料でも通っていた
+// レビュー指摘: 音声の復習セッションはPremiumなのに、hole_idを直接渡せば無料でも通っていた
 describe("復習セッション", () => {
   async function seedHole(deviceId = testDeviceId): Promise<string> {
     await services.repository.insertKarte(
@@ -321,6 +321,7 @@ describe("復習セッション", () => {
           desc: "平方完成のなぜで説明が止まった",
           severity: "high",
           evidence: "形をそろえるため、だと思う",
+          quiz: null,
           status: "open",
           created_at: "2026-08-01T11:00:00.000Z",
           filled_at: null,
@@ -346,7 +347,7 @@ describe("復習セッション", () => {
     return form;
   }
 
-  it("無料ユーザーは hole_id を直接渡しても始められない", async () => {
+  it("無料ユーザーは小テストを使えても、声で聞き直す授業は始められない", async () => {
     const holeId = await seedHole();
     const response = await post(reviewForm(holeId));
     expect(response.status).toBe(402);
@@ -355,7 +356,7 @@ describe("復習セッション", () => {
     );
   });
 
-  it("Premiumは写真なしで復習セッションを始められる", async () => {
+  it("Premiumも写真なしで復習セッションを始められる", async () => {
     await makePremium();
     const holeId = await seedHole();
 
@@ -776,6 +777,7 @@ describe("問題だけのセッション", () => {
           desc: "平方完成のなぜで説明が止まった",
           severity: "high",
           evidence: null,
+          quiz: null,
           status: "open",
           created_at: "2026-08-01T11:00:00.000Z",
           filled_at: null,

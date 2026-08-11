@@ -11,13 +11,13 @@ import '../domain/karte.dart';
 ///
 /// 「言えた」を押したときだけAPIを呼ぶ。「まだ」は画面を閉じるだけで、穴・通知・
 /// 進捗のどれも変えない。二択を置くのは、閉じる操作を失敗や減点に見せないため。
-/// AIの判定結果を受け取る入口は持たない(計画書 §2)。
+/// AIの判定結果を受け取る入口は持たない(計画書 §2)。送信経路と二択の文言は
+/// 10秒小テストと共有し、画面ごとに別の「自己申告」を作らない。
 class HoleSelfReportPrompt extends ConsumerStatefulWidget {
   const HoleSelfReportPrompt({
     required this.hole,
     required this.onFilled,
     required this.onNotYet,
-    this.onReview,
     this.showLaterHint = false,
     super.key,
   });
@@ -25,7 +25,6 @@ class HoleSelfReportPrompt extends ConsumerStatefulWidget {
   final Hole hole;
   final VoidCallback onFilled;
   final VoidCallback onNotYet;
-  final Future<void> Function()? onReview;
   final bool showLaterHint;
 
   @override
@@ -40,10 +39,17 @@ class _HoleSelfReportPromptState extends ConsumerState<HoleSelfReportPrompt> {
     if (_submitting) return;
     setState(() => _submitting = true);
     try {
-      await ref
+      final bool succeeded = await ref
           .read(reviewControllerProvider.notifier)
-          .fillHole(widget.hole.id);
+          .answer(widget.hole.id, ReviewOutcome.saidIt);
       if (!mounted) return;
+      if (!succeeded) {
+        setState(() => _submitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppStrings.of(context).errorGeneric)),
+        );
+        return;
+      }
       widget.onFilled();
     } on Object catch (error) {
       // 失敗しても open のままなので、本人の記録は失われない。再送はAPI側が冪等。
@@ -59,7 +65,6 @@ class _HoleSelfReportPromptState extends ConsumerState<HoleSelfReportPrompt> {
   @override
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
-    final Future<void> Function()? review = widget.onReview;
 
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
@@ -96,18 +101,13 @@ class _HoleSelfReportPromptState extends ConsumerState<HoleSelfReportPrompt> {
           ChunkyButton(
             label: _submitting
                 ? strings.holeSelfReportFilling
-                : strings.holeSelfReportCanSay,
+                : strings.reviewSaidIt,
             onPressed: _submitting ? null : _fill,
           ),
           GhostButton(
-            label: strings.holeSelfReportNotYet,
+            label: strings.reviewNotYet,
             onPressed: _submitting ? null : widget.onNotYet,
           ),
-          if (review != null)
-            GhostButton(
-              label: strings.holeSelfReportReviewWithSenpai,
-              onPressed: _submitting ? null : () => review(),
-            ),
         ],
       ),
     );

@@ -5,6 +5,7 @@ import 'package:ai_sensei/src/features/monetization/data/purchases_repository.da
 import 'package:ai_sensei/src/features/monetization/presentation/manage_subscription_button.dart';
 import 'package:ai_sensei/src/features/monetization/presentation/paywall_screen.dart';
 import 'package:ai_sensei/src/features/monetization/presentation/thanks_screen.dart';
+import 'package:ai_sensei/src/features/session/presentation/celebration_screen.dart';
 import 'package:ai_sensei/src/l10n/strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -434,6 +435,98 @@ void main() {
     });
   });
 
+  // Offering と違う据え置きの価格を約束したまま購入判断をさせない、を防ぐ。
+  group('祝福画面の Premium の一行', () {
+    const AppStrings ja = AppStrings(Locale('ja'));
+
+    Offering offeringWith(IntroductoryPrice? intro) => Offering(
+      'default',
+      '',
+      const <String, Object>{},
+      <Package>[
+        _package(
+          '\$rc_monthly',
+          PackageType.monthly,
+          _product('m', price: 580, intro: intro),
+        ),
+      ],
+    );
+
+    Future<void> pumpCelebration(
+      WidgetTester tester,
+      Entitlement entitlement,
+    ) => pumpApp(
+      tester,
+      const CelebrationScreen(),
+      overrides: <Object?>[
+        progressControllerProvider.overrideWith(FakeProgressController.new),
+        latestKarteControllerProvider.overrideWith(FakeLatestKarteController.new),
+        sessionOutcomeControllerProvider.overrideWith(
+          () => FakeSessionOutcomeController(const SessionOutcome(showPaywall: true)),
+        ),
+        entitlementControllerProvider.overrideWith(
+          () => FakeEntitlementController(entitlement),
+        ),
+      ],
+    );
+
+    Future<void> pumpPaywall(
+      WidgetTester tester,
+      Entitlement entitlement,
+    ) => pumpApp(
+      tester,
+      const PaywallScreen(),
+      overrides: <Object?>[
+        entitlementControllerProvider.overrideWith(
+          () => FakeEntitlementController(entitlement),
+        ),
+      ],
+    );
+
+    testWidgets('Offering が取れていれば、その価格とトライアルを出す',
+        (WidgetTester tester) async {
+      await pumpCelebration(
+        tester,
+        Entitlement(
+          isPremium: false,
+          offering: offeringWith(
+            const IntroductoryPrice(0, '¥0', 'P1W', 1, PeriodUnit.week, 1),
+          ),
+        ),
+      );
+
+      expect(find.text('Premium 1か月 ¥580'), findsOneWidget);
+      expect(find.text('はじめの7日間は無料'), findsOneWidget);
+    });
+
+    testWidgets('Offering が取れていなければ、価格を約束しない',
+        (WidgetTester tester) async {
+      await pumpCelebration(tester, const Entitlement(isPremium: false));
+
+      expect(find.textContaining('¥'), findsNothing);
+      expect(find.textContaining('日間は無料'), findsNothing);
+      expect(find.text(ja.paywallPricePending), findsOneWidget);
+    });
+
+    testWidgets('トライアルの無い商品に「無料」と書かない', (WidgetTester tester) async {
+      await pumpCelebration(
+        tester,
+        Entitlement(isPremium: false, offering: offeringWith(null)),
+      );
+
+      expect(find.textContaining('日間は無料'), findsNothing);
+      expect(find.text('Premium 1か月 ¥580'), findsOneWidget);
+    });
+
+    testWidgets('ペイウォールも Offering が空なら据え置きの価格を出さない',
+        (WidgetTester tester) async {
+      await pumpPaywall(tester, const Entitlement(isPremium: false));
+
+      expect(find.textContaining('¥580'), findsNothing);
+      expect(find.text(ja.paywallPriceUnavailable), findsOneWidget);
+    });
+  });
+
   // 「ご購入ありがとうございます」と書けない場合がある(§6 誠実さ)。
   // 見出しの出し分けが、いちばん壊れても気づきにくいところ。
   group('購入のお礼', () {
@@ -515,7 +608,7 @@ void main() {
       expect(find.text(ja.premiumBadge), findsOneWidget);
       expect(find.text(sampleKarte.holes.first.description), findsOneWidget);
       expect(find.textContaining('残っている穴'), findsNothing);
-      expect(find.text(ja.homeEnoughForToday), findsOneWidget);
+      expect(find.text(ja.lessonEnoughForToday), findsOneWidget);
       expect(find.text(ja.homeUnlock), findsNothing);
     });
 

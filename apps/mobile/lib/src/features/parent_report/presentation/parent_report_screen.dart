@@ -7,6 +7,8 @@ import '../../../common_widgets/external_link.dart';
 import '../../../l10n/strings.dart';
 import '../../../routing/routes.dart';
 import '../../../theme/tokens.dart';
+import '../../monetization/application/entitlement_controller.dart';
+import '../../monetization/presentation/purchase_messages.dart';
 import '../application/parent_report_controller.dart';
 import '../data/parent_report_mail.dart';
 import '../domain/parent_report.dart';
@@ -24,6 +26,15 @@ class ParentReportScreen extends ConsumerWidget {
     final AppStrings strings = AppStrings.of(context);
     final AsyncValue<ParentReportResponse> response = ref.watch(
       parentReportControllerProvider,
+    );
+    final List<SubscriptionPlan> plans =
+        ref.watch(entitlementControllerProvider).value?.plans ??
+        const <SubscriptionPlan>[];
+    // ペイウォールの既定選択と同じ関数を使う。月額が無いOfferingでは先頭へ
+    // 縮退するので、親へ見せた価格と実際に選ばれる商品が食い違わない。
+    final SubscriptionPlan? pricePlan = planForPeriod(
+      plans,
+      PlanPeriod.monthly,
     );
 
     return Scaffold(
@@ -48,12 +59,13 @@ class ParentReportScreen extends ConsumerWidget {
             if (data.requiresPremium || report == null) {
               return _Message(
                 text:
-                    '${strings.parentReportLocked}\n\n${strings.parentReportPriceNote}',
+                    '${strings.parentReportLocked}\n\n'
+                    '${strings.parentReportPriceNote(plan: pricePlan?.period.label(strings), price: pricePlan?.priceString)}',
                 primaryLabel: strings.paywallCta,
                 onPrimary: () => context.push(AppRoute.paywall.path),
               );
             }
-            return _ReportBody(report: report);
+            return _ReportBody(report: report, pricePlan: pricePlan);
           },
         ),
       ),
@@ -62,14 +74,20 @@ class ParentReportScreen extends ConsumerWidget {
 }
 
 class _ReportBody extends StatelessWidget {
-  const _ReportBody({required this.report});
+  const _ReportBody({required this.report, required this.pricePlan});
 
   final ParentReport report;
+  final SubscriptionPlan? pricePlan;
 
   @override
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
-    final String text = buildParentReportText(report, strings);
+    final String text = buildParentReportText(
+      report,
+      strings,
+      plan: pricePlan?.period.label(strings),
+      price: pricePlan?.priceString,
+    );
     final Uri mail = buildParentReportMail(
       subject: strings.parentReportMailSubject,
       body: text,

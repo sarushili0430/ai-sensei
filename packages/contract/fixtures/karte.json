@@ -14,6 +14,7 @@
       "desc": "判別式を「なぜ」使うのか、で説明が止まった",
       "severity": "medium",
       "evidence": "そこは……なんとなくです",
+      "quiz": "判別式を使うと解の個数がわかる理由を説明できる?",
       "status": "open",
       "created_at": "2026-08-03T13:24:07.000Z",
       "filled_at": null

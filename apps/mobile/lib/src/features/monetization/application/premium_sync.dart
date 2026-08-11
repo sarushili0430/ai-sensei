@@ -16,9 +16,9 @@ part 'premium_sync.g.dart';
 ///   - アプリ側の entitlement — SDKが購入直後に push してくる(即時)
 ///   - サーバ側の `users.is_premium` — RevenueCatのwebhookが書く(数秒遅れ)
 ///
-/// そして画面が出し分けに使っているのは**サーバ側**のほう(ホームの残り回数・
-/// 復習画面のロック・セッション開始の可否)。その2つの Controller は
-/// keepAlive で、起動時に一度読んだきり誰も読み直さない。
+/// そして画面が出し分けに使っているのは**サーバ側**のほう(ホームと
+/// 復習画面の授業可否・セッション開始の可否)。それを持つ
+/// ProgressController は keepAlive で、起動時に一度読んだきり誰も読み直さない。
 ///
 /// つまりここが無いと、**買った直後はアプリを再起動するまで無料のまま**になる。
 /// webhookが200で届いていてもD1がPremiumになっていても、アプリの手元にある
@@ -83,10 +83,6 @@ class PremiumSync extends _$PremiumSync {
       if (server == expectPremium || attempt >= backoff.length) break;
       await Future<void>.delayed(backoff[attempt]);
     }
-
-    // 復習キューはPremiumかどうかで中身がまるごと変わる(無料なら空+ロック)。
-    // 追いつかなかった場合も読み直す。ロック表示のほうへ揃えるため。
-    await ref.read(reviewControllerProvider.notifier).refresh();
   }
 
   /// webhookを待つ間隔。合計でおよそ15秒ぶん。

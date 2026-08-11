@@ -217,6 +217,29 @@ describe("カルテのスキーマ", () => {
     const draft = { said_well: [], holes: [], term_notes: [] };
     expect(karteDraftSchema.parse(draft).followup_question).toBeUndefined();
   });
+
+  it("quiz は省略可(出題を持たない旧データも読める)", () => {
+    const karte = loadFixture("karte") as { holes: Record<string, unknown>[] };
+    const { quiz, ...legacyHole } = karte.holes[0]!;
+    expect(quiz).toBeTypeOf("string");
+    expect(karteSchema.safeParse({ ...karte, holes: [legacyHole] }).success).toBe(true);
+  });
+
+  it("201文字の quiz は弾く(10秒で答えられる1問にする)", () => {
+    const draft = {
+      said_well: [],
+      holes: [
+        {
+          topic_id: "M1-NIJI-HANBETSU",
+          desc: "判別式の意味で説明が止まった",
+          severity: "medium" as const,
+          quiz: "あ".repeat(201),
+        },
+      ],
+      term_notes: [],
+    };
+    expect(karteDraftSchema.safeParse(draft).success).toBe(false);
+  });
 });
 
 describe("板書のスキーマ", () => {
@@ -710,6 +733,18 @@ describe("APIスキーマ", () => {
     ).toBe(true);
     expect(
       completeSessionRequestSchema.safeParse({ ...request, ended_reason: "gave_up" }).success,
+    ).toBe(false);
+  });
+
+  it("復習結果の自己申告は省略できる", () => {
+    const request = loadFixture("complete-session-request") as Record<string, unknown>;
+    expect(completeSessionRequestSchema.safeParse(request).success).toBe(true);
+  });
+
+  it("復習結果の自己申告に知らない値は受け付けない", () => {
+    const request = loadFixture("complete-session-request") as Record<string, unknown>;
+    expect(
+      completeSessionRequestSchema.safeParse({ ...request, review_outcome: "almost" }).success,
     ).toBe(false);
   });
 });

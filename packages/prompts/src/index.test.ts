@@ -406,6 +406,22 @@ describe("設計上の約束がプロンプトに書かれている", () => {
   });
 
   /**
+   * transcriptには先輩の問いかけや相づちも入る。単に「transcriptから作る」では、
+   * 先輩が教えた内容を本人の穴として1/3/7日後に繰り返すので、ロール名まで固定する。
+   */
+  it("小テストの出題元を本人の発話だけに限定する、が両方の言語に書かれている", () => {
+    const ja = getPrompt("karte_generation", "ja").body;
+    const en = getPrompt("karte_generation", "en").body;
+
+    expect(ja).toContain("出題元は `<transcript>` の `ユーザー:` の行だけです");
+    expect(ja).toContain("`先輩:` の行から作らないでください");
+    expect(en).toContain(
+      "Use only the `Student:` lines inside `<transcript>` as the source of the question",
+    );
+    expect(en).toContain("Do not derive it from `Senpai:` lines");
+  });
+
+  /**
    * 板書プロンプト(先輩)の約束。**contract / guardrail と二重に書いている**ので、
    * 片方が消えたことを検知できるようにここで見る。
    *

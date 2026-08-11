@@ -44,7 +44,8 @@
         "topic_id": "M1-NIJI-HANBETSU",
         "desc": "判別式を「なぜ」使うのか、で説明が止まった",
         "severity": "medium",
-        "evidence": "そこは……なんとなくです"
+        "evidence": "そこは……なんとなくです",
+        "quiz": "判別式を使うと解の個数がわかる理由を説明できる?"
       }
     ],
     "term_notes": ["「解の公式」と「判別式」が混ざっていた"],

@@ -12,7 +12,12 @@ void main() {
   test('メール下書きの本文は、画面に見せる本文と1文字も変えない', () {
     const AppStrings strings = AppStrings(Locale('ja'));
     final ParentReport report = sampleParentReportResponse.report!;
-    final String visibleText = buildParentReportText(report, strings);
+    final String visibleText = buildParentReportText(
+      report,
+      strings,
+      plan: strings.planMonthly,
+      price: '¥5,000',
+    );
     final Uri mail = buildParentReportMail(
       subject: strings.parentReportMailSubject,
       body: visibleText,
@@ -22,14 +27,28 @@ void main() {
     expect(mail.path, isEmpty, reason: '親の宛先をアプリ側で決めない');
     expect(mail.queryParameters['body'], visibleText);
     expect(visibleText, contains(report.quotes.first));
-    expect(visibleText, contains(strings.paywallPrice));
+    expect(
+      visibleText,
+      contains(strings.paywallPriceLine(strings.planMonthly, '¥5,000')),
+    );
     expect(mail.toString(), isNot(contains('http')), reason: '公開URLを共有しない');
   });
 
   test('親レポートの料金文言はペイウォールと同じ価格を使う(日英)', () {
     for (final Locale locale in const <Locale>[Locale('ja'), Locale('en')]) {
       final AppStrings strings = AppStrings(locale);
-      expect(strings.parentReportPriceNote, contains(strings.paywallPrice));
+      expect(
+        strings.parentReportPriceNote(
+          plan: strings.planMonthly,
+          price: '¥5,000',
+        ),
+        contains(strings.paywallPriceLine(strings.planMonthly, '¥5,000')),
+      );
+      expect(
+        strings.parentReportPriceNote(),
+        isNot(contains('¥5,000')),
+        reason: 'Offeringが無いときに据え置き価格を作らない',
+      );
     }
   });
 

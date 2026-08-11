@@ -81,8 +81,10 @@ sessionsRoute.post("/", async (c) => {
    */
   const localDate = toLocalDate(at);
 
-  // 復習(穴の再説明)はPremium機能。/v1/me/reviews でキューを隠すだけだと、
-  // 初回カルテで配った hole_id を使ってここから直接呼べてしまう。
+  // 無料なのは `/v1/me/reviews` の10秒小テストまで。ここから先はLiveKit・
+  // STT・LLM・TTSを起動して板書つきで教え直す授業なので、通常の授業と同じ
+  // Premium境界に戻る。画面だけで止めても `hole_id` を直接送れば迂回できるため、
+  // 従量原価が発生するこの入口で必ず判定する。
   if (meta.kind === "review" && !isPremiumNow(user, at)) {
     throw apiError("premium_required", { locale });
   }
