@@ -3,6 +3,8 @@ import {
   type CurriculumLocale,
   type SchoolStage,
   type TrackId,
+  curricula,
+  tracks as curriculumTracks,
   findTopic,
   isKnownTopicId,
   suggestTopics,
@@ -155,9 +157,23 @@ export function detectImageMediaType(
  * **段階で必ず絞る。** 「その言語の課程を全部」にすると、中学生の写真にも
  * 数学I〜Cの52件が候補として並び、解析器が高校の単元を選べてしまう。
  * プロンプトに貼る量も課程の数だけ線形に増える。
+ *
+ * **教科が分かっているなら、そこでも絞る。** 1つの段には数学と英語の2課程が
+ * あるので、教科で絞らないと英語の写真に数学のIDが混ざりうる。混ざったIDが
+ * 先頭に来ると、agent 側の `subjectOf()` が**それで授業全体の教科を決める** —
+ * 英語の写真で数学の板書と数式の音声補正が始まる。
+ *
+ * 教科が分かるのは写真を読んだ**あと**なので、プロンプトに貼る一覧
+ * ({@link curriculumDigest})は段でしか絞れない。絞れるのは照合の側だけ。
  */
-function tracksFor(locale: CurriculumLocale, stage: SchoolStage): TrackId[] {
-  return tracksForStage(stage, locale);
+function tracksFor(
+  locale: CurriculumLocale,
+  stage: SchoolStage,
+  subject?: AnalysisSubject,
+): TrackId[] {
+  const eligible = tracksForStage(stage, locale);
+  if (subject === undefined || subject === "other") return eligible;
+  return eligible.filter((track) => curriculumTracks[track].subject === subject);
 }
 
 /** その課程のカリキュラムマップを、プロンプトに貼れる形に畳む。 */
@@ -181,10 +197,18 @@ export function photoAnalysisPrompt(
 
 /**
  * LLMが返したtopic_idを照合し、許可リストを作る(ガードレール1段目)。
- * 未知のIDは捨て、それでも空なら写真テキストからのキーワード推定にフォールバックする。
  *
- * 照合はロケールでも絞る。日本語のプロンプトに載っていない `A1-...` が返って
- * きたら、それは解析器が別の課程の記憶で答えているので通さない。
+ * 絞りは3段:
+ *
+ *   1. **課程**(段階 × 教科)。日本語のプロンプトに載っていない `A1-...` も、
+ *      英語の写真に付いた `M2-...` も、ここで落ちる
+ *   2. 1件も残らなければ、写真テキストからの**キーワード推定**
+ *   3. それでも空なら、その課程の**着地点**(`fallback_topic_id`)
+ *
+ * 3段目が要るのは英語の課程。数学は「判別式」「√」がそのままノートに写るが、
+ * **英語のノートに「to不定詞」とは書かれていない** — 写っているのは英文で、
+ * キーワード照合が効きにくい。ここで空のまま返すと、読めている写真が
+ * 呼び出し側で `photo_unreadable` として弾かれる。
  */
 export function resolveDetectedTopics(
   analysis: PhotoAnalysis,
@@ -196,7 +220,8 @@ export function resolveDetectedTopics(
 } {
   const droppedIds: string[] = [];
   const topicIds: string[] = [];
-  const inCurriculum = new Set(topicsForTracks(tracksFor(locale, stage)).map((t) => t.id));
+  const eligible = tracksFor(locale, stage, analysis.subject);
+  const inCurriculum = new Set(topicsForTracks(eligible).map((t) => t.id));
 
   for (const entry of analysis.topics) {
     if (isKnownTopicId(entry.topic_id) && inCurriculum.has(entry.topic_id)) {
@@ -210,9 +235,19 @@ export function resolveDetectedTopics(
     const haystack = [analysis.summary, ...analysis.visible_work, ...analysis.question_seeds].join(
       " ",
     );
-    topicIds.push(
-      ...suggestTopics(haystack, 3, { tracks: tracksFor(locale, stage) }).map((t) => t.id),
-    );
+    topicIds.push(...suggestTopics(haystack, 3, { tracks: eligible }).map((t) => t.id));
+  }
+
+  // キーワードでも当たらなかった。**英語ではこれが普通に起きる**ので、
+  // 課程が用意している着地点へ降ろす(無い課程は空のまま = 従来どおり弾かれる)。
+  if (topicIds.length === 0 && analysis.subject !== "other") {
+    for (const track of eligible) {
+      const fallback = curricula[track].fallback_topic_id;
+      if (fallback !== undefined) {
+        topicIds.push(fallback);
+        break;
+      }
+    }
   }
 
   return { topicIds: [...new Set(topicIds)], droppedIds };

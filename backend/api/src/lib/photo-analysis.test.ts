@@ -242,6 +242,134 @@ describe("resolveDetectedTopics", () => {
   });
 });
 
+/**
+ * 教科の取り違えは**授業まるごとに効く**。agent 側の `subjectOf()` は
+ * 許可トピックの先頭から教科を決めるので、英語の写真に数学のIDが1つ混ざって
+ * それが先頭に来ると、板書も音声補正も数学のものになる。
+ */
+describe("resolveDetectedTopics(教科での絞り込み)", () => {
+  it("英語の写真に混ざった数学の単元は落とす", () => {
+    const resolved = resolveDetectedTopics(
+      {
+        ...analysisFixture,
+        subject: "english",
+        topics: [
+          { topic_id: "J2-KANSU-ICHIJI", confidence: 0.9 },
+          { topic_id: "JE-FUTEISHI", confidence: 0.8 },
+        ],
+      },
+      "ja",
+      "junior_high",
+    );
+    expect(resolved.topicIds).toEqual(["JE-FUTEISHI"]);
+    expect(resolved.droppedIds).toContain("J2-KANSU-ICHIJI");
+  });
+
+  it("数学の写真に混ざった英語の単元も落とす", () => {
+    const resolved = resolveDetectedTopics(
+      {
+        ...analysisFixture,
+        subject: "math",
+        topics: [
+          { topic_id: "JE-FUTEISHI", confidence: 0.9 },
+          { topic_id: "J2-KANSU-ICHIJI", confidence: 0.8 },
+        ],
+      },
+      "ja",
+      "junior_high",
+    );
+    expect(resolved.topicIds).toEqual(["J2-KANSU-ICHIJI"]);
+  });
+
+  // キーワード推定も教科の中で閉じる。ここが漏れると、英語の写真の要約に
+  // 「関数」の2文字があるだけで数学の単元に着地する。
+  it("キーワード推定も教科の中で閉じる", () => {
+    const resolved = resolveDetectedTopics(
+      {
+        ...analysisFixture,
+        subject: "english",
+        summary: "一次関数のグラフ",
+        problem_text: "",
+        visible_work: [],
+        topics: [],
+        question_seeds: [],
+      },
+      "ja",
+      "junior_high",
+    );
+    for (const id of resolved.topicIds) expect(id.startsWith("JE-")).toBe(true);
+  });
+});
+
+/**
+ * **英語のノートに「to不定詞」とは書かれていない。** 写っているのは英文なので、
+ * キーワード照合が空振りするのは異常ではなく既定の経路。ここで空を返すと、
+ * 読めている写真が呼び出し側で `photo_unreadable` として弾かれる。
+ */
+describe("resolveDetectedTopics(着地点)", () => {
+  it("英語でキーワードが空振りしたら、その課程の着地点に降ろす", () => {
+    const resolved = resolveDetectedTopics(
+      {
+        ...analysisFixture,
+        subject: "english",
+        summary: "Yesterday I went to the park with my friends.",
+        problem_text: "",
+        visible_work: [],
+        topics: [],
+        question_seeds: [],
+      },
+      "ja",
+      "junior_high",
+    );
+    expect(resolved.topicIds).toEqual(["JE-BUNKOZO-KIHON"]);
+  });
+
+  it("高校英語にも着地点がある", () => {
+    const resolved = resolveDetectedTopics(
+      {
+        ...analysisFixture,
+        subject: "english",
+        summary: "The passage describes a small town by the sea.",
+        problem_text: "",
+        visible_work: [],
+        topics: [],
+        question_seeds: [],
+      },
+      "ja",
+      "high_school",
+    );
+    expect(resolved.topicIds).toEqual(["E1-DOKKAI-YOTEN"]);
+  });
+
+  // 数学は着地点を持たない(キーワードが効くので要らない)。
+  // 従来どおり空で返し、呼び出し側が撮り直しを促す。
+  it("数学は着地点を持たず、空のまま返す", () => {
+    const resolved = resolveDetectedTopics(
+      {
+        ...analysisFixture,
+        subject: "math",
+        summary: "なにも読み取れない",
+        problem_text: "",
+        visible_work: [],
+        topics: [],
+        question_seeds: [],
+      },
+      "ja",
+      "junior_high",
+    );
+    expect(resolved.topicIds).toEqual([]);
+  });
+
+  it("範囲外(other)では着地点も使わない", () => {
+    const resolved = resolveDetectedTopics(
+      { ...analysisFixture, subject: "other", topics: [], question_seeds: [] },
+      "ja",
+      "junior_high",
+    );
+    expect(resolved.topicIds).toEqual([]);
+  });
+});
+
 describe("toDetectedTopicPayload", () => {
   it("カリキュラムの単元名を補って返す", () => {
     const payload = toDetectedTopicPayload(["M2-ZUKEI-ENCHOKU"], analysisFixture);
