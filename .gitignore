@@ -64,3 +64,7 @@ apps/mobile/dart_defines/*.json
 apps/mobile/dart_defines/*.env
 !apps/mobile/dart_defines/*.example.json
 backend/api/.wrangler/
+
+# LaTeX の使い捨てスパイク。matchesGoldenFile を使うのに golden タグが無く、
+# 素の flutter test で走って落ちる。焼き直しは --tags golden なのでPNGも焼かれない。
+apps/mobile/test/spike/
