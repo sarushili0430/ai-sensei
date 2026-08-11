@@ -21,7 +21,7 @@ apps/lp/
 | 用途 | 使う場所 |
 | --- | --- |
 | マーケティングURL | App Store Connect(任意) |
-| サポートURL | App Store Connect(**必須**。いまは GitHub Issues を窓口にしている) |
+| サポートURL | App Store Connect / Google Play Console(**必須**。いまは GitHub Issues を窓口にしている) |
 | 提出資料からの導線 | Shipaton / Devpost / #BuildInPublic の投稿 |
 
 ## 作りの前提
@@ -93,8 +93,22 @@ GitHub App からpushできないため)。
 **無いものへのリンクは置かない**方針なので、値が決まるまでページには出していません。
 
 - [ ] 公開ドメイン → `<link rel="alternate" hreflang>` と `og:url` を絶対URLに直す(いまは相対)
-- [ ] `PRIVACY_POLICY_URL` / `TERMS_URL` → フッタに追加(HTMLにコメントで場所を書いてあります)
+- [ ] **`public/privacy/` と `public/terms/` は雛形。** 弁護士のレビューを受けて差し替える。
+      各ページ冒頭の `.legal-draft` ブロックと、黄色でマークした `<span class="fill">` が
+      未確定の箇所(運営者名・所在地・お問い合わせ先・制定日・保存期間・管轄裁判所)。
+      **`fill` が1つでも残っているうちは公開しない**
+- [ ] 差し替え後、そのURLを `PRIVACY_POLICY_URL` / `TERMS_URL`(dart_defines)に入れる。
+      ペイウォールのリンクはここから読むので、空のビルドではリンクごと消える
+- [ ] **ストアの申告と文面を突き合わせる。** 改善のための利用を書いた以上、
+      App Privacy(App Store Connect)とデータセーフティ(Google Play Console)の
+      利用目的に「分析」を足す必要がある。いまの申告は「アプリの機能」だけなので、
+      文面だけ直すと審査で食い違いを指摘される
+- [ ] **Premium の「改善利用オフ」トグルを実装する。** 規約に書いた以上、
+      アプリに無ければ嘘になる。プライバシーポリシー第4条・利用規約第5条
+- [ ] 規約とポリシーの英語版。米国配信は Shipaton の参加要件なので、日本語だけでは足りない
 - [ ] `SUPPORT_EMAIL` → フッタの問い合わせ先に追加(いまは GitHub Issues のみ)
 - [ ] `public/404.html` → 足したら `wrangler.jsonc` の `not_found_handling` を `"404-page"` に
-- [ ] App Store の配信開始 → ヒーローと締めの「App Store で配信予定」を実際のバッジとリンクに差し替え
+- [ ] 配信開始 → ヒーローと締めの「App Store / Google Play で配信予定」を実際のバッジとリンクに差し替え。
+      iOS が先に出るので、**片方だけ出た状態**(App Storeのリンク + Google Playは「配信予定」)を
+      一度は通ることになる。両方まとめて差し替えないこと
 - [ ] OGP画像(`og:image`)。1200×630。`apps/mobile/tool/` と同じく**コードから生成する**こと
