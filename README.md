@@ -204,6 +204,11 @@ E2Eは書かず、TestFlightでの手動確認に割り切っています。
 
 ## アーキテクチャ
 
+図は [`docs/architecture.drawio`](docs/architecture.drawio) にあります
+(draw.io / diagrams.net、VS Codeの Draw.io Integration 拡張でそのまま開けます)。
+全体構成・セッション1回分の流れ・D1のデータモデル・画面遷移・課金の同期・
+デプロイ環境の6ページ構成です。
+
 ```
 Flutter app ──HTTPS──▶ backend/api ──▶ LiveKit room 作成 + agent 起動
      │                    │  写真をVision LLMで解析し、単元判定と質問方針を作る
