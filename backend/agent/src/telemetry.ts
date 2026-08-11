@@ -92,6 +92,8 @@ export const agentDegradations = [
   "lesson_empty",
   /** 読み上げに失敗した。板書は出ているのに音声だけ落ちている。 */
   "say_failed",
+  /** 自動割り当てが作れず定型テンプレへ落ちた。計画は届くが自動化の品質は失われている。 */
+  "plan_template_fallback",
 ] as const;
 
 export type AgentDegradation = (typeof agentDegradations)[number];
@@ -115,6 +117,7 @@ export const degradationStringFields = [
   "event",
   "board_id",
   "session_id",
+  "plan_session_id",
   "room",
   "job_id",
   /** `latex` / `syntax` / `schema`、`text_in_math` などの列挙。自由文ではない。 */
@@ -184,7 +187,7 @@ export class DegradationThrottle {
  * `board_id` を持たない縮退(`board_publisher_missing` など)はセッション単位。
  */
 export function degradationKey(event: string, fields: LogFields): string {
-  const scope = fields["board_id"] ?? fields["session_id"] ?? "";
+  const scope = fields["board_id"] ?? fields["session_id"] ?? fields["plan_session_id"] ?? "";
   return `${event}/${typeof scope === "string" ? scope : ""}`;
 }
 

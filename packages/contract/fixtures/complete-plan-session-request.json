@@ -1,0 +1,30 @@
+{
+  "plan": {
+    "intake": {
+      "exam_name": "2学期の中間",
+      "exam_date": "2026-09-10",
+      "scope": {
+        "topic_ids": ["M2-SANKAKU-KAHO"],
+        "said": "数IIの三角関数、教科書120〜150ページ"
+      },
+      "materials": ["4STEP"]
+    },
+    "days": [
+      {
+        "date": "2026-08-25",
+        "items": [
+          {
+            "topic_id": "M2-SANKAKU-KAHO",
+            "what": "4STEPの加法定理の例題を一周",
+            "material": 0,
+            "minutes": 40
+          }
+        ]
+      }
+    ],
+    "revision": null
+  },
+  "source": "senpai",
+  "duration_seconds": 146,
+  "ended_reason": "completed"
+}

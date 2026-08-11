@@ -23,8 +23,10 @@ const messages: Record<ApiErrorCode, { ja: string; en: string; status: number }>
     status: 429,
   },
   premium_required: {
-    ja: "穴の復習はPremiumの機能です。無料のままでも、今日のカルテは見られます。",
-    en: "Reviewing past gaps is a Premium feature. Today's karte stays free.",
+    // 計画も復習も「原価が発生するものだけが有料」という同じ境界にある。
+    // 機能名を固定すると、別のPremium導線から復習の説明が出て利用者を迷わせる。
+    ja: "この機能はPremiumで利用できます。無料のままでも、今日のカルテは見られます。",
+    en: "This feature is available with Premium. Today's karte stays free.",
     status: 402,
   },
   photo_unreadable: {

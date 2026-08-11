@@ -1,10 +1,16 @@
 import type { ZodTypeAny } from "zod";
 import {
   apiErrorSchema,
+  completePlanSessionRequestSchema,
+  completePlanSessionResponseSchema,
   completeSessionRequestSchema,
   completeSessionResponseSchema,
+  createPlanSessionRequestSchema,
+  createPlanSessionResponseSchema,
   createSessionRequestSchema,
   createSessionResponseSchema,
+  planResponseSchema,
+  planSessionMetadataSchema,
   progressResponseSchema,
   reviewQueueResponseSchema,
   sessionMetadataSchema,
@@ -46,6 +52,12 @@ export const fixtureSchemas = {
   "parent-report": parentReportResponseSchema,
   // 自習室から出るときの1回だけ送る。学習内容を混ぜないこともfixtureの形で固定する。
   "study-room-visit-request": studyRoomVisitRequestSchema,
+  "create-plan-session-request": createPlanSessionRequestSchema,
+  "create-plan-session-response": createPlanSessionResponseSchema,
+  "plan-session-metadata": planSessionMetadataSchema,
+  "complete-plan-session-request": completePlanSessionRequestSchema,
+  "complete-plan-session-response": completePlanSessionResponseSchema,
+  "plan-response": planResponseSchema,
 } satisfies Record<string, ZodTypeAny>;
 
 export type FixtureName = keyof typeof fixtureSchemas;

@@ -1,0 +1,9 @@
+{
+  "plan_session_id": "pls_01J8ZB4X6TQ2M3N4P5R6S7T8V9",
+  "livekit": {
+    "url": "wss://example-project.livekit.cloud",
+    "token": "<livekit-access-token-placeholder>",
+    "room": "pls_01J8ZB4X6TQ2M3N4P5R6S7T8V9"
+  },
+  "current_plan": null
+}

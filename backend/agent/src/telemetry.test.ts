@@ -26,6 +26,7 @@ describe("isDegradation", () => {
     expect(isDegradation("board_step_rejected")).toBe(true);
     expect(isDegradation("lesson_empty")).toBe(true);
     expect(isDegradation("review_hole_missing")).toBe(true);
+    expect(isDegradation("plan_template_fallback")).toBe(true);
   });
 
   /**
@@ -121,6 +122,12 @@ describe("degradationKey", () => {
     expect(degradationKey("board_publisher_missing", { session_id: "ses_1" })).toBe(
       "board_publisher_missing/ses_1",
     );
+  });
+
+  it("計画の縮退は計画セッション単位", () => {
+    expect(
+      degradationKey("plan_template_fallback", { plan_session_id: "pls_1", reason: "shape" }),
+    ).toBe("plan_template_fallback/pls_1");
   });
 });
 

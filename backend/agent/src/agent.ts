@@ -11,7 +11,12 @@ import {
 } from "./board.ts";
 import { closingGraceMs, isClosingUtterance } from "./closing.ts";
 import { type AgentConfig, loadConfig } from "./config.ts";
-import { type SessionContext, remainingSeconds, resolveSessionContext } from "./context.ts";
+import {
+  type AgentContext,
+  type SessionContext,
+  remainingSeconds,
+  resolveAgentContext,
+} from "./context.ts";
 import {
   buildKarte,
   createAnthropicClient,
@@ -21,6 +26,7 @@ import {
 } from "./karte.ts";
 import { boardCloseReasonFor, createAnthropicLessonClient, runBoardLesson } from "./lesson.ts";
 import { JobLogger } from "./log.ts";
+import { runPlanSession } from "./plan-session.ts";
 import {
   lessonFailedPrompt,
   openingFiller,
@@ -83,16 +89,24 @@ export default defineAgent({
     await ctx.connect();
     const participant = await ctx.waitForParticipant();
 
-    let context: SessionContext;
+    let context: AgentContext;
     try {
       // 参加者metadata(自動ディスパッチ)とジョブmetadata(明示ディスパッチ)の
       // どちらで来ても読めるようにする。
-      context = resolveSessionContext([participant.metadata, ctx.job.metadata]);
+      context = resolveAgentContext([participant.metadata, ctx.job.metadata]);
     } catch (error) {
       // 文脈なしで喋らせると、写真と関係ない一般論を教え始めてしまう。
       // それくらいなら黙って終える。
       log.error("context_unreadable", error, { participant: participant.identity });
       await ctx.room.disconnect();
+      return;
+    }
+
+    if (context.kind === "plan") {
+      // 計画は同じ声・同じLiveKitを使うが授業ではない。板書・カルテ・教え返しへ
+      // 入る前に分岐し、計画を授業回数や穴へ混ぜない。
+      log = log.child({ plan_session_id: context.plan_session_id });
+      await runPlanSession({ ctx, config, context, startedAt, log });
       return;
     }
 

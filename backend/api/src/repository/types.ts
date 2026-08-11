@@ -1,4 +1,4 @@
-import type { HoleSeverity, SessionProblem } from "@ai-sensei/contract";
+import type { HoleSeverity, Locale, SessionProblem, StudyPlan } from "@ai-sensei/contract";
 
 export type UserRecord = {
   device_id: string;
@@ -123,6 +123,24 @@ export type StudyRoomVisitWrite = {
 };
 
 /**
+ * 計画を作るための音声セッション。授業セッションとは別の寿命・集計で持つ。
+ *
+ * 計画を `sessions` に混ぜると、計画を組み直した日まで連続学習日に数えられ、
+ * 「授業をした日」という親への説明が嘘になる。LiveKitを使う点だけは同じでも、
+ * プロダクト上の出来事は別なのでレコードも分ける。
+ */
+export type PlanSessionRecord = {
+  id: string;
+  device_id: string;
+  locale: Locale;
+  status: "open" | "completed";
+  created_at: string;
+  completed_at: string | null;
+  duration_seconds: number | null;
+  plan_id: string | null;
+};
+
+/**
  * 永続化の境界。
  *
  * ルートはこのインターフェースにだけ依存する。本番はD1、テストはメモリ実装。
@@ -201,4 +219,22 @@ export type Repository = {
     visitId: string;
     recordedAt: string;
   }): Promise<StudyRoomVisitWrite>;
+
+  /** 計画セッションには日次の授業枠を使わない。Premium判定はルート側で行う。 */
+  createPlanSession(session: PlanSessionRecord): Promise<void>;
+  getPlanSession(planSessionId: string): Promise<PlanSessionRecord | null>;
+  /** 組み直し前の事実を音声セッションへ渡すため、ユーザーごとの現行計画を読む。 */
+  getCurrentPlan(deviceId: string): Promise<StudyPlan | null>;
+  /** complete の再送では、そのセッションが実際に保存した計画を返す。 */
+  getPlan(planId: string): Promise<StudyPlan | null>;
+  /**
+   * 計画の置換とセッション完了を同じ原子的操作にする。
+   * false は別の同時リクエストが先に完了したという意味で、呼び出し側は保存済みを返す。
+   */
+  completePlanSession(input: {
+    sessionId: string;
+    completedAt: string;
+    durationSeconds: number;
+    plan: StudyPlan;
+  }): Promise<boolean>;
 };
