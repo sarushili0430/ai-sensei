@@ -15,7 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../support/harness.dart';
 
-/// 主要画面の golden test(handoff §5)。
+/// 主要画面の golden test。
 ///
 /// 見ているのは「崩れていないか」よりも **設計上の約束が画面に出ているか**:
 /// 点数が出ていないか、穴がピンクのマーカーで示されているか、

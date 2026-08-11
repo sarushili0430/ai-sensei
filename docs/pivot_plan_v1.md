@@ -1,7 +1,7 @@
 # ピボット計画 v1 — 「家庭教師AI(先輩)」へ
 
 作成日: 2026-08-09 / 対象: App Store バイナリ提出 2026-09-05 → Shipaton 提出 2026-09-30
-一次情報: [`inception-deck.md`](inception-deck.md)・[`handoff_to_opus.md`](handoff_to_opus.md)・[`business/business_direction_v0.md`](business/business_direction_v0.md)
+一次情報: [`inception-deck.md`](inception-deck.md)・[`business/business_direction_v0.md`](business/business_direction_v0.md)
 
 この文書は、**提出物ごと「家庭教師AI」に差し替える**という決定と、その具体的な設計・計画を記録する。
 [`inception-deck.md`](inception-deck.md) の §0「4つの約束」の**1番目を部分改正する**ので、
@@ -579,7 +579,7 @@ W1のスパイクが通った時点で、**まず自分で1週間回す**
    それは Peace Prize の物語そのものになる。**10月以降の判断**
 4. **著作物(問題の紙面)の保存可否**(§4-1)
 5. **未成年 + AI生成コンテンツの App Review。**Kids Category には入れない(13歳以上)。
-   審査メモでガードレールを説明する(デッキ §5・handoff §5)
+   審査メモでガードレールを説明する(デッキ §5)
 6. **同席型が本当に使われるか。**原価ゼロなので賭けとしては安いが、
    滞在時間が伸びなければ課金導線としては機能しない
 7. **【提出前に必ず塞ぐ】クラッシュ監視が存在しない。**
@@ -587,7 +587,7 @@ W1のスパイクが通った時点で、**まず自分で1週間回す**
    **`lib/` に `Sentry.` の呼び出しが1件もなく、`main.dart` に初期化もない**(2026-08-09 確認)。
    つまり**1件も飛ばない**。9/5提出→公開後、ソロ運用でクラッシュが起きても気づけず、
    ユーザーは黙って離脱する。**依存だけ入って動いていない状態は、入っていないより危険**
-   (「入れたつもり」で運用に入る)。handoff §2 は Sentry をスポンサー活用として挙げている。
+   (「入れたつもり」で運用に入る)。Sentry はスポンサー活用としても挙げている。
    導入時の設計方針: `captureException` ではなく `captureMessage(level: warning)` を縮退状態に使う /
    同一 `board_id` で連発しないよう間引く / `tex` は先頭数十文字と縮小率だけに絞る。
 

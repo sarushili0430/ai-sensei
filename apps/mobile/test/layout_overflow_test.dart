@@ -56,7 +56,7 @@ void main() {
   }
 
   // 英語は日本語の1.5〜2倍の長さになる。日本語で組んだ余白は英語で必ず破れるので、
-  // 両方通す(審査員が見るのは英語版・handoff §3-7)。
+  // 両方通す(審査員が見るのは英語版)。
   for (final Locale locale in <Locale>[const Locale('ja'), const Locale('en')]) {
     final String lang = locale.languageCode;
 

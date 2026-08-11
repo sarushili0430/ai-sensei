@@ -104,7 +104,7 @@ class _FadeSlideInState extends State<FadeSlideIn> with SingleTickerProviderStat
 /// 少し小さいところから、跳ねて出てくる。
 ///
 /// 行き過ぎて戻る動き([AppCurves.pop])を使うのは**にぎやかな画面だけ**。
-/// 内省する画面(カルテ・復習)に持ち込むと、記録が軽く見える(handoff §7)。
+/// 内省する画面(カルテ・復習)に持ち込むと、記録が軽く見える。
 class PopIn extends StatelessWidget {
   const PopIn({required this.child, this.duration = AppDurations.celebrate, super.key});
 
@@ -127,7 +127,7 @@ class PopIn extends StatelessWidget {
 /// 数を 0 から数え上げる。
 ///
 /// 数えているのが「連続日数」と「埋めた穴」だけだからこそ、
-/// その2つは増えたことが見えたほうがいい(handoff §7)。
+/// その2つは増えたことが見えたほうがいい。
 /// 正誤や点数には使わない — そもそも出さない。
 class CountUpText extends StatelessWidget {
   const CountUpText(this.value, {this.style, this.duration = AppDurations.celebrate, super.key});

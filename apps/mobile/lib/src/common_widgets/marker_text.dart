@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
 
-/// 蛍光マーカー(handoff §7 視覚言語)。
+/// 蛍光マーカー(視覚言語)。
 ///
 /// 高校生のノート文化に接地したオリジナル要素で、Duolingoクローンに見せないための要。
 /// 言えたこと = 黄、穴 = ピンク。

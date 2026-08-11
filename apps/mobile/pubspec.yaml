@@ -15,7 +15,7 @@ dependencies:
   flutter_localizations:
     sdk: flutter
 
-  # 状態管理 / DI (handoff §5)
+  # 状態管理 / DI
   flutter_riverpod: ^3.0.0
   riverpod_annotation: ^4.0.0
 
@@ -94,7 +94,7 @@ flutter:
     # README に置く。ディレクトリ指定なので、日英の片方を宣言し忘れない。
     - assets/audio/
   fonts:
-    # 丸ゴシック(handoff §7)。SIL OFL 1.1。
+    # 丸ゴシック。SIL OFL 1.1。
     # golden test はこのフォントを読み込んで描画するので、
     # ファイルが欠けるとテストが落ちる(= 気づける)。
     - family: ZenMaruGothic

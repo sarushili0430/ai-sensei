@@ -15,7 +15,7 @@ Cloudflare Workers + Hono。セッション作成・カルテ保存・課金webh
 | POST | `/v1/webhooks/revenuecat` | 共有シークレット | entitlement同期 |
 | GET | `/health` | なし | 死活確認。どの環境かを名乗る(`{"ok":true,"environment":"production"}`) |
 
-認証は**匿名デバイスID**(handoff §5)。アカウント作成を要求しないので、
+認証は**匿名デバイスID**。アカウント作成を要求しないので、
 クライアントが生成したUUIDを `X-Device-Id` で送るだけ。
 
 `/complete` だけは agent が呼ぶ内部エンドポイントで、共有シークレット1本

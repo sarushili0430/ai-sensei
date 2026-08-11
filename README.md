@@ -19,10 +19,8 @@
 (エレベーターピッチ・やらないことリスト・トレードオフスライダー)。スプリントの入口で読んでください。
 2026-08-09に「先輩AIが板書つきで教える → 教え返させる」へ差し替えた経緯と設計は
 [`docs/pivot_plan_v1.md`](docs/pivot_plan_v1.md) にまとめてあります。
-企画・設計の一次情報は [`docs/handoff_to_opus.md`](docs/handoff_to_opus.md) にあります。
 画面設計と**画面遷移図**は [`docs/wireframe_v1.html`](docs/wireframe_v1.html)、ビジュアル方針は
-[`docs/design_direction_v0.html`](docs/design_direction_v0.html) を参照してください
-([`wireframe_v0.html`](docs/wireframe_v0.html) は差分を追うために残してある旧版です)。
+[`docs/design_direction_v0.html`](docs/design_direction_v0.html) を参照してください。
 アプリアイコン・ストア掲載スクリーンショット・App Store提出メタデータ(説明文・キーワード・審査メモ)も
 同じ `design_direction_v0.html` の後半にまとめてあります。スクショの実物は
 [`docs/store/screenshots/`](docs/store/screenshots)、生成はどちらも

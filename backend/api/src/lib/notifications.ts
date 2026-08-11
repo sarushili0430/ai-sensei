@@ -4,7 +4,7 @@ import { buildReviewPrompt } from "@ai-sensei/guardrail";
 /**
  * 復習プッシュの予約。
  *
- * cronは持たず、OneSignalのスケジュール送信に載せる(handoff §5)。
+ * cronは持たず、OneSignalのスケジュール送信に載せる。
  * 予約IDはD1に残し、穴が埋まったらキャンセルする。
  * 埋めた穴について通知が届くのは、いちばん白ける体験なので。
  */

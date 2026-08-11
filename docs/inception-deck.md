@@ -1,7 +1,7 @@
 # インセプションデッキ — ai-sensei(カタルテ)
 
 作成日: 2026-08-05 / 対象: 提出締切 2026-09-30 23:45 PDT までの全スプリント
-一次情報: [`handoff_to_opus.md`](handoff_to_opus.md)・[`wireframe_v0.html`](wireframe_v0.html)・[`design_direction_v0.html`](design_direction_v0.html)・[`adr/`](adr/)
+一次情報: [`design_direction_v0.html`](design_direction_v0.html)・[`adr.md`](adr.md)
 2026-08-09: [`pivot_plan_v1.md`](pivot_plan_v1.md) の決定により §0(4つの約束の1番目)を改正。改正の経緯・設計はそちらが一次情報。
 
 この資料は「作るものの合意」であって、仕様書ではない。
@@ -74,7 +74,7 @@
 
 ## 3. パッケージデザイン(ストアに並んだときに何と書いてあるか)
 
-- **アプリ名**: カタルテ(語る × カルテ)。※`handoff §9-8` の未決。ここで確定させる場合は本節を正とする
+- **アプリ名**: カタルテ(語る × カルテ)。※未決。ここで確定させる場合は本節を正とする
 - **サブタイトル(30字)**: 答えを教える。そのあと、あなたに教え返してもらう。
 - **英語正文**: The AI tutor that teaches you — then asks you to teach it back.
 - **箱の裏の3行**:

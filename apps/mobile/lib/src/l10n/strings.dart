@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 
-/// 日英2ロケール(handoff §3-7 審査員対応)。
+/// 日英2ロケール(審査員対応)。
 ///
 /// arb + codegen を使わず手書きにしているのは、`flutter test` を
 /// codegenなしで通せるようにするため(リポジトリ単体で動くことがNext Genの要件)。
@@ -446,7 +446,7 @@ class AppStrings {
   String get settingsPrivacy => _pick('プライバシーポリシー', 'Privacy policy');
   String get settingsTerms => _pick('利用規約', 'Terms of use');
 
-  /// AI生成物の報告導線。App Review で見られる(handoff §5)。
+  /// AI生成物の報告導線。App Review で見られる。
   ///
   /// **報告してほしい中身が、憲法改正で変わった。** 旧版は
   /// 「答えを教えてしまっている」を報告理由に挙げていたが、いまは答えを教えるのが
@@ -599,8 +599,8 @@ class AppStrings {
 
   /// 契約している印。ホーム右上と設定に出す。
   ///
-  /// **ランクや称号ではない。** 数えるのは連続日数と埋めた穴だけなので
-  /// (handoff §7)、ここは「今どっちの状態か」の表示に留める。
+  /// **ランクや称号ではない。** 数えるのは連続日数と埋めた穴だけなので、
+  /// ここは「今どっちの状態か」の表示に留める。
   /// 商品名なので日英で変えない。
   String get premiumBadge => 'Premium';
   String get premiumActive => _pick('有効', 'Active');

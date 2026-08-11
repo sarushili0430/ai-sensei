@@ -56,7 +56,7 @@ describe("nextReviewStep", () => {
 });
 
 describe("activeStepDays", () => {
-  // handoff §8: 遅延したら間隔反復を3段階から翌日のみに縮小する
+  // 遅延したら間隔反復を3段階から翌日のみに縮小する
   it("縮小モードでは翌日だけにする", () => {
     expect(activeStepDays()).toEqual([1, 3, 7]);
     expect(activeStepDays(true)).toEqual([1]);

@@ -17,7 +17,7 @@ import 'board/board_view.dart';
 
 /// 会話画面(ワイヤーフレームの03/04を1枚に統合)。
 ///
-/// **にぎやかな画面**にする(handoff §7)。ただし試験官UIにはしない。
+/// **にぎやかな画面**にする。ただし試験官UIにはしない。
 ///
 /// 画面には2つの姿がある。分かれ目は**板書が届いているか**だけ:
 ///
@@ -122,7 +122,7 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
                 _Subtitle(text: subtitle, align: TextAlign.center),
                 const Spacer(),
               ],
-              // パスは恥ではない。穴の記録として価値がある(handoff §7)。
+              // パスは恥ではない。穴の記録として価値がある。
               GhostButton(
                 label: strings.sessionPass,
                 onPressed: wrappingUp
