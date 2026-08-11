@@ -71,6 +71,7 @@ void main() {
   /// `problem` を返すAPIクライアント。null なら「読めなかった」。
   List<Object?> apiOverrides({
     Map<String, dynamic>? problem,
+    List<Map<String, dynamic>>? topics,
     List<http.BaseRequest>? calls,
     String? errorCode,
     String? errorMessage,
@@ -97,15 +98,17 @@ void main() {
           'token': 'token',
           'room': 'ses_1',
         },
-        'detected_topics': <Map<String, dynamic>>[
-          <String, dynamic>{
-            'topic_id': 'M2-ZUKEI-ENCHOKU',
-            'course': '数学II',
-            'unit': '図形と方程式',
-            'topic': '円と直線の位置関係',
-            'confidence': 0.92,
-          },
-        ],
+        'detected_topics': topics ??
+            <Map<String, dynamic>>[
+              <String, dynamic>{
+                'topic_id': 'M2-ZUKEI-ENCHOKU',
+                'course': '数学II',
+                'unit': '図形と方程式',
+                'topic': '円と直線の位置関係',
+                'label': '数学II',
+                'confidence': 0.92,
+              },
+            ],
         'problem': problem,
         'limits': <String, dynamic>{'max_seconds': 1200, 'lesson_allowed_today': false},
       };
@@ -126,6 +129,7 @@ void main() {
   Future<void> pumpCapture(
     WidgetTester tester, {
     Map<String, dynamic>? problem,
+    List<Map<String, dynamic>>? topics,
     List<http.BaseRequest>? calls,
     String? errorCode,
     String? errorMessage,
@@ -136,6 +140,7 @@ void main() {
       const CaptureScreen(),
       overrides: apiOverrides(
         problem: problem,
+        topics: topics,
         calls: calls,
         errorCode: errorCode,
         errorMessage: errorMessage,
@@ -228,6 +233,42 @@ void main() {
     await startLesson(tester);
 
     expect(find.text(ja.captureProblemTitle), findsOneWidget);
+    expect(
+      tester.getBottomLeft(find.text(ja.captureStart)).dy,
+      lessThan(smallPhoneSurface.height),
+    );
+  });
+
+  // 学年ラベルが付いたぶん、チップは横に伸びた。「中1 データの分布とヒストグラム」は
+  // 375px の端末で1チップが画面幅を超える。切り詰めるとどの単元か読めなくなるので
+  // 折り返す — その結果、**縦にも横にも溢れていない**ことをここで固定する。
+  testWidgets('長い単元名のチップでも、横に溢れず始めるボタンも画面内に残る', (WidgetTester tester) async {
+    await pumpCapture(
+      tester,
+      size: smallPhoneSurface,
+      topics: <Map<String, dynamic>>[
+        <String, dynamic>{
+          'topic_id': 'J1-DATA-BUNPU',
+          'course': '中学1年 数学',
+          'unit': 'データの活用',
+          'topic': 'データの分布とヒストグラム',
+          'label': '中1',
+          'confidence': 0.92,
+        },
+        <String, dynamic>{
+          'topic_id': 'J2-DATA-HAKOHIGE',
+          'course': '中学2年 数学',
+          'unit': 'データの活用',
+          'topic': '四分位範囲と箱ひげ図',
+          'label': '中2',
+          'confidence': 0.88,
+        },
+      ],
+    );
+    await startLesson(tester);
+
+    expect(tester.takeException(), isNull, reason: 'チップが画面から溢れています');
+    expect(find.text('中1 データの分布とヒストグラム'), findsOneWidget);
     expect(
       tester.getBottomLeft(find.text(ja.captureStart)).dy,
       lessThan(smallPhoneSurface.height),

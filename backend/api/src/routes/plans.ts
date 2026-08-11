@@ -36,7 +36,7 @@ plansRoute.post("/", async (c) => {
     log?.warn("plan_session_invalid_payload", { issue_count: parsed.error.issues.length });
     return c.json({ error: { code: "internal_error", message: parsed.error.message } }, 400);
   }
-  const { locale } = parsed.data;
+  const { locale, school_stage: schoolStage } = parsed.data;
 
   const user = await repository.ensureUser(deviceId, at);
   if (!isPremiumNow(user, at)) {
@@ -50,6 +50,7 @@ plansRoute.post("/", async (c) => {
     plan_session_id: planSessionId,
     kind: "plan",
     locale,
+    school_stage: schoolStage,
     max_seconds: maxSeconds,
     today: toLocalDate(at),
     current_plan: currentPlan,

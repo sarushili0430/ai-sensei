@@ -1,10 +1,14 @@
 import { type SessionProblem, problemTextMaxLength } from "@ai-sensei/contract";
 import {
   type CurriculumLocale,
+  type SchoolStage,
+  type TrackId,
   findTopic,
   isKnownTopicId,
   suggestTopics,
-  topicsFor,
+  topicLabel,
+  topicsForTracks,
+  tracksForStage,
 } from "@ai-sensei/curriculum";
 import { checkProblemText } from "@ai-sensei/guardrail";
 import { formatBullets, getPrompt, renderPrompt } from "@ai-sensei/prompts";
@@ -23,8 +27,19 @@ import { z } from "zod";
  * チップが出てしまう。
  */
 
+/**
+ * 写真に写っている教科。
+ *
+ * `is_math_note: boolean` から替えた。対応教科が数学だけだった頃は真偽値で
+ * 足りたが、英語を足すと「数学ではない」と「対応していない」が別物になる。
+ * **`other` だけが範囲外**で、それ以外は課程を絞る手がかりになる。
+ */
+export const analysisSubjects = ["math", "english", "other"] as const;
+export type AnalysisSubject = (typeof analysisSubjects)[number];
+
 export const photoAnalysisSchema = z.object({
-  is_math_note: z.boolean(),
+  /** 既定を `other` にしない — 解析器が欄を落としたときに、写真を捨てる方へ倒れる。 */
+  subject: z.enum(analysisSubjects).default("math"),
   summary: z.string(),
   /**
    * 解いている問題そのものの書き起こし(計画書 §0 の決定4「問題とノートをセットで送る」)。
@@ -62,7 +77,7 @@ export type PhotoAnalysisImage = { image: ArrayBuffer; contentType: string };
  * 画像なしでVision APIを呼ぶと、解析器は写真を見ないまま `is_math_note: true` と
  * 想像で答えることがあり、**写真に無い単元でセッションが始まる**。
  */
-export type PhotoAnalyzerInput = { locale?: CurriculumLocale } & (
+export type PhotoAnalyzerInput = { locale?: CurriculumLocale; stage?: SchoolStage } & (
   | { notes: PhotoAnalysisImage; problem?: PhotoAnalysisImage }
   | { notes?: PhotoAnalysisImage; problem: PhotoAnalysisImage }
 );
@@ -134,16 +149,33 @@ export function detectImageMediaType(
   return SUPPORTED_MEDIA_TYPES.find((type) => type === normalized) ?? null;
 }
 
+/**
+ * この解析で見る課程。
+ *
+ * **段階で必ず絞る。** 「その言語の課程を全部」にすると、中学生の写真にも
+ * 数学I〜Cの52件が候補として並び、解析器が高校の単元を選べてしまう。
+ * プロンプトに貼る量も課程の数だけ線形に増える。
+ */
+function tracksFor(locale: CurriculumLocale, stage: SchoolStage): TrackId[] {
+  return tracksForStage(stage, locale);
+}
+
 /** その課程のカリキュラムマップを、プロンプトに貼れる形に畳む。 */
-export function curriculumDigest(locale: CurriculumLocale = "ja"): string {
-  return topicsFor(locale)
+export function curriculumDigest(
+  locale: CurriculumLocale = "ja",
+  stage: SchoolStage = "high_school",
+): string {
+  return topicsForTracks(tracksFor(locale, stage))
     .map((topic) => `- ${topic.id} | ${topic.course} / ${topic.unit} / ${topic.topic}`)
     .join("\n");
 }
 
-export function photoAnalysisPrompt(locale: CurriculumLocale = "ja"): string {
+export function photoAnalysisPrompt(
+  locale: CurriculumLocale = "ja",
+  stage: SchoolStage = "high_school",
+): string {
   return renderPrompt(getPrompt("photo_analysis", locale), {
-    curriculum_digest: curriculumDigest(locale),
+    curriculum_digest: curriculumDigest(locale, stage),
   });
 }
 
@@ -157,13 +189,14 @@ export function photoAnalysisPrompt(locale: CurriculumLocale = "ja"): string {
 export function resolveDetectedTopics(
   analysis: PhotoAnalysis,
   locale: CurriculumLocale = "ja",
+  stage: SchoolStage = "high_school",
 ): {
   topicIds: string[];
   droppedIds: string[];
 } {
   const droppedIds: string[] = [];
   const topicIds: string[] = [];
-  const inCurriculum = new Set(topicsFor(locale).map((topic) => topic.id));
+  const inCurriculum = new Set(topicsForTracks(tracksFor(locale, stage)).map((t) => t.id));
 
   for (const entry of analysis.topics) {
     if (isKnownTopicId(entry.topic_id) && inCurriculum.has(entry.topic_id)) {
@@ -173,11 +206,13 @@ export function resolveDetectedTopics(
     }
   }
 
-  if (topicIds.length === 0 && analysis.is_math_note) {
+  if (topicIds.length === 0 && analysis.subject !== "other") {
     const haystack = [analysis.summary, ...analysis.visible_work, ...analysis.question_seeds].join(
       " ",
     );
-    topicIds.push(...suggestTopics(haystack, 3, { locale }).map((topic) => topic.id));
+    topicIds.push(
+      ...suggestTopics(haystack, 3, { tracks: tracksFor(locale, stage) }).map((t) => t.id),
+    );
   }
 
   return { topicIds: [...new Set(topicIds)], droppedIds };
@@ -246,7 +281,14 @@ export function resolveSessionProblem(input: {
 export function toDetectedTopicPayload(
   topicIds: readonly string[],
   analysis: PhotoAnalysis,
-): { topic_id: string; course: string; unit: string; topic: string; confidence: number }[] {
+): {
+  topic_id: string;
+  course: string;
+  unit: string;
+  topic: string;
+  label: string;
+  confidence: number;
+}[] {
   const confidenceById = new Map(
     analysis.topics.map((entry) => [entry.topic_id, entry.confidence]),
   );
@@ -259,6 +301,8 @@ export function toDetectedTopicPayload(
         course: topic.course,
         unit: topic.unit,
         topic: topic.topic,
+        // チップに出す短い課程名。作るのはカリキュラム側の1関数だけ(ADR 0006)
+        label: topicLabel(topic),
         // キーワード推定にフォールバックした分は、確信度を明示的に低くする
         confidence: confidenceById.get(topicId) ?? 0.4,
       },
@@ -319,7 +363,7 @@ export function createAnthropicAnalyzer(options: AnthropicAnalyzerOptions): Phot
   const baseUrl = options.baseUrl ?? "https://api.anthropic.com";
 
   return {
-    async analyze({ notes, problem, locale = "ja" }) {
+    async analyze({ notes, problem, locale = "ja", stage = "high_school" }) {
       // 2枚あるときは **1回の呼び出し** で渡す。分けて2回叩くと、
       // (a) Vision の課金が2倍になる(§6-1 の見積もりは「問題+ノート2枚」で1項目)
       // (b) **解析器が2枚を突き合わせられない** — ノートだけを見た回は
@@ -354,7 +398,7 @@ export function createAnthropicAnalyzer(options: AnthropicAnalyzerOptions): Phot
         body: JSON.stringify({
           model: options.model,
           max_tokens: 1500,
-          system: photoAnalysisPrompt(locale),
+          system: photoAnalysisPrompt(locale, stage),
           messages: [{ role: "user", content }],
         }),
       });

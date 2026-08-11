@@ -5,6 +5,7 @@ import 'package:livekit_client/livekit_client.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../api/api_client.dart';
+import '../../settings/application/school_stage_controller.dart';
 import '../domain/study_plan.dart';
 
 part 'plan_controller.g.dart';
@@ -132,7 +133,10 @@ class PlanController extends _$PlanController {
     try {
       final PlanSessionStart session = await ref
           .read(apiClientProvider)
-          .createPlanSession(locale: locale);
+          .createPlanSession(
+            locale: locale,
+            schoolStage: ref.read(schoolStageControllerProvider).wireValue,
+          );
       if (!ref.mounted) return;
       _activeSession = session;
       _baselinePlan = session.currentPlan;

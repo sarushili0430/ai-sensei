@@ -1,6 +1,6 @@
 import type { CompletePlanSessionRequest, PlanSource, StudyPlanDraft } from "@ai-sensei/contract";
-import { topicsFor } from "@ai-sensei/curriculum";
-import { formatAllowedTopics, studyPlanSystemPrompt } from "@ai-sensei/prompts";
+import { topicsForTracks, tracksForStage } from "@ai-sensei/curriculum";
+import { formatTopicIndex, studyPlanSystemPrompt } from "@ai-sensei/prompts";
 import {
   type ChatChunk,
   type ChatContext,
@@ -178,8 +178,13 @@ class PlanVoiceAgent extends voice.Agent {
       instructions: studyPlanSystemPrompt(
         {
           today: input.context.today,
-          allowed_topics: formatAllowedTopics(
-            topicsFor(input.context.locale),
+          // 写真が無いので範囲を絞れない。**この段のトピックを全部貼る**。
+          //
+          // 到達目標は落とす(`formatTopicIndex`)。計画LLMの仕事は「範囲の
+          // topic_id を選ぶ」ことだけで、目標は選択の材料にならない。
+          // 実測: 日本の高校数学52件で 6,516字 → 2,503字(-61%)。
+          allowed_topics: formatTopicIndex(
+            topicsForTracks(tracksForStage(input.context.school_stage, input.context.locale)),
             input.context.locale,
           ),
           known_facts: knownFacts(input.context),

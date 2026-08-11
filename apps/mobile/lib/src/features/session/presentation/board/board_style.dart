@@ -30,6 +30,17 @@ abstract final class BoardStyle {
   /// 板書の1手順として単独の行に収まる大きさ。
   static const double graphicHeight = 180;
 
+  /// 英語の例文の文字サイズ。
+  ///
+  /// 数式(24)より小さいのは、**1文がそのぶん長い**から。120字の英文を24ptで
+  /// 出すと実効幅340ptで4行以上になり、板書の1手順が画面を埋める。
+  /// 本文(bodyLarge)より少し大きい程度にして、注記との差だけを付ける。
+  static const double sentenceFontSize = 18;
+
+  /// `focus` に引く下線の太さ。**文字の一部を指す線**なので、
+  /// 罫線より太く、囲みより細い。
+  static const double focusUnderlineThickness = 2;
+
   /// 実測の前提にした板書の実効幅(pt)。iPhone 15 の393ptから余白を引いた値。
   ///
   /// **[latexMinScale] はこの幅を基準に決めた値**なので、実際の幅がこれを下回ると

@@ -8,7 +8,11 @@ import {
   boardStepSchema,
   boardStepsMaxCount,
 } from "@ai-sensei/contract";
-import type { CurriculumLocale } from "@ai-sensei/curriculum";
+import {
+  type CurriculumLocale,
+  type CurriculumSubject,
+  subjectOfTopicId,
+} from "@ai-sensei/curriculum";
 import {
   type AllowedTopics,
   type LatexRejectionReason,
@@ -188,10 +192,41 @@ export type StepRepair = (rejection: BoardStepRejection) => Promise<unknown>;
  */
 export type HeadRepair = (rejection: BoardHeadRejection) => Promise<unknown>;
 
+/**
+ * **その教科で使ってよい板書要素。**
+ *
+ * contract は「表現できる形」を全部持っているが、教科ごとに使える枝は違う。
+ * 英語の授業に `latex` を許すと、先輩は英文を数式ブロックに入れようとする
+ * (`latex-guard` が全角を禁止しているので、そこで初めて弾かれて作り直しになる)。
+ * ここで先に閉じておけば、**英語の課程では LaTeX の検査に到達しない**。
+ */
+const boardKindsBySubject: Record<CurriculumSubject, readonly string[]> = {
+  math: ["latex", "text", "plot", "triangle", "circle"],
+  english: ["sentence", "compare", "text"],
+};
+
 /** 契約に合わなかったときの指示。LaTeXの理由別の文面は guardrail 側にある。 */
-const schemaGuidanceByLocale: Record<CurriculumLocale, string> = {
-  ja: "手順の形が契約に合っていません。speech は120字以内の話し言葉(数式を入れない)、board は latex / text / plot / triangle / circle のどれか、または null にすること。",
-  en: "The step does not match the contract. Keep speech under 120 characters of plain spoken language (no formulas), and make board one of latex / text / plot / triangle / circle, or null.",
+const schemaGuidanceBySubject: Record<CurriculumSubject, Record<CurriculumLocale, string>> = {
+  math: {
+    ja: "手順の形が契約に合っていません。speech は120字以内の話し言葉(数式を入れない)、board は latex / text / plot / triangle / circle のどれか、または null にすること。",
+    en: "The step does not match the contract. Keep speech under 120 characters of plain spoken language (no formulas), and make board one of latex / text / plot / triangle / circle, or null.",
+  },
+  english: {
+    ja: "手順の形が契約に合っていません。speech は120字以内の話し言葉、board は sentence(例文) / compare(2列の対比表) / text(一行の注記) のどれか、または null にすること。**英語の板書に数式は置きません。**",
+    en: "The step does not match the contract. Keep speech under 120 characters of plain spoken language, and make board one of sentence / compare / text, or null. **Never put formulas on an English board.**",
+  },
+};
+
+/** その教科で使えない要素が来たときの指示。 */
+const wrongKindGuidance: Record<CurriculumSubject, Record<CurriculumLocale, string>> = {
+  math: {
+    ja: "その要素は数学の板書では使えません。式は latex、図は plot / triangle / circle、注記は text に置くこと。",
+    en: "That element cannot be used on a maths board. Put formulas in latex, figures in plot / triangle / circle, and notes in text.",
+  },
+  english: {
+    ja: "その要素は英語の板書では使えません。例文は sentence、使い分けの対比は compare、一行の注記は text に置くこと。数式は使いません。",
+    en: "That element cannot be used on an English board. Put example sentences in sentence, contrasts in compare, and one-line notes in text. No formulas.",
+  },
 };
 
 /**
@@ -245,7 +280,12 @@ export type StepVerdict =
  * 直せる嘘を、検知能力のある場所に置いてしまうことになる。
  * ずれていた事実はログに出す(呼び出し側の {@link BoardChannel} が拾う)。
  */
-export function validateStep(raw: unknown, index: number, locale: CurriculumLocale): StepVerdict {
+export function validateStep(
+  raw: unknown,
+  index: number,
+  locale: CurriculumLocale,
+  subject: CurriculumSubject = "math",
+): StepVerdict {
   const withIndex =
     typeof raw === "object" && raw !== null && !Array.isArray(raw) ? { ...raw, index } : raw;
 
@@ -261,13 +301,52 @@ export function validateStep(raw: unknown, index: number, locale: CurriculumLoca
         kind: "schema",
         reason: "schema",
         detail,
-        guidance: `${schemaGuidanceByLocale[locale]} (${detail})`,
+        guidance: `${schemaGuidanceBySubject[subject][locale]} (${detail})`,
         raw,
       },
     };
   }
 
   const board = parsed.data.board;
+
+  // **教科で使えない要素は、中身を見る前に落とす。**
+  // 英語の板書に latex が来たら、LaTeXの構文を直させても意味がない。
+  if (board !== null && !boardKindsBySubject[subject].includes(board.kind)) {
+    return {
+      ok: false,
+      rejection: {
+        index,
+        kind: "schema",
+        reason: "schema",
+        detail: `kind=${board.kind} は ${subject} の板書では使えません`,
+        guidance: wrongKindGuidance[subject][locale],
+        raw,
+      },
+    };
+  }
+
+  // `focus` が `text` の一部であること。**JSON Schema に残らない不変条件**
+  // (contract README の表)なので、ここで見る。破れたときの見え方は
+  // 「下線が引かれないだけ」で、検査が無いと壊れたまま気づかれない。
+  if (board !== null && board.kind === "sentence" && board.focus !== undefined) {
+    if (!board.text.includes(board.focus)) {
+      return {
+        ok: false,
+        rejection: {
+          index,
+          kind: "schema",
+          reason: "schema",
+          detail: `focus="${board.focus}" が text に含まれていません`,
+          guidance:
+            locale === "ja"
+              ? "focus は text の中から、そのまま切り出した一部にすること(言い換えない)。"
+              : "focus must be an exact substring of text — do not paraphrase it.",
+          raw,
+        },
+      };
+    }
+  }
+
   if (board !== null && board.kind === "latex") {
     // 三段構えの②(§3-6)。移植版が描けないコマンドは、届いた時点で
     // その行だけ空白か例外になる。授業の途中で1行消えるのは、遅いより悪い。
@@ -492,6 +571,11 @@ export class BoardChannel {
   // コンストラクタ引数への修飾子は使わない(`node --experimental-strip-types`・ADR 0002)。
   private readonly sessionId: string;
   private readonly locale: CurriculumLocale;
+  /**
+   * 授業の教科。**許可トピックの接頭辞から決まる**(ADR 0006)ので、
+   * 呼び出し側が別に持たなくてよい。数学しか無かった頃と同じ既定は `math`。
+   */
+  private readonly subject: CurriculumSubject;
   private readonly sink: BoardSink;
   private readonly allowedTopics: AllowedTopics | undefined;
   private readonly newBoardId: () => string;
@@ -501,6 +585,10 @@ export class BoardChannel {
   constructor(options: BoardChannelOptions) {
     this.sessionId = options.sessionId;
     this.locale = options.locale;
+    this.subject =
+      (options.allowedTopicIds?.[0] === undefined
+        ? undefined
+        : subjectOfTopicId(options.allowedTopicIds[0])) ?? "math";
     this.sink = options.sink;
     // 前提はAPI側で入っているので、ここでは広げない(depth 0)。
     this.allowedTopics =
@@ -527,6 +615,7 @@ export class BoardChannel {
     return new BoardDelivery({
       boardId: this.newBoardId(),
       locale: this.locale,
+      subject: this.subject,
       allowedTopics: this.allowedTopics,
       log: this.log,
       send: (body) => this.sendEnvelope(body),
@@ -558,6 +647,8 @@ export class BoardChannel {
 type BoardDeliveryOptions = {
   boardId: string;
   locale: CurriculumLocale;
+  /** 授業の教科。省略すると数学(それしか無かった頃と同じ挙動)。 */
+  subject?: CurriculumSubject;
   allowedTopics: AllowedTopics | undefined;
   log: Pick<JobLogger, "info" | "warn"> | undefined;
   send: (body: BoardEnvelopeBody) => Promise<void>;
@@ -581,6 +672,8 @@ type BoardDeliveryOptions = {
 export class BoardDelivery {
   private readonly boardId: string;
   private readonly locale: CurriculumLocale;
+  /** その授業の教科。板書に使ってよい要素を決める。 */
+  private readonly subject: CurriculumSubject;
   private readonly allowedTopics: AllowedTopics | undefined;
   private readonly log: Pick<JobLogger, "info" | "warn"> | undefined;
   private readonly send: (body: BoardEnvelopeBody) => Promise<void>;
@@ -593,6 +686,7 @@ export class BoardDelivery {
   constructor(options: BoardDeliveryOptions) {
     this.boardId = options.boardId;
     this.locale = options.locale;
+    this.subject = options.subject ?? "math";
     this.allowedTopics = options.allowedTopics;
     this.log = options.log;
     this.send = options.send;
@@ -951,7 +1045,7 @@ export class BoardDelivery {
     let candidate = raw;
 
     for (let attempt = 0; ; attempt += 1) {
-      const verdict = validateStep(candidate, index, this.locale);
+      const verdict = validateStep(candidate, index, this.locale, this.subject);
       if (verdict.ok) {
         this.warnIfIndexMoved(candidate, position, index);
         return verdict;

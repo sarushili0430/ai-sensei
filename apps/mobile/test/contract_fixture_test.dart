@@ -311,6 +311,27 @@ void main() {
       expect(() => ensureSequentialStepIndices(lesson), returnsNormally);
     });
 
+    // 英語の課程の板書。数学とは使える要素が重ならない(sentence / compare)ので、
+    // ここが無いと新要素の形を Dart 側で誰も検査しない。
+    test('board-lesson.english.json をパースできる(sentence / compare)', () {
+      final BoardLesson lesson = BoardLesson.fromJson(loadFixture('board-lesson.english'));
+      final List<BoardElement> elements =
+          lesson.steps.map((BoardStep s) => s.board).whereType<BoardElement>().toList();
+      expect(elements.whereType<SentenceElement>(), isNotEmpty);
+      expect(elements.whereType<CompareElement>(), isNotEmpty);
+
+      final SentenceElement sentence = elements.whereType<SentenceElement>().first;
+      // focus は text の一部(README「JSON Schema に現れない不変条件」)。
+      expect(sentence.focus, isNotNull);
+      expect(sentence.text.contains(sentence.focus!), isTrue);
+
+      final CompareElement compare = elements.whereType<CompareElement>().first;
+      expect(compare.columns, hasLength(2));
+      for (final List<String> row in compare.rows) {
+        expect(row, hasLength(2));
+      }
+    });
+
     test('board-lesson.en.json をパースできる(海外向けの課程・plotを含む)', () {
       final BoardLesson lesson = BoardLesson.fromJson(loadFixture('board-lesson.en'));
 
@@ -666,6 +687,29 @@ void main() {
       const BoardElement brokenTriangle = BoardElement.triangle(vertices: <BoardPoint>[p, p]);
       expect(
         () => receiver.accept(stepWithBoard(1, 0, brokenTriangle)),
+        throwsA(isA<BoardContractViolation>()),
+      );
+    });
+
+    /// `sentence.focus` は `text` の部分文字列(README「JSON Schema に現れない不変条件」)。
+    /// **`.refine()` で書けなかった条件**なので contract は形しか見ておらず、
+    /// 受信側のこの検査が唯一の防波堤。無いと「下線が引かれないだけ」で静かに残る。
+    test('accept() は focus が text に無い sentence要素を弾く', () {
+      expect(
+        () => ensureValidSentence('I have lived here.', '現在完了'),
+        throwsA(isA<BoardContractViolation>()),
+      );
+      expect(() => ensureValidSentence('I have lived here.', 'have lived'), returnsNormally);
+    });
+
+    test('accept() は列が3つある compare要素を弾く', () {
+      expect(
+        () => ensureValidCompare(
+          <String>['a', 'b', 'c'],
+          <List<String>>[
+            <String>['1', '2', '3'],
+          ],
+        ),
         throwsA(isA<BoardContractViolation>()),
       );
     });

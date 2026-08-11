@@ -4,6 +4,7 @@ import {
   planSessionMetadataSchema,
   sessionMetadataSchema,
 } from "@ai-sensei/contract";
+import { type CurriculumSubject, subjectOfTopicId } from "@ai-sensei/curriculum";
 import { formatBullets } from "@ai-sensei/prompts";
 
 /**
@@ -23,6 +24,22 @@ export type PlanSessionContext = PlanSessionMetadata;
 export type AgentContext = SessionContext | PlanSessionContext;
 
 export class InvalidSessionContextError extends Error {}
+
+/**
+ * この授業の教科。**板書に使える要素と、同梱する音声補正ヒントを決める。**
+ *
+ * metadata に教科の欄は無い。`allowed_topic_ids` の接頭辞から引く
+ * (ADR 0006 — 課程・言語・教科・学校段階はすべて topic_id ひとつから決まる)。
+ * 契約を増やさずに済むので、APIとagentのデプロイ順を気にしなくてよい。
+ *
+ * 許可トピックが空のセッションは {@link readSessionContext} が弾くので、
+ * 先頭は必ずある。それでも引けないときは数学に倒す —
+ * 数学しか無かった頃と同じ挙動で、少なくとも今までどおりに動く。
+ */
+export function subjectOf(context: Pick<SessionContext, "allowed_topic_ids">): CurriculumSubject {
+  const [first] = context.allowed_topic_ids;
+  return (first ? subjectOfTopicId(first) : undefined) ?? "math";
+}
 
 /**
  * 参加者のmetadataを読む。

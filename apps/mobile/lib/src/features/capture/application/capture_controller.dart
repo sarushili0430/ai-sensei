@@ -6,6 +6,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../../api/api_client.dart';
 import '../../../l10n/strings.dart';
 import '../../session/domain/session.dart';
+import '../../settings/application/school_stage_controller.dart';
 
 part 'capture_controller.g.dart';
 
@@ -133,6 +134,8 @@ class CaptureController extends _$CaptureController {
             photo: state.photo,
             problemPhoto: state.problemPhoto,
             locale: locale,
+            // 単元を探す範囲を半分に切る。復習は穴が起点で写真を見ないので渡さない。
+            schoolStage: ref.read(schoolStageControllerProvider).wireValue,
           );
       state = state.copyWith(
         session: session,

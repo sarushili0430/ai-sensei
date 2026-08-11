@@ -54,7 +54,7 @@ describe("resolveDetectedTopics", () => {
 
   it("LLMがtopic_idを返さなくてもキーワードから拾う", () => {
     const resolved = resolveDetectedTopics({
-      is_math_note: true,
+      subject: "math",
       summary: "平方完成して頂点を求める問題",
       problem_text: "",
       visible_work: [],
@@ -67,7 +67,7 @@ describe("resolveDetectedTopics", () => {
 
   it("数学のノートでなければフォールバックもしない", () => {
     const resolved = resolveDetectedTopics({
-      is_math_note: false,
+      subject: "other",
       summary: "英語の単語帳。関数という言葉だけ写っている",
       problem_text: "",
       visible_work: [],
@@ -200,6 +200,48 @@ describe("resolveSessionProblem", () => {
   });
 });
 
+/**
+ * 解析器に貼る一覧は**学校段階で半分に切る**。全課程を貼ると、中学生の写真にも
+ * 数学I〜Cの52件が候補として並び、解析器が高校の単元を選べてしまう。
+ */
+describe("curriculumDigest", () => {
+  it("中学生には中学の課程だけを貼る", () => {
+    const digest = curriculumDigest("ja", "junior_high");
+    expect(digest).toContain("J1-KAZUSHIKI-SEIFU");
+    expect(digest).not.toContain("M1-");
+  });
+
+  it("既定は高校。学校段階を送らない古いアプリは今までどおり", () => {
+    const digest = curriculumDigest("ja");
+    expect(digest).toContain("M1-");
+    expect(digest).not.toContain("J1-");
+  });
+
+  it("海外向けの課程は段階で切らない(Algebra 1 〜 Calculus が一続きのため)", () => {
+    expect(curriculumDigest("en", "junior_high")).toBe(curriculumDigest("en", "high_school"));
+  });
+});
+
+describe("resolveDetectedTopics", () => {
+  // 段階の外の単元は、解析器が返しても通さない。中学生のセッションに
+  // 数学IIが混ざると、そのまま許可トピックになって先輩が教え始める。
+  it("段階の外の単元は落とす", () => {
+    const resolved = resolveDetectedTopics(
+      {
+        ...analysisFixture,
+        topics: [
+          { topic_id: "J1-KAZUSHIKI-SEIFU", confidence: 0.9 },
+          { topic_id: "M2-ZUKEI-ENCHOKU", confidence: 0.8 },
+        ],
+      },
+      "ja",
+      "junior_high",
+    );
+    expect(resolved.topicIds).toEqual(["J1-KAZUSHIKI-SEIFU"]);
+    expect(resolved.droppedIds).toContain("M2-ZUKEI-ENCHOKU");
+  });
+});
+
 describe("toDetectedTopicPayload", () => {
   it("カリキュラムの単元名を補って返す", () => {
     const payload = toDetectedTopicPayload(["M2-ZUKEI-ENCHOKU"], analysisFixture);
@@ -208,8 +250,20 @@ describe("toDetectedTopicPayload", () => {
       course: "数学II",
       unit: "図形と方程式",
       topic: "円と直線の位置関係",
+      label: "数学II",
       confidence: 0.92,
     });
+  });
+
+  // チップは「中1 正負の数」の形で出す。高校数学は科目名がそのまま短縮名だが、
+  // 中学は学年になる(指導要領の区切りが学年別なので、course が学年を表す)。
+  it("中学の単元では、チップのラベルが学年になる", () => {
+    const payload = toDetectedTopicPayload(["J1-KAZUSHIKI-SEIFU"], {
+      ...analysisFixture,
+      topics: [{ topic_id: "J1-KAZUSHIKI-SEIFU", confidence: 0.9 }],
+    });
+    expect(payload[0]?.label).toBe("中1");
+    expect(payload[0]?.topic).toBe("正負の数");
   });
 
   it("キーワード推定にフォールバックした分は確信度を低くする", () => {
@@ -223,7 +277,7 @@ describe("toDetectedTopicPayload", () => {
 
 describe("photoAnalysisSchema", () => {
   it("欠けた配列を空で補う(LLMの出力ゆれを吸収する)", () => {
-    const parsed = photoAnalysisSchema.parse({ is_math_note: true, summary: "円と直線" });
+    const parsed = photoAnalysisSchema.parse({ subject: "math", summary: "円と直線" });
     expect(parsed.topics).toEqual([]);
     expect(parsed.question_seeds).toEqual([]);
   });

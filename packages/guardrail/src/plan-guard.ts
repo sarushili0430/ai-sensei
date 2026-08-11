@@ -1,8 +1,10 @@
 import {
   type CurriculumLocale,
+  type SchoolStage,
   isKnownTopicId,
   isWellFormedTopicId,
   localeOfTopicId,
+  stageOfTopicId,
 } from "@ai-sensei/curriculum";
 import { type AllowedTopics, buildAllowedTopics, isAllowedTopic } from "./topic-guard.ts";
 
@@ -114,22 +116,38 @@ export function checkPlanScope(
   /**
    * 課程の混在。**計画でだけ見る。**
    *
-   * 1つの計画は1つのテストのためのもので、日本の課程と海外の課程が同じ範囲に
-   * 並ぶことはない。混ざっているのは、LLMが両方のカリキュラムの記憶から
-   * 引いてきたということで、**範囲の残りも信用できない**。
-   * `allowedTopicsLocale()` は最初に見つかった課程を返すので、ここで弾かないと
-   * 「英語の計画に日本語の単元名が1つ混ざる」形で静かに残る。
+   * 見るのは**指導言語と学校段階**で、**教科は見ない**:
+   *
+   *   - 指導言語が混ざる(日本の課程 + 海外の課程) … LLMが両方のカリキュラムの
+   *     記憶から引いてきたということで、範囲の残りも信用できない
+   *   - 学校段階が混ざる(中学 + 高校) … 中学生の定期テストの範囲に数学IIは
+   *     入りえない。混ざっているのは、上と同じ壊れ方
+   *   - **教科が混ざる(数学 + 英語) … 通す。** 1回のテスト期間に複数教科が
+   *     並ぶのは正常で、中学生の定期テストはむしろこの形になる
+   *
+   * かつては指導言語だけを見ていた。日本の数学と日本の英語はどちらも `ja` なので
+   * **偶然通っていた**が、偶然に頼ると段の混在を素通しする。述語を明示的に書く。
    */
   const locales = new Set<CurriculumLocale>();
+  const stages = new Set<SchoolStage>();
   for (const topicId of scopeTopicIds) {
     const locale = localeOfTopicId(topicId);
     if (locale) locales.add(locale);
+    const stage = stageOfTopicId(topicId);
+    if (stage) stages.add(stage);
   }
   if (locales.size > 1) {
     return {
       ok: false,
       reason: "mixed_curricula",
-      detail: `1つの計画に複数の課程が混ざっています: ${[...locales].join(", ")}`,
+      detail: `1つの計画に複数の言語の課程が混ざっています: ${[...locales].join(", ")}`,
+    };
+  }
+  if (stages.size > 1) {
+    return {
+      ok: false,
+      reason: "mixed_curricula",
+      detail: `1つの計画に中学と高校の単元が混ざっています: ${[...stages].join(", ")}`,
     };
   }
 

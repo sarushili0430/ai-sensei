@@ -77,6 +77,8 @@ export const fixtureFileSchemas: Record<string, FixtureName> = {
   "create-session-response.en": "create-session-response",
   "karte.en": "karte",
   "board-lesson.en": "board-lesson",
+  // 英語の課程の板書。数学とは使える要素が重ならない(sentence / compare)。
+  "board-lesson.english": "board-lesson",
   "study-plan.en": "study-plan",
   "parent-report.en": "parent-report",
 };

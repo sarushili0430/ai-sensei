@@ -2,12 +2,14 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:ai_sensei/src/api/api_client.dart';
+import 'package:ai_sensei/src/api/device_id.dart';
 import 'package:ai_sensei/src/features/capture/application/capture_controller.dart';
 import 'package:ai_sensei/src/features/session/domain/session.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// 撮影 → 単元の確認 → 会話開始。
 ///
@@ -36,6 +38,7 @@ Map<String, dynamic> _sessionJson(
           'course': '数学I',
           'unit': '2次関数',
           'topic': topicId,
+          'label': '数学I',
           // 2つ目以降は確信度を低くして、はじめから外れている状態を作る
           'confidence': topicId == topicIds.first ? 0.92 : 0.41,
         },
@@ -49,7 +52,13 @@ void main() {
   late File photo;
   late File problemPhoto;
 
-  setUp(() {
+  /// 学校段階の保存先。セッション作成時に `school_stage` として送るので、
+  /// ここが無いと `schoolStageControllerProvider` が起動できずリクエストが飛ばない。
+  late SharedPreferences preferences;
+
+  setUp(() async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    preferences = await SharedPreferences.getInstance();
     tempDir = Directory.systemTemp.createTempSync('capture_flow_test');
     photo = File('${tempDir.path}/note.jpg')..writeAsBytesSync(<int>[0xff, 0xd8, 0xff, 0x00]);
     problemPhoto = File('${tempDir.path}/problem.jpg')
@@ -93,6 +102,7 @@ void main() {
       apiClientProvider.overrideWithValue(
         ApiClient(baseUrl: 'http://test', deviceId: 'device-1', client: client),
       ),
+      preferencesProvider.overrideWithValue(preferences),
     ];
     return ProviderContainer(overrides: overrides.cast());
   }

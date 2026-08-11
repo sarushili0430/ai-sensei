@@ -140,11 +140,33 @@ export const detectedTopicSchema = z
     course: z.string().min(1),
     unit: z.string().min(1),
     topic: z.string().min(1),
+    /**
+     * チップに出す短い課程名。「中1」「数学I」「Algebra 2」。
+     *
+     * **サーバが計算して渡す。** 端末側で topic_id の接頭辞から引く作りにすると、
+     * 接頭辞の対応表が4か所目になる。加えて中学英語は学年ごとに接頭辞が分かれて
+     * いない(学年は表示だけの目安なので、あえて分けていない)ため、
+     * 接頭辞からは「中2」を作れない。
+     */
+    label: z.string().min(1).max(16),
     /** 0..1。低いものは選択済みにせず、候補として並べるだけにする。 */
     confidence: z.number().min(0).max(1),
   })
   .strict();
 export type DetectedTopic = z.infer<typeof detectedTopicSchema>;
+
+/**
+ * 学校段階。**写真解析と計画の聞き取りで、見る課程を半分に絞る**ために使う。
+ *
+ * 端末が設定から送る。DBには持たない — 再インストールで選び直しになる代わりに、
+ * マイグレーションが要らない(ADR 0006)。
+ *
+ * **既定は `high_school`。** これを送らない古いアプリは、今までどおり
+ * 高校の課程だけを見る。
+ */
+export const schoolStages = ["junior_high", "high_school"] as const;
+export type SchoolStage = (typeof schoolStages)[number];
+export const schoolStageSchema = z.enum(schoolStages);
 
 /**
  * POST /v1/sessions のリクエスト。
@@ -155,6 +177,7 @@ export const createSessionRequestSchema = z
   .object({
     kind: sessionKindSchema.default("new"),
     locale: localeSchema.default("ja"),
+    school_stage: schoolStageSchema.default("high_school"),
     /** kind="review" のとき、埋めにいく穴。復習は穴が起点なので必須。 */
     hole_id: z.string().min(1).optional(),
     /** ユーザーがチップUIで単元を直した場合の指定。空なら写真解析に任せる。 */
@@ -554,6 +577,7 @@ export type ApiError = z.infer<typeof apiErrorSchema>;
 export const createPlanSessionRequestSchema = z
   .object({
     locale: localeSchema.default("ja"),
+    school_stage: schoolStageSchema.default("high_school"),
   })
   .strict();
 export type CreatePlanSessionRequest = z.infer<typeof createPlanSessionRequestSchema>;
@@ -566,6 +590,17 @@ export const planSessionMetadataSchema = z
     /** 授業 metadata との取り違えを、agent の入口で即座に検知する判別子。 */
     kind: z.literal("plan"),
     locale: localeSchema,
+    /**
+     * 学校段階。**計画に出してよい単元の範囲**。
+     *
+     * 授業の metadata には無い(あちらは `allowed_topic_ids` の接頭辞から
+     * 課程が引けるので要らない)。計画は写真が無く範囲も決まっていないので、
+     * 課程を丸ごと貼る前にどちらの段かを知る必要がある。
+     *
+     * **このスキーマは `.strict()`。旧 agent は未知のキーで parse に失敗する**ので、
+     * デプロイは agent → API の順にすること。
+     */
+    school_stage: schoolStageSchema,
     max_seconds: z.number().int().positive(),
     /** LLMに相対日付を推測させないため、APIが確定したローカル日付を渡す。 */
     today: planDateSchema,

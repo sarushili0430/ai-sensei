@@ -12,6 +12,7 @@ import '../../monetization/application/entitlement_controller.dart' show Revenue
 import '../../monetization/presentation/manage_subscription_button.dart';
 import '../../notifications/application/push_controller.dart';
 import '../../notifications/data/push_repository.dart';
+import '../application/school_stage_controller.dart';
 import '../data/support_links.dart';
 
 /// 設定。
@@ -45,6 +46,8 @@ class SettingsScreen extends ConsumerWidget {
               const Align(alignment: Alignment.centerLeft, child: ManageSubscriptionButton()),
               const RestorePurchasesButton(),
             ],
+            _Section(title: strings.settingsSectionSchoolStage),
+            const _SchoolStageRows(),
             _Section(title: strings.settingsSectionNotifications),
             const _NotificationRow(),
             _Section(title: strings.settingsSectionAbout),
@@ -61,6 +64,48 @@ class SettingsScreen extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 中学生 / 高校生。
+///
+/// **学習の制限ではなく、写真から単元を探す範囲**。中学生を選んでも高校の単元が
+/// 禁止になるわけではない。ここを持たないと、中学生の写真にも数学I〜Cの52件が
+/// 候補として並び、解析器が高校の単元を選べてしまう。
+///
+/// スイッチではなく2行にしてあるのは、オン/オフではなく**どちらかを選ぶ**もの
+/// だから。「中学生オフ = 高校生」は読めない。
+class _SchoolStageRows extends ConsumerWidget {
+  const _SchoolStageRows();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AppStrings strings = AppStrings.of(context);
+    final SchoolStage current = ref.watch(schoolStageControllerProvider);
+
+    Widget row(SchoolStage stage, String label, {String? subtitle}) {
+      final bool selected = current == stage;
+      return ListTile(
+        title: Text(label),
+        subtitle: subtitle == null
+            ? null
+            : Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+        trailing: selected ? const Icon(Icons.check, color: AppColors.blue) : null,
+        selected: selected,
+        onTap: () => ref.read(schoolStageControllerProvider.notifier).select(stage),
+      );
+    }
+
+    return Column(
+      children: <Widget>[
+        row(SchoolStage.juniorHigh, strings.settingsSchoolStageJuniorHigh),
+        row(
+          SchoolStage.highSchool,
+          strings.settingsSchoolStageHighSchool,
+          subtitle: strings.settingsSchoolStageHint,
+        ),
+      ],
     );
   }
 }

@@ -280,6 +280,7 @@ const SessionStart _sampleSessionStart = SessionStart(
       course: '数I',
       unit: '2次関数',
       topic: '判別式',
+      label: '数学I',
       confidence: 0.9,
     ),
   ],

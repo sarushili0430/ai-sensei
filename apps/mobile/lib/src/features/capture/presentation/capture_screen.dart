@@ -515,14 +515,20 @@ class _TopicChip extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
+        // **1チップが画面幅を超えうる。** 「中1 データの分布とヒストグラム」の
+        // ように、学年ラベルが付いたぶん長い単元名は 375px に収まらない。
+        // 上限を切って折り返す(切り詰めない — どの単元か読めなくなる)。
+        constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width - AppSpacing.xl * 2),
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
         decoration: BoxDecoration(
           color: selected ? AppColors.blue : AppColors.surface,
           borderRadius: BorderRadius.circular(AppRadius.chip),
           border: Border.all(color: selected ? AppColors.blue : AppColors.border),
         ),
+        // 「中1 正負の数」「数学I 二次関数」。学年か科目かは課程で決まっていて、
+        // サーバが `label` に入れてくる(ADR 0006)。
         child: Text(
-          topic.topic,
+          '${topic.label} ${topic.topic}',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: selected ? Colors.white : AppColors.inkMuted,
               ),
