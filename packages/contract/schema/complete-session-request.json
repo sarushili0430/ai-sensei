@@ -125,6 +125,13 @@
             "user_left",
             "error"
           ]
+        },
+        "review_outcome": {
+          "type": "string",
+          "enum": [
+            "said_it",
+            "not_yet"
+          ]
         }
       },
       "required": [

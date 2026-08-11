@@ -71,6 +71,26 @@ function complete(
   );
 }
 
+async function startReviewSession(): Promise<string> {
+  // 1日目: 穴ができる
+  const first = await startSession();
+  const firstBody = (await (await complete(first)).json()) as CompleteSessionResponse;
+  const holeId = firstBody.karte.holes[0]?.id;
+  expect(holeId).toBeDefined();
+
+  // 復習はPremium機能
+  await services.repository.setPremium({
+    deviceId: testDeviceId,
+    isPremium: true,
+    expiresAt: null,
+    rcAppUserId: null,
+  });
+
+  // 2日目: 復習セッション(写真なしでも kind=review で入る)
+  services.now = () => new Date("2026-08-04T13:00:00.000Z");
+  return startSession({ kind: "review", hole_id: holeId });
+}
+
 describe("POST /v1/sessions/{id}/complete", () => {
   it("カルテを保存し、契約どおりのレスポンスを返す", async () => {
     const sessionId = await startSession();
@@ -193,31 +213,55 @@ describe("POST /v1/sessions/{id}/complete", () => {
     });
   });
 
-  it("復習セッションでは対象の穴を埋め、残りの通知を取り消す", async () => {
-    // 1日目: 穴ができる
-    const first = await startSession();
-    const firstBody = (await (await complete(first)).json()) as CompleteSessionResponse;
-    const holeId = firstBody.karte.holes[0]?.id;
-    expect(holeId).toBeDefined();
-
-    // 復習はPremium機能
-    await services.repository.setPremium({
-      deviceId: testDeviceId,
-      isPremium: true,
-      expiresAt: null,
-      rcAppUserId: null,
-    });
-
-    // 2日目: 復習セッション(写真なしでも kind=review で入る)
-    services.now = () => new Date("2026-08-04T13:00:00.000Z");
-    const review = await startSession({ kind: "review", hole_id: holeId });
+  it("接続しただけで戻った復習セッションでは穴が埋まらない", async () => {
+    const review = await startReviewSession();
     const reviewBody = (await (
-      await complete(review, { karte: { ...karteDraft, holes: [] } })
+      await complete(review, {
+        transcript: [],
+        karte: { ...karteDraft, holes: [] },
+        duration_seconds: 0,
+        ended_reason: "user_left",
+      })
+    ).json()) as CompleteSessionResponse;
+
+    expect(reviewBody.progress.filled_holes).toBe(0);
+    expect(reviewBody.progress.open_holes).toBe(1);
+  });
+
+  it("本人が「言えた」と申告したときだけ穴が埋まる", async () => {
+    const review = await startReviewSession();
+    const reviewBody = (await (
+      await complete(review, {
+        karte: { ...karteDraft, holes: [] },
+        review_outcome: "said_it",
+      })
     ).json()) as CompleteSessionResponse;
 
     expect(reviewBody.progress.filled_holes).toBe(1);
     expect(reviewBody.progress.open_holes).toBe(0);
     expect(reviewBody.progress.streak_days).toBe(2);
+  });
+
+  it('"not_yet" の申告では穴が埋まらない', async () => {
+    const review = await startReviewSession();
+    const reviewBody = (await (
+      await complete(review, {
+        karte: { ...karteDraft, holes: [] },
+        review_outcome: "not_yet",
+      })
+    ).json()) as CompleteSessionResponse;
+
+    expect(reviewBody.progress.filled_holes).toBe(0);
+    expect(reviewBody.progress.open_holes).toBe(1);
+  });
+
+  it('"said_it" の申告では残りの復習通知を取り消す', async () => {
+    const review = await startReviewSession();
+    await complete(review, {
+      karte: { ...karteDraft, holes: [] },
+      review_outcome: "said_it",
+    });
+
     // 埋まった穴について通知が届くのがいちばん白ける
     expect(services.scheduler.cancelled).toEqual(["os_1", "os_2", "os_3"]);
   });

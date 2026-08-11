@@ -50,6 +50,16 @@ export const holeStatuses = ["open", "filled"] as const;
 export const holeStatusSchema = z.enum(holeStatuses);
 
 /**
+ * 穴の復習結果。採点ではなく、言えたかどうかを本人が申告する二択。
+ *
+ * `not_yet` を選んだことを咎める文言はUIに置かない。
+ * 約束3「パスを恥にしない」を復習でも守る。
+ */
+export const reviewOutcomes = ["said_it", "not_yet"] as const;
+export const reviewOutcomeSchema = z.enum(reviewOutcomes);
+export type ReviewOutcome = z.infer<typeof reviewOutcomeSchema>;
+
+/**
  * 保存後の穴。復習フローの単位。
  *
  * `status` と `filled_at` は必ず対で動く。片方だけ立っていると、

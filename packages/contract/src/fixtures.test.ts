@@ -574,4 +574,16 @@ describe("APIスキーマ", () => {
       completeSessionRequestSchema.safeParse({ ...request, ended_reason: "gave_up" }).success,
     ).toBe(false);
   });
+
+  it("復習結果の自己申告は省略できる", () => {
+    const request = loadFixture("complete-session-request") as Record<string, unknown>;
+    expect(completeSessionRequestSchema.safeParse(request).success).toBe(true);
+  });
+
+  it("復習結果の自己申告に知らない値は受け付けない", () => {
+    const request = loadFixture("complete-session-request") as Record<string, unknown>;
+    expect(
+      completeSessionRequestSchema.safeParse({ ...request, review_outcome: "almost" }).success,
+    ).toBe(false);
+  });
 });

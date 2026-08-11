@@ -4,6 +4,7 @@ import {
   karteDraftSchema,
   karteSchema,
   progressSchema,
+  reviewOutcomeSchema,
   topicIdSchema,
 } from "./karte.ts";
 
@@ -320,6 +321,13 @@ export const completeSessionRequestSchema = z
     duration_seconds: z.number().int().min(0),
     /** 会話が最後まで行かずに切れた場合。カルテは作るが穴の重み付けを控えめにする。 */
     ended_reason: z.enum(["completed", "timeout", "user_left", "error"]),
+    /**
+     * `kind: "review"` のセッションでのみ意味を持つ、本人の申告。
+     * 省略が既定で、その場合は「埋めない」。穴が埋まるのは `"said_it"` が明示されたときだけ。
+     * 接続しただけで戻ったセッション(発話ゼロ・`ended_reason: "user_left"`)では
+     * この欄が立たず、穴はopenのまま残る。
+     */
+    review_outcome: reviewOutcomeSchema.optional(),
   })
   .strict();
 export type CompleteSessionRequest = z.infer<typeof completeSessionRequestSchema>;
