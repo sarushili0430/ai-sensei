@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../api/api_client.dart';
+import '../../../audio/prerendered_audio.dart';
 import '../../../common_widgets/chunky_button.dart';
 import '../../../common_widgets/senpai_face.dart';
 import '../../../common_widgets/typing_text.dart';
@@ -15,17 +16,24 @@ import '../../../theme/motion.dart';
 import '../../../theme/tokens.dart';
 import '../../session/presentation/board/board_view.dart';
 import '../application/last_board_controller.dart';
+import '../application/senpai_nudge_audio.dart';
 import '../domain/last_board.dart';
 import '../domain/senpai_nudge.dart';
 
 /// 自習室(計画書§4-2)。
 ///
-/// **マイクを開かない。STTもTTSもLLMもLiveKitも動かさず、滞在中は通信しない。**
-/// 退室または非表示になった瞬間だけ、滞在秒数とローカル日付を1回送る。
-/// 板書・単元・発話は送らず、失敗は黙って捨てる。したがって増えるのは
-/// **滞在時間に比例しない1回の小さなD1書き込み**だけで、計画書§6-1の
-/// 従量原価(STT / TTS / LLM / LiveKit)は1つも起動しない。
+/// **マイクを開かない。STTもTTSもLLMもLiveKitも動かさず、滞在中はサーバ通信しない。**
+///
+/// この画面が外に触るのは2つだけで、**どちらも滞在時間に比例しない**:
+///   - **同梱したプリレンダ音声の再生**(§4-2の声かけ)。端末内で鳴らすだけで、
+///     録音も送信も生成もしない。何回鳴っても従量原価は1円も増えない
+///   - **退室・非表示のときに1回だけ送る、滞在秒数とローカル日付**
+///     (§4-2の「滞在時間を原価ゼロで積める」= OneSignal賞の材料)。
+///     板書・単元・発話は送らず、失敗は黙って捨てる。増えるのは小さなD1書き込み1回だけ
+///
+/// つまり計画書§6-1の従量原価(STT / TTS / LLM / LiveKit)は1つも起動しないので、
 /// §6-3の「原価が発生する生成・音声だけが有料」という一行はこのまま保てる。
+/// 裏を返せば、ここに**「録る・生成する」を1つでも足したら、無料である説明が崩れる**。
 ///
 /// 置いているのは3つ。§4-2 の「画面に先輩がいる。さっきの板書が残っている。
 /// タイマーが回っている」をそのまま画面にしたもの:
@@ -56,6 +64,7 @@ class _StudyRoomScreenState extends ConsumerState<StudyRoomScreen>
   Timer? _ticker;
   bool _configured = false;
   bool _reported = false;
+  SenpaiNudgeAudio? _nudgeAudio;
 
   @override
   void initState() {
@@ -71,6 +80,7 @@ class _StudyRoomScreenState extends ConsumerState<StudyRoomScreen>
     super.didChangeDependencies();
     if (_configured) return;
     _configured = true;
+    _nudgeAudio = SenpaiNudgeAudio(ref.read(prerenderedAudioProvider));
 
     // 1秒ごとに塗り直す。**「動かさない」設定では回さない**(ADR 0004 の経路)。
     //
@@ -87,7 +97,24 @@ class _StudyRoomScreenState extends ConsumerState<StudyRoomScreen>
     // (1秒ごとにフレームを積み続けるループになるため)。
     if (AppMotion.isReduced(context)) return;
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {});
+      if (!mounted) return;
+
+      final Duration elapsed = _elapsed();
+      final SenpaiNudge next = SenpaiNudge.forElapsed(elapsed);
+      final SenpaiNudgeAudio? nudgeAudio = _nudgeAudio;
+      if (nudgeAudio != null && next != nudgeAudio.current) {
+        // push された別画面の背後でも Timer 自体は生きている。時刻の段階だけは
+        // 進めるが、見えていない自習室から突然声を出さない。
+        final bool visible = ModalRoute.of(context)?.isCurrent ?? true;
+        unawaited(
+          nudgeAudio.moveTo(
+            next,
+            languageCode: Localizations.localeOf(context).languageCode,
+            audible: visible,
+          ),
+        );
+      }
+      setState(() {});
     });
   }
 
@@ -109,6 +136,7 @@ class _StudyRoomScreenState extends ConsumerState<StudyRoomScreen>
     _reportOnce();
     WidgetsBinding.instance.removeObserver(this);
     _ticker?.cancel();
+    unawaited(_nudgeAudio?.stop() ?? Future<void>.value());
     super.dispose();
   }
 
@@ -153,6 +181,7 @@ class _StudyRoomScreenState extends ConsumerState<StudyRoomScreen>
     // APIを呼ぶ唯一の場所は、非表示時に通る_reportOnceの先に閉じてある。
     final LastBoard board = ref.watch(lastBoardControllerProvider);
     final Duration elapsed = _elapsed();
+    final SenpaiNudge nudge = SenpaiNudge.forElapsed(elapsed);
 
     return PopScope<Object?>(
       // システムの戻る・スワイプバックはボタンのcallbackを通らない。
@@ -178,7 +207,7 @@ class _StudyRoomScreenState extends ConsumerState<StudyRoomScreen>
                 // 板書に画面を明け渡す。先輩と操作は下に寄せる。
                 Expanded(child: _Board(board: board)),
                 const SizedBox(height: AppSpacing.md),
-                _SenpaiRow(nudge: SenpaiNudge.forElapsed(elapsed)),
+                _SenpaiRow(nudge: nudge),
                 const SizedBox(height: AppSpacing.md),
                 ChunkyButton(
                   label: strings.studyRoomAsk,
@@ -186,6 +215,9 @@ class _StudyRoomScreenState extends ConsumerState<StudyRoomScreen>
                   // 非表示になるので、その直前を退室として1回だけ記録する。
                   onPressed: () {
                     _reportOnce();
+                    // push では自習室が背後に残るため、dispose 任せでは今の一言が
+                    // 撮影画面まで続く。自分が始めた音だけをここで止める。
+                    unawaited(_nudgeAudio?.stop() ?? Future<void>.value());
                     context.push(AppRoute.capture.path);
                   },
                 ),
@@ -339,10 +371,9 @@ class _Board extends StatelessWidget {
 /// **マイクは開いていない。** ここに出ているのは録音でも生成でもなく、
 /// 経過時間から引いた定型のせりふ([SenpaiNudge])。
 ///
-/// TODO(§4-2): 計画書が求めているのは「事前生成した音声アセットの再生
-/// (TTS呼び出しゼロ)」。アセットがまだ無いので、この段では吹き出しだけにしてある。
-/// アセットが用意できたら、[SenpaiNudge] が切り替わった瞬間に対応する音声を鳴らす
-/// (鳴らすのは再生だけなので、原価ゼロは崩れない)。
+/// [SenpaiNudge] が切り替わった瞬間だけ、対応する同梱アセットも1回鳴らす。
+/// 吹き出しは消さない。消音モード・音声オフ・アセット欠落のどれでも、文字だけで
+/// 同じ声かけが成立しなければ、装飾だった音が導線へ昇格してしまうため。
 class _SenpaiRow extends StatelessWidget {
   const _SenpaiRow({required this.nudge});
 

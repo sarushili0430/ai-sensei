@@ -295,7 +295,7 @@ class _FakeSessionController extends SessionController {
   SessionState build() => _state;
 
   @override
-  Future<void> connect(SessionStart session) async {}
+  Future<void> connect(SessionStart session, {required String locale}) async {}
 }
 
 class _FakeCaptureController extends CaptureController {
