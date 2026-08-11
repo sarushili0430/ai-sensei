@@ -28,6 +28,37 @@ const fmt = (v) => {
   return Math.abs(r - Math.round(r)) < 1e-9 ? String(Math.round(r)) : r.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
 };
 
+// 2変数の式 f(x,y)。領域の判定に使う。
+export function compile2(src) {
+  if (typeof src !== 'string') throw new Error('式が文字列ではない: ' + JSON.stringify(src));
+  const s = src.replace(/\^/g, '**');
+  if (!ALLOWED.test(s)) throw new Error('使えない文字がある式: ' + src);
+  for (const w of s.match(/[a-z]+/g) || []) {
+    if (!FNS.includes(w)) throw new Error('知らない名前: ' + w + ' (式: ' + src + ')');
+  }
+  // eslint-disable-next-line no-new-func
+  const f = new Function('x', 'y', 'with(Math){const pi=PI;return (' + s + ');}');
+  return (x, y) => f(x, y);
+}
+
+// 五数要約。**データから計算する。**モデルに書かせない。
+function fiveNumber(data) {
+  const a = data.slice().sort((p, q) => p - q), n = a.length;
+  const q = (p) => {                                  // 高校の四分位数(中央値で二分し、各半分の中央値)
+    const k = (n - 1) * p, lo = Math.floor(k), hi = Math.ceil(k);
+    return a[lo] + (a[hi] - a[lo]) * (k - lo);
+  };
+  return { min: a[0], q1: q(0.25), med: q(0.5), q3: q(0.75), max: a[n - 1] };
+}
+
+// 標準正規分布の累積。斜線部の面積を出すのに使う(Abramowitz-Stegun 26.2.17)。
+function normalCdf(z) {
+  const t = 1 / (1 + 0.2316419 * Math.abs(z));
+  const d = 0.3989422804014327 * Math.exp(-z * z / 2);
+  const p = d * t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
+  return z > 0 ? 1 - p : p;
+}
+
 export function solve(items) {
   const pts = {}, circles = {}, lines = {}, curves = {}, draws = [];
   let states = [];
@@ -110,9 +141,24 @@ export function solve(items) {
       circles[it.circle] = { c, r: it.r };
       draws.push({ t: 'circle', c, r: it.r, name: it.circle });
     } else if (it.line) {
-      const base = L(it.perp), q = P(it.through);
-      const dx = base.b.x - base.a.x, dy = base.b.y - base.a.y;
-      lines[it.line] = { a: q, b: { x: q.x - dy, y: q.y + dx } };
+      if (it.bisect) {
+        // 角の二等分線。頂点は真ん中。**2辺の単位ベクトルの和が向き**(長さに寄らない)
+        const [a, o, b] = it.bisect.map(P);
+        const u = norm(a, o), v = norm(b, o);
+        lines[it.line] = { a: o, b: { x: o.x + u.x + v.x, y: o.y + u.y + v.y } };
+      } else if (it.perpBisect) {
+        // 垂直二等分線。中点を通り、その線分に垂直
+        const [a, b] = it.perpBisect.map(P);
+        const m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        lines[it.line] = { a: m, b: { x: m.x - (b.y - a.y), y: m.y + (b.x - a.x) } };
+      } else if (it.perp) {
+        const base = L(it.perp), q = P(it.through);
+        const dx = base.b.x - base.a.x, dy = base.b.y - base.a.y;
+        lines[it.line] = { a: q, b: { x: q.x - dy, y: q.y + dx } };
+      } else if (it.parallel) {
+        const base = L(it.parallel), q = P(it.through);
+        lines[it.line] = { a: q, b: { x: q.x + base.b.x - base.a.x, y: q.y + base.b.y - base.a.y } };
+      } else throw new Error('直線の作り方が指定されていない: ' + it.line);
     } else if (it.seg) draws.push({ t: 'seg', a: P(it.seg[0]), b: P(it.seg[1]), names: it.seg, dash: !!it.dash, label: it.label, as: it.as });
     else if (it.poly) draws.push({ t: 'poly', ps: it.poly.map(P), names: it.poly, fill: !!it.fill, as: it.as });
     else if (it.ellipse) draws.push({ t: 'ellipse', c: P(it.center), rx: it.rx, ry: it.ry, as: it.as, dash: !!it.dash });
@@ -140,11 +186,27 @@ export function solve(items) {
         const m = (cuts[i] + cuts[i + 1]) / 2, s = d1(m);
         sign.push(s > 1e-6 ? '+' : s < -1e-6 ? '-' : '0');
       }
+      // 凹凸(数III)。**変曲点の x だけ受け取り、f″ の符号はこちらが出す。**
+      let concave, inflect;
+      if (it.inflect) {
+        const d2 = (x) => { const h = 1e-3; return (cv.f(x + h) - 2 * cv.f(x) + cv.f(x - h)) / (h * h); };
+        inflect = it.inflect.slice().sort((a, b) => a - b);
+        for (const c of inflect) {
+          if (Math.abs(d2(c)) > 1e-3) throw new Error(`x=${c} は変曲点でない(f''=${d2(c).toFixed(4)})`);
+        }
+        const cuts2 = [lo, ...inflect, hi];
+        concave = [];
+        for (let i = 0; i < cuts2.length - 1; i++) {
+          const s = d2((cuts2[i] + cuts2[i + 1]) / 2);
+          concave.push(s > 0 ? '下に凸' : s < 0 ? '上に凸' : '—');
+        }
+      }
       draws.push({
         t: 'signTable', curve: it.signTable, crit,
         sign,                                                    // 区間の符号
         arrow: sign.map((s) => (s === '+' ? '↗' : s === '-' ? '↘' : '→')),
         values: crit.map((c) => ({ x: c, y: cv.f(c), d: d1(c) })),
+        inflect, concave,
       });
     } else if (it.states) {
       // 状態は名前だけ受け取り、**並べるのはこちら**(円形に置く)
@@ -204,6 +266,185 @@ export function solve(items) {
         return { value: v, pips: PIPS[v] };
       });
       draws.push({ t: 'dice', faces });
+    } else if (it.unitCircle) {
+      // 単位円。三角方程式・不等式はこれで説明する。
+      // **角度だけ受け取り、(cosθ, sinθ) はこちらが出す。**
+      circles.__unit = { c: { x: 0, y: 0 }, r: 1 };
+      const marks = (it.angles || []).map((deg) => {
+        const a = deg * Math.PI / 180;
+        const p = { x: Math.cos(a), y: Math.sin(a) };
+        pts['P' + deg] = p;
+        return { deg, p, label: `(${fmt(p.x)}, ${fmt(p.y)})` };
+      });
+      draws.push({ t: 'unitCircle', marks, arc: it.arc ? { from: it.arc[0], to: it.arc[1] } : undefined });
+    } else if (it.vec) {
+      // ベクトル = 矢印。始点と終点は名前つきの点で指す。
+      const [a, b] = it.vec;
+      draws.push({ t: 'vec', a: P(a), b: P(b), names: it.vec, label: it.label, as: it.as });
+    } else if (it.numberLine) {
+      // 数直線。**塗る区間と、白丸/黒丸を不等号から決める。**
+      const span = it.numberLine;
+      const ranges = (it.ranges || []).map((r) => {
+        if (r.from !== undefined && r.to !== undefined && r.from > r.to) throw new Error(`区間の向きが逆: ${r.from} > ${r.to}`);
+        return {
+          from: r.from ?? -Infinity, to: r.to ?? Infinity,
+          closedFrom: !!r.closedFrom, closedTo: !!r.closedTo, as: r.as,
+        };
+      });
+      draws.push({ t: 'numberLine', span, ticks: it.ticks, ranges, marks: it.marks });
+    } else if (it.region) {
+      // 不等式の表す領域。**式と不等号だけ受け取り、内外の判定はこちらがやる。**
+      // 連立は配列で渡す。半平面も円の内外も、これ1つで入る。
+      const specs = (Array.isArray(it.region[0]) ? it.region : [it.region])
+        .map(([expr, sign]) => {
+          if (!['<', '>', '<=', '>='].includes(sign)) throw new Error('不等号が違う: ' + sign);
+          return { expr, sign, f: compile2(expr) };
+        });
+      const inside = (x, y) => specs.every((s) => {
+        const v = s.f(x, y);
+        return s.sign[0] === '<' ? (s.sign === '<' ? v < 0 : v <= 0) : (s.sign === '>' ? v > 0 : v >= 0);
+      });
+      const sp = it.span || [-5, 5, -5, 5];
+      const cells = [];
+      for (let i = 0; i <= 60; i++) for (let j = 0; j <= 60; j++) {
+        const x = sp[0] + (sp[1] - sp[0]) * i / 60, y = sp[2] + (sp[3] - sp[2]) * j / 60;
+        if (inside(x, y)) cells.push({ x, y });
+      }
+      draws.push({ t: 'region', specs: specs.map((s) => ({ expr: s.expr, sign: s.sign })), inside, cells, span: sp, as: it.as });
+    } else if (it.boxplot) {
+      // 箱ひげ図。**データを受け取り、五数要約はこちらが計算する。**
+      const data = it.boxplot;
+      if (!Array.isArray(data) || data.length < 4) throw new Error('データが足りない(4個以上)');
+      if (data.some((v) => typeof v !== 'number' || !isFinite(v))) throw new Error('データに数でないものがある');
+      draws.push({ t: 'boxplot', data, five: fiveNumber(data), label: it.label });
+    } else if (it.histogram) {
+      // ヒストグラム。**度数はこちらが数える。**
+      const data = it.histogram, w = it.binWidth;
+      if (!Array.isArray(data) || !data.length) throw new Error('データが無い');
+      if (!(w > 0)) throw new Error('binWidth が正でない: ' + w);
+      const from = it.from ?? Math.floor(Math.min(...data) / w) * w;
+      const to = it.to ?? Math.ceil(Math.max(...data) / w) * w;
+      const bins = [];
+      for (let a = from; a < to - 1e-9; a += w) {
+        const b = a + w;
+        bins.push({ from: a, to: b, n: data.filter((v) => v >= a && (b >= to ? v <= b : v < b)).length });
+      }
+      draws.push({ t: 'histogram', data, bins, binWidth: w });
+    } else if (it.scatter) {
+      // 散布図。**相関係数はこちらが計算する。**
+      const ps = it.scatter;
+      if (!Array.isArray(ps) || ps.length < 3) throw new Error('点が足りない(3個以上)');
+      const xs = ps.map((p) => p[0]), ys = ps.map((p) => p[1]), n = ps.length;
+      const mx = xs.reduce((a, c) => a + c, 0) / n, my = ys.reduce((a, c) => a + c, 0) / n;
+      const sxy = xs.reduce((a, _, i) => a + (xs[i] - mx) * (ys[i] - my), 0) / n;
+      const sx = Math.sqrt(xs.reduce((a, v) => a + (v - mx) ** 2, 0) / n);
+      const sy = Math.sqrt(ys.reduce((a, v) => a + (v - my) ** 2, 0) / n);
+      draws.push({ t: 'scatter', ps, r: sxy / (sx * sy), mean: { x: mx, y: my } });
+    } else if (it.tree) {
+      // 樹形図。**枝だけ受け取り、並べるのと葉を数えるのはこちら。**
+      const levels = it.tree;                                // [["表","裏"],["表","裏"],...]
+      if (!Array.isArray(levels) || !levels.length) throw new Error('枝が無い');
+      let paths = [[]];
+      for (const opts of levels) {
+        if (!Array.isArray(opts) || !opts.length) throw new Error('枝の選択肢が空');
+        paths = paths.flatMap((p) => opts.map((o) => [...p, o]));
+      }
+      draws.push({ t: 'tree', levels, paths, leaves: paths.length });
+    } else if (it.venn) {
+      // ベン図。**各領域の個数を受け取り、合計が全体と合うかはこちらが見る。**
+      const sets = it.venn, counts = it.counts || {};
+      if (sets.length < 2 || sets.length > 3) throw new Error('集合は2つか3つ');
+      const total = Object.values(counts).reduce((a, c) => a + c, 0);
+      draws.push({ t: 'venn', sets, counts, total, universe: it.universe });
+    } else if (it.lattice) {
+      // 格子点。**範囲と条件を受け取り、数えるのはこちら。**
+      const [x0, x1, y0, y1] = it.lattice;
+      const f = it.where ? compile2(it.where) : null;
+      const ps = [];
+      for (let x = Math.ceil(x0); x <= x1; x++) for (let y = Math.ceil(y0); y <= y1; y++) {
+        if (!f || f(x, y) >= 0) ps.push({ x, y });
+      }
+      draws.push({ t: 'lattice', ps, span: it.lattice, where: it.where, count: ps.length });
+    } else if (it.normal) {
+      // 正規分布。**斜線部の確率はこちらが積分する。**
+      const { mu = 0, sigma = 1 } = it.normal;
+      if (!(sigma > 0)) throw new Error('標準偏差が正でない');
+      const sh = it.shade;
+      const z = (v) => (v - mu) / sigma;
+      const area = sh ? normalCdf(z(sh[1] ?? Infinity)) - normalCdf(z(sh[0] ?? -Infinity)) : undefined;
+      draws.push({ t: 'normal', mu, sigma, shade: sh, area, label: it.label });
+    } else if (it.conic) {
+      // 2次曲線。**a と b だけ受け取り、焦点・漸近線・準線はこちらが出す。**
+      const { conic, a, b } = it;
+      if (!(a > 0)) throw new Error('a が正でない');
+      const o = { x: 0, y: 0 };
+      if (conic === 'ellipse') {
+        if (!(b > 0) || b > a) throw new Error('楕円は 0 < b <= a');
+        const c = Math.sqrt(a * a - b * b);
+        pts.F1 = { x: c, y: 0 }; pts.F2 = { x: -c, y: 0 };
+        draws.push({ t: 'conic', kind: 'ellipse', a, b, c, foci: [pts.F1, pts.F2], center: o });
+      } else if (conic === 'hyperbola') {
+        if (!(b > 0)) throw new Error('双曲線は b > 0');
+        const c = Math.sqrt(a * a + b * b);
+        pts.F1 = { x: c, y: 0 }; pts.F2 = { x: -c, y: 0 };
+        draws.push({ t: 'conic', kind: 'hyperbola', a, b, c, foci: [pts.F1, pts.F2], center: o, asymptotes: [b / a, -b / a] });
+      } else if (conic === 'parabola') {
+        // y^2 = 4ax。焦点 (a,0)、準線 x = -a
+        pts.F1 = { x: a, y: 0 };
+        draws.push({ t: 'conic', kind: 'parabola', a, foci: [pts.F1], directrix: -a, center: o });
+      } else throw new Error('知らない2次曲線: ' + conic);
+    } else if (it.complexPlane) {
+      // 複素数平面。**回転・実数倍の結果はこちらが計算する。**
+      const zs = {};
+      Object.entries(it.points || {}).forEach(([nm, v]) => {
+        zs[nm] = { x: v[0], y: v[1] };
+        pts[nm] = zs[nm];
+      });
+      (it.ops || []).forEach((op) => {
+        const src = pts[op.of];
+        if (!src) throw new Error('未定義の複素数: ' + op.of);
+        const a = (op.deg || 0) * Math.PI / 180, k = op.times ?? 1;
+        pts[op.to] = { x: k * (src.x * Math.cos(a) - src.y * Math.sin(a)), y: k * (src.x * Math.sin(a) + src.y * Math.cos(a)) };
+        draws.push({ t: 'pt', p: pts[op.to], name: op.to, coord: `(${fmt(pts[op.to].x)}, ${fmt(pts[op.to].y)})` });
+      });
+      draws.push({ t: 'complexPlane', points: Object.keys(pts), span: it.span || 4 });
+    } else if (it.polar) {
+      // 極方程式 r = f(θ)。**直交座標への変換はこちら。**
+      const f = compile(it.polar, 't'), d = it.domain || [0, 2 * Math.PI];
+      const ps = [];
+      for (let i = 0; i <= 240; i++) {
+        const th = d[0] + (d[1] - d[0]) * i / 240, r = f(th);
+        if (isFinite(r)) ps.push({ x: r * Math.cos(th), y: r * Math.sin(th), th, r });
+      }
+      if (!ps.length) throw new Error('極方程式が1点も引けない');
+      curves[it.name || 'polar'] = { px: (t) => f(t) * Math.cos(t), py: (t) => f(t) * Math.sin(t), domain: d, param: true };
+      draws.push({ t: 'curve', ps, polar: it.polar, as: it.as });
+    } else if (it.asymptote) {
+      // 漸近線。縦 {x:a} か横 {y:b} か、傾きつき {slope,intercept}
+      const a = it.asymptote;
+      if (a.x === undefined && a.y === undefined && a.slope === undefined) throw new Error('漸近線の指定が無い');
+      draws.push({ t: 'asymptote', ...a, as: 'aux' });
+    } else if (it.riemann) {
+      // 区分求積の短冊。**本数だけ受け取り、高さも面積の和もこちらが出す。**
+      const cv = curves[it.riemann];
+      if (!cv) throw new Error('未定義の曲線: ' + it.riemann);
+      if (!cv.f) throw new Error('y=f(x) の形でない: ' + it.riemann);
+      const n = it.n, [x0, x1] = it.range || cv.domain;
+      if (!Number.isInteger(n) || n < 1) throw new Error('短冊の本数が整数でない: ' + n);
+      const w = (x1 - x0) / n, bars = [];
+      for (let i = 0; i < n; i++) {
+        const left = x0 + i * w;
+        const at = it.side === 'right' ? left + w : it.side === 'mid' ? left + w / 2 : left;
+        bars.push({ from: left, to: left + w, h: cv.f(at) });
+      }
+      draws.push({ t: 'riemann', bars, n, sum: bars.reduce((a, c) => a + c.h * w, 0), width: w });
+    } else if (it.groups) {
+      // 群数列の区切り。**各群の項数だけ受け取り、区切り位置はこちらが積み上げる。**
+      const sizes = it.groups;
+      if (!Array.isArray(sizes) || sizes.some((v) => !Number.isInteger(v) || v < 1)) throw new Error('群の項数が整数でない');
+      let k = 0;
+      const gs = sizes.map((n, i) => { const from = k + 1; k += n; return { i: i + 1, from, to: k, n }; });
+      draws.push({ t: 'groups', groups: gs, total: k, terms: it.terms });
     } else if (it.diceTable) {
       const cells = [];
       for (let a = 1; a <= 6; a++) for (let b = 1; b <= 6; b++) {
@@ -266,6 +507,12 @@ function sample(cv, range) {
   }
   if (!out.length) throw new Error('曲線が1点も引けない');
   return out;
+}
+
+// o から a へ向かう単位ベクトル。角の二等分線の向きを出すのに使う。
+function norm(a, o) {
+  const dx = a.x - o.x, dy = a.y - o.y, n = Math.hypot(dx, dy) || 1;
+  return { x: dx / n, y: dy / n };
 }
 
 const mirrorAbout = (p, ax) => (ax.x !== undefined ? { x: 2 * ax.x - p.x, y: p.y } : { x: p.x, y: 2 * ax.y - p.y });

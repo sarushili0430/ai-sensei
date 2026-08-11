@@ -311,4 +311,280 @@ export const PROBLEMS = [
       return { ok: true, why: '36マス、和が7のマスが6個' };
     },
   },
+
+  // ---- 全単元カバレッジ(units.md のギャップから) ----
+  {
+    id: 'numline',
+    unit: '数I 数と式',
+    tag: '数直線',
+    prompt: '不等式 |x - 1| < 3 の解を数直線で示して。',
+    check(r) {
+      const nl = r.draws.find((d) => d.t === 'numberLine');
+      if (!nl) return { ok: false, why: '数直線が無い' };
+      if (!nl.ranges.length) return { ok: false, why: '解の範囲が塗られていない' };
+      const g = nl.ranges[0];
+      if (Math.abs(g.from + 2) > 1e-9 || Math.abs(g.to - 4) > 1e-9) {
+        return { ok: false, why: `範囲が ${g.from}〜${g.to}(-2〜4 のはず)` };
+      }
+      if (g.closedFrom || g.closedTo) return { ok: false, why: '端が黒丸になっている(< なので白丸)' };
+      return { ok: true, why: '-2 < x < 4、両端とも白丸' };
+    },
+  },
+  {
+    id: 'unitcircle',
+    unit: '数II 三角関数',
+    tag: '単位円',
+    prompt: '0 ≦ θ < 2π のとき、sin θ = 1/2 を満たす θ を単位円で説明して。',
+    check(r) {
+      const u = r.draws.find((d) => d.t === 'unitCircle');
+      if (!u) return { ok: false, why: '単位円が無い' };
+      const degs = u.marks.map((m) => ((m.deg % 360) + 360) % 360).sort((a, b) => a - b);
+      if (degs.length < 2) return { ok: false, why: `印が ${degs.length} 個(30°と150°の2個ほしい)` };
+      const want = [30, 150];
+      const miss = want.filter((w) => !degs.some((d) => Math.abs(d - w) < 1e-6));
+      if (miss.length) return { ok: false, why: `${miss.join('°,')}° が無い(印は ${degs.join('°,')}°)` };
+      // 印の座標が本当に (cosθ, sinθ) か
+      const bad = u.marks.filter((m) => Math.abs(m.p.y - Math.sin(m.deg * Math.PI / 180)) > 1e-9);
+      if (bad.length) return { ok: false, why: '印の座標が cos/sin と合っていない' };
+      return { ok: true, why: `30°・150°、sin = 0.5 で一致` };
+    },
+  },
+  {
+    id: 'vector',
+    unit: '数C ベクトル',
+    tag: 'ベクトル',
+    prompt: '三角形OABにおいて、辺ABを2:1に内分する点をPとする。OPベクトルを図で示して。',
+    check(r) {
+      const vs = r.draws.filter((d) => d.t === 'vec');
+      if (!vs.length) return { ok: false, why: '矢印が無い(vec を使っていない)' };
+      const { O, A, B, P } = r.pts;
+      if (!O || !A || !B || !P) return { ok: false, why: 'O,A,B,P が足りない' };
+      const k = Math.hypot(A.x - P.x, A.y - P.y) / Math.hypot(P.x - B.x, P.y - B.y);
+      if (Math.abs(k - 2) > 1e-6) return { ok: false, why: `AP:PB = ${k.toFixed(4)}:1(2:1 のはず)` };
+      const op = vs.find((v) => v.names[0] === 'O' && v.names[1] === 'P');
+      if (!op) return { ok: false, why: 'OP の矢印が無い' };
+      return { ok: true, why: `AP:PB = 2:1、OP の矢印あり(矢印 ${vs.length} 本)` };
+    },
+  },
+  {
+    id: 'region',
+    unit: '数II 図形と方程式',
+    tag: '領域',
+    prompt: '連立不等式 x² + y² < 9 かつ y > x の表す領域を図示して。',
+    check(r) {
+      const g = r.draws.find((d) => d.t === 'region');
+      if (!g) return { ok: false, why: '領域が無い(region を使っていない)' };
+      // **標本点で内外を確かめる。**式の見た目ではなく、判定結果を見る
+      const cases = [
+        [0, 1, true], [-1, 2, true], [0, -1, false], [1, 0, false],
+        // (2, 2.5) は y>x を満たすが 2²+2.5²=10.25>9 なので**円の外**。境界のすぐ外を1つ入れておく
+        [0, 4, false], [3, 3, false], [-2, -1, true], [2, 2.5, false],
+      ];
+      const bad = cases.filter(([x, y, want]) => g.inside(x, y) !== want);
+      if (bad.length) {
+        const b = bad[0];
+        return { ok: false, why: `(${b[0]},${b[1]}) を ${g.inside(b[0], b[1]) ? '内' : '外'} と判定(逆)` };
+      }
+      if (!g.cells.length) return { ok: false, why: '塗る場所が1つも無い' };
+      return { ok: true, why: `標本8点すべて正しく内外判定` };
+    },
+  },
+  {
+    id: 'boxplot',
+    unit: '数I データの分析',
+    tag: '箱ひげ図',
+    prompt: '次の9個のデータの箱ひげ図をかいて。12, 15, 18, 20, 22, 25, 28, 30, 35',
+    check(r) {
+      const b = r.draws.find((d) => d.t === 'boxplot');
+      if (!b) return { ok: false, why: '箱ひげ図が無い' };
+      const want = [12, 15, 18, 20, 22, 25, 28, 30, 35];
+      if (b.data.length !== 9) return { ok: false, why: `データが ${b.data.length} 個(9個のはず)` };
+      const miss = want.filter((v) => !b.data.includes(v));
+      if (miss.length) return { ok: false, why: `データが違う(${miss.join(',')} が無い)` };
+      const f = b.five;
+      if (f.min !== 12 || f.max !== 35 || f.med !== 22) {
+        return { ok: false, why: `五数要約が min=${f.min} med=${f.med} max=${f.max}` };
+      }
+      return { ok: true, why: `min12 Q1${f.q1} med22 Q3${f.q3} max35(データから計算)` };
+    },
+  },
+  {
+    id: 'scatter',
+    unit: '数I データの分析',
+    tag: '散布図',
+    prompt: '次の5人の身長xと体重yの散布図をかいて。(160,50) (165,55) (170,62) (175,68) (180,75)',
+    check(r) {
+      const s = r.draws.find((d) => d.t === 'scatter');
+      if (!s) return { ok: false, why: '散布図が無い' };
+      if (s.ps.length !== 5) return { ok: false, why: `点が ${s.ps.length} 個(5個のはず)` };
+      const want = [[160, 50], [165, 55], [170, 62], [175, 68], [180, 75]];
+      const miss = want.filter(([x, y]) => !s.ps.some((p) => p[0] === x && p[1] === y));
+      if (miss.length) return { ok: false, why: `${miss.map((m) => `(${m})`).join('')} が無い` };
+      if (s.r < 0.98) return { ok: false, why: `相関係数 ${s.r.toFixed(3)}(強い正の相関のはず)` };
+      return { ok: true, why: `5点、相関係数 r = ${s.r.toFixed(4)}(こちらで計算)` };
+    },
+  },
+  {
+    id: 'tree',
+    unit: '数A 場合の数',
+    tag: '樹形図',
+    prompt: 'コインを3回投げるときの表裏の出方を樹形図でかいて。',
+    check(r) {
+      const t = r.draws.find((d) => d.t === 'tree');
+      if (!t) return { ok: false, why: '樹形図が無い' };
+      if (t.levels.length !== 3) return { ok: false, why: `段が ${t.levels.length}(3段のはず)` };
+      if (t.leaves !== 8) return { ok: false, why: `葉が ${t.leaves} 個(2³=8のはず)` };
+      return { ok: true, why: `3段・葉8個(2³)` };
+    },
+  },
+  {
+    id: 'venn',
+    unit: '数A 集合',
+    tag: 'ベン図',
+    prompt: '40人のクラスで、数学が好きな人が22人、英語が好きな人が18人、両方好きな人が10人いる。これをベン図で表して。',
+    check(r) {
+      const v = r.draws.find((d) => d.t === 'venn');
+      if (!v) return { ok: false, why: 'ベン図が無い' };
+      if (v.sets.length !== 2) return { ok: false, why: `集合が ${v.sets.length} 個(2個のはず)` };
+      const c = v.counts, get = (re) => { const k = Object.keys(c).find((x) => re.test(x)); return k ? c[k] : undefined; };
+      if (v.total !== 40) return { ok: false, why: `合計が ${v.total} 人(40人のはず)` };
+      const both = Object.values(c).find((n) => n === 10);
+      if (both === undefined) return { ok: false, why: '共通部分の10人が無い' };
+      const only = Object.values(c).sort((a, b) => a - b).join(',');
+      if (only !== '8,10,10,12') return { ok: false, why: `内訳が [${only}](12,10,8,10 のはず)` };
+      return { ok: true, why: `12/10/8/10 = 40人` };
+    },
+  },
+  {
+    id: 'lattice',
+    unit: '数B 数列 / 数A 整数',
+    tag: '格子点',
+    prompt: 'x ≧ 0, y ≧ 0, x + y ≦ 4 を満たす格子点(x, yがともに整数の点)を図示して。',
+    check(r) {
+      const l = r.draws.find((d) => d.t === 'lattice');
+      if (!l) return { ok: false, why: '格子点が無い' };
+      // 0<=x, 0<=y, x+y<=4 の格子点は 15 個
+      if (l.count !== 15) return { ok: false, why: `格子点が ${l.count} 個(15個のはず)` };
+      const bad = l.ps.filter((p) => p.x < 0 || p.y < 0 || p.x + p.y > 4);
+      if (bad.length) return { ok: false, why: '条件を外れた点が混ざっている' };
+      return { ok: true, why: `15個、すべて x+y≦4 を満たす` };
+    },
+  },
+  {
+    id: 'normal',
+    unit: '数B 統計的な推測',
+    tag: '正規分布',
+    prompt: '平均50、標準偏差10の正規分布において、40以上60以下となる確率を図で示して。',
+    check(r) {
+      const n = r.draws.find((d) => d.t === 'normal');
+      if (!n) return { ok: false, why: '正規分布の図が無い' };
+      if (n.mu !== 50 || n.sigma !== 10) return { ok: false, why: `μ=${n.mu}, σ=${n.sigma}(50, 10 のはず)` };
+      if (!n.shade) return { ok: false, why: '斜線部が無い' };
+      if (Math.abs(n.area - 0.6827) > 0.005) return { ok: false, why: `斜線部の確率 ${n.area?.toFixed(4)}(0.6827 のはず)` };
+      return { ok: true, why: `μ±σ、面積 ${n.area.toFixed(4)}(こちらで積分)` };
+    },
+  },
+  {
+    id: 'conic',
+    unit: '数C 2次曲線',
+    tag: '双曲線',
+    prompt: '双曲線 x²/9 - y²/16 = 1 の概形を、焦点と漸近線がわかるように図示して。',
+    check(r) {
+      const c = r.draws.find((d) => d.t === 'conic');
+      if (!c) return { ok: false, why: '2次曲線が無い(conic を使っていない)' };
+      if (c.kind !== 'hyperbola') return { ok: false, why: `${c.kind} になっている(双曲線のはず)` };
+      if (c.a !== 3 || c.b !== 4) return { ok: false, why: `a=${c.a}, b=${c.b}(3, 4 のはず)` };
+      if (Math.abs(c.c - 5) > 1e-9) return { ok: false, why: `焦点が ±${c.c}(±5 のはず)` };
+      if (Math.abs(c.asymptotes[0] - 4 / 3) > 1e-9) return { ok: false, why: `漸近線の傾きが ${c.asymptotes[0]}` };
+      return { ok: true, why: `焦点(±5,0)・漸近線 y=±(4/3)x(c²=a²+b² から計算)` };
+    },
+  },
+  {
+    id: 'complex',
+    unit: '数C 複素数平面',
+    tag: '複素数平面',
+    prompt: '複素数平面上の点 A(2+i) を原点のまわりに90°回転した点Bを図示して。',
+    check(r) {
+      const cp = r.draws.find((d) => d.t === 'complexPlane');
+      if (!cp) return { ok: false, why: '複素数平面が無い' };
+      const { A, B } = r.pts;
+      if (!A) return { ok: false, why: 'A が無い' };
+      if (Math.abs(A.x - 2) > 1e-9 || Math.abs(A.y - 1) > 1e-9) return { ok: false, why: `A が (${A.x},${A.y})(2+i のはず)` };
+      if (!B) return { ok: false, why: '回転した点 B が無い' };
+      // (2+i)*i = -1+2i
+      if (Math.abs(B.x + 1) > 1e-9 || Math.abs(B.y - 2) > 1e-9) {
+        return { ok: false, why: `B が (${B.x.toFixed(2)},${B.y.toFixed(2)})(-1+2i のはず)` };
+      }
+      return { ok: true, why: `A(2,1) → B(-1,2)(90°回転をこちらで計算)` };
+    },
+  },
+  {
+    id: 'concave',
+    unit: '数III 微分法',
+    tag: '凹凸つき増減表',
+    prompt: 'y = x³ - 3x² の増減表を、凹凸(変曲点)まで含めてかいて。',
+    check(r) {
+      const t = r.draws.find((d) => d.t === 'signTable');
+      if (!t) return { ok: false, why: '増減表が無い' };
+      if (!t.inflect) return { ok: false, why: '凹凸(変曲点)が入っていない' };
+      if (t.crit.length !== 2 || Math.abs(t.crit[0]) > 1e-9 || Math.abs(t.crit[1] - 2) > 1e-9) {
+        return { ok: false, why: `極値の x が [${t.crit}](0, 2 のはず)` };
+      }
+      if (t.inflect.length !== 1 || Math.abs(t.inflect[0] - 1) > 1e-9) {
+        return { ok: false, why: `変曲点が [${t.inflect}](1 のはず)` };
+      }
+      if (t.concave.join('/') !== '上に凸/下に凸') return { ok: false, why: `凹凸が ${t.concave.join('/')}` };
+      return { ok: true, why: `極値 x=0,2 / 変曲点 x=1 / 上に凸→下に凸` };
+    },
+  },
+  {
+    id: 'riemann',
+    unit: '数III 積分法',
+    tag: '区分求積',
+    prompt: 'y = x² と x軸、x = 1 で囲まれた部分の面積を、区分求積法(短冊を4本)の考え方で図示して。',
+    check(r) {
+      const rm = r.draws.find((d) => d.t === 'riemann');
+      if (!rm) return { ok: false, why: '短冊が無い(riemann を使っていない)' };
+      if (rm.n !== 4) return { ok: false, why: `短冊が ${rm.n} 本(4本のはず)` };
+      if (Math.abs(rm.width - 0.25) > 1e-9) return { ok: false, why: `幅が ${rm.width}(0.25 のはず)` };
+      // 左端なら 7/32=0.21875、右端なら 15/32=0.46875。どちらでもよいが 1/3 の周りに来ること
+      if (rm.sum < 0.15 || rm.sum > 0.55) return { ok: false, why: `面積の和が ${rm.sum.toFixed(4)}(1/3 の近くのはず)` };
+      return { ok: true, why: `4本・幅0.25・和 ${rm.sum.toFixed(5)}(∫=0.3333)` };
+    },
+  },
+  {
+    id: 'bisect',
+    unit: '数A 図形の性質',
+    tag: '角の二等分線',
+    prompt: '三角形ABCの∠Aの二等分線と辺BCの交点をDとする。AB=6, AC=4 のとき、BD:DC を説明する図をかいて。',
+    check(r) {
+      const { A, B, C, D } = r.pts;
+      if (!A || !B || !C || !D) return { ok: false, why: 'A,B,C,D が足りない' };
+      const ab = Math.hypot(A.x - B.x, A.y - B.y), ac = Math.hypot(A.x - C.x, A.y - C.y);
+      if (Math.abs(ab - 6) > 0.01 || Math.abs(ac - 4) > 0.01) {
+        return { ok: false, why: `AB=${ab.toFixed(2)}, AC=${ac.toFixed(2)}(6, 4 のはず)` };
+      }
+      const cross = Math.abs((C.x - B.x) * (D.y - B.y) - (C.y - B.y) * (D.x - B.x));
+      if (cross > 1e-6) return { ok: false, why: 'D が BC 上にない' };
+      // 角の二等分線なら BD:DC = AB:AC = 3:2 に**なるはず**(指定していないのに、そうなる)
+      const k = Math.hypot(B.x - D.x, B.y - D.y) / Math.hypot(D.x - C.x, D.y - C.y);
+      if (Math.abs(k - 1.5) > 1e-4) return { ok: false, why: `BD:DC = ${k.toFixed(4)}:1(1.5:1 のはず)` };
+      return { ok: true, why: `AB:AC=6:4、BD:DC=${k.toFixed(4)}:1 が作図の結果として出た` };
+    },
+  },
+  {
+    id: 'asymptote',
+    unit: '数II 指数対数 / 数III 極限',
+    tag: '漸近線',
+    prompt: 'y = 1/(x-2) + 1 のグラフを、漸近線がわかるように図示して。',
+    check(r) {
+      const as = r.draws.filter((d) => d.t === 'asymptote');
+      if (as.length < 2) return { ok: false, why: `漸近線が ${as.length} 本(縦横2本ほしい)` };
+      const vx = as.find((a) => a.x !== undefined), hy = as.find((a) => a.y !== undefined);
+      if (!vx || Math.abs(vx.x - 2) > 1e-9) return { ok: false, why: `縦の漸近線が x=${vx?.x}(x=2 のはず)` };
+      if (!hy || Math.abs(hy.y - 1) > 1e-9) return { ok: false, why: `横の漸近線が y=${hy?.y}(y=1 のはず)` };
+      if (!r.draws.some((d) => d.t === 'curve')) return { ok: false, why: 'グラフが無い' };
+      return { ok: true, why: `x=2 と y=1` };
+    },
+  },
 ];

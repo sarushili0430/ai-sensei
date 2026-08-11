@@ -17,7 +17,8 @@ for (const f of readdirSync(OUT).filter((n) => n.endsWith('.txt')).sort()) {
   const row = { model, id, trial, tag: byId[id]?.tag, bytes: raw.length };
   // 空ファイル = まだ走っている。**失敗と数えない**(数えると成功率が嘘になる)
   if (!raw) { continue; }
-  if (raw.includes('__CLI_FAILED__')) { rows.push({ ...row, level: 'json', why: 'CLI が失敗' }); continue; }
+  // **通信の失敗をモデルの失敗に混ぜない。**分母から外し、件数だけ別に出す。
+  if (raw.includes('__CLI_FAILED__')) { rows.push({ ...row, level: 'cli', why: 'API/プロキシ側で失敗' }); continue; }
 
   // **2通りで採点する。**
   //   strict … 出てきた文字がそのまま JSON。運用ではこれをそのまま流したい
@@ -66,24 +67,39 @@ function firstArray(t) {
 
 const models = [...new Set(rows.map((r) => r.model))];
 const LV = ['ok', 'wrong', 'vocab', 'json'];
-const MARK = { ok: '○', wrong: '×図', vocab: '×語', json: '×J' };
+const MARK = { ok: '○', wrong: '×図', vocab: '×語', json: '×J', cli: '–' };
 
 console.log('\n=== 問題別 ===');
 const w = Math.max(...PROBLEMS.map((p) => p.id.length));
-console.log('問題'.padEnd(w + 2) + models.map((m) => m.padEnd(14)).join('') + ' 分類');
+console.log('問題'.padEnd(w + 2) + models.map((m) => m.padEnd(12)).join('') + '単元 / 分類');
 for (const p of PROBLEMS) {
   const cells = models.map((m) => {
     const rs = rows.filter((x) => x.model === m && x.id === p.id).sort((a, b) => a.trial - b.trial);
-    return rs.map((x) => MARK[x.level]).join(' ').padEnd(14);
+    return rs.map((x) => MARK[x.level]).join(' ').padEnd(12);
   });
-  console.log(p.id.padEnd(w + 2) + cells.join('') + ' ' + p.tag);
+  console.log(p.id.padEnd(w + 2) + cells.join('') + (p.unit ? p.unit + ' / ' : '') + p.tag);
 }
+
+// **単元カバレッジ。**「その単元の図が、一度でも正しく描けたか」を出す。
+console.log('\n=== 単元カバレッジ(1回でも○になったか) ===');
+const covered = [], notYet = [];
+for (const p of PROBLEMS) {
+  const rs = rows.filter((x) => x.id === p.id && x.level !== 'cli');
+  if (!rs.length) continue;
+  (rs.some((x) => x.level === 'ok') ? covered : notYet).push(p);
+}
+console.log(`到達 ${covered.length}/${covered.length + notYet.length} 種類`);
+if (notYet.length) notYet.forEach((p) => console.log(`  まだ: ${p.id} (${p.unit || ''} ${p.tag})`));
 
 console.log('\n=== 合計 ===');
 for (const m of models) {
-  const rs = rows.filter((x) => x.model === m);
+  const all = rows.filter((x) => x.model === m);
+  const cli = all.filter((x) => x.level === 'cli').length;
+  const rs = all.filter((x) => x.level !== 'cli');
+  if (!rs.length) { console.log(`${m.padEnd(8)} 有効な回答なし(通信失敗 ${cli} 件)`); continue; }
   const c = Object.fromEntries(LV.map((l) => [l, rs.filter((x) => x.level === l).length]));
   const strict = rs.filter((x) => x.level === 'ok' && !x.repaired).length;
+  if (cli) console.log(`${m.padEnd(8)} (通信失敗 ${cli} 件は分母から除外)`);
   console.log(`${m.padEnd(8)} n=${rs.length}  ○ ${c.ok}  ×図 ${c.wrong}  ×語 ${c.vocab}  ×JSON ${c.json}`);
   console.log(`         そのまま流せた      ${strict}/${rs.length} = ${(100 * strict / rs.length).toFixed(0)}%`);
   console.log(`         拾い直せば通った    ${c.ok}/${rs.length} = ${(100 * c.ok / rs.length).toFixed(0)}%`);
