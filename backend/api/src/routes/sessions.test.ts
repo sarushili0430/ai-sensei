@@ -297,7 +297,7 @@ describe("POST /v1/sessions", () => {
   });
 });
 
-// レビュー指摘: 復習はPremium機能なのに、hole_idを直接渡せば無料でも通っていた
+// レビュー指摘: 音声の復習セッションはPremiumなのに、hole_idを直接渡せば無料でも通っていた
 describe("復習セッション", () => {
   async function seedHole(deviceId = testDeviceId): Promise<string> {
     await services.repository.insertKarte(
@@ -320,6 +320,7 @@ describe("復習セッション", () => {
           desc: "平方完成のなぜで説明が止まった",
           severity: "high",
           evidence: null,
+          quiz: null,
           status: "open",
           created_at: "2026-08-01T11:00:00.000Z",
           filled_at: null,
@@ -762,6 +763,7 @@ describe("問題だけのセッション", () => {
           desc: "平方完成のなぜで説明が止まった",
           severity: "high",
           evidence: null,
+          quiz: null,
           status: "open",
           created_at: "2026-08-01T11:00:00.000Z",
           filled_at: null,

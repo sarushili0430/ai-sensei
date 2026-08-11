@@ -40,6 +40,7 @@ const karteDraft = {
       desc: "判別式を「なぜ」使うのか、で説明が止まった",
       severity: "medium" as const,
       evidence: "そこは……なんとなくです",
+      quiz: "判別式を使うと解の個数がわかる理由を説明できる?",
     },
   ],
   term_notes: ["「解の公式」と「判別式」が混ざっていた"],
@@ -78,7 +79,7 @@ async function startReviewSession(): Promise<string> {
   const holeId = firstBody.karte.holes[0]?.id;
   expect(holeId).toBeDefined();
 
-  // 復習はPremium機能
+  // 小テストは無料だが、音声で先輩を呼び直す復習セッションはPremium機能
   await services.repository.setPremium({
     deviceId: testDeviceId,
     isPremium: true,
@@ -102,6 +103,7 @@ describe("POST /v1/sessions/{id}/complete", () => {
     expect(parsed.success ? null : parsed.error.issues).toBeNull();
     expect(body.karte.holes).toHaveLength(1);
     expect(body.karte.holes[0]?.status).toBe("open");
+    expect(body.karte.holes[0]?.quiz).toBe("判別式を使うと解の個数がわかる理由を説明できる?");
   });
 
   it("内部トークンがなければ401(agentからの呼び出しのみ許す)", async () => {
@@ -327,6 +329,22 @@ describe("GET /v1/sessions/{id}/result", () => {
     const body = (await response.json()) as CompleteSessionResponse;
     expect(body.karte.holes).toHaveLength(1);
     expect(body.progress.streak_days).toBe(1);
+  });
+
+  it("穴のquizを保存し、結果取得でもそのまま返す", async () => {
+    const sessionId = await startSession();
+    await complete(sessionId);
+
+    const stored = await services.repository.getKarteBySession(sessionId);
+    expect(stored?.holes[0]?.quiz).toBe("判別式を使うと解の個数がわかる理由を説明できる?");
+
+    const response = await app.request(
+      `/v1/sessions/${sessionId}/result`,
+      { headers: { "x-device-id": testDeviceId } },
+      bindings,
+    );
+    const body = (await response.json()) as CompleteSessionResponse;
+    expect(body.karte.holes[0]?.quiz).toBe("判別式を使うと解の個数がわかる理由を説明できる?");
   });
 
   it("他人のセッションは見せない", async () => {

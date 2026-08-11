@@ -62,8 +62,8 @@ sessionsRoute.post("/", async (c) => {
   const user = await repository.ensureUser(deviceId, at);
   const localDate = toLocalDate(at);
 
-  // 復習(穴の再説明)はPremium機能。/v1/me/reviews でキューを隠すだけだと、
-  // 初回カルテで配った hole_id を使ってここから直接呼べてしまう。
+  // 小テストは無料だが、音声で先輩を呼び直す復習セッションはPremium機能。
+  // レスポンスのフラグだけに任せると、hole_idを使ってここを直接呼べてしまう。
   if (meta.kind === "review" && !isPremiumNow(user, at)) {
     throw apiError("premium_required", { locale });
   }

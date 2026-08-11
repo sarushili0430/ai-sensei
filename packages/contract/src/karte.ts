@@ -42,6 +42,17 @@ export const holeDraftSchema = z
     severity: holeSeveritySchema,
     /** 根拠になったtranscript上の発話。カルテ画面では出さないが、再説明の文脈に使う。 */
     evidence: z.string().max(500).optional(),
+    /**
+     * 1/3/7日後に出す**1問**。10秒で答えられる短さにする。
+     *
+     * 出題元はtranscriptのうち、本人が説明した内容(`ユーザー:` / `Student:`)だけ。
+     * 先輩が教えた内容から作らない。AIの誤読を間隔反復で3回強化してしまうため
+     * (ピボット計画 §2 の却下表)。
+     *
+     * 採点はせず、答えも持たない。本人が「言えた / まだ言えない」を選ぶだけ。
+     * 旧データには無いので省略でき、無いときは `desc` を出題として使う。
+     */
+    quiz: z.string().min(1).max(200).optional(),
   })
   .strict();
 export type HoleDraft = z.infer<typeof holeDraftSchema>;

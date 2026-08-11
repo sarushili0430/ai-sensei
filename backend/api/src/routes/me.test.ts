@@ -1,5 +1,13 @@
-import type { ProgressResponse, ReviewQueueResponse } from "@ai-sensei/contract";
-import { progressResponseSchema, reviewQueueResponseSchema } from "@ai-sensei/contract";
+import type {
+  ProgressResponse,
+  ReviewAnswerResponse,
+  ReviewQueueResponse,
+} from "@ai-sensei/contract";
+import {
+  progressResponseSchema,
+  reviewAnswerResponseSchema,
+  reviewQueueResponseSchema,
+} from "@ai-sensei/contract";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../app.ts";
 import type { HoleRecord, KarteRecord } from "../repository/types.ts";
@@ -15,6 +23,18 @@ beforeEach(() => {
 
 function get(path: string) {
   return app.request(path, { headers: { "x-device-id": testDeviceId } }, bindings);
+}
+
+function answerReview(holeId: string, body: unknown, deviceId = testDeviceId) {
+  return app.request(
+    `/v1/me/reviews/${holeId}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-device-id": deviceId },
+      body: JSON.stringify(body),
+    },
+    bindings,
+  );
 }
 
 async function seedHole(overrides: Partial<HoleRecord> = {}): Promise<HoleRecord> {
@@ -36,6 +56,7 @@ async function seedHole(overrides: Partial<HoleRecord> = {}): Promise<HoleRecord
     desc: "平方完成を「なぜ」するのか、で説明が止まった",
     severity: "high",
     evidence: null,
+    quiz: null,
     status: "open",
     created_at: "2026-07-31T11:00:00.000Z",
     filled_at: null,
@@ -129,14 +150,15 @@ describe("GET /v1/me/progress", () => {
 });
 
 describe("GET /v1/me/reviews", () => {
-  it("無料ユーザーには空配列 + requires_premium(エラーにはしない)", async () => {
+  it("無料ユーザーにも復習キューを返し、音声授業だけPremiumと示す", async () => {
     await seedHole();
     const response = await get("/v1/me/reviews");
     expect(response.status).toBe(200);
 
     const body = (await response.json()) as ReviewQueueResponse;
     expect(reviewQueueResponseSchema.safeParse(body).success).toBe(true);
-    expect(body).toEqual({ items: [], filled: [], requires_premium: true });
+    expect(body.items).toHaveLength(1);
+    expect(body.lesson_requires_premium).toBe(true);
   });
 
   it("Premiumには穴と後輩の一言を返す", async () => {
@@ -144,12 +166,26 @@ describe("GET /v1/me/reviews", () => {
     await seedHole();
 
     const body = (await (await get("/v1/me/reviews")).json()) as ReviewQueueResponse;
-    expect(body.requires_premium).toBe(false);
+    expect(body.lesson_requires_premium).toBe(false);
     expect(body.items).toHaveLength(1);
     expect(body.items[0]?.days_since).toBe(3);
     expect(body.items[0]?.prompt).toBe(
       "3日前の「平方完成を「なぜ」するのか」、いまなら説明できますか?",
     );
+  });
+
+  it("出題が無い旧データではdescをquizとして返す", async () => {
+    const hole = await seedHole({ quiz: null });
+
+    const body = (await (await get("/v1/me/reviews")).json()) as ReviewQueueResponse;
+    expect(body.items[0]?.quiz).toBe(hole.desc);
+  });
+
+  it("保存済みの出題があればquizをそのまま返す", async () => {
+    await seedHole({ quiz: "平方完成をする理由を説明できる?" });
+
+    const body = (await (await get("/v1/me/reviews")).json()) as ReviewQueueResponse;
+    expect(body.items[0]?.quiz).toBe("平方完成をする理由を説明できる?");
   });
 
   it("埋まった穴は「埋めにいく穴」には出さず、「埋めた穴」に回す", async () => {
@@ -187,6 +223,7 @@ describe("GET /v1/me/reviews", () => {
           desc: "判別式の意味で説明が止まった",
           severity: "medium",
           evidence: null,
+          quiz: null,
           status: "filled",
           created_at: "2026-08-02T11:00:00.000Z",
           filled_at: "2026-08-02T11:30:00.000Z",
@@ -198,12 +235,12 @@ describe("GET /v1/me/reviews", () => {
     expect(body.filled.map((it) => it.hole.id)).toEqual(["hol_3", "hol_seed"]);
   });
 
-  it("無料ユーザーには埋めた穴も出さない(復習ごとPremium)", async () => {
+  it("無料ユーザーにも埋めた穴を返す", async () => {
     await seedHole({ status: "filled", filled_at: "2026-08-01T11:00:00.000Z" });
 
     const body = (await (await get("/v1/me/reviews")).json()) as ReviewQueueResponse;
-    expect(body.filled).toEqual([]);
-    expect(body.requires_premium).toBe(true);
+    expect(body.filled).toHaveLength(1);
+    expect(body.lesson_requires_premium).toBe(true);
   });
 
   it("古い穴から順に並べる", async () => {
@@ -229,6 +266,7 @@ describe("GET /v1/me/reviews", () => {
           desc: "判別式の意味で説明が止まった",
           severity: "medium",
           evidence: null,
+          quiz: null,
           status: "open",
           created_at: "2026-08-02T11:00:00.000Z",
           filled_at: null,
@@ -238,6 +276,103 @@ describe("GET /v1/me/reviews", () => {
 
     const body = (await (await get("/v1/me/reviews")).json()) as ReviewQueueResponse;
     expect(body.items.map((item) => item.hole.id)).toEqual(["hol_seed", "hol_2"]);
+  });
+});
+
+describe("POST /v1/me/reviews/{holeId}", () => {
+  async function seedSchedules(holeId: string): Promise<void> {
+    await services.repository.insertReviewSchedules([
+      {
+        id: "rev_seed_1",
+        hole_id: holeId,
+        step: 1,
+        scheduled_at: "2026-08-04T11:00:00.000Z",
+        external_id: "os_seed_1",
+      },
+      {
+        id: "rev_seed_2",
+        hole_id: holeId,
+        step: 2,
+        scheduled_at: "2026-08-06T11:00:00.000Z",
+        external_id: "os_seed_2",
+      },
+      {
+        id: "rev_seed_3",
+        hole_id: holeId,
+        step: 3,
+        scheduled_at: "2026-08-10T11:00:00.000Z",
+        external_id: "os_seed_3",
+      },
+    ]);
+  }
+
+  it('"said_it" で穴が埋まり、進捗をその場で返す', async () => {
+    const hole = await seedHole();
+    const response = await answerReview(hole.id, { outcome: "said_it" });
+    expect(response.status).toBe(200);
+
+    const body = (await response.json()) as ReviewAnswerResponse;
+    expect(reviewAnswerResponseSchema.safeParse(body).success).toBe(true);
+    expect(body.hole.status).toBe("filled");
+    expect(body.hole.filled_at).toBe("2026-08-03T13:24:07.000Z");
+    expect(body.progress.filled_holes).toBe(1);
+    expect(body.progress.open_holes).toBe(0);
+  });
+
+  it('"said_it" で残りの復習通知を取り消す', async () => {
+    const hole = await seedHole();
+    await seedSchedules(hole.id);
+
+    await answerReview(hole.id, { outcome: "said_it" });
+
+    expect(services.repository.schedules).toEqual([]);
+    expect(services.scheduler.cancelled).toEqual(["os_seed_1", "os_seed_2", "os_seed_3"]);
+  });
+
+  it('"not_yet" では穴も通知もそのまま残す', async () => {
+    const hole = await seedHole();
+    await seedSchedules(hole.id);
+
+    const response = await answerReview(hole.id, { outcome: "not_yet" });
+    const body = (await response.json()) as ReviewAnswerResponse;
+
+    expect(body.hole.status).toBe("open");
+    expect(body.progress.filled_holes).toBe(0);
+    expect(body.progress.open_holes).toBe(1);
+    expect(services.repository.schedules).toHaveLength(3);
+    expect(services.scheduler.cancelled).toEqual([]);
+  });
+
+  it("他人の穴には触れず404を返す", async () => {
+    const hole = await seedHole();
+    const response = await answerReview(
+      hole.id,
+      { outcome: "said_it" },
+      "11111111-2222-3333-4444-555555555555",
+    );
+
+    expect(response.status).toBe(404);
+    expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+      "hole_not_found",
+    );
+    expect((await services.repository.getHole(hole.id))?.status).toBe("open");
+  });
+
+  it('"said_it" を2度送っても埋めた穴を二重に数えない', async () => {
+    const hole = await seedHole();
+    await seedSchedules(hole.id);
+
+    await answerReview(hole.id, { outcome: "said_it" });
+    const second = await answerReview(hole.id, { outcome: "said_it" });
+    const body = (await second.json()) as ReviewAnswerResponse;
+
+    expect(body.progress.filled_holes).toBe(1);
+    expect(services.scheduler.cancelled).toEqual(["os_seed_1", "os_seed_2", "os_seed_3"]);
+  });
+
+  it("スキーマに合わない本文は400", async () => {
+    const hole = await seedHole();
+    expect((await answerReview(hole.id, { outcome: "almost" })).status).toBe(400);
   });
 });
 

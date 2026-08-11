@@ -59,6 +59,11 @@
                 "type": "string",
                 "maxLength": 500
               },
+              "quiz": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
               "id": {
                 "type": "string",
                 "minLength": 1

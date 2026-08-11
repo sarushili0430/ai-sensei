@@ -19,6 +19,7 @@ export const apiPaths = {
   completeSession: (sessionId: string) => `/v1/sessions/${sessionId}/complete`,
   progress: "/v1/me/progress",
   reviewQueue: "/v1/me/reviews",
+  answerReview: (holeId: string) => `/v1/me/reviews/${holeId}`,
   revenueCatWebhook: "/v1/webhooks/revenuecat",
 } as const;
 
@@ -363,13 +364,19 @@ export const reviewQueueItemSchema = z
     days_since: z.number().int().min(0),
     /** 通知文と同じ、後輩の声のひとこと。 */
     prompt: z.string().min(1).max(200),
+    /**
+     * 10秒で答える1問。レスポンスでは必須にし、旧データの
+     * `hole.quiz ?? hole.desc` はサーバ側で解決する。クライアントに分岐を
+     * 持たせると、画面ごとに別の出題を見せてしまうため。
+     */
+    quiz: z.string().min(1).max(200),
   })
   .strict();
 export type ReviewQueueItem = z.infer<typeof reviewQueueItemSchema>;
 
 /**
- * 埋まった穴。ペイウォールが謳う Premium の「履歴」はこれで果たす。
- * 別画面の履歴は作らず、復習画面の下半分に置く(埋めにいく穴 ↔ 埋めた穴)。
+ * 埋まった穴。別画面の履歴は作らず、無料の復習画面の下半分に置く
+ * (埋めにいく穴 ↔ 埋めた穴)。小テストで埋めた手応えも同じ場所に積み上げる。
  */
 export const filledHoleSchema = z
   .object({
@@ -392,11 +399,28 @@ export const reviewQueueResponseSchema = z
      * ここは直近 {@link filledHolesLimit} 件までしか載らない。
      */
     filled: z.array(filledHoleSchema).max(filledHolesLimit),
-    /** 無料ユーザーには空配列を返し、これをtrueにする(復習はPremium)。 */
-    requires_premium: z.boolean(),
+    /**
+     * 小テストのあと、音声で先輩を呼び直す授業モードにPremiumが要るか。
+     *
+     * 旧名 `requires_premium` は「復習キューそのものがPremium限定で、無料なら空」
+     * という意味だった。いまは小テストを無料で開き、Premiumが要るのは音声だけなので
+     * 意味が反転している。名前を据え置くと既存クライアントが無料の小テストにも
+     * ペイウォールを出し続けるため、読み手が必ず見直す新しい名前にする。
+     */
+    lesson_requires_premium: z.boolean(),
   })
   .strict();
 export type ReviewQueueResponse = z.infer<typeof reviewQueueResponseSchema>;
+
+/** 小テストの自己申告。サーバは正誤を採点せず、本人の二択だけを受け取る。 */
+export const reviewAnswerRequestSchema = z.object({ outcome: reviewOutcomeSchema }).strict();
+export type ReviewAnswerRequest = z.infer<typeof reviewAnswerRequestSchema>;
+
+/** 自己申告の直後に、穴とホームのカウンターを更新するための応答。 */
+export const reviewAnswerResponseSchema = z
+  .object({ hole: holeSchema, progress: progressSchema })
+  .strict();
+export type ReviewAnswerResponse = z.infer<typeof reviewAnswerResponseSchema>;
 
 export const progressResponseSchema = z
   .object({
@@ -416,6 +440,7 @@ export const apiErrorCodes = [
   "photo_unreadable",
   "out_of_scope",
   "session_not_found",
+  "hole_not_found",
   "rate_limited",
   "internal_error",
 ] as const;

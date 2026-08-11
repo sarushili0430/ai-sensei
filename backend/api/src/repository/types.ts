@@ -58,6 +58,7 @@ export type HoleRecord = {
   desc: string;
   severity: HoleSeverity;
   evidence: string | null;
+  quiz: string | null;
   status: "open" | "filled";
   created_at: string;
   filled_at: string | null;
