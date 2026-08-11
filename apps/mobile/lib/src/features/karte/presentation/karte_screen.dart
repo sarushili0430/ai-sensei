@@ -21,14 +21,10 @@ import 'hole_self_report_prompt.dart';
 
 /// カルテ画面。
 ///
-/// **静かな画面**にする(handoff §7「騒がしい/静かの分離」)。
-/// 内省する場所なので、祝福画面のにぎやかさを持ち込まない。
-/// 点数は出さない。穴は「これから埋まる場所」として提示する。
-///
-/// 読む順は「結論 → 根拠 → 操作」。言えたこと・穴・用語メモが今日の結論、
-/// [_BoardSection] が先輩の書いたものそのもの(根拠)、そのあとに
-/// あと追い質問・自己申告・通知の許可という**手を動かすもの**を置く。
-/// 板書を先頭に置かないのは、長い板書が結論を画面の外へ押し出すため。
+/// - **静かな画面**にする。祝福画面のにぎやかさを持ち込まない
+/// - 点数は出さない。穴は「これから埋まる場所」として出す
+/// - 読む順は 結論(言えたこと・穴・用語メモ)→ 根拠([_BoardSection])→ 操作
+/// - 板書を先頭に置かないのは、長い板書が結論を画面の外へ押し出すため
 class KarteScreen extends ConsumerWidget {
   const KarteScreen({super.key});
 
@@ -168,26 +164,13 @@ class _LessonHoleSelfReportState extends ConsumerState<_LessonHoleSelfReport> {
 
 /// 授業で先輩が書いた板書。**授業の寿命を超えて読み返せる唯一の場所**。
 ///
-/// 会話画面の板書は AutoDispose と一緒に消えるので、残っているのは
-/// [LastBoardController] が持つぶんだけ。授業が1回も無い / 音声だけで終わった
-/// 会話では、見出しごと出さない(空の見出しは「壊れている」に見える)。
-///
-/// **カードに入れない(囲わない・内側に余白を足さない)。** 見た目の好みではなく、
-/// 計画書§3-6b の実測の前提そのものだから:
-///
-///   - `BoardStyle.latexMinScale`(70%)は**実効幅340pt**での実測から決めた値。
-///     カルテの左右の余白は `ListView` の `AppSpacing.lg` × 2 = 48pt なので
-///     `BoardStyle.horizontalPadding` と同じで、授業モード(`_BoardStage`)と揃う。
-///     ここに `padding: md` と `border` のカードを足すと 48 + 32 + 2 を引くことになり、
-///     実測で「縮小して収まる」と確認した式が下限を割って**横スクロールに落ちる**。
-///     しかも落ちたことは `debugPrint` にしか出ない
-///   - `latex_element_view.dart` の右端フェードは、板書が
-///     `AppColors.background`(Scaffoldの地)に直接乗る前提の色で描かれている。
-///     白いカードの上に置くと地に溶けず、「まだ続きがある」の手がかりとして
-///     機能しなくなる
-///
-/// 「ここが板書だ」は、囲いではなく見出し([AppStrings.karteBoardTitle])が示す。
-/// 他の節が [_Section] でそうしているのと同じ形。
+/// - 会話画面の板書は AutoDispose で消える。残るのは [LastBoardController] だけ
+/// - 板書が無ければ見出しごと出さない。空の見出しは壊れて見える
+/// - **カードに入れない**(囲わない・内側に余白を足さない)。理由は下の2つ
+/// - `latexMinScale`(70%)は実効幅340ptの実測値。カードを足すと311ptへ落ち、
+///   収まると確認した式が横スクロールになる。しかも `debugPrint` にしか出ない
+/// - 右端フェードは板書が `AppColors.background` に直接乗る前提の色
+/// - 「ここが板書だ」は囲いではなく見出しが示す([_Section] と同じ形)
 class _BoardSection extends ConsumerWidget {
   const _BoardSection();
 
@@ -198,10 +181,8 @@ class _BoardSection extends ConsumerWidget {
     if (board.isEmpty) return const SizedBox.shrink();
 
     return Column(
-      // **`start` にしない。** `start` だと子が自分の自然な幅になり、板書が
-      // いちばん長い行の幅まで痩せる。幅が痩せた分だけ縮小率が下がるので、
-      // 横スクロールに落ちる式が増える。授業モードの `_BoardStage` も同じ理由で
-      // `stretch`(見張りは `test/session_board_test.dart`)。
+      // **`start` にしない。** 子が自然幅まで痩せ、縮小率が下がって横スクロールが増える。
+      // 授業モードの `_BoardStage` も同じ理由で `stretch`。
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         const SizedBox(height: AppSpacing.lg),

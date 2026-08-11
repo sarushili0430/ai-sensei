@@ -21,24 +21,27 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:ai_sensei/src/api/device_id.dart';
 import 'package:ai_sensei/src/features/capture/application/capture_controller.dart';
 import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
+import 'package:ai_sensei/src/features/karte/application/last_board_controller.dart';
+import 'package:ai_sensei/src/features/karte/domain/last_board.dart';
 // `SessionLimits` は karte / session の両方に別々の定義がある。ここで要るのは
 // `SessionStart` が持つ session 側なので、karte 側を隠す。
 import 'package:ai_sensei/src/features/karte/domain/karte.dart'
     hide SessionLimits;
-import 'package:ai_sensei/src/features/karte/presentation/home_screen.dart';
-import 'package:ai_sensei/src/features/karte/presentation/karte_screen.dart';
-import 'package:ai_sensei/src/features/karte/presentation/review_screen.dart';
 import 'package:ai_sensei/src/features/session/application/board_inbox.dart';
 import 'package:ai_sensei/src/features/session/application/session_controller.dart';
 import 'package:ai_sensei/src/features/session/domain/board.dart';
 import 'package:ai_sensei/src/features/session/domain/session.dart';
 import 'package:ai_sensei/src/features/session/presentation/celebration_screen.dart';
 import 'package:ai_sensei/src/features/session/presentation/session_screen.dart';
+import 'package:ai_sensei/src/routing/app_router.dart';
+import 'package:ai_sensei/src/routing/routes.dart';
 import 'package:ai_sensei/src/theme/tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../test/support/harness.dart';
@@ -98,13 +101,34 @@ Future<GlobalKey> _pump(
   });
 
   final GlobalKey key = GlobalKey();
+  final Widget? screen = shot.screen;
+  if (screen != null) {
+    await tester.pumpWidget(
+      RepaintBoundary(
+        key: key,
+        child:
+            wrapApp(screen, overrides: shot.overrides, locale: Locale(locale)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    return key;
+  }
+
+  // 常設タブの下の画面。ルータの redirect と画面が同じコンテナを見るよう、
+  // golden の `expectRoutedGolden` と同じ形でコンテナを外から渡す。
+  final ProviderContainer container = ProviderContainer(
+    overrides: <Object?>[..._bootOverrides(), ...shot.overrides].cast(),
+  );
+  addTearDown(container.dispose);
+
   await tester.pumpWidget(
     RepaintBoundary(
       key: key,
-      child: wrapApp(shot.screen,
-          overrides: shot.overrides, locale: Locale(locale)),
+      child: wrapRouter(container, locale: Locale(locale)),
     ),
   );
+  await tester.pumpAndSettle();
+  container.read(appRouterProvider).go(shot.location!);
   await tester.pumpAndSettle();
   return key;
 }
@@ -252,20 +276,42 @@ class _Copy {
   final Color markerColor;
 }
 
+/// スクショ1枚ぶん。[screen] か [location] のどちらか一方だけを渡す。
+///
+/// - 常設タブの下の画面は [location] でルータ経由。下部タブごと撮る
+/// - `MaterialApp.home` に置くとタブが写らず、実機と違う絵になる(2.3.3)
+/// - 授業の線(撮影 → 会話 → 祝福)はシェルの外。実機にもタブが無い
 @immutable
 class _Shot {
   const _Shot({
     required this.slug,
-    required this.screen,
     required this.copy,
+    this.screen,
+    this.location,
     this.overrides = const <Object?>[],
-  });
+  }) : assert(
+          (screen == null) != (location == null),
+          'screen か location のどちらか一方だけを渡すこと',
+        );
 
   final String slug;
-  final Widget screen;
+
+  /// シェルの外の画面。そのまま `MaterialApp.home` に置く。
+  final Widget? screen;
+
+  /// 常設タブの下にある画面のルート。下部ナビゲーションごと撮る。
+  final String? location;
+
   final List<_Copy> copy;
   final List<Object?> overrides;
 }
+
+/// ルータ経由で撮るときの起動時の値。
+/// 渡さないと初回起動と見なされ、オンボーディングが出る。
+List<Object?> _bootOverrides() => <Object?>[
+      onboardedProvider.overrideWithValue(true),
+      deviceIdProvider.overrideWithValue('11111111-2222-3333-4444-555555555555'),
+    ];
 
 /// 会話画面は撮影から渡されたセッションが無いとホームへ戻る。
 /// スクショでは通信しないので、繋がった体の状態を差し込む。
@@ -301,6 +347,25 @@ class _FakeSessionController extends SessionController {
 class _FakeCaptureController extends CaptureController {
   @override
   CaptureState build() => const CaptureState(session: _sampleSessionStart);
+}
+
+/// カルテに残る板書。3枚目の「根拠」の節をここで埋める。
+class _FakeLastBoardController extends LastBoardController {
+  @override
+  LastBoard build() => const LastBoard(
+        steps: <BoardStep>[
+          BoardStep(
+            index: 0,
+            speech: 'まず、式をそのまま書くね。',
+            board: BoardElement.latex(tex: 'x^2 - 3x + 2 = 0'),
+          ),
+          BoardStep(
+            index: 1,
+            speech: '判別式は、この形だったよね。',
+            board: BoardElement.latex(tex: 'D = (-3)^2 - 4 \\cdot 1 \\cdot 2 = 1'),
+          ),
+        ],
+      );
 }
 
 final List<_Shot> _shots = <_Shot>[
@@ -374,13 +439,20 @@ final List<_Shot> _shots = <_Shot>[
       ),
     ],
   ),
+  // ここから3枚は常設タブの下。ルータ経由で撮って、下部ナビゲーションを写す。
   _Shot(
     slug: '03-karte',
-    screen: const KarteScreen(),
+    location: AppRoute.karte.path,
     overrides: <Object?>[
       latestKarteControllerProvider.overrideWith(FakeLatestKarteController.new),
       sessionOutcomeControllerProvider.overrideWith(
         () => FakeSessionOutcomeController(const SessionOutcome()),
+      ),
+      // 「先輩が書いたもの」の節(ADR 0006)。カルテの「根拠」なので落とさない。
+      lastBoardControllerProvider.overrideWith(_FakeLastBoardController.new),
+      progressControllerProvider.overrideWith(FakeProgressController.new),
+      reviewControllerProvider.overrideWith(
+        () => FakeReviewController(const ReviewQueue(items: <ReviewQueueItem>[])),
       ),
     ],
     copy: <_Copy>[
@@ -400,9 +472,13 @@ final List<_Shot> _shots = <_Shot>[
   ),
   _Shot(
     slug: '04-progress',
-    screen: const HomeScreen(),
+    location: AppRoute.home.path,
     overrides: <Object?>[
-      progressControllerProvider.overrideWith(FakeProgressController.new)
+      progressControllerProvider.overrideWith(FakeProgressController.new),
+      // 「きのうの続き」のカードに、件数ではなく単元の中身を出すため。
+      reviewControllerProvider.overrideWith(
+        () => FakeReviewController(sampleReviewQueue),
+      ),
     ],
     copy: const <_Copy>[
       _Copy(
@@ -421,8 +497,9 @@ final List<_Shot> _shots = <_Shot>[
   ),
   _Shot(
     slug: '05-review',
-    screen: const ReviewScreen(),
+    location: AppRoute.review.path,
     overrides: <Object?>[
+      progressControllerProvider.overrideWith(FakeProgressController.new),
       reviewControllerProvider.overrideWith(
         () => FakeReviewController(
           ReviewQueue(

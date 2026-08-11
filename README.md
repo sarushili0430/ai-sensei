@@ -11,7 +11,7 @@
 - ターゲット: 日本の高校生 / 対象科目: 高校数学(数I・A・II・B・III・C、新課程)
 - 日本語と英語の2言語。**海外の学習者には海外の課程**(Algebra 1 / Geometry /
   Algebra 2 / Precalculus / Calculus / Statistics)を出す
-  ([ADR 0005](docs/adr/0005-locale-curricula.md))
+  ([ADR 0005](docs/adr.md#adr-0005))
 - 学習科学の背景: 自己説明効果(self-explanation effect)とプロテジェ効果(teachable agent)
 - [RevenueCat Shipaton 2026](https://shipaton.revenuecat.com/) 提出プロジェクト(Next Gen Award 併願のため初日からpublic + MIT)
 
@@ -167,7 +167,7 @@ CIで生成します(`apps/mobile/test/golden/README.md`)。
 E2Eは書かず、TestFlightでの手動確認に割り切っています。
 
 アニメーションは端末の「アニメーションを減らす」設定を必ず通します
-([ADR 0004](docs/adr/0004-motion-and-onboarding.md))。テストもその経路で回るので、
+([ADR 0004](docs/adr.md#adr-0004))。テストもその経路で回るので、
 ループするアニメーションを足して経路を通し忘れると `pumpAndSettle` が返らず、
 テストが止まって気づけます。
 
@@ -196,7 +196,7 @@ E2Eは書かず、TestFlightでの手動確認に割り切っています。
 エージェントホスティングに載せます([`docs/deploy-agent.md`](docs/deploy-agent.md))。
 **`Dockerfile` がリポジトリのルートにあるのは意図的**です(agentが `packages/*` を
 `workspace:*` で参照しているのと、`lk` が作業ディレクトリ直下の `Dockerfile` しか
-読まないため。[ADR 0002 の追記](docs/adr/0002-agent-runtime.md))。
+読まないため。[ADR 0002 の追記](docs/adr.md#adr-0002))。
 同じイメージはどのコンテナホストでも動きます。
 
 > **LiveKitのプロジェクトは環境ごとに分けます**(同じプロジェクトを共有すると
@@ -244,7 +244,7 @@ Flutter app ──HTTPS──▶ backend/api ──▶ LiveKit room 作成 + age
 
 穴(hole)に付いた `topic_id` の接頭辞が、その穴の言語を決めます。復習の通知と
 復習画面の一行は端末の言語設定ではなくこれに従うので、日本語で説明した穴が
-英語の通知で届くことはありません([ADR 0005](docs/adr/0005-locale-curricula.md))。
+英語の通知で届くことはありません([ADR 0005](docs/adr.md#adr-0005))。
 
 ## 設計上の約束(実装時に守ること)
 

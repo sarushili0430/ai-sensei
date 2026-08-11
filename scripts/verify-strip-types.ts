@@ -2,7 +2,7 @@
  * agentが実行時に読む `.ts` が、**型を消すだけ**で動くかを確かめる。
  *
  * `backend/agent` はビルド手順を持たず、`node --experimental-strip-types` で
- * `.ts` を直接動かす([ADR 0002](../docs/adr/0002-agent-runtime.md))。
+ * `.ts` を直接動かす([ADR 0002](../docs/adr.md#adr-0002))。
  * このモードは型注釈を空白に置き換えるだけなので、**値の生成を伴うTS構文**
  * (parameter property / enum / namespace)は通らない。
  *

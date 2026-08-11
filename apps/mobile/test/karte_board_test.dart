@@ -12,11 +12,8 @@ import 'support/harness.dart';
 
 /// カルテに残る板書(ADR 0006)。
 ///
-/// 授業中の板書は会話画面(AutoDispose)と一緒に消えるので、**授業の寿命を超えて
-/// 読み返せる場所はここだけ**。自習室を畳んだときに一緒に捨てなかったのがこれで、
-/// 見るのは見た目ではなく「残っているか」「とぎれていると分かるか」「幅が痩せていないか」。
-///
-/// golden は置かない(計画書§10-8。比較対象のPNGはCI/Linuxで作る)。
+/// - 見るのは「残っているか」「とぎれていると分かるか」「幅が痩せていないか」
+/// - golden は置かない(比較対象のPNGはCI/Linuxで作る)
 void main() {
   const AppStrings ja = AppStrings(Locale('ja'));
 
@@ -28,10 +25,7 @@ void main() {
     board: BoardElement.text(body: '解が2つ ⇔ D > 0'),
   );
 
-  /// 板書を手元に置いた状態を作る。
-  ///
-  /// 本番で書き込むのは授業(`SessionController._applyBoard`)の1か所だけ。
-  /// ここで見るのは書き込み口ではなく、**残った板書をどう見せるか**。
+  /// 板書を手元に置いた状態を作る。見るのは書き込み口ではなく見せ方。
   List<Object?> overridesWith(LastBoard board) => <Object?>[
         latestKarteControllerProvider.overrideWith(FakeLatestKarteController.new),
         lastBoardControllerProvider.overrideWith(() => _FakeLastBoardController(board)),
@@ -89,13 +83,9 @@ void main() {
     expect(find.text(ja.karteBoardTruncated), findsNothing);
   });
 
-  /// 板書の実効幅は、授業モードと同じでなければならない。
-  ///
-  /// `BoardStyle.latexMinScale`(70%)は**実効幅340pt**での実測から決めた値
-  /// (計画書§3-6b)。カルテで板書をカードに入れると 345pt → 311pt まで落ち、
-  /// 実測では縮小して収まった式が横スクロールに落ちる。**落ちたことは
-  /// `debugPrint` にしか出ず見た目では気づけない**ので、幅で見張る。
-  /// `session_board_test.dart` の同名の見張りと対になっている。
+  /// 板書の実効幅は授業モードと同じでなければならない。
+  /// カードに入れると 345pt → 311pt へ落ち、収まる式が横スクロールになる。
+  /// 落ちたことは `debugPrint` にしか出ないので、幅で見張る。
   testWidgets('板書の実効幅は、実測の前提(340pt)を下回らない', (WidgetTester tester) async {
     await pumpApp(
       tester,

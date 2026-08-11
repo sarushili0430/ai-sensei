@@ -10,19 +10,14 @@ import 'support/harness.dart';
 
 /// ホームの「今日の1手」(ADR 0006)。
 ///
-/// 見ているのは**画面のいちばん下に押せる操作がいくつあるか**。以前はここに
-/// 授業と自習室の2本が並び、先輩が今日を締めた日は色を入れ替えて「押せるほう」を
-/// 示していた。自習室を畳んでからは、同じ場所のボタンの中身を差し替える形にした
-/// (`_PrimaryAction`)。並べ直すPRを出すと、ここが落ちる。
+/// 見るのは**下に押せる操作がいくつあるか**。並べ直すPRはここで落ちる。
 void main() {
   const AppStrings ja = AppStrings(Locale('ja'));
   const ValueKey<String> lessonKey = ValueKey<String>('home-primary-lesson');
   const ValueKey<String> reviewKey = ValueKey<String>('home-primary-review');
 
   /// 締めたうえで、埋める穴も残っていない日。
-  ///
-  /// `exhaustedSummary` は穴が2つ残っている状態なので、こちらでしか
-  /// 「押せるボタンが1つも無い」経路を通せない。
+  /// `exhaustedSummary` は穴が2つあるので、この経路はこちらでしか通せない。
   const ProgressSummary exhaustedWithoutHoles = ProgressSummary(
     progress: Progress(streakDays: 3, filledHoles: 4, openHoles: 0),
     isPremium: false,
