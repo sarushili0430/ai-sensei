@@ -142,6 +142,20 @@
   .opt .why{font-size:11.5px;color:var(--mut);margin:0}
   .mini{background:var(--fill);border-radius:7px;padding:9px}
 
+  /* ---------- 実装状況 ---------- */
+  .divider{margin:58px 0 26px;border-top:2px solid var(--ink);padding-top:16px}
+  .divider h2{font-size:20px;margin:0 0 5px;text-wrap:balance}
+  .stat{font-family:ui-monospace,Menlo,monospace;font-size:10px;border:1px solid;
+    border-radius:3px;padding:0 5px;white-space:nowrap;line-height:1.7}
+  .stat.done{color:var(--new);border-color:var(--new)}
+  .stat.gap{color:var(--ux);border-color:var(--ux)}
+  .stat.judge{color:var(--biz);border-color:var(--biz)}
+  td .stat{margin-right:6px}
+  .map{width:100%;height:auto;display:block;margin-top:10px}
+  .side{display:flex;flex-wrap:wrap;gap:30px;align-items:flex-start}
+  .side .frames{display:flex;gap:30px;flex-wrap:wrap}
+  .side .text{flex:1;min-width:330px}
+
   /* ---------- 表 ---------- */
   table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
   td,th{border-bottom:1px solid var(--wire);padding:8px 6px;text-align:left;vertical-align:top}
@@ -493,6 +507,11 @@
           <td><span class="keep"><code>tokens.dart</code> は触らない。</span><code>board_style.dart</code> 冒頭の「<code>AppColors</code> は変更・追加しない」という約束を守る</td>
         </tr>
         <tr>
+          <td><code>study_room_screen.dart</code><br><span class="small">_Board</span></td>
+          <td>自習室の板書も同じ面に載せるか、決める</td>
+          <td><span class="care"><code>BoardView</code> の利用者は2つある。</span>自習室は「囲いではなく見出しで示す」形で、しかも実測で実効幅が311ptまで落ちた場所。<b>授業画面だけ黒板にすると、同じ板書が2つの見た目を持つ</b></td>
+        </tr>
+        <tr>
           <td><code>docs/store/screenshots/</code></td>
           <td>作り直す</td>
           <td><span class="care">現在の <code>01-session.png</code> は板書が出るより前の画</span>(顔と字幕だけ)。生成器(<code>generate_store_screenshots.dart</code>)はもう板書つきで組んでいるので、走らせれば直る</td>
@@ -529,6 +548,291 @@
       LPが実装より先に「こうなる」を描くこと自体は問題ではない(配信予定と明記してあり、実物のスクショは出していない)。
       問題になるのは<b>ストア掲載スクショ</b>で、あちらは実コードから生成する規約になっている。
       現物が古いままなので、この作業のついでに走らせ直す。
+    </p>
+  </div>
+
+  <!-- ================================================================
+       追記 — 計画 / 親 / 復習
+       ================================================================ -->
+  <div class="divider">
+    <h2>追記 — 計画モード・親の確認・復習の導線</h2>
+    <p class="lede">
+      3つとも<b>通しで動く状態まで実装されている</b>。足りていないのは機能ではなく、
+      <b>そこへ辿り着く道と、その後の行き先</b>のほうだった。以下、コードを読んで確認した現在地と、
+      ワイヤーの提案を並べる。<span class="stat done">動く</span>
+      <span class="stat gap">欠けている</span><span class="stat judge">決めが要る</span>
+    </p>
+  </div>
+
+  <!-- ================= A. 計画モード ================= -->
+  <div class="panel">
+    <h2>A. 計画モード — 立てられる。立てたあとが無い。</h2>
+    <p class="lede">
+      音声で計画を作る筋は端から端まで通っている。問題は<b>作ったあと</b>で、
+      <code>StudyPlan</code> は <code>features/plan/</code> の外から<b>1箇所も参照されていない</b>。
+    </p>
+
+    <div class="side">
+      <div class="frames">
+
+        <div class="step">
+          <div class="stephead"><span class="num now">A-0</span><span class="sname">現状 — まだ無い</span></div>
+          <p class="sway">plan_screen.dart / PlanPhase.ready</p>
+          <div class="phone">
+            <div class="nav"><b>計画</b></div>
+            <div class="spacer"></div>
+            <div class="ava big" style="width:74px;height:74px;margin:0 auto;font-size:10px">顔</div>
+            <p class="p" style="text-align:center;font-weight:700;margin-top:12px">試験の日から逆算する</p>
+            <p class="small" style="text-align:center">日付も範囲も、口で言えば先輩が組む</p>
+            <div class="spacer"></div>
+            <div class="btn">先輩と計画をつくる</div>
+            <div class="small" style="text-align:center">Premium(日次の授業枠は減らない)</div>
+          </div>
+          <div class="notes">
+            <div class="note"><span class="tag new">確認済</span><span><b>入力欄は1つも無い。</b>「フォームに戻さない」ための設計で、作成も組み直しも同じマイクの入口。</span></div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="stephead"><span class="num">A-1</span><span class="sname">提案 — 当日を先頭に</span></div>
+          <p class="sway">今日ぶんを固定し、残りを畳む</p>
+          <div class="phone">
+            <div class="nav"><b>計画</b><span class="small">共通テストまで 42日</span></div>
+            <div class="paper-card">
+              <div class="row between">
+                <span class="chip solid">きょう</span><span class="small">11/12(火)</span>
+              </div>
+              <p class="body">・数II 三角関数 例題12〜18<br>・きのうの穴(加法定理)を1つ</p>
+            </div>
+            <p class="small" style="margin-top:2px">このあと</p>
+            <div class="paper-card folded"><span class="chip">水</span><span class="body">数II 三角関数 演習</span></div>
+            <div class="paper-card folded"><span class="chip">木</span><span class="body">数B 数列 例題1〜9</span></div>
+            <div class="paper-card folded"><span class="chip">金</span><span class="body">まとめ・小テスト</span></div>
+            <div class="spacer"></div>
+            <div class="ghost">口で組み直す</div>
+          </div>
+          <div class="notes">
+            <div class="note"><span class="tag new">新規</span><span><b>いまは全日ぶんが同じ重さで縦に並ぶ。</b>今日やることを探すのに毎回スクロールが要る。当日を先頭に固定して、残りは畳む。</span></div>
+            <div class="note"><span class="tag biz">判断</span><span>締切までの残り日数を出すかどうか。<b>計画書は「達成率・進捗率は集計しない」</b>と決めているが、残り日数は集計ではなく事実。ただし煽りにはなりうる。</span></div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="text">
+        <table>
+          <thead><tr><th style="width:30%">部分</th><th style="width:14%">状況</th><th>確認した中身</th></tr></thead>
+          <tbody>
+            <tr><td>音声で作る(LiveKit)</td><td><span class="stat done">動く</span></td>
+              <td><code>plan_controller.dart</code> 357行。接続・文字起こし・先輩の離脱検知・退出後の保存待ち(1秒×12回のポーリング)まで入っている</td></tr>
+            <tr><td>サーバ</td><td><span class="stat done">動く</span></td>
+              <td><code>POST /v1/plans</code>(Premium・<b>日次の授業枠は消費しない</b>)/ <code>/:id/complete</code> / <code>GET /v1/me/plan</code>。未作成は404ではなくnull</td></tr>
+            <tr><td>画面</td><td><span class="stat done">動く</span></td>
+              <td>5状態(読み込み・待機・会話・保存中・失敗)を <code>switch</code> で網羅。組み直しの理由も出す</td></tr>
+            <tr><td>課金の境界</td><td><span class="stat done">動く</span></td>
+              <td><code>premium_required</code> を受けてペイウォールを重ねる。境界はサーバが正</td></tr>
+            <tr><td>テスト</td><td><span class="stat done">動く</span></td>
+              <td><code>plan_screen_test.dart</code></td></tr>
+            <tr><td><b>項目のチェック</b></td><td><span class="stat gap">欠けている</span></td>
+              <td>モデルには <code>todo/done/moved</code> があり、画面もアイコンを出し分けている。<b>けれど保存時にサーバが全項目を <code>status:"todo"</code> で固定している</b>(<code>plans.ts:204</code>)ので、<span class="care">done も moved も生まれる経路が無い</span></td></tr>
+            <tr><td><b>計画への入口</b></td><td><span class="stat gap">欠けている</span></td>
+              <td><span class="care">下のタブだけ。</span>ホームからも自習室からもカルテからも、計画への誘いが1つも無い</td></tr>
+            <tr><td><b>計画の使い道</b></td><td><span class="stat gap">欠けている</span></td>
+              <td><span class="care"><code>StudyPlan</code> を読むのは計画画面だけ。</span>ホームにも自習室にも通知にも出てこない。<b>立てた翌日に思い出させるものが無い</b></td></tr>
+          </tbody>
+        </table>
+        <p class="foot-note">
+          <b>いちばん効くのは3つ目。</b>ホームに「きょうの計画」を1行出すだけで、計画は
+          「立てて終わるもの」から「毎朝見るもの」に変わる。作る筋はもう出来ているので、
+          残っているのは<b>読む側の配線</b>だけ。
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= B. 親 ================= -->
+  <div class="panel">
+    <h2>B. 親が確認する方法 — 実装済み。方針は「親のアカウントを作らない」。</h2>
+    <p class="lede">
+      レポートの中身・共有の仕方・有料境界まで実装されている。設計方針もコードに明文化されていて、
+      <b>意図的にやらないこと</b>のほうが分量が多い。欠けているのは<b>親に見せようと思いつく瞬間</b>。
+    </p>
+
+    <div class="side">
+      <div class="frames">
+
+        <div class="step">
+          <div class="stephead"><span class="num now">B-0</span><span class="sname">現状 — レポート</span></div>
+          <p class="sway">parent_report_screen.dart</p>
+          <div class="phone">
+            <div class="nav"><b>今月のレポート</b></div>
+            <p class="small">11/01〜11/30</p>
+            <div class="paper-card">
+              <p class="body">埋まった穴 &nbsp;<b>7つ</b><br>続いた日数 &nbsp;<b>12日</b></p>
+            </div>
+            <p class="small">自分の言葉で説明できた単元</p>
+            <div class="paper-card"><p class="body">・二次関数の判別式<br>・三角関数の加法定理<br>・数列の漸化式</p></div>
+            <p class="small">本人の言葉</p>
+            <div class="paper-card"><p class="body">「D が正なら、x 軸と2回交わるから解が2つ」</p></div>
+            <div class="spacer"></div>
+            <p class="small">この本文がそのままメールに入ります</p>
+            <div class="btn">メールで親に送る</div>
+          </div>
+          <div class="notes">
+            <div class="note"><span class="tag new">確認済</span><span><b>画面の本文とメール本文は同じ関数が作る</b>(<code>buildParentReportText</code>)。画面に無い引用がメールにだけ混ざる余地を消してある。</span></div>
+            <div class="note"><span class="tag new">確認済</span><span>宛先は<b>空</b>。送信の最終操作は本人がメールアプリで行う。公開URLは作らない。</span></div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="stephead"><span class="num">B-1</span><span class="sname">提案 — 入口を見えるようにする</span></div>
+          <p class="sway">ホーム。いまは数字のタップのみ</p>
+          <div class="phone">
+            <div class="nav"><b>ホーム</b><span class="chip">Premium</span></div>
+            <div class="row" style="gap:16px">
+              <div><p class="p" style="font-size:20px;font-weight:700">12</p><p class="small">日つづいた</p></div>
+              <div><p class="p" style="font-size:20px;font-weight:700">7</p><p class="small">個の穴が埋まった</p></div>
+            </div>
+            <div class="paper-card" style="border-style:dashed;border-color:var(--new)">
+              <div class="row between">
+                <span class="body" style="font-weight:700">今月のぶんを親に見せる</span>
+                <span class="small">›</span>
+              </div>
+              <p class="small">7つの穴と、本人の言葉が3つ入ります</p>
+            </div>
+            <div class="paper-card">
+              <div class="row between"><span class="body" style="font-weight:700">きのうの続き</span><span class="small">›</span></div>
+              <p class="small">加法定理を、なんで足すのか</p>
+            </div>
+            <div class="spacer"></div>
+            <div class="btn">問題を撮る</div>
+            <div class="ghost">自習室にこもる</div>
+          </div>
+          <div class="notes">
+            <div class="note"><span class="tag new">新規</span><span><b>いまの入口は「埋めた穴」の数字をタップするだけ。</b>手がかりは長押しツールチップしか無く、<b>数字がボタンだと分からない</b>。行にする。</span></div>
+            <div class="note"><span class="tag biz">判断</span><span>出しっぱなしにするか、<b>月末だけ</b>出すか。常設だと「親に報告するアプリ」に見えて、本人のための道具という建て付けが揺らぐ。</span></div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="text">
+        <table>
+          <thead><tr><th style="width:30%">部分</th><th style="width:14%">状況</th><th>確認した中身</th></tr></thead>
+          <tbody>
+            <tr><td>レポート生成</td><td><span class="stat done">動く</span></td>
+              <td><code>GET /v1/me/parent-report</code>。期間・埋めた穴・続いた日数・説明できた単元・本人の引用</td></tr>
+            <tr><td>有料境界</td><td><span class="stat done">動く</span></td>
+              <td>無料には<b>本文が <code>null</code> で来る</b>。クライアントのRevenueCat状態で本文を開かない(webhook反映前後でサーバとずれるため)</td></tr>
+            <tr><td>共有</td><td><span class="stat done">動く</span></td>
+              <td><code>mailto:</code> の下書き。<b>宛先は空・送信はしない</b>。親のアドレスはサーバにも端末にも保存しない</td></tr>
+            <tr><td>見せない項目</td><td><span class="stat done">動く</span></td>
+              <td>正答率・理解度スコア・順位・学習時間は<b>型に欄そのものを作っていない</b>。「表示で隠すだけでは、共有本文を組む層がいつか使えてしまう」と明記(<code>parent_report.dart</code>)</td></tr>
+            <tr><td>テスト</td><td><span class="stat done">動く</span></td>
+              <td><code>parent_report_test.dart</code></td></tr>
+            <tr><td><b>入口</b></td><td><span class="stat gap">欠けている</span></td>
+              <td><span class="care">ホームの「埋めた穴」カウンタのタップ1箇所だけ。</span>ラベルはツールチップのみで、押せることが見た目に出ていない</td></tr>
+            <tr><td><b>思い出す機会</b></td><td><span class="stat gap">欠けている</span></td>
+              <td>月末に知らせるものが無い。通知は復習の1/3/7日だけで、レポートは<b>本人が思い出したときにしか開かれない</b></td></tr>
+            <tr><td><b>親側の継続</b></td><td><span class="stat judge">決めが要る</span></td>
+              <td>親から見ると<b>メール1通で終わり</b>。これは方針どおり(アカウントを作らない)だが、続けて見たい親には応えていない。応えるなら方針の変更になる</td></tr>
+          </tbody>
+        </table>
+        <p class="foot-note">
+          <b>方針そのものは変えないほうがいいと思っている。</b>親アカウントを作った瞬間に、
+          このアプリは「親が子を監視する道具」になり、本人が撮るのをためらう。
+          いま欠けているのは方針ではなく<b>入口の視認性と、思い出す機会</b>の2つだけ。
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= C. 復習 ================= -->
+  <div class="panel">
+    <h2>C. 復習モードの導線チェック</h2>
+    <p class="lede">
+      入口は3つ、出口は3つ。<b>行き止まりは無い</b>(通知から直接着地しても戻れる)。
+      危ないのは入口の1つが別画面のトグルに依存していることと、「まだ」を押した先が無料だと閉じることの2つ。
+    </p>
+
+    <svg class="map" viewBox="0 0 940 228" role="img"
+         aria-label="復習の導線。ホームのカード・カルテ画面のボタン・プッシュ通知の3つが復習画面に入り、言えた・先輩に聞く・あとでの3つに出る。">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7"
+                orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="#7a7d87"/>
+        </marker>
+      </defs>
+      <g font-family="Hiragino Sans, system-ui, sans-serif" font-size="12.5">
+        <!-- 入口 -->
+        <g fill="#ffffff" stroke="#1f2126" stroke-width="1.5">
+          <rect x="10" y="26" width="214" height="42" rx="7"/>
+          <rect x="10" y="96" width="214" height="42" rx="7"/>
+          <rect x="10" y="166" width="214" height="42" rx="7"/>
+        </g>
+        <text x="24" y="45" fill="#1f2126">ホーム「きのうの続き」</text>
+        <text x="24" y="60" fill="#7a7d87" font-size="10.5">progress.openHoles &gt; 0 のとき</text>
+        <text x="24" y="115" fill="#1f2126">カルテ画面のボタン</text>
+        <text x="24" y="130" fill="#7a7d87" font-size="10.5">授業直後だけ通る道</text>
+        <text x="24" y="185" fill="#1f2126">プッシュ通知タップ</text>
+        <text x="24" y="200" fill="#c2402a" font-size="10.5">許可を聞く場所はカルテの1トグルだけ</text>
+
+        <!-- 復習画面 -->
+        <rect x="330" y="80" width="176" height="74" rx="9" fill="#eff0f3" stroke="#1f2126" stroke-width="2"/>
+        <text x="418" y="108" text-anchor="middle" font-weight="700" fill="#1f2126">復習画面</text>
+        <text x="418" y="126" text-anchor="middle" fill="#7a7d87" font-size="10.5">1回1問。件数は出さない</text>
+        <text x="418" y="142" text-anchor="middle" fill="#7a7d87" font-size="10.5">戻る先が無ければホームへ</text>
+
+        <!-- 出口 -->
+        <g fill="#ffffff" stroke="#1f2126" stroke-width="1.5">
+          <rect x="612" y="20" width="316" height="46" rx="7"/>
+          <rect x="612" y="92" width="316" height="52" rx="7"/>
+          <rect x="612" y="170" width="316" height="46" rx="7"/>
+        </g>
+        <text x="628" y="40" fill="#1f2126">「言えた」→ 穴が埋まる</text>
+        <text x="628" y="56" fill="#7a7d87" font-size="10.5">予約済みの通知はキャンセルされる</text>
+        <text x="628" y="112" fill="#1f2126">「まだ」→ 先輩にもう一度聞く</text>
+        <text x="628" y="128" fill="#c2402a" font-size="10.5">Premium かつ 日次の授業枠が残っているときだけ</text>
+        <text x="628" y="190" fill="#1f2126">「あとで」→ 閉じる</text>
+        <text x="628" y="206" fill="#7a7d87" font-size="10.5">穴は open のまま。次の予約は消えない</text>
+
+        <!-- 矢印 -->
+        <g fill="none" stroke="#7a7d87" stroke-width="1.5" marker-end="url(#ar)">
+          <path d="M224 47 C280 47 280 100 326 108"/>
+          <path d="M224 117 L326 117"/>
+          <path d="M224 187 C280 187 280 134 326 127"/>
+          <path d="M506 104 C560 104 560 47 608 45"/>
+          <path d="M506 117 L608 117"/>
+          <path d="M506 130 C560 130 560 188 608 191"/>
+        </g>
+      </g>
+    </svg>
+
+    <table>
+      <thead><tr><th style="width:26%">見たところ</th><th style="width:14%">結果</th><th>中身</th></tr></thead>
+      <tbody>
+        <tr><td>通知からの着地</td><td><span class="stat done">問題なし</span></td>
+          <td>コールドスタートでも <code>pendingDeepLink</code> に積んでから着地する。戻るは <code>closeOrGoHome</code> でホームへ逃がす。<code>/review</code> はホーム枝の子ルートなので、下にホームが積まれる</td></tr>
+        <tr><td>再訪の予約</td><td><span class="stat done">問題なし</span></td>
+          <td>1/3/7日後を OneSignal のスケジュール送信で予約(cronを持たない)。<b>穴が埋まったら予約をキャンセル</b>する — 埋めた穴の通知が来るのがいちばん白けるため</td></tr>
+        <tr><td>1回1問</td><td><span class="stat done">問題なし</span></td>
+          <td>キューの先頭1件だけを大きく出す。残件数を出さないのは、未完了の数が穴を借金に見せるため</td></tr>
+        <tr><td>空・失敗の出口</td><td><span class="stat done">問題なし</span></td>
+          <td>読み込み中・エラー・空のどの状態にも文言と出口がある</td></tr>
+        <tr><td><b>通知の許可</b></td><td><span class="stat gap">細い</span></td>
+          <td><span class="care">許可を聞く場所がカルテ画面のトグル1箇所だけ。</span>文脈内で聞く方針は正しいが、<b>カルテを一度も開かなかった人には再訪の入口がホームカードだけになる</b>。授業を1回やって離脱した人がここに落ちる</td></tr>
+        <tr><td><b>「まだ」の行き先</b></td><td><span class="stat judge">決めが要る</span></td>
+          <td>声で聞き直すのは Premium + 日次枠。<b>無料だと「まだ」を押した先がペイウォールか、閉じるかしかない</b>。穴を認めた直後に課金を出すのが、この製品の約束と噛み合うかどうか</td></tr>
+        <tr><td><b>自習室から</b></td><td><span class="stat gap">欠けている</span></td>
+          <td>自習室が行ける先は撮影だけ。<b>こもっている最中こそ「きのうの穴を1つ」が効くはず</b>だが、導線が無い</td></tr>
+        <tr><td><b>計画との接続</b></td><td><span class="stat gap">欠けている</span></td>
+          <td>A節と同じ穴。計画に「きのうの穴を1つ」が並んでも、そこから復習画面へ行けない</td></tr>
+      </tbody>
+    </table>
+    <p class="foot-note">
+      <b>3つに共通しているのは「作る筋は通っているが、読む側の配線が無い」</b>という形。
+      計画・レポート・復習はどれも単体では完成していて、互いを知らない。
+      次に足すとしたら新しい画面ではなく、<b>ホームと自習室から他へ伸びる線</b>だと思う。
     </p>
   </div>
 
