@@ -15,6 +15,7 @@ import {
   getPrompt,
   karteSystemPrompt,
   parsePrompt,
+  promptCatalog,
   promptIds,
   promptLocales,
   promptsFor,
@@ -32,16 +33,19 @@ describe("generated.ts", () => {
     );
   });
 
-  it("すべての.mdが取り込まれている(id × ロケール)", () => {
-    expect(promptFiles().length).toBe(promptIds.length * promptLocales.length);
+  // ファイル数はカタログの宣言と突き合わせる。`id × ロケール` で数えると、
+  // 教科別のプロンプト(英語の課程にしか無いもの)を足した瞬間に誤検知する。
+  it("すべての.mdが取り込まれている(カタログの宣言と一致する)", () => {
+    const declared = promptIds.reduce((sum, id) => sum + promptCatalog[id].length, 0);
+    expect(promptFiles().length).toBe(declared);
   });
 });
 
 describe("ロケール", () => {
   // 片方の言語だけプロンプトを足すと、その言語のセッションが日本語に落ちる。
-  it("すべてのidが、すべてのロケールで揃っている", () => {
-    for (const locale of promptLocales) {
-      for (const id of promptIds) {
+  it("カタログが宣言した (id × ロケール) がすべて揃っている", () => {
+    for (const id of promptIds) {
+      for (const locale of promptCatalog[id]) {
         const template = getPrompt(id, locale);
         expect(template.meta.id).toBe(id);
         expect(template.meta.locale, `${id} の ${locale}`).toBe(locale);
@@ -52,6 +56,7 @@ describe("ロケール", () => {
   // 変数がずれていると、片方の言語だけ renderPrompt が落ちる(会話が始まらない)。
   it("同じidなら、宣言している変数もロケール間で同じ", () => {
     for (const id of promptIds) {
+      if (promptCatalog[id].length < 2) continue;
       const ja = [...getPrompt(id, "ja").meta.variables].sort();
       const en = [...getPrompt(id, "en").meta.variables].sort();
       expect(en, id).toEqual(ja);
@@ -63,8 +68,63 @@ describe("ロケール", () => {
     expect(getPrompt("senpai_conversation", toPromptLocale("fr")).meta.locale).toBe("ja");
   });
 
-  it("promptsFor はそのロケールの全部を返す", () => {
-    expect(promptsFor("en").map((template) => template.meta.id)).toEqual([...promptIds]);
+  /**
+   * **カタログに無い組み合わせは、黙って日本語版に落とさず落とす。**
+   *
+   * ここでフォールバックすると、英語のセッションに日本語のプロンプトが渡って
+   * 先輩が日本語を喋り出す。「無い」は設定漏れなので、起動時に気づきたい。
+   */
+  it("カタログに無い (id, ロケール) は例外にする", () => {
+    expect(() => getPrompt("english_speech_hints", "en")).toThrow(/english_speech_hints/);
+  });
+
+  it("promptsFor はそのロケールで用意されているものだけを返す", () => {
+    const en = promptsFor("en").map((template) => template.meta.id);
+    expect(en).toEqual(promptIds.filter((id) => promptCatalog[id].includes("en")));
+    expect(en).not.toContain("english_speech_hints");
+    expect(promptsFor("ja").map((template) => template.meta.id)).toEqual([...promptIds]);
+  });
+});
+
+/**
+ * 音声補正ヒントは**教科で切り替える**。数学版の「さんぶんのに = 2/3」を
+ * 英語の授業に当てると、生徒の発話を数式として読み直してしまう
+ * (「言えているのに詰まった」と判定する原因になる)。
+ */
+describe("教科ごとの音声補正ヒント", () => {
+  const variables = {
+    photo_summary: "現在完了の練習問題",
+    visible_work: "- have + 過去分詞まで書けている",
+    allowed_topics: "- JE-JISEI-KANRYO",
+    question_seeds: "- なぜ過去形ではないのか",
+    lesson_recap: "1. 「今とつながる過去、だったよね。」",
+    remaining_seconds: 300,
+  };
+
+  it("英語の授業には英語のヒントが入り、数式のヒントは入らない", () => {
+    const english = conversationSystemPrompt(variables, { subject: "english" });
+    expect(english).toContain("冠詞");
+    expect(english).not.toContain("さんぶんのに");
+  });
+
+  it("数学の授業には数式のヒントが入り、英語のヒントは入らない", () => {
+    const math = conversationSystemPrompt(variables, { subject: "math" });
+    expect(math).toContain("さんぶんのに");
+    expect(math).not.toContain("冠詞");
+  });
+
+  it("カルテ生成でも教科で切り替わる", () => {
+    const karte = karteSystemPrompt(
+      {
+        photo_summary: "現在完了の練習問題",
+        allowed_topics: "- JE-JISEI-KANRYO",
+        transcript: "先輩: なんでですか?",
+        is_premium: "false",
+      },
+      { subject: "english" },
+    );
+    expect(karte).toContain("冠詞");
+    expect(karte).not.toContain("さんぶんのに");
   });
 });
 
@@ -184,14 +244,17 @@ describe("整形ヘルパ", () => {
 });
 
 describe("組み立て済みプロンプト", () => {
-  const conversation = conversationSystemPrompt({
-    photo_summary: "円と直線の位置関係の問題",
-    visible_work: "- 中心と直線の距離を求めている",
-    allowed_topics: "- M2-ZUKEI-ENCHOKU",
-    question_seeds: "- 方法を変えた理由",
-    lesson_recap: "1. 「この形だったよね。」 / 板書: D = b^2 - 4ac",
-    remaining_seconds: 300,
-  });
+  const conversation = conversationSystemPrompt(
+    {
+      photo_summary: "円と直線の位置関係の問題",
+      visible_work: "- 中心と直線の距離を求めている",
+      allowed_topics: "- M2-ZUKEI-ENCHOKU",
+      question_seeds: "- 方法を変えた理由",
+      lesson_recap: "1. 「この形だったよね。」 / 板書: D = b^2 - 4ac",
+      remaining_seconds: 300,
+    },
+    { subject: "math" },
+  );
 
   it("few-shotと音声補正ヒントを同梱する", () => {
     expect(conversation).toContain("なんで(2)でいきなり判別式にしたの?");
@@ -215,12 +278,15 @@ describe("組み立て済みプロンプト", () => {
   });
 
   it("カルテ生成プロンプトも組み立てられる", () => {
-    const karte = karteSystemPrompt({
-      photo_summary: "円と直線",
-      allowed_topics: "- M2-ZUKEI-ENCHOKU",
-      transcript: "先輩: なんでですか?",
-      is_premium: "false",
-    });
+    const karte = karteSystemPrompt(
+      {
+        photo_summary: "円と直線",
+        allowed_topics: "- M2-ZUKEI-ENCHOKU",
+        transcript: "先輩: なんでですか?",
+        is_premium: "false",
+      },
+      { subject: "math" },
+    );
     expect(karte).toContain("said_well");
     expect(karte).toContain("先輩: なんでですか?");
   });
@@ -236,7 +302,7 @@ describe("組み立て済みプロンプト", () => {
       lesson_recap: '1. "This was the shape." / board: D = b^2 - 4ac',
       remaining_seconds: 300,
     },
-    "en",
+    { locale: "en", subject: "math" },
   );
 
   it("英語の会話プロンプトに日本語が混ざらない", () => {
@@ -255,7 +321,7 @@ describe("組み立て済みプロンプト", () => {
         transcript: "Senpai: Why is that?",
         is_premium: "false",
       },
-      "en",
+      { locale: "en", subject: "math" },
     );
     expect(karte).toContain("said_well");
     expect(karte).toContain("Senpai: Why is that?");
@@ -467,7 +533,7 @@ describe("設計上の約束がプロンプトに書かれている", () => {
       allowed_topics: "- M1-NIJI-FUTOSHIKI",
       remaining_seconds: 600,
     };
-    const ja = boardLessonSystemPrompt(variables, "ja");
+    const ja = boardLessonSystemPrompt(variables, { locale: "ja", subject: "math" });
     expect(ja).toContain("x^2 - 3x + 2 < 0 を解け");
     expect(ja).toContain("さんぶんのに");
 
@@ -480,7 +546,7 @@ describe("設計上の約束がプロンプトに書かれている", () => {
         allowed_topics: "- A2-INEQ-QUADRATIC",
         remaining_seconds: 600,
       },
-      "en",
+      { locale: "en", subject: "math" },
     );
     expect(en).toContain("Solve x^2 - 3x + 2 < 0");
     expect(en).toContain("square root of 3");
@@ -492,18 +558,21 @@ describe("設計上の約束がプロンプトに書かれている", () => {
    * 「問題を読んで」と戻らず、すでに自己申告した穴から教え始める指示を固定する。
    */
   it("復習モードは穴を根拠に、聞き直さず板書で教え直す", () => {
-    const ja = boardLessonSystemPrompt({
-      lesson_mode: "review",
-      problem_text: "(問題の写真なし)",
-      student_work: "(なし)",
-      review_context: JSON.stringify({
-        topic_id: "M1-NIJI-GURAFU",
-        desc: "平方完成が頂点を表す理由で説明が止まった",
-        evidence: "形をそろえるため、だと思う",
-      }),
-      allowed_topics: "- M1-NIJI-GURAFU — 数学I / 二次関数 / 二次関数のグラフと平方完成",
-      remaining_seconds: 600,
-    });
+    const ja = boardLessonSystemPrompt(
+      {
+        lesson_mode: "review",
+        problem_text: "(問題の写真なし)",
+        student_work: "(なし)",
+        review_context: JSON.stringify({
+          topic_id: "M1-NIJI-GURAFU",
+          desc: "平方完成が頂点を表す理由で説明が止まった",
+          evidence: "形をそろえるため、だと思う",
+        }),
+        allowed_topics: "- M1-NIJI-GURAFU — 数学I / 二次関数 / 二次関数のグラフと平方完成",
+        remaining_seconds: 600,
+      },
+      { locale: "ja", subject: "math" },
+    );
 
     expect(ja).toContain("平方完成が頂点を表す理由で説明が止まった");
     expect(ja).toContain("冒頭で同じことを聞き直さず");
@@ -523,7 +592,7 @@ describe("設計上の約束がプロンプトに書かれている", () => {
         allowed_topics: "- A1-QUAD-GRAPH — Algebra 1 / Quadratics / Parabolas",
         remaining_seconds: 600,
       },
-      "en",
+      { locale: "en", subject: "math" },
     );
 
     expect(en).toContain("why completing the square reveals the vertex");

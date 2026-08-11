@@ -463,6 +463,15 @@ class AppStrings {
   String get settingsSectionNotifications => _pick('通知', 'Notifications');
   String get settingsSectionAbout => _pick('このアプリについて', 'About');
 
+  // 学年。**単元を絞るためのもので、学習の制限ではない。**
+  // 中学生を選んでも高校の単元が「禁止」になるわけではなく、
+  // 写真から単元を探すときにどちらの範囲を先に見るかが変わる。
+  String get settingsSectionSchoolStage => _pick('学年', 'School');
+  String get settingsSchoolStageJuniorHigh => _pick('中学生', 'Junior high');
+  String get settingsSchoolStageHighSchool => _pick('高校生', 'High school');
+  String get settingsSchoolStageHint =>
+      _pick('撮った写真から単元を探す範囲が変わります', 'Changes which topics we look for in your photo');
+
   /// 1/3/7日の再訪のトグル。**ここが約束4のいちばん危ないところ。**
   ///
   /// 後輩の「再説明のお願い」は、構造的に煽れなかった —
@@ -739,6 +748,23 @@ class AppStrings {
   String boardSpeechRightAngle(String vertex) => _pick('頂点 $vertex は直角', 'a right angle at $vertex');
   String boardSpeechAngle(String vertex, String label) =>
       _pick('頂点 $vertex の角は $label', 'the angle at $vertex is $label');
+  /// 英語の例文の読み上げ。**下線は音にならない**ので、focus を言葉にする。
+  String boardSpeechSentence(String text, String gloss, String focus) {
+    final StringBuffer buffer = StringBuffer(text);
+    if (gloss.isNotEmpty) buffer.write(_pick('。訳は $gloss', '. Meaning: $gloss'));
+    if (focus.isNotEmpty) buffer.write(_pick('。注目するのは $focus', '. The focus is $focus'));
+    return buffer.toString();
+  }
+
+  /// 対比表の読み上げ。列と行を1文に畳む(表として読ませる手段が無いため)。
+  String boardSpeechCompare(String title, String columns, String rows) {
+    final String heading = title.isEmpty ? _pick('対比表', 'A comparison') : title;
+    return _pick('$heading。$columns の順に、$rows', '$heading. Columns: $columns. Rows: $rows');
+  }
+
+  /// 対比表を1文に畳むときの区切り。読み上げでの間になる。
+  String get boardSpeechCompareSeparator => _pick(' と ', ' vs ');
+
   String boardSpeechCircle(String radius, String labels) =>
       _pick('円。半径 $radius。$labels', 'A circle with radius $radius. $labels');
   String boardSpeechPlot(String fn, String min, String max, String marks) => _pick(
@@ -893,7 +919,14 @@ class AppStrings {
     _ => _pick('これから', 'Up next'),
   };
 
-  /// topic_id の接頭辞は課程を表す(ADR 0005)。割合や理解度を作らず、科目名だけを出す。
+  /// topic_id の接頭辞は課程を表す(ADR 0005 / 0006)。
+  /// 割合や理解度を作らず、科目名(中学は学年)だけを出す。
+  ///
+  /// **接頭辞を足したらここも足すこと。** 対応表は
+  /// `packages/curriculum/src/schema.ts` と `packages/contract/src/karte.ts` にも
+  /// あり、ここが3か所目になる(contract が依存を持たない層なので解けない)。
+  /// 忘れると既定の「数学」に落ちて、英語の単元に「数学」と出る —
+  /// `test/curriculum_label_test.dart` が全コースコードで検出する。
   String planSubject(String topicId) {
     final String code = topicId.split('-').first;
     return switch (code) {
@@ -903,6 +936,13 @@ class AppStrings {
       'MB' => _pick('数学B', 'Mathematics B'),
       'M3' => _pick('数学III', 'Mathematics III'),
       'MC' => _pick('数学C', 'Mathematics C'),
+      'J1' => _pick('中1 数学', 'Grade 7 Math'),
+      'J2' => _pick('中2 数学', 'Grade 8 Math'),
+      'J3' => _pick('中3 数学', 'Grade 9 Math'),
+      'JE' => _pick('中学英語', 'Junior high English'),
+      'E1' => _pick('英コミュI', 'English Communication I'),
+      'E2' => _pick('英コミュII', 'English Communication II'),
+      'L1' => _pick('論表I', 'Logic and Expression I'),
       'A1' => 'Algebra 1',
       'GE' => 'Geometry',
       'A2' => 'Algebra 2',

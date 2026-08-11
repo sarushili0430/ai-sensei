@@ -33,7 +33,7 @@
                           "type": "array",
                           "items": {
                             "type": "string",
-                            "pattern": "^(M1|MA|M2|MB|M3|MC|A1|GE|A2|PC|CL|ST)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+                            "pattern": "^(M1|MA|M2|MB|M3|MC|A1|GE|A2|PC|CL|ST|J1|J2|J3|JE|E1|E2|L1)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
                           },
                           "minItems": 1,
                           "maxItems": 8
@@ -84,7 +84,7 @@
                           "properties": {
                             "topic_id": {
                               "type": "string",
-                              "pattern": "^(M1|MA|M2|MB|M3|MC|A1|GE|A2|PC|CL|ST)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+                              "pattern": "^(M1|MA|M2|MB|M3|MC|A1|GE|A2|PC|CL|ST|J1|J2|J3|JE|E1|E2|L1)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
                             },
                             "what": {
                               "type": "string",

@@ -11,6 +11,14 @@
             "en"
           ],
           "default": "ja"
+        },
+        "school_stage": {
+          "type": "string",
+          "enum": [
+            "junior_high",
+            "high_school"
+          ],
+          "default": "high_school"
         }
       },
       "additionalProperties": false

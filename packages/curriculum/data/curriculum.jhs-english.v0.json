@@ -1,0 +1,385 @@
+{
+  "version": "0.1.0",
+  "track": "jhs_english_ja",
+  "curriculum": "中学校学習指導要領(平成29年告示)外国語(英語)",
+  "note": "文法事項・文構造は解説の付録7「外国語の言語材料」学校段階別一覧表に従う。**学習指導要領は中学校英語の文法事項を学年別に配当していない**(付録7は「中学校」一括で示し、学年ごとの配当は各校・教科書会社の裁量と本文に明記されている)。各トピックの grade_hint は各社教科書の慣行に基づく**表示だけの目安**で、範囲の判定に使ってはならない。読んでよいのは topicLabel() のみ。",
+  "fallback_topic_id": "JE-BUNKOZO-KIHON",
+  "courses": [
+    {
+      "code": "JE",
+      "name": "中学英語",
+      "short": "中英"
+    }
+  ],
+  "topics": [
+    {
+      "id": "JE-DOUSHI-BE",
+      "course": "中学英語",
+      "unit": "文法事項",
+      "topic": "be動詞",
+      "grade_hint": 1,
+      "goals": [
+        "am / is / are を主語に合わせて使い分けられる",
+        "否定文と疑問文をつくれる",
+        "be動詞と一般動詞のどちらを使う文かを、言いたいことから判断できる"
+      ],
+      "prerequisites": [],
+      "keywords": ["be動詞", "主語と動詞", "肯定文", "否定文", "I am", "You are"]
+    },
+    {
+      "id": "JE-DOUSHI-IPPAN",
+      "course": "中学英語",
+      "unit": "文法事項",
+      "topic": "一般動詞",
+      "grade_hint": 1,
+      "goals": [
+        "一般動詞の文を肯定・否定・疑問で書ける",
+        "三人称単数現在の -s が付く条件を説明できる",
+        "do と does を主語に応じて使い分けられる"
+      ],
+      "prerequisites": ["JE-DOUSHI-BE"],
+      "keywords": ["一般動詞", "三単現", "三人称単数", "does not", "do not", "動詞の原形"]
+    },
+    {
+      "id": "JE-MEISHI-FUKUSU",
+      "course": "中学英語",
+      "unit": "文法事項",
+      "topic": "名詞の複数形と冠詞",
+      "grade_hint": 1,
+      "goals": [
+        "規則変化・不規則変化の複数形を書ける",
+        "a / an / the を使い分けられる",
+        "数えられる名詞と数えられない名詞の違いを説明できる"
+      ],
+      "prerequisites": [],
+      "keywords": ["複数形", "冠詞", "数えられない名詞", "不可算名詞", "a lot of"]
+    },
+    {
+      "id": "JE-DAIMEISHI",
+      "course": "中学英語",
+      "unit": "文法事項",
+      "topic": "代名詞",
+      "grade_hint": 1,
+      "goals": [
+        "人称代名詞を主格・所有格・目的格で使い分けられる",
+        "this / that / these / those を距離と数で使い分けられる",
+        "その代名詞が何を指しているかを、前の文から判断できる"
+      ],
+      "prerequisites": [],
+      "keywords": ["人称代名詞", "所有格", "目的格", "指示代名詞", "所有代名詞"]
+    },
+    {
+      "id": "JE-GIMON",
+      "course": "中学英語",
+      "unit": "文法事項",
+      "topic": "疑問文と疑問詞",
+      "grade_hint": 1,
+      "goals": [
+        "what / who / when / where / why / how を使って尋ねられる",
+        "which / whose を使って選ばせたり持ち主を尋ねたりできる",
+        "答えの形から、どの疑問詞で聞くべきだったかを判断できる"
+      ],
+      "prerequisites": ["JE-DOUSHI-IPPAN"],
+      "keywords": ["疑問詞", "疑問文", "whose", "how many", "how long", "how much"]
+    },
+    {
+      "id": "JE-ZENCHISHI",
+      "course": "中学英語",
+      "unit": "文法事項",
+      "topic": "前置詞",
+      "grade_hint": 1,
+      "goals": [
+        "時・場所を表す前置詞を使い分けられる",
+        "in / on / at の違いを、範囲の広さで説明できる",
+        "動詞と結びついた慣用表現を場面に応じて選べる"
+      ],
+      "prerequisites": [],
+      "keywords": ["前置詞", "時を表す前置詞", "場所を表す前置詞", "in front of", "because of"]
+    },
+    {
+      "id": "JE-JISEI-SHINKO",
+      "course": "中学英語",
+      "unit": "文法事項",
+      "topic": "進行形",
+      "grade_hint": 1,
+      "goals": [
+        "現在進行形・過去進行形の文を書ける",
+        "進行形にできない動詞があることを説明できる",
+        "現在形と現在進行形のどちらで言うかを、場面から判断できる"
+      ],
+      "prerequisites": ["JE-DOUSHI-BE", "JE-DOUSHI-IPPAN"],
+      "keywords": ["進行形", "現在進行形", "過去進行形", "ing形", "am reading", "was watching"]
+    },
+    {
+      "id": "JE-BUNKOZO-KIHON",
+      "course": "中学英語",
+      "unit": "文構造",
+      "topic": "文構造の基本(主語＋動詞＋補語 / 目的語)",
+      "grade_hint": 1,
+      "goals": [
+        "主語・動詞・目的語・補語を見分けられる",
+        "英語の語順が意味を決めることを、日本語との違いから説明できる",
+        "同じ動詞でも補語をとるか目的語をとるかを判断できる"
+      ],
+      "prerequisites": [],
+      "keywords": ["語順", "主語", "目的語", "補語", "SVC", "SVO", "文の要素"]
+    },
+    {
+      "id": "JE-THERE-IS",
+      "course": "中学英語",
+      "unit": "文構造",
+      "topic": "There is / There are",
+      "grade_hint": 1,
+      "goals": [
+        "There is / There are を数に合わせて使える",
+        "「〜がある」を There 構文で言うか主語を立てて言うかを使い分けられる",
+        "疑問文・否定文をつくれる"
+      ],
+      "prerequisites": ["JE-DOUSHI-BE"],
+      "keywords": ["There is", "There are", "存在を表す文"]
+    },
+    {
+      "id": "JE-ONSEI-KYOJAKU",
+      "course": "中学英語",
+      "unit": "音声",
+      "topic": "語や文における強勢とリズム",
+      "grade_hint": 1,
+      "goals": [
+        "文の中で強く読む語を選べる",
+        "内容語と機能語で強さが変わる理由を説明できる",
+        "同じ文でも強勢を変えると伝わる意味が変わることを判断できる"
+      ],
+      "prerequisites": [],
+      "keywords": ["強勢", "アクセント", "イントネーション", "リズム", "内容語", "機能語"]
+    },
+    {
+      "id": "JE-JISEI-KAKO",
+      "course": "中学英語",
+      "unit": "文法事項",
+      "topic": "過去形",
+      "grade_hint": 2,
+      "goals": [
+        "規則動詞・不規則動詞の過去形を書ける",
+        "did を使った否定文・疑問文をつくれる",
+        "現在形と過去形のどちらで言うかを、時を表す語句から判断できる"
+      ],
+      "prerequisites": ["JE-DOUSHI-IPPAN"],
+      "keywords": ["過去形", "不規則動詞", "規則動詞", "did not", "過去を表す語句"]
+    },
+    {
+      "id": "JE-JISEI-MIRAI",
+      "course": "中学英語",
+      "unit": "文法事項",
+      "topic": "未来表現",
+      "grade_hint": 2,
+      "goals": [
+        "will と be going to で未来のことを言える",
+        "will と be going to を、決めたのがいつかで使い分けられる",
+        "その場で決めたことと予定していたことの違いを説明できる"
+      ],
+      "prerequisites": ["JE-JISEI-KAKO"],
+      "keywords": ["未来表現", "be going to", "will not", "未来を表す語句"]
+    },
+    {
+      "id": "JE-JODOSHI",
+      "course": "中学英語",
+      "unit": "文法事項",
+      "topic": "助動詞",
+      "grade_hint": 2,
+      "goals": [
+        "can / must / should / may を使って文を書ける",
+        "助動詞のあとが動詞の原形になる理由を説明できる",
+        "同じ「〜しなければならない」でも must と have to を場面で使い分けられる"
+      ],
+      "prerequisites": ["JE-DOUSHI-IPPAN"],
+      "keywords": ["助動詞", "have to", "must not", "don't have to", "動詞の原形"]
+    },
+    {
+      "id": "JE-SETSUZOKUSHI",
+      "course": "中学英語",
+      "unit": "文法事項",
+      "topic": "接続詞",
+      "grade_hint": 2,
+      "goals": [
+        "and / but / because / when / if を使って2つの文をつなげられる",
+        "when や if の節では未来のことも現在形で書く理由を説明できる",
+        "文と文の関係に合った接続詞を選べる"
+      ],
+      "prerequisites": ["JE-BUNKOZO-KIHON"],
+      "keywords": ["接続詞", "that節", "重文", "複文", "時や条件を表す節"]
+    },
+    {
+      "id": "JE-FUTEISHI",
+      "course": "中学英語",
+      "unit": "文法事項",
+      "topic": "to不定詞",
+      "grade_hint": 2,
+      "goals": [
+        "名詞的用法・形容詞的用法・副詞的用法の文を書ける",
+        "文の中でどの用法かを、かかっている語から判断できる",
+        "to不定詞と動名詞の使い分けを説明できる"
+      ],
+      "prerequisites": ["JE-BUNKOZO-KIHON"],
+      "keywords": [
+        "to不定詞",
+        "不定詞",
+        "名詞的用法",
+        "形容詞的用法",
+        "副詞的用法",
+        "want to",
+        "how to"
+      ]
+    },
+    {
+      "id": "JE-DOMEISHI",
+      "course": "中学英語",
+      "unit": "文法事項",
+      "topic": "動名詞",
+      "grade_hint": 2,
+      "goals": [
+        "動名詞を主語・目的語・補語として使える",
+        "動名詞しかとらない動詞・to不定詞しかとらない動詞を使い分けられる",
+        "動名詞と現在分詞が同じ形で意味が違う理由を説明できる"
+      ],
+      "prerequisites": ["JE-FUTEISHI"],
+      "keywords": ["動名詞", "ing形", "前置詞の後ろ", "enjoy playing", "finish reading"]
+    },
+    {
+      "id": "JE-HIKAKU",
+      "course": "中学英語",
+      "unit": "文法事項",
+      "topic": "比較表現",
+      "grade_hint": 2,
+      "goals": [
+        "比較級・最上級をつくって文を書ける",
+        "as ... as を使って同じ程度を表せる",
+        "-er / more のどちらを使うかを語の形から判断できる"
+      ],
+      "prerequisites": [],
+      "keywords": ["比較級", "最上級", "原級", "比較表現", "as as", "the most"]
+    },
+    {
+      "id": "JE-UKEMI",
+      "course": "中学英語",
+      "unit": "文法事項",
+      "topic": "受け身",
+      "grade_hint": 2,
+      "goals": [
+        "be動詞＋過去分詞で受け身の文を書ける",
+        "能動態と受動態を、何を主語にしたいかで使い分けられる",
+        "by を付けるかどうかを判断できる"
+      ],
+      "prerequisites": ["JE-JISEI-KAKO"],
+      "keywords": ["受け身", "受動態", "過去分詞", "is used", "was built", "能動態"]
+    },
+    {
+      "id": "JE-BUNKOZO-SVOO",
+      "course": "中学英語",
+      "unit": "文構造",
+      "topic": "主語＋動詞＋目的語＋目的語",
+      "grade_hint": 2,
+      "goals": [
+        "give / show / tell などの文を目的語2つで書ける",
+        "to と for のどちらで書き換えるかを動詞に応じて使い分けられる",
+        "2つの目的語の順序が入れ替わると何が変わるかを説明できる"
+      ],
+      "prerequisites": ["JE-BUNKOZO-KIHON"],
+      "keywords": ["SVOO", "間接目的語", "直接目的語", "give me", "show you"]
+    },
+    {
+      "id": "JE-IT-TO",
+      "course": "中学英語",
+      "unit": "文構造",
+      "topic": "It is ... (for 〜) to 不定詞",
+      "grade_hint": 2,
+      "goals": [
+        "形式主語の it を使った文を書ける",
+        "for 〜 が誰にとってかを表すことを説明できる",
+        "to不定詞を主語に置く形とどちらで言うかを判断できる"
+      ],
+      "prerequisites": ["JE-FUTEISHI"],
+      "keywords": ["形式主語", "It is", "真主語", "to不定詞"]
+    },
+    {
+      "id": "JE-JISEI-KANRYO",
+      "course": "中学英語",
+      "unit": "文法事項",
+      "topic": "現在完了",
+      "grade_hint": 3,
+      "goals": [
+        "完了・経験・継続の3つの意味で現在完了の文を書ける",
+        "現在完了と過去形のどちらを使うかを、文脈から判断できる",
+        "現在完了に yesterday を付けられない理由を説明できる"
+      ],
+      "prerequisites": ["JE-JISEI-KAKO", "JE-UKEMI"],
+      "keywords": [
+        "現在完了",
+        "現在完了進行形",
+        "過去分詞",
+        "have been",
+        "has been",
+        "have already",
+        "have never",
+        "継続",
+        "経験",
+        "完了"
+      ]
+    },
+    {
+      "id": "JE-BUNSHI",
+      "course": "中学英語",
+      "unit": "文法事項",
+      "topic": "現在分詞・過去分詞の形容詞的用法",
+      "grade_hint": 3,
+      "goals": [
+        "分詞を使って名詞を後ろから修飾する文を書ける",
+        "現在分詞と過去分詞のどちらを使うかを、修飾する名詞との関係で判断できる",
+        "関係代名詞を使った文との言い換えを説明できる"
+      ],
+      "prerequisites": ["JE-UKEMI", "JE-DOMEISHI"],
+      "keywords": ["現在分詞", "過去分詞", "後置修飾", "分詞", "written by", "分詞の形容詞的用法"]
+    },
+    {
+      "id": "JE-KANKEI-DAIMEISHI",
+      "course": "中学英語",
+      "unit": "文法事項",
+      "topic": "関係代名詞",
+      "grade_hint": 3,
+      "goals": [
+        "who / which / that を使って名詞を説明する文を書ける",
+        "主格と目的格を、関係代名詞のあとの形から判断できる",
+        "目的格の関係代名詞を省略できる条件を説明できる"
+      ],
+      "prerequisites": ["JE-BUNSHI", "JE-SETSUZOKUSHI"],
+      "keywords": ["関係代名詞", "先行詞", "主格", "目的格", "関係代名詞の省略", "which is"]
+    },
+    {
+      "id": "JE-BUNKOZO-SVOC",
+      "course": "中学英語",
+      "unit": "文構造",
+      "topic": "主語＋動詞＋目的語＋補語",
+      "grade_hint": 3,
+      "goals": [
+        "call / make / name などの文を目的語と補語で書ける",
+        "tell / want ＋ O ＋ to不定詞の文を書ける",
+        "SVOO と SVOC のどちらの文かを、2つ目の語が何を指すかで判断できる"
+      ],
+      "prerequisites": ["JE-BUNKOZO-SVOO", "JE-FUTEISHI"],
+      "keywords": ["SVOC", "目的格補語", "原形不定詞", "call him", "make me"]
+    },
+    {
+      "id": "JE-KATEIHO",
+      "course": "中学英語",
+      "unit": "文法事項",
+      "topic": "仮定法(基本)",
+      "grade_hint": 3,
+      "goals": [
+        "If I were 〜 / I wish 〜 の形で事実と違うことを言える",
+        "仮定法で過去形を使う理由を説明できる",
+        "条件を表す if と仮定法の if を使い分けられる"
+      ],
+      "prerequisites": ["JE-SETSUZOKUSHI", "JE-JODOSHI"],
+      "keywords": ["仮定法", "仮定法過去", "If I were", "I wish", "事実と違う"]
+    }
+  ]
+}

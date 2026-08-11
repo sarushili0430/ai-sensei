@@ -12,6 +12,7 @@
       "course": "Algebra 2",
       "unit": "Coordinate Geometry",
       "topic": "Lines and circles",
+      "label": "Algebra 2",
       "confidence": 0.92
     },
     {
@@ -19,6 +20,7 @@
       "course": "Algebra 1",
       "unit": "Quadratic Functions",
       "topic": "The quadratic formula and the discriminant",
+      "label": "Algebra 1",
       "confidence": 0.41
     }
   ],

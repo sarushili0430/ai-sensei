@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:ai_sensei/src/api/device_id.dart';
 import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
 import 'package:ai_sensei/src/features/karte/domain/karte.dart';
 import 'package:ai_sensei/src/features/monetization/application/entitlement_controller.dart';
@@ -11,6 +12,7 @@ import 'package:ai_sensei/src/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -109,6 +111,13 @@ Widget wrapRouter(ProviderContainer container, {Locale locale = const Locale('ja
 /// 落ちたあとも3本のテストが緑のままで、**板書を積んで画面が伸びたことに
 /// 誰も気づけなかった**。既定を実機の寸法にしておけば、同じ壊れ方は
 /// 「ボタンが見つからない」として落ちる。
+///
+/// ## 端末に保存する設定
+///
+/// `preferencesProvider` は `main()` で override する前提なので、テストでは
+/// **必ずここで入れる**。入っていないと、それを読むプロバイダ(学校段階など)が
+/// 起動できず、画面は描けるのに**通信だけが静かに飛ばない**状態になる。
+/// 毎回空から始めるので、既定値(高校生)で描かれる。
 Future<void> pumpApp(
   WidgetTester tester,
   Widget child, {
@@ -116,8 +125,17 @@ Future<void> pumpApp(
   Locale locale = const Locale('ja'),
   Size size = phoneSurface,
 }) async {
+  SharedPreferences.setMockInitialValues(<String, Object>{});
+  final SharedPreferences preferences = await SharedPreferences.getInstance();
   await setSurface(tester, size: size);
-  await tester.pumpWidget(wrapApp(child, overrides: overrides, locale: locale));
+  await tester.pumpWidget(
+    wrapApp(
+      child,
+      // 呼び出し側の override を後ろに置く(同じプロバイダなら後勝ち)。
+      overrides: <Object?>[preferencesProvider.overrideWithValue(preferences), ...overrides],
+      locale: locale,
+    ),
+  );
   await tester.pumpAndSettle();
 }
 

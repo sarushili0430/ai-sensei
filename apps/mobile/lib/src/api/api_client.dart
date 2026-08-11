@@ -56,6 +56,9 @@ class ApiClient {
     File? problemPhoto,
     String kind = 'new',
     String locale = 'ja',
+    /// 学校段階。単元を探す範囲を絞るために送る(`packages/contract` の
+    /// `schoolStages`)。省略するとサーバ側の既定「高校生」になる。
+    String schoolStage = 'high_school',
     String? holeId,
     List<String>? topicIds,
   }) async {
@@ -65,6 +68,7 @@ class ApiClient {
           ..fields['meta'] = jsonEncode(<String, dynamic>{
             'kind': kind,
             'locale': locale,
+            'school_stage': schoolStage,
             // 値が null なら要素ごと落ちる(Dart 3.12 の null-aware element)
             'hole_id': ?holeId,
             if (topicIds != null && topicIds.isNotEmpty) 'topic_ids': topicIds,
@@ -204,7 +208,10 @@ class ApiClient {
   }
 
   /// 計画を作る音声ルームを開く。授業セッションとは別なので写真もkindも送らない。
-  Future<PlanSessionStart> createPlanSession({String locale = 'ja'}) async {
+  Future<PlanSessionStart> createPlanSession({
+    String locale = 'ja',
+    String schoolStage = 'high_school',
+  }) async {
     final http.Response response = await _client
         .post(
           Uri.parse('$baseUrl/v1/plans'),
@@ -212,7 +219,11 @@ class ApiClient {
             ..._headers,
             'content-type': 'application/json; charset=utf-8',
           },
-          body: jsonEncode(<String, dynamic>{'locale': locale}),
+          body: jsonEncode(<String, dynamic>{
+            'locale': locale,
+            // 計画は写真が無いので、段でしか範囲を絞れない。
+            'school_stage': schoolStage,
+          }),
         )
         .timeout(_timeout);
     return PlanSessionStart.fromJson(_decode(response));

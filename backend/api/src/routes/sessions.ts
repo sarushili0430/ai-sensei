@@ -1,4 +1,5 @@
 import {
+  type CreateSessionRequest,
   type CreateSessionResponse,
   type SessionMetadata,
   type SessionProblem,
@@ -224,12 +225,19 @@ sessionsRoute.post("/", async (c) => {
           : null;
       if (!images) throw apiError("photo_unreadable", { locale });
 
-      analysis = await analyzer.analyze({ ...images, locale: conversationLocale });
-      if (!analysis.is_math_note) {
+      analysis = await analyzer.analyze({
+        ...images,
+        locale: conversationLocale,
+        stage: meta.school_stage,
+      });
+      // 対応していない教科・ノートでない写真は、ここで止める。
+      // 「数学ではない」ではなく「範囲外」で見るのが要点 — 教科が増えても
+      // この行は変わらない。
+      if (analysis.subject === "other") {
         throw apiError("out_of_scope", { locale });
       }
 
-      const resolved = resolveDetectedTopics(analysis, conversationLocale);
+      const resolved = resolveDetectedTopics(analysis, conversationLocale, meta.school_stage);
       topicIds = resolved.topicIds;
       summary = analysis.summary;
       visibleWork = analysis.visible_work;
@@ -577,7 +585,7 @@ function buildSessionMetadata(input: {
  */
 function buildDetectedTopics(allowed: AllowedTopics, context: SessionContext) {
   return toDetectedTopicPayload([...allowed.primary], {
-    is_math_note: true,
+    subject: "math",
     summary: context.summary,
     problem_text: context.problem?.text ?? "",
     visible_work: context.visible_work,
@@ -587,14 +595,12 @@ function buildDetectedTopics(allowed: AllowedTopics, context: SessionContext) {
   });
 }
 
-function parseMeta(value: File | string | null): {
-  kind: "new" | "review";
-  locale: "ja" | "en";
-  hole_id?: string;
-  topic_ids?: string[];
-} {
+// 戻り値は契約の型そのもの。手で並べ直すと、フィールドを足したときに
+// 「スキーマは通るのにサーバからは見えない」状態が静かにできる。
+function parseMeta(value: File | string | null): CreateSessionRequest {
   if (typeof value !== "string" || value.length === 0) {
-    return { kind: "new", locale: "ja" };
+    // metaパートが無いのは古いアプリ。スキーマの既定と同じものを返す。
+    return createSessionRequestSchema.parse({});
   }
   let raw: unknown;
   try {

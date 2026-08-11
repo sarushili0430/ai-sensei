@@ -56,7 +56,41 @@ export const boardTexMaxLength = 200;
 /** `text` の上限。板書に添える見出し・注記の1行(「a = 1, b = -3, c = 2」など)。 */
 export const boardTextMaxLength = 100;
 
-/** ラベル(頂点名・目盛の注記)の上限。1〜2語で足りる。 */
+/**
+ * `sentence` の英文と訳の上限。
+ *
+ * `text` の100より広いのは、**英語は1文字あたりの情報量が少ない**から
+ * (`spaced-repetition` が復習の一行を ja 24字 / en 48字で切っているのと同じ理屈)。
+ * 半角120字は板書2行ぶんで、`I have lived here for ten years, so I know the area well.`
+ * のような従属節つきの1文が収まる。ここを超えるのは例文ではなく段落。
+ */
+export const boardSentenceMaxLength = 120;
+
+/**
+ * `sentence.gloss`(訳)の上限。英文より短くてよい —
+ * 日本語は同じ内容を半分ほどの文字数で書ける。
+ */
+export const boardGlossMaxLength = 60;
+
+/**
+ * `sentence.focus` の上限。**文法の焦点にあたる部分だけ**を指す。
+ * `have lived` / `to see` / `whose` — 語か句であって、節ではない。
+ */
+export const boardFocusMaxLength = 40;
+
+/** `compare` の1マスの上限。対比表は一覧であって解説ではない。 */
+export const boardCompareCellMaxLength = 60;
+
+/**
+ * `compare` の行数の上限。
+ *
+ * 5行以上は板書ではなく資料になる({@link plotMarkSchema} を4個、
+ * 三角形の印を3個で切っているのと同じ判断)。対比で効くのは
+ * 「形 / 意味 / 使うとき」の3行前後で、それ以上は読まれない。
+ */
+export const boardCompareRowsMaxCount = 4;
+
+/** ラベル(頂点名・目盛の注記・対比表の見出し)の上限。1〜2語で足りる。 */
 export const boardLabelMaxLength = 24;
 
 /**
@@ -117,8 +151,23 @@ const coordinateSchema = z.number().finite().min(-boardCoordinateLimit).max(boar
 export const boardPointSchema = z.object({ x: coordinateSchema, y: coordinateSchema }).strict();
 export type BoardPoint = z.infer<typeof boardPointSchema>;
 
-/** 板書に積む要素の種類。増やすときは Flutter 側の描画実装とセットで増やす。 */
-export const boardElementKinds = ["latex", "text", "plot", "triangle", "circle"] as const;
+/**
+ * 板書に積む要素の種類。増やすときは Flutter 側の描画実装とセットで増やす。
+ *
+ * **教科ごとに使える枝は違う。** 数学は `latex` / `plot` / `triangle` / `circle`、
+ * 英語は `sentence` / `compare`。`text` だけが両方で使える。
+ * どちらを許すかはスキーマではなく agent 側(`boardKindsBySubject`)で閉じている —
+ * contract は「表現できる形」を定義する層で、「いま許す形」は文脈で決まるため。
+ */
+export const boardElementKinds = [
+  "latex",
+  "text",
+  "plot",
+  "triangle",
+  "circle",
+  "sentence",
+  "compare",
+] as const;
 export type BoardElementKind = (typeof boardElementKinds)[number];
 
 /**
@@ -260,6 +309,71 @@ export const circleElementSchema = z
   .strict();
 
 /**
+ * 英語の板書の主役。**例文1つと、その訳・焦点**。
+ *
+ * `text` で代用できない理由は `focus` にある。英語で教えるのは
+ * 「この文のどこが現在完了か」であって、文そのものではない。
+ * 平文を並べるだけだと、生徒はどこを見ればいいのか分からないまま
+ * 例文を読み流す。
+ *
+ * `gloss`(訳)を必須にしないのは、**訳を出さずに推測させるのが正しい場面**が
+ * あるため(先に意味を言ってしまうと、文法から意味を導く練習にならない)。
+ */
+export const sentenceElementSchema = z
+  .object({
+    kind: z.literal("sentence"),
+    /** 英文1文。 */
+    text: z.string().min(1).max(boardSentenceMaxLength),
+    /** 訳や言い換え。出さない選択も授業として正しいので任意。 */
+    gloss: z.string().min(1).max(boardGlossMaxLength).optional(),
+    /**
+     * `text` の中の、下線を引く部分。**`text` の部分文字列であること。**
+     *
+     * **この条件はここでは検査しない。** `boardElementSchema` は
+     * `discriminatedUnion` で、その枝は `ZodObject` でなければならず、
+     * `.refine()` を付けると `ZodEffects` になって union に入らない。
+     *
+     * `plot` の `domain.min < max` と同じ扱いにする —
+     * README の「JSON Schema に現れない不変条件」に載せ、**Dart 側の
+     * `ensureValidSentence` と agent 側の `validateStep` の両方**で見る。
+     * 破れたときの見え方は「下線が引かれないだけ」なので、
+     * 検査が無いと壊れたまま何ヶ月も気づかれない。
+     */
+    focus: z.string().min(1).max(boardFocusMaxLength).optional(),
+  })
+  .strict();
+
+/**
+ * 対比表。「現在完了 と 過去形」「to不定詞 と 動名詞」。
+ *
+ * **2列で固定する。** 3列以上はスマホの幅(実効340pt ≒ 半角30字)で読めず、
+ * そもそも英語の文法の対比はほとんどが2項の使い分け。
+ * 列を可変にすると、LLMは表を資料として使い始める。
+ */
+export const compareElementSchema = z
+  .object({
+    kind: z.literal("compare"),
+    /** 「to不定詞 と 動名詞」。無くても表は読める。 */
+    title: z.string().min(1).max(boardLabelMaxLength).optional(),
+    /** 2列の見出し。 */
+    columns: z.tuple([
+      z.string().min(1).max(boardLabelMaxLength),
+      z.string().min(1).max(boardLabelMaxLength),
+    ]),
+    /** 各行2マス。1〜4行。 */
+    rows: z
+      .array(
+        z.tuple([
+          z.string().min(1).max(boardCompareCellMaxLength),
+          z.string().min(1).max(boardCompareCellMaxLength),
+        ]),
+      )
+      .min(1)
+      .max(boardCompareRowsMaxCount),
+  })
+  .strict();
+
+/**
  * 板書に積む1要素。`kind` の discriminated union。
  * 自由描画(SVG・パス・任意テキストの塊)は **どの枝にも存在しない**。
  */
@@ -269,6 +383,8 @@ export const boardElementSchema = z.discriminatedUnion("kind", [
   plotElementSchema,
   triangleElementSchema,
   circleElementSchema,
+  sentenceElementSchema,
+  compareElementSchema,
 ]);
 export type BoardElement = z.infer<typeof boardElementSchema>;
 

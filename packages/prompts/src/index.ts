@@ -1,5 +1,11 @@
 import { promptSources } from "./generated.ts";
-import { type PromptLocale, type PromptTemplate, parsePrompt, renderPrompt } from "./render.ts";
+import {
+  type PromptLocale,
+  type PromptTemplate,
+  parsePrompt,
+  promptLocales,
+  renderPrompt,
+} from "./render.ts";
 export * from "./render.ts";
 
 export const promptIds = [
@@ -8,10 +14,35 @@ export const promptIds = [
   "question_types_few_shot",
   "karte_generation",
   "math_speech_hints",
+  "english_speech_hints",
   "senpai_board",
+  "senpai_board_english",
   "study_plan",
 ] as const;
 export type PromptId = (typeof promptIds)[number];
+
+/**
+ * どのプロンプトが、どの言語で用意されているか。**ここが正**。
+ *
+ * ほとんどのプロンプトは日英2本ずつだが、教科に紐づくものはそうならない。
+ * `english_speech_hints` は「**日本語話者が英語を話すときの**STTの癖」を書いた
+ * ものなので、英語で教える課程には存在しない(英語話者に英語を教える課程を
+ * このアプリは持たない)。
+ *
+ * ファイル数の検査もここを基準にする。`promptIds.length * promptLocales.length`
+ * で数えると、教科別のプロンプトを足した瞬間に「揃っていない」と誤検知する。
+ */
+export const promptCatalog: Record<PromptId, readonly PromptLocale[]> = {
+  photo_analysis: promptLocales,
+  senpai_conversation: promptLocales,
+  question_types_few_shot: promptLocales,
+  karte_generation: promptLocales,
+  math_speech_hints: promptLocales,
+  english_speech_hints: ["ja"],
+  senpai_board: promptLocales,
+  senpai_board_english: ["ja"],
+  study_plan: promptLocales,
+};
 
 /** 既定のロケール。未対応の言語で来た場合もここに落ちる。 */
 export const defaultPromptLocale: PromptLocale = "ja";
@@ -33,17 +64,21 @@ function keyOf(id: string, locale: string): string {
  * 日本語のプロンプトの末尾に「英語で答えて」と足す作りにすると、
  * ペルソナも禁止事項も日本語のまま英語で薄く言い直されるだけになる。
  *
- * 未対応の言語は日本語に落とす(黙って落とす。ここで例外にすると、
- * 言語が1つ増えるたびに会話が始まらなくなる)。
+ * **無い組み合わせは既定の言語に落とさず、落とす。** 未知の言語を丸めるのは
+ * {@link toPromptLocale} の仕事で、ここに来る `locale` は必ず `promptLocales` の
+ * どれか。それでも見つからないなら「その id にその言語版は無い」ということで、
+ * 黙って日本語版を返すと**英語のセッションで先輩が日本語を喋り出す**。
+ * 言語を1つ増やすときは {@link promptCatalog} に宣言を足す。
  */
 export function getPrompt(
   id: PromptId,
   locale: PromptLocale = defaultPromptLocale,
 ): PromptTemplate {
-  const template =
-    templates.get(keyOf(id, locale)) ?? templates.get(keyOf(id, defaultPromptLocale));
-  if (!template) throw new Error(`プロンプトが見つかりません: ${id} (${locale})`);
-  return template;
+  const template = templates.get(keyOf(id, locale));
+  if (template) return template;
+  throw new Error(
+    `プロンプトがありません: ${id} (${locale})。このidは ${promptCatalog[id].join(" / ")} にだけあります`,
+  );
 }
 
 /** 全ロケールぶん。設計上の約束が書かれているかの検査に使う。 */
@@ -51,9 +86,45 @@ export function allPrompts(): PromptTemplate[] {
   return [...templates.values()];
 }
 
+/** そのロケールで用意されているプロンプト全部。 */
 export function promptsFor(locale: PromptLocale): PromptTemplate[] {
-  return promptIds.map((id) => getPrompt(id, locale));
+  return promptIds
+    .filter((id) => promptCatalog[id].includes(locale))
+    .map((id) => getPrompt(id, locale));
 }
+
+/**
+ * 授業の教科。
+ *
+ * **`@ai-sensei/curriculum` の `CurriculumSubject` と同じ値にすること。**
+ * このパッケージは依存を持たない層(`formatAllowedTopics` がトピックを
+ * 構造的に受けているのと同じ理由)なので参照できず、二重に書いている。
+ */
+export const promptSubjects = ["math", "english"] as const;
+export type PromptSubject = (typeof promptSubjects)[number];
+
+/**
+ * 教科ごとの音声補正ヒント。
+ *
+ * **教科で必ず切り替える。** 数学版の「さんぶんのに = 2/3」「にじょう = ^2」を
+ * 英語の授業に当てると、生徒の発話を数式として読み直してしまう。逆に英語版の
+ * 「冠詞の脱落は言えていない証拠にしない」を数学に当てても効かない。
+ */
+function speechHintsId(subject: PromptSubject): PromptId {
+  return subject === "math" ? "math_speech_hints" : "english_speech_hints";
+}
+
+/** 教科ごとの板書プロンプト。使える要素も、守らせる規約も重ならない。 */
+function boardPromptId(subject: PromptSubject): PromptId {
+  return subject === "math" ? "senpai_board" : "senpai_board_english";
+}
+
+/** システムプロンプトを組むときの授業の文脈。 */
+export type PromptContext = {
+  locale?: PromptLocale;
+  /** 授業の教科。`subjectOfTopicId(topic_id)` で引ける(ADR 0007)。 */
+  subject: PromptSubject;
+};
 
 /**
  * 教え返しを聞く先輩のシステムプロンプト(ピボット計画 v1 §2 のコアループ2つ目)。
@@ -80,14 +151,14 @@ export function conversationSystemPrompt(
     lesson_recap: string;
     remaining_seconds: number;
   },
-  locale: PromptLocale = defaultPromptLocale,
+  { locale = defaultPromptLocale, subject }: PromptContext,
 ): string {
   return [
     renderPrompt(getPrompt("senpai_conversation", locale), variables),
     "---",
     getPrompt("question_types_few_shot", locale).body,
     "---",
-    getPrompt("math_speech_hints", locale).body,
+    getPrompt(speechHintsId(subject), locale).body,
   ].join("\n\n");
 }
 
@@ -126,12 +197,15 @@ export function boardLessonSystemPrompt(
     allowed_topics: string;
     remaining_seconds: number;
   },
-  locale: PromptLocale = defaultPromptLocale,
+  { locale = defaultPromptLocale, subject }: PromptContext,
 ): string {
   return [
-    renderPrompt(getPrompt("senpai_board", locale), variables),
+    // **教科ごとに別本。** 数学版は300行超のうち3〜4割が数式の規約(使える
+    // LaTeXコマンド・長い式の割り方)で、英語では丸ごと不要。1本に混ぜて
+    // 分岐を書くより、正本を分けたほうが読める(ADR 0005 決定3と同じ判断)。
+    renderPrompt(getPrompt(boardPromptId(subject), locale), variables),
     "---",
-    getPrompt("math_speech_hints", locale).body,
+    getPrompt(speechHintsId(subject), locale).body,
   ].join("\n\n");
 }
 
@@ -141,11 +215,14 @@ export function boardLessonSystemPrompt(
  * 出力は `@ai-sensei/contract` の `planTurnSchema`(`{speech, plan}`)の形。
  * 計画は聞き取りの会話の**途中で**生まれるので、LLMの単位は「計画」ではなく「1ターン」。
  *
- * **音声補正ヒント(`math_speech_hints`)は同梱しない。** あれは数式の読み上げ
- * (「さんぶんのに」= 2/3)を直すためのもので、計画の聞き取りに出てくる数字は
+ * **音声補正ヒントは同梱しない。** あれは数式の読み上げ(「さんぶんのに」= 2/3)や
+ * 英語の音の脱落を直すためのもので、計画の聞き取りに出てくる数字は
  * **日付・ページ番号・問題集の名前**という別物。同梱しても効かないうえ、
  * 「エヌは数列ならn」のような文脈判断を持ち込むと、聞き取りの邪魔になる。
  * 計画側で要る聞き取りの注意は `prompts/study_plan.<locale>.md` に直接書いてある。
+ *
+ * **教科を取らないのもこのため。** 計画は教科をまたいで1本作る(中学生の定期テストは
+ * 数学と英語が並ぶ)ので、ここで教科をひとつに決める意味がない。
  *
  * `today` は**必ず渡す**。LLMは今日を知らないので、「9月10日」が何日後かも、
  * 今年か来年かも決められない(渡し忘れは `renderPrompt` が落とす)。
@@ -163,7 +240,7 @@ export function studyPlanSystemPrompt(
   return renderPrompt(getPrompt("study_plan", locale), variables);
 }
 
-/** カルテ生成用のプロンプト。音声補正ヒントを同梱する。 */
+/** カルテ生成用のプロンプト。教科に合った音声補正ヒントを同梱する。 */
 export function karteSystemPrompt(
   variables: {
     photo_summary: string;
@@ -171,11 +248,11 @@ export function karteSystemPrompt(
     transcript: string;
     is_premium: string;
   },
-  locale: PromptLocale = defaultPromptLocale,
+  { locale = defaultPromptLocale, subject }: PromptContext,
 ): string {
   return [
     renderPrompt(getPrompt("karte_generation", locale), variables),
     "---",
-    getPrompt("math_speech_hints", locale).body,
+    getPrompt(speechHintsId(subject), locale).body,
   ].join("\n\n");
 }

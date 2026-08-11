@@ -50,6 +50,9 @@ describe("fixture", () => {
     expect(fixtureFileNames).toContain("karte.en");
     expect(fixtureFileNames).toContain("create-session-response.en");
     expect(fixtureFileNames).toContain("board-lesson.en");
+    // 英語の課程の板書。数学の板書とは使える要素が重ならないので、
+    // これが消えると sentence / compare の形を誰も検査しなくなる。
+    expect(fixtureFileNames).toContain("board-lesson.english");
     expect(fixtureFileNames).toContain("study-plan.en");
     expect(fixtureFileNames).toContain("parent-report");
     expect(fixtureFileNames).toContain("parent-report.en");

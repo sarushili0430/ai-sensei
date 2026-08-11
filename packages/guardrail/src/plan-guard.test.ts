@@ -196,3 +196,26 @@ describe("再生成の指示", () => {
     }
   });
 });
+
+/**
+ * 中学生の定期テストは**数学と英語が並ぶ**。教科の混在で落とすと、
+ * いちばん多い形の計画が作れなくなる。
+ */
+describe("課程の混在(教科は通す・言語と段は落とす)", () => {
+  it("数学と英語が混ざった範囲は通す", () => {
+    const verdict = checkPlanScope(["J2-KANSU-ICHIJI", "JE-FUTEISHI"]);
+    expect(verdict.ok).toBe(true);
+  });
+
+  it("中学と高校が混ざった範囲は落とす", () => {
+    const verdict = checkPlanScope(["J3-KAZUSHIKI-NIJI-HOTEISHIKI", "M1-NIJI-HANBETSU"]);
+    expect(verdict.ok).toBe(false);
+    if (!verdict.ok) expect(verdict.reason).toBe("mixed_curricula");
+  });
+
+  it("日本の課程と海外の課程が混ざった範囲は落とす", () => {
+    const verdict = checkPlanScope(["M1-NIJI-HANBETSU", "A1-QUAD-SOLVE"]);
+    expect(verdict.ok).toBe(false);
+    if (!verdict.ok) expect(verdict.reason).toBe("mixed_curricula");
+  });
+});

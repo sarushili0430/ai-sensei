@@ -1,15 +1,15 @@
 {
   "version": "0.1.0",
-  "locale": "ja",
+  "track": "hs_math_ja",
   "curriculum": "高等学校学習指導要領(平成30年告示・2022年度入学生から実施の新課程)",
   "note": "質問生成の許可リスト兼、穴のタグ付けに使う。範囲外の話題を後輩AIに振らせないための正(source of truth)。",
   "courses": [
-    { "code": "M1", "name": "数学I" },
-    { "code": "MA", "name": "数学A" },
-    { "code": "M2", "name": "数学II" },
-    { "code": "MB", "name": "数学B" },
-    { "code": "M3", "name": "数学III" },
-    { "code": "MC", "name": "数学C" }
+    { "code": "M1", "name": "数学I", "short": "数学I" },
+    { "code": "MA", "name": "数学A", "short": "数学A" },
+    { "code": "M2", "name": "数学II", "short": "数学II" },
+    { "code": "MB", "name": "数学B", "short": "数学B" },
+    { "code": "M3", "name": "数学III", "short": "数学III" },
+    { "code": "MC", "name": "数学C", "short": "数学C" }
   ],
   "topics": [
     {

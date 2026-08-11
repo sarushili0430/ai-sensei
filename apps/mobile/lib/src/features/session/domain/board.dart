@@ -96,6 +96,22 @@ abstract class BoardElement with _$BoardElement {
     List<String>? labels,
   }) = CircleElement;
 
+  /// 英語の例文。`focus` は `text` の部分文字列([ensureValidSentence] で検査)。
+  const factory BoardElement.sentence({
+    required String text,
+    String? gloss,
+    String? focus,
+  }) = SentenceElement;
+
+  /// 2列の対比表。`columns` はちょうど2つ、`rows` の各行も2マス
+  /// (`board.ts` は `z.tuple` で縛るが、freezed に固定長タプルは無いので
+  /// [ensureValidCompare] が持つ — `triangle.vertices` と同じ扱い)。
+  const factory BoardElement.compare({
+    required List<String> columns,
+    required List<List<String>> rows,
+    String? title,
+  }) = CompareElement;
+
   factory BoardElement.fromJson(Map<String, dynamic> json) => _$BoardElementFromJson(json);
 }
 
@@ -130,6 +146,39 @@ void ensureValidTriangle(List<BoardPoint> vertices, List<String>? labels) {
   }
 }
 
+/// `sentence.focus` は `text` の部分文字列。README「JSON Schema に現れない不変条件」。
+///
+/// **`.refine()` では書けなかった。** `boardElementSchema` は
+/// `discriminatedUnion` で、枝は `ZodObject` でなければならない
+/// (`.refine()` を付けると union に入らない)。だから contract 側は形だけを見て、
+/// この条件は Dart と agent の両方が持っている。
+///
+/// [ensureValidDomain] と同じ理由で、単体では呼び忘れられる。
+/// 実際の呼び出し口は [BoardChannelReceiver.accept] の内部。
+void ensureValidSentence(String text, String? focus) {
+  if (focus != null && !text.contains(focus)) {
+    throw BoardContractViolation('sentence.focus は text の一部である必要があります(focus=$focus)');
+  }
+}
+
+/// `compare.columns` はちょうど2つ、`rows` は1〜4行で各行2マス。
+///
+/// 2列に固定しているのは、実効幅340ptに3列が入らないため(`board.ts` の
+/// `compareElementSchema` のコメント)。ここが崩れた表は描いても読めない。
+void ensureValidCompare(List<String> columns, List<List<String>> rows) {
+  if (columns.length != 2) {
+    throw BoardContractViolation('compare.columns は2つである必要があります(実際は${columns.length}個)');
+  }
+  if (rows.isEmpty) {
+    throw const BoardContractViolation('compare.rows が空です');
+  }
+  for (final List<String> row in rows) {
+    if (row.length != 2) {
+      throw BoardContractViolation('compare.rows の各行は2マスである必要があります(実際は${row.length}マス)');
+    }
+  }
+}
+
 /// ワイヤーから届いた `BoardElement` を検査する。**唯一の呼び出し口は
 /// [BoardChannelReceiver.accept]。** ここを通さずに描画へ渡す経路を作らないこと
 /// (作った瞬間、[ensureValidDomain] / [ensureValidTriangle] は「存在するが効かない
@@ -142,6 +191,9 @@ void _ensureValidElement(BoardElement? element) {
     triangle: (List<BoardPoint> vertices, List<String>? labels, List<AngleMark>? marks) =>
         ensureValidTriangle(vertices, labels),
     circle: (BoardPoint center, double r, List<String>? labels) {},
+    sentence: (String text, String? gloss, String? focus) => ensureValidSentence(text, focus),
+    compare: (List<String> columns, List<List<String>> rows, String? title) =>
+        ensureValidCompare(columns, rows),
   );
 }
 

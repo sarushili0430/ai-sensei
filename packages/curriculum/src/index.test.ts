@@ -8,25 +8,33 @@ import {
   isWellFormedTopicId,
   localeOfTopicId,
   prerequisitesOf,
+  stageOfTopicId,
+  subjectOfTopicId,
   suggestTopics,
   toCurriculumLocale,
+  topicLabel,
   topics,
   topicsByCourse,
-  topicsFor,
+  topicsForTracks,
+  trackOfTopicId,
+  tracksForStage,
 } from "./index.ts";
-import { curriculumLocales, enCourseNames, jaCourseNames } from "./schema.ts";
+import { enCourseNames, jaCourseNames, trackIds, tracks } from "./schema.ts";
 
 describe("カリキュラムデータの整合性", () => {
   it("スキーマを満たす(importの時点でparse済み)", () => {
-    for (const locale of curriculumLocales) {
-      const data = curriculumFor(locale);
+    for (const track of trackIds) {
+      const data = curriculumFor(track);
       expect(data.version).toMatch(/^\d+\.\d+\.\d+$/);
-      expect(data.locale).toBe(locale);
-      expect(data.topics.length, locale).toBeGreaterThanOrEqual(30);
+      expect(data.track).toBe(track);
+      // 課程1本が「1教科ぶんの範囲」として成立する下限。高校数学は52/57件あるが、
+      // 中学数学は3学年 × 4領域で27件が指導要領どおりの粒度なので、全課程に
+      // 同じ下限を課すと、正しいデータのほうを削ることになる。
+      expect(data.topics.length, track).toBeGreaterThanOrEqual(20);
     }
   });
 
-  it("ID重複・未定義の前提・循環がない(全ロケール横断)", () => {
+  it("ID重複・未定義の前提・循環がない(全課程横断)", () => {
     expect(checkIntegrity()).toEqual([]);
   });
 
@@ -56,27 +64,32 @@ describe("カリキュラムデータの整合性", () => {
       ja: /説明できる|使い分け|導ける|判断/,
       en: /\b(explain|justify|decide|choose|say why|say what)\b/i,
     };
-    for (const locale of curriculumLocales) {
-      for (const topic of topicsFor(locale)) {
+    for (const track of trackIds) {
+      const pattern = explainable[tracks[track].locale];
+      for (const topic of topicsForTracks([track])) {
         expect(
-          topic.goals.some((goal) => explainable[locale]?.test(goal)),
+          topic.goals.some((goal) => pattern?.test(goal)),
           topic.id,
         ).toBe(true);
       }
     }
   });
 
-  // 接頭辞がぶつかると、穴のタグからどちらの課程か決められなくなる。
-  it("topic_idの接頭辞はロケールをまたいで重複しない", () => {
-    for (const topic of topicsFor("ja")) {
-      expect(localeOfTopicId(topic.id), topic.id).toBe("ja");
-    }
-    for (const topic of topicsFor("en")) {
-      expect(localeOfTopicId(topic.id), topic.id).toBe("en");
+  // 接頭辞がぶつかると、穴のタグからどの課程か決められなくなる。
+  // 言語・教科・学校段階はすべてこの1文字目から引くので、ここが崩れると
+  // 通知の言語も板書に使える要素も決まらない。
+  it("topic_idの接頭辞は課程をまたいで重複しない", () => {
+    for (const track of trackIds) {
+      for (const topic of topicsForTracks([track])) {
+        expect(trackOfTopicId(topic.id), topic.id).toBe(track);
+        expect(localeOfTopicId(topic.id), topic.id).toBe(tracks[track].locale);
+        expect(subjectOfTopicId(topic.id), topic.id).toBe(tracks[track].subject);
+        expect(stageOfTopicId(topic.id), topic.id).toBe(tracks[track].stage);
+      }
     }
   });
 
-  it("課程をまたいだ前提参照がない", () => {
+  it("別の言語・別の教科をまたいだ前提参照がない", () => {
     const issues = checkIntegrity();
     expect(issues.filter((issue) => issue.kind === "cross-curriculum-prerequisite")).toEqual([]);
   });
@@ -84,7 +97,7 @@ describe("カリキュラムデータの整合性", () => {
 
 // 新課程(2022年度〜)の要注意点。旧課程の知識で書き足すと必ずここで落ちる。
 describe("新課程の配当", () => {
-  const jaTopics = topicsFor("ja");
+  const jaTopics = topicsForTracks(["hs_math_ja"]);
 
   it("ベクトルは数学B ではなく 数学C にある", () => {
     const vectorTopics = jaTopics.filter((topic) => topic.unit === "ベクトル");
@@ -113,7 +126,7 @@ describe("新課程の配当", () => {
 // 「Math II」のようなどこの国にも無い科目名が画面に出てしまう。
 describe("海外向けの課程の配当", () => {
   it("科目名は Algebra / Geometry などで、数学I〜C の訳語ではない", () => {
-    const names = new Set(curricula.en.courses.map((course) => course.name));
+    const names = new Set(curricula.hs_math_en.courses.map((course) => course.name));
     expect(names).toEqual(new Set(enCourseNames));
     for (const name of names) {
       expect(name).not.toMatch(/Math\s*(I|II|III|A|B|C)\b/);
@@ -128,6 +141,64 @@ describe("海外向けの課程の配当", () => {
   it("ベクトルと複素数平面は Precalculus にある", () => {
     expect(findTopic("PC-VECTOR-DOT")?.course).toBe("Precalculus");
     expect(findTopic("PC-COMPLEX-POLAR")?.course).toBe("Precalculus");
+  });
+});
+
+describe("課程(track)", () => {
+  // 段で切ると、その生徒に見せる課程は**教科ぶんだけ**になる。
+  // 中学生に数学I〜Cが並ばないのも、高校生に中1の単元が並ばないのも、ここが根拠。
+  it("段階と指導言語から課程を引ける", () => {
+    expect(tracksForStage("high_school", "ja").sort()).toEqual(["hs_english_ja", "hs_math_ja"]);
+    expect(tracksForStage("junior_high", "ja").sort()).toEqual(["jhs_english_ja", "jhs_math_ja"]);
+    expect(tracksForStage("high_school", "en")).toEqual(["hs_math_en"]);
+  });
+
+  // 海外の課程は Algebra 1 〜 Calculus が一続きで、中学/高校に分かれていない。
+  // 段階で切ると英語の学習者に何も出せなくなる。
+  it("海外向けの課程は段階で切らない", () => {
+    expect(tracksForStage("junior_high", "en")).toEqual(["hs_math_en"]);
+  });
+
+  it("課程を指定しないと全課程のトピックが返る", () => {
+    expect(topicsForTracks(trackIds).length).toBe(topics.length);
+  });
+
+  it("知らない接頭辞では課程が引けない", () => {
+    expect(trackOfTopicId("XX-NANIKA")).toBeUndefined();
+    expect(localeOfTopicId("XX-NANIKA")).toBeUndefined();
+    expect(subjectOfTopicId("XX-NANIKA")).toBeUndefined();
+  });
+});
+
+describe("topicLabel", () => {
+  it("科目の短い名前を返す", () => {
+    const topic = findTopic("M2-ZUKEI-ENCHOKU");
+    expect(topic && topicLabel(topic)).toBe("数学II");
+  });
+
+  it("海外向けの課程でも科目名を返す", () => {
+    const topic = findTopic("A2-COORD-CIRCLE");
+    expect(topic && topicLabel(topic)).toBe("Algebra 2");
+  });
+
+  // 学年の目安を持つのは、学年配当が教科書ごとに違う英語の課程だけ。
+  // 数学は course そのものが学年なので、grade_hint を書くと二重管理になる。
+  it("数学の課程に grade_hint を書くと整合性検査で落ちる", () => {
+    const [sample] = curricula.hs_math_ja.topics;
+    if (!sample) throw new Error("トピックが空です");
+    const issues = checkIntegrity({
+      ...curricula.hs_math_ja,
+      topics: [{ ...sample, grade_hint: 1 }],
+    });
+    expect(issues.map((issue) => issue.kind)).toContain("grade-hint-not-allowed");
+  });
+
+  it("宣言だけしてトピックが無いコースは整合性検査で落ちる", () => {
+    const issues = checkIntegrity({
+      ...curricula.hs_math_ja,
+      topics: curricula.hs_math_ja.topics.filter((topic) => topic.course === "数学I"),
+    });
+    expect(issues.filter((issue) => issue.kind === "empty-course").length).toBeGreaterThan(0);
   });
 });
 
@@ -178,7 +249,7 @@ describe("prerequisitesOf", () => {
     expect(deep).toContain("M1-NIJI-GURAFU");
   });
 
-  it("海外の課程でも前提をたどれる(深掘りは同じ課程の中で閉じる)", () => {
+  it("海外の課程でも前提をたどれる(深掘りは同じ言語・同じ教科の中で閉じる)", () => {
     const ids = prerequisitesOf("A2-COORD-CIRCLE", 2).map((topic) => topic.id);
     expect(ids).toContain("A1-QUAD-SOLVE");
     expect(ids).toContain("A1-QUAD-GRAPH");
@@ -217,12 +288,12 @@ describe("suggestTopics", () => {
     expect(ids).toContain("GE-TRIG-LAWS");
   });
 
-  it("localeを指定すると、その課程からだけ候補を返す", () => {
+  it("課程を指定すると、その課程からだけ候補を返す", () => {
     const ids = suggestTopics("distance from the center to the line and the radius", 5, {
-      locale: "en",
+      tracks: ["hs_math_en"],
     }).map((t) => t.id);
     expect(ids.length).toBeGreaterThan(0);
-    for (const id of ids) expect(localeOfTopicId(id)).toBe("en");
+    for (const id of ids) expect(trackOfTopicId(id)).toBe("hs_math_en");
   });
 
   it("数学と無関係なテキストでは候補を返さない", () => {

@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:go_router/go_router.dart';
 
 import 'support/harness.dart';
@@ -64,7 +65,16 @@ void main() {
     WidgetTester tester, {
     List<Object?> overrides = const <Object?>[],
   }) async {
-    final ProviderContainer container = ProviderContainer(overrides: overrides.cast());
+    // 設定画面が学校段階を読む。`preferencesProvider` は main() で override する
+    // 前提なので、ここでも入れないと設定タブを開いた瞬間に落ちる。
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    final ProviderContainer container = ProviderContainer(
+      overrides: <Object?>[
+        preferencesProvider.overrideWithValue(preferences),
+        ...overrides,
+      ].cast(),
+    );
     addTearDown(container.dispose);
 
     await tester.pumpWidget(wrapRouter(container));

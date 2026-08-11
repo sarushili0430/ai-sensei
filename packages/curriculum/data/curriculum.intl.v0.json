@@ -1,15 +1,15 @@
 {
   "version": "0.1.0",
-  "locale": "en",
+  "track": "hs_math_en",
   "curriculum": "US/international high-school mathematics (Algebra 1 → Geometry → Algebra 2 → Precalculus → Calculus, with Statistics alongside)",
   "note": "The allow-list for question generation and the vocabulary used to tag gaps, for learners outside the Japanese curriculum. Course names follow the sequence most international high schools recognise (Algebra 1, Geometry, ...), not a translation of 数学I〜C.",
   "courses": [
-    { "code": "A1", "name": "Algebra 1" },
-    { "code": "GE", "name": "Geometry" },
-    { "code": "A2", "name": "Algebra 2" },
-    { "code": "PC", "name": "Precalculus" },
-    { "code": "CL", "name": "Calculus" },
-    { "code": "ST", "name": "Statistics" }
+    { "code": "A1", "name": "Algebra 1", "short": "Algebra 1" },
+    { "code": "GE", "name": "Geometry", "short": "Geometry" },
+    { "code": "A2", "name": "Algebra 2", "short": "Algebra 2" },
+    { "code": "PC", "name": "Precalculus", "short": "Precalculus" },
+    { "code": "CL", "name": "Calculus", "short": "Calculus" },
+    { "code": "ST", "name": "Statistics", "short": "Statistics" }
   ],
   "topics": [
     {
