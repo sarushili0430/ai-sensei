@@ -1726,7 +1726,83 @@
       <b>高校数学の空間図形の大半は多面体</b>(直方体・角錐・正四面体・切断)なので、
       <span class="keep">z を足して投影を決めるだけで、そこはまとめて入る</span>。
       <span class="care">D-5の「空間はやらないと決める」と、D-8・D-9の「空間だけ絵のカタログ」は取り下げる。</span>
-      絵のカタログが要るのは、<b>回転体と球の断面だけ</b>になった。
+      <span class="small">(この時点では「回転体と球の断面だけは絵が要る」と考えていた。
+      <b>これもD-15で取り下げる</b> — 楕円を1つ足すだけで両方入った)</span>
+    </p>
+  </div>
+
+  <!-- ---- D-14 色分け ---- -->
+  <div class="panel">
+    <h2>D-14. 線の色分け — 生の色ではなく「役割」で書かせる</h2>
+    <p class="lede">
+      図が込み入るほど、<b>どの線とどの線が仲間なのか</b>が読めなくなる。そこは色がいちばん速い。
+      ただし<span class="care">LLMに好きな色を書かせると、板の地に沈む色や、毎回ちがう色が来る</span>。
+      なので<b>色そのものではなく、役割の名前を書かせる</b>。
+    </p>
+    <table>
+      <thead><tr><th style="width:14%">役割</th><th style="width:18%">見え方</th><th>いつ使うか</th></tr></thead>
+      <tbody>
+        <tr><td><code>main</code></td><td>白チョーク</td><td>ふつうの線。指定しなければこれ</td></tr>
+        <tr><td><code>key</code></td><td>黄チョーク・<b>太い</b></td>
+          <td><b>いま見てほしいところ。</b>太さも変えるので、<span class="keep">色が分からなくても伝わる</span></td></tr>
+        <tr><td><code>a</code> / <code>b</code></td><td>赤 / 青チョーク</td>
+          <td><b>対応する2組を分ける。</b>「この三角形とこの三角形が相似」「半径と、断面の半径」</td></tr>
+        <tr><td><code>aux</code></td><td>細い破線・くすんだ色</td><td>補助線・軸・目印。<b>主役ではないことを見た目で言う</b></td></tr>
+      </tbody>
+    </table>
+    <p class="foot-note">
+      <b>板の上の色は、UIの色とは別に決める。</b>
+      アプリの <code>AppColors.blue</code> / <code>hole</code>(ピンク)をそのまま持ち込むと、
+      濃い緑の地では沈むか浮く。<b>使うのは色チョークの色</b>(白・黄・赤・青)で、
+      <span class="care">緑だけは板の地と同系なので使わない</span>。
+      <b>色だけに意味を乗せない</b>(<code>key</code>は太さも、<code>aux</code>は線種も変える)のは、
+      色覚と、そもそも<b>読み上げのため</b> — <code>board_speech.dart</code> は役割名をそのまま
+      「注目」「補助線」と読める。<span class="care">生の色だと「#f2d675の線」としか言えない。</span>
+    </p>
+  </div>
+
+  <!-- ---- D-15 残り4件 ---- -->
+  <div class="panel">
+    <h2>D-15. 残していた4件 — 全部通った。絵のカタログは要らなくなった</h2>
+    <p class="lede">
+      挙げてもらった4つを順に試したところ、<b>新しく要ったのは「楕円」1つだけ</b>だった。
+      上のデモの9〜12枚目がその結果。
+    </p>
+    <table>
+      <thead><tr><th style="width:22%">対象</th><th style="width:13%">結果</th><th>何で足りたか</th></tr></thead>
+      <tbody>
+        <tr><td><b>複数の関数</b><br><span class="small">f(x) と g(x)</span></td>
+          <td><span class="stat done">通った</span></td>
+          <td>1つの図に曲線を何本でも置けるようにするだけ。
+            <b>交点は式を解かず、符号が変わる場所を数値で挟む</b>ので、
+            <span class="keep">2次でも三角関数でも同じ手が使える</span>。
+            囲まれた面積も、2本を同じ x で結んで閉じれば塗れる</td></tr>
+        <tr><td><b>複素平面</b></td><td><span class="stat done">通った</span></td>
+          <td><span class="keep">新しい部品は1つも要らなかった。</span>
+            <b>軸の名前が違うだけの2次元平面</b>で、極形式は
+            「点・線分・円・角の印」でそのまま書ける</td></tr>
+        <tr><td><b>球の断面</b></td><td><span class="stat done">通った</span></td>
+          <td><b>円 + 楕円。</b>断面の円は、斜めから見れば楕円。
+            色分けで「半径」「断面の半径」「中心からの距離」が分かれる</td></tr>
+        <tr><td><b>回転体</b></td><td><span class="stat done">通った</span></td>
+          <td><b>曲線と、その鏡像と、端の楕円。</b>
+            <span class="keep">x軸まわりの回転体の輪郭は、±f(x) そのもの</span>なので、
+            立体の輪郭を計算する必要がなかった。<span class="care">ここを難しいと見積もっていたのが間違い</span></td></tr>
+      </tbody>
+    </table>
+    <p class="foot-note">
+      <b>結果として、絵のカタログは1枚も要らなくなった。</b>
+      D-8で「画像生成が効く場所」として残していた枠が、消えたことになる。
+      いま把握している範囲で作図で書けないのは、<b>D-12の「図そのものが答え」の場合だけ</b>で、
+      それは<span class="care">描画の問題ではなく、先輩が解けているかどうかの問題</span>。
+    </p>
+    <p class="foot-note">
+      <b>この5回のやりとりで、必要な語彙は3つしか増えなかった</b>
+      (2円の交点 / z座標と投影 / 楕円)。
+      <b>「過不足なく」は、最初に全部を数え上げることではなく、この足し方そのものだった</b>と思う —
+      実際の問題を10問なり20問なり作図してみて、詰まったところだけ足す。
+      <span class="keep">詰まった箇所は必ず具体的な語彙として出てくる</span>ので、
+      設計で先回りするより速い。
     </p>
   </div>
 
@@ -1914,10 +1990,99 @@
         '中点も対角線も断面も、<b>2次元のときと同じ語彙で続けられる</b>。',
       items: [
         { box3: 'K', size: [4, 2.4, 2.2], labels: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'] },
-        { seg: ['B', 'H'] },
+        { seg: ['B', 'H'], as: 'aux' },
         { pt: 'M', mid: ['F', 'G'] },
-        { seg: ['B', 'M'] }, { seg: ['C', 'M'] },
-        { poly: ['B', 'C', 'M'], fill: true }
+        { seg: ['B', 'M'], as: 'key' }, { seg: ['C', 'M'], as: 'key' },
+        { poly: ['B', 'C', 'M'], fill: true, as: 'key' }
+      ]
+    },
+    {
+      title: '2つの関数と、囲む面積',
+      note: '数II 定積分と面積 — 曲線を何本でも',
+      src: [
+        '{ axes: 3.2 }',
+        '{ curve: "f", fn: "x^2 - 2", domain: [-2.4, 2.4] }',
+        '{ curve: "g", fn: "x",       domain: [-2.4, 2.4], as: "b" }',
+        '{ pt: "P", meetCurves: ["f","g"], near: -1 }',
+        '{ pt: "Q", meetCurves: ["f","g"], near:  2 }',
+        '{ fill: { between: ["f","g"], from: "P", to: "Q" }, as: "key" }'
+      ],
+      cap: '<b>交点も、囲まれた面積も、指定していない。</b>2本の式から数値で解いた結果。' +
+        '<b>色は「役割」で書く</b> — 生の色ではないので、板の地に合わない色が来ない。',
+      items: [
+        { axes: 3.2, labels: ['x', 'y'] },
+        { curve: 'f', f: function (x) { return x * x - 2; }, domain: [-2.6, 2.6] },
+        { curve: 'g', f: function (x) { return x; }, domain: [-2.6, 2.6], as: 'b' },
+        { pt: 'P', meetCurves: ['f', 'g'], near: -1.5 },
+        { pt: 'Q', meetCurves: ['f', 'g'], near: 2.5 },
+        { fillBetween: ['g', 'f'], from: 'P', to: 'Q', as: 'key' }
+      ]
+    },
+    {
+      title: '回転体',
+      note: '数III 面積・体積 — 曲線と、その鏡像と、楕円',
+      src: [
+        '{ curve: "f", fn: "sqrt(x) + 0.6", domain: [0, 4] }',
+        '{ curve: "f", domain: [0,4], mirror: true }  ← x軸で折り返す',
+        '{ ellipse: "E1", center: "O0", rx: 0.34, ry: 0.6 }',
+        '{ ellipse: "E2", center: "O4", rx: 0.34, ry: 2.6, as: "key" }',
+        '{ seg: ["O0","O4"], as: "aux" }              ← 回転の軸'
+      ],
+      cap: '<b>回転体の輪郭は、曲線とその鏡像。</b>あとは端の切り口を楕円で置くだけ。' +
+        '<span style="color:#1f2126;font-weight:700">難しい立体の計算は要らなかった。</span>',
+      items: [
+        { pt: 'O0', at: [0, 0], hide: true }, { pt: 'O4', at: [4, 0], hide: true },
+        { curve: 'f', f: function (x) { return Math.sqrt(x) + 0.6; }, domain: [0, 4] },
+        { curve: 'f2', f: function (x) { return Math.sqrt(x) + 0.6; }, domain: [0, 4], mirror: true },
+        { seg: ['O0', 'O4'], as: 'aux' },
+        { ellipse: 'E1', center: 'O0', rx: 0.34, ry: 0.6 },
+        { ellipse: 'E2', center: 'O4', rx: 0.34, ry: 2.6, as: 'key' }
+      ]
+    },
+    {
+      title: '球の断面',
+      note: '数I 空間図形 — 円 + 楕円',
+      src: [
+        '{ pt: "O", at: [0,0] } { circle: "S", center: "O", r: 3 }',
+        '{ pt: "M", at: [0, 1.2] }',
+        '{ ellipse: "C", center: "M", rx: 2.75, ry: 0.62, as: "key" }',
+        '{ seg: ["O","M"], as: "aux" }   ← 中心から断面までの距離',
+        '{ pt: "R", at: [2.75, 1.2] } { seg: ["M","R"], as: "key" }',
+        '{ seg: ["O","R"], as: "b" }     ← 球の半径'
+      ],
+      cap: '<b>断面の円は、斜めから見れば楕円。</b>球も断面も、円と楕円の2つで足りる。' +
+        '色分けで<b>「半径」と「断面の半径」と「中心からの距離」</b>が一目で分かれる。',
+      items: [
+        { pt: 'O', at: [0, 0] }, { circle: 'S', center: 'O', r: 3 },
+        { pt: 'M', at: [0, 1.2] },
+        { seg: ['O', 'M'], as: 'aux' },
+        { pt: 'R', at: [2.75, 1.2] },
+        { seg: ['M', 'R'], as: 'key' },
+        { seg: ['O', 'R'], as: 'b' },
+        { ellipse: 'C', center: 'M', rx: 2.75, ry: 0.62, as: 'key' }
+      ]
+    },
+    {
+      title: '複素平面と極形式',
+      note: '数C — 2次元平面の言い換えだった',
+      src: [
+        '{ axes: 3, labels: ["実軸","虚軸"] }',
+        '{ pt: "O", at: [0,0] }',
+        '{ circle: "U", center: "O", r: 2.2, as: "aux" }',
+        '{ pt: "Z", on: "U", deg: 55 }      ← z = r(cosθ + i sinθ)',
+        '{ seg: ["O","Z"], as: "key" }      ← r',
+        '{ arc: ["X","O","Z"], label: "θ" }'
+      ],
+      cap: '<b>複素平面は、軸の名前が違うだけの2次元平面だった。</b>' +
+        '点・線分・円・角の印で、極形式がそのまま書ける。<b>新しい部品は1つも要らない。</b>',
+      items: [
+        { axes: 3, labels: ['実軸', '虚軸'] },
+        { pt: 'O', at: [0, 0], hide: true },
+        { circle: 'U', center: 'O', r: 2.2, as: 'aux' },
+        { pt: 'X', at: [2.2, 0], hide: true },
+        { pt: 'Z', on: 'U', deg: 55 },
+        { seg: ['O', 'Z'], as: 'key' },
+        { arc: ['X', 'O', 'Z'], label: 'θ' }
       ]
     }
   ];
@@ -1951,7 +2116,7 @@
 
   // --- 作図を解く(実装では figure_solver.dart になる部分) ---
   function solve(items) {
-    var pts = {}, circles = {}, lines = {}, draws = [];
+    var pts = {}, circles = {}, lines = {}, curves = {}, draws = [];
     function P(n) { return pts[n]; }
     // 直線の指定は「2点の名前」か「名前つき直線」のどちらでもよい
     function L(spec) {
@@ -1992,6 +2157,13 @@
       else if (it.centroid) {
         var g = it.centroid.map(P);
         p = { x: (g[0].x + g[1].x + g[2].x) / 3, y: (g[0].y + g[1].y + g[2].y) / 3 };
+      }
+      else if (it.meetCurves) {
+        // 2曲線の交点。**式を解かず、符号が変わる場所を数値で挟み込む。**
+        // 高次でも三角関数でも同じ手が使えるので、種類ごとの場合分けが要らない。
+        var ca = curves[it.meetCurves[0]], cb = curves[it.meetCurves[1]];
+        var xr = crossing(ca, cb, it.near);
+        if (xr !== null) p = { x: xr, y: ca.f(xr) };
       }
       else if (it.meet) { p = meet(L(it.meet[0]), L(it.meet[1])); }
       if (!p) return;
@@ -2047,10 +2219,30 @@
         lines[it.line] = { a: q, b: { x: q.x - dy, y: q.y + dx } };
       } else if (it.seg) {
         draws.push({
-          t: 'seg', a: P(it.seg[0]), b: P(it.seg[1]), dash: !!it.dash, label: it.label
+          t: 'seg', a: P(it.seg[0]), b: P(it.seg[1]), dash: !!it.dash,
+          label: it.label, as: it.as
         });
       } else if (it.poly) {
-        draws.push({ t: 'poly', ps: it.poly.map(P), fill: !!it.fill });
+        draws.push({ t: 'poly', ps: it.poly.map(P), fill: !!it.fill, as: it.as });
+      } else if (it.ellipse) {
+        // 楕円。**円を斜めから見た姿**そのもの。これ1つで球の断面も回転体も入る。
+        draws.push({
+          t: 'ellipse', c: P(it.center), rx: it.rx, ry: it.ry, as: it.as, dash: !!it.dash
+        });
+      } else if (it.axes) {
+        draws.push({ t: 'axes', span: it.axes, labels: it.labels });
+      } else if (it.curve) {
+        // 実装では既存の `plot_expression.dart` が `fn` の文字列を評価する。
+        // このページのデモでは、同じ式を JS の関数として渡している。
+        curves[it.curve] = { f: it.f, domain: it.domain };
+        draws.push({ t: 'curve', ps: sample(it.f, it.domain, it.mirror), as: it.as, dash: !!it.dash });
+      } else if (it.fillBetween) {
+        // 2曲線に挟まれた領域。**上下どちらが上かも判定しない** —
+        // 同じ x で2本を結んで閉じるので、そのまま塗れる。
+        var c1 = curves[it.fillBetween[0]], c2 = curves[it.fillBetween[1]];
+        var x0 = P(it.from).x, x1 = P(it.to).x;
+        var up = sample(c1.f, [x0, x1]), down = sample(c2.f, [x0, x1]).reverse();
+        draws.push({ t: 'poly', ps: up.concat(down), fill: true, as: it.as, open: true });
       } else if (it.arc) {
         draws.push({ t: 'arc', a: P(it.arc[0]), o: P(it.arc[1]), b: P(it.arc[2]), label: it.label });
       } else if (it.right) {
@@ -2077,7 +2269,15 @@
       if (d.t === 'circle') { xs.push(d.c.x - d.r, d.c.x + d.r); ys.push(d.c.y - d.r, d.c.y + d.r); }
       else if (d.t === 'pt') { xs.push(d.p.x); ys.push(d.p.y); }
       else if (d.t === 'seg') { xs.push(d.a.x, d.b.x); ys.push(d.a.y, d.b.y); }
-      else if (d.t === 'poly') { d.ps.forEach(function (p) { xs.push(p.x); ys.push(p.y); }); }
+      else if (d.t === 'poly' || d.t === 'curve') {
+        d.ps.forEach(function (p) { xs.push(p.x); ys.push(p.y); });
+      }
+      else if (d.t === 'ellipse') {
+        xs.push(d.c.x - d.rx, d.c.x + d.rx); ys.push(d.c.y - d.ry, d.c.y + d.ry);
+      }
+      else if (d.t === 'axes') {
+        xs.push(-d.span, d.span); ys.push(-d.span, d.span);
+      }
     });
     var minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
     var minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
@@ -2088,18 +2288,57 @@
     function Y(v) { return (oy - v * s).toFixed(1); }
 
     var CH = '#edeae0', DIM = '#a8ada4', out = '';
+    // 色チョークの役割。**生の色ではなく役割で書かせる**ので、板の地に合う色から外れない。
+    // `key` は太さも変える = 色だけに意味を乗せない。
+    var ROLE = {
+      main: { c: CH, w: 1.8 },
+      key: { c: '#f2d675', w: 2.6 },              // 黄。いま見てほしいところ
+      a: { c: '#f0a3ab', w: 2.2 },              // 赤。対応する組の片方
+      b: { c: '#9cc7e8', w: 2.2 },              // 青。もう片方
+      aux: { c: DIM, w: 1.3, dash: true }         // 補助線
+    };
+    function role(r) { return ROLE[r] || ROLE.main; }
+    // 塗りは同じ色の薄いもの。チョークで塗りつぶした面の見え方に寄せる。
+    function tint(c) {
+      return 'rgba(' + [1, 3, 5].map(function (i) { return parseInt(c.substr(i, 2), 16); })
+        .join(',') + ',.22)';
+    }
     draws.forEach(function (d) {
       if (d.t === 'circle') {
         out += '<circle cx="' + X(d.c.x) + '" cy="' + Y(d.c.y) + '" r="' + (d.r * s).toFixed(1) +
           '" fill="none" stroke="' + CH + '" stroke-width="1.8"/>';
       } else if (d.t === 'seg') {
+        var rs = role(d.as), dashed = d.dash || rs.dash;
         out += '<path d="M' + X(d.a.x) + ' ' + Y(d.a.y) + ' L' + X(d.b.x) + ' ' + Y(d.b.y) +
-          '" stroke="' + (d.dash ? DIM : CH) + '" stroke-width="1.8" fill="none"' +
-          (d.dash ? ' stroke-dasharray="5 4"' : '') + '/>';
+          '" stroke="' + (d.dash && !d.as ? DIM : rs.c) + '" stroke-width="' + rs.w + '" fill="none"' +
+          (dashed ? ' stroke-dasharray="5 4"' : '') + '/>';
       } else if (d.t === 'poly') {
+        var rp = role(d.as);
         out += '<path d="M' + d.ps.map(function (p) { return X(p.x) + ' ' + Y(p.y); }).join(' L') +
-          ' Z" fill="' + (d.fill ? 'rgba(237,234,224,.22)' : 'none') +
-          '" stroke="' + CH + '" stroke-width="1.8" stroke-linejoin="round"/>';
+          ' Z" fill="' + (d.fill ? tint(rp.c) : 'none') +
+          '" stroke="' + rp.c + '" stroke-width="' + rp.w + '" stroke-linejoin="round"/>';
+      } else if (d.t === 'curve') {
+        var rc = role(d.as);
+        out += '<path d="M' + d.ps.map(function (p) { return X(p.x) + ' ' + Y(p.y); }).join(' L') +
+          '" fill="none" stroke="' + rc.c + '" stroke-width="' + rc.w +
+          '" stroke-linecap="round" stroke-linejoin="round"' +
+          (d.dash ? ' stroke-dasharray="5 4"' : '') + '/>';
+      } else if (d.t === 'ellipse') {
+        var re = role(d.as);
+        out += '<ellipse cx="' + X(d.c.x) + '" cy="' + Y(d.c.y) + '" rx="' + (d.rx * s).toFixed(1) +
+          '" ry="' + (d.ry * s).toFixed(1) + '" fill="none" stroke="' + re.c +
+          '" stroke-width="' + re.w + '"' + (d.dash ? ' stroke-dasharray="5 4"' : '') + '/>';
+      } else if (d.t === 'axes') {
+        var L0 = d.span;
+        out += '<g stroke="' + DIM + '" stroke-width="1" opacity=".6">' +
+          '<path d="M' + X(-L0) + ' ' + Y(0) + ' H' + X(L0) + '"/>' +
+          '<path d="M' + X(0) + ' ' + Y(-L0) + ' V' + Y(L0) + '"/></g>';
+        if (d.labels) {
+          out += '<text x="' + X(L0) + '" y="' + (+Y(0) + 16).toFixed(1) + '" fill="' + DIM +
+            '" font-size="11" text-anchor="end">' + d.labels[0] + '</text>' +
+            '<text x="' + (+X(0) + 8).toFixed(1) + '" y="' + (+Y(L0) + 10).toFixed(1) +
+            '" fill="' + DIM + '" font-size="11">' + d.labels[1] + '</text>';
+        }
       } else if (d.t === 'right') {
         // 直角の印。2方向へ同じ長さだけ進んだ正方形。
         var m = 9;
@@ -2139,6 +2378,38 @@
         '" fill="' + DIM + '" font-size="11" text-anchor="middle">' + d.name + '</text>';
     });
     return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img">' + out + '</svg>';
+  }
+
+  // 曲線を点列にする。`mirror` は x 軸で折り返す(回転体の下側の輪郭)。
+  function sample(f, domain, mirror) {
+    var out = [];
+    for (var i = 0; i <= 96; i++) {
+      var x = domain[0] + (domain[1] - domain[0]) * i / 96, y = f(x);
+      if (isFinite(y)) out.push({ x: x, y: mirror ? -y : y });
+    }
+    return out;
+  }
+
+  // 2曲線の交点の x。定義域を走査して符号が変わる区間を見つけ、二分法で詰める。
+  // `near` に近いものを返す(交点が複数あっても、狙ったほうが取れる)。
+  function crossing(ca, cb, near) {
+    var lo = Math.max(ca.domain[0], cb.domain[0]), hi = Math.min(ca.domain[1], cb.domain[1]);
+    var h = function (x) { return ca.f(x) - cb.f(x); };
+    var best = null, N = 400, prev = h(lo), px = lo;
+    for (var i = 1; i <= N; i++) {
+      var x = lo + (hi - lo) * i / N, cur = h(x);
+      if (isFinite(prev) && isFinite(cur) && prev * cur <= 0) {
+        var a = px, b = x;
+        for (var k = 0; k < 60; k++) {
+          var m = (a + b) / 2;
+          if (h(a) * h(m) <= 0) b = m; else a = m;
+        }
+        var r = (a + b) / 2;
+        if (best === null || Math.abs(r - near) < Math.abs(best - near)) best = r;
+      }
+      prev = cur; px = x;
+    }
+    return best;
   }
 
   // 3D → 2D。**斜投影を1つに固定する**(黒板に描く立体の見え方はこれで足りる)。
