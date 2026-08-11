@@ -932,6 +932,124 @@ footer a {
   }
 }
 
+/* ------------------------------------------------------------------ *
+ * 規約・プライバシーポリシー
+ *
+ * 読み物ではなく**参照される文書**なので、LPの見出しの大きさは持ち込まない。
+ * 条番号で引かれるので、条のidに飛べるようにしてある。
+ * ------------------------------------------------------------------ */
+
+.legal {
+  max-width: 760px;
+  padding: 44px 20px 72px;
+  margin: 0 auto;
+}
+
+.legal h1 {
+  font-size: clamp(24px, 5vw, 31px);
+  margin-bottom: 10px;
+}
+
+.legal .updated {
+  font-size: 12.5px;
+  color: var(--ink-mut);
+  margin-bottom: 26px;
+}
+
+.legal h2 {
+  font-size: 17px;
+  margin: 34px 0 10px;
+  scroll-margin-top: 76px; /* sticky ヘッダの下に潜らせない */
+}
+
+.legal p,
+.legal li {
+  font-size: 14.5px;
+  line-height: 1.95;
+}
+
+.legal p + p {
+  margin-top: 12px;
+}
+
+.legal ol,
+.legal ul {
+  margin: 10px 0 0;
+  padding-left: 1.5em;
+}
+
+.legal li + li {
+  margin-top: 7px;
+}
+
+.legal table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 14px;
+  font-size: 14px;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--r-card);
+  overflow: hidden;
+}
+
+.legal th,
+.legal td {
+  text-align: left;
+  padding: 11px 15px;
+  border-top: 1.5px solid var(--border);
+  vertical-align: top;
+}
+
+.legal tr:first-child th,
+.legal tr:first-child td {
+  border-top: 0;
+}
+
+.legal thead th {
+  background: var(--bg);
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+/* 「まだ雛形である」ことを、読み飛ばせない場所に出す。
+   本番の文面に差し替えるときは、このブロックごと消すこと。 */
+.legal-draft {
+  border: 2px solid var(--hole);
+  border-radius: var(--r-card);
+  background: #fff5f8;
+  padding: 15px 18px;
+  margin-bottom: 30px;
+}
+
+.legal-draft b {
+  color: #c93b6a;
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 900;
+}
+
+.legal-draft p {
+  font-size: 13.5px;
+  line-height: 1.8;
+}
+
+/* 埋めていない値。プレースホルダのまま公開されたことに気づけるようにする。 */
+.fill {
+  background: var(--said);
+  border-radius: 4px;
+  padding: 0 5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.legal-back {
+  display: inline-block;
+  margin-top: 40px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
 /* 端末の「アニメーションを減らす」を必ず通す(ADR 0004)。
    アプリ側が守っている約束を、入口のページで破らない。 */
 @media (prefers-reduced-motion: reduce) {
