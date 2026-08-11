@@ -2,6 +2,7 @@ import type { BoardStep } from "@ai-sensei/contract";
 import { describe, expect, it } from "vitest";
 import { readSessionContext } from "./context.ts";
 import {
+  reviewOpening,
   senpaiBoardLessonPrompt,
   startsWithBoardLesson,
   teachBackFallback,
@@ -41,7 +42,26 @@ const reviewContext = readSessionContext(
   }),
 );
 const reviewHole = reviewContext.review_hole;
-if (reviewHole === null) throw new Error("復習テストの文脈に review_hole がありません");
+if (reviewHole == null) throw new Error("復習テストの文脈に review_hole がありません");
+
+// 追加前のAPIは null ではなく、キーそのものを送らない。
+// `sessionMetadataJson` は実際のAPIと同じJSON化で undefined のキーを省く。
+const legacyReviewContext = readSessionContext(
+  sessionMetadataJson({
+    session_id: "ses_legacy_review",
+    locale: "ja",
+    kind: "review",
+    max_seconds: 1200,
+    photo_summary: "前回、平方完成が頂点を表す理由で説明が止まった",
+    problem_text: "(問題の写真なし)",
+    visible_work: "(なし)",
+    question_seeds: "- 平方完成が頂点を表す理由で説明が止まった",
+    allowed_topics: "- M1-NIJI-GURAFU",
+    allowed_topic_ids: ["M1-NIJI-GURAFU"],
+    is_premium: true,
+    review_hole: undefined,
+  }),
+);
 
 function step(speech: string): BoardStep {
   return {
@@ -52,6 +72,12 @@ function step(speech: string): BoardStep {
 }
 
 describe("復習から板書授業への接続", () => {
+  it("古いAPIの欄なしreviewを読み、板書なしの聞き直し会話へ落とす", () => {
+    expect(legacyReviewContext.review_hole).toBeUndefined();
+    expect(startsWithBoardLesson(legacyReviewContext)).toBe(false);
+    expect(reviewOpening(legacyReviewContext.locale)).toContain("もう一回説明してみて");
+  });
+
   it("review を冒頭から板書へ送り、写真の代わりに対象穴を根拠にする", () => {
     expect(startsWithBoardLesson(reviewContext)).toBe(true);
 

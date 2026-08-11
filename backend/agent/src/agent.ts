@@ -24,6 +24,7 @@ import { JobLogger } from "./log.ts";
 import {
   lessonFailedPrompt,
   openingFiller,
+  reviewOpening,
   senpaiBoardLessonPrompt,
   senpaiConversationPrompt,
   startsWithBoardLesson,
@@ -97,10 +98,11 @@ export default defineAgent({
 
     log = log.child({ session_id: context.session_id });
 
-    // 復習も板書授業から始める。`review` は小テストで「まだ」→「先輩に聞く」を
+    // 穴が届いた復習も板書授業から始める。`review` は小テストで「まだ」→「先輩に聞く」を
     // 選んだ**あと**のセッションなので、前回の穴をもう一度聞くだけの会話へ戻すと、
     // §2 の「詰まったら授業モードへ」がここで途切れる。写真の代わりに何を根拠に
     // 教えるかは `senpaiBoardLessonPrompt()` が review_hole から組み立てる。
+    // 欄が無い復習は、古いAPIと共存する窓なので従来の会話へ安全に縮退する。
     const lessonMode = startsWithBoardLesson(context);
 
     const collector = new TranscriptCollector(startedAt, context);
@@ -200,6 +202,12 @@ export default defineAgent({
         signal: interrupt.signal,
         log,
       });
+    } else {
+      // 新しいagentを先に出した窓では、古いAPIの復習metadataに review_hole が無い。
+      // 根拠なしの板書を作らず従来の聞き直し会話へ落とし、窓が閉じないまま運用が
+      // 続いても気づけるよう縮退を必ず記録する。
+      log.warn("review_hole_missing", { kind: context.kind });
+      session.say(reviewOpening(context.locale));
     }
 
     const endedReason = await ended;

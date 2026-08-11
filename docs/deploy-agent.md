@@ -147,6 +147,20 @@ develop用のIDが乗ったまま `main` で deploy すると、本番のつも�
 
 ### 2-3. 2回目以降
 
+**LiveKit metadata の契約を変えるリリースは、必ず agent を先にデプロイし、稼働を
+確認してから `backend/api` をデプロイする。** APIとagentは別々に更新されるため、
+同じコミットでも2つのデプロイの間には新旧が混在する窓がある。たとえば
+`review_hole` を追加したAPIを先に出すと、古いagentの `sessionMetadataSchema` は
+`.strict()` なので未知のキーを拒否し、`context_unreadable` で切断する。新規授業にも
+`review_hole: null` が載るため、この窓では復習だけでなく**全セッションで先輩が来ない**。
+
+agentを先に出した場合、新しいagentは古いAPIが `review_hole` を省略したmetadataも読める。
+その窓の復習だけは `review_hole_missing` を記録して従来の板書なし会話へ縮退し、APIの
+デプロイ後は自然に板書つきへ戻る。`lk agent status` で新しいレプリカの稼働を確認してから、
+API側のデプロイを開始すること。2つのGitHub Actionsには依存関係がなく、同じpushで
+起動しても順序は保証されない。契約変更時はこの節のCLIで対象コミットのagentを先に出すか、
+リリースを2段に分け、稼働確認前にAPIのデプロイを開始してはいけない。
+
 ```bash
 cd <リポジトリのルート>
 lk agent deploy --id <agent-id>

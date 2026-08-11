@@ -55,6 +55,20 @@ const LESSON_FAILED_PROMPT: Record<CurriculumLocale, string> = {
   en: "Sorry — the board didn't come up. Let's just talk it through. How far did you get?",
 };
 
+/**
+ * 復習セッションの最初の一言。板書は出さず、前回の穴から聞き直す。
+ *
+ * 通常の復習は `review_hole` から板書を始める。これは新しいagentを先に出した
+ * デプロイの窓で、古いAPIが欄を送らなかったときだけ使う互換フォールバック。
+ *
+ * **「覚えてる?」と聞かない。**それは `senpai_conversation.*.md` が禁じている
+ * 申告させる聞き方そのもので、「うん」で返せてしまう。言わせて判定する。
+ */
+const REVIEW_OPENING: Record<CurriculumLocale, string> = {
+  ja: "この前つまずいたとこ、もう一回説明してみて。",
+  en: "Let's take another run at the bit you got stuck on — explain it to me.",
+};
+
 /** 復習には「この問題」が存在しないので、板書失敗時も穴を起点に立て直す。 */
 const REVIEW_LESSON_FAILED_PROMPT: Record<CurriculumLocale, string> = {
   ja: "ごめん、板書がうまく出せなかった。口でやろっか。前に止まったところ、何が引っかかる?",
@@ -104,6 +118,10 @@ export function lessonFailedPrompt(
   return kind === "review" ? REVIEW_LESSON_FAILED_PROMPT[locale] : LESSON_FAILED_PROMPT[locale];
 }
 
+export function reviewOpening(locale: CurriculumLocale): string {
+  return REVIEW_OPENING[locale];
+}
+
 export function handsTurnToStudent(speech: string, locale: CurriculumLocale): boolean {
   const normalized = speech.trim();
   if (normalized.length === 0) return false;
@@ -116,12 +134,14 @@ export function handsTurnToStudent(speech: string, locale: CurriculumLocale): bo
  * `review` はすでに小テストで「まだ」→「先輩に聞く」を選んだあとに作られる。
  * ここでもう一度説明だけを求めると、§2 の「詰まったら授業モードへ」を1段戻し、
  * 生徒は**教えてもらうために同じ詰まりを二度見せる**ことになる。したがって
- * 現在の2種類はどちらも板書から始める。関数にしておくのは、将来「自習室」のような
- * 音声も板書も開かない kind が増えたとき、`kind !== review` のような否定条件へ
- * 逆戻りさせず、開始動作を種類ごとに明示するため。
+ * 通常の2種類はどちらも板書から始める。ただし、新しいagentを先に出した
+ * ローリングデプロイの窓では、古いAPIが `review_hole` を送らない。その復習だけは
+ * 根拠なしで板書を作らず、従来の聞き直し会話へ縮退する。
  */
-export function startsWithBoardLesson(context: Pick<SessionContext, "kind">): boolean {
-  return context.kind === "new" || context.kind === "review";
+export function startsWithBoardLesson(
+  context: Pick<SessionContext, "kind" | "review_hole">,
+): boolean {
+  return context.kind === "new" || context.review_hole != null;
 }
 
 /**
@@ -134,7 +154,7 @@ export function startsWithBoardLesson(context: Pick<SessionContext, "kind">): bo
  * ダミー文言を増やさない。
  */
 export function renderReviewBoardContext(context: SessionContext): string {
-  return context.review_hole === null ? "null" : JSON.stringify(context.review_hole, null, 2);
+  return context.review_hole == null ? "null" : JSON.stringify(context.review_hole, null, 2);
 }
 
 export type SenpaiBoardLessonInput = {

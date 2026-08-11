@@ -103,8 +103,7 @@
         "question_seeds",
         "allowed_topics",
         "allowed_topic_ids",
-        "is_premium",
-        "review_hole"
+        "is_premium"
       ],
       "additionalProperties": false
     }

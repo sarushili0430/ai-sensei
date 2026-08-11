@@ -533,10 +533,10 @@ describe("APIスキーマ", () => {
   });
 
   /**
-   * 写真の問題と復習の穴は別の根拠。kind と食い違ったまま通すと、agent は
-   * 写真なしを新規授業として聞き返すか、新しい問題に前回の穴を混ぜてしまう。
+   * 写真の問題と復習の穴は別の根拠。新規授業に穴を混ぜるのは弾く一方、
+   * 新しいagentを先に出す窓では、古いAPIが作る欄なしの復習も読めなければならない。
    */
-  it("session metadata は review のときだけ対象穴を要求する", () => {
+  it("session metadata は欄のない旧reviewを読み、新規授業への穴の混入を弾く", () => {
     const metadata = loadFixture("session-metadata") as Record<string, unknown>;
     const reviewHole = {
       topic_id: "M1-NIJI-GURAFU",
@@ -545,9 +545,17 @@ describe("APIスキーマ", () => {
     };
 
     expect(sessionMetadataSchema.safeParse(metadata).success).toBe(true);
+    const legacyReviewMetadata = JSON.parse(
+      JSON.stringify({ ...metadata, kind: "review", review_hole: undefined }),
+    ) as Record<string, unknown>;
+    expect("review_hole" in legacyReviewMetadata).toBe(false);
+    expect(
+      sessionMetadataSchema.safeParse(legacyReviewMetadata).success,
+      "古いAPIは review_hole というキー自体を送らない",
+    ).toBe(true);
     expect(
       sessionMetadataSchema.safeParse({ ...metadata, kind: "review", review_hole: null }).success,
-    ).toBe(false);
+    ).toBe(true);
     expect(
       sessionMetadataSchema.safeParse({ ...metadata, kind: "review", review_hole: reviewHole })
         .success,

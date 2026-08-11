@@ -84,9 +84,11 @@ describe("readSessionContext", () => {
   });
 
   // fixtureに欄が増えたときも自動で検査対象になる。agent側でdefaultを足すと、
-  // その欄を消したケースが通って契約ドリフトを再び隠すため、全欄を1つずつ削る。
-  it("共有契約の必須項目をagent側で補わない", () => {
+  // その欄を消したケースが通って契約ドリフトを再び隠すため、必須欄を1つずつ削る。
+  // review_holeだけは、古いAPIと共存するデプロイの窓のため意図的に省略可能。
+  it("review_hole以外の共有契約の必須項目をagent側で補わない", () => {
     for (const field of Object.keys(sessionMetadataFixture) as (keyof SessionMetadata)[]) {
+      if (field === "review_hole") continue;
       expect(() => readSessionContext(withoutField(field)), field).toThrow(
         InvalidSessionContextError,
       );

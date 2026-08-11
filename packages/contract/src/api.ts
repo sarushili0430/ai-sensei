@@ -293,7 +293,7 @@ export const sessionMetadataSchema = z
     allowed_topic_ids: z.array(topicIdSchema),
     is_premium: z.boolean(),
     /**
-     * 復習で**今回教え直す穴だけ**。新規授業では `null`。
+     * 復習で**今回教え直す穴だけ**。新しいAPIは復習で1件、新規授業で `null` を送る。
      *
      * `problem_text` に穴の説明を詰める案は採らない。復習には問題の写真が無く、
      * 問題文を装うと `senpai_board.*.md` の「写っていない問題を作らない」という
@@ -304,6 +304,10 @@ export const sessionMetadataSchema = z
      * `topic_id` は主題を示し、実際に触れてよい前提範囲は従来どおり
      * `allowed_topic_ids` が担う。中身の照合をここへ持ち込まないのは、contract は
      * 構造と上限、照合は guardrail という依存方向を守るため。
+     *
+     * **欄そのものはローリングデプロイのため省略可能。** APIとagentは別々に
+     * デプロイされるので、新しいagentが先に出た窓では古いAPIのmetadataにこの欄が無い。
+     * `undefined` も読めるようにし、agent側で従来の板書なし会話へ縮退させる。
      */
     review_hole: z
       .object({
@@ -312,11 +316,12 @@ export const sessionMetadataSchema = z
         evidence: z.string().max(500).nullable(),
       })
       .strict()
-      .nullable(),
+      .nullable()
+      .optional(),
   })
   .strict()
-  .refine((metadata) => (metadata.kind === "review") === (metadata.review_hole !== null), {
-    message: "review のときだけ review_hole を入れてください",
+  .refine((metadata) => metadata.kind === "review" || metadata.review_hole == null, {
+    message: "review でないときは review_hole を入れないでください",
     path: ["review_hole"],
   });
 export type SessionMetadata = z.infer<typeof sessionMetadataSchema>;

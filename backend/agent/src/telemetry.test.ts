@@ -25,6 +25,7 @@ describe("isDegradation", () => {
     expect(isDegradation("board_append_failed")).toBe(true);
     expect(isDegradation("board_step_rejected")).toBe(true);
     expect(isDegradation("lesson_empty")).toBe(true);
+    expect(isDegradation("review_hole_missing")).toBe(true);
   });
 
   /**

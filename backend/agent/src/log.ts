@@ -11,6 +11,7 @@
  * | `job_started`                | ジョブを受け取った(= ディスパッチは届いている) |
  * | `context_unreadable`         | 文脈が読めない。会話せずに切る |
  * | `conversation_started`       | セッションが立ち上がった(授業の**前**) |
+ * | `review_hole_missing`        | 古いAPIの復習。板書なし会話へ縮退する |
  * | `lesson_interrupted_by_user` | 授業中に生徒が喋った。板書の生成を止めて会話へ |
  * | `lesson_finished`            | 授業1回ぶんが終わった(手順数・締め方・検証落ちの数) |
  * | `lesson_empty`               | 板書が1行も出せなかった。**8/16のゲートを見る指標** |
