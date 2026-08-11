@@ -154,7 +154,20 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
 
     final XFile? picked;
     try {
-      picked = await ImagePicker().pickImage(source: source, imageQuality: 85);
+      picked = await ImagePicker().pickImage(
+        source: source,
+        imageQuality: 85,
+        // **長辺に上限を置く。** カメラは端末の撮影解像度で頭打ちになるが、
+        // アルバムには他のアプリで撮った48MPの1枚やパノラマも入っている。
+        // 解析は画像をそのままVision APIへ渡すので、大きすぎる1枚は
+        // サイズの上限に当たり、**「サーバのエラー」としてしか見えない形**で落ちる。
+        //
+        // 2400にしているのは、モデルが内部で縮める大きさ(長辺1568px)より
+        // 十分に上で、それでいて12MPの写真の数分の1に収まるため。
+        // **読み取りの精度は落ちない**(縮めるのはモデル側でも同じ)。
+        maxWidth: 2400,
+        maxHeight: 2400,
+      );
     } on PlatformException catch (error, stack) {
       // ここで拾わないと、受け取り手がいないまま未処理例外になり、
       // 撮影画面ごと落ちる。
@@ -515,8 +528,14 @@ class _PhotoSlot extends StatelessWidget {
                                   color: AppColors.inkMuted,
                                 ),
                               )
-                            // 撮ったものが判別できればよいので、拡大せず全体を入れる。
-                            : Image.file(file, fit: BoxFit.cover),
+                            // **切り取らない。** この枠は飾りではなく、
+                            // 「これで合っている?」を解析の前に確かめる場所
+                            // (ぶれ・見切れに気づけないまま今日の1回が消えるのを
+                            // 止めるために置いた)。`cover` は端を落とすので、
+                            // **紙面が切れていることがいちばん出る場所が隠れる。**
+                            // アルバムから選べるようになって、横長の写真や
+                            // 長いスクリーンショットも入ってくる。
+                            : Image.file(file, fit: BoxFit.contain),
                       ),
                     ),
                   ),
