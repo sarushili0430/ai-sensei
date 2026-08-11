@@ -21,7 +21,7 @@ apps/lp/
 | 用途 | 使う場所 |
 | --- | --- |
 | マーケティングURL | App Store Connect(任意) |
-| サポートURL | App Store Connect(**必須**。いまは GitHub Issues を窓口にしている) |
+| サポートURL | App Store Connect / Google Play Console(**必須**。いまは GitHub Issues を窓口にしている) |
 | 提出資料からの導線 | Shipaton / Devpost / #BuildInPublic の投稿 |
 
 ## 作りの前提
@@ -93,8 +93,11 @@ GitHub App からpushできないため)。
 **無いものへのリンクは置かない**方針なので、値が決まるまでページには出していません。
 
 - [ ] 公開ドメイン → `<link rel="alternate" hreflang>` と `og:url` を絶対URLに直す(いまは相対)
-- [ ] `PRIVACY_POLICY_URL` / `TERMS_URL` → フッタに追加(HTMLにコメントで場所を書いてあります)
+- [ ] `PRIVACY_POLICY_URL` / `TERMS_URL` → フッタに追加(HTMLにコメントで場所を書いてあります)。
+      **Google Play はプライバシーポリシーのURLが必須**なので、iOS だけのつもりで後回しにしないこと
 - [ ] `SUPPORT_EMAIL` → フッタの問い合わせ先に追加(いまは GitHub Issues のみ)
 - [ ] `public/404.html` → 足したら `wrangler.jsonc` の `not_found_handling` を `"404-page"` に
-- [ ] App Store の配信開始 → ヒーローと締めの「App Store で配信予定」を実際のバッジとリンクに差し替え
+- [ ] 配信開始 → ヒーローと締めの「App Store / Google Play で配信予定」を実際のバッジとリンクに差し替え。
+      iOS が先に出るので、**片方だけ出た状態**(App Storeのリンク + Google Playは「配信予定」)を
+      一度は通ることになる。両方まとめて差し替えないこと
 - [ ] OGP画像(`og:image`)。1200×630。`apps/mobile/tool/` と同じく**コードから生成する**こと
