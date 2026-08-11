@@ -188,6 +188,8 @@
   .demo-card pre{margin:0;padding:10px 12px;background:var(--fill);font-size:10.5px;line-height:1.55;
     overflow-x:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
   .demo-card pre b{color:var(--ux);font-weight:700}
+  .demo-card .speech{margin:0;padding:9px 12px;font-size:12px;line-height:1.5;
+    background:var(--fill);border-bottom:1px solid var(--wire);color:var(--ink)}
   .demo-card .cap{padding:9px 12px;font-size:11.5px;line-height:1.5;color:var(--mut)}
   .demo-card .cap b{color:var(--ink)}
   pre.schema{background:var(--fill);border-radius:8px;padding:14px 16px;font-size:11.5px;
@@ -1731,6 +1733,67 @@
     </p>
   </div>
 
+  <!-- ---- D-13b 既存のもの ---- -->
+  <div class="panel">
+    <h2>D-13b. これ、既にあるのでは — ある。GeoGebra を再発明していた</h2>
+    <p class="lede">
+      ここまで組み立ててきた「点を関係で置き、位置は解かせる」という書き方は、
+      <b>幾何作図ソフトがずっと前からやっていること</b>。ゼロから考える必要はなかった。
+    </p>
+    <table>
+      <thead><tr><th style="width:16%">もの</th><th style="width:26%">できること</th><th>この用途で使えるか</th></tr></thead>
+      <tbody>
+        <tr><td><b>GeoGebra</b></td>
+          <td><code>Intersect</code> / <code>Midpoint</code> / <code>Perpendicular</code> /
+            <code>Tangent</code> / 媒介変数 / 3D まで、<b>今回出てきたものが全部ある</b></td>
+          <td><span class="care">アプリに載せるのは重い</span>(WebView・オフライン・340ptの幅・
+            読み上げ・チョーク表現)。<b>商用利用のライセンスは要確認</b>。
+            ただし<span class="keep">語彙は最良の手本</span></td></tr>
+        <tr><td><b>JSXGraph</b></td>
+          <td>ほぼ同じ作図モデル。JS・軽い</td>
+          <td>ライセンスが緩い(要確認)。<b>サーバ側でSVGを作って送る</b>なら現実的</td></tr>
+        <tr><td><b>TikZ / tkz-euclide</b></td>
+          <td>印刷の数学図の標準。作図コマンドが揃っている</td>
+          <td><span class="care">LaTeXの処理系が要る</span>ので、1手順ずつ流す作りには重い</td></tr>
+        <tr><td>Asymptote / Manim</td><td>3D・アニメーション</td>
+          <td>用途が違う(動画・出版)。<span class="care">今回は不要</span></td></tr>
+        <tr><td>Dart のライブラリ</td><td>—</td>
+          <td><span class="care">作図ソフトに当たるものは無い</span>。図表ライブラリ(<code>fl_chart</code> 等)は
+            グラフ用で、幾何の作図はできない</td></tr>
+      </tbody>
+    </table>
+    <p class="foot-note" style="margin-bottom:14px">
+      <b>いちばん大きい発見は、ライブラリそのものより「語彙」のほう。</b>
+      <span class="keep">LLMは GeoGebra の書き方を大量に見ている</span>ので、
+      <code>Intersect(AD, BE)</code> のような<b>既にある書き方</b>のほうが、
+      こちらが考えた独自のJSONより<b>正しく書ける見込みが高い</b>。
+      <span class="care">独自の語彙は、それだけで精度を下げる。</span>
+    </p>
+    <div class="opts">
+      <div class="opt pick">
+        <h3><span class="tag new">案</span>語彙は借りる、実行は自前</h3>
+        <p class="why">
+          コマンド名と引数の形を<b>GeoGebra に寄せる</b>。解くのは Dart 側で自前
+          (今回試した範囲なら30コマンドで足りる)。
+        </p>
+        <div class="mini"><p class="small" style="color:var(--ink)">
+          WebViewもLaTeX処理系も要らず、<b>340ptの幅・チョークの色・1手順ずつの表示・読み上げ</b>を
+          こちらで握れる。<span class="keep">LLM側の精度は本家の語彙で稼ぐ。</span>
+        </p></div>
+      </div>
+      <div class="opt pick">
+        <h3><span class="tag new">効く</span>本家を「答え合わせ」に使う</h3>
+        <p class="why">
+          同じ作図を GeoGebra / JSXGraph にも描かせて、<b>座標を突き合わせる</b>。
+        </p>
+        <div class="mini"><p class="small" style="color:var(--ink)">
+          「うちの実装が正しいか」を<b>人の目ではなく機械で確かめられる</b>。
+          <span class="keep">1つ前の節の「心配、どう測るか」への答えがこれ。</span>
+        </p></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ---- D-14 色分け ---- -->
   <div class="panel">
     <h2>D-14. 線の色分け — 生の色ではなく「役割」で書かせる</h2>
@@ -1803,6 +1866,74 @@
       実際の問題を10問なり20問なり作図してみて、詰まったところだけ足す。
       <span class="keep">詰まった箇所は必ず具体的な語彙として出てくる</span>ので、
       設計で先回りするより速い。
+    </p>
+  </div>
+
+  <!-- ---- D-16 図で説明する ---- -->
+  <div class="panel">
+    <h2>D-16. 図は「積む」のではなく「育てる」</h2>
+    <p class="lede">
+      説明しながら図を描き足していくのが授業なので、<b>図を1手順=1行として積むと成立しない</b>。
+      同じ図が5枚並ぶだけで、狭い板書がすぐ埋まる。
+      <b>図だけは、前の行に描き足す。</b>(上のデモ「図が育つ ①②③」)
+    </p>
+    <table>
+      <thead><tr><th style="width:24%">項目</th><th>どうするか</th></tr></thead>
+      <tbody>
+        <tr><td><b>契約</b></td>
+          <td><code>{ kind:"figure", extends:&lt;前の図&gt;, add:[...] }</code>。
+            <span class="keep">作図の手順は、そもそも足していく形</span>なので素直に乗る。
+            板書の原則「前の行は消さない」とも衝突しない — <b>消すのではなく、育つ</b></td></tr>
+        <tr><td><b>アニメーション</b></td>
+          <td><code>BoardReveal</code>(左→右のワイプ・420ms)を<b>足した部分にだけ</b>かける。
+            <span class="keep">「いま何を描き足したか」が動きで分かる</span></td></tr>
+        <tr><td><b>いつ図を出すか</b></td>
+          <td><b>位置関係が出てきたら、まず図を出してから話す</b>(話してから描くと、生徒は聞きながら想像させられる)。
+            <b>補助線は必ず図に足す</b> —「BからADに垂線を下ろす」と言葉だけで言わない</td></tr>
+        <tr><td><b>いつ出さないか</b></td>
+          <td>計算の途中・式変形。<span class="care">図が主役でない手順に図を出すと、育った図が流れて消える</span></td></tr>
+        <tr><td><b>教え返しのとき</b></td>
+          <td><b>図を残したまま聞く。</b>色を <code>key</code> に切り替えて
+            「ここ、どう出す?」と指す。<span class="keep">生徒は図を見ながら説明できる</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ---- D-17 心配は当たっている ---- -->
+  <div class="panel">
+    <h2>D-17. 「大丈夫か」— 当たっている。実際この会話で2回間違えた</h2>
+    <p class="lede">
+      複雑な問題ほど図を描けと言われるのに大丈夫か、という心配は正しい。
+      <b>根拠は、私がこの会話の中で2回間違えたこと。</b>
+    </p>
+    <table>
+      <thead><tr><th style="width:22%">間違い</th><th style="width:30%">何が起きたか</th><th>なぜ起きたか</th></tr></thead>
+      <tbody>
+        <tr><td><b>回転体の楕円</b></td>
+          <td>両端の <code>rx</code> を同じ値にしたので、
+            <span class="care">同じ角度から見た円のつぶれ方が4.3倍ちがう図</span>になった</td>
+          <td><b><code>rx</code> を手で置ける値のまま残していた。</b>
+            <span class="care">これは、私がずっと「危ない」と言ってきた失敗そのもの</span> —
+            一貫していなければならない量を、書く側に書かせた</td></tr>
+        <tr><td><b>空間図形は無理</b></td>
+          <td>2回「作図では届かない」と書いたが、<b>やってみたら通った</b></td>
+          <td>試さずに難しさを見積もった。<span class="care">回転体も「輪郭の計算が要る」と思っていたが、
+            x軸まわりなら ±f(x) そのものだった</span></td></tr>
+      </tbody>
+    </table>
+    <p class="lede" style="margin-top:20px">
+      <b>直し方は2つとも同じだった:「手で置ける値を残さない」。</b>
+      <code>rx</code> は半径から出す。切り口は端点の半径から出す(半径0なら<b>勝手に消える</b> — 250番がそれ)。
+      <span class="keep">一貫していなければならない量が、書く側から見えなくなれば、間違えようがない</span>。
+    </p>
+    <p class="foot-note">
+      <b>そして「大丈夫か」は、議論では決まらない。</b>ここまでの判断は全部、
+      問題を1問もらうたびにひっくり返ってきた。<b>測り方を先に決めるべきだった。</b>
+      <b>①</b> 図つきの過去問を30〜50問集める。
+      <b>②</b> 先輩に作図を書かせる。
+      <b>③</b> <span class="keep">GeoGebra / JSXGraph にも同じ作図を渡して座標を突き合わせる</span>(D-13b)。
+      <b>④</b> 構造(点の数・どの線分上にどの点があるか・直角の位置)が原図と一致するかを機械で照合する。
+      <span class="care">これをやるまでは、私の「できます」は当てにしないでほしい。</span>
     </p>
   </div>
 
@@ -2023,20 +2154,122 @@
       note: '数III 面積・体積 — 曲線と、その鏡像と、楕円',
       src: [
         '{ curve: "f", fn: "sqrt(x) + 0.6", domain: [0, 4] }',
-        '{ curve: "f", domain: [0,4], mirror: true }  ← x軸で折り返す',
-        '{ ellipse: "E1", center: "O0", rx: 0.34, ry: 0.6 }',
-        '{ ellipse: "E2", center: "O4", rx: 0.34, ry: 2.6, as: "key" }',
-        '{ seg: ["O0","O4"], as: "aux" }              ← 回転の軸'
+        '{ revolve: "f", around: "x", from: 0, to: 4, capAs: "key" }',
+        '',
+        '← 鏡像も・回転の軸も・両端の切り口も、これ1行から作る。',
+        '  楕円の潰れ方(rx)は半径に比例させる。**手で置かない**'
       ],
-      cap: '<b>回転体の輪郭は、曲線とその鏡像。</b>あとは端の切り口を楕円で置くだけ。' +
-        '<span style="color:#1f2126;font-weight:700">難しい立体の計算は要らなかった。</span>',
+      cap: '<b>最初は楕円を手で2つ置いていて、間違えた。</b>' +
+        '同じ角度から見た円なのに <code>rx</code> を両端で同じ値にしたので、' +
+        '<span style="color:#c2402a;font-weight:700">つぶれ方が4.3倍ちがう図</span>になっていた。' +
+        '<b>「手で置ける値」を残すと、書く側が必ず間違える。</b>',
       items: [
-        { pt: 'O0', at: [0, 0], hide: true }, { pt: 'O4', at: [4, 0], hide: true },
-        { curve: 'f', f: function (x) { return Math.sqrt(x) + 0.6; }, domain: [0, 4] },
-        { curve: 'f2', f: function (x) { return Math.sqrt(x) + 0.6; }, domain: [0, 4], mirror: true },
-        { seg: ['O0', 'O4'], as: 'aux' },
-        { ellipse: 'E1', center: 'O0', rx: 0.34, ry: 0.6 },
-        { ellipse: 'E2', center: 'O4', rx: 0.34, ry: 2.6, as: 'key' }
+        { curve: 'f', f: function (x) { return Math.sqrt(x) + 0.6; }, domain: [0, 4], hidden: true },
+        { revolve: 'f', around: { y: 0 }, capAs: 'key' }
+      ]
+    },
+    {
+      title: '250 — y = sin x を x 軸で回す',
+      note: '両端の半径が0。切り口は出ない',
+      src: [
+        '{ curve: "f", fn: "sin(x)", domain: [0, pi], hidden: true }',
+        '{ revolve: "f", around: { y: 0 } }'
+      ],
+      cap: '<b>端の半径が0なので、切り口の楕円は出ない。</b>' +
+        '「両端に楕円を置く」と決め打っていたら、ここで嘘の図になっていた。' +
+        '<b>半径から出しているので、勝手に消える。</b>',
+      items: [
+        { curve: 'f', f: Math.sin, domain: [0, Math.PI], hidden: true },
+        { revolve: 'f', around: { y: 0 } }
+      ]
+    },
+    {
+      title: '253 — 直線 x = e のまわりで回す',
+      note: '回転軸が座標軸でない',
+      src: [
+        '{ curve: "g", of: "y", fn: "exp(y)", domain: [0, 1], hidden: true }',
+        '{ revolve: "g", around: { x: 2.718 }, capAs: "key" }',
+        '',
+        '← x = g(y) の形。縦線のまわりの回転は、こちらでないと書けない'
+      ],
+      cap: '<b>回転軸が x 軸でも y 軸でもない。</b>「軸で折り返す」を' +
+        '<b>軸の指定つき</b>にしてあれば、そのまま通る。切り口は下側だけに出る(上端は半径0)。',
+      items: [
+        { curve: 'g', of: 'y', f: Math.exp, domain: [0, 1], hidden: true },
+        { revolve: 'g', around: { x: Math.E }, capAs: 'key' }
+      ]
+    },
+    {
+      title: 'サイクロイド(媒介変数)',
+      note: '豊橋技科大 — y = f(x) では書けない',
+      src: [
+        '{ curve: "C", px: "t - sin(t)", py: "1 - cos(t)",',
+        '  domain: [0, 2*pi] }',
+        '{ axes: [-0.7, 6.9, -0.7, 2.7], labels: ["x","y"] }',
+        '{ fillUnder: "C", as: "key" }   ← x軸との間'
+      ],
+      cap: '<b>媒介変数を基本形にしたので、そのまま入った。</b>' +
+        'y = f(x) だけを持っていたら、サイクロイドも楕円も双曲線も書けない。' +
+        '<span style="color:#1c7a4a;font-weight:700">1つの形に揃えたぶん、部品はむしろ減った。</span>',
+      items: [
+        { axes: [-0.7, 6.9, -0.7, 2.7], labels: ['x', 'y'] },
+        {
+          curve: 'C',
+          px: function (t) { return t - Math.sin(t); },
+          py: function (t) { return 1 - Math.cos(t); },
+          domain: [0, 2 * Math.PI]
+        },
+        { fillUnder: 'C', as: 'key' }
+      ]
+    },
+    {
+      title: '説明しながら、図が育つ ①',
+      note: 'まず図を出してから話す',
+      grow: '「まず、三角形をかくね。BD:DC が 3:2 だから、D はここ。」',
+      src: ['{ poly: ["A","B","C"] }', '{ pt: "D", on:["B","C"], ratio:[3,2], as:"key" }'],
+      cap: '',
+      items: [
+        { pt: 'B', at: [0, 0] }, { pt: 'C', at: [10, 0] }, { pt: 'A', at: [3.2, 8] },
+        { poly: ['A', 'B', 'C'] },
+        { pt: 'D', on: ['B', 'C'], ratio: [3, 2] },
+        { seg: ['B', 'D'], as: 'key' }
+      ]
+    },
+    {
+      title: '② 前の図に、描き足す',
+      note: '消さない・並べない・同じ図が育つ',
+      grow: '「で、AD をひく。BE はこれに垂直、って書いてあるでしょ。」',
+      src: ['{ extends: ①, add: [', '  { seg: ["A","D"] },',
+            '  { line:"L", through:"B", perp:["A","D"] },', '  { pt:"E", meet:[["A","C"],"L"] } ] }'],
+      cap: '',
+      items: [
+        { pt: 'B', at: [0, 0] }, { pt: 'C', at: [10, 0] }, { pt: 'A', at: [3.2, 8] },
+        { poly: ['A', 'B', 'C'] },
+        { pt: 'D', on: ['B', 'C'], ratio: [3, 2] },
+        { seg: ['A', 'D'], as: 'key' },
+        { line: 'L', through: 'B', perp: ['A', 'D'] },
+        { pt: 'E', meet: [['A', 'C'], 'L'] },
+        { seg: ['B', 'E'], as: 'key' }
+      ]
+    },
+    {
+      title: '③ 聞きたいところに色がつく',
+      note: '教え返しは、この図を見ながら',
+      grow: '「じゃあ、この四角形の面積、どう出す?」',
+      src: ['{ extends: ②, add: [', '  { pt:"F", meet:[["A","D"],"L"] },',
+            '  { right:["A","F","B"] },', '  { poly:["F","D","C","E"], fill:true, as:"key" } ] }'],
+      cap: '',
+      items: [
+        { pt: 'B', at: [0, 0] }, { pt: 'C', at: [10, 0] }, { pt: 'A', at: [3.2, 8] },
+        { poly: ['A', 'B', 'C'] },
+        { pt: 'D', on: ['B', 'C'], ratio: [3, 2] },
+        { seg: ['A', 'D'] },
+        { line: 'L', through: 'B', perp: ['A', 'D'] },
+        { pt: 'E', meet: [['A', 'C'], 'L'] },
+        { seg: ['B', 'E'] },
+        { pt: 'F', meet: [['A', 'D'], 'L'] },
+        { right: ['A', 'F', 'B'] },
+        { poly: ['F', 'D', 'C', 'E'], fill: true, as: 'key' }
       ]
     },
     {
@@ -2230,18 +2463,72 @@
           t: 'ellipse', c: P(it.center), rx: it.rx, ry: it.ry, as: it.as, dash: !!it.dash
         });
       } else if (it.axes) {
-        draws.push({ t: 'axes', span: it.axes, labels: it.labels });
+        // 数値1つなら上下左右に同じだけ、4つなら [x0,x1,y0,y1]
+        var sp = typeof it.axes === 'number'
+          ? [-it.axes, it.axes, -it.axes, it.axes] : it.axes;
+        draws.push({ t: 'axes', span: sp, labels: it.labels });
       } else if (it.curve) {
-        // 実装では既存の `plot_expression.dart` が `fn` の文字列を評価する。
-        // このページのデモでは、同じ式を JS の関数として渡している。
-        curves[it.curve] = { f: it.f, domain: it.domain };
-        draws.push({ t: 'curve', ps: sample(it.f, it.domain, it.mirror), as: it.as, dash: !!it.dash });
+        // **曲線は媒介変数を基本形にする。**
+        // `y = f(x)` も `x = g(y)` も媒介変数の特別な場合なので、
+        // ここで1つの形に正規化すると、サイクロイドも楕円も同じ扱いで入る。
+        // (実装では既存の `plot_expression.dart` が式の文字列を評価する)
+        curves[it.curve] = normalizeCurve(it);
+        // `hidden` は「式に名前を付けるだけ」。`revolve` のように、
+        // 別の部品が自分で描くときに使う。
+        if (!it.hidden) {
+          draws.push({ t: 'curve', ps: sample(curves[it.curve]), as: it.as, dash: !!it.dash });
+        }
+      } else if (it.revolve) {
+        // 回転体。**切り口の楕円も、回転軸も、こちらが作る。**
+        //
+        // ここは最初、楕円を2つ手で置いていて**間違えた**。同じ角度から見た円なのに
+        // `rx` を両端で同じ値にしたので、細いほうがほぼ円・太いほうが針になった
+        // (つぶれ方が4.3倍ちがう)。**縮み方は半径に比例する**ので `rx = 半径 × 一定`。
+        // **手で置ける値を残すと、書く側が必ず間違える。**
+        var cv = curves[it.revolve], k = 0.26;
+        var ax = it.around && it.around.x !== undefined ? it.around : { y: (it.around || {}).y || 0 };
+        var base = sample(cv, it.range);
+        draws.push({ t: 'curve', ps: base, as: it.as });
+        draws.push({ t: 'curve', ps: base.map(function (p) { return mirrorAbout(p, ax); }), as: it.as });
+
+        // 回転の軸は、曲線が乗っている範囲だけ引く
+        var xs0 = base.map(function (p) { return p.x; }), ys0 = base.map(function (p) { return p.y; });
+        if (ax.x !== undefined) {
+          draws.push({
+            t: 'seg', a: { x: ax.x, y: Math.min.apply(null, ys0) },
+            b: { x: ax.x, y: Math.max.apply(null, ys0) }, as: 'aux'
+          });
+        } else {
+          draws.push({
+            t: 'seg', a: { x: Math.min.apply(null, xs0), y: ax.y },
+            b: { x: Math.max.apply(null, xs0), y: ax.y }, as: 'aux'
+          });
+        }
+        // 両端の切り口。半径0(軸に接している端)は描かない
+        [base[0], base[base.length - 1]].forEach(function (p, i) {
+          var r = radiusTo(p, ax);
+          if (r < 1e-6) return;
+          var c0 = ax.x !== undefined ? { x: ax.x, y: p.y } : { x: p.x, y: ax.y };
+          draws.push({
+            t: 'ellipse', c: c0,
+            rx: ax.x !== undefined ? r : r * k,
+            ry: ax.x !== undefined ? r * k : r,
+            as: i === 1 ? it.capAs : undefined
+          });
+        });
+      } else if (it.fillUnder) {
+        // 曲線と x 軸で囲まれた部分。両端を軸へ落として閉じるだけ。
+        var cu = sample(curves[it.fillUnder]);
+        draws.push({
+          t: 'poly', fill: true, as: it.as,
+          ps: [{ x: cu[0].x, y: 0 }].concat(cu, [{ x: cu[cu.length - 1].x, y: 0 }])
+        });
       } else if (it.fillBetween) {
         // 2曲線に挟まれた領域。**上下どちらが上かも判定しない** —
         // 同じ x で2本を結んで閉じるので、そのまま塗れる。
         var c1 = curves[it.fillBetween[0]], c2 = curves[it.fillBetween[1]];
         var x0 = P(it.from).x, x1 = P(it.to).x;
-        var up = sample(c1.f, [x0, x1]), down = sample(c2.f, [x0, x1]).reverse();
+        var up = sample(c1, [x0, x1]), down = sample(c2, [x0, x1]).reverse();
         draws.push({ t: 'poly', ps: up.concat(down), fill: true, as: it.as, open: true });
       } else if (it.arc) {
         draws.push({ t: 'arc', a: P(it.arc[0]), o: P(it.arc[1]), b: P(it.arc[2]), label: it.label });
@@ -2276,7 +2563,7 @@
         xs.push(d.c.x - d.rx, d.c.x + d.rx); ys.push(d.c.y - d.ry, d.c.y + d.ry);
       }
       else if (d.t === 'axes') {
-        xs.push(-d.span, d.span); ys.push(-d.span, d.span);
+        xs.push(d.span[0], d.span[1]); ys.push(d.span[2], d.span[3]);
       }
     });
     var minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
@@ -2329,14 +2616,14 @@
           '" ry="' + (d.ry * s).toFixed(1) + '" fill="none" stroke="' + re.c +
           '" stroke-width="' + re.w + '"' + (d.dash ? ' stroke-dasharray="5 4"' : '') + '/>';
       } else if (d.t === 'axes') {
-        var L0 = d.span;
+        var sp = d.span;
         out += '<g stroke="' + DIM + '" stroke-width="1" opacity=".6">' +
-          '<path d="M' + X(-L0) + ' ' + Y(0) + ' H' + X(L0) + '"/>' +
-          '<path d="M' + X(0) + ' ' + Y(-L0) + ' V' + Y(L0) + '"/></g>';
+          '<path d="M' + X(sp[0]) + ' ' + Y(0) + ' H' + X(sp[1]) + '"/>' +
+          '<path d="M' + X(0) + ' ' + Y(sp[2]) + ' V' + Y(sp[3]) + '"/></g>';
         if (d.labels) {
-          out += '<text x="' + X(L0) + '" y="' + (+Y(0) + 16).toFixed(1) + '" fill="' + DIM +
+          out += '<text x="' + X(sp[1]) + '" y="' + (+Y(0) + 16).toFixed(1) + '" fill="' + DIM +
             '" font-size="11" text-anchor="end">' + d.labels[0] + '</text>' +
-            '<text x="' + (+X(0) + 8).toFixed(1) + '" y="' + (+Y(L0) + 10).toFixed(1) +
+            '<text x="' + (+X(0) + 8).toFixed(1) + '" y="' + (+Y(sp[3]) + 10).toFixed(1) +
             '" fill="' + DIM + '" font-size="11">' + d.labels[1] + '</text>';
         }
       } else if (d.t === 'right') {
@@ -2380,14 +2667,34 @@
     return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img">' + out + '</svg>';
   }
 
-  // 曲線を点列にする。`mirror` は x 軸で折り返す(回転体の下側の輪郭)。
-  function sample(f, domain, mirror) {
-    var out = [];
-    for (var i = 0; i <= 96; i++) {
-      var x = domain[0] + (domain[1] - domain[0]) * i / 96, y = f(x);
-      if (isFinite(y)) out.push({ x: x, y: mirror ? -y : y });
+  // 曲線を1つの形に揃える。**媒介変数が基本形。**
+  //   y = f(x)  → x = t,    y = f(t)
+  //   x = g(y)  → x = g(t), y = t
+  //   媒介変数  → そのまま(サイクロイド・楕円・双曲線がここに入る)
+  function normalizeCurve(it) {
+    if (it.px) return { px: it.px, py: it.py, domain: it.domain };
+    if (it.of === 'y') return { px: it.f, py: function (t) { return t; }, domain: it.domain, g: it.f };
+    return { px: function (t) { return t; }, py: it.f, domain: it.domain, f: it.f };
+  }
+
+  // 曲線を点列にする。`range` を渡すと、その範囲だけを取り出す。
+  function sample(cv, range) {
+    var d = range || cv.domain, out = [];
+    for (var i = 0; i <= 120; i++) {
+      var t = d[0] + (d[1] - d[0]) * i / 120, x = cv.px(t), y = cv.py(t);
+      if (isFinite(x) && isFinite(y)) out.push({ x: x, y: y });
     }
     return out;
+  }
+
+  // 回転の軸で折り返す。軸は横線 {y: b} か縦線 {x: a}。
+  function mirrorAbout(p, ax) {
+    return ax.x !== undefined ? { x: 2 * ax.x - p.x, y: p.y } : { x: p.x, y: 2 * ax.y - p.y };
+  }
+
+  // 点から回転軸までの距離 = その高さでの回転半径。
+  function radiusTo(p, ax) {
+    return ax.x !== undefined ? Math.abs(p.x - ax.x) : Math.abs(p.y - ax.y);
   }
 
   // 2曲線の交点の x。定義域を走査して符号が変わる区間を見つけ、二分法で詰める。
@@ -2478,9 +2785,10 @@
   host.innerHTML = DEMOS.map(function (d) {
     return '<div class="demo-card">' +
       '<div class="head">' + d.title + '<span>' + d.note + '</span></div>' +
+      (d.grow ? '<p class="speech">' + d.grow + '</p>' : '') +
       '<div class="stage">' + render(solve(d.items)) + '</div>' +
       '<pre>' + d.src.join('\n') + '</pre>' +
-      '<p class="cap">' + d.cap + '</p>' +
+      (d.cap ? '<p class="cap">' + d.cap + '</p>' : '') +
       '</div>';
   }).join('');
 })();
