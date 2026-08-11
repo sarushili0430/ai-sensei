@@ -15,10 +15,28 @@ import '../../../theme/tokens.dart';
 import '../../session/domain/session.dart';
 import '../application/capture_controller.dart';
 
-/// 撮影 → 撮ったものの確認 → 単元と問題文の確認。
+/// 何を撮るか選ぶ → 撮る → 撮ったものの確認 → 単元と問題文の確認。
 ///
 /// 検出した単元はチップで出し、**ユーザーが外せる**ようにする。
 /// 写真解析が外したときに直せる余地を残すため(handoff §3-1)。
+///
+/// ## カメラを自動で開かない理由
+///
+/// 以前はこの画面に入った瞬間に**ノートのカメラ**が開いていた。ノートがある
+/// 生徒にはタップ0回で速かったが、**解けなくてノートが無い生徒は、問題の枠を
+/// 一度も見ないままシャッターの前に立っていた**。手元にあるのは問題集だけなので、
+/// そこで撮れば紙面がノート枠に入る — `api.ts` の `sessionPhotoParts` が
+/// 「残る穴。防げるのは取り違える**動機**まで」と書いた、その動機がUI側に
+/// 残っていた(他者の著作物がR2に保存され、先輩には `(ノートの写真なし)` ではなく
+/// 紙面の中身が届く)。
+///
+/// 逃げ道(キャンセルすると枠が2つ見える)はあったが、**キャンセルは「やめる」に
+/// 読める。**「ノートは無い」を言う操作としては誰も選ばない。
+///
+/// なので枠を先に見せ、どちらから撮るかを選んでもらう。ノートがある人には
+/// 1タップ増えるが、**「ノートは無い」をシャッターの前に言えるのはここしかない。**
+/// この画面はもともと「解析の前に一度止まる」を受け入れているので、
+/// 止まる場所が1つ手前に伸びただけになる。
 ///
 /// ## 解析の前に一度止まる理由
 ///
@@ -31,8 +49,8 @@ import '../application/capture_controller.dart';
 ///   2. 撮った直後の1枚をそのまま送っていたので、ぶれていても気づけないまま
 ///      今日の1回が消えていた
 ///
-/// **2枚目は任意のまま**(§4-1)。1枚に問題とノートの両方が写ることが多いので、
-/// 必須にすると撮影の摩擦だけが増える。ここで出すのは「撮れ」ではなく
+/// **どちらか1枚で始められる**(§4-1)。1枚に問題とノートの両方が写ることが
+/// 多いので、2枚必須にすると撮影の摩擦だけが増える。ここで出すのは「撮れ」ではなく
 /// 「写っていると迷子になりません」というヒントに留める。
 class CaptureScreen extends ConsumerStatefulWidget {
   const CaptureScreen({super.key});
@@ -62,7 +80,16 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
   ///
   /// 「1枚も撮っていない」と区別が要る。撮らずに帰ってきた人には
   /// **枠を見せて留まってもらう**ので、写真の有無だけでは判断できない。
+  ///
+  /// 最初は立てておく。[reset] が次のフレームまで走らないので、寝かせて始めると
+  /// **前回の写真が1フレームだけ見えてしまう**(コントローラは keepAlive)。
   bool _picking = true;
+
+  /// 直近にカメラを開いた枠。開けなかったときの「もう一度」を同じ枠へ戻すため。
+  ///
+  /// カメラの自動起動をやめてからは、**どちらの枠から来たかは本人の選択**なので、
+  /// 失敗のたびにノートへ引き戻すと、ノートが無い生徒を無い枠へ送り返すことになる。
+  bool _lastPickWasProblem = false;
 
   @override
   void initState() {
@@ -71,14 +98,15 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
       // 前回の撮影を持ち越さない。コントローラは keepAlive なので、
       // ここで白紙に戻さないと前の問題の写真が次の授業に紛れ込む。
       ref.read(captureControllerProvider.notifier).reset();
-      _pickPhoto();
+      // **ここでカメラを開かない**(理由はクラスのコメント)。枠を見せて選ばせる。
+      if (mounted) setState(() => _picking = false);
     });
   }
 
-  /// ノートの写真。**必須**(サーバが `kind: new` で要求する)。
+  /// ノートの写真。**必須ではない**(サーバは `kind: new` でどちらか1枚を要求する)。
   Future<void> _pickPhoto() => _pick(forProblem: false);
 
-  /// 問題の写真。**任意**(§4-1)。撮らなくても先へ進める。
+  /// 問題の写真。これだけでも始められる(§4-1)。
   Future<void> _pickProblemPhoto() => _pick(forProblem: true);
 
   Future<void> _pick({required bool forProblem}) async {
@@ -86,6 +114,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
       _cameraDenied = false;
       _cameraFailed = false;
       _picking = true;
+      _lastPickWasProblem = forProblem;
     });
 
     final XFile? picked;
@@ -121,19 +150,15 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
 
     // 撮らずに帰ってきた。許可が無いなら設定への行き方を出す —
     // 何度カメラを開いても結果が同じなので、そこだけは別扱いにする。
+    // **枠で出し分けない。** どちらの枠も本人が選んで開いたものなので、
+    // 許可が無いことを片方でだけ知らせる理由が無い。
     //
     // **それ以外は、どこにも戻さずこの画面に留まる。**
-    // 以前はホームへ降ろしていたが、ノートを撮らない経路ができたいま、
-    // 1枚目をやめることは「やめる」ではなく**「ノートは無い」**を意味しうる。
-    // 降ろしてしまうと、手も付けていない問題を持ってきた生徒が
-    // 問題の枠にたどり着けない(枠は空のまま出るので、そこから撮れる)。
+    // 以前はホームへ降ろしていたが、降ろすと選び直せない —
+    // ノートを撮ろうとしてやめた人が、問題の枠にたどり着けなくなる。
     // 本当にやめたい人は、この画面の戻るで降りられる(push で来ている)。
     if (picked == null) {
       if (!mounted) return;
-      if (forProblem) {
-        setState(() => _picking = false);
-        return;
-      }
       final PermissionStatus status = await _cameraStatus();
       if (!mounted) return;
       setState(() {
@@ -178,12 +203,20 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     // 見出しは、いまユーザーが確かめているものに合わせる。
     // 写真を見ている段階で「この単元で合っていますか?」と出ていると、
     // まだ何も解析していないのに単元を聞かれているように読める。
-    final bool reviewing = state.session == null && !state.isSubmitting;
+    //
+    // **1枚も撮っていないあいだは「撮れました」でもない。** ここで選んでいるのは
+    // 何を撮るかで、そこに「ノートは無い」という答えが含まれている。
+    final String title;
+    if (state.session != null || state.isSubmitting) {
+      title = strings.captureConfirmTitle;
+    } else if (state.hasAnyPhoto) {
+      title = strings.captureReviewTitle;
+    } else {
+      title = strings.captureChooseTitle;
+    }
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(reviewing ? strings.captureReviewTitle : strings.captureConfirmTitle),
-      ),
+      appBar: AppBar(title: Text(title)),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.lg),
@@ -205,7 +238,12 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     }
 
     if (_cameraFailed) {
-      return _ErrorView(message: strings.captureCameraFailed, onRetry: _pickPhoto);
+      return _ErrorView(
+        message: strings.captureCameraFailed,
+        // 開けなかった枠へ戻す。ノートへ固定すると、ノートが無い生徒を
+        // 無い枠へ送り返すことになる。
+        onRetry: () => _pick(forProblem: _lastPickWasProblem),
+      );
     }
 
     final ApiException? error = state.error;
@@ -216,7 +254,8 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
         // 無料・Premiumのどちらも数値は見せず、先輩が今日の学習を締める。
         message: lessonLimitReached ? strings.lessonEnoughForToday : error.message,
         // 日ごとの上限は押し直しても変わらない。無料・Premium とも再試行させない。
-        onRetry: lessonLimitReached ? null : _pickPhoto,
+        // 撮り直すのは、直前に開いていた枠(ノートとは限らない)。
+        onRetry: lessonLimitReached ? null : () => _pick(forProblem: _lastPickWasProblem),
       );
     }
     // カメラを開いている最中は、まだ何も見せるものが無い。
@@ -236,11 +275,13 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
   }
 }
 
-/// 撮ったものの確認。**解析(= 今日の1回を使う)の直前に一度だけ止まる。**
+/// 何を撮るかを選ぶ画面であり、撮ったものの確認でもある。
+/// **解析(= 今日の1回を使う)の直前に一度だけ止まる。**
 ///
 /// 2つの枠を並べているのは見た目のためではない。ノートはR2に保存され、
 /// 問題の紙面は解析後に破棄される — **どちらの枠に入れたかでしか区別できない**
 /// ので、枠を見せることがそのまま破棄の前提になる(計画書 §4-1)。
+/// だからこの画面は**1枚目より先に**出る(理由は [CaptureScreen] のコメント)。
 ///
 /// **どちらか1枚あれば始められる。止めるのは両方空のときだけ。**
 /// ノートを必須にしているかぎり、手も付けていない問題を持ってきた生徒は
@@ -250,6 +291,19 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
 /// 良いことは変わっていない(先輩が切り分けの出発点を得られる)ので、
 /// 見出しはそのまま。**無いことを咎める文言も出さない** —
 /// ノートが無い生徒にとって、それは直しようのない指摘になる。
+///
+/// ## ヒントを埋まり方で出し分ける
+///
+/// 出す言葉が要る人が2人いて、要る言葉が逆を向いている:
+///
+///   - まだ1枚も無い人 … **「ノートが無くてもいい」を先に言う。** ここで黙ると、
+///     解けなかった生徒は紙面をノート枠に入れる(前へ進む道が他に見えない)
+///   - ノートだけ撮った人 … 問題も撮ると先輩が迷子にならない、と促す
+///
+/// 両方を常時並べると、どちらの人にも半分は関係のない文章になる。
+/// **どちらも撮る前に出る言葉なので、§4-1 の「警告にしない」は保たれている**
+/// (`api.ts` の `problemSources` が言う、解析後に出すと2枚目が事実上の必須に
+/// なる、という話とは別の軸)。
 class _PhotoReview extends StatelessWidget {
   const _PhotoReview({
     required this.state,
@@ -266,6 +320,16 @@ class _PhotoReview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
+
+    // 空の枠に合わせて、要る言葉だけを出す(理由はクラスのコメント)。
+    final String? hint;
+    if (!state.hasAnyPhoto) {
+      hint = strings.captureEitherIsFine;
+    } else if (state.problemPhoto == null) {
+      hint = strings.captureProblemHint;
+    } else {
+      hint = null;
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -296,12 +360,14 @@ class _PhotoReview extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.md),
         // **促しであって要求ではない。** 撮っていなくても下のボタンは押せる。
-        Text(
-          strings.captureProblemHint,
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        const SizedBox(height: AppSpacing.xs),
+        if (hint != null) ...<Widget>[
+          Text(
+            hint,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: AppSpacing.xs),
+        ],
         Text(
           strings.captureProblemDiscarded,
           textAlign: TextAlign.center,
@@ -309,8 +375,8 @@ class _PhotoReview extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.md),
         // 両方空のときだけ押せない。**押せない理由は書かない** —
-        // 空の枠が2つ見えていて、どちらもその場で撮れるので、
-        // 文章で足すことは何も無い。
+        // 空の枠が2つ見えていて、どちらもその場で撮れる。上のヒントが
+        // 「どちらか1枚で始められる」と言っているので、文章で足すことは無い。
         ChunkyButton(
           label: strings.captureStart,
           onPressed: state.hasAnyPhoto ? onStart : null,

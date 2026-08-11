@@ -18,9 +18,11 @@ final Uint8List _onePixelPng = base64Decode(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
 );
 
-/// 撮影画面。見ているのは見た目ではなく、**2つの約束が画面として成立しているか**。
+/// 撮影画面。見ているのは見た目ではなく、**3つの約束が画面として成立しているか**。
 ///
-///   - 問題の写真は**任意**(§4-1)。撮らなくても授業を始められる
+///   - **カメラを勝手に開かない。** 何を撮るかを先に選ばせる。ノートが無い生徒が
+///     「ノートは無い」をシャッターの前に言えるのは、ここしかない
+///   - どちらか1枚で授業を始められる(§4-1)
 ///   - 読み取った問題文は**授業の前に見せる**。読めなかったときは黙って進める
 ///
 /// カメラは `plugins.flutter.io/image_picker` を差し替えて、撮ったことにする。
@@ -144,6 +146,19 @@ void main() {
     );
   }
 
+  /// ノートの枠から撮る。**画面に入っただけではカメラが開かない**ので、
+  /// 写真が要るテストはここを通る。
+  Future<void> takeNotes(WidgetTester tester) async {
+    await tester.tap(find.text(ja.captureTakeNotes));
+    await tester.pumpAndSettle();
+  }
+
+  /// 問題の枠から撮る。ノートが無い生徒はこちらだけを通る。
+  Future<void> takeProblem(WidgetTester tester) async {
+    await tester.tap(find.text(ja.captureAddProblem));
+    await tester.pumpAndSettle();
+  }
+
   /// 「授業をはじめる」を押して、解析が返るまで進める。
   ///
   /// **[WidgetTester.runAsync] を挟むのは手抜きではない。** 送っているのは
@@ -158,9 +173,23 @@ void main() {
     await pumpUntil(tester, find.text(ja.captureConfirmHint));
   }
 
+  /// **ここが崩れると、ノートが無い生徒は問題の枠を見ないままシャッターの前に立つ。**
+  /// 手元にあるのは問題集だけなので、そこで撮れば紙面がノート枠に入り、
+  /// 「解析後に破棄する」という約束が自分たちのUIで破れる
+  /// (`api.ts` の `sessionPhotoParts` が「残る穴」と書いたもの)。
+  testWidgets('入っただけではカメラを開かない(何を撮るか先に選ばせる)', (WidgetTester tester) async {
+    await pumpCapture(tester);
+
+    expect(pickedPaths, isEmpty);
+    expect(find.text(ja.captureChooseTitle), findsOneWidget);
+    expect(find.text(ja.captureTakeNotes), findsOneWidget);
+    expect(find.text(ja.captureAddProblem), findsOneWidget);
+  });
+
   testWidgets('撮ったら、解析の前に一度止まる(今日の1回を使う前)', (WidgetTester tester) async {
     final List<http.BaseRequest> calls = <http.BaseRequest>[];
     await pumpCapture(tester, calls: calls);
+    await takeNotes(tester);
 
     // 撮っただけでは、まだサーバへ行っていない。
     expect(calls, isEmpty);
@@ -173,6 +202,7 @@ void main() {
   testWidgets('問題を撮らなくても授業を始められる(2枚目は任意)', (WidgetTester tester) async {
     final List<http.BaseRequest> calls = <http.BaseRequest>[];
     await pumpCapture(tester, calls: calls);
+    await takeNotes(tester);
 
     await startLesson(tester);
 
@@ -183,9 +213,9 @@ void main() {
   testWidgets('問題も撮ると、2枚目として送られる', (WidgetTester tester) async {
     final List<http.BaseRequest> calls = <http.BaseRequest>[];
     await pumpCapture(tester, calls: calls);
+    await takeNotes(tester);
 
-    await tester.tap(find.text(ja.captureAddProblem));
-    await tester.pumpAndSettle();
+    await takeProblem(tester);
     await startLesson(tester);
 
     expect(pickedPaths, hasLength(2));
@@ -206,6 +236,7 @@ void main() {
         'source': 'problem_photo',
       },
     );
+    await takeNotes(tester);
 
     await startLesson(tester);
 
@@ -225,6 +256,7 @@ void main() {
       size: smallPhoneSurface,
       problem: <String, dynamic>{'text': longProblem, 'source': 'problem_photo'},
     );
+    await takeNotes(tester);
     await startLesson(tester);
 
     expect(find.text(ja.captureProblemTitle), findsOneWidget);
@@ -238,18 +270,18 @@ void main() {
   /// 問題を持ってきた生徒は紙面をノート枠に入れるしかなく**、解析後破棄の約束が
   /// 自分たちのUI制約で破られる。
   group('ノートが無い経路', () {
-    testWidgets('1枚目を撮らずに帰っても、画面に留まって問題を撮れる', (WidgetTester tester) async {
-      cancelCount = 1; // ノートのカメラだけキャンセルする
+    testWidgets('カメラを開いてやめても、画面に留まって選び直せる', (WidgetTester tester) async {
+      cancelCount = 1;
       await pumpCapture(tester);
+      await takeNotes(tester); // 開いて、撮らずに帰る
 
-      // 以前はここでホームへ降ろしていた。降ろすと問題の枠にたどり着けない。
+      // 以前はここでホームへ降ろしていた。降ろすと選び直せない。
       expect(find.text(ja.capturePhotoNotes), findsOneWidget);
       expect(find.text(ja.captureTakeNotes), findsOneWidget);
       expect(find.text(ja.captureAddProblem), findsOneWidget);
     });
 
     testWidgets('両方空のときだけ、はじめられない', (WidgetTester tester) async {
-      cancelCount = 1;
       await pumpCapture(tester);
 
       final ChunkyButton button = tester.widget(find.byType(ChunkyButton));
@@ -258,15 +290,17 @@ void main() {
       expect(find.textContaining('ノートがありません'), findsNothing);
     });
 
+    /// ノートのカメラを一度も開かずに、問題だけで始められること。
+    /// **キャンセルを経由しないのが要点** — 以前はここを通らないと
+    /// 問題の枠にたどり着けず、キャンセルは「やめる」に読めていた。
     testWidgets('問題だけでも授業を始められる', (WidgetTester tester) async {
       final List<http.BaseRequest> calls = <http.BaseRequest>[];
-      cancelCount = 1;
       await pumpCapture(tester, calls: calls);
 
-      await tester.tap(find.text(ja.captureAddProblem));
-      await tester.pumpAndSettle();
+      await takeProblem(tester);
       await startLesson(tester);
 
+      expect(pickedPaths, hasLength(1), reason: 'ノートのカメラは一度も開いていない');
       final String body = utf8.decode(
         (calls.single as http.Request).bodyBytes,
         allowMalformed: true,
@@ -279,20 +313,43 @@ void main() {
       );
     });
 
+    /// **ノートが無いことを、撮る前に許しておく。** ここで黙っていると、
+    /// 解けなかった生徒には紙面をノート枠に入れる以外の道が見えない。
+    testWidgets('1枚も撮っていないうちに、問題だけでいいと言う', (WidgetTester tester) async {
+      await pumpCapture(tester);
+
+      expect(find.text(ja.captureEitherIsFine), findsOneWidget);
+      // 2枚目の促しはノートを撮った人へのもの。まだ出さない。
+      expect(find.text(ja.captureProblemHint), findsNothing);
+    });
+
+    testWidgets('問題を撮った人に、問題も撮れとは言わない', (WidgetTester tester) async {
+      await pumpCapture(tester);
+      await takeProblem(tester);
+
+      expect(find.text(ja.captureProblemHint), findsNothing);
+      expect(find.text(ja.captureEitherIsFine), findsNothing);
+    });
+
     // ノートがあるほうが良いことは変わっていない。見出しは据え置く。
-    testWidgets('ノートの枠を「任意」に見せ替えない', (WidgetTester tester) async {
-      cancelCount = 1;
+    testWidgets('どちらの枠にも「任意」と書かない', (WidgetTester tester) async {
       await pumpCapture(tester);
 
       expect(find.text(ja.capturePhotoNotes), findsOneWidget);
       expect(find.text(ja.capturePhotoProblem), findsOneWidget);
       expect(ja.capturePhotoNotes, isNot(contains('任意')));
+      expect(
+        ja.capturePhotoProblem,
+        isNot(contains('任意')),
+        reason: '片方にだけ付くと、もう片方が必須に読める',
+      );
     });
   });
 
   // 読めなかったことを警告として出すと、任意のはずの2枚目が事実上の必須になる。
   testWidgets('読み取れなかったときは、何も言わずに進める', (WidgetTester tester) async {
     await pumpCapture(tester);
+    await takeNotes(tester);
 
     await startLesson(tester);
 
@@ -309,6 +366,7 @@ void main() {
       errorCode: 'fair_use_limit_reached',
       errorMessage: serverMessage,
     );
+    await takeNotes(tester);
 
     await tester.tap(find.text(ja.captureStart));
     await pumpUntil(tester, find.text(ja.lessonEnoughForToday));
