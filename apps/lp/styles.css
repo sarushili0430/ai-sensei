@@ -1,0 +1,949 @@
+/*
+ * カタルテ ランディングページ — 日英で1枚だけ共有するスタイルシート。
+ *
+ * 色・角丸・厚みの値は apps/mobile/lib/src/theme/tokens.dart が正で、ここは写し。
+ * ずらすとストアのスクショと並んだときに別プロダクトに見えるので、
+ * 数値を変えたくなったら先に tokens.dart を見ること。
+ *
+ * ビジュアルの方針は docs/design_direction_v0.html —「蛍光マーカー × Duolingoの文法」。
+ * 続けさせる仕組み(厚みのあるボタン・キャラの表情)は借りるが、
+ * XP・リーグ・緑のフクロウは借りない。
+ */
+
+:root {
+  --blue: #0ea5e9; /* 主役・行動・先輩 */
+  --blue-d: #0284c7; /* ボタンの厚みの影 */
+  --blue-l: #e3f4fd;
+  --said: #ffd93b; /* 言えたこと(蛍光マーカー・黄) */
+  --hole: #ff7aa8; /* 穴(蛍光マーカー・ピンク) */
+  --streak: #ff9f1c; /* 連続日数・祝福 */
+  --ink: #33323d; /* 本文。真っ黒にしない */
+  --ink-mut: #7a7887;
+  --surface: #ffffff;
+  --bg: #fbfaf7;
+  --border: #e6e3dc;
+
+  --r-btn: 16px;
+  --r-card: 20px;
+  --r-chip: 999px;
+  --depth: 4px; /* 厚みのあるボタンの沈み込み量。触感の主役 */
+
+  --wrap: 1080px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.85;
+  font-family: "Zen Maru Gothic", "Hiragino Maru Gothic ProN", "Hiragino Sans", system-ui,
+    sans-serif;
+  font-weight: 500;
+  -webkit-font-smoothing: antialiased;
+  text-underline-offset: 3px;
+}
+
+:lang(en) body,
+body:lang(en) {
+  line-height: 1.7;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 900;
+  line-height: 1.45;
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--blue-d);
+}
+
+img,
+svg {
+  max-width: 100%;
+}
+
+/* 読み上げには出すが、目には出さないもの */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* キーボードで辿る人のために、飛ばし先を最初に置く */
+.skip {
+  position: absolute;
+  left: 12px;
+  top: -60px;
+  z-index: 20;
+  background: var(--ink);
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: var(--r-btn);
+  font-weight: 700;
+  text-decoration: none;
+  transition: top 0.15s;
+}
+
+.skip:focus {
+  top: 12px;
+}
+
+:focus-visible {
+  outline: 3px solid var(--blue-d);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* ------------------------------------------------------------------ *
+ * 骨格
+ * ------------------------------------------------------------------ */
+
+.wrap {
+  max-width: var(--wrap);
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+section {
+  padding: 68px 0;
+  border-top: 2px solid var(--border);
+}
+
+section:first-of-type {
+  border-top: 0;
+}
+
+.eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--ink-mut);
+  margin-bottom: 10px;
+}
+
+.sec-title {
+  font-size: clamp(23px, 4.4vw, 31px);
+  margin-bottom: 14px;
+}
+
+.lede {
+  color: var(--ink-mut);
+  font-size: 15.5px;
+  max-width: 46em;
+}
+
+.tiny {
+  font-size: 12.5px;
+  color: var(--ink-mut);
+  line-height: 1.7;
+}
+
+/* ------------------------------------------------------------------ *
+ * 蛍光マーカー — このプロダクトの署名。
+ * 黄=教え返せたこと / ピンク=説明が止まった穴。意味を持つので使い分ける。
+ * ------------------------------------------------------------------ */
+
+.mk,
+.mk-hole {
+  padding: 0 0.14em;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+
+  /* 2行にまたがったとき、1本の帯が段の間を突っ切らないように
+     **行ごとに引き直す**。マーカーは行の上を走るものなので、
+     ここを指定しないと折り返した瞬間に蛍光ペンに見えなくなる。 */
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  background-image: linear-gradient(
+    transparent 54%,
+    rgba(255, 217, 59, 0.85) 54%,
+    rgba(255, 217, 59, 0.85) 93%,
+    transparent 93%
+  );
+}
+
+.mk-hole {
+  background-image: linear-gradient(
+    transparent 54%,
+    rgba(255, 122, 168, 0.55) 54%,
+    rgba(255, 122, 168, 0.55) 93%,
+    transparent 93%
+  );
+}
+
+/* ペン先が走るアニメーション(background-size を 0 → 100% にするやつ)は
+   **入れないこと**。上の box-decoration-break: clone と両立しない ——
+   折り返した見出しに掛けると、Chrome では帯が1本も描かれなくなる
+   (アニメーションが background-size を断片ごとではなく inline 全体で
+   解決してしまうため)。見出しは折り返す前提なので、静止で引く。 */
+
+/* ------------------------------------------------------------------ *
+ * ボタン(Duolingoの文法 — 厚みがあって、押すと沈む)
+ * ------------------------------------------------------------------ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  font-weight: 900;
+  font-size: 15px;
+  line-height: 1.35;
+  padding: 14px 22px;
+  border-radius: var(--r-btn);
+  border: 0;
+  text-decoration: none;
+  transition: transform 0.09s, box-shadow 0.09s;
+}
+
+.btn-primary {
+  background: var(--blue);
+  color: #fff;
+  box-shadow: 0 var(--depth) 0 var(--blue-d);
+}
+
+.btn-ghost {
+  background: var(--surface);
+  color: var(--ink);
+  border: 2px solid var(--border);
+  box-shadow: 0 var(--depth) 0 var(--border);
+}
+
+.btn-primary:active,
+.btn-ghost:active {
+  transform: translateY(var(--depth));
+  box-shadow: none;
+}
+
+/* まだ出していないものを、出しているように見せない */
+.btn-soon {
+  background: var(--surface);
+  color: var(--ink-mut);
+  border: 2px dashed var(--border);
+  cursor: default;
+}
+
+.cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 26px 0 12px;
+}
+
+/* ------------------------------------------------------------------ *
+ * ヘッダ
+ * ------------------------------------------------------------------ */
+
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgba(251, 250, 247, 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 2px solid var(--border);
+}
+
+.nav-in {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  height: 62px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 900;
+  font-size: 17px;
+  color: var(--ink);
+  text-decoration: none;
+  flex: none;
+}
+
+.brand svg {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  flex: none;
+}
+
+.nav-links {
+  display: flex;
+  gap: 18px;
+  margin-left: auto;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.nav-links a {
+  color: var(--ink-mut);
+  text-decoration: none;
+}
+
+.nav-links a:hover {
+  color: var(--ink);
+}
+
+.lang {
+  flex: none;
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--ink);
+  text-decoration: none;
+  border: 2px solid var(--border);
+  border-radius: var(--r-chip);
+  padding: 4px 13px;
+  background: var(--surface);
+}
+
+/* ------------------------------------------------------------------ *
+ * ヒーロー
+ * ------------------------------------------------------------------ */
+
+.hero {
+  padding: 54px 0 64px;
+}
+
+.hero-in {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 40px;
+  align-items: center;
+}
+
+/* 上限が 35px なのは、いちばん長い行(日本語18字)が
+   デスクトップ幅で**1行に収まる**最大値だから。上げると
+   「う。」だけが次の行に落ちる。 */
+.hero h1 {
+  font-size: clamp(26px, 4vw, 35px);
+  line-height: 1.45;
+  margin-bottom: 20px;
+}
+
+/* 「教える」だけを読むと手元の無料AIと同じものに見える。
+   前半と後半が同じ重みで目に入るように、2拍の切れ目で必ず折る
+   (strings.dart の onboardingTitle と同じ理由・同じ位置)。
+   マーカーは中の inline に掛けること —— ここを block にすると、
+   帯が「行」ではなく「箱」の高さの54%に引かれて、position がずれる。 */
+.hero h1 .l {
+  display: block;
+}
+
+.hero .lede {
+  font-size: 16.5px;
+}
+
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.badge {
+  font-size: 12px;
+  font-weight: 900;
+  border-radius: var(--r-chip);
+  padding: 4px 12px;
+  background: var(--blue-l);
+  color: var(--blue-d);
+}
+
+.badge-warm {
+  background: #fff2dd;
+  color: #b06a06;
+}
+
+/* ------------------------------------------------------------------ *
+ * 端末のモック —— スクショの複製ではなく、CSSで組む。
+ * 画像を置くと docs/store/screenshots と二重管理になり、片方が必ず古くなる。
+ * ------------------------------------------------------------------ */
+
+.phone {
+  width: 288px;
+  max-width: 100%;
+  margin: 0 auto;
+  background: var(--surface);
+  border: 3px solid var(--ink);
+  border-radius: 34px;
+  padding: 16px 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 10px 0 rgba(51, 50, 61, 0.1);
+}
+
+.phone-quiet {
+  background: var(--bg);
+}
+
+.phone-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-mut);
+}
+
+.phone-title {
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.phone-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-mut);
+}
+
+.board {
+  background: var(--bg);
+  border: 2px solid var(--border);
+  border-radius: 14px;
+  padding: 11px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.phone-quiet .board {
+  background: var(--surface);
+}
+
+.board-step {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+/* 数式だけは等幅に寄せる。板書は「書かれたもの」なので本文と手触りを変える */
+.board-math {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 14px;
+  letter-spacing: 0.01em;
+}
+
+.board-step + .board-step {
+  border-top: 1.5px dashed var(--border);
+  padding-top: 9px;
+}
+
+.bubble-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.bubble-row svg {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  flex: none;
+}
+
+.bubble {
+  background: var(--surface);
+  border: 2.5px solid var(--ink);
+  border-radius: 15px;
+  border-top-left-radius: 5px;
+  padding: 9px 11px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.65;
+}
+
+.mic {
+  width: 108px;
+  height: 108px;
+  border-radius: 50%;
+  background: var(--blue);
+  color: #fff;
+  margin: 4px auto 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.4;
+  box-shadow: 0 6px 0 var(--blue-d);
+}
+
+.pill {
+  align-self: center;
+  background: var(--blue-l);
+  color: var(--blue-d);
+  font-size: 11px;
+  font-weight: 900;
+  border-radius: var(--r-chip);
+  padding: 3px 12px;
+}
+
+.fake-btn {
+  border-radius: var(--r-btn);
+  padding: 11px 10px;
+  text-align: center;
+  font-weight: 900;
+  font-size: 13.5px;
+}
+
+.fake-primary {
+  background: var(--blue);
+  color: #fff;
+  box-shadow: 0 var(--depth) 0 var(--blue-d);
+}
+
+.fake-ghost {
+  background: var(--surface);
+  color: var(--ink-mut);
+  border: 2px solid var(--border);
+  box-shadow: 0 var(--depth) 0 var(--border);
+}
+
+/* カルテの1行 */
+.k-head {
+  font-size: 11px;
+  font-weight: 900;
+  color: var(--ink-mut);
+  margin-top: 2px;
+}
+
+.k-line {
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 2;
+}
+
+.qz {
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: 14px;
+  padding: 13px 12px;
+  text-align: center;
+}
+
+.qz-q {
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.6;
+}
+
+/* ------------------------------------------------------------------ *
+ * カード / グリッド
+ * ------------------------------------------------------------------ */
+
+.card {
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--r-card);
+  padding: 20px 22px;
+}
+
+.grid {
+  display: grid;
+  gap: 16px;
+  margin-top: 26px;
+}
+
+.grid-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.grid-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.grid-2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+/* 見出しつきの小カード(問題提起の3枚など) */
+.step-h {
+  font-size: 16.5px;
+  margin-bottom: 6px;
+}
+
+/* 4ステップ */
+.step .num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 27px;
+  height: 27px;
+  border-radius: 9px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 900;
+  margin-bottom: 10px;
+}
+
+.step h3 {
+  font-size: 16.5px;
+  margin-bottom: 6px;
+}
+
+.step p {
+  font-size: 13.5px;
+  color: var(--ink-mut);
+  line-height: 1.8;
+}
+
+/* 4つの約束 */
+.promise {
+  display: flex;
+  gap: 13px;
+  align-items: flex-start;
+}
+
+.promise .mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 900;
+  color: #fff;
+  background: var(--blue);
+}
+
+.promise:nth-child(2) .mark {
+  background: var(--said);
+  color: var(--ink);
+}
+
+.promise:nth-child(3) .mark {
+  background: var(--hole);
+}
+
+.promise:nth-child(4) .mark {
+  background: var(--streak);
+}
+
+.promise h3 {
+  font-size: 15.5px;
+  margin-bottom: 4px;
+}
+
+.promise p {
+  font-size: 13.5px;
+  color: var(--ink-mut);
+  line-height: 1.8;
+}
+
+/* 横並びの図解(カルテ・復習) */
+.split {
+  display: grid;
+  grid-template-columns: 1fr 288px;
+  gap: 44px;
+  align-items: center;
+}
+
+.split-flip {
+  grid-template-columns: 288px 1fr;
+}
+
+.split ul {
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.split li {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+  font-size: 14.5px;
+}
+
+.swatch {
+  width: 15px;
+  height: 15px;
+  border-radius: 5px;
+  flex: none;
+  margin-top: 6px;
+}
+
+.swatch-said {
+  background: var(--said);
+}
+
+.swatch-hole {
+  background: var(--hole);
+}
+
+.swatch-ink {
+  background: var(--ink);
+}
+
+/* 再訪の3つの間隔 */
+.days {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+
+.day {
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--r-chip);
+  padding: 7px 17px;
+  font-weight: 900;
+  font-size: 14px;
+}
+
+/* 対応範囲の表 */
+.spec {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 22px;
+  font-size: 14.5px;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--r-card);
+  overflow: hidden;
+}
+
+.spec th,
+.spec td {
+  text-align: left;
+  padding: 13px 18px;
+  border-top: 1.5px solid var(--border);
+  vertical-align: top;
+}
+
+.spec tr:first-child th,
+.spec tr:first-child td {
+  border-top: 0;
+}
+
+.spec th {
+  width: 30%;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.spec td {
+  color: var(--ink-mut);
+}
+
+/* 料金 */
+.plan h3 {
+  font-size: 18px;
+  margin-bottom: 10px;
+}
+
+.plan ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  font-size: 14px;
+}
+
+.plan li::before {
+  content: "○";
+  color: var(--blue);
+  font-weight: 900;
+  margin-right: 8px;
+}
+
+.plan-premium {
+  border-color: var(--blue);
+  box-shadow: 0 var(--depth) 0 var(--blue-l);
+}
+
+/* FAQ */
+.faq {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.faq details {
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--r-card);
+  padding: 15px 20px;
+}
+
+.faq summary {
+  font-weight: 900;
+  font-size: 15.5px;
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.faq summary::-webkit-details-marker {
+  display: none;
+}
+
+.faq summary::after {
+  content: "＋";
+  color: var(--blue);
+  flex: none;
+}
+
+.faq details[open] summary::after {
+  content: "−";
+}
+
+.faq p {
+  margin-top: 10px;
+  font-size: 14px;
+  color: var(--ink-mut);
+}
+
+/* 締めのCTA */
+.closing {
+  text-align: center;
+  background: var(--surface);
+  border-top: 2px solid var(--border);
+}
+
+.closing h2 {
+  font-size: clamp(23px, 4.6vw, 32px);
+  margin-bottom: 14px;
+}
+
+.closing .lede {
+  margin: 0 auto;
+}
+
+.closing .cta-row {
+  justify-content: center;
+}
+
+/* フッタ */
+footer {
+  background: var(--surface);
+  border-top: 2px solid var(--border);
+  padding: 36px 0 44px;
+  font-size: 13.5px;
+  color: var(--ink-mut);
+}
+
+.foot-in {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px 40px;
+  justify-content: space-between;
+}
+
+footer ul {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+footer a {
+  color: var(--ink-mut);
+}
+
+.foot-brand {
+  font-weight: 900;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+/* ------------------------------------------------------------------ *
+ * 画面が狭いとき
+ * ------------------------------------------------------------------ */
+
+@media (max-width: 900px) {
+  .hero-in,
+  .split,
+  .split-flip {
+    grid-template-columns: 1fr;
+    gap: 34px;
+  }
+
+  .grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .nav-links {
+    display: none;
+  }
+
+  .nav-links + .lang,
+  .lang {
+    margin-left: auto;
+  }
+}
+
+@media (max-width: 560px) {
+  section {
+    padding: 52px 0;
+  }
+
+  .grid-4,
+  .grid-3,
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+
+  .spec th {
+    width: 38%;
+    white-space: normal;
+  }
+
+  .btn {
+    width: 100%;
+  }
+}
+
+/* 端末の「アニメーションを減らす」を必ず通す(ADR 0004)。
+   アプリ側が守っている約束を、入口のページで破らない。 */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
