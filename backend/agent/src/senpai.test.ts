@@ -63,6 +63,7 @@ describe("定型の一言", () => {
     expect(teachBackPrompt("ja")).not.toBe(teachBackPrompt("en"));
     expect(lessonFailedPrompt("ja")).not.toBe(lessonFailedPrompt("en"));
     expect(reviewOpening("ja")).not.toBe(reviewOpening("en"));
+    expect(lessonFailedPrompt("ja", "review")).not.toBe(lessonFailedPrompt("en", "review"));
   });
 
   // 板書が1行も出せなかったのに「じゃあ今の、説明してみて」と言うと、
@@ -84,6 +85,7 @@ describe("定型の一言", () => {
       teachBackPrompt("ja"),
       lessonFailedPrompt("ja"),
       reviewOpening("ja"),
+      lessonFailedPrompt("ja", "review"),
     ];
 
     for (const line of lines) {

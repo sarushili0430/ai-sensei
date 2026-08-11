@@ -19,6 +19,7 @@ import {
   planDayMinutesMax,
   planDaysMaxCount,
   planTurnSchema,
+  sessionMetadataSchema,
   studyPlanDraftSchema,
   studyPlanSchema,
 } from "./index.ts";
@@ -529,6 +530,39 @@ describe("APIスキーマ", () => {
     const parsed = createSessionRequestSchema.parse({});
     expect(parsed.kind).toBe("new");
     expect(parsed.locale).toBe("ja");
+  });
+
+  /**
+   * 写真の問題と復習の穴は別の根拠。新規授業に穴を混ぜるのは弾く一方、
+   * 新しいagentを先に出す窓では、古いAPIが作る欄なしの復習も読めなければならない。
+   */
+  it("session metadata は欄のない旧reviewを読み、新規授業への穴の混入を弾く", () => {
+    const metadata = loadFixture("session-metadata") as Record<string, unknown>;
+    const reviewHole = {
+      topic_id: "M1-NIJI-GURAFU",
+      desc: "平方完成の理由で説明が止まった",
+      evidence: "形をそろえるため、だと思う",
+    };
+
+    expect(sessionMetadataSchema.safeParse(metadata).success).toBe(true);
+    const legacyReviewMetadata = JSON.parse(
+      JSON.stringify({ ...metadata, kind: "review", review_hole: undefined }),
+    ) as Record<string, unknown>;
+    expect("review_hole" in legacyReviewMetadata).toBe(false);
+    expect(
+      sessionMetadataSchema.safeParse(legacyReviewMetadata).success,
+      "古いAPIは review_hole というキー自体を送らない",
+    ).toBe(true);
+    expect(
+      sessionMetadataSchema.safeParse({ ...metadata, kind: "review", review_hole: null }).success,
+    ).toBe(true);
+    expect(
+      sessionMetadataSchema.safeParse({ ...metadata, kind: "review", review_hole: reviewHole })
+        .success,
+    ).toBe(true);
+    expect(sessionMetadataSchema.safeParse({ ...metadata, review_hole: reviewHole }).success).toBe(
+      false,
+    );
   });
 
   it("detected_topics が空のセッション作成レスポンスは無効", () => {

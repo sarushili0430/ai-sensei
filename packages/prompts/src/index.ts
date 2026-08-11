@@ -92,10 +92,20 @@ export function conversationSystemPrompt(
 }
 
 /**
- * 板書つきで教える先輩のシステムプロンプト(ピボット計画 v1 §3-1)。
+ * 板書つきで教える先輩のシステムプロンプト(ピボット計画 v1 §2 / §3-1)。
  *
  * 出力は `@ai-sensei/contract` の `boardLessonSchema` の形で、
  * agent がストリーミングJSONとして受け取る。
+ *
+ * **新規と復習で別のプロンプトを複製しない。**違うのは授業の根拠が
+ * 「写真の問題」か「前回観測した1つの穴」かだけで、板書の契約、LaTeXの許可範囲、
+ * 「数式は板書・声は接続」、教え返しへの受け渡しは同じ。300行を超える規約を
+ * 別本にすると、片方だけ長い式の分割や禁止コマンドが抜けても型では検知できない。
+ * `lesson_mode` を本文で明示し、入力の読み分けだけを同じ正本の中に置く。
+ *
+ * 復習の穴を `problem_text` に偽装する案も採らない。問題の写真が無いのに
+ * 問題文として渡すと、「問題を推測しない」という新規授業の保険が形だけになる。
+ * `review_context` は別の棚に置き、`problem_text` は写真についての事実のまま保つ。
  *
  * **音声補正ヒントを同梱する。** 先輩は喋るだけでなく、生徒の説明を聞いて
  * 「言えたか / 詰まったか」で教える地点を決める(=【申告させず、やらせる】)。
@@ -109,8 +119,10 @@ export function conversationSystemPrompt(
  */
 export function boardLessonSystemPrompt(
   variables: {
+    lesson_mode: "new" | "review";
     problem_text: string;
     student_work: string;
+    review_context: string;
     allowed_topics: string;
     remaining_seconds: number;
   },

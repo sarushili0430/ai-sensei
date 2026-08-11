@@ -150,6 +150,16 @@ secretの置き場所としてワーカーの箱が先に作られ、あとで `
 
 ## 3. マイグレーションと初回デプロイ
 
+**LiveKit metadata の契約を変えるリリースでは、APIより先にagentをデプロイする。**
+手順と理由は [`docs/deploy-agent.md` §2-3](deploy-agent.md#2-3-2回目以降)。APIを先に
+出すと、新しいキーを含むmetadataを `.strict()` な古いagentが拒否し、
+`context_unreadable` で全セッションを切断しうる。今回の `review_hole` も新規授業には
+`null` で載るため、影響は復習だけに限られない。先に新しいagentの稼働を確認すれば、
+古いAPIがキーを省略する窓は復習だけが警告つきの板書なし会話へ縮退し、接続は切れない。
+agentとAPIのGitHub Actionsは独立しており、同じpushでも順序は保証されない。契約変更時は
+対象コミットのagentをCLIで先行デプロイするかリリースを2段に分け、agentの稼働確認後に
+APIを開始する。
+
 ```bash
 cd backend/api
 pnpm run migrate:develop     # D1にスキーマを流す

@@ -1,18 +1,20 @@
 import type { BoardStep } from "@ai-sensei/contract";
 import type { CurriculumLocale } from "@ai-sensei/curriculum";
-import { conversationSystemPrompt } from "@ai-sensei/prompts";
+import { boardLessonSystemPrompt, conversationSystemPrompt } from "@ai-sensei/prompts";
 import type { SessionContext } from "./context.ts";
 
 /**
- * フェーズ2「教え返し」の、agent 側にしか置けないもの。
+ * 板書授業とフェーズ2「教え返し」をつなぐ、agent 側にしか置けないもの。
  *
  * **人格と約束はここには無い。**正本は `prompts/senpai_conversation.{ja,en}.md` で、
- * このファイルが持つのは2つだけ:
+ * このファイルが持つのは3つだけ:
  *
  *   1. **定型の一言**(冒頭の無音埋め・教え返しへの受け渡し・立て直し)。
  *      会話LLMを通さずにTTSへ直接渡す文なので、プロンプトには置けない。
  *   2. **板書の要約**(`lesson_recap` に入れる値)。板書は配送層の事実
  *      (`BoardStep`)なので、プロンプト側からは見えない。
+ *   3. **セッション文脈から各プロンプトへ写す値**。写真と復習の穴を
+ *      同じ欄に偽装せず、`lesson_mode` で選べる形にする。
  *
  * ─────────────────────────────────────────────────────────────────────────
  * 【板書の内容は instructions にだけ入れる。transcript には入れない】
@@ -56,12 +58,21 @@ const LESSON_FAILED_PROMPT: Record<CurriculumLocale, string> = {
 /**
  * 復習セッションの最初の一言。板書は出さず、前回の穴から聞き直す。
  *
+ * 通常の復習は `review_hole` から板書を始める。これは新しいagentを先に出した
+ * デプロイの窓で、古いAPIが欄を送らなかったときだけ使う互換フォールバック。
+ *
  * **「覚えてる?」と聞かない。**それは `senpai_conversation.*.md` が禁じている
  * 申告させる聞き方そのもので、「うん」で返せてしまう。言わせて判定する。
  */
 const REVIEW_OPENING: Record<CurriculumLocale, string> = {
   ja: "この前つまずいたとこ、もう一回説明してみて。",
   en: "Let's take another run at the bit you got stuck on — explain it to me.",
+};
+
+/** 復習には「この問題」が存在しないので、板書失敗時も穴を起点に立て直す。 */
+const REVIEW_LESSON_FAILED_PROMPT: Record<CurriculumLocale, string> = {
+  ja: "ごめん、板書がうまく出せなかった。口でやろっか。前に止まったところ、何が引っかかる?",
+  en: "Sorry — the board didn't come up. Let's talk it through. What catches you at that spot?",
 };
 
 /**
@@ -100,8 +111,11 @@ export function teachBackPrompt(locale: CurriculumLocale): string {
   return TEACH_BACK_PROMPT[locale];
 }
 
-export function lessonFailedPrompt(locale: CurriculumLocale): string {
-  return LESSON_FAILED_PROMPT[locale];
+export function lessonFailedPrompt(
+  locale: CurriculumLocale,
+  kind: SessionContext["kind"] = "new",
+): string {
+  return kind === "review" ? REVIEW_LESSON_FAILED_PROMPT[locale] : LESSON_FAILED_PROMPT[locale];
 }
 
 export function reviewOpening(locale: CurriculumLocale): string {
@@ -112,6 +126,79 @@ export function handsTurnToStudent(speech: string, locale: CurriculumLocale): bo
   const normalized = speech.trim();
   if (normalized.length === 0) return false;
   return HANDOFF_PATTERNS[locale].some((pattern) => pattern.test(normalized));
+}
+
+/**
+ * セッション開始時に板書授業へ入るか。
+ *
+ * `review` はすでに小テストで「まだ」→「先輩に聞く」を選んだあとに作られる。
+ * ここでもう一度説明だけを求めると、§2 の「詰まったら授業モードへ」を1段戻し、
+ * 生徒は**教えてもらうために同じ詰まりを二度見せる**ことになる。したがって
+ * 通常の2種類はどちらも板書から始める。ただし、新しいagentを先に出した
+ * ローリングデプロイの窓では、古いAPIが `review_hole` を送らない。その復習だけは
+ * 根拠なしで板書を作らず、従来の聞き直し会話へ縮退する。
+ */
+export function startsWithBoardLesson(
+  context: Pick<SessionContext, "kind" | "review_hole">,
+): boolean {
+  return context.kind === "new" || context.review_hole != null;
+}
+
+/**
+ * 復習の穴を板書プロンプトへ貼るJSON。
+ *
+ * `problem_text` へ穴を詰めない。問題写真の事実と前回の観測を混ぜると、
+ * 「問題写真なしなら推測しない」という新規授業の保険が効かなくなる。
+ * JSONにするのは `desc` / `evidence` の改行や引用符まで**データの境界内**に置き、
+ * 見出しに化けさせないため。新規授業では文字列 `null` を渡し、ロケール固有の
+ * ダミー文言を増やさない。
+ */
+export function renderReviewBoardContext(context: SessionContext): string {
+  return context.review_hole == null ? "null" : JSON.stringify(context.review_hole, null, 2);
+}
+
+export type SenpaiBoardLessonInput = {
+  context: SessionContext;
+  remainingSeconds: number;
+};
+
+/**
+ * 写真起点と穴起点を、同じ板書プロンプトの明示的なモードへ写す。
+ *
+ * 別の復習プロンプトをコピーしない理由は `packages/prompts/src/index.ts` に置いた。
+ * ここでは**どちらの入力も渡し、本文に mode で片方だけ選ばせる**。復習時にも
+ * `problem_text` を契約どおりのプレースホルダのまま渡すことで、写真が無い事実を
+ * 穴の説明で上書きしない。
+ */
+export function senpaiBoardLessonPrompt(input: SenpaiBoardLessonInput): string {
+  const { context } = input;
+  return boardLessonSystemPrompt(
+    {
+      lesson_mode: context.kind,
+      problem_text: context.problem_text,
+      student_work: context.visible_work,
+      review_context: renderReviewBoardContext(context),
+      allowed_topics: context.allowed_topics,
+      remaining_seconds: input.remainingSeconds,
+    },
+    context.locale,
+  );
+}
+
+/**
+ * 板書LLMが最後の一言で番を渡し忘れたときの、コード側の保険。
+ *
+ * プロンプトだけに任せると、生成が1回ぶれただけで「教えて終わり」になる。
+ * 一方、すでに番を渡しているのに毎回定型句を足すと同じ質問を二度聞く。
+ * 実際に配送できた最後の手順を見て、不足したときだけ教え返しへ戻す。
+ */
+export function teachBackFallback(
+  context: Pick<SessionContext, "locale">,
+  steps: readonly BoardStep[],
+): string | null {
+  const last = steps.at(-1);
+  if (last === undefined || handsTurnToStudent(last.speech, context.locale)) return null;
+  return teachBackPrompt(context.locale);
 }
 
 /**
@@ -182,7 +269,7 @@ export type SenpaiConversationInput = {
   context: SessionContext;
   /** 会話の残り時間。締めに入る判断に使う(会話プロンプトの変数)。 */
   remainingSeconds: number;
-  /** 授業で実際にワイヤーへ出した手順。授業前・復習セッションでは空でよい。 */
+  /** 授業で実際にワイヤーへ出した手順。授業前だけ空でよい。 */
   lesson?: readonly BoardStep[];
 };
 

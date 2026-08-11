@@ -304,6 +304,7 @@ sessionsRoute.post("/", async (c) => {
     allowed,
     isPremium: user.is_premium,
     hasNotesPhoto: photoKey !== null,
+    reviewHole,
   });
 
   const dispatch = agentDispatch(c.env, metadata);
@@ -389,6 +390,21 @@ sessionsRoute.patch("/:sessionId/topics", async (c) => {
     topics: [],
   };
 
+  /**
+   * 復習の単元を絞り直す経路でも、最初のトークンと同じ穴を載せ直す。
+   *
+   * `context.summary` から「前回、」を剥がして復元する案は採らない。そこは表示用に
+   * 整形済みで、英語なら接頭辞も違い、何より本人の発話 `evidence` が戻らない。
+   * 正本の穴をもう一度読むほうが、写真用の文字列から意味を逆算するより境界が明確。
+   */
+  const reviewHole =
+    session.kind === "review" && session.hole_id !== null
+      ? await repository.getHole(session.hole_id)
+      : null;
+  if (session.kind === "review" && (!reviewHole || reviewHole.device_id !== deviceId)) {
+    throw apiError("session_not_found", { locale });
+  }
+
   await repository.updateSessionTopics({
     sessionId,
     topicIds: [...allowed.primary],
@@ -407,6 +423,7 @@ sessionsRoute.patch("/:sessionId/topics", async (c) => {
     isPremium: user.is_premium,
     // 写真は解析し直さないので、保存済みのキーの有無がそのまま「ノートがあったか」。
     hasNotesPhoto: session.photo_key !== null,
+    reviewHole,
   });
 
   const token = await createLiveKitToken({
@@ -511,6 +528,8 @@ function buildSessionMetadata(input: {
   isPremium: boolean;
   /** ノートの写真がR2にあるか(= 送られてきたか)。`student_work` の文言が変わる。 */
   hasNotesPhoto: boolean;
+  /** 復習で教え直す1つの穴。新規授業では `null`。 */
+  reviewHole: HoleRecord | null;
 }): string {
   const metadata = sessionMetadataSchema.parse({
     session_id: input.sessionId,
@@ -534,6 +553,17 @@ function buildSessionMetadata(input: {
     allowed_topics: formatAllowedTopics(allowedTopicList(input.allowed), input.locale),
     allowed_topic_ids: [...input.allowed.primary, ...input.allowed.prerequisite],
     is_premium: input.isPremium,
+    // 前回のカルテ全体は載せない。対象外の穴や「言えたこと」まで板書LLMへ渡すと、
+    // 1回1穴の復習が前回セッション全体の再講義へ広がる。対象穴の説明と、
+    // その根拠になった本人の言葉だけで、教え直す地点は特定できる。
+    review_hole:
+      input.reviewHole === null
+        ? null
+        : {
+            topic_id: input.reviewHole.topic_id,
+            desc: input.reviewHole.desc,
+            evidence: input.reviewHole.evidence,
+          },
   } satisfies SessionMetadata);
   return JSON.stringify(metadata);
 }

@@ -86,6 +86,8 @@ export const agentDegradations = [
   "board_head_repair_unreadable",
   /** Text Streams の送り口が無い。**板書がまったく出ない**経路。 */
   "board_publisher_missing",
+  /** 古いAPIの復習metadata。対象穴が無いため、板書を出さず従来の会話へ縮退する。 */
+  "review_hole_missing",
   /** 授業が1行も板書を出せなかった。**8/16ゲートを見る指標**(計画書 §3-4)。 */
   "lesson_empty",
   /** 読み上げに失敗した。板書は出ているのに音声だけ落ちている。 */

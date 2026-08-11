@@ -444,8 +444,10 @@ describe("設計上の約束がプロンプトに書かれている", () => {
 
   it("先輩のプロンプトは音声ヒントを同梱し、英語版に日本語が混ざらない", () => {
     const variables = {
+      lesson_mode: "new" as const,
       problem_text: "x^2 - 3x + 2 < 0 を解け",
       student_work: "- 左辺を因数分解しかけて止まっている",
+      review_context: "null",
       allowed_topics: "- M1-NIJI-FUTOSHIKI",
       remaining_seconds: 600,
     };
@@ -455,8 +457,10 @@ describe("設計上の約束がプロンプトに書かれている", () => {
 
     const en = boardLessonSystemPrompt(
       {
+        lesson_mode: "new",
         problem_text: "Solve x^2 - 3x + 2 < 0",
         student_work: "- Started factorising the left side and stopped",
+        review_context: "null",
         allowed_topics: "- A2-INEQ-QUADRATIC",
         remaining_seconds: 600,
       },
@@ -464,6 +468,52 @@ describe("設計上の約束がプロンプトに書かれている", () => {
     );
     expect(en).toContain("Solve x^2 - 3x + 2 < 0");
     expect(en).toContain("square root of 3");
+    expect(en).not.toMatch(/[ぁ-んァ-ン一-龯]/);
+  });
+
+  /**
+   * 復習は写真なしが正常。写真用プレースホルダを見た板書LLMが
+   * 「問題を読んで」と戻らず、すでに自己申告した穴から教え始める指示を固定する。
+   */
+  it("復習モードは穴を根拠に、聞き直さず板書で教え直す", () => {
+    const ja = boardLessonSystemPrompt({
+      lesson_mode: "review",
+      problem_text: "(問題の写真なし)",
+      student_work: "(なし)",
+      review_context: JSON.stringify({
+        topic_id: "M1-NIJI-GURAFU",
+        desc: "平方完成が頂点を表す理由で説明が止まった",
+        evidence: "形をそろえるため、だと思う",
+      }),
+      allowed_topics: "- M1-NIJI-GURAFU — 数学I / 二次関数 / 二次関数のグラフと平方完成",
+      remaining_seconds: 600,
+    });
+
+    expect(ja).toContain("平方完成が頂点を表す理由で説明が止まった");
+    expect(ja).toContain("冒頭で同じことを聞き直さず");
+    expect(ja).toContain("すぐ板書で教え直してください");
+    expect(ja).toContain("教えっぱなしで終わらせない");
+
+    const en = boardLessonSystemPrompt(
+      {
+        lesson_mode: "review",
+        problem_text: "(no photo of the problem)",
+        student_work: "(none)",
+        review_context: JSON.stringify({
+          topic_id: "A1-QUAD-GRAPH",
+          desc: "The explanation stalled at why completing the square reveals the vertex",
+          evidence: "I think it is just to make the terms match",
+        }),
+        allowed_topics: "- A1-QUAD-GRAPH — Algebra 1 / Quadratics / Parabolas",
+        remaining_seconds: 600,
+      },
+      "en",
+    );
+
+    expect(en).toContain("why completing the square reveals the vertex");
+    expect(en).toContain("Do not test the same thing again");
+    expect(en).toContain("start reteaching");
+    expect(en).toContain("never teach and leave it there");
     expect(en).not.toMatch(/[ぁ-んァ-ン一-龯]/);
   });
 

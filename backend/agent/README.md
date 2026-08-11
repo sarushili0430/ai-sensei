@@ -132,6 +132,7 @@ few-shot も、その言語で書かれたものをそのまま渡す。
 | `job_started` | ジョブを受け取った | これが無ければディスパッチが届いていない |
 | `context_unreadable` | 文脈が読めない。会話せずに切る | APIのmetadataを疑う |
 | `conversation_started` | セッションが立ち上がった(授業の**前**) | ここまで来れば先輩は喋れる状態 |
+| `review_hole_missing` | 古いAPIが作った復習。板書なし会話へ縮退 | APIのデプロイ後も続くなら版ずれを疑う |
 | `lesson_finished` / `lesson_empty` | 授業1回ぶんの結果 | `lesson_empty` は8/16ゲートを見る指標 |
 | `conversation_ended` | `completed` / `timeout` / `user_left` / `error` | 終わり方と発話数 |
 | `karte_built` / `karte_failed` | カルテ生成 | 穴の数と所要時間 |
