@@ -276,7 +276,7 @@ export class D1Repository implements Repository {
 
   async markHoleFilled(holeId: string, filledAt: string): Promise<void> {
     await this.db
-      .prepare("UPDATE holes SET status = 'filled', filled_at = ? WHERE id = ?")
+      .prepare("UPDATE holes SET status = 'filled', filled_at = ? WHERE id = ? AND status = 'open'")
       .bind(filledAt, holeId)
       .run();
   }

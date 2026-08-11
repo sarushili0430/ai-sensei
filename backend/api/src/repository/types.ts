@@ -156,6 +156,7 @@ export type Repository = {
 
   listHoles(deviceId: string): Promise<HoleRecord[]>;
   getHole(holeId: string): Promise<HoleRecord | null>;
+  /** open → filled の最初の更新だけを反映する。再送で filled_at を動かさない。 */
   markHoleFilled(holeId: string, filledAt: string): Promise<void>;
 
   insertReviewSchedules(entries: ReviewScheduleRecord[]): Promise<void>;

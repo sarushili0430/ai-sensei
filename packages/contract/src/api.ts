@@ -19,6 +19,7 @@ export const apiPaths = {
   progress: "/v1/me/progress",
   reviewQueue: "/v1/me/reviews",
   revenueCatWebhook: "/v1/webhooks/revenuecat",
+  fillHole: (holeId: string) => `/v1/me/holes/${holeId}/filled`,
 } as const;
 
 export const locales = ["ja", "en"] as const;

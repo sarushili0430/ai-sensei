@@ -17,6 +17,10 @@ function get(path: string) {
   return app.request(path, { headers: { "x-device-id": testDeviceId } }, bindings);
 }
 
+function post(path: string) {
+  return app.request(path, { method: "POST", headers: { "x-device-id": testDeviceId } }, bindings);
+}
+
 async function seedHole(overrides: Partial<HoleRecord> = {}): Promise<HoleRecord> {
   const karte: KarteRecord = {
     id: "kar_seed",
@@ -272,5 +276,94 @@ describe("復習キューの言語", () => {
     const response = await get("/v1/me/reviews");
     const body = (await response.json()) as ReviewQueueResponse;
     expect(body.items[0]?.prompt).toContain("いまなら説明できますか?");
+  });
+});
+
+describe("POST /v1/me/holes/:holeId/filled", () => {
+  it("自分の穴を埋め、残っている復習通知をD1と配信先の両方から取り消す", async () => {
+    const hole = await seedHole();
+    await services.repository.insertReviewSchedules([
+      {
+        id: "rev_1",
+        hole_id: hole.id,
+        step: 1,
+        scheduled_at: "2026-08-04T13:24:07.000Z",
+        external_id: "os_1",
+      },
+      {
+        id: "rev_2",
+        hole_id: hole.id,
+        step: 2,
+        scheduled_at: "2026-08-06T13:24:07.000Z",
+        external_id: null,
+      },
+      {
+        id: "rev_3",
+        hole_id: hole.id,
+        step: 3,
+        scheduled_at: "2026-08-10T13:24:07.000Z",
+        external_id: "os_3",
+      },
+    ]);
+
+    const response = await post(`/v1/me/holes/${hole.id}/filled`);
+
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe("");
+    expect(await services.repository.getHole(hole.id)).toMatchObject({
+      status: "filled",
+      filled_at: "2026-08-03T13:24:07.000Z",
+    });
+    expect(services.repository.schedules).toEqual([]);
+    expect(services.scheduler.cancelled).toEqual(["os_1", "os_3"]);
+  });
+
+  it("他人の穴IDは存在しないものと同じ404にして、穴も通知も変更しない", async () => {
+    const hole = await seedHole({
+      device_id: "99999999-8888-7777-6666-555555555555",
+    });
+    await services.repository.insertReviewSchedules([
+      {
+        id: "rev_other",
+        hole_id: hole.id,
+        step: 1,
+        scheduled_at: "2026-08-04T13:24:07.000Z",
+        external_id: "os_other",
+      },
+    ]);
+
+    const response = await post(`/v1/me/holes/${hole.id}/filled`);
+
+    expect(response.status).toBe(404);
+    expect(await services.repository.getHole(hole.id)).toMatchObject({
+      status: "open",
+      filled_at: null,
+    });
+    expect(services.repository.schedules).toHaveLength(1);
+    expect(services.scheduler.cancelled).toEqual([]);
+  });
+
+  it("二度押ししても最初のfilled_atを保ち、同じ通知を二度取り消さない", async () => {
+    const hole = await seedHole();
+    await services.repository.insertReviewSchedules([
+      {
+        id: "rev_once",
+        hole_id: hole.id,
+        step: 1,
+        scheduled_at: "2026-08-04T13:24:07.000Z",
+        external_id: "os_once",
+      },
+    ]);
+
+    expect((await post(`/v1/me/holes/${hole.id}/filled`)).status).toBe(204);
+    services.now = () => new Date("2026-08-05T13:24:07.000Z");
+    expect((await post(`/v1/me/holes/${hole.id}/filled`)).status).toBe(204);
+
+    expect(await services.repository.getHole(hole.id)).toMatchObject({
+      status: "filled",
+      filled_at: "2026-08-03T13:24:07.000Z",
+    });
+    expect(services.repository.schedules).toEqual([]);
+    expect(services.scheduler.cancelled).toEqual(["os_once"]);
   });
 });
