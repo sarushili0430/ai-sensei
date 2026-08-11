@@ -12,7 +12,7 @@
 | `question_types_few_shot` | agent | 教え返しを聞くときの聞き方4型をそろえるfew-shot |
 | `karte_generation` | agent(セッション終了時) | transcript → カルテJSON |
 | `math_speech_hints` | 両方 | 数式音声の補正ヒント(§4(d)) |
-| `senpai_board` | agent(授業モードの板書LLM) | 先輩ペルソナ + 板書JSON生成([ピボット計画 v1](../docs/pivot_plan_v1.md) §3) |
+| `senpai_board` | agent(新規 / 復習の板書LLM) | 写真または対象穴を起点に、先輩ペルソナ + 板書JSON生成([ピボット計画 v1](../docs/pivot_plan_v1.md) §2・§3) |
 | `study_plan` | agent(計画モード) | 先輩が**口で聞いて**学習計画を組む / 組み直す(同 §4-3) |
 
 現在のロケールは `ja` と `en` の2つ。**id の数 × 2ロケール**が揃って
@@ -39,7 +39,7 @@ pnpm --filter @ai-sensei/prompts generate   # .md → generated.ts
 ```ts
 getPrompt("senpai_conversation", "en");       // 言語を指定して取り出す
 conversationSystemPrompt(variables, "en");    // few-shot と音声ヒントも英語で同梱
-boardLessonSystemPrompt(variables, "en");     // 先輩(板書)+ 音声ヒント
+boardLessonSystemPrompt(variables, "en");     // 先輩(新規 / 復習の板書)+ 音声ヒント
 studyPlanSystemPrompt(variables, "en");       // 先輩(計画)。音声ヒントは同梱しない
 ```
 
@@ -97,7 +97,7 @@ variables: [photo_summary, visible_work, allowed_topics, question_seeds, lesson_
 
 | id | 1番目の扱い |
 | --- | --- |
-| `senpai_board` | **改正後。** 教える。ただし教えっぱなしにせず、必ず説明してもらうところまで行く |
+| `senpai_board` | **改正後。** 写真の問題も復習の穴も教える。ただし教えっぱなしにせず、必ず説明してもらうところまで行く |
 | `senpai_conversation` `question_types_few_shot` | **改正後。** 説明が詰まったら教える。ただし**先に答えを埋めない** — まず言わせてから(言ってしまうと、そこが穴だったのかが永久に分からなくなる) |
 | `photo_analysis` | **改正前のまま。** 解析器の出力は「何を教えるか」を決めるための材料で、ここに解答が入ると誤読が下流に固定される |
 | `karte_generation` | 対象外(採点しない ≒ 約束3の側の話) |

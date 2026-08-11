@@ -320,7 +320,7 @@ describe("復習セッション", () => {
           topic_id: "M1-NIJI-GURAFU",
           desc: "平方完成のなぜで説明が止まった",
           severity: "high",
-          evidence: null,
+          evidence: "形をそろえるため、だと思う",
           status: "open",
           created_at: "2026-08-01T11:00:00.000Z",
           filled_at: null,
@@ -366,6 +366,19 @@ describe("復習セッション", () => {
     expect(body.kind).toBe("review");
     // 写真がなくても、穴から単元を引く
     expect(body.detected_topics.map((topic) => topic.topic_id)).toEqual(["M1-NIJI-GURAFU"]);
+
+    const claims = await verifyJwt(body.livekit.token, bindings.LIVEKIT_API_SECRET);
+    const metadata = JSON.parse(String(claims?.["metadata"])) as {
+      problem_text: string;
+      review_hole: unknown;
+    };
+    // 穴を問題文に偽装しない。写真なしの事実と、教え直す根拠は別の欄で運ぶ。
+    expect(metadata.problem_text).toBe("(問題の写真なし)");
+    expect(metadata.review_hole).toEqual({
+      topic_id: "M1-NIJI-GURAFU",
+      desc: "平方完成のなぜで説明が止まった",
+      evidence: "形をそろえるため、だと思う",
+    });
   });
 
   it("他人の穴IDでは始められない", async () => {

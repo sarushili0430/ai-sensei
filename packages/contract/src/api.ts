@@ -292,8 +292,33 @@ export const sessionMetadataSchema = z
     /** ガードレールの照合に使う生のID。前提トピックまで含む。 */
     allowed_topic_ids: z.array(topicIdSchema),
     is_premium: z.boolean(),
+    /**
+     * 復習で**今回教え直す穴だけ**。新規授業では `null`。
+     *
+     * `problem_text` に穴の説明を詰める案は採らない。復習には問題の写真が無く、
+     * 問題文を装うと `senpai_board.*.md` の「写っていない問題を作らない」という
+     * 境界が意味を失うため。写真の事実と、前回の説明から得た観測は型でも分ける。
+     *
+     * 前回のカルテ全体ではなく `desc` と `evidence` だけを運ぶ。`said_well` や
+     * 別の穴まで渡すと、1回1穴の復習が前回セッション全体の再講義へ広がる。
+     * `topic_id` は主題を示し、実際に触れてよい前提範囲は従来どおり
+     * `allowed_topic_ids` が担う。中身の照合をここへ持ち込まないのは、contract は
+     * 構造と上限、照合は guardrail という依存方向を守るため。
+     */
+    review_hole: z
+      .object({
+        topic_id: topicIdSchema,
+        desc: z.string().min(1).max(200),
+        evidence: z.string().max(500).nullable(),
+      })
+      .strict()
+      .nullable(),
   })
-  .strict();
+  .strict()
+  .refine((metadata) => (metadata.kind === "review") === (metadata.review_hole !== null), {
+    message: "review のときだけ review_hole を入れてください",
+    path: ["review_hole"],
+  });
 export type SessionMetadata = z.infer<typeof sessionMetadataSchema>;
 
 /** 会話ログ。assistant=後輩の発話、user=ユーザーの説明。 */

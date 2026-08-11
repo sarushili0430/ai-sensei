@@ -1,5 +1,4 @@
 import type { BoardStep, CompleteSessionRequest } from "@ai-sensei/contract";
-import { boardLessonSystemPrompt } from "@ai-sensei/prompts";
 import { type JobContext, type JobProcess, defineAgent, voice } from "@livekit/agents";
 import * as anthropic from "@livekit/agents-plugin-anthropic";
 import * as deepgram from "@livekit/agents-plugin-deepgram";
@@ -23,12 +22,12 @@ import {
 import { boardCloseReasonFor, createAnthropicLessonClient, runBoardLesson } from "./lesson.ts";
 import { JobLogger } from "./log.ts";
 import {
-  handsTurnToStudent,
   lessonFailedPrompt,
   openingFiller,
-  reviewOpening,
+  senpaiBoardLessonPrompt,
   senpaiConversationPrompt,
-  teachBackPrompt,
+  startsWithBoardLesson,
+  teachBackFallback,
 } from "./senpai.ts";
 import { TranscriptCollector } from "./transcript.ts";
 
@@ -98,11 +97,11 @@ export default defineAgent({
 
     log = log.child({ session_id: context.session_id });
 
-    // 授業モードに入るかは `kind` で決める。
-    // **`review` は今回いじらない** — 復習は前回の穴を聞き直す会話で、
-    // 板書つきで教え直すかどうかは計画書 §2 の「詰まったら授業モードへ」の
-    // 判断が要る(小テストが入ってから決める)。
-    const lessonMode = context.kind === "new";
+    // 復習も板書授業から始める。`review` は小テストで「まだ」→「先輩に聞く」を
+    // 選んだ**あと**のセッションなので、前回の穴をもう一度聞くだけの会話へ戻すと、
+    // §2 の「詰まったら授業モードへ」がここで途切れる。写真の代わりに何を根拠に
+    // 教えるかは `senpaiBoardLessonPrompt()` が review_hole から組み立てる。
+    const lessonMode = startsWithBoardLesson(context);
 
     const collector = new TranscriptCollector(startedAt, context);
 
@@ -201,9 +200,6 @@ export default defineAgent({
         signal: interrupt.signal,
         log,
       });
-    } else {
-      // 復習は板書を出さない(前回の穴を聞き直す会話)。最初の一言だけこちらから。
-      session.say(reviewOpening(context.locale));
     }
 
     const endedReason = await ended;
@@ -355,7 +351,7 @@ async function teachWithBoard(options: TeachOptions): Promise<BoardDelivery | un
     // 接続直後に必ず入っている値なので、ここに来るのはフレームワーク側の異常。
     log.warn("board_publisher_missing");
     agent.endLesson();
-    session.say(lessonFailedPrompt(context.locale));
+    session.say(lessonFailedPrompt(context.locale, context.kind));
     return undefined;
   }
 
@@ -386,18 +382,12 @@ async function teachWithBoard(options: TeachOptions): Promise<BoardDelivery | un
       apiKey: config.ANTHROPIC_API_KEY,
       model: config.LLM_MODEL_BOARD,
     }),
-    system: boardLessonSystemPrompt(
-      {
-        // **どちらもそのまま渡す。**読めなかったとき・ノートが無いときの文言は
-        // 契約側(backend/api)が会話の言語で入れてくる。ここで埋め直すと、
-        // プロンプトが名指しで見ているプレースホルダとずれる(`context.ts` の理由)。
-        problem_text: context.problem_text,
-        student_work: context.visible_work,
-        allowed_topics: context.allowed_topics,
-        remaining_seconds: remainingSeconds(context, startedAt, new Date()),
-      },
-      context.locale,
-    ),
+    // 新規は写真の問題、復習は review_hole を根拠にする。どちらも同じ板書規約を
+    // 通すが、穴を problem_text に偽装しない(`senpai.ts` の設計判断)。
+    system: senpaiBoardLessonPrompt({
+      context,
+      remainingSeconds: remainingSeconds(context, startedAt, new Date()),
+    }),
     locale: context.locale,
     delivery: board,
     signal,
@@ -437,7 +427,7 @@ async function teachWithBoard(options: TeachOptions): Promise<BoardDelivery | un
   if (lesson.step_count === 0) {
     // 1行も出せなかった。教わっていないことの説明は求められない。
     log.warn("lesson_empty", { board_id: lesson.board_id, reason: lesson.reason });
-    session.say(lessonFailedPrompt(context.locale));
+    session.say(lessonFailedPrompt(context.locale, context.kind));
     return board;
   }
 
@@ -446,12 +436,10 @@ async function teachWithBoard(options: TeachOptions): Promise<BoardDelivery | un
     return board;
   }
 
-  // 板書の最後の手順がもう番を渡していれば、同じことを二度言わない。
-  // 成功した授業では毎回そうなる(`senpai_board.*.md` がそう指示している)。
-  const last = lesson.steps.at(-1);
-  if (last === undefined || !handsTurnToStudent(last.speech, context.locale)) {
-    session.say(teachBackPrompt(context.locale));
-  }
+  // プロンプトが番を渡し忘れても「教えて終わり」にしない。一方、もう渡して
+  // いるときは同じ問いを二度重ねない。実際に配送できた手順だけで決める。
+  const fallback = teachBackFallback(context, lesson.steps);
+  if (fallback !== null) session.say(fallback);
 
   return board;
 }

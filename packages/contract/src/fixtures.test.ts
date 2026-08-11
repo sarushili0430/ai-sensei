@@ -19,6 +19,7 @@ import {
   planDayMinutesMax,
   planDaysMaxCount,
   planTurnSchema,
+  sessionMetadataSchema,
   studyPlanDraftSchema,
   studyPlanSchema,
 } from "./index.ts";
@@ -529,6 +530,31 @@ describe("APIスキーマ", () => {
     const parsed = createSessionRequestSchema.parse({});
     expect(parsed.kind).toBe("new");
     expect(parsed.locale).toBe("ja");
+  });
+
+  /**
+   * 写真の問題と復習の穴は別の根拠。kind と食い違ったまま通すと、agent は
+   * 写真なしを新規授業として聞き返すか、新しい問題に前回の穴を混ぜてしまう。
+   */
+  it("session metadata は review のときだけ対象穴を要求する", () => {
+    const metadata = loadFixture("session-metadata") as Record<string, unknown>;
+    const reviewHole = {
+      topic_id: "M1-NIJI-GURAFU",
+      desc: "平方完成の理由で説明が止まった",
+      evidence: "形をそろえるため、だと思う",
+    };
+
+    expect(sessionMetadataSchema.safeParse(metadata).success).toBe(true);
+    expect(
+      sessionMetadataSchema.safeParse({ ...metadata, kind: "review", review_hole: null }).success,
+    ).toBe(false);
+    expect(
+      sessionMetadataSchema.safeParse({ ...metadata, kind: "review", review_hole: reviewHole })
+        .success,
+    ).toBe(true);
+    expect(sessionMetadataSchema.safeParse({ ...metadata, review_hole: reviewHole }).success).toBe(
+      false,
+    );
   });
 
   it("detected_topics が空のセッション作成レスポンスは無効", () => {
