@@ -33,6 +33,11 @@
                     "type": "string",
                     "maxLength": 500
                   },
+                  "quiz": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
                   "id": {
                     "type": "string",
                     "minLength": 1
@@ -83,13 +88,19 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 200
+              },
+              "quiz": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
               }
             },
             "required": [
               "hole",
               "topic_id",
               "days_since",
-              "prompt"
+              "prompt",
+              "quiz"
             ],
             "additionalProperties": false
           }
@@ -122,6 +133,11 @@
                   "evidence": {
                     "type": "string",
                     "maxLength": 500
+                  },
+                  "quiz": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
                   },
                   "id": {
                     "type": "string",
@@ -179,14 +195,14 @@
           },
           "maxItems": 30
         },
-        "requires_premium": {
+        "lesson_requires_premium": {
           "type": "boolean"
         }
       },
       "required": [
         "items",
         "filled",
-        "requires_premium"
+        "lesson_requires_premium"
       ],
       "additionalProperties": false
     }

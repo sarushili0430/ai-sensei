@@ -23,8 +23,8 @@ const messages: Record<ApiErrorCode, { ja: string; en: string; status: number }>
     status: 429,
   },
   premium_required: {
-    ja: "穴の復習はPremiumの機能です。無料のままでも、今日のカルテは見られます。",
-    en: "Reviewing past gaps is a Premium feature. Today's karte stays free.",
+    ja: "先輩に声で聞き直す授業モードはPremiumの機能です。小テストは無料で使えます。",
+    en: "Calling your senpai back by voice uses Premium lesson mode. The quick quiz stays free.",
     status: 402,
   },
   photo_unreadable: {
@@ -40,6 +40,11 @@ const messages: Record<ApiErrorCode, { ja: string; en: string; status: number }>
   session_not_found: {
     ja: "このセッションは見つかりませんでした。",
     en: "Session not found.",
+    status: 404,
+  },
+  hole_not_found: {
+    ja: "この穴は見つかりませんでした。復習画面を開き直してみてください。",
+    en: "We couldn't find this gap. Please reopen the review screen.",
     status: 404,
   },
   rate_limited: {

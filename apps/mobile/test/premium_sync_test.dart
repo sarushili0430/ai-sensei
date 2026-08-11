@@ -63,7 +63,7 @@ class _FakeServer {
       return _json(<String, dynamic>{
         'items': <dynamic>[],
         'filled': <dynamic>[],
-        'requires_premium': !_premium,
+        'lesson_requires_premium': !_premium,
       });
     }
     return http.Response('{"error":{"code":"not_found","message":""}}', 404);
@@ -136,7 +136,10 @@ void main() {
 
       // ここが false のままなのが、報告されたバグそのもの。
       expect(container.read(progressControllerProvider).value?.isPremium, isTrue);
-      expect(container.read(reviewControllerProvider).value?.requiresPremium, isFalse);
+      expect(
+        container.read(reviewControllerProvider).value?.lessonRequiresPremium,
+        isFalse,
+      );
     });
 
     // webhookは購入の数秒後に届く。1回読んで諦めると、届く前のものを掴む。

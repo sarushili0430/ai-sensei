@@ -73,6 +73,11 @@
                   "evidence": {
                     "type": "string",
                     "maxLength": 500
+                  },
+                  "quiz": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
                   }
                 },
                 "required": [
@@ -124,6 +129,13 @@
             "timeout",
             "user_left",
             "error"
+          ]
+        },
+        "review_outcome": {
+          "type": "string",
+          "enum": [
+            "said_it",
+            "not_yet"
           ]
         }
       },

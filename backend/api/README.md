@@ -10,7 +10,8 @@ Cloudflare Workers + Hono。セッション作成・カルテ保存・課金webh
 | POST | `/v1/sessions/{id}/complete` | `Bearer INTERNAL_API_TOKEN` | agentが呼ぶ。カルテ保存 + 復習プッシュ予約 |
 | GET | `/v1/sessions/{id}/result` | `X-Device-Id` | アプリが会話後に結果を取りに来る(生成中は202) |
 | GET | `/v1/me/progress` | `X-Device-Id` | 連続日数と埋めた穴 |
-| GET | `/v1/me/reviews` | `X-Device-Id` | 復習キュー(無料は空 + `requires_premium`) |
+| GET | `/v1/me/reviews` | `X-Device-Id` | 無料の小テスト + 音声授業のPremium要否 |
+| POST | `/v1/me/reviews/{holeId}` | `X-Device-Id` | 小テストの自己申告(言えた / まだ言えない) |
 | POST | `/v1/webhooks/revenuecat` | 共有シークレット | entitlement同期 |
 | GET | `/health` | なし | 死活確認。どの環境かを名乗る(`{"ok":true,"environment":"production"}`) |
 
@@ -129,9 +130,10 @@ await app.request("/v1/sessions", { method: "POST", body: form }, testBindings()
 そのセッションの許可トピックで照合し、外れたタグは落とす(`filterHoleTopicIds`)。
 的外れなタグを残すと、復習の通知まで的外れになるため。
 
-**復習はサーバ側でもPremiumを要求する。** `/v1/me/reviews` でキューを隠すだけだと、
-初回カルテで配った `hole_id` を使って `/v1/sessions` から直接呼べてしまう。
-穴の所有者(device_id)もセッション作成時と完了時の両方で確かめる。
+**小テストは無料、音声で先輩を呼び直す授業モードはPremium。** `/v1/me/reviews` は
+全ユーザーにキューを返すが、`kind=review` の `/v1/sessions` はサーバ側でもPremiumを
+要求する。レスポンスのフラグだけに任せると、初回カルテで配った `hole_id` を使って
+直接呼べてしまうため。穴の所有者(device_id)もセッション作成時と完了時の両方で確かめる。
 
 **`/complete` は冪等。** agentがタイムアウトで再送すると、素通しではカルテも穴も
 通知予約も二重にできる。すでにカルテがあるセッションには、保存済みのものを返す。

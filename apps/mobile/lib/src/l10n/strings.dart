@@ -376,9 +376,16 @@ class AppStrings {
 
   // --- 復習 ---
   String get reviewTitle => _pick('埋めにいく穴', 'Gaps to fill');
-  String get reviewStart => _pick('30秒で説明する', 'Explain in 30 seconds');
-  String get reviewLocked =>
-      _pick('穴の復習はPremiumの機能です', 'Reviewing past gaps is a Premium feature');
+  String get reviewSaidIt => _pick('言えた', 'I could explain it');
+  String get reviewNotYet => _pick('まだ言えない', 'Not yet');
+
+  /// 「まだ」は失点ではない。先輩が引き取る言い方にして、選んだ人を咎めない。
+  String get reviewNotYetLead => _pick(
+        'じゃあ、先輩ともう一回見てみよっか',
+        "Let's go through it together, then",
+      );
+  String get reviewAskSenpai => _pick('先輩に聞く', 'Ask senpai');
+  String get reviewLater => _pick('あとにする', 'Later');
 
   /// 埋めた穴のセクション。ペイウォールが謳う「履歴」はここで果たす。
   String reviewFilledTitle(int count) =>
