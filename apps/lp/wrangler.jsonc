@@ -4,15 +4,21 @@
 // 配信するのは public/ の中身だけ。ワーカーのコード(main)は持たない、
 // アセットonlyのデプロイ。
 //
-//   pnpm --filter @ai-sensei/lp deploy        # 公開
-//   pnpm --filter @ai-sensei/lp dev           # 手元で確認(http://localhost:8787)
-//   pnpm --filter @ai-sensei/lp build:check   # 設定とアップロード対象の確認だけ
+//   pnpm --filter @ai-sensei/lp deploy:production   # 公開
+//   pnpm --filter @ai-sensei/lp dev                 # 手元で確認(http://localhost:8787)
+//   pnpm --filter @ai-sensei/lp build:check         # 設定とアップロード対象の確認だけ
 //
-// **backend/api と違って環境を分けていない。** あちらは develop の事故が本番の
-// カルテを壊さないようにD1/R2/KVごと分けているが、こちらは読み取り専用の
-// 静的ファイルで、壊れる状態を持たない。公開前に中身を見たいときは
-// `wrangler versions upload` を使うと、本番URLを差し替えずにプレビューURLだけ
-// もらえる(環境を増やすより、こちらのほうが取り違えが起きない)。
+// **公開のスクリプト名を `deploy` にしないこと。** `pnpm deploy` は pnpm 自身の
+// 組み込みコマンド(パッケージを別ディレクトリに配置するもの)で、同名のスクリプトが
+// あっても組み込みが勝つ。`pnpm --filter @ai-sensei/lp deploy` は
+// `ERR_PNPM_INVALID_DEPLOY_TARGET` で落ちる。backend/api が `deploy:develop` /
+// `deploy:production` という名前なのも同じ理由。
+//
+// **backend/api と違って環境を分けていない**(スクリプト名だけ揃えてある)。
+// あちらは develop の事故が本番のカルテを壊さないようにD1/R2/KVごと分けているが、
+// こちらは読み取り専用の静的ファイルで、壊れる状態を持たない。公開前に中身を
+// 見たいときは `wrangler versions upload` を使うと、本番URLを差し替えずに
+// プレビューURLだけもらえる(環境を増やすより、こちらのほうが取り違えが起きない)。
 //
 // 設定の書式は backend/api/wrangler.toml と揃っていないが、これは意図的で、
 // Cloudflare が新規プロジェクトに勧めているのが jsonc のため。
