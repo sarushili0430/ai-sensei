@@ -82,10 +82,8 @@ export class D1Repository implements Repository {
       .prepare(
         `INSERT INTO sessions
            (id, device_id, kind, status, created_at, completed_at, local_date,
-            photo_key, topic_ids, hole_id, duration_seconds, context, day_seq)
-         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                (SELECT COALESCE(MAX(day_seq), -1) + 1
-                   FROM sessions WHERE device_id = ? AND local_date = ?)
+            photo_key, topic_ids, hole_id, duration_seconds, context)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
           WHERE (SELECT COUNT(*) FROM sessions WHERE device_id = ? AND local_date = ?) < ?`,
       )
       .bind(
@@ -103,8 +101,6 @@ export class D1Repository implements Repository {
         session.context ? JSON.stringify(session.context) : null,
         session.device_id,
         session.local_date,
-        session.device_id,
-        session.local_date,
         input.maxPerDay,
       );
     const count = this.db
@@ -112,12 +108,12 @@ export class D1Repository implements Repository {
       .bind(session.device_id, session.local_date);
 
     /**
-     * 解析に失敗した行はdeleteSessionで消すため、COUNTを次のday_seqにすると、
-     * 消した穴の番号を再利用して残っている行とUNIQUE制約で衝突する。
-     * MAX+1なら穴が空いても衝突せず、上限そのものはWHEREのCOUNTが判定する。
+     * 上限確認とINSERTは同じSQL文に入れる。SQLiteでは1文が原子的に実行され、
+     * 書き込みも直列化されるため、同時実行は同じ古いCOUNTを見たまま両方通れない。
      *
-     * batchは同じトランザクションでINSERTと件数取得を行う。UNIQUE制約違反は
-     * 条件付きINSERTが先に防ぐべき想定外なので、上限到達へ変換せずそのまま伝播させる。
+     * day_seqのUNIQUE INDEXは意図的に使わない。デプロイはマイグレーションが先なので、
+     * 列を書かない旧Workerが既定値0を重ねる窓でINDEXがあると、2行目から失敗するため。
+     * batchは同じトランザクションでINSERTと件数取得を行い、changesが0なら上限到達とする。
      */
     const results = await this.db.batch<{ count: number }>([insert, count]);
     const insertResult = results[0];

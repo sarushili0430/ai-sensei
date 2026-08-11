@@ -161,11 +161,18 @@ describeWithSqlite("D1の授業枠", () => {
       apply(database, entries);
 
       expect(entries.map((entry) => entry.name)).toContain("0003_session_day_seq.sql");
+      expect(entries.map((entry) => entry.name)).toContain("0004_drop_session_day_seq_index.sql");
       expect(
         database
           .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?")
           .get("ux_sessions_device_date_seq"),
-      ).toMatchObject({ name: "ux_sessions_device_date_seq" });
+      ).toBeUndefined();
+      expect(
+        database
+          .prepare("PRAGMA table_info(sessions)")
+          .all()
+          .some((column) => column["name"] === "day_seq"),
+      ).toBe(true);
     } finally {
       database.close();
     }
@@ -277,7 +284,93 @@ describeWithSqlite("D1の授業枠", () => {
     }
   });
 
-  it("途中の枠を返したあともMAX+1で衝突せず、同じ日にもう一度押さえられる", async () => {
+  it("旧Workerが既定値0を重ねたあとも0004と新Workerが動く", async () => {
+    const database = openDatabase();
+    try {
+      const entries = await migrations();
+      const fourthIndex = entries.findIndex(
+        (entry) => entry.name === "0004_drop_session_day_seq_index.sql",
+      );
+      if (fourthIndex < 0) throw new Error("0004マイグレーションがありません");
+      apply(database, entries.slice(0, fourthIndex));
+      database.exec(`
+        INSERT INTO users (device_id, created_at)
+        VALUES ('device_a', '2026-08-03T13:00:00.000Z');
+
+        -- デプロイの窓で動く旧Workerと同じく、day_seqを列挙しない。
+        INSERT INTO sessions
+          (id, device_id, kind, status, created_at, completed_at, local_date,
+           photo_key, topic_ids, hole_id, duration_seconds, context)
+        VALUES
+          ('old_worker_1', 'device_a', 'new', 'open',
+           '2026-08-03T13:00:01.000Z', NULL, '2026-08-03',
+           NULL, '[]', NULL, NULL, NULL),
+          ('old_worker_2', 'device_a', 'new', 'open',
+           '2026-08-03T13:00:02.000Z', NULL, '2026-08-03',
+           NULL, '[]', NULL, NULL, NULL);
+      `);
+      expect(
+        database
+          .prepare("SELECT day_seq FROM sessions ORDER BY id")
+          .all()
+          .map((row) => row["day_seq"]),
+      ).toEqual([0, 0]);
+
+      apply(database, entries.slice(fourthIndex));
+      const repository = new D1Repository(new SQLiteD1Database(database));
+      expect(
+        await repository.reserveSessionSlot({ session: session("new_worker"), maxPerDay: 3 }),
+      ).toEqual({ reserved: true, sessionsToday: 3 });
+      expect(
+        await repository.reserveSessionSlot({ session: session("over_limit"), maxPerDay: 3 }),
+      ).toEqual({ reserved: false });
+      expect(await repository.countSessionsOnDate("device_a", "2026-08-03")).toBe(3);
+    } finally {
+      database.close();
+    }
+  });
+
+  it("旧版0003を適用済みでも0004がINDEXだけを外して既存行を保つ", async () => {
+    const database = openDatabase();
+    try {
+      const entries = await migrations();
+      const fourthIndex = entries.findIndex(
+        (entry) => entry.name === "0004_drop_session_day_seq_index.sql",
+      );
+      if (fourthIndex < 0) throw new Error("0004マイグレーションがありません");
+      apply(database, entries.slice(0, fourthIndex));
+      database.exec(`
+        INSERT INTO users (device_id, created_at)
+        VALUES ('device_a', '2026-08-03T13:00:00.000Z');
+        INSERT INTO sessions
+          (id, device_id, kind, status, created_at, completed_at, local_date,
+           photo_key, topic_ids, hole_id, duration_seconds, context, day_seq)
+        VALUES
+          ('existing_1', 'device_a', 'new', 'open',
+           '2026-08-03T13:00:01.000Z', NULL, '2026-08-03',
+           NULL, '[]', NULL, NULL, NULL, 0),
+          ('existing_2', 'device_a', 'new', 'open',
+           '2026-08-03T13:00:02.000Z', NULL, '2026-08-03',
+           NULL, '[]', NULL, NULL, NULL, 1);
+        CREATE UNIQUE INDEX ux_sessions_device_date_seq
+          ON sessions (device_id, local_date, day_seq);
+      `);
+      const before = database.prepare("SELECT * FROM sessions ORDER BY id").all();
+
+      apply(database, entries.slice(fourthIndex));
+
+      expect(database.prepare("SELECT * FROM sessions ORDER BY id").all()).toEqual(before);
+      expect(
+        database
+          .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?")
+          .get("ux_sessions_device_date_seq"),
+      ).toBeUndefined();
+    } finally {
+      database.close();
+    }
+  });
+
+  it("途中の枠を返したあとも同じ日にもう一度押さえられる", async () => {
     const database = openDatabase();
     try {
       apply(database, await migrations());
@@ -300,7 +393,7 @@ describeWithSqlite("D1の授業枠", () => {
           .prepare("SELECT day_seq FROM sessions ORDER BY day_seq")
           .all()
           .map((row) => row["day_seq"]),
-      ).toEqual([0, 2, 3]);
+      ).toEqual([0, 0, 0]);
     } finally {
       database.close();
     }
