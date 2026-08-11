@@ -187,19 +187,21 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
             if (data.isEmpty) {
               return _Message(text: strings.reviewEmpty);
             }
-            return progress.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (Object error, StackTrace stack) => _Message(
-                text: strings.errorGeneric,
-                primaryLabel: strings.errorRetry,
-                onPrimary: () => ref.read(progressControllerProvider.notifier).refresh(),
-              ),
-              data: (ProgressSummary summary) => _content(
-                strings: strings,
-                data: data,
-                progress: summary,
-                capture: capture,
-              ),
+            // **進捗の取得で小テストを人質に取らない。**
+            //
+            // 小テストは「1問・テキストで10秒」が売りで、答えるのに要るのは
+            // キューだけ。進捗を使うのは「先輩に聞く」を出せるかの判定
+            // (`lessonAllowedToday`)だけなので、そちらが取れなくても
+            // 言えた / まだ言えない は答えられなければならない。
+            //
+            // 取れていないあいだは「枠が無い」側に倒す。授業へ進ませてから
+            // サーバに断られるより、いま答えられることを優先する
+            // (押せたのに断られるのが、いちばん信用を落とす)。
+            return _content(
+              strings: strings,
+              data: data,
+              progress: progress.value ?? ProgressSummary.empty,
+              capture: capture,
             );
           },
         ),
