@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>カタルテ — Wireframe v2.0(板書を黒板にする / 問題文を明示する)</title>
+<style>
+  :root{
+    --ink:#1f2126; --paper:#ffffff; --canvas:#e9eaed;
+    --fill:#eff0f3; --wire:#c6c8d0; --mut:#7a7d87;
+    --ux:#c2402a; --biz:#5747b8; --new:#1c7a4a;
+
+    /* 板(仮の値)。決めているのは「明度が反転していること」だけで、
+       緑にするか紺にするかは実装時に実機で決める。 */
+    --board:#2f3a35; --board-deep:#27302b; --board-edge:#8a7b66;
+    --chalk:#edeae0; --chalk-dim:#a8ada4;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--canvas);color:var(--ink);
+    font-family:"Hiragino Sans","Yu Gothic UI","Yu Gothic",system-ui,sans-serif;
+    line-height:1.55;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1300px;margin:0 auto;padding:36px 20px 72px}
+
+  /* ---------- header ---------- */
+  .eyebrow{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:11px;letter-spacing:.14em;color:var(--mut)}
+  h1{font-size:26px;margin:6px 0 4px;font-weight:700;text-wrap:balance}
+  .lede{font-size:14px;color:var(--mut);max-width:760px;margin:0}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin:18px 0 30px;
+    font-size:12px;align-items:center}
+  .lg{display:flex;align-items:center;gap:6px}
+  .tag{font-family:ui-monospace,Menlo,monospace;font-size:10px;
+    border:1px solid;border-radius:3px;padding:0 5px;line-height:1.6;flex:none;height:fit-content}
+  .tag.ux{color:var(--ux);border-color:var(--ux)}
+  .tag.biz{color:var(--biz);border-color:var(--biz)}
+  .tag.new{color:var(--new);border-color:var(--new)}
+
+  /* ---------- 変更点 ---------- */
+  .changed{background:var(--paper);border:1.5px solid var(--ink);border-radius:12px;
+    padding:16px 20px;margin-bottom:34px}
+  .changed h2{font-size:15px;margin:0 0 10px}
+  .changed ol{margin:0;padding-left:1.3em;font-size:13px}
+  .changed li{margin-bottom:7px}
+  .changed b{font-weight:700}
+
+  /* ---------- frames ---------- */
+  .flow{display:flex;flex-wrap:wrap;gap:30px}
+  .step{width:282px}
+  .stephead{display:flex;align-items:baseline;gap:8px;margin-bottom:8px}
+  .num{font-family:ui-monospace,Menlo,monospace;font-size:12px;
+    background:var(--ink);color:#fff;border-radius:4px;padding:1px 7px}
+  .num.now{background:var(--paper);color:var(--mut);border:1.5px solid var(--wire)}
+  .sname{font-size:14px;font-weight:700}
+  .sway{font-size:11px;color:var(--mut)}
+
+  .phone{background:var(--paper);border:2px solid var(--ink);border-radius:26px;
+    height:566px;padding:12px 11px;display:flex;flex-direction:column;gap:9px;overflow:hidden}
+  .nav{display:flex;align-items:center;justify-content:space-between;gap:7px;flex:none;font-size:12px}
+  .nav b{font-weight:700}
+  .p{font-size:12px;color:var(--ink);margin:0}
+  .small{font-size:10.5px;color:var(--mut)}
+  .btn{background:var(--ink);color:#fff;border-radius:9px;text-align:center;
+    padding:11px 8px;font-size:13px;font-weight:700}
+  .ghost{border:1.5px solid var(--ink);border-radius:9px;text-align:center;
+    padding:9px 8px;font-size:12px;font-weight:600}
+  .link{font-size:10.5px;text-decoration:underline;color:var(--mut)}
+  .chip{display:inline-block;border:1.5px solid var(--wire);border-radius:99px;
+    padding:0 8px;font-size:10px;color:var(--mut)}
+  .chip.solid{background:var(--ink);border-color:var(--ink);color:#fff;font-weight:700;
+    border-radius:4px;letter-spacing:.08em}
+  .spacer{flex:1}
+  .row{display:flex;align-items:center;gap:8px}
+  .between{justify-content:space-between}
+
+  /* 問題文 = 紙。板と素材を変えるのが主張の中心 */
+  .paper-card{background:var(--paper);border:1.5px solid var(--wire);border-radius:8px;
+    padding:8px 9px;display:flex;flex-direction:column;gap:5px;flex:none;
+    box-shadow:0 1px 0 var(--fill)}
+  .paper-card .body{font-size:12px;line-height:1.5}
+  .paper-card.folded{flex-direction:row;align-items:center;gap:7px;padding:6px 9px}
+  .paper-card.folded .body{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    color:var(--mut)}
+
+  /* 板 = 面。phone の padding(11px)を打ち消して画面いっぱいに広げ、
+     内側で同じ 11px を返す。= 実装の「左右24pt」を動かさないという意味 */
+  .board{background:var(--board);margin:0 -11px;padding:0 11px;flex:1;
+    display:flex;flex-direction:column;min-height:0;position:relative;overflow:hidden}
+  .board::before{content:"";position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(120% 80% at 50% 0%,rgba(255,255,255,.055),transparent 70%)}
+  .board .inner{display:flex;flex-direction:column;gap:11px;padding:13px 0;flex:1;min-height:0}
+  .board-rail{height:5px;background:var(--board-edge);opacity:.55;margin:0 -11px;flex:none}
+  .board-tray{height:7px;background:var(--board-edge);margin:0 -11px;flex:none;position:relative}
+  .board-tray i{position:absolute;left:16px;top:-3px;width:22px;height:4px;border-radius:2px;
+    background:var(--chalk);opacity:.85}
+  .board-title{font-size:10px;color:var(--chalk-dim);letter-spacing:.1em;flex:none}
+  .chalk{color:var(--chalk);font-size:12.5px;letter-spacing:.04em;
+    text-shadow:0 0 1.5px rgba(237,234,224,.45)}
+  .chalk.math{font-size:14px;letter-spacing:.06em}
+  /* 強調は「線」でやる。`.chalk` の子に付くので、色は currentColor で受け継ぐ */
+  .under{display:inline-block;border-bottom:3px double currentColor;padding-bottom:3px}
+  .boxed{display:inline-block;border:1.5px solid currentColor;border-radius:3px;padding:2px 7px}
+  .chalk.dim{color:var(--chalk-dim);text-shadow:none}
+  .board-fig{display:block}
+
+  /* 下の帯(顔と字幕)。板が終わって地が紙に戻る */
+  .ava{width:30px;height:30px;border:1.5px dashed var(--wire);border-radius:50%;
+    flex:none;display:flex;align-items:center;justify-content:center;
+    font-size:8px;color:var(--mut);text-align:center;line-height:1.1}
+  .wave{display:flex;align-items:flex-end;gap:2.5px;height:16px;flex:none}
+  .wave i{display:block;width:3px;background:var(--wire);border-radius:2px}
+  .wave i:nth-child(odd){height:55%}.wave i:nth-child(even){height:100%}
+  .wave i:nth-child(3n){height:30%;background:var(--ink)}
+
+  /* 現状フレーム用 */
+  .asis-line{font-size:13px;letter-spacing:.03em}
+  .void{border:1.5px dashed var(--ux);border-radius:6px;padding:7px 8px;
+    font-size:10.5px;color:var(--ux);text-align:center}
+
+  .notes{margin-top:11px}
+  .note{display:flex;gap:7px;margin-top:7px;font-size:11.5px;line-height:1.5}
+
+  /* ---------- 解剖パネル ---------- */
+  .panel{margin-top:52px;background:var(--paper);border:1.5px solid var(--ink);
+    border-radius:12px;padding:20px 22px}
+  .panel h2{font-size:16px;margin:0 0 4px}
+  .panel .lede{margin-bottom:18px}
+  .anat{display:flex;flex-wrap:wrap;gap:26px}
+  .anat .demo{width:330px;flex:none}
+  .anat .parts{flex:1;min-width:330px}
+  .anat .board{margin:0;padding:0 16px;border-radius:8px;flex:none}
+  .anat .board-rail,.anat .board-tray{margin:0 -16px}
+  .parts dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:9px 14px;font-size:12.5px}
+  .parts dt{font-weight:700;white-space:nowrap}
+  .parts dd{margin:0;color:var(--mut)}
+
+  /* ---------- 案の比較 ---------- */
+  .opts{display:flex;flex-wrap:wrap;gap:20px;margin-top:6px}
+  .opt{flex:1;min-width:250px;border:1.5px solid var(--wire);border-radius:10px;padding:14px 15px;
+    display:flex;flex-direction:column;gap:9px;background:var(--paper)}
+  .opt.pick{border-color:var(--new);border-width:2px}
+  .opt h3{font-size:13px;margin:0;display:flex;align-items:center;gap:7px}
+  .opt .why{font-size:11.5px;color:var(--mut);margin:0}
+  .mini{background:var(--fill);border-radius:7px;padding:9px}
+
+  /* ---------- 表 ---------- */
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+  td,th{border-bottom:1px solid var(--wire);padding:8px 6px;text-align:left;vertical-align:top}
+  th{font-size:11px;color:var(--mut);font-weight:700;border-bottom-color:var(--ink)}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:11px;background:var(--fill);
+    border-radius:3px;padding:1px 4px;white-space:nowrap}
+  .keep{color:var(--new);font-weight:700}
+  .care{color:var(--ux);font-weight:700}
+  .foot-note{font-size:11.5px;color:var(--mut);margin:14px 0 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="eyebrow">WIREFRAME v2.0 — 授業画面</p>
+  <h1>板書を、黒板にする。問題文を、問題文として出す。</h1>
+  <p class="lede">
+    対象は<b>授業画面の1枚だけ</b>(<code>session_screen.dart</code>)。ここで決めているのは
+    <b>配置と素材</b>で、色・書体・寸法はまだ仮。板を緑にするか紺にするかは実機で決める。
+    LPのモック(<code>apps/lp/public/index.html</code>)は、この画面が実装で固まってから追従させる。
+  </p>
+
+  <div class="legend">
+    <span class="lg"><span class="tag ux">要注意</span>実装の前提に触る</span>
+    <span class="lg"><span class="tag new">新規</span>いま画面に無いもの</span>
+    <span class="lg"><span class="tag biz">判断</span>選択肢があり、決めが要る</span>
+  </div>
+
+  <div class="changed">
+    <h2>今回変える3つ</h2>
+    <ol>
+      <li><b>問題文が授業画面に無い。</b>見出し(<code>board.title</code>)が1行あるだけで、何を解いているかは板書から逆算するしかない。→ <b>【問題】として、紙の素材で常時出す。</b>データは既に手元にある(<code>SessionStart.problem</code>)。</li>
+      <li><b>板書に面が無い。</b>いまは地(<code>AppColors.background</code>)に文字が直接乗っているだけで、どこからどこまでが板書なのか境目が無い。→ <b>画面いっぱいの板を敷き、上の縁と粉受けで閉じる。</b></li>
+      <li><b>強調が色に乗っている。</b>板の上では青やピンクは浮く。→ <b>下線・二重下線・囲みに乗せ替える。</b>黒板の強調はもともと線でやる。</li>
+    </ol>
+  </div>
+
+  <div class="flow">
+
+    <!-- ================= 00 現状 ================= -->
+    <div class="step">
+      <div class="stephead"><span class="num now">00</span><span class="sname">現状(実装)</span></div>
+      <p class="sway">session_screen.dart — 板書あり</p>
+      <div class="phone">
+        <div class="nav"><b>判別式と実数解</b><span class="small">のこり 12:40</span></div>
+
+        <div class="void">問題文はどこにも出ていない</div>
+
+        <div class="spacer" style="flex:0 0 6px"></div>
+        <p class="asis-line">解が2つ ⇔ D &gt; 0</p>
+        <p class="asis-line">D = (−4)² − 4k &gt; 0</p>
+        <p class="asis-line">−4k &gt; −16</p>
+        <p class="asis-line">k &lt; 4</p>
+        <div class="spacer"></div>
+
+        <div class="row">
+          <div class="ava">顔</div>
+          <p class="p" style="flex:1">なんで D を見るんだっけ?</p>
+          <div class="wave"><i></i><i></i><i></i><i></i><i></i></div>
+        </div>
+        <div class="ghost">うまく言えない</div>
+        <div class="btn">今日はここまで</div>
+      </div>
+      <div class="notes">
+        <div class="note"><span class="tag ux">要注意</span><span>板書は地に直接乗っている。<b>これは手抜きではなく設計</b> — カードや内側パディングを足すと実効幅が340ptを割り、実測で「縮小して収まる」と確認した式が横スクロールに落ちる(<code>board_style.dart</code>)。</span></div>
+        <div class="note"><span class="tag ux">要注意</span><span>結果として、板書と字幕と操作が<b>同じ紙の上に平らに並ぶ</b>。主役が板書だと見た目から分からない。</span></div>
+      </div>
+    </div>
+
+    <!-- ================= 01 提案・授業中 ================= -->
+    <div class="step">
+      <div class="stephead"><span class="num">01</span><span class="sname">提案 — 教わっている</span></div>
+      <p class="sway">先輩が書いている最中</p>
+      <div class="phone">
+        <div class="nav"><b>判別式と実数解</b><span class="small">のこり 12:40</span></div>
+
+        <div class="paper-card">
+          <div class="row between">
+            <span class="chip solid">問題</span>
+            <span class="small">問題の写真から読み取り</span>
+          </div>
+          <p class="body">x² − 4x + k = 0 が異なる2つの実数解をもつ</p>
+          <span class="link">ちがうところがある</span>
+        </div>
+
+        <div class="board">
+          <div class="board-rail"></div>
+          <div class="inner">
+            <span class="board-title">先輩の板書</span>
+            <p class="chalk">解が2つ ⇔ D &gt; 0</p>
+            <p class="chalk math">D = (−4)² − 4k &gt; 0</p>
+            <p class="chalk math">−4k &gt; −16</p>
+            <div class="spacer"></div>
+          </div>
+          <div class="board-tray"><i></i></div>
+        </div>
+
+        <div class="row">
+          <div class="ava">顔</div>
+          <p class="p" style="flex:1">ここ、D を見てほしいんだけど</p>
+          <div class="wave"><i></i><i></i><i></i><i></i><i></i></div>
+        </div>
+        <div class="ghost">うまく言えない</div>
+        <div class="btn">今日はここまで</div>
+      </div>
+      <div class="notes">
+        <div class="note"><span class="tag new">新規</span><span><b>素材が2つに分かれる。</b>問題=紙(白・角丸)、板書=黒板。ラベルを読まなくても役割が分かるのは、文字ではなく素材が違うから。</span></div>
+        <div class="note"><span class="tag new">新規</span><span>板は<b>画面の左右いっぱい</b>まで伸びる。板は面であってカードではない。角丸のカードにすると「掲示物」に見える。</span></div>
+        <div class="note"><span class="tag ux">要注意</span><span><b>板の内側の余白は今と同じ24pt。</b>full-bleedにするのは実効幅を1ptも減らさずに面を作れる唯一の形で、これなら <code>session_board_test.dart</code> の「実効幅 ≥ 340pt」は通ったまま。</span></div>
+        <div class="note"><span class="tag biz">判断</span><span>粉受け(下辺の横木)は<b>板がここで終わる</b>ことも同時に示す。板書がスクロールで切れているのか終わっているのかが、いまは分からない。</span></div>
+      </div>
+    </div>
+
+    <!-- ================= 02 提案・教え返し ================= -->
+    <div class="step">
+      <div class="stephead"><span class="num">02</span><span class="sname">提案 — 教え返す</span></div>
+      <p class="sway">板書が伸びて、問題文が畳まれた後</p>
+      <div class="phone">
+        <div class="nav"><b>判別式と実数解</b><span class="small">のこり 09:02</span></div>
+
+        <div class="paper-card folded">
+          <span class="chip solid">問題</span>
+          <span class="body">x² − 4x + k = 0 が異なる2つの…</span>
+          <span class="small">▾</span>
+        </div>
+
+        <div class="board">
+          <div class="board-rail"></div>
+          <div class="inner">
+            <p class="chalk dim">D = (−4)² − 4k &gt; 0</p>
+            <p class="chalk dim">−4k &gt; −16</p>
+            <p class="chalk math"><span class="under">k &lt; 4</span></p>
+            <svg class="board-fig" viewBox="0 0 250 96" width="100%" height="72" aria-hidden="true">
+              <g fill="none" stroke="#a8ada4" stroke-width="1" opacity=".55">
+                <path d="M18 78 H236"/><path d="M92 8 V90"/>
+              </g>
+              <path d="M30 14 Q92 118 154 14" fill="none" stroke="#edeae0" stroke-width="1.8"
+                    stroke-linecap="round"/>
+              <circle cx="52" cy="78" r="3" fill="#edeae0"/>
+              <circle cx="132" cy="78" r="3" fill="#edeae0"/>
+              <text x="44" y="93" fill="#a8ada4" font-size="9">α</text>
+              <text x="128" y="93" fill="#a8ada4" font-size="9">β</text>
+            </svg>
+            <div class="spacer"></div>
+          </div>
+          <div class="board-tray"><i></i></div>
+        </div>
+
+        <div class="row">
+          <div class="ava">顔</div>
+          <div style="flex:1">
+            <p class="p" style="font-weight:700">説明してみて</p>
+            <p class="small">なんで D を見るんだっけ?</p>
+          </div>
+          <div class="wave"><i></i><i></i><i></i><i></i><i></i></div>
+        </div>
+        <div class="ghost">うまく言えない</div>
+        <div class="btn">今日はここまで</div>
+      </div>
+      <div class="notes">
+        <div class="note"><span class="tag new">新規</span><span><b>問題文は1行に畳まれて上に残る。</b>板書は積み上がるので、そのままだと問題文はすぐ画面外に出る。けれど教え返しの最中に<b>いちばん見返したいのが問題文</b>なので、消さずに畳む。タップで開く。</span></div>
+        <div class="note"><span class="tag biz">判断</span><span>前の行を薄くするかどうか。板書は前の行を消さない(§3-2)が、<b>薄くするのは消すのとは違う</b>。いま書いた行が分かる利点と、見返しの邪魔になる欠点。実機で決める。</span></div>
+        <div class="note"><span class="tag new">新規</span><span>グラフ・三角形・円も<b>チョーク色で描く</b>。いまの <code>plot/triangle/circle_painter</code> は ink・blue・surface を直に使っているので、板の上では全部反転が要る。</span></div>
+      </div>
+    </div>
+
+    <!-- ================= 03 うまく言えない ================= -->
+    <div class="step">
+      <div class="stephead"><span class="num">03</span><span class="sname">提案 — うまく言えない</span></div>
+      <p class="sway">押したあと。板書は消えない</p>
+      <div class="phone">
+        <div class="nav"><b>判別式と実数解</b><span class="small">のこり 08:41</span></div>
+
+        <div class="paper-card folded">
+          <span class="chip solid">問題</span>
+          <span class="body">x² − 4x + k = 0 が異なる2つの…</span>
+          <span class="small">▾</span>
+        </div>
+
+        <div class="board">
+          <div class="board-rail"></div>
+          <div class="inner">
+            <p class="chalk dim">−4k &gt; −16</p>
+            <p class="chalk math"><span class="under">k &lt; 4</span></p>
+            <p class="chalk"><span class="boxed">D &gt; 0 ⇔ 解が2つ</span></p>
+            <p class="chalk dim" style="font-size:11px">↑ ここをもう一度</p>
+            <div class="spacer"></div>
+          </div>
+          <div class="board-tray"><i></i></div>
+        </div>
+
+        <div class="row">
+          <div class="ava">顔</div>
+          <div style="flex:1">
+            <p class="p">じゃあ、ここだけ一緒に見よう</p>
+            <p class="small">穴が1つ、カルテに残ります</p>
+          </div>
+          <div class="wave"><i></i><i></i><i></i><i></i><i></i></div>
+        </div>
+        <div class="ghost">うまく言えない</div>
+        <div class="btn">今日はここまで</div>
+      </div>
+      <div class="notes">
+        <div class="note"><span class="tag new">新規</span><span><b>囲みが強調の主役になる。</b>いまは穴の色(ピンク)を使う手もあるが、板の上に蛍光色は乗らない。黒板の作法どおり、囲んで矢印を書く。</span></div>
+        <div class="note"><span class="tag ux">要注意</span><span>穴の色(<code>AppColors.hole</code>)は<b>カルテ側に残す</b>。板の上と紙の上で同じ意味を別の記法で出すことになるので、ここは決めが要る。</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ================= 板の解剖 ================= -->
+  <div class="panel">
+    <h2>「板書っぽさ」は6つの部品でできている</h2>
+    <p class="lede">どれか1つでは黒板にならない。逆に、全部やらなくても<b>面と粉受けの2つ</b>で大半は立つ。</p>
+    <div class="anat">
+      <div class="demo">
+        <div class="board">
+          <div class="board-rail"></div>
+          <div class="inner">
+            <span class="board-title">先輩の板書</span>
+            <p class="chalk">判別式を見る</p>
+            <p class="chalk math">D = b² − 4ac</p>
+            <p class="chalk math"><span class="under">D = 16 − 4k &gt; 0</span></p>
+            <p class="chalk"><span class="boxed">k &lt; 4</span></p>
+            <svg class="board-fig" viewBox="0 0 290 110" width="100%" height="104" aria-hidden="true">
+              <g fill="none" stroke="#edeae0" stroke-width="1.8" stroke-linecap="round"
+                 stroke-linejoin="round">
+                <path d="M20 92 L64 20 L108 92 Z"/>
+                <circle cx="196" cy="56" r="38"/>
+              </g>
+              <g fill="none" stroke="#a8ada4" stroke-width="1.2">
+                <path d="M30 92 a12 12 0 0 1 6 -10"/>
+                <path d="M196 56 L232 56" stroke-dasharray="3 3"/>
+              </g>
+              <circle cx="196" cy="56" r="2.5" fill="#edeae0"/>
+              <text x="58" y="15" fill="#a8ada4" font-size="10">A</text>
+              <text x="210" y="50" fill="#a8ada4" font-size="10">r</text>
+            </svg>
+            <div class="spacer"></div>
+          </div>
+          <div class="board-tray"><i></i></div>
+        </div>
+        <p class="foot-note">契約にある5要素(<code>latex</code> / <code>text</code> / <code>plot</code> /
+          <code>triangle</code> / <code>circle</code>)は、すべてこの面の上で成立する必要がある。</p>
+      </div>
+      <div class="parts">
+        <dl>
+          <dt>1. 面</dt>
+          <dd>濃い緑〜濃紺。<b>真っ黒にしない</b>(本文の <code>ink</code> を真っ黒にしていないのと同じ理由)。ここが変わるだけで、残り5つは効きが倍になる。</dd>
+          <dt>2. 画面いっぱい</dt>
+          <dd>左右の端まで伸ばす。板は面であってカードではない。<b>同時にこれが、実効幅を減らさずに面を作る唯一の形</b>。</dd>
+          <dt>3. 縁と粉受け</dt>
+          <dd>上下の横木。<b>粉受けは「黒板である」ことの最短の記号</b>で、しかも板がどこで終わるかを同時に示せる。</dd>
+          <dt>4. チョークの字</dt>
+          <dd>白を95%の不透明度で。わずかな滲みを乗せる。<b>書く動きは既にある</b> — <code>BoardReveal</code> の左→右のワイプ(420ms)は、そのままチョークの動きとして読める。</dd>
+          <dt>5. 線でやる強調</dt>
+          <dd>下線・二重下線・囲み・矢印。黒板の強調はもともと色ではなく線。青やピンクは板の上では浮く。</dd>
+          <dt>6. 見出し</dt>
+          <dd>板の左上に小さく「先輩の板書」。いまはヘッダに <code>board.title</code> があるだけなので、<b>板の中に入れると帰属が閉じる</b>。</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 問題文の案 ================= -->
+  <div class="panel">
+    <h2>「問題文であること」をどう出すか — 3案</h2>
+    <p class="lede">いまの文言「撮った問題」は<b>“撮った”が主語</b>になっている。まず問題文であることを出し、出所はその後ろに置く。</p>
+    <div class="opts">
+
+      <div class="opt pick">
+        <h3><span class="tag new">採用</span>A. 紙 +【問題】チップ</h3>
+        <div class="mini">
+          <div class="paper-card">
+            <div class="row between"><span class="chip solid">問題</span><span class="small">問題の写真から読み取り</span></div>
+            <p class="body">x² − 4x + k = 0 が異なる2つの実数解をもつ</p>
+            <span class="link">ちがうところがある</span>
+          </div>
+        </div>
+        <p class="why">板と素材を変えるのが本体。チップは<b>念押し</b>であって主役ではない。読み取り元(問題の写真 / ノートの写真)は <code>ProblemSource</code> にあるので出し分けられる。<b>配線は不要</b>。</p>
+      </div>
+
+      <div class="opt pick">
+        <h3><span class="tag new">採用</span>C. 畳んで貼り付く</h3>
+        <div class="mini">
+          <div class="paper-card folded">
+            <span class="chip solid">問題</span>
+            <span class="body">x² − 4x + k = 0 が異なる…</span>
+            <span class="small">▾</span>
+          </div>
+        </div>
+        <p class="why">Aと排他ではなく<b>続き</b>。板書が伸びたら1行に畳んで上に残す。教え返しの最中にいちばん見返したいのが問題文なので、スクロールで流してしまわない。</p>
+      </div>
+
+      <div class="opt">
+        <h3><span class="tag biz">次</span>B. 写真のサムネを添える</h3>
+        <div class="mini">
+          <div class="paper-card">
+            <div class="row between"><span class="chip solid">問題</span><span class="small">タップで原寸</span></div>
+            <div class="row">
+              <div style="width:44px;height:34px;border:1.5px dashed var(--wire);border-radius:4px;
+                          flex:none;display:flex;align-items:center;justify-content:center;
+                          font-size:8px;color:var(--mut)">写真</div>
+              <p class="body" style="flex:1">x² − 4x + k = 0 が異なる2つの…</p>
+            </div>
+          </div>
+        </div>
+        <p class="why">出所を1枚で示せるのが強い。ただし<b>これだけ配線が要る</b> — <code>SessionProblem</code> は <code>text</code> と <code>source</code> しか持たず、写真そのものは授業画面まで来ていない。今回は見送り。</p>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ================= 実装で触るところ ================= -->
+  <div class="panel">
+    <h2>実装で触るところ</h2>
+    <p class="lede">板を暗くすると、<b>地の色を前提に書かれた場所</b>が連鎖で壊れる。分かっている範囲を先に出しておく。</p>
+    <table>
+      <thead><tr><th style="width:30%">場所</th><th style="width:32%">何をする</th><th>なぜ / 見張り</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>session_screen.dart</code><br><span class="small">_BoardStage</span></td>
+          <td>板の面を敷く。<b>内側の余白は24ptのまま</b>、面だけ左右へはみ出させる</td>
+          <td><span class="keep">実効幅345ptは維持される。</span><code>session_board_test.dart</code> の「実効幅 ≥ 340pt」がそのまま見張りになる</td>
+        </tr>
+        <tr>
+          <td><code>session_screen.dart</code><br><span class="small">問題文ブロック</span></td>
+          <td><code>captureControllerProvider.session.problem</code> を出す</td>
+          <td><span class="keep">配線は不要。もう手元にある</span>(<code>SessionStart.problem</code>)。読み取れなければ <code>null</code> なので、出さないだけ</td>
+        </tr>
+        <tr>
+          <td><code>latex_element_view.dart</code><br><span class="small">右端フェード</span></td>
+          <td>フェードの色を板の色にする</td>
+          <td><span class="care">いま <code>AppColors.background</code> 前提。</span>コメントに「将来カードの上に板書を置く設計に変えるなら、ここも変える」と<b>既に書いてある</b>箇所そのもの</td>
+        </tr>
+        <tr>
+          <td><code>latex_element_view.dart</code><br><span class="small">textStyle</span></td>
+          <td>数式の色をチョーク色に</td>
+          <td><span class="keep">色を渡すだけで済む。</span>フォントサイズ24ptと縮小率の下限70%は<b>触らない</b>(実測の前提そのもの)</td>
+        </tr>
+        <tr>
+          <td><code>plot_painter</code> / <code>triangle_painter</code> / <code>circle_painter</code></td>
+          <td>軸・曲線・ラベルを板用の色に</td>
+          <td><span class="care">ink・border・inkMuted・blue・surface を直に使っている。</span>板の上では全部反転が要る</td>
+        </tr>
+        <tr>
+          <td><code>board_style.dart</code></td>
+          <td>板用の色をここに持つ</td>
+          <td><span class="keep"><code>tokens.dart</code> は触らない。</span><code>board_style.dart</code> 冒頭の「<code>AppColors</code> は変更・追加しない」という約束を守る</td>
+        </tr>
+        <tr>
+          <td><code>docs/store/screenshots/</code></td>
+          <td>作り直す</td>
+          <td><span class="care">現在の <code>01-session.png</code> は板書が出るより前の画</span>(顔と字幕だけ)。生成器(<code>generate_store_screenshots.dart</code>)はもう板書つきで組んでいるので、走らせれば直る</td>
+        </tr>
+        <tr>
+          <td><code>apps/lp/public/index.html</code></td>
+          <td>最後に追従させる</td>
+          <td>LPのモックは<b>この画面が実装で固まってから</b>直す。先にLPを直すと、LPが約束した画面をアプリが持っていない状態が続く</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ================= 乖離 ================= -->
+  <div class="panel">
+    <h2>LPのモックと、実装の授業画面の差</h2>
+    <p class="lede">
+      貼られた画は <code>apps/lp/public/index.html</code> のヒーロー内のダミー端末で、
+      中身は<b>オンボーディングのリハーサル</b>(<code>onboarding_rehearsal.dart</code>・台本の1問)と同じ。
+      <b>授業画面のスクリーンショットではない。</b>差はスタイルではなく、<b>存在するもの/しないもの</b>のレベルにある。
+    </p>
+    <table>
+      <thead><tr><th style="width:22%">項目</th><th style="width:39%">LPのモック</th><th>実装(session_screen.dart)</th></tr></thead>
+      <tbody>
+        <tr><td>撮った問題</td><td>板書と並ぶブロックとして常時ある</td><td><span class="care">画面に無い。</span>ヘッダに <code>board.title</code> が1行あるだけ</td></tr>
+        <tr><td>板書の器</td><td>灰色のカード2枚。問題も板書も<b>同じ素材</b></td><td>器が無く、地に直接。実効幅340ptを守るための意図的な形</td></tr>
+        <tr><td>板書の中身</td><td>テキスト2行だけ</td><td>latex / text / plot / triangle / circle の5要素。<b>グラフも三角形も円も出る</b></td></tr>
+        <tr><td>マイク</td><td>「長押しして教え返す」の丸ボタンが主役</td><td><span class="care">長押しは無い。</span>LiveKitで繋ぎっぱなし。ボタンは「うまく言えない」と「今日はここまで」の2つ</td></tr>
+        <tr><td>顔と吹き出し</td><td>板書と同格の大きさで中央にいる</td><td>下の帯に小さく置く(<code>_LessonFooter</code>)。<b>主役は板書</b>という配分</td></tr>
+        <tr><td>残り時間</td><td>のこり 12:40</td><td>同じ(<code>strings.remaining</code>)。ここは合っている</td></tr>
+      </tbody>
+    </table>
+    <p class="foot-note">
+      LPが実装より先に「こうなる」を描くこと自体は問題ではない(配信予定と明記してあり、実物のスクショは出していない)。
+      問題になるのは<b>ストア掲載スクショ</b>で、あちらは実コードから生成する規約になっている。
+      現物が古いままなので、この作業のついでに走らせ直す。
+    </p>
+  </div>
+
+</div>
+</body>
+</html>
