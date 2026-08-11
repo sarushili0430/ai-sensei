@@ -62,12 +62,6 @@ sessionsRoute.post("/", async (c) => {
   const user = await repository.ensureUser(deviceId, at);
   const localDate = toLocalDate(at);
 
-  // 復習(穴の再説明)はPremium機能。/v1/me/reviews でキューを隠すだけだと、
-  // 初回カルテで配った hole_id を使ってここから直接呼べてしまう。
-  if (meta.kind === "review" && !isPremiumNow(user, at)) {
-    throw apiError("premium_required", { locale });
-  }
-
   // 復習セッションは写真を使わず、対象の穴から単元を引く。
   // 他人の穴IDを渡されても動かないよう、所有者をここで確かめる。
   let reviewHole: HoleRecord | null = null;

@@ -608,7 +608,7 @@ void main() {
       expect(find.text(ja.premiumBadge), findsOneWidget);
       expect(find.text(sampleKarte.holes.first.description), findsOneWidget);
       expect(find.textContaining('残っている穴'), findsNothing);
-      expect(find.text(ja.homeEnoughForToday), findsOneWidget);
+      expect(find.text(ja.lessonEnoughForToday), findsOneWidget);
       expect(find.text(ja.homeUnlock), findsNothing);
     });
 

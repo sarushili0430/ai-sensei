@@ -176,8 +176,8 @@ class AppStrings {
   /// 「本日の残り回数 0/3」とは書かない。数字を見せた瞬間に不満になるし、
   /// 見えていれば残りの使い道を計算し始める。上限は制限ではなく
   /// 「詰め込みすぎても入らない」という先生の判断として出す。
-  String get homeEnoughForToday => _pick(
-        '今日はここまでにしよっか。詰め込みすぎても入らないから、明日また続きやろう。',
+  String get lessonEnoughForToday => _pick(
+        '今日はここまでにしよっか。詰め込みすぎても入らないから。明日また続きやろう。',
         "Let's call it a day. Cramming more won't stick — we'll pick this up tomorrow.",
       );
 
@@ -251,12 +251,6 @@ class AppStrings {
   /// カメラを開けなかったとき(許可はあるが端末側の理由)。許可の話と混ぜない。
   String get captureCameraFailed => _pick('カメラを開けませんでした。もう一度おためしください。',
       "We couldn't open the camera. Please try again.");
-
-  /// Premium のフェアユース上限。数や課金導線ではなく、先輩の判断として締める。
-  String get captureFairUseLimitReached => _pick(
-        '今日はここまでにしよっか。詰め込みすぎても入らないから。明日また続きやろう。',
-        "Let's call it a day. Cramming more won't stick — we'll pick this up tomorrow.",
-      );
 
   // --- 会話 ---
   String get sessionListening => _pick('聞いています', 'Listening');
@@ -376,9 +370,16 @@ class AppStrings {
 
   // --- 復習 ---
   String get reviewTitle => _pick('埋めにいく穴', 'Gaps to fill');
-  String get reviewStart => _pick('30秒で説明する', 'Explain in 30 seconds');
-  String get reviewLocked =>
-      _pick('穴の復習はPremiumの機能です', 'Reviewing past gaps is a Premium feature');
+  String get reviewSaidIt => _pick('言えた', 'I could explain it');
+  String get reviewNotYet => _pick('まだ言えない', 'Not yet');
+
+  /// 「まだ」は失点ではない。先輩が引き取る言い方にして、選んだ人を咎めない。
+  String get reviewNotYetLead => _pick(
+        'じゃあ、先輩ともう一回見てみよっか',
+        "Let's go through it together, then",
+      );
+  String get reviewAskSenpai => _pick('先輩に聞く', 'Ask senpai');
+  String get reviewLater => _pick('あとにする', 'Later');
 
   /// 埋めた穴のセクション。ペイウォールが謳う「履歴」はここで果たす。
   String reviewFilledTitle(int count) =>

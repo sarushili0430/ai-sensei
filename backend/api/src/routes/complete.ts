@@ -32,7 +32,7 @@ export const completeRoute = new Hono<AppEnv>();
  *   1. 穴のtopic_idをこのセッションの許可リストで照合(ガードレール2枚目)
  *   2. カルテと穴をD1に保存
  *   3. 翌日/3日後/7日後の復習プッシュをOneSignalに予約
- *   4. 復習セッションだった場合は、対象の穴を「埋まった」にする
+ *   4. 復習セッションで本人が「言えた」と申告した場合は、対象の穴を「埋まった」にする
  * を行う。
  */
 completeRoute.post("/:sessionId/complete", async (c) => {
@@ -107,6 +107,7 @@ completeRoute.post("/:sessionId/complete", async (c) => {
     desc: hole.desc,
     severity: hole.severity,
     evidence: hole.evidence ?? null,
+    quiz: hole.quiz ?? null,
     status: "open",
     created_at: at.toISOString(),
     filled_at: null,
@@ -128,9 +129,10 @@ completeRoute.post("/:sessionId/complete", async (c) => {
   };
   await repository.insertKarte(karteRecord, holeRecords);
 
-  // 復習セッションなら、対象の穴を埋まったことにして残りの通知を取り消す
+  // 復習の穴は、AIの採点ではなく本人が「言えた」と申告したときだけ埋める。
+  // 接続しただけのセッションで自動的に埋めると、説明できたかを本人が決められなくなる。
   let filledThisSession = 0;
-  if (session.kind === "review" && session.hole_id) {
+  if (session.kind === "review" && session.hole_id && body.review_outcome === "said_it") {
     const target = await repository.getHole(session.hole_id);
     // 他人の穴を埋めてしまわないよう、セッションの持ち主と突き合わせる
     if (target && target.device_id === session.device_id && target.status === "open") {
@@ -214,6 +216,7 @@ completeRoute.post("/:sessionId/complete", async (c) => {
     session_id: session.id,
     kind: session.kind,
     ended_reason: body.ended_reason,
+    review_outcome: body.review_outcome ?? null,
     duration_seconds: durationSeconds,
     transcript_turns: body.transcript.length,
     holes: holeRecords.length,
@@ -231,6 +234,7 @@ function toHolePayload(hole: HoleRecord): Hole {
     desc: hole.desc,
     severity: hole.severity,
     ...(hole.evidence ? { evidence: hole.evidence } : {}),
+    ...(hole.quiz ? { quiz: hole.quiz } : {}),
     status: hole.status,
     created_at: hole.created_at,
     filled_at: hole.filled_at,

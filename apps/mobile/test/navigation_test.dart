@@ -37,7 +37,9 @@ void main() {
       deviceIdProvider.overrideWithValue('dev_test'),
       progressControllerProvider.overrideWith(FakeProgressController.new),
       reviewControllerProvider.overrideWith(
-        () => FakeReviewController(queue ?? const ReviewQueue(items: [], requiresPremium: false)),
+        () => FakeReviewController(
+          queue ?? const ReviewQueue(items: []),
+        ),
       ),
       if (karte != null)
         latestKarteControllerProvider.overrideWith(() => FakeLatestKarteController(karte)),
@@ -108,24 +110,29 @@ void main() {
     expect(find.byType(HomeScreen), findsOneWidget);
   });
 
-  testWidgets('無料ユーザーの復習画面からペイウォールに行き、戻ってこられる', (WidgetTester tester) async {
+  testWidgets('無料でも枠が残っていれば、まだ言えない後に授業導線を出す',
+      (WidgetTester tester) async {
     final GoRouter router = await pumpRouter(
       tester,
-      overrides: bootOverrides(queue: ReviewQueue.locked),
+      overrides: bootOverrides(
+        queue: sampleReviewQueue,
+      ),
     );
     router.go(AppRoute.review.path);
     await tester.pumpAndSettle();
 
     final AppStrings strings = AppStrings.of(tester.element(find.byType(ReviewScreen)));
-    expect(find.text(strings.reviewLocked), findsOneWidget);
+    expect(find.text(sampleReviewQueue.items.first.quiz), findsOneWidget);
+    expect(find.text(strings.reviewSaidIt), findsOneWidget);
+    expect(find.text(strings.reviewNotYet), findsOneWidget);
+    expect(find.byType(PaywallScreen), findsNothing, reason: '小テスト自体は無料');
 
-    await tester.tap(find.text(strings.paywallCta));
+    await tester.tap(find.text(strings.reviewNotYet));
     await tester.pumpAndSettle();
-    expect(router.canPop(), isTrue, reason: 'ペイウォールは閉じられなければならない');
-
-    router.pop();
-    await tester.pumpAndSettle();
-    expect(find.byType(ReviewScreen), findsOneWidget, reason: '来た場所に戻す');
+    expect(find.text(strings.reviewNotYetLead), findsOneWidget);
+    expect(find.text(strings.reviewAskSenpai), findsOneWidget);
+    expect(find.byType(PaywallScreen), findsNothing);
+    expect(router.canPop(), isTrue);
   });
 
   testWidgets('直近のカルテが無いのにカルテ画面へ行くと、ホームへ戻す', (WidgetTester tester) async {

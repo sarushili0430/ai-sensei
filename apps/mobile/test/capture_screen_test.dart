@@ -311,9 +311,9 @@ void main() {
     );
 
     await tester.tap(find.text(ja.captureStart));
-    await pumpUntil(tester, find.text(ja.captureFairUseLimitReached));
+    await pumpUntil(tester, find.text(ja.lessonEnoughForToday));
 
-    expect(find.text(ja.captureFairUseLimitReached), findsOneWidget);
+    expect(find.text(ja.lessonEnoughForToday), findsOneWidget);
     expect(find.text(serverMessage), findsNothing);
     expect(find.text(ja.errorRetry), findsNothing);
     expect(find.text(ja.paywallCta), findsNothing);

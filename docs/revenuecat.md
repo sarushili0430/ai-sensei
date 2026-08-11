@@ -266,12 +266,13 @@ Premium は**2つの経路で別々に**更新される。ここがこのアプ�
 | アプリの entitlement | SDK(`CustomerInfo`) | 購入した瞬間 |
 | サーバの `users.is_premium` | RevenueCat の webhook | 数秒遅れ |
 
-そして**画面が出し分けに使っているのはサーバ側**のほう。ホームの残り回数
-(`/v1/me/progress` の `is_premium`)、復習画面のロック(`/v1/me/reviews` の
-`requires_premium`)、セッション開始の可否(`premium_required` / `free_limit_reached`)。
+そして**画面が出し分けに使っているのはサーバ側**のほう。ホームと
+復習画面の授業可否(`/v1/me/progress` の `is_premium` /
+`limits.lesson_allowed_today`)、セッション開始の可否
+(`free_limit_reached` / `fair_use_limit_reached`)。
 判定を持たせないのは、クライアントの申告で上限を緩められないようにするため(§handoff 5)。
 
-その2つを読む `ProgressController` / `ReviewController` は `keepAlive` で、
+それを読む `ProgressController` は `keepAlive` で、
 **起動時に一度読んだきり**誰も読み直さない。だから購入したあとに読み直す配線が要る。
 
 `premium_sync.dart` がそれをやる。`EntitlementController` の変化を購読して、

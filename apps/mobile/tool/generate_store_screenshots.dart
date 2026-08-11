@@ -426,12 +426,12 @@ final List<_Shot> _shots = <_Shot>[
       reviewControllerProvider.overrideWith(
         () => FakeReviewController(
           ReviewQueue(
-            requiresPremium: false,
             items: <ReviewQueueItem>[
               ReviewQueueItem(
                 hole: sampleKarte.holes.first,
                 daysSince: 3,
                 prompt: '3日前の「判別式のなぜ」、いまなら説明できますか?',
+                quiz: '判別式を使うと解の個数がわかる理由を説明できる?',
               ),
             ],
             filled: <FilledHole>[sampleFilledHole],

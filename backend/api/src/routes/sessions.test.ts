@@ -297,7 +297,7 @@ describe("POST /v1/sessions", () => {
   });
 });
 
-// レビュー指摘: 復習はPremium機能なのに、hole_idを直接渡せば無料でも通っていた
+// レビュー指摘: 音声の復習セッションはPremiumなのに、hole_idを直接渡せば無料でも通っていた
 describe("復習セッション", () => {
   async function seedHole(deviceId = testDeviceId): Promise<string> {
     await services.repository.insertKarte(
@@ -320,6 +320,7 @@ describe("復習セッション", () => {
           desc: "平方完成のなぜで説明が止まった",
           severity: "high",
           evidence: null,
+          quiz: null,
           status: "open",
           created_at: "2026-08-01T11:00:00.000Z",
           filled_at: null,
@@ -345,16 +346,40 @@ describe("復習セッション", () => {
     return form;
   }
 
-  it("無料ユーザーは hole_id を直接渡しても始められない", async () => {
+  it("無料ユーザーも写真なしで復習セッションを始められる", async () => {
     const holeId = await seedHole();
     const response = await post(reviewForm(holeId));
-    expect(response.status).toBe(402);
-    expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
-      "premium_required",
+    expect(response.status).toBe(201);
+
+    const body = (await response.json()) as CreateSessionResponse;
+    expect(body.kind).toBe("review");
+    expect(body.detected_topics.map((topic) => topic.topic_id)).toEqual(["M1-NIJI-GURAFU"]);
+    expect(body.limits.lesson_allowed_today).toBe(false);
+  });
+
+  it("復習セッションも通常授業と同じ無料枠を消費する", async () => {
+    const holeId = await seedHole();
+    expect((await post(reviewForm(holeId))).status).toBe(201);
+
+    const nextLesson = await post(createSessionForm());
+    expect(nextLesson.status).toBe(402);
+    expect(((await nextLesson.json()) as { error: { code: string } }).error.code).toBe(
+      "free_limit_reached",
     );
   });
 
-  it("Premiumは写真なしで復習セッションを始められる", async () => {
+  it("通常授業で無料枠を使ったあとは復習セッションも止める", async () => {
+    const holeId = await seedHole();
+    expect((await post(createSessionForm())).status).toBe(201);
+
+    const review = await post(reviewForm(holeId));
+    expect(review.status).toBe(402);
+    expect(((await review.json()) as { error: { code: string } }).error.code).toBe(
+      "free_limit_reached",
+    );
+  });
+
+  it("Premiumも写真なしで復習セッションを始められる", async () => {
     await makePremium();
     const holeId = await seedHole();
 
@@ -403,6 +428,8 @@ describe("復習セッション", () => {
 
   it("表示言語(エラー文言)はアプリの設定に従う", async () => {
     const holeId = await seedHole();
+    // 復習自体は無料で通るので、共通の日次枠を使って上限エラーを作る。
+    expect((await post(createSessionForm())).status).toBe(201);
 
     const form = new FormData();
     form.set("meta", JSON.stringify({ kind: "review", locale: "en", hole_id: holeId }));
@@ -762,6 +789,7 @@ describe("問題だけのセッション", () => {
           desc: "平方完成のなぜで説明が止まった",
           severity: "high",
           evidence: null,
+          quiz: null,
           status: "open",
           created_at: "2026-08-01T11:00:00.000Z",
           filled_at: null,

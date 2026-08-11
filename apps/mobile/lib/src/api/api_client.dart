@@ -165,6 +165,26 @@ class ApiClient {
     return ReviewQueue.fromJson(_decode(response));
   }
 
+  /// 小テストの自己申告。**声も接続も使わない**(原価ゼロ)。
+  Future<ReviewAnswer> answerReview(String holeId, ReviewOutcome outcome) async {
+    final http.Response response = await _client
+        .post(
+          Uri.parse('$baseUrl/v1/me/reviews/$holeId'),
+          headers: <String, String>{
+            ..._headers,
+            'content-type': 'application/json; charset=utf-8',
+          },
+          body: jsonEncode(<String, dynamic>{
+            'outcome': switch (outcome) {
+              ReviewOutcome.saidIt => 'said_it',
+              ReviewOutcome.notYet => 'not_yet',
+            },
+          }),
+        )
+        .timeout(_timeout);
+    return ReviewAnswer.fromJson(_decode(response));
+  }
+
   Map<String, dynamic> _decode(http.Response response) {
     final Map<String, dynamic> body =
         jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
@@ -192,6 +212,7 @@ class ApiException implements Exception {
   bool get isFairUseLimitReached => code == 'fair_use_limit_reached';
   bool get isPremiumRequired => code == 'premium_required';
   bool get isPhotoUnreadable => code == 'photo_unreadable' || code == 'out_of_scope';
+  bool get isHoleNotFound => code == 'hole_not_found';
 
   @override
   String toString() => 'ApiException($code): $message';
