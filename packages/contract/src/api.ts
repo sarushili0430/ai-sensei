@@ -20,6 +20,7 @@ export const apiPaths = {
   reviewQueue: "/v1/me/reviews",
   revenueCatWebhook: "/v1/webhooks/revenuecat",
   parentReport: "/v1/me/parent-report",
+  fillHole: (holeId: string) => `/v1/me/holes/${holeId}/filled`,
 } as const;
 
 export const locales = ["ja", "en"] as const;

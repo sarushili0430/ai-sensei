@@ -22,6 +22,7 @@ import { Hono } from "hono";
 import type { AppEnv } from "../env.ts";
 import { readLimits } from "../env.ts";
 import { canStartSessionToday, isPremiumNow } from "../lib/entitlement.ts";
+import { apiError } from "../lib/errors.ts";
 import type { HoleRecord } from "../repository/types.ts";
 
 export const meRoute = new Hono<AppEnv>();
@@ -161,6 +162,37 @@ meRoute.get("/parent-report", async (c) => {
     }),
   };
   return c.json(response);
+});
+
+/**
+ * POST /v1/me/holes/{holeId}/filled — 本人の自己申告だけで穴を埋める。
+ *
+ * カルテや会話ログから自動判定しない。計画書 §2 が採点者を本人に限定しているのは、
+ * AIの誤読を「正しく理解した」に変えて、その誤りを1/3/7日の通知で強化しないため。
+ * このルートが受け取る事実は、ボタンを押したことだけ。
+ */
+meRoute.post("/holes/:holeId/filled", async (c) => {
+  const { repository, scheduler, now } = c.get("services");
+  const deviceId = c.get("deviceId");
+  const target = await repository.getHole(c.req.param("holeId"));
+
+  // 存在しないIDと他人のIDを同じ404に畳む。違う応答にすると、匿名デバイス認証でも
+  // hole_idを順に試して他人の学習記録が存在するかだけは調べられてしまう。
+  // 復習セッション開始時と同じく、所有者はリクエストのdevice_idと突き合わせる。
+  if (!target || target.device_id !== deviceId) throw apiError("session_not_found");
+
+  // UPDATEは open のときだけ効くので、再送で「埋めた日」が今日へ動かない。
+  // 一方、通知の掃除は filled でも毎回通す。状態更新の直後に処理が途切れた再送で
+  // ここを飛ばすと、画面では埋まっているのに3日後の通知だけが届くため。
+  await repository.markHoleFilled(target.id, now().toISOString());
+  const cancelled = await repository.cancelReviewSchedules(target.id);
+  for (const entry of cancelled) {
+    if (entry.external_id) await scheduler.cancel(entry.external_id);
+  }
+
+  // クライアントは復習キューと進捗をサーバから読み直す。ここで穴を返して
+  // もう1つの状態を持たせると、取消まで終わった事実と画面の状態がずれうる。
+  return c.body(null, 204);
 });
 
 /** D1の行 → 契約の Hole。evidence は null を持たせず、キーごと落とす。 */

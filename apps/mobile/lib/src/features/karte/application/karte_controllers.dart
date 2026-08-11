@@ -54,6 +54,19 @@ class ReviewController extends _$ReviewController {
     state = const AsyncValue<ReviewQueue>.loading();
     state = await AsyncValue.guard(() => ref.read(apiClientProvider).fetchReviews());
   }
+
+  /// 「言えるようになった」という本人の申告を反映する。
+  ///
+  /// APIの成功を受けて手元の配列だけを移し替えない。サーバでは同時に
+  /// 1/3/7日の通知も取り消しているので、成功後に復習キューと進捗を読み直し、
+  /// **サーバが完了した状態**を画面の正にする。再送はAPI側が冪等に受ける。
+  Future<void> fillHole(String holeId) async {
+    await ref.read(apiClientProvider).fillHole(holeId);
+    await Future.wait<void>(<Future<void>>[
+      refresh(),
+      ref.read(progressControllerProvider.notifier).refresh(),
+    ]);
+  }
 }
 
 /// セッションの結果のうち、画面をまたいで持ち回るもの。
@@ -85,7 +98,14 @@ class SessionOutcomeController extends _$SessionOutcomeController {
 
     ref.read(latestKarteControllerProvider.notifier).set(result.karte);
     ref.read(progressControllerProvider.notifier).applyFromSession(result.progress);
-    state = SessionOutcome(showPaywall: result.showPaywall, sessionId: sessionId);
+    // keepAliveの復習キューには、前回読んだopen状態が残りうる。カルテ画面で
+    // 「今回と重なる過去の穴」を選ぶ前に、完了後の状態を取り直させる。
+    ref.invalidate(reviewControllerProvider);
+    state = SessionOutcome(
+      showPaywall: result.showPaywall,
+      sessionId: sessionId,
+      kind: state.kind,
+    );
     return true;
   }
 }
@@ -96,6 +116,7 @@ class SessionOutcome {
     this.showPaywall = false,
     this.resultMissing = false,
     this.sessionId,
+    this.kind,
   });
 
   /// 初回カルテで穴が見えた直後だけ true。
@@ -106,6 +127,12 @@ class SessionOutcome {
 
   /// あとからカルテを取りに行くためのセッションID。
   final String? sessionId;
+
+  /// 授業後だけ過去の穴を聞き直すために、会話画面の寿命を越えて持つ種類。
+  /// `SessionStart` の契約を通った値だけが入り、画面側で推測し直さない。
+  final String? kind;
+
+  bool get isNewLesson => kind == 'new';
 }
 
 /// 直近のカルテ。セッション完了時に置かれ、カルテ画面が読む。

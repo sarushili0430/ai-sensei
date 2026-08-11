@@ -170,7 +170,7 @@ export class MemoryRepository implements Repository {
 
   async markHoleFilled(holeId: string, filledAt: string): Promise<void> {
     const hole = this.holes.get(holeId);
-    if (!hole) return;
+    if (!hole || hole.status !== "open") return;
     this.holes.set(holeId, { ...hole, status: "filled", filled_at: filledAt });
   }
 
