@@ -84,13 +84,10 @@ class _SchoolStageRows extends ConsumerWidget {
     final AppStrings strings = AppStrings.of(context);
     final SchoolStage current = ref.watch(schoolStageControllerProvider);
 
-    Widget row(SchoolStage stage, String label, {String? subtitle}) {
+    Widget row(SchoolStage stage, String label) {
       final bool selected = current == stage;
       return ListTile(
         title: Text(label),
-        subtitle: subtitle == null
-            ? null
-            : Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
         trailing: selected ? const Icon(Icons.check, color: AppColors.blue) : null,
         selected: selected,
         onTap: () => ref.read(schoolStageControllerProvider.notifier).select(stage),
@@ -98,13 +95,19 @@ class _SchoolStageRows extends ConsumerWidget {
     }
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        row(SchoolStage.juniorHigh, strings.settingsSchoolStageJuniorHigh),
-        row(
-          SchoolStage.highSchool,
-          strings.settingsSchoolStageHighSchool,
-          subtitle: strings.settingsSchoolStageHint,
+        // **ヒントは行ではなく、選択肢の手前に置く。** 片方の行に付けると
+        // 「選ばれているほうの説明」に読め、選び直すたびに説明が動いて見える。
+        Padding(
+          padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.sm),
+          child: Text(
+            strings.settingsSchoolStageHint,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
         ),
+        row(SchoolStage.juniorHigh, strings.settingsSchoolStageJuniorHigh),
+        row(SchoolStage.highSchool, strings.settingsSchoolStageHighSchool),
       ],
     );
   }
