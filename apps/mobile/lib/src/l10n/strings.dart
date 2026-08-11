@@ -67,8 +67,12 @@ class AppStrings {
   /// 2枚目。何をする時間なのかを、先に絵で見せる。
   /// 4行はピボット計画 §2 のコアループそのもの(撮る → 教わる → 教え返す → 穴が残る)。
   String get onboardingHowTitle => _pick('やることは、これだけ。', 'This is all you do.');
-  String get onboardingStepCapture => _pick('わからない問題とノートを撮る',
-      'Photograph the problem you are stuck on, with your notes');
+  /// **ノートを条件にしない。** 「問題とノートを撮る」と書くと、解けなくて
+  /// ノートが無い生徒は初回の説明の時点で「自分向けではない」と読む
+  /// (手も付けられないは家庭教師の中心的な用件。`api.ts` の `sessionPhotoParts`)。
+  /// ノートがあるほうが良いことは変わらないので、括弧で残す。
+  String get onboardingStepCapture => _pick('わからない問題を撮る(ノートがあれば一緒に)',
+      "Photograph the problem you are stuck on (with your notes, if you have them)");
   String get onboardingStepTaught => _pick(
       '先輩が板書つきで教えてくれる', 'Your senpai teaches you, working it out on the board');
   String get onboardingStepExplain =>
@@ -199,8 +203,27 @@ class AppStrings {
 
   // --- 撮ったものの確認(解析の前) ---
 
+  /// まだ1枚も撮っていないときの見出し。**カメラより先に出る。**
+  ///
+  /// 「ノートを撮ってください」ではなく**手元にあるものを聞く**。ノートが無いのは
+  /// 不足ではなく、そういう状態だという建て付けにするため。以前は画面に入った瞬間に
+  /// ノートのカメラが開いていて、解けなかった生徒は問題の枠を見ないまま
+  /// シャッターの前に立っていた(`capture_screen.dart` のコメント)。
+  String get captureChooseTitle => _pick('何が手元にある?', 'What do you have?');
+
   /// 解析はセッションを作る = 今日の1回を使う操作なので、その前に一度だけ挟む。
   String get captureReviewTitle => _pick('撮れました', 'Got it');
+
+  /// 1枚も撮っていないときのヒント。**ノートが無いことを、先に許しておく。**
+  ///
+  /// ここで黙っていると、解けなかった生徒には紙面をノート枠に入れる以外の道が
+  /// 見えない(`api.ts` の `sessionPhotoParts` が「残る穴」と書いたもの)。
+  /// **咎めない・理由を聞かない。**「まだ手をつけていないなら」とだけ置いて、
+  /// 当てはまる人が自分で拾えるようにする。
+  String get captureEitherIsFine => _pick(
+        'どちらか1枚で始められます。まだ手をつけていないなら、問題だけで大丈夫。',
+        "Either one is enough to start. If you haven't tried it yet, just the problem is fine.",
+      );
 
   /// 枠の見出し。**ノートを「任意」に見せ替えない。**
   ///
@@ -208,8 +231,14 @@ class AppStrings {
   /// 持ってきた生徒のため)、**あるほうが良いことは変わっていない** —
   /// どこで手が止まったかが、先輩の切り分けの出発点になる。
   /// 「任意」と書くと、撮れる人まで撮らなくなる。
+  ///
+  /// 問題の側からも「(任意)」を外した。**片方にだけ付いていると、
+  /// もう片方が必須に読める。** ノートが無い生徒にとっては、唯一出せるものが
+  /// 「任意」と書かれ、出せないものが必須に見える — 逆さまになる。
+  /// どちらか1枚でよいことは [captureEitherIsFine] が言うので、
+  /// 枠は名前だけにしておく。
   String get capturePhotoNotes => _pick('ノート', 'Your notes');
-  String get capturePhotoProblem => _pick('問題(任意)', 'The problem (optional)');
+  String get capturePhotoProblem => _pick('問題', 'The problem');
 
   /// まだ撮っていない枠の操作名。
   /// **「問題も撮る」とは書かない** — ノートを撮らない人には「も」が合わない。
@@ -220,6 +249,9 @@ class AppStrings {
   /// §4-1 の言い回しそのまま。**ヒントであって要求ではない。**
   /// 1枚に問題とノートの両方が写ることが多いので、2枚必須にすると
   /// 撮影の摩擦だけが増える。
+  ///
+  /// **ノートを撮った人にだけ出す。** 問題を先に撮った人(= ノートが無い人)に
+  /// 「問題も写っていると」と言うと、もう撮ったものを催促することになる。
   String get captureProblemHint => _pick(
         '問題も写っていると、先輩が迷子になりません',
         "If the problem is in the shot too, your senpai won't get lost",
@@ -242,9 +274,12 @@ class AppStrings {
       _pick('先輩は、この問題だと思っています', 'This is the problem your senpai sees');
 
   /// カメラを断られたとき。黙ってホームに戻さない。
+  ///
+  /// **どちらの枠から来たかを書かない。** ノートが無くて問題を撮ろうとした人に
+  /// 「ノートを撮れます」と返すと、断られた話の上に的外れが重なる。
   String get captureCameraDenied => _pick(
-        'カメラを使えませんでした。設定アプリから許可すると、ノートを撮れます。',
-        "We couldn't use the camera. Allow it in Settings to photograph your notes.",
+        'カメラを使えませんでした。設定アプリから許可すると、撮れるようになります。',
+        "We couldn't use the camera. Allow it in Settings and you'll be able to take the photo.",
       );
   String get captureOpenSettings => _pick('設定をひらく', 'Open Settings');
 
