@@ -403,16 +403,16 @@ describeWithSqlite("D1の授業枠", () => {
 });
 
 describeWithSqlite("D1の自習室日次集計", () => {
-  it("0008は既存表を変えず、日次集計の表だけを追加する", async () => {
+  it("0006は既存表を変えず、日次集計の表だけを追加する", async () => {
     const database = openDatabase();
     try {
       const entries = await migrations();
-      const eighthIndex = entries.findIndex((entry) => entry.name === "0008_study_room.sql");
-      if (eighthIndex < 0) throw new Error("0008マイグレーションがありません");
+      const sixthIndex = entries.findIndex((entry) => entry.name === "0006_study_room.sql");
+      if (sixthIndex < 0) throw new Error("0006マイグレーションがありません");
 
-      apply(database, entries.slice(0, eighthIndex));
+      apply(database, entries.slice(0, sixthIndex));
       const sessionsBefore = database.prepare("PRAGMA table_info(sessions)").all();
-      apply(database, [entries[eighthIndex]!]);
+      apply(database, [entries[sixthIndex]!]);
 
       expect(database.prepare("PRAGMA table_info(sessions)").all()).toEqual(sessionsBefore);
       expect(

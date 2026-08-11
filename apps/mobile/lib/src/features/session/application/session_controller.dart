@@ -207,7 +207,17 @@ class SessionController extends _$SessionController {
     _lessonOpeningAudio = openingAudio;
     // **接続前に arm する。**接続イベントのほうが `Room.connect()` の Future より
     // 先に届くことがあり、その中で先輩が喋ったら「もう鳴らさない」を記録するため。
-    openingAudio.arm(lessonMode: session.kind == 'new', languageCode: locale);
+    //
+    // **復習も対象にする。**復習は前回の穴を板書つきで教え直すセッションなので
+    // (agent 側の `startsWithBoardLesson`)、新規授業と同じだけ最初の手順までの
+    // 無音がある。agent 側は冒頭の一言をTTSで喋らなくなった(§3-2。固定文に
+    // 毎回従量原価を払わないため)ので、ここで鳴らさないと**復習の冒頭だけが
+    // 完全な無音**になる。板書が出ない縮退経路では先輩がすぐ喋りはじめるが、
+    // その発話が `senpaiStartedSpeaking()` で cue を止めるのでかぶらない。
+    openingAudio.arm(
+      lessonMode: session.kind == 'new' || session.kind == 'review',
+      languageCode: locale,
+    );
 
     // セッション作成後に、今日さらに授業を始められるかはサーバが確定している。
     // ホームへ戻ったときに古い可否を見せないよう、その真偽値をそのまま引き継ぐ。
