@@ -25,7 +25,6 @@ import { JobLogger } from "./log.ts";
 import {
   handsTurnToStudent,
   lessonFailedPrompt,
-  openingFiller,
   reviewOpening,
   senpaiConversationPrompt,
   teachBackPrompt,
@@ -371,15 +370,10 @@ async function teachWithBoard(options: TeachOptions): Promise<BoardDelivery | un
   });
   const board = channel.startBoard();
 
-  // 冒頭の無音を埋める。最初の手順が出るまでの数秒がまるごと沈黙になる(§3-2)。
-  // **読み上げ終わりまで待つ。**待たないと、この一言と最初の手順の読み上げが
-  // 同時に走って、生徒には先輩が2人いるように聞こえる。
-  //
-  // TODO(§3-2): 本来はここを**事前生成の音声アセット**にする(TTS呼び出しゼロ)。
-  // アセットはまだ存在しないので、暫定で固定文言をTTSに通している。
-  // §4-2 の自習室モード(原価ゼロ)の声かけと同じ仕組みになるので、
-  // アセットを作るときは両方まとめて用意すること。
-  await sayAndWait(session, openingFiller(context.locale), log);
+  // 冒頭の一言はモバイルが同梱アセットから鳴らす(§3-2)。ここでも同じ文を
+  // `session.say()` すると、固定文に毎回 Deepgram の従量原価が戻るだけでなく、
+  // ローカル音声と重なって「先輩が2人いる」ように聞こえる。agent はすぐ板書生成へ
+  // 入り、最初の手順または発話が届いた時点でモバイル側がアセットを止める。
 
   const lesson = await runBoardLesson({
     llm: createAnthropicLessonClient({

@@ -5,12 +5,14 @@ import 'package:livekit_client/livekit_client.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../api/api_client.dart';
+import '../../../audio/prerendered_audio.dart';
 import '../../../telemetry/telemetry.dart';
 import '../../karte/application/karte_controllers.dart';
 import '../../study_room/application/last_board_controller.dart';
 import '../domain/board.dart';
 import '../domain/session.dart';
 import 'board_inbox.dart';
+import 'lesson_opening_audio.dart';
 
 part 'session_controller.g.dart';
 
@@ -128,6 +130,12 @@ class SessionController extends _$SessionController {
   /// 板書の受信。接続のたびに作り直す(板書はセッションをまたがない)。
   BoardInbox? _boardInbox;
 
+  /// 授業の最初の板書までを埋める、ローカル音声の寿命。
+  ///
+  /// agent の TTS へ同じ文を渡すと、固定文なのに毎回従量原価が発生する。
+  /// モバイルのアセットだけを鳴らし、板書か本物の先輩の声が先着したら止める。
+  LessonOpeningAudio? _lessonOpeningAudio;
+
   /// 封筒の処理を**到着順に直列化する**ための鎖。
   ///
   /// ハンドラは封筒の到着順に呼ばれるが、`readAll()` の完了順まで同じとは限らない
@@ -188,8 +196,16 @@ class SessionController extends _$SessionController {
     return const SessionState(phase: SessionPhase.connecting, remainingSeconds: 0);
   }
 
-  Future<void> connect(SessionStart session) async {
+  Future<void> connect(SessionStart session, {required String locale}) async {
     _sessionId = session.sessionId;
+
+    final LessonOpeningAudio openingAudio = LessonOpeningAudio(
+      ref.read(prerenderedAudioProvider),
+    );
+    _lessonOpeningAudio = openingAudio;
+    // **接続前に arm する。**接続イベントのほうが `Room.connect()` の Future より
+    // 先に届くことがあり、その中で先輩が喋ったら「もう鳴らさない」を記録するため。
+    openingAudio.arm(lessonMode: session.kind == 'new', languageCode: locale);
 
     // セッション作成後に、今日さらに授業を始められるかはサーバが確定している。
     // ホームへ戻ったときに古い可否を見せないよう、その真偽値をそのまま引き継ぐ。
@@ -221,6 +237,11 @@ class SessionController extends _$SessionController {
       room.registerTextStreamHandler(boardChannelTopic, _onBoardStream);
 
       await room.connect(session.livekit.url, session.livekit.token);
+
+      // 接続後なら agent の板書生成と同時に走る。マイク公開より先に開始するのは、
+      // iOS の消音スイッチを尊重する ambient session を準備したあと、LiveKit に
+      // 会話用 session を確実に取り戻させるため。逆順だと録音設定を上書きしうる。
+      await openingAudio.start();
       await room.localParticipant?.setMicrophoneEnabled(true);
 
       // 先輩の発話と、自分の声の認識結果は `lk.transcription` で流れてくる。
@@ -249,11 +270,11 @@ class SessionController extends _$SessionController {
 
   /// つなぎ直す。**セッションは作り直さない**(同じトークンで入り直すので、
   /// 無料枠を二重に消費しない)。
-  Future<void> retry(SessionStart session) async {
+  Future<void> retry(SessionStart session, {required String locale}) async {
     await _teardown();
     _finishing = false;
     _senpaiIdentity = null;
-    await connect(session);
+    await connect(session, locale: locale);
   }
 
   /// 上限時間はサーバが決める。クライアントは表示と自動終了だけを担当する。
@@ -337,6 +358,8 @@ class SessionController extends _$SessionController {
     _senpai.connected(senpai);
     switch (_senpai.agentState) {
       case AgentState.speaking:
+        // AgentState は字幕より先に届く。本物の声の頭へローカル音声をかぶせない。
+        unawaited(_lessonOpeningAudio?.senpaiStartedSpeaking() ?? Future<void>.value());
         state = state.copyWith(phase: _speakingPhase);
       case AgentState.listening:
       case AgentState.thinking:
@@ -422,6 +445,11 @@ class SessionController extends _$SessionController {
   ///   - **とぎれた板書も渡る**(欠落を検知した時点までの行は残す方針)。健全な板書と
   ///     区別できるよう、`truncated` に [BoardSnapshot.hasGap] を添えて渡している
   void _applyBoard(BoardSnapshot board) {
+    // `board_open` は見出しだけなので止めない。最初の BoardStep が届くまでの無音を
+    // 埋めるのが cue の仕事で、見出し到着で切るとその穴がそのまま残る。
+    if (board.steps.isNotEmpty) {
+      unawaited(_lessonOpeningAudio?.firstBoardStepArrived() ?? Future<void>.value());
+    }
     state = state.copyWith(
       board: board,
       phase: _isTalking(state.phase) ? SessionPhase.senpaiTeaching : state.phase,
@@ -458,6 +486,8 @@ class SessionController extends _$SessionController {
       state.board.hasBoard ? SessionPhase.explainBack : SessionPhase.listening;
 
   void onSenpaiSpeaking(String text) {
+    // AgentState を取りこぼした場合も、字幕を受けた時点で止める二本目の経路。
+    unawaited(_lessonOpeningAudio?.senpaiStartedSpeaking() ?? Future<void>.value());
     state = state.copyWith(phase: _speakingPhase, lastSenpaiText: text);
   }
 
@@ -602,6 +632,10 @@ class SessionController extends _$SessionController {
       '板書の購読解除',
       () => room?.unregisterTextStreamHandler(boardChannelTopic),
     );
+
+    final LessonOpeningAudio? openingAudio = _lessonOpeningAudio;
+    _lessonOpeningAudio = null;
+    await _quietly('授業冒頭のローカル音声停止', () => openingAudio?.stop());
 
     // 先に購読を切る。切断そのものがイベントになって戻ってくるのを避ける。
     await _quietly('字幕の購読解除', () => _transcriptSubscription?.cancel());

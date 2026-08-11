@@ -460,7 +460,7 @@ class FakeSessionController extends SessionController {
   SessionState build() => _initial;
 
   @override
-  Future<void> connect(SessionStart session) async {}
+  Future<void> connect(SessionStart session, {required String locale}) async {}
 
   /// 板書が1行増えた、を再現する。
   void push(SessionState next) => state = next;

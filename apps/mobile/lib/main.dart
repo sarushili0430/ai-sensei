@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'src/api/device_id.dart';
+import 'src/audio/prerendered_audio.dart';
 import 'src/features/monetization/application/premium_sync.dart';
 import 'src/features/monetization/data/purchases_repository.dart';
 import 'src/features/notifications/application/push_controller.dart';
@@ -56,6 +59,13 @@ Future<void> _startApp() async {
         deviceIdProvider.overrideWithValue(deviceId),
         preferencesProvider.overrideWithValue(preferences),
         onboardedProvider.overrideWithValue(onboarded),
+        // 本物の音声出力はアプリの根でだけ差し込む。Widget 単体の既定は無音なので、
+        // テストやプレビューが MethodChannel を起動して端末から音を出すことはない。
+        prerenderedAudioPlayerProvider.overrideWith((Ref ref) {
+          final JustAudioPrerenderedAudioPlayer player = JustAudioPrerenderedAudioPlayer();
+          ref.onDispose(() => unawaited(player.dispose()));
+          return player;
+        }),
       ],
       child: const AiSenseiApp(),
     ),

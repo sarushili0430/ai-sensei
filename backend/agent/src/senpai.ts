@@ -9,7 +9,7 @@ import type { SessionContext } from "./context.ts";
  * **人格と約束はここには無い。**正本は `prompts/senpai_conversation.{ja,en}.md` で、
  * このファイルが持つのは2つだけ:
  *
- *   1. **定型の一言**(冒頭の無音埋め・教え返しへの受け渡し・立て直し)。
+ *   1. **定型の一言**(教え返しへの受け渡し・立て直し)。
  *      会話LLMを通さずにTTSへ直接渡す文なので、プロンプトには置けない。
  *   2. **板書の要約**(`lesson_recap` に入れる値)。板書は配送層の事実
  *      (`BoardStep`)なので、プロンプト側からは見えない。
@@ -28,12 +28,6 @@ import type { SessionContext } from "./context.ts";
  * 「先輩は知っているが、カルテの材料にはならない」という置き分けになる。
  * この線引きは `senpai_conversation.<locale>.md` の本文にも二重に書いてある。
  */
-
-/** 授業の冒頭、最初の手順が出るまでの無音を埋める一言(計画書 §3-2)。 */
-const OPENING_FILLER: Record<CurriculumLocale, string> = {
-  ja: "なるほど、じゃあ一緒に見てみようか。",
-  en: "Okay, let's take a look at this together.",
-};
 
 /** 授業が終わったら教え返しへ渡す。計画書 §2 のコアループの2つ目。 */
 const TEACH_BACK_PROMPT: Record<CurriculumLocale, string> = {
@@ -91,10 +85,6 @@ const HANDOFF_PATTERNS: Record<CurriculumLocale, RegExp[]> = {
   ja: [/説明してみて/, /言ってみて/, /やってみて/, /話してみて/, /書いてみて/],
   en: [/explain\b/i, /your own words/i, /tell me\b/i, /give it a (?:go|shot|try)/i, /try it\b/i],
 };
-
-export function openingFiller(locale: CurriculumLocale): string {
-  return OPENING_FILLER[locale];
-}
 
 export function teachBackPrompt(locale: CurriculumLocale): string {
   return TEACH_BACK_PROMPT[locale];

@@ -5,7 +5,6 @@ import {
   handsTurnToStudent,
   lessonFailedPrompt,
   lessonRecapMaxLength,
-  openingFiller,
   renderLessonRecap,
   reviewOpening,
   senpaiConversationPrompt,
@@ -59,7 +58,6 @@ const step = (index: number, speech: string, board: BoardStep["board"]): BoardSt
 
 describe("定型の一言", () => {
   it("言語ごとに別の文言を返す", () => {
-    expect(openingFiller("ja")).not.toBe(openingFiller("en"));
     expect(teachBackPrompt("ja")).not.toBe(teachBackPrompt("en"));
     expect(lessonFailedPrompt("ja")).not.toBe(lessonFailedPrompt("en"));
     expect(reviewOpening("ja")).not.toBe(reviewOpening("en"));
@@ -79,12 +77,7 @@ describe("定型の一言", () => {
    * - 約束4(改正後): 命令・催促・数字を出さない
    */
   it("こちらから言う一言が、申告させる聞き方や催促になっていない", () => {
-    const lines = [
-      openingFiller("ja"),
-      teachBackPrompt("ja"),
-      lessonFailedPrompt("ja"),
-      reviewOpening("ja"),
-    ];
+    const lines = [teachBackPrompt("ja"), lessonFailedPrompt("ja"), reviewOpening("ja")];
 
     for (const line of lines) {
       expect(line, line).not.toMatch(/覚えてる|わかった\?|大丈夫\?/);
