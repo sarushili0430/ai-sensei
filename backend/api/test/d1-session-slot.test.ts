@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { fileURLToPath } from "node:url";
+import type { StudyPlan } from "@ai-sensei/contract";
 import { describe, expect, it } from "vitest";
 import type { D1Database, D1PreparedStatement, D1Result } from "../src/cloudflare.ts";
 import { D1Repository } from "../src/repository/d1.ts";
@@ -162,6 +163,7 @@ describeWithSqlite("D1の授業枠", () => {
 
       expect(entries.map((entry) => entry.name)).toContain("0003_session_day_seq.sql");
       expect(entries.map((entry) => entry.name)).toContain("0004_drop_session_day_seq_index.sql");
+      expect(entries.map((entry) => entry.name)).toContain("0005_plans.sql");
       expect(
         database
           .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?")
@@ -394,6 +396,105 @@ describeWithSqlite("D1の授業枠", () => {
           .all()
           .map((row) => row["day_seq"]),
       ).toEqual([0, 0, 0]);
+    } finally {
+      database.close();
+    }
+  });
+});
+
+describeWithSqlite("D1の学習計画", () => {
+  it("計画保存とセッション完了を一括し、再送では現行計画を上書きしない", async () => {
+    const database = openDatabase();
+    try {
+      apply(database, await migrations());
+      const repository = new D1Repository(new SQLiteD1Database(database));
+      await repository.ensureUser("device_a", new Date("2026-08-03T13:00:00.000Z"));
+      await repository.createPlanSession({
+        id: "plan_session_1",
+        device_id: "device_a",
+        locale: "ja",
+        status: "open",
+        created_at: "2026-08-03T13:00:00.000Z",
+        completed_at: null,
+        duration_seconds: null,
+        plan_id: null,
+      });
+      await repository.createPlanSession({
+        id: "plan_session_2",
+        device_id: "device_a",
+        locale: "ja",
+        status: "open",
+        created_at: "2026-08-03T13:00:01.000Z",
+        completed_at: null,
+        duration_seconds: null,
+        plan_id: null,
+      });
+      const plan: StudyPlan = {
+        id: "plan_1",
+        created_at: "2026-08-03T13:03:00.000Z",
+        source: "senpai",
+        intake: {
+          exam_name: "中間テスト",
+          exam_date: "2026-08-10",
+          scope: { topic_ids: ["M2-SANKAKU-KAHO"], said: "三角関数" },
+          materials: ["4STEP"],
+        },
+        days: [
+          {
+            date: "2026-08-04",
+            items: [
+              {
+                topic_id: "M2-SANKAKU-KAHO",
+                what: "例題を一周する",
+                material: 0,
+                minutes: 30,
+                status: "todo",
+              },
+            ],
+          },
+        ],
+        revisions: [],
+      };
+
+      expect(
+        await repository.completePlanSession({
+          sessionId: "plan_session_1",
+          completedAt: "2026-08-03T13:03:00.000Z",
+          durationSeconds: 180,
+          plan,
+        }),
+      ).toBe(true);
+      expect(await repository.getCurrentPlan("device_a")).toEqual(plan);
+
+      const conflicting = { ...plan, source: "template" as const };
+      expect(
+        await repository.completePlanSession({
+          sessionId: "plan_session_1",
+          completedAt: "2026-08-03T13:04:00.000Z",
+          durationSeconds: 240,
+          plan: conflicting,
+        }),
+      ).toBe(false);
+      expect(await repository.getCurrentPlan("device_a")).toEqual(plan);
+      expect(await repository.getPlanSession("plan_session_1")).toMatchObject({
+        status: "completed",
+        plan_id: plan.id,
+      });
+
+      const competingPlan = { ...plan, id: "plan_2", source: "template" as const };
+      expect(
+        await repository.completePlanSession({
+          sessionId: "plan_session_2",
+          completedAt: "2026-08-03T13:05:00.000Z",
+          durationSeconds: 300,
+          plan: competingPlan,
+        }),
+      ).toBe(false);
+      expect(await repository.getCurrentPlan("device_a")).toEqual(plan);
+      expect(await repository.getPlanSession("plan_session_2")).toMatchObject({
+        status: "completed",
+        plan_id: plan.id,
+      });
     } finally {
       database.close();
     }

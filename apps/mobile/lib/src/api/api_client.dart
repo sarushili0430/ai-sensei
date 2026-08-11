@@ -6,6 +6,7 @@ import 'package:http_parser/http_parser.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../features/karte/domain/karte.dart';
+import '../features/plan/domain/study_plan.dart';
 import '../features/session/domain/session.dart';
 import 'device_id.dart';
 
@@ -165,6 +166,31 @@ class ApiClient {
     return ReviewQueue.fromJson(_decode(response));
   }
 
+  /// 計画を作る音声ルームを開く。授業セッションとは別なので写真もkindも送らない。
+  Future<PlanSessionStart> createPlanSession({String locale = 'ja'}) async {
+    final http.Response response = await _client
+        .post(
+          Uri.parse('$baseUrl/v1/plans'),
+          headers: <String, String>{
+            ..._headers,
+            'content-type': 'application/json; charset=utf-8',
+          },
+          body: jsonEncode(<String, dynamic>{'locale': locale}),
+        )
+        .timeout(_timeout);
+    return PlanSessionStart.fromJson(_decode(response));
+  }
+
+  /// 現行計画。未作成は404ではなく `plan: null` なので、そのまま作成導線へ移れる。
+  Future<StudyPlan?> fetchPlan() async {
+    final http.Response response = await _client
+        .get(Uri.parse('$baseUrl/v1/me/plan'), headers: _headers)
+        .timeout(_timeout);
+    final Map<String, dynamic> body = _decode(response);
+    final Map<String, dynamic>? plan = body['plan'] as Map<String, dynamic>?;
+    return plan == null ? null : StudyPlan.fromJson(plan);
+  }
+
   Map<String, dynamic> _decode(http.Response response) {
     final Map<String, dynamic> body =
         jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
@@ -196,6 +222,11 @@ class ApiException implements Exception {
   @override
   String toString() => 'ApiException($code): $message';
 }
+
+/// API例外の型をファイル外へ漏らさず、課金導線に必要なcode判定だけを公開する。
+/// 文字列の `toString()` を上位で解析すると、文言を直しただけで分岐が壊れるため。
+bool isPremiumRequiredApiError(Object error) =>
+    error is ApiException && error.isPremiumRequired;
 
 /// `--dart-define=API_BASE_URL=...` で差し替える。
 const String apiBaseUrl =

@@ -747,6 +747,74 @@ class AppStrings {
   String get studyRoomNudgeBreak => _pick('そろそろ休憩する?', 'Want to take a break?');
   String get studyRoomNudgeLong =>
       _pick('けっこう集中してるね。ひと息ついてきな', "You've been at this a while — go stretch");
+
+  // --- 学習計画(§4-3。有料・音声で作る)---
+  //
+  // 入力欄のラベルは置かない。日付・範囲・教材は先輩が順に口で聞き、
+  // 画面の文言は「話し始める」と、できた計画を読むための見出しだけにする。
+  String get planTitle => _pick('学習計画', 'Study plan');
+  String get planIntroTitle =>
+      _pick('テストまで、一緒に組もっか。', "Let's map out the test.");
+  String get planIntroBody => _pick(
+    'テストの日、範囲、使っている教材を、先輩がひとつずつ聞きます。入力欄はありません。',
+    'Your senpai asks for the date, the range, and what you study from — one at a time, out loud.',
+  );
+  String get planCreate => _pick('先輩と計画をつくる', 'Make a plan with senpai');
+  String get planRebuild => _pick('口で組み直す', 'Rebuild it out loud');
+  String get planConnecting => _pick('先輩を呼んでいます', 'Calling your senpai');
+  String get planListening => _pick('聞いています', 'Listening');
+  String get planSaving => _pick('計画をまとめています', 'Putting your plan together');
+  String get planEndConversation => _pick('今日はここまで', "Let's stop here");
+  String get planLoadFailed => _pick(
+    '計画を読み込めませんでした。電波の届くところでもう一度お願いします。',
+    "We couldn't load your plan. Please try again with a better connection.",
+  );
+  String get planConnectionFailed => _pick(
+    'うまくつながりませんでした。マイクと電波を確かめてみてください。',
+    "We couldn't connect. Check your mic and connection, then try again.",
+  );
+  String get planSenpaiUnavailable => _pick(
+    '先輩を呼べませんでした。少し時間をおいて、もう一度お願いします。',
+    "Your senpai couldn't join. Please try again in a moment.",
+  );
+  String get planResultPending => _pick(
+    '新しい計画をまだ受け取れていません。前の計画はこのまま残しています。',
+    "The new plan hasn't arrived yet. Your previous plan is still here.",
+  );
+  String planRevisionNote(String said) =>
+      _pick('「$said」を受けて組み直しました。', 'Rebuilt after: “$said”');
+  String planExamDate(String date) => _pick('テスト: $date', 'Test: $date');
+  String get planScope => _pick('範囲', 'Range');
+  String get planMaterials => _pick('使う教材', 'Materials');
+  String get planNoMaterials =>
+      _pick('教材なし。ノートで進めます', 'No book needed — use your notes');
+  String get planRestDay => _pick('休む日', 'Day off');
+  String planMinutes(int minutes) => _pick('$minutes分', '$minutes min');
+  String planItemStatus(String status) => switch (status) {
+    'done' => _pick('できた', 'Done'),
+    'moved' => _pick('組み直した', 'Moved'),
+    _ => _pick('これから', 'Up next'),
+  };
+
+  /// topic_id の接頭辞は課程を表す(ADR 0005)。割合や理解度を作らず、科目名だけを出す。
+  String planSubject(String topicId) {
+    final String code = topicId.split('-').first;
+    return switch (code) {
+      'M1' => _pick('数学I', 'Mathematics I'),
+      'MA' => _pick('数学A', 'Mathematics A'),
+      'M2' => _pick('数学II', 'Mathematics II'),
+      'MB' => _pick('数学B', 'Mathematics B'),
+      'M3' => _pick('数学III', 'Mathematics III'),
+      'MC' => _pick('数学C', 'Mathematics C'),
+      'A1' => 'Algebra 1',
+      'GE' => 'Geometry',
+      'A2' => 'Algebra 2',
+      'PC' => 'Precalculus',
+      'CL' => 'Calculus',
+      'ST' => 'Statistics',
+      _ => _pick('数学', 'Math'),
+    };
+  }
 }
 
 class AppStringsDelegate extends LocalizationsDelegate<AppStrings> {

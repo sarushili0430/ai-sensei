@@ -6,6 +6,7 @@ import {
   progressSchema,
   topicIdSchema,
 } from "./karte.ts";
+import { planDateSchema, planSourceSchema, studyPlanDraftSchema, studyPlanSchema } from "./plan.ts";
 
 /**
  * backend/api ↔ apps/mobile ↔ agent の契約。
@@ -19,6 +20,9 @@ export const apiPaths = {
   progress: "/v1/me/progress",
   reviewQueue: "/v1/me/reviews",
   revenueCatWebhook: "/v1/webhooks/revenuecat",
+  createPlanSession: "/v1/plans",
+  completePlanSession: (planSessionId: string) => `/v1/plans/${planSessionId}/complete`,
+  plan: "/v1/me/plan",
 } as const;
 
 export const locales = ["ja", "en"] as const;
@@ -428,3 +432,80 @@ export const apiErrorSchema = z
   })
   .strict();
 export type ApiError = z.infer<typeof apiErrorSchema>;
+
+/* -------------------------------------------------------------------------- */
+/* 計画モード                                                                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * `sessionKinds` に `plan` を足さず、計画は専用セッションとして扱う。
+ *
+ * 授業セッションの `kind` は D1 の CHECK 制約と {@link sessionMetadataSchema} の
+ * `problem_text` / `visible_work` / `allowed_topic_ids` に結びついている。そこへ計画を混ぜるには、
+ * 稼働中の `sessions` テーブルを作り直すか、授業の必須文脈をすべて任意にする必要がある。
+ * 前者はデプロイ中の旧 Worker を壊し、後者は「問題を見ずに教える」を型で再び許してしまう。
+ * また計画は何度も組み直して生き続けるので、授業回数・連続日数に数える性質でもない。
+ * 同じ LiveKit を使うことより、寿命と集計の境界を守ることを優先して契約を分けた。
+ */
+export const createPlanSessionRequestSchema = z
+  .object({
+    locale: localeSchema.default("ja"),
+  })
+  .strict();
+export type CreatePlanSessionRequest = z.infer<typeof createPlanSessionRequestSchema>;
+export type CreatePlanSessionRequestInput = z.input<typeof createPlanSessionRequestSchema>;
+
+/** LiveKitトークンに載せる、計画モード専用の会話文脈。 */
+export const planSessionMetadataSchema = z
+  .object({
+    plan_session_id: z.string().min(1),
+    /** 授業 metadata との取り違えを、agent の入口で即座に検知する判別子。 */
+    kind: z.literal("plan"),
+    locale: localeSchema,
+    max_seconds: z.number().int().positive(),
+    /** LLMに相対日付を推測させないため、APIが確定したローカル日付を渡す。 */
+    today: planDateSchema,
+    /** 組み直しでは事実を聞き直さないため、いまの計画を会話開始時に固定して渡す。 */
+    current_plan: studyPlanSchema.nullable(),
+  })
+  .strict();
+export type PlanSessionMetadata = z.infer<typeof planSessionMetadataSchema>;
+
+export const createPlanSessionResponseSchema = z
+  .object({
+    plan_session_id: z.string().min(1),
+    livekit: liveKitConnectionSchema,
+    /** 画面は接続前から「新規」と「組み直し」を同じ事実で判断できる。 */
+    current_plan: studyPlanSchema.nullable(),
+  })
+  .strict();
+export type CreatePlanSessionResponse = z.infer<typeof createPlanSessionResponseSchema>;
+
+/**
+ * POST /v1/plans/{id}/complete — 計画 agent が内部トークンで呼ぶ。
+ * LLMが出した形は {@link studyPlanDraftSchema} のまま受け、ID・時刻・状態はAPIだけが付ける。
+ */
+export const completePlanSessionRequestSchema = z
+  .object({
+    plan: studyPlanDraftSchema,
+    source: planSourceSchema,
+    duration_seconds: z.number().int().min(0),
+    ended_reason: z.enum(["completed", "timeout", "user_left", "error"]),
+  })
+  .strict();
+export type CompletePlanSessionRequest = z.infer<typeof completePlanSessionRequestSchema>;
+
+export const completePlanSessionResponseSchema = z
+  .object({
+    plan: studyPlanSchema,
+  })
+  .strict();
+export type CompletePlanSessionResponse = z.infer<typeof completePlanSessionResponseSchema>;
+
+/** GET /v1/me/plan。計画がまだ無いことはエラーではなく、最初の聞き取りへの入口。 */
+export const planResponseSchema = z
+  .object({
+    plan: studyPlanSchema.nullable(),
+  })
+  .strict();
+export type PlanResponse = z.infer<typeof planResponseSchema>;

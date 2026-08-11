@@ -1,10 +1,16 @@
 import type { ZodTypeAny } from "zod";
 import {
   apiErrorSchema,
+  completePlanSessionRequestSchema,
+  completePlanSessionResponseSchema,
   completeSessionRequestSchema,
   completeSessionResponseSchema,
+  createPlanSessionRequestSchema,
+  createPlanSessionResponseSchema,
   createSessionRequestSchema,
   createSessionResponseSchema,
+  planResponseSchema,
+  planSessionMetadataSchema,
   progressResponseSchema,
   reviewQueueResponseSchema,
   sessionMetadataSchema,
@@ -41,6 +47,12 @@ export const fixtureSchemas = {
   // (計画は聞き取りの会話の途中で生まれるので、LLMの単位は「計画」ではなく「1ターン」)。
   "study-plan": studyPlanSchema,
   "study-plan-turn": planTurnSchema,
+  "create-plan-session-request": createPlanSessionRequestSchema,
+  "create-plan-session-response": createPlanSessionResponseSchema,
+  "plan-session-metadata": planSessionMetadataSchema,
+  "complete-plan-session-request": completePlanSessionRequestSchema,
+  "complete-plan-session-response": completePlanSessionResponseSchema,
+  "plan-response": planResponseSchema,
 } satisfies Record<string, ZodTypeAny>;
 
 export type FixtureName = keyof typeof fixtureSchemas;

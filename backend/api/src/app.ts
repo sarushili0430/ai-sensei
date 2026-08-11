@@ -16,6 +16,7 @@ import { createAnthropicAnalyzer } from "./lib/photo-analysis.ts";
 import { D1Repository } from "./repository/d1.ts";
 import { completeRoute } from "./routes/complete.ts";
 import { meRoute } from "./routes/me.ts";
+import { planMeRoute, plansRoute } from "./routes/plans.ts";
 import { sessionsRoute } from "./routes/sessions.ts";
 import { webhooksRoute } from "./routes/webhooks.ts";
 
@@ -74,11 +75,15 @@ export function createApp(options: CreateAppOptions = {}) {
   app.use("/v1/sessions/*", deviceAuth);
   app.use("/v1/sessions", deviceAuth);
   app.use("/v1/me/*", deviceAuth);
+  app.use("/v1/plans/*", deviceAuth);
+  app.use("/v1/plans", deviceAuth);
 
   app.route("/v1/sessions", sessionsRoute);
   app.route("/v1/sessions", completeRoute);
   app.route("/v1/me", meRoute);
   app.route("/v1/webhooks", webhooksRoute);
+  app.route("/v1/plans", plansRoute);
+  app.route("/v1/me/plan", planMeRoute);
 
   app.onError((error, c) => {
     // 想定内の失敗(無料枠・写真が読めない等)は、そのままアプリへ返す。

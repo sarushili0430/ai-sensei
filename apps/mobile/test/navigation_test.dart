@@ -7,6 +7,8 @@ import 'package:ai_sensei/src/features/karte/presentation/review_screen.dart';
 import 'package:ai_sensei/src/features/monetization/presentation/paywall_screen.dart';
 import 'package:ai_sensei/src/features/monetization/presentation/thanks_screen.dart';
 import 'package:ai_sensei/src/features/onboarding/presentation/onboarding_screen.dart';
+import 'package:ai_sensei/src/features/plan/application/plan_controller.dart';
+import 'package:ai_sensei/src/features/plan/presentation/plan_screen.dart';
 import 'package:ai_sensei/src/features/settings/presentation/settings_screen.dart';
 import 'package:ai_sensei/src/l10n/strings.dart';
 import 'package:ai_sensei/src/routing/app_router.dart';
@@ -75,6 +77,25 @@ void main() {
     expect(find.byType(SettingsScreen), findsOneWidget);
 
     expect(router.canPop(), isTrue, reason: '設定は寄り道なので、戻れなければならない');
+    router.pop();
+    await tester.pumpAndSettle();
+    expect(find.byType(HomeScreen), findsOneWidget);
+  });
+
+  testWidgets('計画へ直接着地しても、下にホームが積まれている', (WidgetTester tester) async {
+    final GoRouter router = await pumpRouter(
+      tester,
+      overrides: <Object?>[
+        ...bootOverrides(),
+        planControllerProvider.overrideWith(_ReadyPlanController.new),
+      ],
+    );
+
+    router.go(AppRoute.plan.path);
+    await tester.pumpAndSettle();
+    expect(find.byType(PlanScreen), findsOneWidget);
+
+    expect(router.canPop(), isTrue, reason: '計画は作成中でもホームへ戻れなければならない');
     router.pop();
     await tester.pumpAndSettle();
     expect(find.byType(HomeScreen), findsOneWidget);
@@ -212,4 +233,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(SettingsScreen), findsOneWidget, reason: '復元してきた場所に戻す');
   });
+}
+
+class _ReadyPlanController extends PlanController {
+  @override
+  PlanState build() => const PlanState(phase: PlanPhase.ready);
+
+  @override
+  Future<void> load() async {}
 }

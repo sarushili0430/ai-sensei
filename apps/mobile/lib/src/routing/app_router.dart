@@ -16,6 +16,7 @@ import '../features/session/presentation/celebration_screen.dart';
 import '../features/session/presentation/session_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
 import '../features/study_room/presentation/study_room_screen.dart';
+import '../features/plan/presentation/plan_screen.dart';
 import 'routes.dart';
 
 part 'app_router.g.dart';
@@ -89,6 +90,10 @@ GoRouter appRouter(Ref ref) {
           GoRoute(
             path: AppRoute.settings.segment,
             builder: (_, _) => const SettingsScreen(),
+          ),
+          GoRoute(
+            path: AppRoute.plan.segment,
+            builder: (_, _) => const PlanScreen(),
           ),
         ],
       ),

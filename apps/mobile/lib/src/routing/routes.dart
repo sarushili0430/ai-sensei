@@ -21,7 +21,10 @@ enum AppRoute {
   review('/review'),
   paywall('/paywall'),
   thanks('/thanks'),
-  settings('/settings');
+  settings('/settings'),
+
+  /// 学習計画。ホームを下に積んだまま作成・組み直しへ寄り道できる。
+  plan('/plan');
 
   const AppRoute(this.path);
 

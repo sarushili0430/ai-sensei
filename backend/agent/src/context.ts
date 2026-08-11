@@ -1,4 +1,9 @@
-import { type SessionMetadata, sessionMetadataSchema } from "@ai-sensei/contract";
+import {
+  type PlanSessionMetadata,
+  type SessionMetadata,
+  planSessionMetadataSchema,
+  sessionMetadataSchema,
+} from "@ai-sensei/contract";
 import { formatBullets } from "@ai-sensei/prompts";
 
 /**
@@ -14,6 +19,8 @@ import { formatBullets } from "@ai-sensei/prompts";
 export const sessionContextSchema = sessionMetadataSchema;
 
 export type SessionContext = SessionMetadata;
+export type PlanSessionContext = PlanSessionMetadata;
+export type AgentContext = SessionContext | PlanSessionContext;
 
 export class InvalidSessionContextError extends Error {}
 
@@ -88,8 +95,59 @@ export function resolveSessionContext(
   );
 }
 
+/**
+ * 授業と計画の封筒を判別して読む。
+ *
+ * `sessionKinds` を広げて授業schemaをunionにすると、授業に必須の問題文まで任意になる。
+ * 入口だけをunionにし、判別後はそれぞれの厳しいschemaを通すことで、計画を足しても
+ * 「問題を見ずに教える」経路を再び開けない。
+ */
+export function readAgentContext(metadata: string | undefined | null): AgentContext {
+  if (!metadata) throw new InvalidSessionContextError("参加者のmetadataが空です");
+  let raw: unknown;
+  try {
+    raw = JSON.parse(metadata);
+  } catch {
+    throw new InvalidSessionContextError("参加者のmetadataがJSONではありません");
+  }
+
+  if (isPlanEnvelope(raw)) {
+    const parsed = planSessionMetadataSchema.safeParse(raw);
+    if (!parsed.success) {
+      throw new InvalidSessionContextError(`計画metadataの形式が不正です: ${parsed.error.message}`);
+    }
+    return parsed.data;
+  }
+  return readSessionContext(metadata);
+}
+
+export function resolveAgentContext(
+  candidates: readonly (string | undefined | null)[],
+): AgentContext {
+  const errors: string[] = [];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      return readAgentContext(candidate);
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+  throw new InvalidSessionContextError(
+    errors.length > 0 ? errors.join(" / ") : "セッション文脈がどこにも載っていません",
+  );
+}
+
+function isPlanEnvelope(raw: unknown): boolean {
+  return typeof raw === "object" && raw !== null && "kind" in raw && raw.kind === "plan";
+}
+
 /** 会話の残り時間(秒)。プロンプトに渡して、締めに入る判断をさせる。 */
-export function remainingSeconds(context: SessionContext, startedAt: Date, now: Date): number {
+export function remainingSeconds(
+  context: Pick<AgentContext, "max_seconds">,
+  startedAt: Date,
+  now: Date,
+): number {
   const elapsed = Math.floor((now.getTime() - startedAt.getTime()) / 1000);
   return Math.max(0, context.max_seconds - elapsed);
 }
