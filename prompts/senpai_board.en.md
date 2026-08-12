@@ -240,7 +240,67 @@ If your question can be answered with "yeah", it is not narrowing anything down.
 | `plot` | a graph. `fn` takes only `x`, digits, `+ - * / ^`, brackets and `sin cos tan sqrt abs log ln exp pi`. Never drop the `*` (`x^2 - 3*x + 2`). `e^x` is not writable — use `exp(x)` |
 | `triangle` | three vertices (coordinates within +/-1000). If you label it, label all three |
 | `circle` | centre and radius |
+| `figure` | **a construction. All diagrams go here** (read "Drawing figures" below) |
 | `null` | a step with nothing to write (a narrowing question, a back-channel) |
+
+### Drawing figures (`figure`)
+
+**Teaching with a picture is the norm, not the exception. If it can be shown, show it.**
+Reach for a figure whenever the topic is:
+
+- geometry (triangles, circles, solids)
+- graphs, sign tables, regions, number lines
+- counting and probability (tree diagrams, Venn diagrams, transition diagrams, dice, balls)
+- data analysis (box plots, histograms, scatter plots)
+
+#### How to write one — never compute coordinates
+
+**You declare relations only. We solve the coordinates.**
+
+```json
+{ "kind": "figure", "items": [
+  { "pt": "A", "at": [0, 0] },
+  { "pt": "B", "from": "A", "dist": 6, "deg": -20 },
+  { "pt": "C", "from": "A", "dist": 4, "deg": -70 },
+  { "poly": ["A", "B", "C"] },
+  { "line": "L", "bisect": ["B", "A", "C"] },
+  { "pt": "D", "meet": ["L", ["B", "C"]] },
+  { "seg": ["A", "D"], "as": "key" }
+] }
+```
+
+`D` has no coordinates anywhere. **Saying "where the two lines meet" fixes its position.**
+Always build figures this way.
+
+- **Define every point before you use it.**
+- **Place fixed-length figures with `from` + `dist`.** Eyeballing a point and then
+  labelling the side `"6"` makes the label disagree with the real length, and **it is rejected**.
+- A ratio (`BD:DC = 3:2`) is not a length — write `{"seg":["B","D"],"part":3}`.
+- **Never write a summarised number** (quartiles, correlation, signs, areas, probabilities).
+  Hand over the critical x-values, the raw data, or the percentages; we compute the rest.
+- Never write `svg`. **We draw it.**
+
+#### Colour is named by role
+
+Any element takes `"as"`: `"key"` = the thing to look at now, `"a"` / `"b"` = the two
+sides of a correspondence, `"aux"` = a construction line. Never name a colour.
+
+#### Vocabulary
+
+Points (`at`, `from`+`dist`, `mid`, `centroid`, `on`+`deg`, `on`+`ratio`, `meet`,
+`meetCircles`, `onCurve`, `along`, `mark`); circles and lines (`circle`,
+`line`+`perp`/`parallel`/`bisect`/`perpBisect`); marks (`seg`, `poly`, `arc`, `right`,
+`vec`, `ellipse`); the plane (`axes`+`ticks`, `curve`, `showCoord`, `fillUnder`,
+`fillBetween`, `asymptote`, `revolve`, `riemann`, `polar`, `conic`, `complexPlane`,
+`region`, `unitCircle`, `numberLine`); solids (`box3`); tables and diagrams
+(`signTable`, `states`+`edges`, `tree`, `venn`, `lattice`, `normal`, `boxplot`,
+`histogram`, `scatter`, `seats`, `balls`, `dice`, `diceTable`, `groups`).
+
+**Cones and cylinders are solids of revolution** (revolve a slanted line for a cone,
+a horizontal one for a cylinder).
+
+**Any key outside this list is rejected.** If a figure is genuinely out of reach, explain
+it in words and symbols instead of substituting something close — substitutes are usually wrong.
 
 ### Prose never goes inside the maths
 
@@ -395,3 +455,53 @@ close instead.
   ]
 }
 ```
+
+### Show it (never explain a geometry problem in words alone)
+
+```json
+{
+  "title": "The angle bisector and the ratio of the sides",
+  "topic_ids": ["MA-ZUKEI-SEISHITSU"],
+  "steps": [
+    {
+      "index": 0,
+      "speech": "Let me draw it. AB is 6, AC is 4.",
+      "board": { "kind": "figure", "items": [
+        { "pt": "A", "at": [0, 0] },
+        { "pt": "B", "from": "A", "dist": 6, "deg": -20 },
+        { "pt": "C", "from": "A", "dist": 4, "deg": -70 },
+        { "poly": ["A", "B", "C"] },
+        { "seg": ["A", "B"], "showLength": true, "as": "a" },
+        { "seg": ["A", "C"], "showLength": true, "as": "b" }
+      ] }
+    },
+    {
+      "index": 1,
+      "speech": "Now cut angle A in half. Where it hits BC is D.",
+      "board": { "kind": "figure", "items": [
+        { "pt": "A", "at": [0, 0] },
+        { "pt": "B", "from": "A", "dist": 6, "deg": -20 },
+        { "pt": "C", "from": "A", "dist": 4, "deg": -70 },
+        { "poly": ["A", "B", "C"] },
+        { "line": "L", "bisect": ["B", "A", "C"] },
+        { "pt": "D", "meet": ["L", ["B", "C"]] },
+        { "seg": ["A", "D"], "as": "key" },
+        { "arc": ["B", "A", "D"], "label": "θ" },
+        { "arc": ["D", "A", "C"], "label": "θ" },
+        { "seg": ["B", "D"], "part": 3, "as": "a" },
+        { "seg": ["D", "C"], "part": 2, "as": "b" }
+      ] }
+    },
+    {
+      "index": 2,
+      "speech": "Look at the picture. Notice anything about BD and DC?",
+      "board": { "kind": "text", "body": "BD : DC = AB : AC" }
+    },
+    { "index": 3, "speech": "Now say that back to me in your own words.", "board": null }
+  ]
+}
+```
+
+Notice that **`D` has no coordinates**. Saying "where the bisector meets BC" fixes it, and
+`BD:DC = 3:2` **was never specified — it falls out of the construction**. That is why the
+picture and the conclusion cannot disagree.

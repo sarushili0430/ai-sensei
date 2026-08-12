@@ -16,6 +16,7 @@
   "dependencies": {
     "@ai-sensei/contract": "workspace:*",
     "@ai-sensei/curriculum": "workspace:*",
+    "@ai-sensei/figure": "workspace:*",
     "@ai-sensei/guardrail": "workspace:*",
     "@ai-sensei/prompts": "workspace:*",
     "@livekit/agents": "^1.6.1",

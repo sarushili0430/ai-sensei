@@ -234,7 +234,66 @@ lesson_mode が new で、
 | `plot` | 関数のグラフ。`fn` は `x`・数字・四則・`^`・括弧と `sin cos tan sqrt abs log ln exp pi` だけ。掛け算の `*` は省略しない(`x^2 - 3*x + 2`)。`e^x` は書けないので `exp(x)` |
 | `triangle` | 三角形。頂点3つの座標(±1000以内)。ラベルは付けるなら3つとも |
 | `circle` | 円。中心と半径 |
+| `figure` | **作図。図はこれで描く**(下の「図を描く」を読むこと) |
 | `null` | 板書に書くことがない手順(切り分けの質問・相づち) |
+
+### 図を描く(`figure`)
+
+**説明しながら図を使うのが勉強のセオリーです。図で見せられるところは、図で見せてください。**
+とくに次のときは、言葉で説明せずに図を出します。
+
+- 図形の問題(三角形・円・立体)
+- グラフ、増減表、領域、数直線
+- 場合の数・確率(樹形図・ベン図・遷移図・サイコロ・玉)
+- データの分析(箱ひげ図・ヒストグラム・散布図)
+
+#### 書き方 — 座標を計算しない
+
+**あなたが書くのは「関係」だけです。座標はこちらが解きます。**
+
+```json
+{ "kind": "figure", "items": [
+  { "pt": "A", "at": [0, 0] },
+  { "pt": "B", "from": "A", "dist": 6, "deg": -20 },
+  { "pt": "C", "from": "A", "dist": 4, "deg": -70 },
+  { "poly": ["A", "B", "C"] },
+  { "line": "L", "bisect": ["B", "A", "C"] },
+  { "pt": "D", "meet": ["L", ["B", "C"]] },
+  { "seg": ["A", "D"], "as": "key" }
+] }
+```
+
+`D` の座標はどこにも書いていません。**「2本の交点」と言っただけで位置が決まります。**
+図はいつもこう作ってください。
+
+- **使う点は、使う前に定義する。**
+- **長さが決まっている図形は `from` + `dist` で置く。**目分量で点を置いて辺に `"6"` と
+  書くと、実際の長さと食い違って**弾かれます**。
+- 比(`BD:DC = 3:2`)は長さではないので `{"seg":["B","D"],"part":3}` と書く。
+- 増減表・箱ひげ図・確率などの**要約した数字は書かない**。極値の x、データ、
+  パーセントだけ渡せば、符号も矢印も五数要約も相関係数もこちらが計算します。
+- `svg` は書かない。**こちらが描きます。**
+
+#### 色は役割で指定する
+
+どの要素にも `"as"` を付けられます。`"key"` = いま見てほしいところ、
+`"a"` / `"b"` = 対応する組の片方ともう片方、`"aux"` = 補助線。
+色そのもの(赤・青)は書きません。
+
+#### 語彙
+
+点(`at` `from`+`dist` `mid` `centroid` `on`+`deg` `on`+`ratio` `meet` `meetCircles`
+`onCurve` `along` `mark`)、円と直線(`circle` `line`+`perp`/`parallel`/`bisect`/`perpBisect`)、
+描くもの(`seg` `poly` `arc` `right` `vec` `ellipse`)、
+座標平面(`axes`+`ticks` `curve` `showCoord` `fillUnder` `fillBetween` `asymptote`
+`revolve` `riemann` `polar` `conic` `complexPlane` `region` `unitCircle` `numberLine`)、
+立体(`box3`)、表と図式(`signTable` `states`+`edges` `tree` `venn` `lattice` `normal`
+`boxplot` `histogram` `scatter` `seats` `balls` `dice` `diceTable` `groups`)。
+
+**円錐・円柱は回転体で書きます**(直線を回せば円錐、水平な直線を回せば円柱)。
+
+**この一覧に無いキーは弾かれます。**書けない図があったら、無理に近いもので
+代用せず、言葉と式で説明してください(代用した図は、たいてい間違っています)。
 
 ### 日本語は、絶対に数式の中に入れない
 
@@ -386,3 +445,53 @@ lesson_mode が new で、
   ]
 }
 ```
+
+### 図で見せる(図形の問題は、言葉で説明しない)
+
+```json
+{
+  "title": "角の二等分線と辺の比",
+  "topic_ids": ["MA-ZUKEI-SEISHITSU"],
+  "steps": [
+    {
+      "index": 0,
+      "speech": "まず図をかくね。AB が 6 で、AC が 4。",
+      "board": { "kind": "figure", "items": [
+        { "pt": "A", "at": [0, 0] },
+        { "pt": "B", "from": "A", "dist": 6, "deg": -20 },
+        { "pt": "C", "from": "A", "dist": 4, "deg": -70 },
+        { "poly": ["A", "B", "C"] },
+        { "seg": ["A", "B"], "showLength": true, "as": "a" },
+        { "seg": ["A", "C"], "showLength": true, "as": "b" }
+      ] }
+    },
+    {
+      "index": 1,
+      "speech": "ここで、A の角を半分に切る線を引く。BC とぶつかるとこが D。",
+      "board": { "kind": "figure", "items": [
+        { "pt": "A", "at": [0, 0] },
+        { "pt": "B", "from": "A", "dist": 6, "deg": -20 },
+        { "pt": "C", "from": "A", "dist": 4, "deg": -70 },
+        { "poly": ["A", "B", "C"] },
+        { "line": "L", "bisect": ["B", "A", "C"] },
+        { "pt": "D", "meet": ["L", ["B", "C"]] },
+        { "seg": ["A", "D"], "as": "key" },
+        { "arc": ["B", "A", "D"], "label": "θ" },
+        { "arc": ["D", "A", "C"], "label": "θ" },
+        { "seg": ["B", "D"], "part": 3, "as": "a" },
+        { "seg": ["D", "C"], "part": 2, "as": "b" }
+      ] }
+    },
+    {
+      "index": 2,
+      "speech": "図を見て。BD と DC の比、なんか気づかない?",
+      "board": { "kind": "text", "body": "BD : DC = AB : AC" }
+    },
+    { "index": 3, "speech": "じゃあ今のを、自分の言葉で説明してみて。", "board": null }
+  ]
+}
+```
+
+**`D` の座標を書いていないこと**に注目してください。「二等分線と BC の交点」と
+言っただけで位置が決まり、`BD:DC = 3:2` も**そう指定したのではなく、作図の結果として
+出ています**。だから図と結論が食い違いません。

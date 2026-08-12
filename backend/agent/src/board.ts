@@ -3,12 +3,15 @@ import {
   type BoardStep,
   boardChannelMessageSchema,
   boardChannelTopic,
+  boardFigureAltMaxLength,
+  boardFigureSvgMaxLength,
   boardLessonStepsMaxCount,
   boardProtocolVersion,
   boardStepSchema,
   boardStepsMaxCount,
 } from "@ai-sensei/contract";
 import type { CurriculumLocale } from "@ai-sensei/curriculum";
+import { drawFigure } from "@ai-sensei/figure";
 import {
   type AllowedTopics,
   type LatexRejectionReason,
@@ -164,10 +167,10 @@ export type BoardStepRejection = {
   index: number;
   /**
    * `latex` は描けないコマンド(三段構えの②)、`syntax` は構文の壊れ(③)、
-   * `schema` は契約違反(長さ・形)。
+   * `schema` は契約違反(長さ・形)、`figure` は**解けなかった作図**。
    */
-  kind: "latex" | "syntax" | "schema";
-  reason: LatexRejectionReason | "syntax" | "schema";
+  kind: "latex" | "syntax" | "schema" | "figure";
+  reason: LatexRejectionReason | "syntax" | "schema" | "figure" | "figure_too_large";
   /** 何が引っかかったか(ログ用)。 */
   detail: string;
   /** **会話の言語で書かれた再生成の指示。**そのままプロンプトに足せる。 */
@@ -190,8 +193,8 @@ export type HeadRepair = (rejection: BoardHeadRejection) => Promise<unknown>;
 
 /** 契約に合わなかったときの指示。LaTeXの理由別の文面は guardrail 側にある。 */
 const schemaGuidanceByLocale: Record<CurriculumLocale, string> = {
-  ja: "手順の形が契約に合っていません。speech は120字以内の話し言葉(数式を入れない)、board は latex / text / plot / triangle / circle のどれか、または null にすること。",
-  en: "The step does not match the contract. Keep speech under 120 characters of plain spoken language (no formulas), and make board one of latex / text / plot / triangle / circle, or null.",
+  ja: "手順の形が契約に合っていません。speech は120字以内の話し言葉(数式を入れない)、board は latex / text / plot / triangle / circle / figure のどれか、または null にすること。figure の items に書けるキーは決まっていて、知らないキーは通りません。",
+  en: "The step does not match the contract. Keep speech under 120 characters of plain spoken language (no formulas), and make board one of latex / text / plot / triangle / circle / figure, or null. A figure's items accept a fixed set of keys — anything else is rejected.",
 };
 
 /**
@@ -303,8 +306,112 @@ export function validateStep(raw: unknown, index: number, locale: CurriculumLoca
     }
   }
 
+  if (board !== null && board.kind === "figure") {
+    // **先輩が書くのは関係の宣言だけ。**ここで解いて、座標も SVG もこちらが作る。
+    // 解けない図(定義していない点・平行な2直線の交点・実際と合わない長さのラベル)は
+    // **描かずに落とす** — そこを通すと「それらしく見えて中身が違う図」が生徒に届く。
+    // 落ちた理由はそのまま直しの指示になるので、既存の作り直しの輪に乗せる。
+    const drawn = drawFigure(board.items);
+    if (!drawn.ok) {
+      return {
+        ok: false,
+        rejection: {
+          index,
+          kind: "figure",
+          reason: "figure",
+          detail: drawn.errors.join(" / "),
+          guidance: figureGuidanceByLocale[locale](drawn.errors),
+          raw,
+        },
+      };
+    }
+    if (drawn.svg.length > boardFigureSvgMaxLength) {
+      // 描けはしたが、板書に載せるには濃すぎる。図を分けさせる。
+      return {
+        ok: false,
+        rejection: {
+          index,
+          kind: "figure",
+          reason: "figure_too_large",
+          detail: `svg ${drawn.svg.length} > ${boardFigureSvgMaxLength}`,
+          guidance: figureTooLargeGuidanceByLocale[locale],
+          raw,
+        },
+      };
+    }
+    return {
+      ok: true,
+      step: {
+        ...parsed.data,
+        board: { ...board, svg: drawn.svg, alt: describeFigure(board.items, locale) },
+      },
+    };
+  }
+
   return { ok: true, step: parsed.data };
 }
+
+/**
+ * 図の読み上げ文。**SVGは読み上げられない**ので、こちらで一言にする。
+ *
+ * 作図の宣言はこちらが持っているので、`Semantics` に載せる文言は自前で書ける
+ * (wireframe D-13c で「読み上げは問題にならない」と判断した根拠がこれ)。
+ */
+function describeFigure(
+  items: readonly Record<string, unknown>[],
+  locale: CurriculumLocale,
+): string {
+  const has = (key: string) => items.some((item) => key in item);
+  const parts: string[] = [];
+  const word = (ja: string, en: string) => parts.push(locale === "en" ? en : ja);
+  if (has("box3")) word("立体", "a solid");
+  if (has("circle") || has("unitCircle")) word("円", "a circle");
+  if (has("poly")) word("多角形", "a polygon");
+  if (has("curve") || has("polar")) word("グラフ", "a graph");
+  if (has("signTable")) word("増減表", "a sign table");
+  if (has("states")) word("遷移図", "a transition diagram");
+  if (has("boxplot") || has("histogram") || has("scatter")) word("データの図", "a data chart");
+  if (has("vec")) word("ベクトル", "vectors");
+  if (has("numberLine")) word("数直線", "a number line");
+  const named = items
+    .map((item) => item.pt)
+    .filter((name): name is string => typeof name === "string")
+    .slice(0, 6);
+  const body =
+    parts.length === 0
+      ? locale === "en"
+        ? "a figure"
+        : "図"
+      : parts.join(locale === "en" ? ", " : "と");
+  const points =
+    named.length === 0
+      ? ""
+      : locale === "en"
+        ? ` with points ${named.join(", ")}`
+        : `(点 ${named.join("・")})`;
+  return `${body}${points}`.slice(0, boardFigureAltMaxLength);
+}
+
+/** 図が解けなかったときの指示。**理由をそのまま渡す** — 先輩は自分の間違いを読めないと直せない。 */
+const figureGuidanceByLocale: Record<CurriculumLocale, (errors: readonly string[]) => string> = {
+  ja: (errors) =>
+    [
+      `図が描けませんでした(${errors.join(" / ")})。`,
+      "座標や長さを自分で計算せず、関係だけを書いてください。",
+      "使う点は使う前に定義し、長さが決まっている図形は from と dist で置くこと。",
+    ].join(""),
+  en: (errors) =>
+    [
+      `The figure could not be drawn (${errors.join(" / ")}). `,
+      "Do not compute coordinates or lengths yourself — declare the relations only. ",
+      "Define every point before using it, and place fixed-length figures with from and dist.",
+    ].join(""),
+};
+
+const figureTooLargeGuidanceByLocale: Record<CurriculumLocale, string> = {
+  ja: "図が板書1枚には濃すぎます。要素を減らすか、2枚に分けてください。",
+  en: "The figure is too dense for one board. Use fewer elements, or split it into two figures.",
+};
 
 /**
  * 見出しが範囲外だった理由。手順の {@link BoardStepRejection} と同じ形で持つ。
