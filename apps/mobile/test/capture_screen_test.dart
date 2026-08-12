@@ -77,9 +77,20 @@ void main() {
     List<http.BaseRequest>? calls,
     String? errorCode,
     String? errorMessage,
+    /// 会話の開始だけを落とす(解析は通る)。通信が切れた状況を作る。
+    bool failStart = false,
   }) {
     final MockClient client = MockClient((http.Request request) async {
       calls?.add(request);
+      if (failStart && request.url.path.endsWith('/start')) {
+        return http.Response.bytes(
+          utf8.encode(jsonEncode(<String, dynamic>{
+            'error': <String, dynamic>{'code': 'internal_error', 'message': 'server error'},
+          })),
+          500,
+          headers: <String, String>{'content-type': 'application/json; charset=utf-8'},
+        );
+      }
       if (errorCode != null) {
         return http.Response.bytes(
           utf8.encode(jsonEncode(<String, dynamic>{
@@ -92,31 +103,39 @@ void main() {
           headers: <String, String>{'content-type': 'application/json; charset=utf-8'},
         );
       }
-      final Map<String, dynamic> body = <String, dynamic>{
-        'session_id': 'ses_1',
-        'kind': 'new',
-        'livekit': <String, dynamic>{
-          'url': 'wss://test.livekit.cloud',
-          'token': 'token',
-          'room': 'ses_1',
-        },
-        'detected_topics': topics ??
-            <Map<String, dynamic>>[
-              <String, dynamic>{
-                'topic_id': 'M2-ZUKEI-ENCHOKU',
-                'course': '数学II',
-                'unit': '図形と方程式',
-                'topic': '円と直線の位置関係',
-                'label': '数学II',
-                'confidence': 0.92,
+      // 部屋の鍵が出るのは会話の開始だけ。**解析の応答には載せない** —
+      // 載せると、鍵を持っている = いつでも始められる になり、
+      // 回数を会話の開始で数える形が画面のテストからも見えなくなる。
+      final Map<String, dynamic> body = request.url.path.endsWith('/start')
+          ? <String, dynamic>{
+              'session_id': 'ses_1',
+              'kind': 'new',
+              'livekit': <String, dynamic>{
+                'url': 'wss://test.livekit.cloud',
+                'token': 'token',
+                'room': 'ses_1',
               },
-            ],
-        'problem': problem,
-        'limits': <String, dynamic>{'max_seconds': 1200, 'lesson_allowed_today': false},
-      };
+              'limits': <String, dynamic>{'max_seconds': 1200, 'lesson_allowed_today': false},
+            }
+          : <String, dynamic>{
+              'session_id': 'ses_1',
+              'kind': 'new',
+              'detected_topics': topics ??
+                  <Map<String, dynamic>>[
+                    <String, dynamic>{
+                      'topic_id': 'M2-ZUKEI-ENCHOKU',
+                      'course': '数学II',
+                      'unit': '図形と方程式',
+                      'topic': '円と直線の位置関係',
+                      'label': '数学II',
+                      'confidence': 0.92,
+                    },
+                  ],
+              'problem': problem,
+            };
       return http.Response.bytes(
         utf8.encode(jsonEncode(body)),
-        201,
+        request.url.path.endsWith('/start') ? 200 : 201,
         headers: <String, String>{'content-type': 'application/json; charset=utf-8'},
       );
     });
@@ -135,6 +154,7 @@ void main() {
     List<http.BaseRequest>? calls,
     String? errorCode,
     String? errorMessage,
+    bool failStart = false,
     Size size = phoneSurface,
   }) async {
     await pumpApp(
@@ -146,6 +166,7 @@ void main() {
         calls: calls,
         errorCode: errorCode,
         errorMessage: errorMessage,
+        failStart: failStart,
       ),
       size: size,
     );
@@ -398,6 +419,49 @@ void main() {
     expect(find.text(ja.captureProblemTitle), findsNothing);
     // 行き止まりにもしない。単元の確認まで進んでいる。
     expect(find.text(ja.captureConfirmHint), findsOneWidget);
+  });
+
+  /// `/start` が指定の回数だけ飛ぶまで進める。
+  ///
+  /// **画面の変化では待てない。** ここでは開始をずっと失敗させているので、
+  /// 出ている「もう一度」は押す前と押したあとで見分けがつかない。
+  Future<void> pumpUntilStartCalls(
+    WidgetTester tester,
+    List<http.BaseRequest> calls,
+    int count,
+  ) async {
+    int startCalls() =>
+        calls.where((http.BaseRequest call) => call.url.path.endsWith('/start')).length;
+    for (int i = 0; i < 100; i++) {
+      if (startCalls() >= count) return;
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    fail('会話の開始が $count 回飛びませんでした(実際は ${startCalls()} 回)');
+  }
+
+  /// **「もう一度」が撮り直しに戻ると、行き止まりになる。**
+  ///
+  /// 解析済みの状態では [CaptureController.setPhoto] が新しい写真を捨てるので、
+  /// カメラだけが何度も開いてエラーが消えない。しかも会話の開始で落ちた場合は、
+  /// サーバ側で今日の枠を押さえていることがあり、撮り直すとその1回を捨てる。
+  testWidgets('会話の開始で落ちたら、「もう一度」は開始をやり直す(カメラを開かない)',
+      (WidgetTester tester) async {
+    final List<http.BaseRequest> calls = <http.BaseRequest>[];
+    await pumpCapture(tester, calls: calls, failStart: true);
+    await takeNotes(tester);
+    await startLesson(tester);
+
+    final int picksBeforeRetry = pickedPaths.length;
+
+    // 単元の確認画面の「はじめる」→ 会話の開始が落ちる
+    await tester.tap(find.text(ja.captureStart));
+    await pumpUntil(tester, find.text(ja.errorRetry));
+
+    await tester.tap(find.text(ja.errorRetry));
+    await pumpUntilStartCalls(tester, calls, 2);
+
+    expect(pickedPaths.length, picksBeforeRetry, reason: 'カメラを開き直さない');
   });
 
   testWidgets('Premium のフェアユース上限は、先輩が締めて再試行させない',

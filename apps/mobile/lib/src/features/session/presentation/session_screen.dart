@@ -88,7 +88,7 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
     // 解析が読み取れた問題。読めなければ `null` で、そのときは何も出さない
     // (「問題が読めませんでした」と書くと、先輩が読み上げを頼む前に
     // 生徒が撮り直しに行ってしまう)。
-    final SessionProblem? problem = ref.watch(captureControllerProvider).session?.problem;
+    final SessionProblem? problem = ref.watch(captureControllerProvider).analysis?.problem;
 
     return Scaffold(
       body: SafeArea(

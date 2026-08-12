@@ -42,7 +42,9 @@ meRoute.get("/progress", async (c) => {
   const [sessionDates, holes, sessionsToday] = await Promise.all([
     repository.sessionDates(deviceId),
     repository.listHoles(deviceId),
-    repository.countSessionsOnDate(deviceId, localDate),
+    // 数えるのは**会話が始まった**セッションだけ。撮って単元を確かめただけの
+    // セッションでホームの導線を閉じない。
+    repository.countStartedSessionsOnDate(deviceId, localDate),
   ]);
 
   const response: ProgressResponse = {

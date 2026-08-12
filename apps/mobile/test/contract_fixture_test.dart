@@ -53,44 +53,56 @@ void main() {
 
   group('セッションのfixture', () {
     test('create-session-response.json をパースできる', () {
-      final SessionStart session = SessionStart.fromJson(loadFixture('create-session-response'));
+      final SessionAnalysis analysis = SessionAnalysis.fromJson(
+        loadFixture('create-session-response'),
+      );
+
+      expect(analysis.sessionId, isNotEmpty);
+      expect(analysis.detectedTopics, hasLength(2));
+    });
+
+    // **解析の応答に部屋の鍵は入らない。**入れると「鍵を持っている = いつでも
+    // 始められる」になり、回数を会話の開始で数える意味が消える。
+    test('start-session-response.json をパースできる(部屋の鍵はこちらだけ)', () {
+      final SessionStart session = SessionStart.fromJson(loadFixture('start-session-response'));
 
       expect(session.sessionId, isNotEmpty);
       expect(session.livekit.room, session.sessionId);
-      expect(session.detectedTopics, hasLength(2));
       // 共有fixtureは契約の形を確かめるもの。運用上限の既定値はサーバ設定が正なので固定しない。
       expect(session.limits.maxSeconds, isPositive);
       expect(session.limits.lessonAllowedToday, isFalse);
     });
 
     test('create-session-response.en.json をパースできる(海外向けの課程)', () {
-      final SessionStart session = SessionStart.fromJson(
+      final SessionAnalysis analysis = SessionAnalysis.fromJson(
         loadFixture('create-session-response.en'),
       );
 
-      expect(session.detectedTopics.first.topicId, 'A2-COORD-CIRCLE');
+      expect(analysis.detectedTopics.first.topicId, 'A2-COORD-CIRCLE');
       // チップに出るのはサーバが返す科目名。訳さずそのまま出す。
-      expect(session.detectedTopics.first.course, 'Algebra 2');
+      expect(analysis.detectedTopics.first.course, 'Algebra 2');
     });
 
     // 問題文(§4-1 グラウンディング)。ここが落ちていると、授業の前に
     // 読み合わせる画面に何も出ず、誤読が15分後まで表面化しない。
     test('読み取った問題文を、出どころつきで読める', () {
-      final SessionStart session = SessionStart.fromJson(loadFixture('create-session-response'));
+      final SessionAnalysis analysis = SessionAnalysis.fromJson(
+        loadFixture('create-session-response'),
+      );
 
-      expect(session.problem, isNotNull);
-      expect(session.problem!.text, contains('共有点の個数'));
+      expect(analysis.problem, isNotNull);
+      expect(analysis.problem!.text, contains('共有点の個数'));
       // 2枚目(問題の写真)から読めた場合。**この写真は解析後に破棄される。**
-      expect(session.problem!.source, ProblemSource.problemPhoto);
+      expect(analysis.problem!.source, ProblemSource.problemPhoto);
     });
 
     test('1枚に両方写っていた場合は、出どころがノートの写真になる', () {
-      final SessionStart session = SessionStart.fromJson(
+      final SessionAnalysis analysis = SessionAnalysis.fromJson(
         loadFixture('create-session-response.en'),
       );
 
-      expect(session.problem!.source, ProblemSource.notesPhoto);
-      expect(session.problem!.text, contains('number of intersection points'));
+      expect(analysis.problem!.source, ProblemSource.notesPhoto);
+      expect(analysis.problem!.text, contains('number of intersection points'));
     });
 
     // 読めなかったとき。**fixtureが無いのでキーを落として作る。**
@@ -100,17 +112,19 @@ void main() {
     test('問題文が読めなくても、セッションは組み立てられる', () {
       final Map<String, dynamic> json = loadFixture('create-session-response')
         ..['problem'] = null;
-      expect(SessionStart.fromJson(json).problem, isNull);
+      expect(SessionAnalysis.fromJson(json).problem, isNull);
 
       json.remove('problem');
-      expect(SessionStart.fromJson(json).problem, isNull);
+      expect(SessionAnalysis.fromJson(json).problem, isNull);
     });
 
     test('確信度の低い候補を見分けられる(チップの初期選択に使う)', () {
-      final SessionStart session = SessionStart.fromJson(loadFixture('create-session-response'));
+      final SessionAnalysis analysis = SessionAnalysis.fromJson(
+        loadFixture('create-session-response'),
+      );
 
-      expect(session.detectedTopics.first.isConfident, isTrue);
-      expect(session.detectedTopics.last.isConfident, isFalse);
+      expect(analysis.detectedTopics.first.isConfident, isTrue);
+      expect(analysis.detectedTopics.last.isConfident, isFalse);
     });
 
     test('complete-session-response.json をパースできる', () {

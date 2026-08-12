@@ -6,6 +6,10 @@ import type { UserRecord } from "../repository/types.ts";
  *
  * Free    : 1日1セッション / Premiumと同じ最長20分 / 当日のカルテ閲覧まで
  * Premium : 通常の1日1〜2回には当たらない非表示のフェアユース上限 / 最長20分
+ *
+ * **数えるのは「先輩と話した回数」**で、写真を読んだ回数ではない
+ * (枠を押さえるのは `POST /v1/sessions/{id}/start`)。撮って単元を確かめただけの
+ * 人が、会話を1度もしないまま「今日はここまで」になるのを止めるための線引き。
  */
 
 export function isPremiumNow(user: UserRecord | null, now: Date): boolean {
@@ -41,21 +45,84 @@ export function sessionsPerDay(input: {
     : input.limits.freeSessionsPerDay;
 }
 
+/**
+ * 1回の授業に何度まで写真を読み直してよいか。
+ *
+ * **回数を数える位置を会話の開始へ移したので、解析はこの上限だけが守っている。**
+ * 撮り直し・単元の見直し・気が変わってやめる、を余裕で吸収する数にする一方、
+ * 解析だけを延々と繰り返してVision LLMの原価を積む使い方はここで止まる。
+ *
+ * 環境変数にしていないのは、これがユーザーに見せる約束ではないから。
+ * 見せる約束(1日に何回話せるか)は `FREE_SESSIONS_PER_DAY` 側にある。
+ * なお読み取れなかった写真は行ごと消えるので、この数に入るのは
+ * **解析が通ったぶんだけ**。
+ */
+export const analysesPerSessionSlot = 5;
+
+/** その日に許す写真解析の本数。授業の枠とは別物(理由は上の定数)。 */
+export function analysesPerDay(input: {
+  user: UserRecord | null;
+  now: Date;
+  limits: Limits;
+}): number {
+  return sessionsPerDay(input) * analysesPerSessionSlot;
+}
+
 /** 上限の数値を返さず、いま授業を始められるかだけを共有する。 */
 export function canStartSessionToday(input: SessionLimitInput): boolean {
   return input.sessionsToday < sessionsPerDay(input);
 }
 
+/** 1回の会話の長さ。**プランで品質は変えない**ので、分岐はこの1か所だけ。 */
+export function sessionMaxSeconds(input: {
+  user: UserRecord | null;
+  now: Date;
+  limits: Limits;
+}): number {
+  return isPremiumNow(input.user, input.now)
+    ? input.limits.premiumSessionMaxSeconds
+    : input.limits.freeSessionMaxSeconds;
+}
+
+/**
+ * トークンの寿命に足す余白。
+ *
+ * 会話の上限ちょうどで切れると、締めの数秒で部屋から蹴り出される。
+ * **再送を受け付ける窓もこれと同じ**({@link canReissueToken})。
+ */
+export const tokenGraceSeconds = 120;
+
+/**
+ * 始まっているセッションへ、トークンを出し直してよいか。
+ * **最初の鍵がまだ生きているあいだだけ**。
+ *
+ * `started_at` があれば無条件に出し直せると、**部屋に入らないまま開いた
+ * セッションを1本持っておく**道ができる。その1本は最初の日に数えられているので、
+ * 翌日に鍵だけ出し直せば、今日の枠を減らさずに授業がもう1回増える
+ * (会話が成立しなければ `/complete` も来ないので、行は open のまま残り続ける)。
+ *
+ * 窓を最初のトークンの寿命に合わせると、再送で救えるのは
+ * **同じ会話につなぎ直す場合だけ**になる。それを越えたセッションは、
+ * 出し直したところで入る部屋がもう無い。
+ */
+export function canReissueToken(input: {
+  startedAt: string;
+  now: Date;
+  maxSeconds: number;
+}): boolean {
+  const elapsedMs = input.now.getTime() - new Date(input.startedAt).getTime();
+  // 壊れた `started_at` は NaN になり、この比較は false になる。
+  // 読めない値を「まだ生きている」側へ倒さない。
+  return elapsedMs <= (input.maxSeconds + tokenGraceSeconds) * 1000;
+}
+
 /** 枠を押さえたあとの応答。`sessionsToday` は押さえた分を含む当日の本数。 */
-export function reservedAllowance(
+export function startedAllowance(
   input: SessionLimitInput,
 ): Extract<SessionAllowance, { allowed: true }> {
-  const premium = isPremiumNow(input.user, input.now);
   return {
     allowed: true,
-    maxSeconds: premium
-      ? input.limits.premiumSessionMaxSeconds
-      : input.limits.freeSessionMaxSeconds,
+    maxSeconds: sessionMaxSeconds(input),
     // 旧判定のremaining > 1は、確保後の本数で「上限未満」を見ることと等価。
     lessonAllowedToday: canStartSessionToday(input),
   };

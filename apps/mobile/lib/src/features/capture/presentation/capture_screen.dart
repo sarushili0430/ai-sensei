@@ -40,14 +40,17 @@ import '../application/capture_controller.dart';
 ///
 /// ## 解析の前に一度止まる理由
 ///
-/// 撮ってすぐ解析していたのを、確認を1枚挟む形に変えた。理由は2つあり、
-/// どちらも**解析がセッションを作る = 今日の1回を使う**ことから来ている:
+/// 撮ってすぐ解析していたのを、確認を1枚挟む形に変えた。
 ///
-///   1. **問題の写真を足せるのは、解析の前だけ。** あとから足して解析し直すと
-///      2回目のセッション扱いになり、無料枠を食う(`confirmAndStart` の
-///      コメントと同じ理由)。任意の2枚目に居場所を作るには、ここしかない
+///   1. **問題の写真を足せるのは、解析の前だけ。** あとから足しても写真は
+///      読み直されない(`capture_controller.dart` の `setProblemPhoto`)。
+///      任意の2枚目に居場所を作るには、ここしかない
 ///   2. 撮った直後の1枚をそのまま送っていたので、ぶれていても気づけないまま
-///      今日の1回が消えていた
+///      Vision LLMに通していた
+///
+/// **今日の1回を使うのはここではない。** 数えるのは会話が始まったときなので
+/// (`api.ts` の `startSessionResponseSchema`)、解析まで進んでから撮り直しても
+/// 授業の回数は減らない。
 ///
 /// **どちらか1枚で始められる**(§4-1)。1枚に問題とノートの両方が写ることが
 /// 多いので、2枚必須にすると撮影の摩擦だけが増える。ここで出すのは「撮れ」ではなく
@@ -185,6 +188,17 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     await ref.read(captureControllerProvider.notifier).analyze(locale: locale);
   }
 
+  /// 外した単元を反映してから会話を始める。**今日の1回を使うのはここ。**
+  ///
+  /// 失敗したときの「もう一度」もここへ戻す(理由は [_body] のエラー分岐)。
+  Future<void> _start() async {
+    final String locale = Localizations.localeOf(context).languageCode;
+    final SessionStart? session = await ref
+        .read(captureControllerProvider.notifier)
+        .confirmAndStart(locale: locale);
+    if (session != null && mounted) context.go(AppRoute.session.path);
+  }
+
   /// 許可の照会も失敗しうる。ここで落とすと、撮影をやめただけの人まで巻き込む。
   Future<PermissionStatus> _cameraStatus() async {
     try {
@@ -207,7 +221,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     // **1枚も撮っていないあいだは「撮れました」でもない。** ここで選んでいるのは
     // 何を撮るかで、そこに「ノートは無い」という答えが含まれている。
     final String title;
-    if (state.session != null || state.isSubmitting) {
+    if (state.analysis != null || state.isSubmitting) {
       title = strings.captureConfirmTitle;
     } else if (state.hasAnyPhoto) {
       title = strings.captureReviewTitle;
@@ -254,8 +268,20 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
         // 無料・Premiumのどちらも数値は見せず、先輩が今日の学習を締める。
         message: lessonLimitReached ? strings.lessonEnoughForToday : error.message,
         // 日ごとの上限は押し直しても変わらない。無料・Premium とも再試行させない。
-        // 撮り直すのは、直前に開いていた枠(ノートとは限らない)。
-        onRetry: lessonLimitReached ? null : () => _pick(forProblem: _lastPickWasProblem),
+        //
+        // **解析まで進んでいたら、撮り直しではなく会話の開始をやり直す。**
+        // ここを `_pick` に固定していると、[CaptureController.setPhoto] が
+        // 解析済みの状態を守って写真を捨てるので、カメラだけが何度も開いて
+        // エラーが消えない画面になる。しかも会話の開始で落ちた場合は、
+        // サーバ側で枠を押さえていることがあり、撮り直すとその1回を捨てる。
+        // `/start` は同じIDなら二重に数えないので、押し直すほうが正しい
+        // (セッションごと消えていれば `analysis` も捨てられ、撮り直しに戻る)。
+        onRetry: lessonLimitReached
+            ? null
+            : state.analysis != null
+                ? _start
+                // 撮り直すのは、直前に開いていた枠(ノートとは限らない)。
+                : () => _pick(forProblem: _lastPickWasProblem),
       );
     }
     // カメラを開いている最中は、まだ何も見せるものが無い。
@@ -263,7 +289,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     if (state.isSubmitting || _picking) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (state.session == null) {
+    if (state.analysis == null) {
       return _PhotoReview(
         state: state,
         onRetake: _pickPhoto,
@@ -271,12 +297,12 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
         onStart: _analyze,
       );
     }
-    return _TopicConfirm(state: state);
+    return _TopicConfirm(state: state, onStart: _start);
   }
 }
 
 /// 何を撮るかを選ぶ画面であり、撮ったものの確認でもある。
-/// **解析(= 今日の1回を使う)の直前に一度だけ止まる。**
+/// **解析(= Vision LLMに通す)の直前に一度だけ止まる。**
 ///
 /// 2つの枠を並べているのは見た目のためではない。ノートはR2に保存され、
 /// 問題の紙面は解析後に破棄される — **どちらの枠に入れたかでしか区別できない**
@@ -452,9 +478,12 @@ class _PhotoSlot extends StatelessWidget {
 }
 
 class _TopicConfirm extends ConsumerWidget {
-  const _TopicConfirm({required this.state});
+  const _TopicConfirm({required this.state, required this.onStart});
 
   final CaptureState state;
+
+  /// 会話を始める。失敗したときの「もう一度」も同じ操作へ戻る。
+  final Future<void> Function() onStart;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -506,23 +535,11 @@ class _TopicConfirm extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: AppSpacing.md),
+        // 外した単元は始める前に反映される。飛ばすと、サーバ側のセッションは
+        // 解析時のままで、外した単元を先輩が教えてしまう([CaptureController]）。
         ChunkyButton(
           label: strings.captureStart,
-          onPressed: state.canStart
-              ? () async {
-                  // 外した単元を反映してから始める。ここを飛ばすと、サーバ側の
-                  // セッションとトークンは解析時のままで、外した単元を
-                  // 先輩が教えてしまう。
-                  final SessionStart? session = await ref
-                      .read(captureControllerProvider.notifier)
-                      .confirmAndStart(
-                        locale: Localizations.localeOf(context).languageCode,
-                      );
-                  if (session != null && context.mounted) {
-                    context.go(AppRoute.session.path);
-                  }
-                }
-              : null,
+          onPressed: state.canStart ? onStart : null,
         ),
       ],
     );
@@ -535,10 +552,10 @@ class _TopicConfirm extends ConsumerWidget {
 /// 価値がまったく違う(計画書 §1-1「AIが理解している建て付けのアプリほど
 /// 誤読が致命傷になる」)。
 ///
-/// **合っているかを問わない。** ここで直す手段が無い(セッションはもう
-/// 作られていて、撮り直すと今日の1回を使い直すことになる)のに問いかけると、
-/// 答えようのない問いになる。事実として置いておけば、ちがっていれば
-/// 会話の最初に本人が言う — それが §1-1 の「誤読の保険」そのもの。
+/// **合っているかを問わない。** ここは読み合わせの場で、正誤の申告を求める場では
+/// ない。ちがっていれば会話の最初に本人が言う — それが §1-1 の「誤読の保険」そのもの。
+/// (授業の回数を数えるのは会話が始まったときなので、戻って撮り直しても
+/// 今日の1回は減らない。)
 class _ProblemReadback extends StatelessWidget {
   const _ProblemReadback({required this.problem});
 

@@ -41,6 +41,13 @@ export type SessionRecord = {
   status: "open" | "completed";
   created_at: string;
   completed_at: string | null;
+  /**
+   * 数える日。**会話が始まった時点で、その日へ書き直される**(`startSession`)。
+   *
+   * 解析だけして日付をまたいだセッションを、撮った日のほうへ数えないため。
+   * streakと親レポートの月境界も同じ列を見ているので、「授業をした日」の
+   * 定義が3か所で揃う。
+   */
   local_date: string;
   photo_key: string | null;
   topic_ids: string[];
@@ -48,17 +55,32 @@ export type SessionRecord = {
   duration_seconds: number | null;
   /** 解析前・復習セッションでは null。 */
   context: SessionContext | null;
+  /**
+   * 会話が始まった時刻。まだ始まっていなければ null。
+   *
+   * **1日の回数はこの列で数える。** 行が在ることではない — 写真を読んだだけの
+   * セッションは行にはなるが、先輩とは1度も話していない。
+   */
+  started_at: string | null;
 };
 
 /**
- * 授業枠の確保の結果。**数えてから入れるのではなく、入れられたかどうかで判定する。**
+ * 授業枠(= 会話を1回する権利)の確保の結果。
+ * **数えてから入れるのではなく、入れられたかどうかで判定する。**
  *
- * 数えた件数ではなく `reserved` を返すのは、呼び出し側に「まだ空いているか」を
+ * 数えた件数ではなく `started` を返すのは、呼び出し側に「まだ空いているか」を
  * 判断させないため。件数を渡すと、そこからもう一度上限と比べる書き方に戻れてしまう。
  */
-export type SessionReservation =
+export type SessionStartResult =
   | {
-      reserved: true;
+      started: true;
+      /**
+       * 押さえたのは今回ではなく、前に押さえた枠のまま。
+       *
+       * 通信が切れて押し直したとき、同じセッションの2度目をここで区別する。
+       * 二重に数えないための印で、呼び出し側はトークンだけ出し直せばよい。
+       */
+      alreadyStarted: boolean;
       /**
        * 押さえた分を含む、その日の本数。
        *
@@ -67,7 +89,7 @@ export type SessionReservation =
        */
       sessionsToday: number;
     }
-  | { reserved: false };
+  | { started: false };
 
 export type HoleRecord = {
   id: string;
@@ -138,18 +160,41 @@ export type Repository = {
   }): Promise<void>;
 
   /**
-   * 表示用。枠の判定には使わないこと。数えてから入れると、同時実行が同じ件数を見て上限を抜ける。
+   * その日に**会話が始まった**セッションの本数。
+   *
+   * 表示と事前案内のためのもので、枠の判定には使わないこと。数えてから入れると、
+   * 同時実行が同じ件数を見て上限を抜ける。
    */
-  countSessionsOnDate(deviceId: string, localDate: string): Promise<number>;
+  countStartedSessionsOnDate(deviceId: string, localDate: string): Promise<number>;
   /**
-   * セッション行を作る道はこの操作だけにする。枠の確認と作成を分ける道を残すと、
+   * セッション行を作る道はこの操作だけにする。上限の確認と作成を分ける道を残すと、
    * 将来また「数えてから入れる」が書けてしまうため。
+   *
+   * **ここで押さえるのは授業の枠ではなく、写真解析の枠。** 授業の枠は
+   * {@link Repository.startSession} が会話の開始時に押さえる。この上限は
+   * 1日の授業回数よりずっと緩く、解析だけを延々と繰り返してVisionの原価を
+   * 積む使い方だけを止める。
    */
-  reserveSessionSlot(input: {
+  createSession(input: {
     session: SessionRecord;
-    /** その日に許す本数(無料1 / Premium 3)。 */
+    /** その日に許す解析の本数。 */
+    maxAnalysesPerDay: number;
+  }): Promise<boolean>;
+  /**
+   * 会話の開始。**授業枠の確保とこの記録は1操作**にする。
+   *
+   * 分けて書くと、同時に始めた2本が同じ「まだ空いている」を見て両方通る。
+   * `localDate` も一緒に書き直すのは、数える日を「会話が始まった日」に
+   * 揃えるため({@link SessionRecord.local_date})。
+   */
+  startSession(input: {
+    sessionId: string;
+    deviceId: string;
+    startedAt: string;
+    localDate: string;
+    /** その日に許す授業の本数(無料1 / Premium 3)。 */
     maxPerDay: number;
-  }): Promise<SessionReservation>;
+  }): Promise<SessionStartResult>;
   /** 写真解析のあとに、確定した単元と写真キー、会話の文脈を書き戻す。 */
   updateSessionTopics(input: {
     sessionId: string;

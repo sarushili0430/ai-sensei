@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { UserRecord } from "../repository/types.ts";
 import {
+  analysesPerDay,
+  canReissueToken,
   isPremiumNow,
   limitReachedAllowance,
-  reservedAllowance,
   secondsUntilLocalMidnight,
   sessionsPerDay,
   shouldShowPaywall,
+  startedAllowance,
 } from "./entitlement.ts";
 
 const limits = {
@@ -50,23 +52,23 @@ describe("isPremiumNow", () => {
   });
 });
 
-describe("sessionsPerDay / reservedAllowance / limitReachedAllowance", () => {
+describe("sessionsPerDay / startedAllowance / limitReachedAllowance", () => {
   it("無料ユーザーの1回目は通る", () => {
     const freeUser = user();
     expect(sessionsPerDay({ user: freeUser, now, limits })).toBe(1);
-    const allowance = reservedAllowance({ user: freeUser, sessionsToday: 1, now, limits });
+    const allowance = startedAllowance({ user: freeUser, sessionsToday: 1, now, limits });
     expect(allowance).toEqual({ allowed: true, maxSeconds: 1200, lessonAllowedToday: false });
   });
 
   it("無料枠を使い切るまでは、今日もう一度授業を受けられる", () => {
     const twoLessonLimits = { ...limits, freeSessionsPerDay: 2 };
-    const first = reservedAllowance({
+    const first = startedAllowance({
       user: user(),
       sessionsToday: 1,
       now,
       limits: twoLessonLimits,
     });
-    const second = reservedAllowance({
+    const second = startedAllowance({
       user: user(),
       sessionsToday: 2,
       now,
@@ -97,7 +99,7 @@ describe("sessionsPerDay / reservedAllowance / limitReachedAllowance", () => {
     const premiumUser = user({ is_premium: true });
     expect(sessionsPerDay({ user: premiumUser, now, limits })).toBe(3);
     for (const sessionsBeforeReservation of [0, 1, 2]) {
-      const allowance = reservedAllowance({
+      const allowance = startedAllowance({
         user: premiumUser,
         sessionsToday: sessionsBeforeReservation + 1,
         now,
@@ -120,8 +122,8 @@ describe("sessionsPerDay / reservedAllowance / limitReachedAllowance", () => {
   });
 
   it("無料とPremiumで1回の上限時間を変えない", () => {
-    const free = reservedAllowance({ user: user(), sessionsToday: 1, now, limits });
-    const premium = reservedAllowance({
+    const free = startedAllowance({ user: user(), sessionsToday: 1, now, limits });
+    const premium = startedAllowance({
       user: user({ is_premium: true }),
       sessionsToday: 1,
       now,
@@ -129,6 +131,73 @@ describe("sessionsPerDay / reservedAllowance / limitReachedAllowance", () => {
     });
     expect(free.maxSeconds).toBe(1200);
     expect(premium).toEqual({ allowed: true, maxSeconds: 1200, lessonAllowedToday: true });
+  });
+});
+
+/**
+ * 解析の上限は「見せない上限」。1日に話せる回数(見せる約束)とは別に持ち、
+ * **撮り直しでは絶対に当たらない**ことをここで固定する。
+ */
+describe("analysesPerDay", () => {
+  it("1回の授業あたり、撮り直しに余裕のある回数を許す", () => {
+    expect(analysesPerDay({ user: user(), now, limits })).toBe(5);
+    expect(analysesPerDay({ user: user({ is_premium: true }), now, limits })).toBe(15);
+  });
+
+  it("授業の回数より必ず緩い(解析の上限が先に当たると、数える位置を戻したのと同じ)", () => {
+    for (const premium of [false, true]) {
+      const someone = user({ is_premium: premium });
+      expect(analysesPerDay({ user: someone, now, limits })).toBeGreaterThan(
+        sessionsPerDay({ user: someone, now, limits }),
+      );
+    }
+  });
+});
+
+/**
+ * 押し直しでトークンを出し直せる窓。
+ *
+ * 無条件に出し直せると、**部屋に入らないまま開いたセッションが、期限のない
+ * 鍵の引換券**になる(その1本は最初の日に数えられているので、翌日に押せば
+ * 今日の枠を減らさずに授業が1回増える)。
+ */
+describe("canReissueToken", () => {
+  const startedAt = "2026-08-03T13:00:00.000Z";
+
+  it("最初の鍵が生きているあいだは、つなぎ直せる", () => {
+    expect(
+      canReissueToken({
+        startedAt,
+        now: new Date("2026-08-03T13:19:00.000Z"),
+        maxSeconds: 1200,
+      }),
+    ).toBe(true);
+  });
+
+  it("上限時間 + 余白を過ぎたら、もう出し直さない", () => {
+    // 20分 + 余白2分 = 22分。その1秒あと。
+    expect(
+      canReissueToken({
+        startedAt,
+        now: new Date("2026-08-03T13:22:01.000Z"),
+        maxSeconds: 1200,
+      }),
+    ).toBe(false);
+  });
+
+  it("境界(上限時間 + 余白ちょうど)は、まだ生きている扱いにする", () => {
+    expect(
+      canReissueToken({
+        startedAt,
+        now: new Date("2026-08-03T13:22:00.000Z"),
+        maxSeconds: 1200,
+      }),
+    ).toBe(true);
+  });
+
+  // 読めない値を「まだ生きている」側へ倒すと、壊れた1行が抜け道になる。
+  it("started_at が読めなければ出し直さない", () => {
+    expect(canReissueToken({ startedAt: "not-a-date", now, maxSeconds: 1200 })).toBe(false);
   });
 });
 
