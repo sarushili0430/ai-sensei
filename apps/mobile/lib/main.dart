@@ -101,7 +101,9 @@ class AiSenseiApp extends ConsumerWidget {
     return PushRegistrationGate(
       navigatorKey: router.routerDelegate.navigatorKey,
       child: MaterialApp.router(
-        title: 'ai-sensei',
+        // Androidのタスクスイッチャーに出る名前。ランチャーの `android:label` と
+        // ストアの表示名(カタルテ)に合わせる。
+        title: 'カタルテ',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light(),
         routerConfig: router,

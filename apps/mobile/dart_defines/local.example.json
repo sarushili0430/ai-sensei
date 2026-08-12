@@ -7,7 +7,7 @@
   "REVENUECAT_OFFERING_ID": "",
   "ONESIGNAL_APP_ID": "47044c5e-15eb-49ec-bdd4-e0ed2219a799",
   "SENTRY_DSN": "",
-  "PRIVACY_POLICY_URL": "",
-  "TERMS_URL": "",
+  "PRIVACY_POLICY_URL": "https://ubiqy.jp/privacy/",
+  "TERMS_URL": "https://ubiqy.jp/terms/",
   "SUPPORT_EMAIL": ""
 }
