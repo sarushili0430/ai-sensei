@@ -14,6 +14,7 @@ import {
   progressResponseSchema,
   reviewQueueResponseSchema,
   sessionMetadataSchema,
+  startSessionResponseSchema,
 } from "./api.ts";
 import { boardChannelLogSchema, boardLessonSchema } from "./board.ts";
 import { karteSchema } from "./karte.ts";
@@ -30,6 +31,9 @@ import { planTurnSchema, studyPlanSchema } from "./plan.ts";
 export const fixtureSchemas = {
   "create-session-request": createSessionRequestSchema,
   "create-session-response": createSessionResponseSchema,
+  // 部屋の鍵はこちらにだけ載る。写真を読んだ応答(create-session-response)と
+  // 別のfixtureにしてあること自体が、「回数を数えるのは会話の開始」の形。
+  "start-session-response": startSessionResponseSchema,
   "complete-session-request": completeSessionRequestSchema,
   "complete-session-response": completeSessionResponseSchema,
   // LiveKitトークンに載って agent に届く会話文脈。HTTPのボディではないので

@@ -207,7 +207,8 @@ E2Eは書かず、TestFlightでの手動確認に割り切っています。
 
 ```
 Flutter app ──HTTPS──▶ backend/api ──▶ LiveKit room 作成 + agent 起動
-     │                    │  写真をVision LLMで解析し、単元判定と質問方針を作る
+     │                    │  写真をVision LLMで解析し、単元判定と質問方針を作る(まだ数えない)
+     │                    │  部屋を開くのは「はじめる」を押したとき = 1日の回数もそこで数える
      │                    │  ストレージ: R2(写真) / DB: D1 / メータリング: KV
      └──WebRTC────────▶ agent
                           VAD → 日本語ストリーミングSTT → LLM(先輩ペルソナ)が

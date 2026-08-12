@@ -86,12 +86,16 @@ abstract class SessionLimits with _$SessionLimits {
   factory SessionLimits.fromJson(Map<String, dynamic> json) => _$SessionLimitsFromJson(json);
 }
 
+/// 写真を読んだ結果。**まだ部屋の鍵は入っていない。**
+///
+/// 単元と問題文を確かめる画面のための値で、ここまでは**今日の1回を使わない**
+/// (数えるのは会話が始まったとき = [SessionStart])。撮って単元を見ただけで
+/// 「今日はここまで」になっていたのを直したときに、応答ごと2つに分けた。
 @freezed
-abstract class SessionStart with _$SessionStart {
-  const factory SessionStart({
+abstract class SessionAnalysis with _$SessionAnalysis {
+  const factory SessionAnalysis({
     @JsonKey(name: 'session_id') required String sessionId,
     required String kind,
-    required LiveKitConnection livekit,
     @JsonKey(name: 'detected_topics') required List<DetectedTopic> detectedTopics,
 
     /// 読み取れた問題文。読めなければ null。
@@ -100,6 +104,23 @@ abstract class SessionStart with _$SessionStart {
     /// 復習セッション(`kind: review`)のように写真を送らない経路もあるので、
     /// キーの有無ではなく値の有無だけを見る。
     SessionProblem? problem,
+  }) = _SessionAnalysis;
+
+  factory SessionAnalysis.fromJson(Map<String, dynamic> json) => _$SessionAnalysisFromJson(json);
+}
+
+/// 始まった会話。**この応答が返った時点で、今日の1回を使っている。**
+///
+/// 部屋の鍵(`livekit`)と上限がここにしか無いのは仕様で、枠の確保と
+/// トークンの発行がサーバ側の同じ1操作になっている(`api.ts` の
+/// `startSessionResponseSchema`)。解析の時点で鍵を配ると、
+/// 鍵を持っている = いつでも始められる になり、数える位置を移した意味が消える。
+@freezed
+abstract class SessionStart with _$SessionStart {
+  const factory SessionStart({
+    @JsonKey(name: 'session_id') required String sessionId,
+    required String kind,
+    required LiveKitConnection livekit,
     required SessionLimits limits,
   }) = _SessionStart;
 

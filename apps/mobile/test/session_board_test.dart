@@ -538,13 +538,17 @@ class FakeCaptureController extends CaptureController {
 
   @override
   CaptureState build() => CaptureState(
-    session: SessionStart(
+    analysis: SessionAnalysis(
       sessionId: 'ses_1',
       kind: 'new',
-      livekit: const LiveKitConnection(url: 'wss://example', token: 't', room: 'ses_1'),
       detectedTopics: const <DetectedTopic>[],
       problem: problem,
-      limits: const SessionLimits(maxSeconds: 1200, lessonAllowedToday: true),
+    ),
+    session: const SessionStart(
+      sessionId: 'ses_1',
+      kind: 'new',
+      livekit: LiveKitConnection(url: 'wss://example', token: 't', room: 'ses_1'),
+      limits: SessionLimits(maxSeconds: 1200, lessonAllowedToday: true),
     ),
   );
 }
