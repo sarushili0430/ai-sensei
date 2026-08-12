@@ -8,11 +8,23 @@ plugins {
 
 // リリース署名の情報は android/key.properties から読む(コミットしない)。
 // CIでは codemagic.yaml が Codemagic の keystore から書き出す。
-// 手元にファイルが無いときは debug 署名のままにして、
-// `flutter run --release` が動かなくならないようにする。
+// 鍵が無い Release を debug 署名へ落とすと、ビルド自体は成功しても
+// Play Console へのアップロード時に初めて拒否されるため、明示的に失敗させる。
+val keystorePropertiesFile = rootProject.file("key.properties")
 val keystoreProperties = Properties().apply {
-    val file = rootProject.file("key.properties")
-    if (file.exists()) file.inputStream().use { load(it) }
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
+}
+val releaseBuildRequested = gradle.startParameter.taskNames.any { taskName ->
+    taskName.endsWith("assembleRelease", ignoreCase = true) ||
+        taskName.endsWith("bundleRelease", ignoreCase = true)
+}
+if (releaseBuildRequested && keystoreProperties.isEmpty()) {
+    throw GradleException(
+        "Release署名が未設定です。android/key.properties と upload keystore を用意するか、" +
+            "Codemagic の Android — Play internal workflow でビルドしてください。",
+    )
 }
 
 android {
@@ -52,7 +64,6 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.findByName("release")
-                ?: signingConfigs.getByName("debug")
         }
     }
 }
