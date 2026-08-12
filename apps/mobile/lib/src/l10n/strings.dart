@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 
-/// 日英2ロケール(handoff §3-7 審査員対応)。
+/// 日英2ロケール(審査員対応)。
 ///
 /// arb + codegen を使わず手書きにしているのは、`flutter test` を
 /// codegenなしで通せるようにするため(リポジトリ単体で動くことがNext Genの要件)。
@@ -159,14 +159,18 @@ class AppStrings {
   String get homeGreeting =>
       _pick('今日は、どこでつまずいた?', 'Where did you get stuck today?');
 
+  /// 先輩が今日を締めた日のあいさつ。
+  ///
+  /// 問いかけのまま置くと、「どこでつまずいた?」と聞いておいて撮らせない
+  /// 画面になる。呼びかけと、その下で押せる操作を食い違わせない。
+  String get homeGreetingDone =>
+      _pick('今日はよくがんばったね', 'You put in good work today');
+
   /// 今日の入口。撮る → 授業モード(§4-1。従量原価が発生する側)。
   ///
   /// **「ノートを撮る」とは書かない。** 撮るのは手段で、
   /// ここでユーザーが選んでいるのは「教わる」こと。
   String get homeLesson => _pick('先輩に教わる', 'Get taught by your senpai');
-
-  /// 自習室の入口(§4-2。無料・原価ゼロ)。
-  String get homeStudyRoom => _pick('自習室に入る', 'Go to the study room');
 
   String streakDays(int days) => _pick('$days日つづけて説明中', '$days-day streak');
   String filledHoles(int count) => _pick('埋めた穴 $count', '$count gaps filled');
@@ -403,6 +407,23 @@ class AppStrings {
   String get karteRetry => _pick('言い直してみる', 'Explain it again');
   String get karteDone => _pick('今日はここまで', "That's it for today");
 
+  /// カルテに残る板書。
+  ///
+  /// 授業中の板書は会話画面と一緒に消えるので、**授業の寿命を超えて読み返せる
+  /// 場所はカルテだけ**。「言えたこと」と「穴」が会話の結果なら、これは
+  /// 会話の途中で先輩が書いたものそのもので、穴の話をしている最中に
+  /// 「どこの話か」を指し直せる。板書が1枚も無い会話では節ごと出さない。
+  String get karteBoardTitle => _pick('先輩が書いたもの', 'What your senpai wrote');
+
+  /// 板書が途中で切れていることの印(配送の欠落)。
+  ///
+  /// **失敗を報告する文にしない。** ユーザーには直せないし、カルテは
+  /// 配送の失敗を蒸し返す場所ではない。それでも黙ってはいけないのは、
+  /// 黙ると計画書§3-6b が横スクロールを却下した理由 —「これで全部だ」と
+  /// 誤読させる — をそのまま再現するから。事実を一行だけ置く。
+  String get karteBoardTruncated =>
+      _pick('ここから先は残っていません', "The rest of this board wasn't saved");
+
   // --- 復習 ---
   String get reviewTitle => _pick('埋めにいく穴', 'Gaps to fill');
   String get reviewSaidIt => _pick('言えた', 'I could explain it');
@@ -442,6 +463,15 @@ class AppStrings {
   String get settingsSectionNotifications => _pick('通知', 'Notifications');
   String get settingsSectionAbout => _pick('このアプリについて', 'About');
 
+  // 学年。**単元を絞るためのもので、学習の制限ではない。**
+  // 中学生を選んでも高校の単元が「禁止」になるわけではなく、
+  // 写真から単元を探すときにどちらの範囲を先に見るかが変わる。
+  String get settingsSectionSchoolStage => _pick('学年', 'School');
+  String get settingsSchoolStageJuniorHigh => _pick('中学生', 'Junior high');
+  String get settingsSchoolStageHighSchool => _pick('高校生', 'High school');
+  String get settingsSchoolStageHint =>
+      _pick('撮った写真から単元を探す範囲が変わります', 'Changes which topics we look for in your photo');
+
   /// 1/3/7日の再訪のトグル。**ここが約束4のいちばん危ないところ。**
   ///
   /// 後輩の「再説明のお願い」は、構造的に煽れなかった —
@@ -460,7 +490,7 @@ class AppStrings {
   String get settingsPrivacy => _pick('プライバシーポリシー', 'Privacy policy');
   String get settingsTerms => _pick('利用規約', 'Terms of use');
 
-  /// AI生成物の報告導線。App Review で見られる(handoff §5)。
+  /// AI生成物の報告導線。App Review で見られる。
   ///
   /// **報告してほしい中身が、憲法改正で変わった。** 旧版は
   /// 「答えを教えてしまっている」を報告理由に挙げていたが、いまは答えを教えるのが
@@ -613,8 +643,8 @@ class AppStrings {
 
   /// 契約している印。ホーム右上と設定に出す。
   ///
-  /// **ランクや称号ではない。** 数えるのは連続日数と埋めた穴だけなので
-  /// (handoff §7)、ここは「今どっちの状態か」の表示に留める。
+  /// **ランクや称号ではない。** 数えるのは連続日数と埋めた穴だけなので、
+  /// ここは「今どっちの状態か」の表示に留める。
   /// 商品名なので日英で変えない。
   String get premiumBadge => 'Premium';
   String get premiumActive => _pick('有効', 'Active');
@@ -718,6 +748,23 @@ class AppStrings {
   String boardSpeechRightAngle(String vertex) => _pick('頂点 $vertex は直角', 'a right angle at $vertex');
   String boardSpeechAngle(String vertex, String label) =>
       _pick('頂点 $vertex の角は $label', 'the angle at $vertex is $label');
+  /// 英語の例文の読み上げ。**下線は音にならない**ので、focus を言葉にする。
+  String boardSpeechSentence(String text, String gloss, String focus) {
+    final StringBuffer buffer = StringBuffer(text);
+    if (gloss.isNotEmpty) buffer.write(_pick('。訳は $gloss', '. Meaning: $gloss'));
+    if (focus.isNotEmpty) buffer.write(_pick('。注目するのは $focus', '. The focus is $focus'));
+    return buffer.toString();
+  }
+
+  /// 対比表の読み上げ。列と行を1文に畳む(表として読ませる手段が無いため)。
+  String boardSpeechCompare(String title, String columns, String rows) {
+    final String heading = title.isEmpty ? _pick('対比表', 'A comparison') : title;
+    return _pick('$heading。$columns の順に、$rows', '$heading. Columns: $columns. Rows: $rows');
+  }
+
+  /// 対比表を1文に畳むときの区切り。読み上げでの間になる。
+  String get boardSpeechCompareSeparator => _pick(' と ', ' vs ');
+
   String boardSpeechCircle(String radius, String labels) =>
       _pick('円。半径 $radius。$labels', 'A circle with radius $radius. $labels');
   String boardSpeechPlot(String fn, String min, String max, String marks) => _pick(
@@ -756,64 +803,6 @@ class AppStrings {
           '<': ' less than ', '>': ' greater than ', '(': ' open bracket ',
           ')': ' close bracket ',
         };
-
-  // --- 自習室(§4-2。無料・原価ゼロ)---
-  //
-  // **マイクを開かない。STTもTTSもサーバ通信も動かさない。** それが原価ゼロの根拠なので、
-  // ここの文言は「先輩が黙って隣にいる」以上のことを約束しない。
-  //
-  // 下の声かけは、文字を正本として残し、切り替わる瞬間だけ同梱音声も鳴らす。
-  // 消音モード・音声オフ・アセット欠落でも成立させるため、音だけにはしない。
-  // 録音・通信・生成は無く、TTS呼び出しもゼロ(原価ゼロの根拠を崩さない)。
-  String get studyRoomTitle => _pick('自習室', 'Study room');
-
-  /// 経過時間。数字そのものなので日英で変えない(`12:34`)。
-  String studyRoomElapsed(int seconds) {
-    final String minutes = (seconds ~/ 60).toString().padLeft(2, '0');
-    final String rest = (seconds % 60).toString().padLeft(2, '0');
-    return '$minutes:$rest';
-  }
-
-  /// 経過時間の読み上げ。秒まで読み上げても意味がないので分だけ渡す。
-  String studyRoomElapsedLabel(int minutes) =>
-      _pick('自習をはじめて$minutes分', '$minutes minutes into this session');
-
-  /// 自習室でだけ、顔の既定のラベル(「先輩が待っています」)を上書きする。
-  /// ここで価値になっているのは待つことではなく**となりにいること**(§4-2)。
-  String get studyRoomSenpaiHere =>
-      _pick('先輩がとなりにいます', 'Your senpai is here with you');
-
-  /// 残っている板書。**この画面の主役**(§4-2「さっきの板書が残っている」)。
-  String get studyRoomBoardTitle => _pick('さっきの板書', 'The board from earlier');
-  String get studyRoomBoardEmpty => _pick(
-        '板書はまだありません。先輩に1問教わると、ここに残ります。',
-        'Nothing on the board yet. Once your senpai teaches you a question, it stays here.',
-      );
-
-  /// 板書が途中で切れていることの印(配送の欠落)。
-  ///
-  /// **失敗を報告する文にしない。** ユーザーには直せないし、自習室は
-  /// 配送の失敗を蒸し返す場所ではない。それでも黙ってはいけないのは、
-  /// 黙ると計画書§3-6b が横スクロールを却下した理由 —「これで全部だ」と
-  /// 誤読させる — をそのまま再現するから。事実を一行だけ置く。
-  String get studyRoomBoardTruncated =>
-      _pick('ここから先は残っていません', "The rest of this board wasn't saved");
-
-  /// **ここが課金の切れ目**(§4-2)。押すと授業モードが立ち上がる。
-  String get studyRoomAsk => _pick('先輩、ちょっといい?', 'Senpai, got a minute?');
-  String get studyRoomLeave => _pick('自習をおえる', 'Finish studying');
-
-  /// マイクを開いていないことは、黙っていないで書く。
-  /// 「先輩が隣にいる画面」は、聞かれていると誤解されうる形をしている。
-  String get studyRoomMicOff => _pick('マイクは開いていません', 'Your mic is off');
-
-  /// 先輩の声かけ。経過時間から引く(タイマーを増やさない)。
-  String get studyRoomNudgeStart => _pick('じゃ、やってこっか。わからなくなったら呼んで',
-      "Alright, get to it. Call me when you get stuck");
-  String get studyRoomNudgeGoing => _pick('順調?', "How's it going?");
-  String get studyRoomNudgeBreak => _pick('そろそろ休憩する?', 'Want to take a break?');
-  String get studyRoomNudgeLong =>
-      _pick('けっこう集中してるね。ひと息ついてきな', "You've been at this a while — go stretch");
 
   // --- 親レポート(§5-1・§5-2)---
   //
@@ -935,7 +924,14 @@ class AppStrings {
     _ => _pick('これから', 'Up next'),
   };
 
-  /// topic_id の接頭辞は課程を表す(ADR 0005)。割合や理解度を作らず、科目名だけを出す。
+  /// topic_id の接頭辞は課程を表す(ADR 0005 / 0006)。
+  /// 割合や理解度を作らず、科目名(中学は学年)だけを出す。
+  ///
+  /// **接頭辞を足したらここも足すこと。** 対応表は
+  /// `packages/curriculum/src/schema.ts` と `packages/contract/src/karte.ts` にも
+  /// あり、ここが3か所目になる(contract が依存を持たない層なので解けない)。
+  /// 忘れると既定の「数学」に落ちて、英語の単元に「数学」と出る —
+  /// `test/curriculum_label_test.dart` が全コースコードで検出する。
   String planSubject(String topicId) {
     final String code = topicId.split('-').first;
     return switch (code) {
@@ -945,6 +941,13 @@ class AppStrings {
       'MB' => _pick('数学B', 'Mathematics B'),
       'M3' => _pick('数学III', 'Mathematics III'),
       'MC' => _pick('数学C', 'Mathematics C'),
+      'J1' => _pick('中1 数学', 'Grade 7 Math'),
+      'J2' => _pick('中2 数学', 'Grade 8 Math'),
+      'J3' => _pick('中3 数学', 'Grade 9 Math'),
+      'JE' => _pick('中学英語', 'Junior high English'),
+      'E1' => _pick('英コミュI', 'English Communication I'),
+      'E2' => _pick('英コミュII', 'English Communication II'),
+      'L1' => _pick('論表I', 'Logic and Expression I'),
       'A1' => 'Algebra 1',
       'GE' => 'Geometry',
       'A2' => 'Algebra 2',
@@ -958,9 +961,8 @@ class AppStrings {
   // --- 下部ナビゲーション ---
   //
   // 機能名とは別に持つ。画面タイトルを短くしたくなったとき、タブの読み上げまで
-  // 意図せず変わると、4つの大域的な行き先が端末や言語によって揺れるため。
+  // 意図せず変わると、3つの大域的な行き先が端末や言語によって揺れるため。
   String get navigationHome => _pick('ホーム', 'Home');
-  String get navigationStudyRoom => _pick('自習室', 'Study room');
   String get navigationPlan => _pick('計画', 'Plan');
   String get navigationSettings => _pick('設定', 'Settings');
 }

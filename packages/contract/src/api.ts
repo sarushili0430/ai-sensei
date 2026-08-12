@@ -23,7 +23,6 @@ export const apiPaths = {
   answerReview: (holeId: string) => `/v1/me/reviews/${holeId}`,
   revenueCatWebhook: "/v1/webhooks/revenuecat",
   parentReport: "/v1/me/parent-report",
-  studyRoomVisit: "/v1/me/study-room",
   createPlanSession: "/v1/plans",
   completePlanSession: (planSessionId: string) => `/v1/plans/${planSessionId}/complete`,
   plan: "/v1/me/plan",
@@ -153,11 +152,33 @@ export const detectedTopicSchema = z
     course: z.string().min(1),
     unit: z.string().min(1),
     topic: z.string().min(1),
+    /**
+     * チップに出す短い課程名。「中1」「数学I」「Algebra 2」。
+     *
+     * **サーバが計算して渡す。** 端末側で topic_id の接頭辞から引く作りにすると、
+     * 接頭辞の対応表が4か所目になる。加えて中学英語は学年ごとに接頭辞が分かれて
+     * いない(学年は表示だけの目安なので、あえて分けていない)ため、
+     * 接頭辞からは「中2」を作れない。
+     */
+    label: z.string().min(1).max(16),
     /** 0..1。低いものは選択済みにせず、候補として並べるだけにする。 */
     confidence: z.number().min(0).max(1),
   })
   .strict();
 export type DetectedTopic = z.infer<typeof detectedTopicSchema>;
+
+/**
+ * 学校段階。**写真解析と計画の聞き取りで、見る課程を半分に絞る**ために使う。
+ *
+ * 端末が設定から送る。DBには持たない — 再インストールで選び直しになる代わりに、
+ * マイグレーションが要らない(ADR 0007)。
+ *
+ * **既定は `high_school`。** これを送らない古いアプリは、今までどおり
+ * 高校の課程だけを見る。
+ */
+export const schoolStages = ["junior_high", "high_school"] as const;
+export type SchoolStage = (typeof schoolStages)[number];
+export const schoolStageSchema = z.enum(schoolStages);
 
 /**
  * POST /v1/sessions のリクエスト。
@@ -168,6 +189,7 @@ export const createSessionRequestSchema = z
   .object({
     kind: sessionKindSchema.default("new"),
     locale: localeSchema.default("ja"),
+    school_stage: schoolStageSchema.default("high_school"),
     /** kind="review" のとき、埋めにいく穴。復習は穴が起点なので必須。 */
     hole_id: z.string().min(1).optional(),
     /** ユーザーがチップUIで単元を直した場合の指定。空なら写真解析に任せる。 */
@@ -471,54 +493,6 @@ export const progressResponseSchema = z
   .strict();
 export type ProgressResponse = z.infer<typeof progressResponseSchema>;
 
-/* -------------------------------------------------------------------------- */
-/* 自習室の滞在時間                                                           */
-/* -------------------------------------------------------------------------- */
-
-/**
- * 1回の自習室滞在として受け入れる上端。
- *
- * 先輩は25分で休憩を勧めるので、6時間は通常利用を切らないために十分広い。
- * それを越える値は、端末時計が動いたか、バックグラウンド化を取りこぼした値として
- * 指標から外す。クライアントの申告をそのまま足すと、数台の壊れた時計だけで
- * 「滞在時間が伸びた」という材料が作れてしまうため、上限は共有契約に置く。
- */
-export const studyRoomVisitMaxSeconds = 6 * 60 * 60;
-
-/**
- * 1日ぶんの合算上限。異なる退室イベントを3回までは上の最大値のまま積める。
- *
- * これは生徒に見せる利用制限ではなく、運営指標を壊さないための安全弁。
- * `/v1/me/progress` には載せず、D1と構造化ログだけが読む。
- */
-export const studyRoomDailyMaxSeconds = 3 * studyRoomVisitMaxSeconds;
-
-/**
- * 同じ退室イベントを二重加算しないためのHTTPヘッダー。
- *
- * 本文を「滞在秒数と日付だけ」に保ったまま配送上の冪等性を持たせるため、
- * UUIDは学習データではなくヘッダーに置く。板書・単元・発話との関連は持たない。
- */
-export const studyRoomVisitIdempotencyHeader = "idempotency-key";
-export const studyRoomVisitIdempotencyKeySchema = z.string().uuid();
-
-const calendarDateSchema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/)
-  .refine((value) => {
-    const date = new Date(`${value}T00:00:00.000Z`);
-    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
-  }, "実在する日付を YYYY-MM-DD で指定してください");
-
-export const studyRoomVisitRequestSchema = z
-  .object({
-    duration_seconds: z.number().int().min(1).max(studyRoomVisitMaxSeconds),
-    /** 端末のローカル日付。時刻を送らず、日次集計の境界だけを伝える。 */
-    visited_on: calendarDateSchema,
-  })
-  .strict();
-export type StudyRoomVisitRequest = z.infer<typeof studyRoomVisitRequestSchema>;
-
 /** エラー。クライアントは code で分岐する(messageは表示用で変わりうる)。 */
 export const apiErrorCodes = [
   "unauthorized",
@@ -567,6 +541,7 @@ export type ApiError = z.infer<typeof apiErrorSchema>;
 export const createPlanSessionRequestSchema = z
   .object({
     locale: localeSchema.default("ja"),
+    school_stage: schoolStageSchema.default("high_school"),
   })
   .strict();
 export type CreatePlanSessionRequest = z.infer<typeof createPlanSessionRequestSchema>;
@@ -579,6 +554,17 @@ export const planSessionMetadataSchema = z
     /** 授業 metadata との取り違えを、agent の入口で即座に検知する判別子。 */
     kind: z.literal("plan"),
     locale: localeSchema,
+    /**
+     * 学校段階。**計画に出してよい単元の範囲**。
+     *
+     * 授業の metadata には無い(あちらは `allowed_topic_ids` の接頭辞から
+     * 課程が引けるので要らない)。計画は写真が無く範囲も決まっていないので、
+     * 課程を丸ごと貼る前にどちらの段かを知る必要がある。
+     *
+     * **このスキーマは `.strict()`。旧 agent は未知のキーで parse に失敗する**ので、
+     * デプロイは agent → API の順にすること。
+     */
+    school_stage: schoolStageSchema,
     max_seconds: z.number().int().positive(),
     /** LLMに相対日付を推測させないため、APIが確定したローカル日付を渡す。 */
     today: planDateSchema,

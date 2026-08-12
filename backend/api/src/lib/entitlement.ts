@@ -2,7 +2,7 @@ import type { Limits } from "../env.ts";
 import type { UserRecord } from "../repository/types.ts";
 
 /**
- * 授業枠の判定。**サーバ側で枠を確保する**(クライアント改竄対策・handoff §5)。
+ * 授業枠の判定。**サーバ側で枠を確保する**(クライアント改竄対策)。
  *
  * Free    : 1日1セッション / Premiumと同じ最長20分 / 当日のカルテ閲覧まで
  * Premium : 通常の1日1〜2回には当たらない非表示のフェアユース上限 / 最長20分
@@ -89,7 +89,7 @@ export function secondsUntilLocalMidnight(now: Date, timezoneOffsetMinutes: numb
 }
 
 /**
- * ペイウォールを出す位置(handoff §6)。
+ * ペイウォールを出す位置。
  * 初回カルテで穴が見えた直後 = 価値実感の瞬間、の1回だけ。
  * 煽らないので、2回目以降は出さない。
  */

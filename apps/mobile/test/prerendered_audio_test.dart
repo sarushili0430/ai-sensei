@@ -2,8 +2,6 @@ import 'dart:async';
 
 import 'package:ai_sensei/src/audio/prerendered_audio.dart';
 import 'package:ai_sensei/src/features/session/application/lesson_opening_audio.dart';
-import 'package:ai_sensei/src/features/study_room/application/senpai_nudge_audio.dart';
-import 'package:ai_sensei/src/features/study_room/domain/senpai_nudge.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -36,7 +34,7 @@ void main() {
 
       expect(
         await audio.play(
-          PrerenderedAudioCue.studyRoomGoing,
+          PrerenderedAudioCue.lessonOpening,
           languageCode: 'ja',
         ),
         isNull,
@@ -53,13 +51,13 @@ void main() {
 
       expect(
         await audio.play(
-          PrerenderedAudioCue.studyRoomGoing,
+          PrerenderedAudioCue.lessonOpening,
           languageCode: 'ja',
         ),
         isNull,
       );
       expect(player.plays, <_Play>[
-        const _Play(PrerenderedAudioCue.studyRoomGoing, 'ja'),
+        const _Play(PrerenderedAudioCue.lessonOpening, 'ja'),
       ]);
     });
 
@@ -70,12 +68,12 @@ void main() {
         isEnabled: () => true,
       );
       final int? old = await audio.play(
-        PrerenderedAudioCue.studyRoomGoing,
+        PrerenderedAudioCue.lessonOpening,
         languageCode: 'ja',
       );
       final int? current = await audio.play(
         PrerenderedAudioCue.lessonOpening,
-        languageCode: 'ja',
+        languageCode: 'en',
       );
 
       await audio.stop(old);
@@ -137,72 +135,6 @@ void main() {
       await starting;
 
       // 読み込み完了で返ってきた停止札を、その場で止め直している。
-      expect(player.stopCount, 1);
-    });
-  });
-
-  group('自習室(計画書§4-2)', () {
-    test('nudge が切り替わった瞬間だけ、時刻に対応する cue を鳴らす', () async {
-      final _RecordingPlayer player = _RecordingPlayer();
-      final SenpaiNudgeAudio nudges = SenpaiNudgeAudio(_audio(player));
-
-      await nudges.moveTo(
-        SenpaiNudge.forElapsed(const Duration(minutes: 9, seconds: 59)),
-        languageCode: 'ja',
-      );
-      expect(player.plays, isEmpty, reason: '入室直後の案内は音声の「たまの声かけ」ではない');
-
-      await nudges.moveTo(
-        SenpaiNudge.forElapsed(const Duration(minutes: 10)),
-        languageCode: 'ja',
-      );
-      await nudges.moveTo(
-        SenpaiNudge.forElapsed(const Duration(minutes: 24, seconds: 59)),
-        languageCode: 'ja',
-      );
-      await nudges.moveTo(
-        SenpaiNudge.forElapsed(const Duration(minutes: 25)),
-        languageCode: 'ja',
-      );
-      await nudges.moveTo(
-        SenpaiNudge.forElapsed(const Duration(minutes: 50)),
-        languageCode: 'ja',
-      );
-
-      expect(player.plays, <_Play>[
-        const _Play(PrerenderedAudioCue.studyRoomGoing, 'ja'),
-        const _Play(PrerenderedAudioCue.studyRoomBreak, 'ja'),
-        const _Play(PrerenderedAudioCue.studyRoomLong, 'ja'),
-      ]);
-    });
-
-    test('別画面の背後で切り替わった nudge は鳴らさない', () async {
-      final _RecordingPlayer player = _RecordingPlayer();
-      final SenpaiNudgeAudio nudges = SenpaiNudgeAudio(_audio(player));
-
-      await nudges.moveTo(
-        SenpaiNudge.going,
-        languageCode: 'en',
-        audible: false,
-      );
-      expect(nudges.current, SenpaiNudge.going);
-      expect(player.plays, isEmpty);
-    });
-
-    test('読み込み中に画面を離れても、完了後に背後で鳴らさない', () async {
-      final Completer<void> gate = Completer<void>();
-      final _RecordingPlayer player = _RecordingPlayer(playGate: gate);
-      final SenpaiNudgeAudio nudges = SenpaiNudgeAudio(_audio(player));
-
-      final Future<void> moving = nudges.moveTo(
-        SenpaiNudge.going,
-        languageCode: 'ja',
-      );
-      await Future<void>.delayed(Duration.zero);
-      await nudges.stop();
-      gate.complete();
-      await moving;
-
       expect(player.stopCount, 1);
     });
   });

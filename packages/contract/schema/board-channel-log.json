@@ -40,7 +40,7 @@
                     "type": "array",
                     "items": {
                       "type": "string",
-                      "pattern": "^(M1|MA|M2|MB|M3|MC|A1|GE|A2|PC|CL|ST)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+                      "pattern": "^(M1|MA|M2|MB|M3|MC|A1|GE|A2|PC|CL|ST|J1|J2|J3|JE|E1|E2|L1)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
                     },
                     "minItems": 1,
                     "maxItems": 3
@@ -396,6 +396,94 @@
                                   "kind",
                                   "center",
                                   "r"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "sentence"
+                                  },
+                                  "text": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 120
+                                  },
+                                  "gloss": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 60
+                                  },
+                                  "focus": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 40
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "text"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "compare"
+                                  },
+                                  "title": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 24
+                                  },
+                                  "columns": {
+                                    "type": "array",
+                                    "minItems": 2,
+                                    "maxItems": 2,
+                                    "items": [
+                                      {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 24
+                                      },
+                                      {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 24
+                                      }
+                                    ]
+                                  },
+                                  "rows": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "array",
+                                      "minItems": 2,
+                                      "maxItems": 2,
+                                      "items": [
+                                        {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 60
+                                        },
+                                        {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 60
+                                        }
+                                      ]
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 4
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "columns",
+                                  "rows"
                                 ],
                                 "additionalProperties": false
                               },

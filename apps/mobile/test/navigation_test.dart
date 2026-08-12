@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:go_router/go_router.dart';
 
 import 'support/harness.dart';
@@ -64,7 +65,16 @@ void main() {
     WidgetTester tester, {
     List<Object?> overrides = const <Object?>[],
   }) async {
-    final ProviderContainer container = ProviderContainer(overrides: overrides.cast());
+    // 設定画面が学校段階を読む。`preferencesProvider` は main() で override する
+    // 前提なので、ここでも入れないと設定タブを開いた瞬間に落ちる。
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    final ProviderContainer container = ProviderContainer(
+      overrides: <Object?>[
+        preferencesProvider.overrideWithValue(preferences),
+        ...overrides,
+      ].cast(),
+    );
     addTearDown(container.dispose);
 
     await tester.pumpWidget(wrapRouter(container));
@@ -83,13 +93,12 @@ void main() {
     expect(find.byKey(const ValueKey<String>('main-bottom-navigation')), findsOneWidget);
   });
 
-  testWidgets('狭い端末でも4タブがホームの操作を押し出さない', (WidgetTester tester) async {
+  testWidgets('狭い端末でも3タブがホームの操作を押し出さない', (WidgetTester tester) async {
     await setSurface(tester, size: smallPhoneSurface);
     await pumpRouter(tester, overrides: bootOverrides());
 
     expect(find.byKey(const ValueKey<String>('main-bottom-navigation')), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('navigation-home')), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('navigation-study-room')), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('navigation-plan')), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('navigation-settings')), findsOneWidget);
     expect(tester.takeException(), isNull);

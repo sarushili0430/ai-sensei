@@ -12,10 +12,11 @@ import 'package:ai_sensei/src/routing/routes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../support/harness.dart';
 
-/// 主要画面の golden test(handoff §5)。
+/// 主要画面の golden test。
 ///
 /// 見ているのは「崩れていないか」よりも **設計上の約束が画面に出ているか**:
 /// 点数が出ていないか、穴がピンクのマーカーで示されているか、
@@ -56,8 +57,13 @@ void main() {
     List<Object?> overrides = const <Object?>[],
   }) async {
     await setSurface(tester);
+    // 設定画面が学校段階を読む。`preferencesProvider` は main() で override する
+    // 前提なので、ここでも入れないと設定の golden を撮る瞬間に落ちる。
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
     final ProviderContainer container = ProviderContainer(
       overrides: <Object?>[
+        preferencesProvider.overrideWithValue(preferences),
         onboardedProvider.overrideWithValue(true),
         deviceIdProvider.overrideWithValue('11111111-2222-3333-4444-555555555555'),
         progressControllerProvider.overrideWith(() => FakeProgressController(progress)),

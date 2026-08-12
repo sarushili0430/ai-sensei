@@ -9,7 +9,7 @@ import 'revenuecat_config.dart';
 
 part 'purchases_repository.g.dart';
 
-/// RevenueCat SDK の唯一の出入口(handoff §5 の Repository = SSOT)。
+/// RevenueCat SDK の唯一の出入口(Repository = SSOT)。
 ///
 /// SDKは static メソッドの集まりなので、Controller から直接呼ぶと
 /// テストで差し替えられない。ここに閉じ込めて、テストでは

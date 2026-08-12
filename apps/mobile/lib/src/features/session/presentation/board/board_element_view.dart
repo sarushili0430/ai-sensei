@@ -5,15 +5,17 @@ import '../../domain/board.dart';
 import 'board_speech.dart';
 import 'board_style.dart';
 import 'circle_painter.dart';
+import 'compare_element_view.dart';
 import 'figure_element_view.dart';
 import 'latex_element_view.dart';
 import 'plot_painter.dart';
+import 'sentence_element_view.dart';
 import 'text_element_view.dart';
 import 'triangle_painter.dart';
 
-/// `BoardElement` の6枝を、対応する見た目に振り分ける。
+/// `BoardElement` の8枝を、対応する見た目に振り分ける。
 ///
-/// 自由描画が無い(計画書§3-3)のと同じく、ここも6枝の`switch`(`.when`)で
+/// 自由描画が無い(計画書§3-3)のと同じく、ここも8枝の`switch`(`.when`)で
 /// 閉じている。新しいプリミティブを増やすときはここに枝を足すことになる
 /// (契約側の `boardElementKinds` を増やすときと必ずセットで)。
 class BoardElementView extends StatelessWidget {
@@ -35,6 +37,10 @@ class BoardElementView extends StatelessWidget {
           ),
       circle: (BoardPoint center, double r, List<String>? labels) =>
           _GraphicBox(painter: CirclePainter(center: center, r: r, labels: labels)),
+      sentence: (String text, String? gloss, String? focus) =>
+          SentenceElementView(text: text, gloss: gloss, focus: focus),
+      compare: (List<String> columns, List<List<String>> rows, String? title) =>
+          CompareElementView(columns: columns, rows: rows, title: title),
       // **ここだけ painter を持たない。**中身はサーバが解いて描いたSVGで、
       // 図の語彙が増えてもこの枝は変わらない(D-21)。
       // `svg` はワイヤーに出る時点で必ず入っている(`ensureValidFigure`)。

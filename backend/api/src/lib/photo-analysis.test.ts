@@ -54,7 +54,7 @@ describe("resolveDetectedTopics", () => {
 
   it("LLMがtopic_idを返さなくてもキーワードから拾う", () => {
     const resolved = resolveDetectedTopics({
-      is_math_note: true,
+      subject: "math",
       summary: "平方完成して頂点を求める問題",
       problem_text: "",
       visible_work: [],
@@ -67,7 +67,7 @@ describe("resolveDetectedTopics", () => {
 
   it("数学のノートでなければフォールバックもしない", () => {
     const resolved = resolveDetectedTopics({
-      is_math_note: false,
+      subject: "other",
       summary: "英語の単語帳。関数という言葉だけ写っている",
       problem_text: "",
       visible_work: [],
@@ -200,6 +200,176 @@ describe("resolveSessionProblem", () => {
   });
 });
 
+/**
+ * 解析器に貼る一覧は**学校段階で半分に切る**。全課程を貼ると、中学生の写真にも
+ * 数学I〜Cの52件が候補として並び、解析器が高校の単元を選べてしまう。
+ */
+describe("curriculumDigest", () => {
+  it("中学生には中学の課程だけを貼る", () => {
+    const digest = curriculumDigest("ja", "junior_high");
+    expect(digest).toContain("J1-KAZUSHIKI-SEIFU");
+    expect(digest).not.toContain("M1-");
+  });
+
+  it("既定は高校。学校段階を送らない古いアプリは今までどおり", () => {
+    const digest = curriculumDigest("ja");
+    expect(digest).toContain("M1-");
+    expect(digest).not.toContain("J1-");
+  });
+
+  it("海外向けの課程は段階で切らない(Algebra 1 〜 Calculus が一続きのため)", () => {
+    expect(curriculumDigest("en", "junior_high")).toBe(curriculumDigest("en", "high_school"));
+  });
+});
+
+describe("resolveDetectedTopics", () => {
+  // 段階の外の単元は、解析器が返しても通さない。中学生のセッションに
+  // 数学IIが混ざると、そのまま許可トピックになって先輩が教え始める。
+  it("段階の外の単元は落とす", () => {
+    const resolved = resolveDetectedTopics(
+      {
+        ...analysisFixture,
+        topics: [
+          { topic_id: "J1-KAZUSHIKI-SEIFU", confidence: 0.9 },
+          { topic_id: "M2-ZUKEI-ENCHOKU", confidence: 0.8 },
+        ],
+      },
+      "ja",
+      "junior_high",
+    );
+    expect(resolved.topicIds).toEqual(["J1-KAZUSHIKI-SEIFU"]);
+    expect(resolved.droppedIds).toContain("M2-ZUKEI-ENCHOKU");
+  });
+});
+
+/**
+ * 教科の取り違えは**授業まるごとに効く**。agent 側の `subjectOf()` は
+ * 許可トピックの先頭から教科を決めるので、英語の写真に数学のIDが1つ混ざって
+ * それが先頭に来ると、板書も音声補正も数学のものになる。
+ */
+describe("resolveDetectedTopics(教科での絞り込み)", () => {
+  it("英語の写真に混ざった数学の単元は落とす", () => {
+    const resolved = resolveDetectedTopics(
+      {
+        ...analysisFixture,
+        subject: "english",
+        topics: [
+          { topic_id: "J2-KANSU-ICHIJI", confidence: 0.9 },
+          { topic_id: "JE-FUTEISHI", confidence: 0.8 },
+        ],
+      },
+      "ja",
+      "junior_high",
+    );
+    expect(resolved.topicIds).toEqual(["JE-FUTEISHI"]);
+    expect(resolved.droppedIds).toContain("J2-KANSU-ICHIJI");
+  });
+
+  it("数学の写真に混ざった英語の単元も落とす", () => {
+    const resolved = resolveDetectedTopics(
+      {
+        ...analysisFixture,
+        subject: "math",
+        topics: [
+          { topic_id: "JE-FUTEISHI", confidence: 0.9 },
+          { topic_id: "J2-KANSU-ICHIJI", confidence: 0.8 },
+        ],
+      },
+      "ja",
+      "junior_high",
+    );
+    expect(resolved.topicIds).toEqual(["J2-KANSU-ICHIJI"]);
+  });
+
+  // キーワード推定も教科の中で閉じる。ここが漏れると、英語の写真の要約に
+  // 「関数」の2文字があるだけで数学の単元に着地する。
+  it("キーワード推定も教科の中で閉じる", () => {
+    const resolved = resolveDetectedTopics(
+      {
+        ...analysisFixture,
+        subject: "english",
+        summary: "一次関数のグラフ",
+        problem_text: "",
+        visible_work: [],
+        topics: [],
+        question_seeds: [],
+      },
+      "ja",
+      "junior_high",
+    );
+    for (const id of resolved.topicIds) expect(id.startsWith("JE-")).toBe(true);
+  });
+});
+
+/**
+ * **英語のノートに「to不定詞」とは書かれていない。** 写っているのは英文なので、
+ * キーワード照合が空振りするのは異常ではなく既定の経路。ここで空を返すと、
+ * 読めている写真が呼び出し側で `photo_unreadable` として弾かれる。
+ */
+describe("resolveDetectedTopics(着地点)", () => {
+  it("英語でキーワードが空振りしたら、その課程の着地点に降ろす", () => {
+    const resolved = resolveDetectedTopics(
+      {
+        ...analysisFixture,
+        subject: "english",
+        summary: "Yesterday I went to the park with my friends.",
+        problem_text: "",
+        visible_work: [],
+        topics: [],
+        question_seeds: [],
+      },
+      "ja",
+      "junior_high",
+    );
+    expect(resolved.topicIds).toEqual(["JE-BUNKOZO-KIHON"]);
+  });
+
+  it("高校英語にも着地点がある", () => {
+    const resolved = resolveDetectedTopics(
+      {
+        ...analysisFixture,
+        subject: "english",
+        summary: "The passage describes a small town by the sea.",
+        problem_text: "",
+        visible_work: [],
+        topics: [],
+        question_seeds: [],
+      },
+      "ja",
+      "high_school",
+    );
+    expect(resolved.topicIds).toEqual(["E1-DOKKAI-YOTEN"]);
+  });
+
+  // 数学は着地点を持たない(キーワードが効くので要らない)。
+  // 従来どおり空で返し、呼び出し側が撮り直しを促す。
+  it("数学は着地点を持たず、空のまま返す", () => {
+    const resolved = resolveDetectedTopics(
+      {
+        ...analysisFixture,
+        subject: "math",
+        summary: "なにも読み取れない",
+        problem_text: "",
+        visible_work: [],
+        topics: [],
+        question_seeds: [],
+      },
+      "ja",
+      "junior_high",
+    );
+    expect(resolved.topicIds).toEqual([]);
+  });
+
+  it("範囲外(other)では着地点も使わない", () => {
+    const resolved = resolveDetectedTopics(
+      { ...analysisFixture, subject: "other", topics: [], question_seeds: [] },
+      "ja",
+      "junior_high",
+    );
+    expect(resolved.topicIds).toEqual([]);
+  });
+});
+
 describe("toDetectedTopicPayload", () => {
   it("カリキュラムの単元名を補って返す", () => {
     const payload = toDetectedTopicPayload(["M2-ZUKEI-ENCHOKU"], analysisFixture);
@@ -208,8 +378,20 @@ describe("toDetectedTopicPayload", () => {
       course: "数学II",
       unit: "図形と方程式",
       topic: "円と直線の位置関係",
+      label: "数学II",
       confidence: 0.92,
     });
+  });
+
+  // チップは「中1 正負の数」の形で出す。高校数学は科目名がそのまま短縮名だが、
+  // 中学は学年になる(指導要領の区切りが学年別なので、course が学年を表す)。
+  it("中学の単元では、チップのラベルが学年になる", () => {
+    const payload = toDetectedTopicPayload(["J1-KAZUSHIKI-SEIFU"], {
+      ...analysisFixture,
+      topics: [{ topic_id: "J1-KAZUSHIKI-SEIFU", confidence: 0.9 }],
+    });
+    expect(payload[0]?.label).toBe("中1");
+    expect(payload[0]?.topic).toBe("正負の数");
   });
 
   it("キーワード推定にフォールバックした分は確信度を低くする", () => {
@@ -223,7 +405,7 @@ describe("toDetectedTopicPayload", () => {
 
 describe("photoAnalysisSchema", () => {
   it("欠けた配列を空で補う(LLMの出力ゆれを吸収する)", () => {
-    const parsed = photoAnalysisSchema.parse({ is_math_note: true, summary: "円と直線" });
+    const parsed = photoAnalysisSchema.parse({ subject: "math", summary: "円と直線" });
     expect(parsed.topics).toEqual([]);
     expect(parsed.question_seeds).toEqual([]);
   });

@@ -66,6 +66,17 @@ String describeElement(BoardElement element, AppStrings strings) {
     // ここで items から組み立て直すと、サーバの文言と二重管理になる。
     figure: (List<Map<String, dynamic>> items, String? svg, String? alt) =>
         (alt == null || alt.isEmpty) ? strings.boardSpeechFigure : alt,
+    // 英文はそのまま読ませる(TTSではなく画面読み上げなので、英語の音声で読まれる)。
+    // 訳と焦点は付いていれば足す — **下線は音にならない**ので、
+    // 「どこを見てほしいか」は言葉にしないと目の見えない生徒には届かない。
+    sentence: (String text, String? gloss, String? focus) =>
+        strings.boardSpeechSentence(text, gloss ?? '', focus ?? ''),
+    compare: (List<String> columns, List<List<String>> rows, String? title) =>
+        strings.boardSpeechCompare(
+          title ?? '',
+          columns.join(strings.boardSpeechCompareSeparator),
+          rows.map((List<String> row) => row.join(strings.boardSpeechCompareSeparator)).join('、'),
+        ),
   );
 }
 

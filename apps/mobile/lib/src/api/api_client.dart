@@ -56,6 +56,9 @@ class ApiClient {
     File? problemPhoto,
     String kind = 'new',
     String locale = 'ja',
+    /// 学校段階。単元を探す範囲を絞るために送る(`packages/contract` の
+    /// `schoolStages`)。省略するとサーバ側の既定「高校生」になる。
+    String schoolStage = 'high_school',
     String? holeId,
     List<String>? topicIds,
   }) async {
@@ -65,6 +68,7 @@ class ApiClient {
           ..fields['meta'] = jsonEncode(<String, dynamic>{
             'kind': kind,
             'locale': locale,
+            'school_stage': schoolStage,
             // 値が null なら要素ごと落ちる(Dart 3.12 の null-aware element)
             'hole_id': ?holeId,
             if (topicIds != null && topicIds.isNotEmpty) 'topic_ids': topicIds,
@@ -203,40 +207,11 @@ class ApiClient {
     return ReviewAnswer.fromJson(_decode(response));
   }
 
-  /// 自習室が非表示になるとき、その滞在を1回だけ記録する。
-  ///
-  /// 本文は秒数とローカル日付だけ。板書・単元・発話をここへ足すと、無料の
-  /// 自習室が学習内容の送信経路に変わるので、このメソッドの引数にも持たせない。
-  /// [idempotencyKey] は本文の情報ではなく、戻る・バックグラウンド・disposeが
-  /// 同じ退室を同時に見ても二重加算しないための配送用UUID。
-  Future<void> recordStudyRoomVisit({
-    required int durationSeconds,
-    required DateTime startedAt,
-    required String idempotencyKey,
-  }) async {
-    final http.Response response = await _client
-        .post(
-          Uri.parse('$baseUrl/v1/me/study-room'),
-          headers: <String, String>{
-            ..._headers,
-            'content-type': 'application/json; charset=utf-8',
-            'idempotency-key': idempotencyKey,
-          },
-          body: jsonEncode(<String, dynamic>{
-            'duration_seconds': durationSeconds,
-            // 時刻は指標に不要。日次の境界だけを端末のローカル日付で伝える。
-            'visited_on': _localDate(startedAt),
-          }),
-        )
-        .timeout(_timeout);
-
-    // 成功は204で本文が無い。共通の_decodeへ通すと空文字をJSONとして読んで
-    // 失敗するので、エラーのときだけ既存のApiExceptionへ変換する。
-    if (response.statusCode >= 400) _decode(response);
-  }
-
   /// 計画を作る音声ルームを開く。授業セッションとは別なので写真もkindも送らない。
-  Future<PlanSessionStart> createPlanSession({String locale = 'ja'}) async {
+  Future<PlanSessionStart> createPlanSession({
+    String locale = 'ja',
+    String schoolStage = 'high_school',
+  }) async {
     final http.Response response = await _client
         .post(
           Uri.parse('$baseUrl/v1/plans'),
@@ -244,7 +219,11 @@ class ApiClient {
             ..._headers,
             'content-type': 'application/json; charset=utf-8',
           },
-          body: jsonEncode(<String, dynamic>{'locale': locale}),
+          body: jsonEncode(<String, dynamic>{
+            'locale': locale,
+            // 計画は写真が無いので、段でしか範囲を絞れない。
+            'school_stage': schoolStage,
+          }),
         )
         .timeout(_timeout);
     return PlanSessionStart.fromJson(_decode(response));
@@ -275,11 +254,6 @@ class ApiClient {
     }
     return body;
   }
-}
-
-String _localDate(DateTime value) {
-  String twoDigits(int part) => part.toString().padLeft(2, '0');
-  return '${value.year.toString().padLeft(4, '0')}-${twoDigits(value.month)}-${twoDigits(value.day)}';
 }
 
 class ApiException implements Exception {

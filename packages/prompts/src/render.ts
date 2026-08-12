@@ -153,6 +153,27 @@ const roleLabels: Record<PromptLocale, { assistant: string; user: string }> = {
   en: { assistant: "Senpai", user: "Student" },
 };
 
+/**
+ * トピックの**索引**。到達目標を落として1行にする。
+ *
+ * 計画の聞き取りでLLMがやるのは「テスト範囲の topic_id を選ぶ」ことだけで、
+ * 到達目標は選択の材料にならない(目標が要るのは質問を作る授業側)。
+ * 課程1本ぶんを全部貼る場面ではここが効く —
+ * **実測で 1トピック 125字 → 48字、日本の高校数学(52件)で 6,516字 → 2,503字**。
+ *
+ * 情報は落ちていないので、{@link formatAllowedTopics} と使い分けること:
+ * 授業(範囲が数件に絞れている)は目標つき、計画(課程を丸ごと貼る)は索引。
+ */
+export function formatTopicIndex(
+  topics: readonly { id: string; course: string; unit: string; topic: string }[],
+  locale: PromptLocale = "ja",
+): string {
+  if (topics.length === 0) return phrases[locale].noTopics;
+  return topics
+    .map((topic) => `- ${topic.id} — ${topic.course} / ${topic.unit} / ${topic.topic}`)
+    .join("\n");
+}
+
 /** 許可トピックの一覧を、プロンプトに貼れる形に整える。 */
 export function formatAllowedTopics(
   topics: readonly { id: string; course: string; unit: string; topic: string; goals: string[] }[],

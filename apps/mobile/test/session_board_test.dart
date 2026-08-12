@@ -342,8 +342,8 @@ void main() {
         expect(BoardStyle.expectedWidth(375), 327);
       });
 
-      // 自習室がカードに入れていたときの実測値。**これは版組が食った幅**なので、
-      // どの端末でも閾値を下回る = 送られる。
+      // 授業の外で板書をカードに入れていたときの実測値。**これは版組が食った幅**
+      // なので、どの端末でも閾値を下回る = 送られる。
       test('版組が食った幅は、狭い端末でも閾値を下回る', () {
         expect(311, lessThan(BoardStyle.expectedWidth(375)));
         expect(311, lessThan(BoardStyle.expectedWidth(393)));

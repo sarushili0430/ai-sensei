@@ -25,8 +25,6 @@ import {
   sessionMetadataSchema,
   studyPlanDraftSchema,
   studyPlanSchema,
-  studyRoomVisitMaxSeconds,
-  studyRoomVisitRequestSchema,
 } from "./index.ts";
 
 const repoRoot = resolve(import.meta.dirname, "..", "..", "..");
@@ -52,6 +50,9 @@ describe("fixture", () => {
     expect(fixtureFileNames).toContain("karte.en");
     expect(fixtureFileNames).toContain("create-session-response.en");
     expect(fixtureFileNames).toContain("board-lesson.en");
+    // 英語の課程の板書。数学の板書とは使える要素が重ならないので、
+    // これが消えると sentence / compare の形を誰も検査しなくなる。
+    expect(fixtureFileNames).toContain("board-lesson.english");
     expect(fixtureFileNames).toContain("study-plan.en");
     expect(fixtureFileNames).toContain("parent-report");
     expect(fixtureFileNames).toContain("parent-report.en");
@@ -125,38 +126,6 @@ describe("親レポートのスキーマ", () => {
     const leaked = response();
     leaked.requires_premium = true;
     expect(parentReportResponseSchema.safeParse(leaked).success).toBe(false);
-  });
-});
-
-describe("自習室滞在のスキーマ", () => {
-  it("本文は滞在秒数と日付だけに閉じる", () => {
-    expect(
-      studyRoomVisitRequestSchema.safeParse(loadFixture("study-room-visit-request")).success,
-    ).toBe(true);
-    expect(
-      studyRoomVisitRequestSchema.safeParse({
-        ...(loadFixture("study-room-visit-request") as object),
-        topic_id: "M1-NIJI-HANBETSU",
-      }).success,
-    ).toBe(false);
-  });
-
-  it("負数・端数・長すぎる申告を弾く", () => {
-    for (const duration_seconds of [-1, 0, 1.5, studyRoomVisitMaxSeconds + 1]) {
-      expect(
-        studyRoomVisitRequestSchema.safeParse({ duration_seconds, visited_on: "2026-08-03" })
-          .success,
-      ).toBe(false);
-    }
-  });
-
-  it("見た目だけ日付らしい存在しない日を弾く", () => {
-    expect(
-      studyRoomVisitRequestSchema.safeParse({
-        duration_seconds: 60,
-        visited_on: "2026-02-30",
-      }).success,
-    ).toBe(false);
   });
 });
 

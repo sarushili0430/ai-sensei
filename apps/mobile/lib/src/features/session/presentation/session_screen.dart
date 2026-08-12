@@ -17,7 +17,7 @@ import 'board/board_view.dart';
 
 /// 会話画面(ワイヤーフレームの03/04を1枚に統合)。
 ///
-/// **にぎやかな画面**にする(handoff §7)。ただし試験官UIにはしない。
+/// **にぎやかな画面**にする。ただし試験官UIにはしない。
 ///
 /// 画面には2つの姿がある。分かれ目は**板書が届いているか**だけ:
 ///
@@ -122,7 +122,7 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
                 _Subtitle(text: subtitle, align: TextAlign.center),
                 const Spacer(),
               ],
-              // パスは恥ではない。穴の記録として価値がある(handoff §7)。
+              // パスは恥ではない。穴の記録として価値がある。
               GhostButton(
                 label: strings.sessionPass,
                 onPressed: wrappingUp
@@ -189,9 +189,9 @@ class _SessionHeader extends StatelessWidget {
 ///
 /// **[build] の `CrossAxisAlignment.stretch` は見た目ではなく実効幅の指定。**
 /// `start` にすると板書の `Column` はいちばん長い行の自然幅まで痩せ、
-/// [LatexElementView] は**その痩せた幅**を基準に縮小率を判定する。自習室側で
-/// 実際に起きた(345pt のつもりが実測198pt。カードの余白より効いていた)ので、
-/// 揃えるための `start` に見えても戻さないこと。見張りは
+/// [LatexElementView] は**その痩せた幅**を基準に縮小率を判定する。授業の外で
+/// 板書を出す画面で実際に起きた(345pt のつもりが実測198pt。カードの余白より
+/// 効いていた)ので、揃えるための `start` に見えても戻さないこと。見張りは
 /// `test/session_board_test.dart` の「板書の実効幅は…340pt を下回らない」。
 class _BoardStage extends StatefulWidget {
   const _BoardStage({required this.board});

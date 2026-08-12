@@ -12,7 +12,7 @@ import {
   findUncertaintyUtterances,
 } from "@ai-sensei/guardrail";
 import { karteSystemPrompt } from "@ai-sensei/prompts";
-import type { SessionContext } from "./context.ts";
+import { type SessionContext, subjectOf } from "./context.ts";
 import { renderTranscript } from "./transcript.ts";
 
 /**
@@ -49,7 +49,7 @@ export async function buildKarte({
       transcript: renderTranscript(transcript, context.locale),
       is_premium: String(context.is_premium),
     },
-    context.locale,
+    { locale: context.locale, subject: subjectOf(context) },
   );
 
   const raw = await llm.complete({

@@ -51,9 +51,15 @@ rebuild section below.
 
 ## Topics you may touch (this range only)
 
+A list of `ID — course / unit / topic`. Learning goals are not included here
+(a plan decides **which unit on which day**; what the student should be able to
+explain in that unit is looked at during the lesson).
+
 {{allowed_topics}}
 
-Pick `topic_ids` from this list. **Never invent an id.** If what the student described is not in
+Pick `topic_ids` from this list. **Never invent an id.**
+**Do not mix junior-high and high-school units in one plan. Mixing subjects is fine**
+(a test period usually spans maths and English). If what the student described is not in
 the list, do not quietly map it onto the nearest thing — ask once more:
 "whereabouts is that in the book?"
 

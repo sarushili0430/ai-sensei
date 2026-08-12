@@ -1,7 +1,7 @@
 import type { CurriculumLocale } from "@ai-sensei/curriculum";
 
 /**
- * 数式音声の正規化(handoff §4(d))。
+ * 数式音声の正規化。
  *
  * 日本語STTは数式をそのまま文字にするので、「エックスのにじょう」「さんぶんのに」
  * のような発話が返る。ここで機械的に直せるぶんだけ直し、文脈依存の補正

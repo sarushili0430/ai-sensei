@@ -6,13 +6,14 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../../api/api_client.dart';
 import '../../../l10n/strings.dart';
 import '../../session/domain/session.dart';
+import '../../settings/application/school_stage_controller.dart';
 
 part 'capture_controller.g.dart';
 
 /// 撮影 → (問題の写真は任意で追加)→ 解析 → 単元と問題文の確認 → セッション開始。
 ///
 /// 単元のチップは**外せる**。写真解析が外したときに、ユーザーが直せる余地を残す
-/// (handoff §3-1「修正可能なチップUI」)。
+/// (「修正可能なチップUI」)。
 ///
 /// **写真は2枚を別々に持つ。寿命が違うから**(計画書 §4-1・`api.ts` の
 /// `sessionPhotoParts`)。ノートは本人の著作物なのでR2に保存されるが、
@@ -133,6 +134,8 @@ class CaptureController extends _$CaptureController {
             photo: state.photo,
             problemPhoto: state.problemPhoto,
             locale: locale,
+            // 単元を探す範囲を半分に切る。復習は穴が起点で写真を見ないので渡さない。
+            schoolStage: ref.read(schoolStageControllerProvider).wireValue,
           );
       state = state.copyWith(
         session: session,

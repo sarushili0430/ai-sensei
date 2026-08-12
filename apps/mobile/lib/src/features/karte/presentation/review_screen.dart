@@ -342,7 +342,7 @@ class _ReviewCard extends StatelessWidget {
 
 /// 埋めた穴。ペイウォールが謳う Premium の「履歴」はここ。
 ///
-/// 静かに置く。祝福画面のにぎやかさは持ち込まない(handoff §7)。
+/// 静かに置く。祝福画面のにぎやかさは持ち込まない。
 class _FilledSection extends StatelessWidget {
   const _FilledSection({required this.filled});
 

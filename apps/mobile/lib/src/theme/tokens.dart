@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// デザイントークン(handoff §7 ビジュアル方針)。
+/// デザイントークン(ビジュアル方針)。
 ///
 /// Duolingoの「文法」は借りるが「語彙」は借りない。
 /// ストリーク・厚みのあるボタン・キャラの感情リアクションは採用し、
@@ -91,7 +91,7 @@ abstract final class AppDurations {
 ///
 /// にぎやかな画面(会話・祝福・オンボーディング)だけが [pop] を使える。
 /// カルテと復習は内省する画面なので、行き過ぎて戻る動きを持ち込まない
-/// (handoff §7「騒がしい/静かの分離」)。
+/// (「騒がしい/静かの分離」)。
 abstract final class AppCurves {
   static const Curve enter = Curves.easeOutCubic;
   static const Curve exit = Curves.easeInCubic;

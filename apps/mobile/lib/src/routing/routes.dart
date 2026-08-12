@@ -1,19 +1,15 @@
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 
-/// 画面の識別子。パスを文字列で散らかさないためだけの列挙。
+/// 画面の識別子。パスを散らかさないためだけの列挙。
 ///
-/// パスは全画面ぶんフラットに見えるが、ルータ側では復習・ペイウォール・
-/// カルテなどをホーム枝 `/` の**子ルート**として組んである(`app_router.dart`)。
-/// 子にしておくと `go('/review')` でもホームが下に積まれるので、
-/// 通知タップでアプリが起動したときにも戻るボタンが効く。
+/// - ここは平らだが、ルータでは復習・カルテ等をホーム枝の子に組む
+/// - 子にすると通知の `go('/review')` でもホームが下に積まれ、戻るが効く
+/// - 常設タブはホーム / 計画 / 設定の3つ(ADR 0006)
 enum AppRoute {
   onboarding('/onboarding'),
   home('/'),
   capture('/capture'),
-
-  /// 自習室(計画書§4-2)。無料・原価ゼロの、常設タブの滞在先。
-  studyRoom('/study-room'),
   session('/session'),
   celebration('/celebration'),
   karte('/karte'),

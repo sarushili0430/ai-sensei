@@ -1,4 +1,3 @@
-import { studyRoomDailyMaxSeconds } from "@ai-sensei/contract";
 import { type StudyPlan, studyPlanSchema } from "@ai-sensei/contract";
 import type { D1Database } from "../cloudflare.ts";
 import type {
@@ -10,8 +9,6 @@ import type {
   SessionContext,
   SessionRecord,
   SessionReservation,
-  StudyRoomDailyRecord,
-  StudyRoomVisitWrite,
   UserRecord,
 } from "./types.ts";
 
@@ -348,53 +345,6 @@ export class D1Repository implements Repository {
     return result.results;
   }
 
-  async recordStudyRoomVisit(input: {
-    deviceId: string;
-    localDate: string;
-    durationSeconds: number;
-    visitId: string;
-    recordedAt: string;
-  }): Promise<StudyRoomVisitWrite> {
-    const write = this.db
-      .prepare(
-        `INSERT INTO study_room_daily
-           (device_id, local_date, total_seconds, last_visit_id, updated_at)
-         VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(device_id, local_date) DO UPDATE SET
-           total_seconds = MIN(?, study_room_daily.total_seconds + excluded.total_seconds),
-           last_visit_id = excluded.last_visit_id,
-           updated_at = excluded.updated_at
-         WHERE study_room_daily.last_visit_id <> excluded.last_visit_id
-           AND study_room_daily.total_seconds < ?`,
-      )
-      .bind(
-        input.deviceId,
-        input.localDate,
-        input.durationSeconds,
-        input.visitId,
-        input.recordedAt,
-        studyRoomDailyMaxSeconds,
-        studyRoomDailyMaxSeconds,
-      );
-    const read = this.db
-      .prepare("SELECT * FROM study_room_daily WHERE device_id = ? AND local_date = ?")
-      .bind(input.deviceId, input.localDate);
-
-    /**
-     * 加算と読み取りを同じbatchに入れる。構造化ログへ出す日次合計が、直後の別訪問を
-     * 偶然読んだ値にならないようにするため。UPSERTの1文が加算の原子性を担い、
-     * `last_visit_id` が同じならchanges=0なので二重送信も同じ経路で判定できる。
-     */
-    const results = await this.db.batch<StudyRoomDailyRecord>([write, read]);
-    const writeResult = results[0];
-    if (!writeResult) throw new Error("自習室の日次集計結果がありません");
-    const changes = studyRoomChangesOf(writeResult.meta);
-
-    const daily = results[1]?.results[0];
-    if (!daily) throw new Error("自習室の日次集計を読み取れません");
-    return { recorded: changes > 0, daily };
-  }
-
   async createPlanSession(session: PlanSessionRecord): Promise<void> {
     await this.db
       .prepare(
@@ -507,13 +457,6 @@ export class D1Repository implements Repository {
 function changesOf(meta: Record<string, unknown>): number {
   const changes = meta["changes"];
   if (typeof changes !== "number") throw new Error("授業枠のINSERT件数を読み取れません");
-  return changes;
-}
-
-/** 二重送信を成功扱いのまま見分けるため、D1が返した書き込み件数を必ず検査する。 */
-function studyRoomChangesOf(meta: Record<string, unknown>): number {
-  const changes = meta["changes"];
-  if (typeof changes !== "number") throw new Error("自習室のUPSERT件数を読み取れません");
   return changes;
 }
 

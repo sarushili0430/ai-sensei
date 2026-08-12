@@ -175,7 +175,7 @@ describe("POST /v1/sessions", () => {
   it("数学のノートでなければ撮り直しを促す", async () => {
     services = testServices({
       analysis: {
-        is_math_note: false,
+        subject: "other",
         summary: "英語の単語帳が写っている",
         problem_text: "",
         visible_work: [],
@@ -194,7 +194,7 @@ describe("POST /v1/sessions", () => {
   it("単元を1つも特定できなければセッションを作らない", async () => {
     services = testServices({
       analysis: {
-        is_math_note: true,
+        subject: "math",
         summary: "ぼやけていて読み取れない",
         problem_text: "",
         visible_work: [],
@@ -217,7 +217,7 @@ describe("POST /v1/sessions", () => {
   it("LLMが捏造したtopic_idは許可リストに入れない", async () => {
     services = testServices({
       analysis: {
-        is_math_note: true,
+        subject: "math",
         summary: "円と直線の位置関係",
         problem_text: "",
         visible_work: [],
@@ -810,7 +810,7 @@ describe("無料枠の押さえ方", () => {
   it("解析に失敗したら、その日の1回を消費しない", async () => {
     services = testServices({
       analysis: {
-        is_math_note: false,
+        subject: "other",
         summary: "英語の単語帳",
         problem_text: "",
         visible_work: [],

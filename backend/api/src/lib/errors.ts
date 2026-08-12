@@ -31,13 +31,15 @@ const messages: Record<ApiErrorCode, { ja: string; en: string; status: number }>
     status: 402,
   },
   photo_unreadable: {
-    ja: "写真から数学のノートを読み取れませんでした。もう一度撮ってみてください。",
-    en: "We couldn't read a math note in this photo. Could you take another one?",
+    ja: "写真からノートを読み取れませんでした。もう一度撮ってみてください。",
+    en: "We couldn't read any notes in this photo. Could you take another one?",
     status: 422,
   },
+  // **教科名を数え上げない。** 課程を足すたびに文言を直す作りにすると、
+  // どこかで必ず古いままになり、対応しているのに「対応していません」と返る。
   out_of_scope: {
-    ja: "このノートは高校数学の範囲外みたいです。今は数学だけに対応しています。",
-    en: "This looks outside high-school math. We only cover math for now.",
+    ja: "このノートは、いま対応している範囲の外みたいです。中学・高校の数学と英語に対応しています。",
+    en: "This looks outside what we cover. We support maths and English for junior high and high school.",
     status: 422,
   },
   session_not_found: {

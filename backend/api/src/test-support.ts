@@ -12,7 +12,7 @@ import { MemoryRepository } from "./repository/memory.ts";
  */
 
 export const analysisFixture: PhotoAnalysis = {
-  is_math_note: true,
+  subject: "math",
   summary: "円と直線の位置関係の問題。(1)は交点の個数を求めている。",
   problem_text:
     "円 x^2 + y^2 = 5 と直線 y = x + k について、(1) 共有点の個数を求めよ。(2) 接するときの k の値を求めよ。",
@@ -27,7 +27,7 @@ export const analysisFixture: PhotoAnalysis = {
 
 /** 海外向けの課程(Algebra 1 / Algebra 2 ...)で返ってくる解析結果。 */
 export const analysisFixtureEn: PhotoAnalysis = {
-  is_math_note: true,
+  subject: "math",
   summary: "A line-and-circle problem. Part (1) asks for the number of intersection points.",
   problem_text:
     "For the circle x^2 + y^2 = 5 and the line y = x + k: (1) find the number of intersection points. (2) find the value of k that makes them tangent.",

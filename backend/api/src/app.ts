@@ -73,7 +73,7 @@ export function createApp(options: CreateAppOptions = {}) {
   // (デプロイ直後のスモークで、URLの取り違えに気づけるようにする)。
   app.get("/health", (c) => c.json({ ok: true, environment: c.env?.ENVIRONMENT ?? "unknown" }));
 
-  // 匿名デバイスID(handoff §5: アカウント作成を要求しない)。
+  // 匿名デバイスID(アカウント作成を要求しない)。
   // webhookはRevenueCatから来るので、この認証の対象外。
   app.use("/v1/sessions/*", deviceAuth);
   app.use("/v1/sessions", deviceAuth);

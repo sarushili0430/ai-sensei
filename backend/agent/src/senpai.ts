@@ -1,7 +1,7 @@
 import type { BoardStep } from "@ai-sensei/contract";
 import type { CurriculumLocale } from "@ai-sensei/curriculum";
 import { boardLessonSystemPrompt, conversationSystemPrompt } from "@ai-sensei/prompts";
-import type { SessionContext } from "./context.ts";
+import { type SessionContext, subjectOf } from "./context.ts";
 
 /**
  * 板書授業とフェーズ2「教え返し」をつなぐ、agent 側にしか置けないもの。
@@ -171,7 +171,7 @@ export function senpaiBoardLessonPrompt(input: SenpaiBoardLessonInput): string {
       allowed_topics: context.allowed_topics,
       remaining_seconds: input.remainingSeconds,
     },
-    context.locale,
+    { locale: context.locale, subject: subjectOf(context) },
   );
 }
 
@@ -231,6 +231,20 @@ function describeBoard(board: BoardStep["board"], locale: CurriculumLocale): str
           .filter((name): name is string => typeof name === "string");
         return names.length === 0 ? "" : ` [${names.join(" ")}]`;
       })()}`;
+    // 英語の板書。**例文と、そこで見せた焦点まで**を残す。
+    // 「例文を出した」だけだと、教え返しで何を聞き返せばいいか決められない。
+    case "sentence":
+      return [
+        `${label}: ${board.text}`,
+        board.gloss === undefined ? null : `(${board.gloss})`,
+        board.focus === undefined ? null : `[${board.focus}]`,
+      ]
+        .filter((part) => part !== null)
+        .join(" ");
+    case "compare":
+      return `${label}: ${board.title ?? board.columns.join(" / ")} — ${board.rows
+        .map((row) => row.join(" / "))
+        .join(" | ")}`;
     default:
       return null;
   }
@@ -291,6 +305,6 @@ export function senpaiConversationPrompt(input: SenpaiConversationInput): string
       lesson_recap: renderLessonRecap(input.lesson ?? [], locale),
       remaining_seconds: input.remainingSeconds,
     },
-    locale,
+    { locale, subject: subjectOf(input.context) },
   );
 }

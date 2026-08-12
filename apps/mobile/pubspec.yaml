@@ -15,7 +15,7 @@ dependencies:
   flutter_localizations:
     sdk: flutter
 
-  # 状態管理 / DI (handoff §5)
+  # 状態管理 / DI
   flutter_riverpod: ^3.0.0
   riverpod_annotation: ^4.0.0
 
@@ -72,8 +72,8 @@ dependencies:
   # 端末側はこれを描くだけなので、図の語彙が増えてもここは変わらない
   # (docs/wireframe_board_v2.html D-21)。
   flutter_svg: ^2.0.10
-  # 授業冒頭と自習室の短い一言は、同梱アセットだけを再生する。
-  # URLを渡さないので通信もTTS従量原価も発生しない(計画書§3-2 / §4-2)。
+  # 授業冒頭の短い一言は、同梱アセットだけを再生する。
+  # URLを渡さないので通信もTTS従量原価も発生しない(計画書§3-2)。
   just_audio: ^0.10.6
 
 dev_dependencies:
@@ -99,7 +99,7 @@ flutter:
     # README に置く。ディレクトリ指定なので、日英の片方を宣言し忘れない。
     - assets/audio/
   fonts:
-    # 丸ゴシック(handoff §7)。SIL OFL 1.1。
+    # 丸ゴシック。SIL OFL 1.1。
     # golden test はこのフォントを読み込んで描画するので、
     # ファイルが欠けるとテストが落ちる(= 気づける)。
     - family: ZenMaruGothic

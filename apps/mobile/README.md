@@ -18,7 +18,7 @@ lib/src/
 ```
 
 各featureの中は `presentation / application / domain / data` で分ける
-(codewithandrea方式・handoff §5)。
+(codewithandrea方式)。
 
 ## セットアップ
 

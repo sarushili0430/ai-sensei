@@ -103,6 +103,37 @@ void main() {
     );
   });
 
+  // 英語の板書。**数学とは1枝も重ならない**ので、見た目の回帰はここでしか捕まらない。
+  // `focus` の下線が引かれているか、対比表の2列が等分されているかを見る。
+  testWidgets('sentence要素(focus に下線。board-lesson.english.json と同じ文)', (
+    WidgetTester tester,
+  ) async {
+    await expectElementGolden(
+      tester,
+      const BoardElement.sentence(
+        text: 'I have lived here for ten years.',
+        gloss: '10年間ここに住んでいる(今も)',
+        focus: 'have lived',
+      ),
+      'sentence',
+    );
+  });
+
+  testWidgets('compare要素(2列の対比表)', (WidgetTester tester) async {
+    await expectElementGolden(
+      tester,
+      const BoardElement.compare(
+        title: '現在完了 と 過去形',
+        columns: <String>['現在完了', '過去形'],
+        rows: <List<String>>[
+          <String>['have + 過去分詞', '過去形'],
+          <String>['今とつながっている', '今のことは言っていない'],
+        ],
+      ),
+      'compare',
+    );
+  });
+
   // 縮小率70%を下回る、意図的に長すぎる式。フォールバック(横スクロール固定)を確認する。
   testWidgets('latex要素(実効幅を大きく超える。70%フロアのフォールバック)', (WidgetTester tester) async {
     await expectElementGolden(

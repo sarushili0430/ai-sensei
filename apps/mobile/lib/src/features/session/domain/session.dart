@@ -17,6 +17,12 @@ abstract class DetectedTopic with _$DetectedTopic {
     required String unit,
     required String topic,
 
+    /// チップに出す短い課程名。「中1」「数学I」「Algebra 2」。
+    ///
+    /// **サーバが計算したものをそのまま出す。** topic_id の接頭辞から
+    /// 端末側で引く作りにすると、接頭辞の対応表がここで4か所目になる。
+    required String label,
+
     /// 0..1。低いものは選択済みにせず、候補として並べるだけにする。
     required double confidence,
   }) = _DetectedTopic;

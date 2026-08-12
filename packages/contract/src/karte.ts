@@ -8,15 +8,16 @@ import { z } from "zod";
  *   - 「穴」は失点ではなく、これから埋まる場所として扱う。
  *   - 解答・解説はここに入らない(答えを教えないため)。
  *
- * 由来: handoff §4(c) 評価ルーブリック。
+ * 由来: 評価ルーブリック。
  */
 
 /**
  * topic_idの形。中身がカリキュラム内かは @ai-sensei/guardrail が照合する。
  *
- * 接頭辞は課程ごと。`M1`〜`MC` が日本の数学I〜C、`A1`(Algebra 1)・`GE`
- * (Geometry)・`A2`(Algebra 2)・`PC`(Precalculus)・`CL`(Calculus)・
- * `ST`(Statistics)が海外向けの課程。
+ * 接頭辞は課程ごと。`M1`〜`MC` が日本の高校数学(数学I〜C)、`J1`〜`J3` が
+ * 日本の中学数学(第1〜3学年)、`JE` が日本の中学英語(学年で分けない)、`E1`/`E2`/`L1` が日本の高校英語、`A1`(Algebra 1)・`GE`(Geometry)・
+ * `A2`(Algebra 2)・`PC`(Precalculus)・`CL`(Calculus)・`ST`(Statistics)が
+ * 海外向けの課程。
  *
  * **`@ai-sensei/curriculum` の `topicIdPattern` と同じ形にすること。**
  * contract は依存を持たない層なので参照できず、二重に書いている
@@ -24,7 +25,7 @@ import { z } from "zod";
  */
 export const topicIdSchema = z
   .string()
-  .regex(/^(M1|MA|M2|MB|M3|MC|A1|GE|A2|PC|CL|ST)-[A-Z0-9]+(?:-[A-Z0-9]+)*$/);
+  .regex(/^(M1|MA|M2|MB|M3|MC|A1|GE|A2|PC|CL|ST|J1|J2|J3|JE|E1|E2|L1)-[A-Z0-9]+(?:-[A-Z0-9]+)*$/);
 
 /**
  * 穴の深さ。点数ではなく「次にどれだけ効くか」の目安で、復習の優先順位に使う。

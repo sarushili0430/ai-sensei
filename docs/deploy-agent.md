@@ -2,7 +2,7 @@
 
 後輩AIの会話パイプライン(LiveKit Agents)を、手元の `pnpm dev` から**常駐するコンテナ**へ
 移すための手順。`backend/api`(Cloudflare Workers)は [`docs/deploy.md`](deploy.md)、
-言語選定の経緯は [ADR 0002](adr/0002-agent-runtime.md)。
+言語選定の経緯は [ADR 0002](adr.md#adr-0002)。
 
 | | develop | production |
 | --- | --- | --- |
@@ -21,7 +21,7 @@ agentが本番のルームのジョブを拾いうる(そのとき会話は成�
 ## 0. 何を動かすのか
 
 `backend/agent` はビルド手順を持たず、`node --experimental-strip-types` で `.ts` を
-直接実行する([ADR 0002](adr/0002-agent-runtime.md))。デプロイの実体は
+直接実行する([ADR 0002](adr.md#adr-0002))。デプロイの実体は
 **「Node 22のコンテナを1つ以上、常時起動しておく」**だけ。
 
 ワーカーはLiveKitへWebSocketで登録し、ジョブが割り当てられるのを待つ。
@@ -203,7 +203,7 @@ agentが読む環境変数は [`backend/agent/.env.example`](../backend/agent/.e
 会話の途中で気づくのがいちばん高くつくので、そう作ってある。
 
 - **`INTERNAL_API_TOKEN` は環境ごとに必ず別の値にする。** developのagentが本番の
-  `/complete` を叩けてしまう([ADR 0003](adr/0003-internal-api-auth.md))。
+  `/complete` を叩けてしまう([ADR 0003](adr.md#adr-0003))。
 - **LiveKit Cloud のホスティングは `LIVEKIT_URL` / `LIVEKIT_API_KEY` /
   `LIVEKIT_API_SECRET` を自分で注入する。** 自前で入れると食い違うことがあるので、
   そちらに載せるときは `--secrets-file` から3つを外してよい。
@@ -304,7 +304,7 @@ agentは**静かに壊れる**。アプリからは「後輩が来ない」「�
 ## まだやっていないこと
 
 - **実際のデプロイ。** ここに書いてあるのは手順で、まだ一度も流していない。
-  最初に確かめるのは、[ADR 0002](adr/0002-agent-runtime.md) が挙げていたとおり
+  最初に確かめるのは、[ADR 0002](adr.md#adr-0002) が挙げていたとおり
   **`prewarm`(Silero VADのロード)がコンテナで通ること**。`GET :8081/` が200に
   なれば通っている。
 - **オートスケールの調整。** いまは1レプリカ想定。同時セッション数が読めるのは

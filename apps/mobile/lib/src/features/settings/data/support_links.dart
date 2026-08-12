@@ -10,7 +10,7 @@ abstract final class SupportLinks {
   /// 利用規約(EULA)。自前のものが無ければ Apple の標準EULAのURLでよい。
   static const String termsUrl = String.fromEnvironment('TERMS_URL');
 
-  /// 不適切な質問の報告先。AI生成物を含むアプリの導線として要る(handoff §5)。
+  /// 不適切な質問の報告先。AI生成物を含むアプリの導線として要る。
   static const String supportEmail = String.fromEnvironment('SUPPORT_EMAIL');
 
   static bool get hasPrivacyPolicy => privacyPolicyUrl.isNotEmpty;
