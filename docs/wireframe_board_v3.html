@@ -511,6 +511,140 @@
     .radio::after { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--blue); }
     .os-handoff { padding: 12px; border-radius: 12px; background: var(--blue-soft); color: #23556f; font-size: 10px; }
 
+    .scene-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 22px;
+    }
+    .scene-toolbar > span { color: var(--muted); font-size: 12px; }
+    .scene-toolbar > span b { color: var(--ink); }
+    .scene-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+    .scene-card {
+      min-width: 0;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: rgba(255, 254, 250, .86);
+      box-shadow: 0 8px 30px rgba(30, 32, 36, .06);
+      transition: opacity .2s, transform .2s;
+    }
+    .scene-card.is-hidden { display: none; }
+    .scene-head { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 9px; margin-bottom: 12px; }
+    .scene-no {
+      display: grid;
+      place-items: center;
+      width: 34px;
+      height: 34px;
+      border-radius: 11px;
+      background: var(--ink);
+      color: #fff;
+      font: 800 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .scene-head b { display: block; font-size: 13px; line-height: 1.3; }
+    .scene-head small { display: block; color: var(--muted); font-size: 9px; }
+    .scene-card > p { margin: 12px 2px 2px; color: var(--muted); font-size: 11px; }
+    .scene-card > p b { color: var(--ink); }
+
+    .mini-phone {
+      position: relative;
+      min-height: 390px;
+      overflow: hidden;
+      padding: 16px 14px 14px;
+      border: 4px solid #24252a;
+      border-radius: 27px;
+      background: #f8f7f3;
+      box-shadow: 0 14px 30px rgba(30,31,34,.13);
+    }
+    .mini-phone::before {
+      content: "";
+      display: block;
+      width: 55px;
+      height: 14px;
+      margin: -9px auto 13px;
+      border-radius: 99px;
+      background: #24252a;
+    }
+    .mini-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+    .mini-top b { font-size: 14px; }
+    .mini-top span { color: var(--muted); font-size: 8.5px; }
+    .mini-phone button { width: 100%; border: 0; cursor: default; font-size: 10px; font-weight: 850; }
+    .mini-primary { min-height: 37px; border-radius: 11px !important; background: var(--ink); color: #fff; }
+    .mini-secondary { min-height: 34px; margin-top: 7px; border: 1px solid #d7d2c8 !important; border-radius: 11px !important; background: #fffefa; color: var(--ink); }
+    .mini-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 49px; padding: 9px 3px; border-bottom: 1px solid #e4e0d7; }
+    .mini-row b { font-size: 10.5px; }
+    .mini-row span { color: var(--muted); font-size: 8.5px; }
+    .later-link, .sample-link { display: block; margin-top: 10px; color: var(--muted); font-size: 9px; text-align: center; text-decoration: underline; }
+
+    .next-card, .today-plan {
+      padding: 14px;
+      border: 1px solid #d9d3c8;
+      border-radius: 15px;
+      background: #fffefa;
+      box-shadow: 0 3px 0 #ebe6db;
+    }
+    .next-card small, .today-plan small, .detected small, .earned small, .success-strip small, .hole-card small, .review-prompt small, .quote-card small { display: block; color: var(--blue); font-size: 8px; font-weight: 850; letter-spacing: .05em; }
+    .next-card b, .today-plan b, .detected b, .earned b, .success-strip b, .hole-card b, .review-prompt b, .quote-card b { display: block; margin: 5px 0; font-size: 12px; line-height: 1.45; }
+    .next-card span, .today-plan span, .detected span, .success-strip span, .hole-card span, .review-prompt span { display: block; color: var(--muted); font-size: 8.5px; }
+    .next-card button, .today-plan button { min-height: 34px; margin-top: 11px; border-radius: 10px; background: var(--blue); color: #fff; }
+
+    .photo-placeholder {
+      position: relative;
+      display: grid;
+      place-items: center;
+      height: 155px;
+      margin-bottom: 10px;
+      border-radius: 13px;
+      background: linear-gradient(135deg, #cfd3d5, #e9e7e1);
+      color: #74777a;
+      font-size: 11px;
+    }
+    .photo-placeholder::after { content: ""; position: absolute; inset: 23px 18px; border: 2px solid rgba(255,255,255,.9); border-radius: 9px; }
+    .photo-placeholder i { position: absolute; right: 8px; bottom: 8px; left: 8px; padding: 5px; border-radius: 7px; background: rgba(255,255,255,.85); font-size: 8px; font-style: normal; text-align: center; }
+    .detected { margin-bottom: 10px; padding: 11px; border: 1px solid #ddd8ce; border-radius: 12px; background: #fffefa; }
+
+    .waiting-mini, .celebrate-mini, .error-mini, .permission-mini, .paywall-mini, .empty-mini { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+    .waiting-mini > b, .celebrate-mini > b, .error-mini > b, .permission-mini > b, .paywall-mini > b, .empty-mini > b { margin: 12px 0 5px; font-size: 14px; }
+    .waiting-mini > p, .celebrate-mini > p, .error-mini > p, .permission-mini > p, .paywall-mini > p, .empty-mini > p { margin: 0 0 12px; color: var(--muted); font-size: 9px; }
+    .waiting-orbit { position: relative; display: grid; place-items: center; width: 74px; height: 74px; border-radius: 50%; background: var(--yellow-soft); }
+    .waiting-orbit span { font-weight: 900; }
+    .waiting-orbit i { position: absolute; inset: -6px; border: 2px solid transparent; border-top-color: var(--blue); border-radius: 50%; transform: rotate(25deg); }
+    .waiting-mini ol { width: 100%; margin: 8px 0 10px; padding: 0; list-style: none; text-align: left; }
+    .waiting-mini li { padding: 6px 10px; border-left: 2px solid #d4d0c7; color: var(--muted); font-size: 9px; }
+    .waiting-mini li.done { border-color: var(--green); color: var(--green); }
+    .waiting-mini li.active { border-color: var(--blue); color: var(--ink); font-weight: 800; }
+    .confetti { color: var(--blue); font-size: 20px; letter-spacing: 4px; }
+    .big-face { display: grid; place-items: center; width: 68px; height: 68px; margin-top: 8px; border-radius: 24px; background: var(--yellow-soft); font-size: 20px; font-weight: 900; transform: rotate(-3deg); }
+    .earned { width: 100%; margin: 4px 0 12px; padding: 10px; border-radius: 12px; background: var(--green-soft); text-align: left; }
+    .earned span { display: block; color: var(--green); font-size: 8.5px; }
+
+    .success-strip { padding: 12px; border-left: 4px solid var(--green); border-radius: 0 12px 12px 0; background: var(--green-soft); }
+    .success-strip small { color: var(--green); }
+    .hole-card { margin: 11px 0; padding: 12px; border: 1px solid #f1bfd1; border-radius: 12px; background: var(--pink-soft); }
+    .hole-card small { color: var(--pink); }
+    .review-prompt { min-height: 155px; padding: 20px 14px; border-radius: 15px; background: var(--board); color: var(--chalk); text-align: center; }
+    .review-prompt small, .review-prompt span { color: var(--chalk-dim); }
+    .review-prompt b { margin-top: 27px; font-size: 15px; }
+    .voice-ready { margin: 13px 0 6px; padding: 11px; border-radius: 12px; background: var(--blue); color: #fff; font-size: 10px; font-weight: 850; text-align: center; }
+    .report-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+    .report-stats span { padding: 10px; border-radius: 11px; background: #efede7; color: var(--muted); font-size: 8px; text-align: center; }
+    .report-stats b { display: block; color: var(--ink); font-size: 20px; }
+    .quote-card { margin: 10px 0; padding: 13px; border: 1px solid #ddd7cc; border-radius: 12px; background: #fffefa; }
+    .privacy-note { padding: 9px; border-radius: 9px; background: var(--blue-soft); color: #23556f !important; font-size: 8px !important; }
+
+    .error-symbol, .permission-icon, .empty-doodle { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 20px; font-size: 28px; }
+    .error-symbol { background: var(--pink-soft); color: var(--pink); }
+    .permission-icon { background: var(--blue-soft); }
+    .empty-doodle { width: 120px; background: var(--yellow-soft); color: #776500; font-size: 16px; letter-spacing: 8px; }
+    .permission-facts { width: 100%; margin-bottom: 10px; padding: 9px; border-radius: 11px; background: #efede7; text-align: left; }
+    .permission-facts span { display: block; padding: 3px 0; color: var(--muted); font-size: 8px; }
+    .permission-facts span::before { content: "✓ "; color: var(--green); font-weight: 900; }
+    .plus-badge { padding: 5px 9px; border-radius: 7px; background: var(--ink); color: var(--yellow); font: 900 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; }
+    .plan-price { width: 100%; margin: 5px 0 12px; padding: 12px; border: 1px solid #ddd7cc; border-radius: 12px; background: #fffefa; text-align: left; }
+    .plan-price b { display: block; font-size: 11px; }
+    .plan-price span { color: var(--muted); font-size: 8px; }
+
     .matrix { overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: #fffefa; }
     .matrix-row { display: grid; grid-template-columns: 1.2fr .8fr 1.3fr; border-bottom: 1px solid var(--line); }
     .matrix-row:last-child { border-bottom: 0; }
@@ -539,6 +673,7 @@
       .matrix-row { grid-template-columns: 1fr; padding: 10px 0; }
       .matrix-row > * { padding: 4px 14px; }
       .matrix-head { display: none; }
+      .scene-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
 
     @media (max-width: 540px) {
@@ -550,6 +685,8 @@
       .segmented { display: grid; grid-template-columns: repeat(2, 1fr); }
       .phone { width: 360px; height: 730px; max-width: calc(100vw - 44px); }
       .rules { grid-template-columns: 1fr; }
+      .scene-toolbar { align-items: stretch; flex-direction: column; }
+      .scene-grid { grid-template-columns: 1fr; }
       .topbar-inner { min-height: 52px; }
     }
   </style>
@@ -559,7 +696,7 @@
     <div class="page topbar-inner">
       <div class="brand"><span class="brand-mark">カ</span>カタルテ <span class="version">UI DIRECTION V3</span></div>
       <nav class="jump" aria-label="ページ内ナビゲーション">
-        <a href="#lesson">授業</a><a href="#settings">設定</a><a href="#scope">実装範囲</a><a href="#rules">原則</a>
+        <a href="#lesson">授業</a><a href="#journey">全場面</a><a href="#settings">設定</a><a href="#scope">実装範囲</a><a href="#rules">原則</a>
       </nav>
     </div>
   </header>
@@ -568,10 +705,10 @@
     <div class="page hero">
       <p class="eyebrow">From wireframe board v2 to product-ready v3</p>
       <h1>黒板に集中できる。<br>迷わず、自分の番がわかる。</h1>
-      <p class="hero-lede">v2の黒板・紙の問題文・ターン制を残しながら、授業中の情報量を整え、設定画面まで同じ思想でつないだ改善案。</p>
+      <p class="hero-lede">v2の黒板・紙の問題文・ターン制を残しながら、授業前から復習、計画、親レポート、設定まで、24の状態を同じ思想でつないだ改善案。</p>
       <div class="hero-tags">
         <span class="hero-tag">黒板が主役</span><span class="hero-tag">状態ごとに主操作は1つ</span>
-        <span class="hero-tag">日本語で迷わない</span><span class="hero-tag">設定は目的別</span>
+        <span class="hero-tag">日本語で迷わない</span><span class="hero-tag">設定は目的別</span><span class="hero-tag">24状態を比較</span>
       </div>
     </div>
 
@@ -599,9 +736,12 @@
           <div class="lab-toolbar">
             <span class="lab-title">授業状態を切り替える</span>
             <div class="segmented" role="tablist" aria-label="授業状態">
+              <button type="button" data-lesson="start" aria-selected="false">授業開始</button>
               <button type="button" data-lesson="listen" aria-selected="true">先輩が説明中</button>
               <button type="button" data-lesson="turn" aria-selected="false">あなたの番</button>
               <button type="button" data-lesson="hint" aria-selected="false">ヒント確認</button>
+              <button type="button" data-lesson="retry" aria-selected="false">言い直し</button>
+              <button type="button" data-lesson="finish" aria-selected="false">授業完了</button>
             </div>
           </div>
           <div class="lab-grid">
@@ -662,10 +802,159 @@
       </div>
     </section>
 
+    <section id="journey">
+      <div class="page">
+        <div class="section-head">
+          <div><span class="section-no">02 / SCENE CATALOG</span><h2>授業の前後も、同じ密度で考える</h2></div>
+          <p class="section-copy">「うまくいっている通常時」だけでは足りない。開始前、待機、失敗、再訪、共有までを並べ、場面ごとの主役と主操作を決める。</p>
+        </div>
+        <div class="scene-toolbar">
+          <span><b>12場面</b>を絞り込む</span>
+          <div class="segmented" role="tablist" aria-label="場面の分類">
+            <button type="button" data-scene-filter="all" aria-selected="true">すべて</button>
+            <button type="button" data-scene-filter="before" aria-selected="false">授業前</button>
+            <button type="button" data-scene-filter="after" aria-selected="false">授業後</button>
+            <button type="button" data-scene-filter="return" aria-selected="false">再訪</button>
+            <button type="button" data-scene-filter="edge" aria-selected="false">失敗・境界</button>
+          </div>
+        </div>
+        <div class="scene-grid">
+          <article class="scene-card" data-scene="before">
+            <div class="scene-head"><span class="scene-no">01</span><div><b>ホーム — 次にやること</b><small>再開時</small></div><span class="state refine">改善</span></div>
+            <div class="mini-phone home-mini">
+              <div class="mini-top"><b>こんばんは</b><span>12日つづいた</span></div>
+              <div class="next-card"><small>きょうの次の一歩</small><b>昨日の「加法定理」を説明し直す</b><span>約3分 · 穴が1つ</span><button>続きからはじめる</button></div>
+              <div class="mini-row"><b>新しい問題を教わる</b><span>写真を撮る ›</span></div>
+              <div class="mini-row"><b>今週の計画</b><span>今日 2つ ›</span></div>
+            </div>
+            <p>数字のダッシュボードではなく、<b>次の行動を1枚目</b>にする。新規撮影は常に残す。</p>
+          </article>
+
+          <article class="scene-card" data-scene="before">
+            <div class="scene-head"><span class="scene-no">02</span><div><b>撮影 — 問題を確認</b><small>解析後</small></div><span class="state refine">改善</span></div>
+            <div class="mini-phone capture-mini">
+              <div class="mini-top"><b>この問題で合ってる？</b><span>撮り直す</span></div>
+              <div class="photo-placeholder"><span>写真</span><i>二次関数の問題を検出</i></div>
+              <div class="detected"><small>読み取った問題</small><b>y = x² − 4x + 3 の最小値を求めよ</b><span>二次関数 · 高校数学I</span></div>
+              <button class="mini-primary">この問題を教わる</button>
+            </div>
+            <p>解析結果を先に確認し、単元と問題文を同時に訂正できる。<b>間違った問題で授業を始めない</b>。</p>
+          </article>
+
+          <article class="scene-card" data-scene="before edge">
+            <div class="scene-head"><span class="scene-no">03</span><div><b>接続 — 席を用意中</b><small>待機</small></div><span class="state new">追加案</span></div>
+            <div class="mini-phone waiting-mini">
+              <div class="waiting-orbit"><span>先</span><i></i></div>
+              <b>先輩が板書を用意しています</b><p>問題は読み取れました。もうすぐ始まります。</p>
+              <ol><li class="done">問題を確認</li><li class="active">授業につなぐ</li><li>音声を準備</li></ol>
+              <button class="mini-secondary">やめる</button>
+            </div>
+            <p>不定のスピナーをやめ、今どこまで進んだかを3段階で表示。退出も隠さない。</p>
+          </article>
+
+          <article class="scene-card" data-scene="after">
+            <div class="scene-head"><span class="scene-no">04</span><div><b>授業完了 — 祝福</b><small>直後</small></div><span class="state refine">改善</span></div>
+            <div class="mini-phone celebrate-mini">
+              <div class="confetti">✦　·　✦　·　✦</div><div class="big-face">先</div>
+              <b>自分の言葉で言えたね</b><p>平方完成から最小値を説明できました。</p>
+              <div class="earned"><small>今日できたこと</small><span>✓ 頂点と最小値を結びつけた</span></div>
+              <button class="mini-primary">カルテを見る</button>
+            </div>
+            <p>抽象的な称賛ではなく、<b>何ができたか</b>を1文だけ返してからカルテへ送る。</p>
+          </article>
+
+          <article class="scene-card" data-scene="after return">
+            <div class="scene-head"><span class="scene-no">05</span><div><b>カルテ — できた／穴</b><small>授業結果</small></div><span class="state refine">改善</span></div>
+            <div class="mini-phone karte-mini">
+              <div class="mini-top"><b>今日のカルテ</b><span>二次関数</span></div>
+              <div class="success-strip"><small>自分で説明できた</small><b>平方完成と頂点</b><span>「二乗部分が0のときが一番小さい」</span></div>
+              <div class="hole-card"><small>あとで言い直す</small><b>グラフとの対応</b><span>1日後に復習</span></div>
+              <button class="mini-primary">3分だけ復習する</button>
+            </div>
+            <p>成功と穴を同じ赤点評価にしない。<b>本人の言葉</b>を中心に置き、穴には次の日時を出す。</p>
+          </article>
+
+          <article class="scene-card" data-scene="return">
+            <div class="scene-head"><span class="scene-no">06</span><div><b>復習 — 思い出して話す</b><small>1・3・7日後</small></div><span class="state refine">改善</span></div>
+            <div class="mini-phone review-mini">
+              <div class="mini-top"><b>1分で思い出す</b><span>1 / 2</span></div>
+              <div class="review-prompt"><small>前回の問題</small><b>なぜ最小値が −1 になる？</b><span>板書は答えるまで畳んでおく</span></div>
+              <div class="voice-ready">●　話して説明する</div>
+              <button class="mini-secondary">先輩にヒントを聞く</button>
+              <span class="later-link">今日はあとで</span>
+            </div>
+            <p>復習の主役は「答えを見る」ではなく、<b>思い出して話す</b>。逃げ道も同じ画面に残す。</p>
+          </article>
+
+          <article class="scene-card" data-scene="return">
+            <div class="scene-head"><span class="scene-no">07</span><div><b>計画 — 今日を先頭に</b><small>毎日の再訪</small></div><span class="state refine">改善</span></div>
+            <div class="mini-phone plan-mini">
+              <div class="mini-top"><b>計画</b><span>試験まで42日</span></div>
+              <div class="today-plan"><small>きょう · 11/12</small><b>三角関数 例題12〜18</b><span>□ 昨日の穴を1つ　□ 新しい問題</span><button>最初の項目をはじめる</button></div>
+              <div class="mini-row"><b>水曜日</b><span>三角関数 演習 ›</span></div><div class="mini-row"><b>木曜日</b><span>数列 例題1〜9 ›</span></div>
+              <span class="later-link">先輩と組み直す</span>
+            </div>
+            <p>全日程を同じ重さで並べず、今日を固定。進捗率ではなく<b>次の具体的な項目</b>を出す。</p>
+          </article>
+
+          <article class="scene-card" data-scene="after return">
+            <div class="scene-head"><span class="scene-no">08</span><div><b>親レポート — 共有前確認</b><small>月末</small></div><span class="state refine">改善</span></div>
+            <div class="mini-phone report-mini">
+              <div class="mini-top"><b>今月のレポート</b><span>11/01〜11/30</span></div>
+              <div class="report-stats"><span><b>12</b>日つづいた</span><span><b>7</b>個の穴が埋まった</span></div>
+              <div class="quote-card"><small>本人の言葉</small><b>「Dが正なら、x軸と2回交わる」</b></div>
+              <p class="privacy-note">宛先は保存しません。内容を確認してからメールアプリへ移ります。</p>
+              <button class="mini-primary">内容を確認して共有</button>
+            </div>
+            <p>親アカウントは作らない。送信前に内容とプライバシーを明示し、<b>本人が最終操作</b>を行う。</p>
+          </article>
+
+          <article class="scene-card" data-scene="edge">
+            <div class="scene-head"><span class="scene-no">09</span><div><b>通信切断 — 戻れる失敗</b><small>授業中</small></div><span class="state new">追加案</span></div>
+            <div class="mini-phone error-mini">
+              <div class="error-symbol">↻</div><b>先輩との接続が切れました</b><p>板書と経過は端末に残っています。30秒以内なら同じ授業へ戻れます。</p>
+              <button class="mini-primary">もう一度つなぐ</button><button class="mini-secondary">ここまでをカルテに残す</button>
+              <span class="later-link">ホームへ戻る</span>
+            </div>
+            <p>「エラーが発生しました」で終わらせず、<b>保持されるもの・押し直せる時間・代替出口</b>を示す。</p>
+          </article>
+
+          <article class="scene-card" data-scene="edge before">
+            <div class="scene-head"><span class="scene-no">10</span><div><b>権限 — 必要な瞬間だけ</b><small>カメラ／マイク</small></div><span class="state refine">改善</span></div>
+            <div class="mini-phone permission-mini">
+              <div class="permission-icon">🎙</div><b>説明を聞くためにマイクを使います</b><p>先輩へ送るのは授業中の音声だけです。許可は端末の設定からいつでも変更できます。</p>
+              <div class="permission-facts"><span>録音ファイルを端末に保存しない</span><span>授業を閉じるとマイクも止まる</span></div>
+              <button class="mini-primary">マイクを許可する</button><button class="mini-secondary">今はしない</button>
+            </div>
+            <p>OSダイアログの直前に、<b>何のため・いつ止まる・保存するか</b>を短く説明する。</p>
+          </article>
+
+          <article class="scene-card" data-scene="edge after">
+            <div class="scene-head"><span class="scene-no">11</span><div><b>無料枠終了 — 文脈を保つ</b><small>課金境界</small></div><span class="state refine">改善</span></div>
+            <div class="mini-phone paywall-mini">
+              <div class="plus-badge">PLUS</div><b>今日の授業はここまで使えます</b><p>カルテと復習はそのまま残ります。Plusでは、明日以降も毎日先輩に教われます。</p>
+              <div class="plan-price"><b>月額プラン</b><span>価格はストアで確認</span></div>
+              <button class="mini-primary">Plusの内容を見る</button><button class="mini-secondary">無料のまま続ける</button>
+            </div>
+            <p>失ったものではなく、<b>無料で残るもの</b>を先に伝える。閉じる選択を弱くしすぎない。</p>
+          </article>
+
+          <article class="scene-card" data-scene="edge return">
+            <div class="scene-head"><span class="scene-no">12</span><div><b>空の状態 — 行き先を作る</b><small>初回・データなし</small></div><span class="state new">追加案</span></div>
+            <div class="mini-phone empty-mini">
+              <div class="empty-doodle">○ △ ∫</div><b>まだカルテはありません</b><p>問題を1つ教わると、できたことと復習する穴がここに残ります。</p>
+              <button class="mini-primary">最初の問題を撮る</button><span class="sample-link">サンプルのカルテを見る</span>
+            </div>
+            <p>空白を説明文だけにせず、<b>最初の価値が分かる見本</b>と次の操作を用意する。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
     <section id="settings">
       <div class="page">
         <div class="section-head">
-          <div><span class="section-no">02 / SETTINGS</span><h2>設定画面 v3</h2></div>
+          <div><span class="section-no">03 / SETTINGS</span><h2>設定画面 v3</h2></div>
           <p class="section-copy">現状の学年・通知・契約・規約・端末IDは残す。並べ方を「実装の都合」ではなく、利用者が探す目的へ変える。</p>
         </div>
         <div class="lab">
@@ -676,6 +965,8 @@
               <button type="button" data-settings="learning" aria-selected="false">学習</button>
               <button type="button" data-settings="notifications" aria-selected="false">通知</button>
               <button type="button" data-settings="accessibility" aria-selected="false">音声と表示</button>
+              <button type="button" data-settings="subscription" aria-selected="false">契約</button>
+              <button type="button" data-settings="support" aria-selected="false">サポート</button>
             </div>
           </div>
           <div class="lab-grid">
@@ -726,6 +1017,19 @@
                       <div class="setting-group"><div class="choice"><span>読み上げ中の文を表示</span><span class="switch on"></span></div><div class="choice"><span>文字サイズ</span><span class="setting-value">端末の設定 ›</span></div><div class="choice"><span>動きを少なくする</span><span class="switch"></span></div></div>
                       <p class="os-handoff">読み上げ速度と字幕は新規提案。文字サイズ・動きの軽減は端末設定を尊重する実装を優先します。</p>
                     </div>
+
+                    <div class="settings-detail" data-settings-panel="subscription">
+                      <span class="detail-back">‹ 設定</span><h4 class="detail-title">カタルテ Plus</h4>
+                      <div class="detail-card"><small>現在のプラン</small><b style="font-size:18px;margin-top:4px">無料プラン</b><p>カルテと復習は引き続き使えます。</p></div>
+                      <div class="setting-group"><div class="setting-row"><span class="setting-icon">★</span><span class="setting-copy"><b>Plusの内容を見る</b><span>毎日の授業・学習計画・親レポート</span></span><i class="chev">›</i></div><div class="setting-row"><span class="setting-icon">↻</span><span class="setting-copy"><b>購入を復元</b><span>以前購入したプランを確認</span></span><i class="chev">›</i></div></div>
+                      <p class="os-handoff">契約状態、管理、復元を一か所に集約。価格や更新日はストアの事実を表示します。</p>
+                    </div>
+
+                    <div class="settings-detail" data-settings-panel="support">
+                      <span class="detail-back">‹ 設定</span><h4 class="detail-title">ヘルプとアプリ情報</h4>
+                      <div class="setting-group"><div class="setting-row"><span class="setting-icon">!</span><span class="setting-copy"><b>先輩の説明を報告</b><span>おかしかった板書や回答を知らせる</span></span><i class="chev">›</i></div><div class="setting-row"><span class="setting-icon">?</span><span class="setting-copy"><b>問い合わせ</b><span>困っていることをメールで送る</span></span><i class="chev">›</i></div><div class="setting-row"><span class="setting-icon">§</span><span class="setting-copy"><b>規約とプライバシー</b><span>利用規約・プライバシーポリシー</span></span><i class="chev">›</i></div></div>
+                      <div class="detail-card" style="margin-top:10px"><b>アプリ情報</b><div class="choice"><span>バージョン</span><span class="setting-value">0.1.0 (1)</span></div><div class="choice"><span>サポートID</span><span class="setting-value">タップしてコピー</span></div></div>
+                    </div>
                   </div>
                   <footer class="settings-bottom"><span class="nav-item"><b>⌂</b>ホーム</span><span class="nav-item"><b>□</b>計画</span><span class="nav-item active"><b>⚙</b>設定</span></footer>
                 </div>
@@ -748,7 +1052,7 @@
     <section id="scope">
       <div class="page">
         <div class="section-head">
-          <div><span class="section-no">03 / SCOPE</span><h2>実装へ移すときの境界</h2></div>
+          <div><span class="section-no">04 / SCOPE</span><h2>実装へ移すときの境界</h2></div>
           <p class="section-copy">見た目だけの変更と、新しい仕様を分離する。最初のPRで全部を実装しない。</p>
         </div>
         <div class="matrix">
@@ -757,6 +1061,9 @@
           <div class="matrix-row"><b>学年・通知・契約・サポートの再編</b><span class="state refine">既存を改善</span><span>機能を増やさず情報設計を直せる</span></div>
           <div class="matrix-row"><b>OSの言語・文字サイズへの導線</b><span class="state keep">既存を尊重</span><span>状態の二重管理を避ける</span></div>
           <div class="matrix-row"><b>読み上げ速度・字幕・効果音</b><span class="state new">新規提案</span><span>保存先と音声制御の仕様決めが必要</span></div>
+          <div class="matrix-row"><b>接続待機・再接続・権限前説明</b><span class="state new">新規提案</span><span>異常時とOSダイアログ前の状態設計が必要</span></div>
+          <div class="matrix-row"><b>ホームの「次の一歩」</b><span class="state refine">既存を改善</span><span>既存の復習・撮影・計画導線を優先順位づけする</span></div>
+          <div class="matrix-row"><b>空状態とサンプル</b><span class="state new">新規提案</span><span>初回ユーザーが価値を理解できる見本が必要</span></div>
           <div class="matrix-row"><b>親アカウント</b><span class="state keep">追加しない</span><span>既存の「親アカウントを作らない」方針を維持</span></div>
         </div>
       </div>
@@ -765,7 +1072,7 @@
     <section id="rules">
       <div class="page">
         <div class="section-head">
-          <div><span class="section-no">04 / RULES</span><h2>v3で守る6原則</h2></div>
+          <div><span class="section-no">05 / RULES</span><h2>v3で守る6原則</h2></div>
           <p class="section-copy">画面を増やしても崩れないように、具体的な実装ルールへ落とす。</p>
         </div>
         <div class="rules">
@@ -785,6 +1092,12 @@
   <script>
     (() => {
       const lessonData = {
+        start: {
+          meta: '授業をはじめる · 00:00', meter: '4%', title: '先輩が待っています',
+          text: '問題を確認したら、今日できるようになりたいことを決めよう。', action: 'この問題ではじめる', actionClass: 'turn', dot: false,
+          turn: false, folded: false,
+          board: `<div class="board-kicker">今日のゴール</div><h3>最小値を「式」と「グラフ」の両方で説明する</h3><p class="chalk-line dim">① 問題を確認</p><p class="chalk-line dim">② 先輩の説明を聞く</p><p class="chalk-line dim">③ 自分の言葉で教え返す</p><p class="chalk-line chalk-box"><strong>約15分</strong></p>`
+        },
         listen: {
           meta: '先輩が説明中 · 12:08', meter: '42%', title: '先輩が説明しています',
           text: '「平方完成すると、頂点が見えてくるよ」', action: 'わかった。次へ', actionClass: '', dot: true,
@@ -802,6 +1115,18 @@
           text: '「二乗した数は、いちばん小さくていくつ？」', action: 'もう一度説明する', actionClass: 'hint', dot: false,
           turn: false, folded: false,
           board: `<div class="board-kicker">言いにくかったところだけ戻る</div><h3>二乗した数の最小は？</h3><p class="chalk-line">3² = 9　 1² = 1</p><p class="chalk-line">0² = <strong>0</strong></p><p class="chalk-line dim">マイナスを二乗しても 0 より小さくならない</p><p class="chalk-line chalk-box"><span class="chalk-underline">(x − 2)² ≥ 0</span></p>`
+        },
+        retry: {
+          meta: 'もう一度説明 · 14:03', meter: '76%', title: '言い直せています',
+          text: '「二乗部分が0のとき」と言えた。あと一歩だよ。', action: '説明できた', actionClass: 'turn', dot: false,
+          turn: true, folded: true,
+          board: `<div class="board-kicker">言い直すための手がかり</div><h3>y = (x − 2)² − 1</h3><p class="chalk-line"><span class="chalk-underline">(x − 2)² ≥ 0</span></p><p class="chalk-line">だから y ≥ −1</p><p class="chalk-line dim">自分の言葉：二乗部分が0のとき…</p><p class="chalk-line chalk-box"><strong>続きを話してみよう</strong></p>`
+        },
+        finish: {
+          meta: '授業完了 · 15:24', meter: '100%', title: '今日の授業は完了です',
+          text: 'できたことと、あとで言い直すことをカルテにまとめました。', action: '今日のカルテを見る', actionClass: 'hint', dot: false,
+          turn: false, folded: true,
+          board: `<div class="board-kicker">今日のまとめ</div><h3>平方完成 → 頂点 → 最小値</h3><p class="chalk-line">y = (x − 2)² − 1</p><p class="chalk-line"><strong>できた：</strong>式から最小値を説明</p><p class="chalk-line dim">あとで：グラフとの対応を言い直す</p><p class="chalk-line chalk-box"><span class="chalk-underline">最小値 −1（x = 2）</span></p>`
         }
       };
 
@@ -841,6 +1166,17 @@
         settingButtons.forEach((item) => item.setAttribute('aria-selected', String(item === button)));
         settingPanels.forEach((panel) => panel.classList.toggle('is-active', panel.dataset.settingsPanel === name));
         settingsHeader.textContent = name === 'overview' ? '設定' : '';
+      }));
+
+      const sceneButtons = [...document.querySelectorAll('[data-scene-filter]')];
+      const scenes = [...document.querySelectorAll('[data-scene]')];
+      sceneButtons.forEach((button) => button.addEventListener('click', () => {
+        const filter = button.dataset.sceneFilter;
+        sceneButtons.forEach((item) => item.setAttribute('aria-selected', String(item === button)));
+        scenes.forEach((scene) => {
+          const categories = scene.dataset.scene.split(/\s+/);
+          scene.classList.toggle('is-hidden', filter !== 'all' && !categories.includes(filter));
+        });
       }));
     })();
   </script>
