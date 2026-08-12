@@ -589,4 +589,188 @@ export const PROBLEMS = [
       return { ok: true, why: `x=2 と y=1` };
     },
   },
+
+  // ---- 「重ね合わせで書けるか」を試すだけの8問 ----
+  // **ここには新しい語彙を1つも足していない。**いまある語彙の組み合わせだけで
+  // 届くのか、それとも語彙が要るのかを、こちらの予想抜きで測る。
+  {
+    id: 'tetra',
+    unit: '数A 空間図形',
+    tag: '正四面体',
+    probe: true,
+    prompt: '正四面体ABCDの見取図をかいて。',
+    check(r) {
+      const names = ['A', 'B', 'C', 'D'].filter((n) => r.pts[n]);
+      if (names.length < 4) return { ok: false, why: `頂点が ${names.length} 個` };
+      const segs = r.draws.filter((d) => d.t === 'seg' && d.names);
+      const pairs = new Set(segs.map((s) => [...s.names].sort().join('')));
+      const want = ['AB', 'AC', 'AD', 'BC', 'BD', 'CD'];
+      const miss = want.filter((w) => !pairs.has(w));
+      if (miss.length) return { ok: false, why: `辺が足りない: ${miss.join(',')}` };
+      if (!segs.some((s) => s.dash)) return { ok: false, why: '隠れ線(破線)が無い' };
+      return { ok: true, why: '4頂点・6辺・隠れ線あり' };
+    },
+  },
+  {
+    id: 'cone',
+    unit: '数A / 数III',
+    tag: '円錐',
+    probe: true,
+    prompt: '底面の半径2、高さ4の円錐の見取図をかいて。',
+    check(r) {
+      const top = r.draws.find((d) => d.revolveTop);
+      if (!top) return { ok: false, why: '回転体になっていない' };
+      const caps = r.draws.filter((d) => d.cap);
+      if (!caps.length) return { ok: false, why: '底面の円が無い' };
+      const rad = Math.max(...caps.map((c) => Math.max(c.rx, c.ry)));
+      if (Math.abs(rad - 2) > 0.05) return { ok: false, why: `底面の半径が ${rad.toFixed(2)}(2 のはず)` };
+      const xs = top.ps.map((p) => p.x);
+      const h = Math.max(...xs) - Math.min(...xs);
+      if (Math.abs(h - 4) > 0.05) return { ok: false, why: `高さが ${h.toFixed(2)}(4 のはず)` };
+      // 母線が直線か(円錐なら輪郭は直線)
+      const a = top.ps[0], b = top.ps[top.ps.length - 1], m = top.ps[Math.floor(top.ps.length / 2)];
+      const dev = Math.abs((b.x - a.x) * (m.y - a.y) - (b.y - a.y) * (m.x - a.x)) / Math.hypot(b.x - a.x, b.y - a.y);
+      if (dev > 0.03) return { ok: false, why: `輪郭が直線でない(ずれ ${dev.toFixed(3)})` };
+      return { ok: true, why: '半径2・高さ4・輪郭は直線' };
+    },
+  },
+  {
+    id: 'cut',
+    unit: '数A 図形の性質',
+    tag: '立体の切断面',
+    probe: true,
+    prompt: '直方体ABCD-EFGHを、辺AB、BC、BFのそれぞれの中点を通る平面で切る。切り口を図示して。',
+    check(r) {
+      const box = r.draws.find((d) => d.t === 'box3');
+      if (!box) return { ok: false, why: '直方体が無い' };
+      const poly = r.draws.filter((d) => d.t === 'poly' && d.ps.length === 3);
+      if (!poly.length) return { ok: false, why: '三角形の切り口が無い' };
+      // 切り口の頂点が、直方体の辺の上に乗っているか
+      const vs = box.labels.map((n) => r.pts[n]);
+      const onEdge = (p) => vs.some((u) => vs.some((v) => {
+        if (u === v) return false;
+        const cr = Math.abs((v.x - u.x) * (p.y - u.y) - (v.y - u.y) * (p.x - u.x));
+        const len = Math.hypot(v.x - u.x, v.y - u.y) || 1;
+        const t = ((p.x - u.x) * (v.x - u.x) + (p.y - u.y) * (v.y - u.y)) / (len * len);
+        return cr / len < 0.05 && t > 0.02 && t < 0.98;
+      }));
+      const bad = poly[0].ps.filter((p) => !onEdge(p));
+      if (bad.length) return { ok: false, why: `切り口の頂点 ${bad.length} 個が辺の上にない` };
+      return { ok: true, why: '切り口の3頂点すべてが辺の上' };
+    },
+  },
+  {
+    id: 'vecsum',
+    unit: '数C ベクトル',
+    tag: 'ベクトルの和(平行四辺形)',
+    probe: true,
+    prompt: '2つのベクトル a と b の和を、平行四辺形をつくって図示して。',
+    check(r) {
+      const vs = r.draws.filter((d) => d.t === 'vec');
+      if (vs.length < 3) return { ok: false, why: `矢印が ${vs.length} 本(a, b, a+b で3本ほしい)` };
+      // 同じ始点から出る3本を探し、1本が他の2本の和になっているか
+      for (const o of vs) {
+        const same = vs.filter((v) => Math.hypot(v.a.x - o.a.x, v.a.y - o.a.y) < 1e-6);
+        if (same.length < 3) continue;
+        for (const s of same) {
+          const rest = same.filter((v) => v !== s);
+          for (let i = 0; i < rest.length; i++) for (let j = i + 1; j < rest.length; j++) {
+            const sx = (rest[i].b.x - o.a.x) + (rest[j].b.x - o.a.x) + o.a.x;
+            const sy = (rest[i].b.y - o.a.y) + (rest[j].b.y - o.a.y) + o.a.y;
+            if (Math.hypot(s.b.x - sx, s.b.y - sy) < 1e-6) {
+              return { ok: true, why: `${s.names.join('')} = ${rest[i].names.join('')} + ${rest[j].names.join('')}` };
+            }
+          }
+        }
+      }
+      return { ok: false, why: '和になっている矢印が無い(平行四辺形が閉じていない)' };
+    },
+  },
+  {
+    id: 'proj',
+    unit: '数C ベクトル',
+    tag: '正射影(内積)',
+    probe: true,
+    prompt: 'ベクトルOAからベクトルOBへ下ろした垂線の足をHとする。正射影を説明する図をかいて。',
+    check(r) {
+      const { O, A, B, H } = r.pts;
+      if (!O || !A || !B || !H) return { ok: false, why: 'O,A,B,H が足りない' };
+      // H が直線 OB 上にあるか
+      const cr = Math.abs((B.x - O.x) * (H.y - O.y) - (B.y - O.y) * (H.x - O.x));
+      if (cr / (Math.hypot(B.x - O.x, B.y - O.y) || 1) > 1e-4) return { ok: false, why: 'H が OB 上にない' };
+      // AH ⊥ OB か
+      const dot = (A.x - H.x) * (B.x - O.x) + (A.y - H.y) * (B.y - O.y);
+      const n = Math.hypot(A.x - H.x, A.y - H.y) * Math.hypot(B.x - O.x, B.y - O.y);
+      if (Math.abs(dot / (n || 1)) > 1e-4) return { ok: false, why: `AH が OB に垂直でない(cos=${(dot / n).toFixed(3)})` };
+      return { ok: true, why: 'H は OB 上、AH ⊥ OB' };
+    },
+  },
+  {
+    id: 'inverse',
+    unit: '数III 逆関数',
+    tag: '逆関数(y=x 対称)',
+    probe: true,
+    prompt: 'y = e^x と、その逆関数 y = log x のグラフが直線 y = x について対称であることを図示して。',
+    check(r) {
+      const cs = r.draws.filter((d) => d.t === 'curve');
+      if (cs.length < 3) return { ok: false, why: `曲線・直線が ${cs.length} 本(2曲線 + y=x で3本ほしい)` };
+      // y=x を1本見つける
+      const diag = cs.find((c) => c.ps.every((p) => Math.abs(p.x - p.y) < 1e-6));
+      if (!diag) return { ok: false, why: 'y = x が無い' };
+      const others = cs.filter((c) => c !== diag);
+      // 片方の点を (x,y)->(y,x) にしたとき、もう片方に乗るか
+      for (const u of others) for (const v of others) {
+        if (u === v) continue;
+        const hit = u.ps.filter((p) => v.ps.some((q) => Math.hypot(q.x - p.y, q.y - p.x) < 0.06)).length;
+        if (hit > u.ps.length * 0.5) return { ok: true, why: `2曲線が y=x について対称(${hit}/${u.ps.length} 点で一致)` };
+      }
+      return { ok: false, why: '2曲線が y=x について対称になっていない' };
+    },
+  },
+  {
+    id: 'piechart',
+    unit: 'データ',
+    tag: '円グラフ',
+    probe: true,
+    prompt: '好きな教科のアンケート結果(数学40%、英語30%、国語20%、その他10%)を円グラフで表して。',
+    check(r) {
+      // 扇形が4つ、中心角が 144/108/72/36 度になっているか
+      const wedges = r.draws.filter((d) => d.t === 'poly' && d.fill);
+      const arcs = r.draws.filter((d) => d.t === 'arc');
+      if (wedges.length < 4 && arcs.length < 4) {
+        return { ok: false, why: `扇形が ${Math.max(wedges.length, arcs.length)} 個(4個ほしい)` };
+      }
+      const want = [144, 108, 72, 36];
+      const got = arcs.map((a) => {
+        const t1 = Math.atan2(a.a.y - a.o.y, a.a.x - a.o.x), t2 = Math.atan2(a.b.y - a.o.y, a.b.x - a.o.x);
+        return Math.abs(((t2 - t1) * 180 / Math.PI + 360) % 360);
+      }).sort((x, y) => y - x);
+      if (got.length < 4) return { ok: false, why: '中心角を測れる扇形が4つ無い' };
+      const bad = want.filter((w, i) => Math.abs(got[i] - w) > 1);
+      if (bad.length) return { ok: false, why: `中心角が ${got.slice(0, 4).map((v) => v.toFixed(0)).join('/')}(144/108/72/36 のはず)` };
+      return { ok: true, why: '中心角 144/108/72/36' };
+    },
+  },
+  {
+    id: 'linechart',
+    unit: 'データ',
+    tag: '折れ線グラフ',
+    probe: true,
+    prompt: 'ある店の月別売上(1月10, 2月14, 3月12, 4月18, 5月16)を折れ線グラフで表して。',
+    check(r) {
+      const want = [[1, 10], [2, 14], [3, 12], [4, 18], [5, 16]];
+      const pts = Object.values(r.pts);
+      const miss = want.filter(([x, y]) => !pts.some((p) => Math.abs(p.x - x) < 0.01 && Math.abs(p.y - y) < 0.01));
+      if (miss.length) return { ok: false, why: `${miss.map((m) => `(${m})`).join('')} が無い` };
+      const segs = r.draws.filter((d) => d.t === 'seg');
+      const linked = want.slice(0, -1).filter(([x, y], i) => {
+        const [x2, y2] = want[i + 1];
+        return segs.some((s) =>
+          (Math.abs(s.a.x - x) < 0.01 && Math.abs(s.a.y - y) < 0.01 && Math.abs(s.b.x - x2) < 0.01 && Math.abs(s.b.y - y2) < 0.01)
+          || (Math.abs(s.b.x - x) < 0.01 && Math.abs(s.b.y - y) < 0.01 && Math.abs(s.a.x - x2) < 0.01 && Math.abs(s.a.y - y2) < 0.01));
+      }).length;
+      if (linked < 4) return { ok: false, why: `隣どうしを結ぶ線が ${linked}/4 本` };
+      return { ok: true, why: '5点・隣どうしを結ぶ線4本' };
+    },
+  },
 ];

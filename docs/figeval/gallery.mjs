@@ -64,7 +64,7 @@ for (const p of PROBLEMS) {
     .replace(/\n\s+/g, ' ').replace(/\{ /g, '{').replace(/ \}/g, '}')
     .replace(/\},\{/g, '},\n{');
   cards.push(
-    `  <figure class="fig-card">\n`
+    `  <figure class="fig-card"${p.probe ? ' data-probe="1"' : ''}>\n`
     + `    <figcaption><b>${esc(p.tag)}</b><span>${esc(p.unit || '')}</span></figcaption>\n`
     + `    <div class="fig-stage">${svg}</div>\n`
     + `    <p class="fig-q">${esc(p.prompt)}</p>\n`

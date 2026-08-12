@@ -75,6 +75,13 @@
 {"fillBetween":["c1","c2"],"from":"P","to":"Q"}
 {"revolve":"c1","around":{"y":0},"range":[0,4]}   x 軸まわりの回転体
 ```
+**円錐・円柱も回転体で書く。**直線を回せば円錐、水平な直線を回せば円柱。
+```
+{"curve":"c","f":"2-0.5*x","domain":[0,4],"hidden":true}
+{"revolve":"c","around":{"y":0},"range":[0,4]}     底面の半径2・高さ4の円錐
+{"curve":"c","f":"2","domain":[0,5],"hidden":true}
+{"revolve":"c","around":{"y":0},"range":[0,5]}     半径2・高さ5の円柱
+```
 式に使えるもの: `+ - * / ( )` と `x` `y` `t`、`sin cos tan sqrt abs exp log pow`、`pi`。
 
 ## 座標を打つ
