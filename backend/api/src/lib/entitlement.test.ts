@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { UserRecord } from "../repository/types.ts";
 import {
   analysesPerDay,
+  canReissueToken,
   isPremiumNow,
   limitReachedAllowance,
   secondsUntilLocalMidnight,
@@ -150,6 +151,53 @@ describe("analysesPerDay", () => {
         sessionsPerDay({ user: someone, now, limits }),
       );
     }
+  });
+});
+
+/**
+ * 押し直しでトークンを出し直せる窓。
+ *
+ * 無条件に出し直せると、**部屋に入らないまま開いたセッションが、期限のない
+ * 鍵の引換券**になる(その1本は最初の日に数えられているので、翌日に押せば
+ * 今日の枠を減らさずに授業が1回増える)。
+ */
+describe("canReissueToken", () => {
+  const startedAt = "2026-08-03T13:00:00.000Z";
+
+  it("最初の鍵が生きているあいだは、つなぎ直せる", () => {
+    expect(
+      canReissueToken({
+        startedAt,
+        now: new Date("2026-08-03T13:19:00.000Z"),
+        maxSeconds: 1200,
+      }),
+    ).toBe(true);
+  });
+
+  it("上限時間 + 余白を過ぎたら、もう出し直さない", () => {
+    // 20分 + 余白2分 = 22分。その1秒あと。
+    expect(
+      canReissueToken({
+        startedAt,
+        now: new Date("2026-08-03T13:22:01.000Z"),
+        maxSeconds: 1200,
+      }),
+    ).toBe(false);
+  });
+
+  it("境界(上限時間 + 余白ちょうど)は、まだ生きている扱いにする", () => {
+    expect(
+      canReissueToken({
+        startedAt,
+        now: new Date("2026-08-03T13:22:00.000Z"),
+        maxSeconds: 1200,
+      }),
+    ).toBe(true);
+  });
+
+  // 読めない値を「まだ生きている」側へ倒すと、壊れた1行が抜け道になる。
+  it("started_at が読めなければ出し直さない", () => {
+    expect(canReissueToken({ startedAt: "not-a-date", now, maxSeconds: 1200 })).toBe(false);
   });
 });
 

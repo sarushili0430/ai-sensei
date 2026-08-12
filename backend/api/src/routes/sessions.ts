@@ -31,11 +31,14 @@ import type { AppEnv, Bindings } from "../env.ts";
 import { readLimits } from "../env.ts";
 import {
   analysesPerDay,
+  canReissueToken,
   canStartSessionToday,
   isPremiumNow,
   limitReachedAllowance,
+  sessionMaxSeconds,
   sessionsPerDay,
   startedAllowance,
+  tokenGraceSeconds,
 } from "../lib/entitlement.ts";
 import { apiError } from "../lib/errors.ts";
 import { type AgentDispatch, createLiveKitToken } from "../lib/livekit.ts";
@@ -397,6 +400,31 @@ sessionsRoute.post("/:sessionId/start", async (c) => {
   }
 
   /**
+   * 押し直しでトークンを出し直せるのは、**最初の鍵が生きているあいだだけ**
+   * (理由は {@link canReissueToken})。
+   *
+   * ここが無いと、部屋に入らないまま開いたセッションが**期限のない鍵の引換券**になる。
+   * 会話が成立しなければ `/complete` は来ないので行は open のまま残り、
+   * 翌日そのIDで押せば、今日の枠を減らさずに授業がもう1回増えてしまう。
+   */
+  if (
+    session.started_at !== null &&
+    !canReissueToken({
+      startedAt: session.started_at,
+      now: at,
+      maxSeconds: sessionMaxSeconds({ user, now: at, limits }),
+    })
+  ) {
+    // 「もう入る部屋が無い」は、アプリからは消えたセッションと同じ。
+    // 押し直しの経路が同じIDで回り続けないよう、404で終わらせる。
+    log?.info("session_start_expired", {
+      session_id: session.id,
+      started_at: session.started_at,
+    });
+    throw apiError("session_not_found", { locale });
+  }
+
+  /**
    * 復習で教え直す穴。**トークンを出すたびに正本から読み直す。**
    *
    * `context.summary` から復元する案は採らない。そこは表示用に整形済みで、
@@ -461,7 +489,9 @@ sessionsRoute.post("/:sessionId/start", async (c) => {
     apiSecret: c.env.LIVEKIT_API_SECRET,
     identity: deviceId,
     room: session.id,
-    ttlSeconds: allowance.maxSeconds + 120,
+    // 押し直しを受け付ける窓と同じ長さ。片方だけ伸ばすと、
+    // 「鍵は生きているのに出し直せない」か、その逆ができる。
+    ttlSeconds: allowance.maxSeconds + tokenGraceSeconds,
     metadata,
     agent: dispatch,
     now: at,

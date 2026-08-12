@@ -303,6 +303,10 @@ class ApiException implements Exception {
       code == 'photo_unreadable' || code == 'out_of_scope';
   bool get isHoleNotFound => code == 'hole_not_found';
 
+  /// セッションが消えている(他人のもの・完了済み・上限時間を過ぎた押し直し)。
+  /// **同じIDで押し直しても同じ404が返る**ので、握っているIDは捨てて作り直す。
+  bool get isSessionNotFound => code == 'session_not_found';
+
   @override
   String toString() => 'ApiException($code): $message';
 }

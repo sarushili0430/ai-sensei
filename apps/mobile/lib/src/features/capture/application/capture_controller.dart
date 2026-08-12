@@ -34,6 +34,7 @@ class CaptureState {
     this.problemPhoto,
     this.analysis,
     this.session,
+    this.reviewHoleId,
     this.excludedTopicIds = const <String>{},
     this.isSubmitting = false,
     this.error,
@@ -53,6 +54,13 @@ class CaptureState {
 
   /// 始まった会話。**入った時点で今日の1回を使っている**(部屋の鍵つき)。
   final SessionStart? session;
+
+  /// [analysis] が復習セッションのとき、その対象の穴。
+  ///
+  /// **同じ穴で押し直されたときに、セッションを作り直さない**ために持つ
+  /// ([startReview])。作り直すと、前回の `/start` がサーバに届いていた場合に
+  /// もう1回ぶんの枠を使ってしまう。
+  final String? reviewHoleId;
 
   final Set<String> excludedTopicIds;
   final bool isSubmitting;
@@ -87,6 +95,7 @@ class CaptureState {
     File? problemPhoto,
     SessionAnalysis? analysis,
     SessionStart? session,
+    String? reviewHoleId,
     Set<String>? excludedTopicIds,
     bool? isSubmitting,
     ApiException? error,
@@ -97,6 +106,7 @@ class CaptureState {
       problemPhoto: problemPhoto ?? this.problemPhoto,
       analysis: analysis ?? this.analysis,
       session: session ?? this.session,
+      reviewHoleId: reviewHoleId ?? this.reviewHoleId,
       excludedTopicIds: excludedTopicIds ?? this.excludedTopicIds,
       isSubmitting: isSubmitting ?? this.isSubmitting,
       error: clearError ? null : (error ?? this.error),
@@ -161,17 +171,11 @@ class CaptureController extends _$CaptureController {
             .toSet(),
       );
     } on ApiException catch (error) {
-      state = state.copyWith(isSubmitting: false, error: error);
+      _fail(error);
     } catch (_) {
       // 圏外・タイムアウト・プロキシのHTML応答など。ここを拾わないと
       // isSubmitting が立ったままスピナーで固まり、撮り直しの導線も消える。
-      state = state.copyWith(
-        isSubmitting: false,
-        error: ApiException(
-          code: 'internal_error',
-          message: AppStrings.forLanguage(locale).errorNetwork,
-        ),
-      );
+      _fail(_networkError(locale));
     }
   }
 
@@ -207,16 +211,10 @@ class CaptureController extends _$CaptureController {
       state = state.copyWith(session: session, isSubmitting: false);
       return session;
     } on ApiException catch (error) {
-      state = state.copyWith(isSubmitting: false, error: error);
+      _fail(error);
       return null;
     } catch (_) {
-      state = state.copyWith(
-        isSubmitting: false,
-        error: ApiException(
-          code: 'internal_error',
-          message: AppStrings.forLanguage(locale).errorNetwork,
-        ),
-      );
+      _fail(_networkError(locale));
       return null;
     }
   }
@@ -225,34 +223,58 @@ class CaptureController extends _$CaptureController {
   ///
   /// 単元を確かめる画面が無いので、作成と開始を続けて呼ぶ。
   /// **数える位置は新規授業と同じ**(開始のほう)。
+  ///
+  /// **同じ穴で押し直されたら、セッションは作り直さない。** 作成は通って
+  /// `/start` だけが落ちた(通信が切れた)ときに作り直すと、最初の開始が
+  /// サーバに届いていた場合にもう1回ぶんの枠を使う。同じIDで始め直せば、
+  /// サーバは二重に数えない。
   Future<SessionStart?> startReview(String holeId, {String locale = 'ja'}) async {
-    state = const CaptureState(isSubmitting: true);
+    final SessionAnalysis? pending =
+        state.reviewHoleId == holeId && state.session == null ? state.analysis : null;
+    state = CaptureState(isSubmitting: true, analysis: pending, reviewHoleId: holeId);
+
     try {
-      final SessionAnalysis analysis = await ref.read(apiClientProvider).createSession(
-            kind: 'review',
-            holeId: holeId,
-            locale: locale,
-          );
+      final SessionAnalysis analysis = pending ??
+          await ref.read(apiClientProvider).createSession(
+                kind: 'review',
+                holeId: holeId,
+                locale: locale,
+              );
+      // **開始の前に残す。** ここで落ちても、次の一押しが同じセッションを始め直せる。
+      state = state.copyWith(analysis: analysis);
+
       final SessionStart session = await ref.read(apiClientProvider).startSession(
             sessionId: analysis.sessionId,
             locale: locale,
           );
-      state = state.copyWith(analysis: analysis, session: session, isSubmitting: false);
+      state = state.copyWith(session: session, isSubmitting: false);
       return session;
     } on ApiException catch (error) {
-      state = state.copyWith(isSubmitting: false, error: error);
+      _fail(error);
       return null;
     } catch (_) {
-      state = state.copyWith(
-        isSubmitting: false,
-        error: ApiException(
-          code: 'internal_error',
-          message: AppStrings.forLanguage(locale).errorNetwork,
-        ),
-      );
+      _fail(_networkError(locale));
       return null;
     }
   }
+
+  /// 失敗を画面へ渡す。
+  ///
+  /// **セッションが消えていたら、握っている解析ごと捨てる。** 上限時間を過ぎた
+  /// 押し直しはサーバが404にする(`entitlement.ts` の `canReissueToken`)ので、
+  /// 同じIDを持ったままにすると、押し直しが同じ404を繰り返すだけになる。
+  /// 捨てておけば、次の一押しは撮影(復習なら作成)からやり直せる。
+  void _fail(ApiException error) {
+    state = error.isSessionNotFound
+        ? CaptureState(photo: state.photo, problemPhoto: state.problemPhoto, error: error)
+        : state.copyWith(isSubmitting: false, error: error);
+  }
+
+  /// 圏外・タイムアウト・プロキシのHTML応答など。サーバの文言が無いので端末側で作る。
+  ApiException _networkError(String locale) => ApiException(
+        code: 'internal_error',
+        message: AppStrings.forLanguage(locale).errorNetwork,
+      );
 
   void reset() => state = const CaptureState();
 }

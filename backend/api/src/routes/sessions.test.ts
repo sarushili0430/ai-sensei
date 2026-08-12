@@ -526,6 +526,41 @@ describe("POST /v1/sessions/{id}/start", () => {
   it("知らないセッションは404", async () => {
     expect((await startSession("ses_unknown")).status).toBe(404);
   });
+
+  /**
+   * **押し直しの窓は、最初の鍵の寿命まで。**
+   *
+   * ここが開いていると、部屋に入らないまま開いたセッションが期限のない
+   * 鍵の引換券になる。その1本は最初の日に数えられているので、翌日そのIDで
+   * 押せば、今日の枠を減らさずに授業が1回増えてしまう
+   * (会話が成立しなければ `/complete` も来ないので、行は open のまま残る)。
+   */
+  it("上限時間を過ぎたセッションは、始め直せない", async () => {
+    const session = await analyze();
+    expect((await startSession(session.session_id)).status).toBe(200);
+
+    // 会話の上限(20分)+ 余白(2分)を越えたところで、もう一度押す
+    services.now = () => new Date("2026-08-03T13:50:07.000Z");
+
+    const response = await startSession(session.session_id);
+    expect(response.status).toBe(404);
+    expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+      "session_not_found",
+    );
+  });
+
+  it("窓の内側なら、同じ会話につなぎ直せる", async () => {
+    const session = await analyze();
+    expect((await startSession(session.session_id)).status).toBe(200);
+
+    // 16分後。まだ同じ会話の途中なので、鍵は出し直せて枠も増えない。
+    services.now = () => new Date("2026-08-03T13:40:07.000Z");
+
+    expect((await startSession(session.session_id)).status).toBe(200);
+    expect(await services.repository.countStartedSessionsOnDate(testDeviceId, "2026-08-03")).toBe(
+      1,
+    );
+  });
 });
 
 // レビュー指摘: 音声の復習セッションはPremiumなのに、hole_idを直接渡せば無料でも通っていた

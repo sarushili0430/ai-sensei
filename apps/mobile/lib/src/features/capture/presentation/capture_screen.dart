@@ -188,6 +188,17 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     await ref.read(captureControllerProvider.notifier).analyze(locale: locale);
   }
 
+  /// 外した単元を反映してから会話を始める。**今日の1回を使うのはここ。**
+  ///
+  /// 失敗したときの「もう一度」もここへ戻す(理由は [_body] のエラー分岐)。
+  Future<void> _start() async {
+    final String locale = Localizations.localeOf(context).languageCode;
+    final SessionStart? session = await ref
+        .read(captureControllerProvider.notifier)
+        .confirmAndStart(locale: locale);
+    if (session != null && mounted) context.go(AppRoute.session.path);
+  }
+
   /// 許可の照会も失敗しうる。ここで落とすと、撮影をやめただけの人まで巻き込む。
   Future<PermissionStatus> _cameraStatus() async {
     try {
@@ -257,8 +268,20 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
         // 無料・Premiumのどちらも数値は見せず、先輩が今日の学習を締める。
         message: lessonLimitReached ? strings.lessonEnoughForToday : error.message,
         // 日ごとの上限は押し直しても変わらない。無料・Premium とも再試行させない。
-        // 撮り直すのは、直前に開いていた枠(ノートとは限らない)。
-        onRetry: lessonLimitReached ? null : () => _pick(forProblem: _lastPickWasProblem),
+        //
+        // **解析まで進んでいたら、撮り直しではなく会話の開始をやり直す。**
+        // ここを `_pick` に固定していると、[CaptureController.setPhoto] が
+        // 解析済みの状態を守って写真を捨てるので、カメラだけが何度も開いて
+        // エラーが消えない画面になる。しかも会話の開始で落ちた場合は、
+        // サーバ側で枠を押さえていることがあり、撮り直すとその1回を捨てる。
+        // `/start` は同じIDなら二重に数えないので、押し直すほうが正しい
+        // (セッションごと消えていれば `analysis` も捨てられ、撮り直しに戻る)。
+        onRetry: lessonLimitReached
+            ? null
+            : state.analysis != null
+                ? _start
+                // 撮り直すのは、直前に開いていた枠(ノートとは限らない)。
+                : () => _pick(forProblem: _lastPickWasProblem),
       );
     }
     // カメラを開いている最中は、まだ何も見せるものが無い。
@@ -274,7 +297,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
         onStart: _analyze,
       );
     }
-    return _TopicConfirm(state: state);
+    return _TopicConfirm(state: state, onStart: _start);
   }
 }
 
@@ -455,9 +478,12 @@ class _PhotoSlot extends StatelessWidget {
 }
 
 class _TopicConfirm extends ConsumerWidget {
-  const _TopicConfirm({required this.state});
+  const _TopicConfirm({required this.state, required this.onStart});
 
   final CaptureState state;
+
+  /// 会話を始める。失敗したときの「もう一度」も同じ操作へ戻る。
+  final Future<void> Function() onStart;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -509,23 +535,11 @@ class _TopicConfirm extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: AppSpacing.md),
+        // 外した単元は始める前に反映される。飛ばすと、サーバ側のセッションは
+        // 解析時のままで、外した単元を先輩が教えてしまう([CaptureController]）。
         ChunkyButton(
           label: strings.captureStart,
-          onPressed: state.canStart
-              ? () async {
-                  // 外した単元を反映してから始める。ここを飛ばすと、サーバ側の
-                  // セッションとトークンは解析時のままで、外した単元を
-                  // 先輩が教えてしまう。
-                  final SessionStart? session = await ref
-                      .read(captureControllerProvider.notifier)
-                      .confirmAndStart(
-                        locale: Localizations.localeOf(context).languageCode,
-                      );
-                  if (session != null && context.mounted) {
-                    context.go(AppRoute.session.path);
-                  }
-                }
-              : null,
+          onPressed: state.canStart ? onStart : null,
         ),
       ],
     );

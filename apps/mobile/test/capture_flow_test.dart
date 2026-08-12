@@ -78,10 +78,16 @@ void main() {
   tearDown(() => tempDir.deleteSync(recursive: true));
 
   /// 呼ばれたリクエストを順に記録するAPIクライアント。
+  ///
+  /// [failStartTimes] は「会話の開始が最初の n 回だけ落ちる」= 通信が切れた状況。
+  /// 押し直したときにセッションを作り直さないことを、ここで作って見る。
   ProviderContainer containerWith(
     List<http.BaseRequest> calls, {
     Map<String, dynamic>? problem,
+    int failStartTimes = 0,
+    String? startErrorCode,
   }) {
+    int startCalls = 0;
     // サーバは UTF-8 で返す(単元名に日本語が入る)。`http.Response` の文字列版は
     // latin1 なので、バイト列で返さないとここで落ちる。
     http.Response json(Map<String, dynamic> body, int status) =>
@@ -97,6 +103,21 @@ void main() {
         return json(_analysisJson('ses_1', topicIds), 200);
       }
       if (request.url.path.endsWith('/start')) {
+        startCalls += 1;
+        if (startCalls <= failStartTimes) {
+          // code が無い応答は ApiClient 側で internal_error になる(圏外と同じ扱い)。
+          return json(
+            startErrorCode == null
+                ? <String, dynamic>{}
+                : <String, dynamic>{
+                    'error': <String, dynamic>{
+                      'code': startErrorCode,
+                      'message': 'このセッションは見つかりませんでした。',
+                    },
+                  },
+            startErrorCode == null ? 500 : 404,
+          );
+        }
         return json(_startJson('ses_1'), 200);
       }
       return json(
@@ -167,6 +188,78 @@ void main() {
       '/v1/sessions',
       '/v1/sessions/ses_1/start',
     ]);
+  });
+
+  /// 会話の開始だけが落ちた(通信が切れた)場合。
+  ///
+  /// **押し直しでセッションを作り直さない。** サーバは同じIDなら二重に数えないので、
+  /// 作り直すほうが危ない — 最初の開始が届いていたら、その1回を捨てることになる。
+  group('会話の開始で切れたとき', () {
+    test('押し直しは、同じセッションを始め直す', () async {
+      final List<http.BaseRequest> calls = <http.BaseRequest>[];
+      final ProviderContainer container = containerWith(calls, failStartTimes: 1);
+      addTearDown(container.dispose);
+
+      final CaptureController controller = container.read(captureControllerProvider.notifier);
+      controller.setPhoto(photo);
+      await controller.analyze();
+
+      expect(await controller.confirmAndStart(), isNull);
+      // 解析は握ったまま。ここを捨てると撮り直しからやり直しになる。
+      expect(container.read(captureControllerProvider).analysis, isNotNull);
+
+      final SessionStart? session = await controller.confirmAndStart();
+
+      expect(session, isNotNull);
+      expect(
+        calls.where((http.BaseRequest call) => call.url.path == '/v1/sessions').length,
+        1,
+        reason: 'セッションを作り直すと、押さえた枠を捨てることになる',
+      );
+      expect(
+        calls.where((http.BaseRequest call) => call.url.path.endsWith('/start')).length,
+        2,
+      );
+    });
+
+    test('復習も、同じセッションを始め直す', () async {
+      final List<http.BaseRequest> calls = <http.BaseRequest>[];
+      final ProviderContainer container = containerWith(calls, failStartTimes: 1);
+      addTearDown(container.dispose);
+
+      final CaptureController controller = container.read(captureControllerProvider.notifier);
+      expect(await controller.startReview('hol_1'), isNull);
+      expect(await controller.startReview('hol_1'), isNotNull);
+
+      expect(
+        calls.where((http.BaseRequest call) => call.url.path == '/v1/sessions').length,
+        1,
+        reason: '作り直すと、Premiumの枠をもう1回使ってしまう',
+      );
+    });
+
+    /// 上限時間を過ぎた押し直しはサーバが404にする。同じIDを握ったままだと、
+    /// 押し直しが同じ404を繰り返すだけの行き止まりになる。
+    test('セッションが消えていたら、握っている解析ごと捨てる', () async {
+      final List<http.BaseRequest> calls = <http.BaseRequest>[];
+      final ProviderContainer container = containerWith(
+        calls,
+        failStartTimes: 1,
+        startErrorCode: 'session_not_found',
+      );
+      addTearDown(container.dispose);
+
+      final CaptureController controller = container.read(captureControllerProvider.notifier);
+      controller.setPhoto(photo);
+      await controller.analyze();
+      expect(await controller.confirmAndStart(), isNull);
+
+      final CaptureState state = container.read(captureControllerProvider);
+      expect(state.analysis, isNull);
+      expect(state.error?.isSessionNotFound, isTrue);
+      // 撮った写真は残す。撮り直しではなく、そのまま解析からやり直せる。
+      expect(state.photo, isNotNull);
+    });
   });
 
   /// **不具合報告そのもの。** 撮って単元を確かめただけで今日の1回が消えていた。

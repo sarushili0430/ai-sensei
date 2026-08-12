@@ -73,16 +73,56 @@ export function canStartSessionToday(input: SessionLimitInput): boolean {
   return input.sessionsToday < sessionsPerDay(input);
 }
 
+/** 1回の会話の長さ。**プランで品質は変えない**ので、分岐はこの1か所だけ。 */
+export function sessionMaxSeconds(input: {
+  user: UserRecord | null;
+  now: Date;
+  limits: Limits;
+}): number {
+  return isPremiumNow(input.user, input.now)
+    ? input.limits.premiumSessionMaxSeconds
+    : input.limits.freeSessionMaxSeconds;
+}
+
+/**
+ * トークンの寿命に足す余白。
+ *
+ * 会話の上限ちょうどで切れると、締めの数秒で部屋から蹴り出される。
+ * **再送を受け付ける窓もこれと同じ**({@link canReissueToken})。
+ */
+export const tokenGraceSeconds = 120;
+
+/**
+ * 始まっているセッションへ、トークンを出し直してよいか。
+ * **最初の鍵がまだ生きているあいだだけ**。
+ *
+ * `started_at` があれば無条件に出し直せると、**部屋に入らないまま開いた
+ * セッションを1本持っておく**道ができる。その1本は最初の日に数えられているので、
+ * 翌日に鍵だけ出し直せば、今日の枠を減らさずに授業がもう1回増える
+ * (会話が成立しなければ `/complete` も来ないので、行は open のまま残り続ける)。
+ *
+ * 窓を最初のトークンの寿命に合わせると、再送で救えるのは
+ * **同じ会話につなぎ直す場合だけ**になる。それを越えたセッションは、
+ * 出し直したところで入る部屋がもう無い。
+ */
+export function canReissueToken(input: {
+  startedAt: string;
+  now: Date;
+  maxSeconds: number;
+}): boolean {
+  const elapsedMs = input.now.getTime() - new Date(input.startedAt).getTime();
+  // 壊れた `started_at` は NaN になり、この比較は false になる。
+  // 読めない値を「まだ生きている」側へ倒さない。
+  return elapsedMs <= (input.maxSeconds + tokenGraceSeconds) * 1000;
+}
+
 /** 枠を押さえたあとの応答。`sessionsToday` は押さえた分を含む当日の本数。 */
 export function startedAllowance(
   input: SessionLimitInput,
 ): Extract<SessionAllowance, { allowed: true }> {
-  const premium = isPremiumNow(input.user, input.now);
   return {
     allowed: true,
-    maxSeconds: premium
-      ? input.limits.premiumSessionMaxSeconds
-      : input.limits.freeSessionMaxSeconds,
+    maxSeconds: sessionMaxSeconds(input),
     // 旧判定のremaining > 1は、確保後の本数で「上限未満」を見ることと等価。
     lessonAllowedToday: canStartSessionToday(input),
   };
