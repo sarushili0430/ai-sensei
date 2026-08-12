@@ -25,6 +25,9 @@
 同じ `design_direction_v0.html` の後半にまとめてあります。スクショの実物は
 [`docs/store/screenshots/`](docs/store/screenshots)、生成はどちらも
 `apps/mobile/tool/` のスクリプトが行い、**絵の正はコード**です(画像を直接描き直さないこと)。
+Google Play の掲載テキスト(短い説明・詳しい説明の日英)とストアアイコン512pxは
+[`docs/store/play_listing.md`](docs/store/play_listing.md) にあります
+(`design_direction_v0.html` のメタデータはピボット前の文面なので、Play側はこちらが正)。
 
 ---
 

@@ -25,6 +25,11 @@ import 'package:flutter_test/flutter_test.dart';
 const String _ios = 'ios/Runner/Assets.xcassets/AppIcon.appiconset';
 const String _android = 'android/app/src/main/res';
 
+/// Play Console の「ストアの掲載情報 > アプリアイコン」に貼る1枚。
+/// 端末に入るアイコンではなくストアページの絵で、リポジトリ側の置き場は
+/// スクリーンショットと揃えて `docs/store/` にする。
+const String _playStore = '../../docs/store/icon';
+
 /// Androidのアダプティブアイコンで、絵柄を108dpキャンバスのどれだけに収めるか。
 /// 中央72dp(=0.667)が可視保証なので、輪郭がそこに入る値にする。
 const double _adaptiveContentScale = 0.80;
@@ -119,6 +124,13 @@ void main() {
     File('$_android/values/ic_launcher_background.xml').writeAsStringSync(
       _backgroundColorXml(AppColors.blue),
     );
+
+    // --- Play Console のストア掲載アイコン ---
+    // 512x512 の32bit PNG・1MB以内。角丸とドロップシャドウはGoogleが
+    // 付けるので、こちらは**角を落とさず**四角いまま渡す(iOSの1024と同じ扱い)。
+    // アルファは許されているので、透過を落とす手心は要らない。
+    Directory(_playStore).createSync(recursive: true);
+    await _writePng('$_playStore/play-store-512.png', await AppMark.rasterize(512));
   });
 }
 
