@@ -107,9 +107,15 @@ const HANDOFF_PATTERNS: Record<CurriculumLocale, RegExp[]> = {
  * **まだ何も教わっていない内容の説明を求められる**。
  *
  * 先輩が問いかけで終えたなら、形がどうであれ**番はもう生徒にある**。
- * 全角・半角の両方を見るのは、日本語のTTS入力に両方が混ざるため。
+ *
+ * **全角の `？` はコードポイントで書く(`？`)。**
+ * 一度ここを `[??]` と生の字で書いて、`？` が半角に潰れたまま入っていた
+ * (見た目は2文字だが中身は `?` が2つで、全角では止まらない)。
+ * 日本語の出力はほとんど全角なので、**この取りこぼしは日本語の授業ぜんぶに効く** —
+ * 直したはずのターン制が、そのまま元に戻る。字で書けば次も同じ形で壊れるので、
+ * 目で見て違いの分かる書き方にしておく。
  */
-const QUESTION_MARK = /[??]\s*$/;
+const QUESTION_MARK = /[?？]\s*$/;
 
 export function teachBackPrompt(locale: CurriculumLocale): string {
   return TEACH_BACK_PROMPT[locale];

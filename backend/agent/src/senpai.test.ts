@@ -115,8 +115,12 @@ describe("handsTurnToStudent", () => {
   it("問いかけで終わっていれば、形が違っても番は渡っている", () => {
     expect(handsTurnToStudent("問題、読んでもらってもいい?", "ja")).toBe(true);
     expect(handsTurnToStudent("この式、まず何する?", "ja")).toBe(true);
-    // 全角の疑問符(日本語のTTS入力には両方が混ざる)
-    expect(handsTurnToStudent("D はプラスだよね。だから?", "ja")).toBe(true);
+    // **全角の疑問符。**日本語の出力はほとんどこちらで、ここを取りこぼすと
+    // 日本語の授業ではターン制が丸ごと元に戻る(実際に一度、正規表現の中の
+    // 全角 `？` が半角に潰れていた)。半角に化けても落ちるよう、
+    // コードポイントで書いてある。
+    expect(handsTurnToStudent("D はプラスだよね。だから\uFF1F", "ja")).toBe(true);
+    expect(handsTurnToStudent("じゃあ、次はどうする\uFF1F ", "ja")).toBe(true);
     expect(handsTurnToStudent("Could you read me the problem?", "en")).toBe(true);
   });
 
