@@ -19,8 +19,51 @@ const f = (v) => (Math.abs(v) < 1e-9 ? 0 : Math.round(v * 100) / 100);
 const W = 320;
 const H = 224;
 
+/**
+ * 図の文字に使う書体。
+ *
+ * **`ui-sans-serif` や `system-ui` は Web だけの総称名で、Flutter は解決できない。**
+ * 最初これを書いていて、端末では日本語が**全部豆腐(□)になった**
+ * (増減表の見出しも「五数要約はデータから計算」も読めない)。
+ * アプリが同梱している実在の書体を先頭に置く。ブラウザ(ワイヤーフレームの
+ * ギャラリー)では見つからないので、後ろの総称名に落ちる。
+ */
+/**
+ * **カンマ区切りで並べてはいけない。**`flutter_svg` は
+ * `font-family` の値を**まるごと1つの書体名**として扱うので、
+ * `"ZenMaruGothic,sans-serif"` は「そういう名前の書体」を探しに行って見つからず、
+ * 日本語が豆腐(□)になる。実測で確かめた:
+ *
+ *   ZenMaruGothic,sans-serif → □□□
+ *   ZenMaruGothic            → 増減表 abc 123   ← これだけ通る
+ *   (指定なし)               → □□□
+ *
+ * 名前を1つだけ書く。ブラウザ(ワイヤーフレームのギャラリー)は
+ * 知らない名前なら既定の書体に落ちるので、こちらでも困らない。
+ */
+const FONT = "ZenMaruGothic";
+
 function frame(inner, w = W, h = H) {
-  return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg" role="img"><rect width="${w}" height="${h}" fill="${BOARD}"/><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${CHALK}"/></marker><marker id="ahk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${ROLE.key.c}"/></marker></defs>${inner}</svg>`;
+  // **`<marker>` は使わない。**`flutter_svg` が対応しておらず
+  // (`unhandled element <marker/>`)、端末では**矢印の頭が全部消える**。
+  // 遷移図の矢印から向きが消えると、図として意味を持たなくなる。
+  // 矢じりは `line()` の中で三角形として置く。
+  return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg" role="img"><rect width="${w}" height="${h}" fill="${BOARD}"/>${inner}</svg>`;
+}
+
+/** 線の先に付ける矢じり。**`<marker>` の代わり**(上の理由)。 */
+function arrowHead(x1, y1, x2, y2, color) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const n = Math.hypot(dx, dy);
+  if (n < 1e-6) return "";
+  const ux = dx / n;
+  const uy = dy / n;
+  const len = 7;
+  const half = 3.2;
+  const bx = x2 - ux * len;
+  const by = y2 - uy * len;
+  return `<polygon points="${f(x2)},${f(y2)} ${f(bx - uy * half)},${f(by + ux * half)} ${f(bx + uy * half)},${f(by - ux * half)}" fill="${color}"/>`;
 }
 /**
  * SVG の中の文字の下限。
@@ -38,12 +81,14 @@ const MIN_FONT = 10;
 
 const txt = (x, y, s, o = {}) =>
   `<text x="${f(x)}" y="${f(y)}" fill="${o.fill || CHALK}" font-size="${Math.max(o.size || 11, MIN_FONT)}" ` +
-  `font-family="ui-sans-serif,system-ui,sans-serif" text-anchor="${o.anchor || "middle"}"` +
+  `font-family="${FONT}" text-anchor="${o.anchor || "middle"}"` +
   `${o.weight ? ` font-weight="${o.weight}"` : ""}>${esc(s)}</text>`;
-const line = (x1, y1, x2, y2, o = {}) =>
-  `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${o.c || CHALK}" ` +
-  `stroke-width="${o.w || 1.6}" stroke-linecap="round"${o.dash ? ` stroke-dasharray="${o.dash}"` : ""}` +
-  `${o.marker ? ` marker-end="url(#${o.marker})"` : ""}/>`;
+const line = (x1, y1, x2, y2, o = {}) => {
+  const color = o.c || CHALK;
+  const dash = o.dash ? ` stroke-dasharray="${o.dash}"` : "";
+  const head = o.marker ? arrowHead(x1, y1, x2, y2, o.marker === "ahk" ? ROLE.key.c : color) : "";
+  return `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${color}" stroke-width="${o.w || 1.6}" stroke-linecap="round"${dash}/>${head}`;
+};
 
 // ---- 幾何(座標を持つもの)は、まとめて枠に収める ----
 function geometric(draws) {
@@ -751,7 +796,8 @@ const SPECIAL = {
             weight: 600,
           }),
         );
-      else o.push(txt(cx, y0 + 0.65 * rh, "⋯", { fill: DIM, size: 11 }));
+      // `⋯`(U+22EF)も同梱の書体に無いので、確実に出る点3つで書く。
+      else o.push(txt(cx, y0 + 0.65 * rh, "...", { fill: DIM, size: 11 }));
     }
     // f′ の行
     for (let i = 0; i < cols; i++) {
@@ -776,14 +822,20 @@ const SPECIAL = {
     }
     for (let i = 0; i < cols; i++) {
       const cx = x0 + (i + 1.5) * cw;
-      const s = i % 2 === 1 ? f(d.values[(i - 1) / 2].y) : d.arrow[i / 2];
-      o.push(
-        txt(cx, y0 + (row + 0.68) * rh, s, {
-          fill: i % 2 === 1 ? ROLE.key.c : CHALK,
-          size: 12,
-          weight: i % 2 ? 600 : 400,
-        }),
-      );
+      const cy = y0 + (row + 0.68) * rh;
+      if (i % 2 === 1) {
+        // 極値そのもの。数字なので文字でよい。
+        o.push(
+          txt(cx, cy, f(d.values[(i - 1) / 2].y), { fill: ROLE.key.c, size: 12, weight: 600 }),
+        );
+        continue;
+      }
+      // **増減の矢印は「描く」。**`↗` `↘` は同梱の書体(ZenMaruGothic)に無く、
+      // 文字で置くと端末では**何も出ない**(実測で確認)。増減表で矢印が消えると、
+      // 表の意味そのものが消える。
+      const dir = d.arrow[i / 2];
+      const dy = dir === "↗" ? -7 : dir === "↘" ? 7 : 0;
+      o.push(line(cx - 9, cy - 4 - dy, cx + 9, cy - 4 + dy, { c: CHALK, w: 1.6, marker: "ah" }));
     }
     return frame(o.join(""), W, y0 + rows * rh + 20);
   },

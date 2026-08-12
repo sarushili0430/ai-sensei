@@ -67,6 +67,11 @@ dependencies:
   # メンテが薄いリスクへの保険は `packages/guardrail` の許可コマンド照合と
   # agent側のKaTeXパースで取る(§3-6の三段構え。このパッケージ自体は縛らない)。
   flutter_math_fork: ^0.7.4
+  # 板書の作図(`figure`)。**SVGはサーバが解いて描いたものだけが届く**
+  # (先輩が書いたSVGはどの経路でも入らない。`packages/contract/src/board.ts`)。
+  # 端末側はこれを描くだけなので、図の語彙が増えてもここは変わらない
+  # (docs/wireframe_board_v2.html D-21)。
+  flutter_svg: ^2.0.10
   # 授業冒頭と自習室の短い一言は、同梱アセットだけを再生する。
   # URLを渡さないので通信もTTS従量原価も発生しない(計画書§3-2 / §4-2)。
   just_audio: ^0.10.6

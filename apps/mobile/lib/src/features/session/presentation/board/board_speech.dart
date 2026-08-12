@@ -62,6 +62,10 @@ String describeElement(BoardElement element, AppStrings strings) {
         ),
     circle: (BoardPoint center, double r, List<String>? labels) =>
         strings.boardSpeechCircle(_number(r), (labels ?? const <String>[]).join('、')),
+    // 作図の宣言はサーバが持っているので、読み上げ文も向こうで書いてある。
+    // ここで items から組み立て直すと、サーバの文言と二重管理になる。
+    figure: (List<Map<String, dynamic>> items, String? svg, String? alt) =>
+        (alt == null || alt.isEmpty) ? strings.boardSpeechFigure : alt,
   );
 }
 

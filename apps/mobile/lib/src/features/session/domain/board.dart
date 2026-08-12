@@ -96,6 +96,26 @@ abstract class BoardElement with _$BoardElement {
     List<String>? labels,
   }) = CircleElement;
 
+  /// 作図。**端末は [svg] を描くだけ。**
+  ///
+  /// [items] は作図の宣言(「Aから距離6、向き-20°にB」「2直線の交点にD」)で、
+  /// **座標を解いてSVGにするのはサーバ**(`@ai-sensei/figure`)。
+  /// ここに届くSVGは検証済みの [items] から生成されたものだけで、
+  /// **先輩が書いたSVGが入る経路はどこにも無い**(`board.ts` 冒頭「自由描画をさせない」)。
+  ///
+  /// [items] を端末まで運んでいるのは、
+  ///   - 読み上げ・検査で「何を描いたか」が要る(SVGからは読めない)
+  ///   - あとから端末側で描き直す選択肢を残す(D-21。SVGだけだと戻れない)
+  /// の2つのため。**いまは描画に使っていない。**
+  ///
+  /// [svg] / [alt] が `null` なのは、LLMが出した直後(サーバが詰める前)の形。
+  /// ワイヤーから届くものには必ず入っている([ensureValidFigure] で検査する)。
+  const factory BoardElement.figure({
+    required List<Map<String, dynamic>> items,
+    String? svg,
+    String? alt,
+  }) = FigureElement;
+
   factory BoardElement.fromJson(Map<String, dynamic> json) => _$BoardElementFromJson(json);
 }
 
@@ -130,6 +150,20 @@ void ensureValidTriangle(List<BoardPoint> vertices, List<String>? labels) {
   }
 }
 
+/// `figure` はワイヤーに出る時点で `svg` が入っていること。
+///
+/// 契約では `optional`(LLMが出す形には無いから)だが、**端末に届く形には必ずある**。
+/// 無いまま描画へ渡すと、図の場所が黙って空白になる — 授業の途中で1行消えるのは、
+/// 遅いより悪い(`board.ts` のLaTeX三段構えと同じ判断)。
+///
+/// [ensureValidDomain] と同じ理由で、単体では呼び忘れられる。
+/// 実際の呼び出し口は [BoardChannelReceiver.accept] の内部。
+void ensureValidFigure(String? svg) {
+  if (svg == null || svg.isEmpty) {
+    throw const BoardContractViolation('figure に svg がありません(サーバが解いて詰めるはずのもの)');
+  }
+}
+
 /// ワイヤーから届いた `BoardElement` を検査する。**唯一の呼び出し口は
 /// [BoardChannelReceiver.accept]。** ここを通さずに描画へ渡す経路を作らないこと
 /// (作った瞬間、[ensureValidDomain] / [ensureValidTriangle] は「存在するが効かない
@@ -142,6 +176,7 @@ void _ensureValidElement(BoardElement? element) {
     triangle: (List<BoardPoint> vertices, List<String>? labels, List<AngleMark>? marks) =>
         ensureValidTriangle(vertices, labels),
     circle: (BoardPoint center, double r, List<String>? labels) {},
+    figure: (List<Map<String, dynamic>> items, String? svg, String? alt) => ensureValidFigure(svg),
   );
 }
 
