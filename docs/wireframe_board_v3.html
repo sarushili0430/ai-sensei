@@ -1,38 +1,38 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>カタルテ — Mobile UI Design Review Board v3.2</title>
+  <title>カタルテ — Mobile UI Design Review Board v3.3</title>
   <style>
     :root {
       --canvas: #dfe2e5;
       --canvas-grid: rgba(39, 43, 48, .055);
       --sheet: #f4f5f6;
-      --surface: #fffefa;
-      --app: #f7f4ed;
-      --ink: #202522;
-      --ink-2: #3d4541;
-      --muted: #707772;
-      --line: #d3d7d3;
-      --line-strong: #aeb5b0;
-      --board: #173d33;
-      --board-deep: #0e2e27;
-      --chalk: #f4f0e5;
-      --chalk-dim: #bad0c4;
-      --yellow: #f4ca4a;
-      --yellow-soft: #fff1b5;
-      --blue: #247eaa;
-      --blue-soft: #dceefa;
-      --coral: #ce6967;
-      --coral-soft: #f8e1df;
-      --green: #27745e;
-      --green-soft: #dcece5;
+      --surface: #ffffff;
+      --app: #fbfaf7;
+      --ink: #33323d;
+      --ink-2: #4b4954;
+      --muted: #7a7887;
+      --line: #e6e3dc;
+      --line-strong: #bab6ae;
+      --board: #2f3a35;
+      --board-deep: #26312c;
+      --chalk: #edeae0;
+      --chalk-dim: #9fa8a2;
+      --yellow: #ffd93b;
+      --yellow-soft: #fff4b8;
+      --blue: #0ea5e9;
+      --blue-soft: #def3fc;
+      --coral: #ff7aa8;
+      --coral-soft: #ffe1eb;
+      --green: #278268;
+      --green-soft: #dff1e9;
       --violet: #695e9c;
       --violet-soft: #ebe6fa;
-      --orange: #a76624;
-      --orange-soft: #f8e7d0;
+      --orange: #ff9f1c;
+      --orange-soft: #ffead0;
       --danger: #ae4545;
       --danger-soft: #f8dddd;
       --shadow: 0 16px 38px rgba(29, 34, 31, .13);
@@ -473,14 +473,15 @@
       min-height: 172px;
       padding: 14px;
       overflow: hidden;
-      border: 5px solid #8b6845;
-      border-radius: 9px;
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 11px;
       background:
-        radial-gradient(circle at 18% 22%, rgba(255,255,255,.04), transparent 34%),
+        radial-gradient(circle at 18% 22%, rgba(255,255,255,.035), transparent 34%),
         linear-gradient(140deg, var(--board), var(--board-deep));
       color: var(--chalk);
-      box-shadow: inset 0 0 26px rgba(0,0,0,.18), 0 4px 0 #694b30;
+      box-shadow: inset 0 0 26px rgba(0,0,0,.16);
     }
+    .blackboard.full-bleed { margin-right: -14px; margin-left: -14px; border-right: 0; border-left: 0; border-radius: 0; }
     .blackboard::after {
       content: "";
       position: absolute;
@@ -542,6 +543,54 @@
       color: #fff;
       box-shadow: 0 0 0 5px rgba(36,126,170,.08);
     }
+
+    .journey-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+    .journey-step { min-height: 68px; padding: 9px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+    .journey-step b { display: block; margin: 5px 0 2px; font-size: 9px; }
+    .journey-step span { display: block; color: var(--muted); font-size: 7px; line-height: 1.45; }
+    .journey-index { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; background: var(--blue-soft); color: var(--blue); font-size: 8px; font-weight: 900; }
+
+    .source-choice { display: grid; gap: 8px; }
+    .source-row { min-height: 58px; display: grid; grid-template-columns: 38px 1fr auto; align-items: center; gap: 9px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); }
+    .source-row.primary { border-color: rgba(14,165,233,.38); background: var(--blue-soft); }
+    .source-row b { display: block; font-size: 10px; }
+    .source-row small { display: block; margin-top: 2px; color: var(--muted); font-size: 7px; line-height: 1.4; }
+    .source-icon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 11px; background: #fff; color: var(--blue); }
+    .photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+    .photo-thumb { position: relative; aspect-ratio: 1; overflow: hidden; border-radius: 6px; background: linear-gradient(145deg,#d9d6cc,#f8f5ea); }
+    .photo-thumb::before { content: "x² − 4x + 3"; position: absolute; inset: 22% 7%; display: grid; place-items: center; background: #fffdf7; color: #34343b; font: 700 6px/1.3 Georgia, serif; transform: rotate(-3deg); }
+    .photo-thumb.selected { outline: 3px solid var(--blue); outline-offset: -3px; }
+    .photo-thumb.selected::after { content: "✓"; position: absolute; top: 5px; right: 5px; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--blue); color: #fff; font-size: 10px; font-weight: 900; }
+
+    .senpai-words { padding: 9px 10px; border: 1px solid rgba(14,165,233,.25); border-radius: 13px; background: var(--surface); box-shadow: 0 4px 14px rgba(37,42,39,.07); }
+    .senpai-words-head { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; color: var(--blue); font-size: 8px; font-weight: 850; }
+    .senpai-words p { display: -webkit-box; margin: 0; overflow: hidden; color: var(--ink-2); font-size: 9px; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+    .senpai-words .expand-copy { margin-top: 4px; color: var(--blue); font-size: 8px; font-weight: 800; text-align: right; }
+    .last-question { padding: 8px 10px; border-left: 3px solid var(--blue); border-radius: 5px 10px 10px 5px; background: var(--blue-soft); color: var(--ink-2); font-size: 9px; line-height: 1.45; }
+    .transcript-sheet { width: 100%; padding: 14px; border-radius: 18px; background: var(--surface); box-shadow: 0 18px 50px rgba(0,0,0,.28); }
+    .transcript-sheet h5 { margin: 0; font-size: 13px; }
+    .transcript-scroll { max-height: 238px; margin: 10px 0; padding-right: 5px; overflow-y: auto; }
+    .transcript-turn { padding: 9px 0; border-bottom: 1px solid var(--line); }
+    .transcript-turn:last-child { border-bottom: 0; }
+    .transcript-turn b { display: block; margin-bottom: 3px; color: var(--blue); font-size: 8px; }
+    .transcript-turn p { margin: 0; color: var(--ink-2); font-size: 9px; line-height: 1.55; }
+
+    .board-visual-title { margin-bottom: 8px; color: var(--yellow); font-size: 8px; font-weight: 800; }
+    .board-visual-note { margin-top: 7px; color: var(--chalk-dim); font-size: 8px; line-height: 1.4; }
+    .board-table { width: 100%; border-collapse: collapse; color: var(--chalk); font-size: 9px; }
+    .board-table th, .board-table td { padding: 7px 6px; border-bottom: 1px solid rgba(237,234,224,.2); text-align: center; }
+    .board-table th { color: var(--yellow); font-weight: 800; }
+    .board-table td:first-child { color: var(--chalk-dim); text-align: left; }
+    .board-chart { width: 100%; height: 155px; }
+    .board-chart .axis { stroke: var(--chalk-dim); stroke-width: 1; }
+    .board-chart .grid { stroke: rgba(237,234,224,.12); stroke-width: 1; }
+    .board-chart .curve { fill: none; stroke: var(--yellow); stroke-width: 2.5; }
+    .board-chart .mark { fill: var(--yellow); stroke: var(--board); stroke-width: 1.5; }
+    .board-chart text { fill: var(--chalk-dim); font-size: 7px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .board-geometry { width: 100%; height: 170px; }
+    .board-geometry line, .board-geometry circle, .board-geometry path { fill: none; stroke: var(--chalk); stroke-width: 2; }
+    .board-geometry .key { stroke: var(--yellow); stroke-width: 3; }
+    .board-geometry text { fill: var(--chalk); font-size: 9px; font-family: "Hiragino Sans", "Yu Gothic UI", sans-serif; }
 
     .turn-banner { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: var(--yellow-soft); font-size: 9px; font-weight: 800; }
     .system-banner { display: flex; align-items: flex-start; gap: 8px; padding: 9px 10px; border: 1px solid #e0c17d; border-radius: 10px; background: #fff5d5; color: #70551c; font-size: 8px; line-height: 1.5; }
@@ -773,28 +822,28 @@
     <header class="file-cover" id="cover">
       <div class="file-strip">
         <div><span class="file-mark">カ</span><div><strong>KATARUTE / MOBILE APP</strong><br><small>DESIGN REVIEW BOARD</small></div></div>
-        <div><div><small>VERSION</small><br><strong>v3.2 proposal</strong></div></div>
+        <div><div><small>VERSION</small><br><strong>v3.3 proposal</strong></div></div>
         <div><div><small>BASE FRAME</small><br><strong>390 × 844 dp / Android</strong></div></div>
         <div><div><small>UPDATED</small><br><strong>2026.08.13 / review</strong></div></div>
       </div>
       <div class="cover-body">
         <div>
           <p class="cover-kicker">00 / FILE CONTEXT</p>
-          <h1 class="cover-title">画面を“見せる”ための<br>モバイルUI検討ボード</h1>
-          <p class="cover-summary">v2の黒板・紙の問題・先輩とのターン制を核に、初回導入から授業、復習、計画、設定、失敗復帰までを同じ縮尺で並べ直した。これはWebサイトではなく、比較・合意・実装引き継ぎのための静的アートボードである。</p>
-          <div class="cover-rule">全状態を常時表示 / タブ・フィルター・デモ操作なし / 提案のみ</div>
+          <h1 class="cover-title">今のカタルテを残して、<br>4つの学びを迷わなくする</h1>
+          <p class="cover-summary">README・インセプションデッキ・ピボット計画と現行Flutter実装を正に、既存の丸ゴシック、黒板、紙、先輩の顔、太いボタン、3タブ構造を維持した改善案。別アプリへ作り替えず、「教わって解く → 復習する → 計画する → 家族へ共有する」が自然につながる状態だけを追加・整理する。</p>
+          <div class="cover-rule">現行UIからの差分を比較 / 全状態を常時表示 / Webサイト用途ではない</div>
         </div>
         <div class="cover-matrix">
-          <article class="matrix-card"><code>KEEP FROM V2</code><b>黒板が主役</b><p>説明の中心は常に板書。装飾やチャットUIで学習内容を押し下げない。</p></article>
-          <article class="matrix-card"><code>REFINE IN V3</code><b>次の一手を1つに</b><p>その瞬間の主操作だけを強くし、音声状態と画面状態を一致させる。</p></article>
-          <article class="matrix-card"><code>EXTEND IN V3</code><b>授業の前後をつなぐ</b><p>撮影→授業→カルテ→復習→計画を、戻れる循環として見せる。</p></article>
-          <article class="matrix-card"><code>HANDOFF RULE</code><b>状態まで設計する</b><p>loading / denied / offline / limitを通常画面の隣に置き、出口を明記する。</p></article>
+          <article class="matrix-card"><code>01 / LEARN TOGETHER</code><b>問題を見せて、一緒に解く</b><p>写真またはギャラリーから1問を選び、先輩の板書を見ながら教え返す。</p></article>
+          <article class="matrix-card"><code>02 / REVIEW</code><b>言葉が止まった所を復習</b><p>点数ではなく「理解の穴」を、1日・3日・7日後に短く言い直す。</p></article>
+          <article class="matrix-card"><code>03 / PLAN</code><b>先輩と話して計画する</b><p>フォームを埋めず、テスト日・範囲・教材を会話で決め、崩れたら軽く組み直す。</p></article>
+          <article class="matrix-card"><code>04 / SHARE WITH FAMILY</code><b>本人の言葉を家族へ共有</b><p>正答率や監視ではなく、言えるようになったことと次に取り組む所を本人確認後に届ける。</p></article>
         </div>
       </div>
       <div class="legend-bar">
         <div class="legend-block"><b>CHANGE STATUS</b><div class="legend-items"><span class="status existing">EXISTING</span><span class="status refine">REFINE</span><span class="status new">NEW</span><span class="status edge">EDGE</span></div></div>
         <div class="legend-block"><b>PRIORITY</b><div class="legend-items"><span class="priority p0">P0 CORE</span><span class="priority p1">P1 NEXT</span><span class="priority p2">P2 LATER</span></div></div>
-        <div class="legend-block"><b>FLOW LINE</b><div class="legend-items"><span class="legend-note">青 = ユーザー操作　赤 = 障害分岐　灰 = 自動遷移</span></div></div>
+        <div class="legend-block"><b>DESIGN GUARDRAIL</b><div class="legend-items"><span class="legend-note">黒板を主役に保つ / 点数を出さない / パスを恥にしない / 煽らない</span></div></div>
       </div>
     </header>
 
@@ -802,17 +851,17 @@
       <header class="section-head">
         <div class="section-index">01 / ENTRY</div>
         <h2 class="section-title">初回導入と、毎日の入口</h2>
-        <p class="section-copy">価値説明を何枚もめくらせず、30秒のリハーサルで「声に出す授業」を体験させる。日常利用はホームの“今日やる1つ”から撮影へ直結し、解析待ちでも撮った問題を見失わせない。</p>
+        <p class="section-copy">現行の4枚構成を保ち、約束 → 全体の流れ → 30秒のリハーサル → カルテの持ち帰りまでを一続きにする。日常利用は「問題を見せる」からカメラと写真を選べるようにし、解析待ちでも選んだ問題を見失わせない。</p>
       </header>
       <div class="review-strip">
-        <div class="review-item"><code>DECISION 01</code><b>オンボーディングは2画面で終える</b></div>
-        <div class="review-item"><code>DECISION 02</code><b>ホームの主操作は「問題を撮る」</b></div>
-        <div class="review-item"><code>DECISION 03</code><b>解析中も画像とキャンセルを残す</b></div>
-        <div class="review-item"><code>DECISION 04</code><b>授業開始前なら無料枠を消費しない</b></div>
+        <div class="review-item"><code>DECISION 01</code><b>現行4枚を役割別に短く保つ</b></div>
+        <div class="review-item"><code>DECISION 02</code><b>入口の言葉は「問題を見せる」</b></div>
+        <div class="review-item"><code>DECISION 03</code><b>カメラと写真を同じ確認へ合流</b></div>
+        <div class="review-item"><code>DECISION 04</code><b>解析中も画像と戻り先を残す</b></div>
       </div>
 
       <div class="subflow">
-        <div class="subflow-head"><code>A / FIRST RUN</code><b>説明ではなく、声を出すところまで体験</b><span>初回起動 → リハーサル → 空のホーム</span></div>
+        <div class="subflow-head"><code>A / FIRST RUN</code><b>何をするアプリかを見て、1問だけ体験</b><span>約束 → 4ステップ → リハーサル → カルテ → 空のホーム</span></div>
         <div class="flow-row">
           <article class="artboard">
             <header class="artboard-meta"><div class="artboard-id"><code>ONB-01</code><span class="status refine">REFINE</span><span class="priority p0">P0</span></div><h3>価値を1画面で伝える</h3><p>初回起動 / 権限はまだ聞かない</p></header>
@@ -820,32 +869,57 @@
               <div class="phone-screen">
                 <div class="statusbar"></div>
                 <div class="phone-body">
-                  <div class="row between"><span class="eyeline">KATARUTE</span><span class="tiny-chip">1 / 2</span></div>
+                  <div class="row between"><span class="eyeline">KATARUTE</span><span class="tiny-chip">1 / 4</span></div>
                   <div class="blackboard" style="min-height:210px">
                     <span class="board-step">SENPAI LESSON</span>
-                    <h5 style="font-size:19px;margin-top:18px">答えるより、<br>説明してみよう。</h5>
-                    <p>先輩が板書して、あなたに聞く。<br>声にすると、わかったつもりが見えてくる。</p>
-                    <span class="chalk-note">まずは30秒 ↓</span>
+                    <h5 style="font-size:19px;margin-top:18px">先輩に教わって、<br>今度はあなたが説明する。</h5>
+                    <p>答えを見て終わりにしない。<br>言葉にすると、わかったつもりが見えてくる。</p>
+                    <span class="chalk-note">まず流れを見る ↓</span>
                   </div>
                   <div class="grow"></div>
-                  <div class="primary-button yellow"><svg class="icon"><use href="#i-mic"/></svg>30秒だけ試す</div>
-                  <div class="text-button">使い方をあとで見る</div>
+                  <div class="primary-button yellow">どうやって使う？</div>
                 </div>
               </div>
               <span class="pin one">1</span>
               <span class="pin three">2</span>
             </div>
-            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>初回起動</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>30秒だけ試す</dd></div><div class="handoff-row"><dt>NEXT</dt><dd>ONB-02</dd></div><div class="annotation"><b>①</b> 製品説明は黒板内に統合。<b>②</b> 許可前に体験の意味を作る。</div></dl>
+            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>初回起動</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>どうやって使う？</dd></div><div class="handoff-row"><dt>NEXT</dt><dd>ONB-02</dd></div><div class="annotation"><b>①</b> 現行の約束を言い換えすぎない。<b>②</b> 権限はまだ聞かない。</div></dl>
           </article>
 
-          <div class="connector user"><span>30秒だけ試す</span><i class="connector-line"></i></div>
+          <div class="connector user"><span>流れを見る</span><i class="connector-line"></i></div>
 
           <article class="artboard">
-            <header class="artboard-meta"><div class="artboard-id"><code>ONB-02</code><span class="status refine">REFINE</span><span class="priority p0">P0</span></div><h3>1問だけのリハーサル</h3><p>マイク許可後 / 成否を採点しない</p></header>
+            <header class="artboard-meta"><div class="artboard-id"><code>ONB-02</code><span class="status refine">REFINE</span><span class="priority p0">P0</span></div><h3>最初から復習までを先に見せる</h3><p>現行の使い方説明 / 4本柱の関係を短く</p></header>
             <div class="device">
               <div class="phone-screen">
                 <div class="statusbar"></div>
-                <div class="appbar transparent"><div></div><h4>声に出す練習</h4><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span></div>
+                <div class="appbar transparent"><span class="icon-button"><svg class="icon"><use href="#i-back"/></svg></span><h4>カタルテの流れ</h4><span class="tiny-chip">2 / 4</span></div>
+                <div class="phone-body">
+                  <h3 class="phone-title" style="font-size:17px">1問が、次の学びまで<br>つながります。</h3>
+                  <div class="journey-grid">
+                    <div class="journey-step"><span class="journey-index">1</span><b>問題を見せる</b><span>撮る / 写真から選ぶ</span></div>
+                    <div class="journey-step"><span class="journey-index">2</span><b>黒板で教わる</b><span>式・図・表を見ながら</span></div>
+                    <div class="journey-step"><span class="journey-index">3</span><b>自分で説明する</b><span>タップして話し始める</span></div>
+                    <div class="journey-step"><span class="journey-index">4</span><b>あとで復習する</b><span>止まった所がカルテに残る</span></div>
+                  </div>
+                  <div class="surface-card tint-blue"><h5>学びが増えたら</h5><p>先輩と計画を作り、言えるようになったことを家族へ共有できます。</p></div>
+                  <div class="grow"></div>
+                  <div class="primary-button">1問だけ試す</div>
+                </div>
+              </div>
+              <span class="pin one">1</span>
+            </div>
+            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>ONB-01</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>1問だけ試す</dd></div><div class="handoff-row"><dt>NEXT</dt><dd>ONB-03</dd></div><div class="annotation"><b>①</b> 機能一覧ではなく、1問が復習まで続く順序として見せる。</div></dl>
+          </article>
+
+          <div class="connector user"><span>1問だけ試す</span><i class="connector-line"></i></div>
+
+          <article class="artboard">
+            <header class="artboard-meta"><div class="artboard-id"><code>ONB-03</code><span class="status refine">REFINE</span><span class="priority p0">P0</span></div><h3>1問だけのリハーサル</h3><p>固定台本 / マイクは使わず操作だけ覚える</p></header>
+            <div class="device">
+              <div class="phone-screen">
+                <div class="statusbar"></div>
+                <div class="appbar transparent"><div></div><h4>声に出す練習</h4><span class="tiny-chip">3 / 4</span></div>
                 <div class="phone-body">
                   <div class="progress-rail"><i class="done"></i><i class="active"></i></div>
                   <div class="paper-card"><span class="subject">30 SECOND REHEARSAL</span><h5>「2x + 3 = 11」は、最初に何をする？</h5></div>
@@ -855,16 +929,31 @@
                     <p>うまく言えなくても大丈夫。言い直せます。</p>
                   </div>
                   <div class="voice-dock">
-                    <div class="voice-state"><div class="avatar">私</div><div class="voice-copy"><b>押している間、話せます</b><span>「まず3を引きます」</span></div><div class="mic-orb" style="width:37px;height:37px;border-width:4px;margin:0"><svg class="icon"><use href="#i-mic"/></svg></div></div>
+                    <div class="voice-copy" style="text-align:center"><b>押すと話し始めます</b><span>もう一度押すと終わります</span></div>
+                    <div class="primary-button blue" style="margin-top:9px"><svg class="icon"><use href="#i-mic"/></svg>話しはじめる</div>
                   </div>
+                  <p class="fine muted" style="text-align:center">これは練習です。声は録音しません。</p>
                 </div>
               </div>
               <span class="pin two">1</span>
             </div>
-            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>マイク許可が通った</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>押して話す</dd></div><div class="handoff-row"><dt>NEXT</dt><dd>HOME-00</dd></div><div class="annotation"><b>①</b> 本番と同じ音声Dockを使い、操作学習を使い捨てにしない。</div></dl>
+            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>ONB-02</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>タップで開始 / タップで終了</dd></div><div class="handoff-row"><dt>NEXT</dt><dd>ONB-04</dd></div><div class="annotation"><b>①</b> 本番と同じタップ式音声Dockを使う。長押しは教えない。</div></dl>
           </article>
 
-          <div class="connector"><span>体験完了</span><i class="connector-line"></i></div>
+          <div class="connector"><span>カルテになる</span><i class="connector-line"></i></div>
+
+          <article class="artboard">
+            <header class="artboard-meta"><div class="artboard-id"><code>ONB-04</code><span class="status refine">REFINE</span><span class="priority p0">P0</span></div><h3>教え返した先を見せる</h3><p>現行カルテプレビュー / 成績にはしない</p></header>
+            <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="appbar transparent"><div></div><h4>こんなふうに残ります</h4><span class="tiny-chip">4 / 4</span></div><div class="phone-body">
+              <div class="surface-card tint-green"><span class="eyeline" style="color:var(--green)">言えたこと</span><h5 style="margin-top:7px">最初に3を引く</h5><p>「左右から3を引けば、xだけに近づく」と説明しました。</p></div>
+              <div><div class="settings-section-title">次にたずねること</div><div class="hole-card"><b>どうして両側から引くの？</b><p>言葉が止まった所だけを、あとで短く聞きます。</p></div></div>
+              <div class="surface-card tint-blue"><div class="row"><svg class="icon"><use href="#i-bell"/></svg><div><h5>1日後に10秒だけ</h5><p>点数はつけません。「言えた / まだ」で終わります。</p></div></div></div>
+              <div class="grow"></div><div class="primary-button">最初の問題へ</div>
+            </div></div><span class="pin two">1</span></div>
+            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>リハーサル終了</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>最初の問題へ</dd></div><div class="handoff-row"><dt>NEXT</dt><dd>HOME-00</dd></div><div class="annotation"><b>①</b> 教え返す理由を、説明文ではなく実際の持ち帰りで理解させる。</div></dl>
+          </article>
+
+          <div class="connector"><span>準備完了</span><i class="connector-line"></i></div>
 
           <article class="artboard">
             <header class="artboard-meta"><div class="artboard-id"><code>HOME-00</code><span class="status new">NEW</span><span class="priority p0">P0</span></div><h3>初回の空ホーム</h3><p>授業0件 / 空白をダッシュボードにしない</p></header>
@@ -874,15 +963,16 @@
                 <div class="appbar transparent"><div></div><h4>カタルテ</h4><div></div></div>
                 <div class="phone-body center">
                   <div class="empty-illustration"><svg class="icon icon-lg"><use href="#i-camera"/></svg></div>
-                  <h3 class="phone-title">最初の問題を<br>見せてください</h3>
-                  <p class="phone-subtitle">ノートでも、教科書でも。<br>先輩と一緒に1問ずつ進めます。</p>
-                  <div style="width:100%;margin-top:10px" class="primary-button"><svg class="icon"><use href="#i-camera"/></svg>問題を撮る</div>
+                  <h3 class="phone-title">まず、わからない問題を<br>1つ見せてください</h3>
+                  <p class="phone-subtitle">今ここで撮っても、持っている写真でも。<br>先輩と一緒に1問ずつ進めます。</p>
+                  <div style="width:100%;margin-top:10px" class="primary-button"><svg class="icon"><use href="#i-photo"/></svg>問題を見せる</div>
+                  <p class="fine muted">カメラ / 写真から選ぶ</p>
                   <div class="text-button">使い方をもう一度見る</div>
                 </div>
                 <nav class="bottom-nav"><span class="nav-item active"><span class="nav-icon"><svg class="icon"><use href="#i-home"/></svg></span>ホーム</span><span class="nav-item"><span class="nav-icon"><svg class="icon"><use href="#i-plan"/></svg></span>計画</span><span class="nav-item"><span class="nav-icon"><svg class="icon"><use href="#i-settings"/></svg></span>設定</span></nav>
               </div>
             </div>
-            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>初回体験完了 / 授業0件</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>問題を撮る</dd></div><div class="handoff-row"><dt>NEXT</dt><dd>CAP-01</dd></div><div class="annotation">空の理由を説明せず、最初の成果へ直接つなぐ。</div></dl>
+            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>初回体験完了 / 授業0件</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>問題を見せる</dd></div><div class="handoff-row"><dt>NEXT</dt><dd>CAP-00</dd></div><div class="annotation">何から始めるかを一文で明示し、入力方法は次の1枚で選ばせる。</div></dl>
           </article>
         </div>
       </div>
@@ -903,47 +993,54 @@
                     <div class="task-card-top"><small>TODAY / 10分</small><h5>三角関数の穴を<br>ひとつ言い直す</h5></div>
                     <div class="task-card-bottom"><span>1日前のおさらい</span><span class="chip yellow">声で復習</span></div>
                   </div>
-                  <div class="surface-card tint-blue"><div class="row"><svg class="icon"><use href="#i-camera"/></svg><div><h5>新しい問題を聞く</h5><p>ノートや教科書を撮って始める</p></div></div></div>
+                  <div class="surface-card tint-blue"><div class="row"><svg class="icon"><use href="#i-photo"/></svg><div><h5>新しい問題を聞く</h5><p>撮るか、持っている写真から選ぶ</p></div></div></div>
                   <div class="row between"><span class="muted fine">今週</span><span class="fine strong">言えたこと 4つ</span></div>
                   <div class="grow"></div>
-                  <div class="primary-button"><svg class="icon"><use href="#i-camera"/></svg>問題を撮る</div>
+                  <div class="primary-button"><svg class="icon"><use href="#i-photo"/></svg>問題を見せる</div>
                 </div>
                 <nav class="bottom-nav"><span class="nav-item active"><span class="nav-icon"><svg class="icon"><use href="#i-home"/></svg></span>ホーム</span><span class="nav-item"><span class="nav-icon"><svg class="icon"><use href="#i-plan"/></svg></span>計画</span><span class="nav-item"><span class="nav-icon"><svg class="icon"><use href="#i-settings"/></svg></span>設定</span></nav>
               </div>
               <span class="pin one">1</span><span class="pin two">2</span>
             </div>
-            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>通常起動</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>問題を撮る</dd></div><div class="handoff-row"><dt>ALT</dt><dd>今日の復習 → REVIEW-01</dd></div><div class="annotation"><b>①</b> 今日やる1つを先頭。<b>②</b> 新規授業の入口は常に固定。</div></dl>
+            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>通常起動</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>問題を見せる</dd></div><div class="handoff-row"><dt>ALT</dt><dd>今日の復習 → REVIEW-01</dd></div><div class="annotation"><b>①</b> 今日やる1つを先頭。<b>②</b> 「撮る」に限定せず、入力方法は次で選ぶ。</div></dl>
           </article>
 
-          <div class="connector user"><span>問題を撮る</span><i class="connector-line"></i></div>
+          <div class="connector user"><span>問題を見せる</span><i class="connector-line"></i></div>
 
           <article class="artboard">
-            <header class="artboard-meta"><div class="artboard-id"><code>CAP-01</code><span class="status refine">REFINE</span><span class="priority p0">P0</span></div><h3>カメラ準備</h3><p>カメラ許可済み / 1問に絞る</p></header>
+            <header class="artboard-meta"><div class="artboard-id"><code>CAP-00</code><span class="status new">NEW</span><span class="priority p0">P0</span></div><h3>問題の見せ方を選ぶ</h3><p>カメラ / 写真ライブラリを同格に</p></header>
             <div class="device">
-              <div class="phone-screen" style="background:#171b1a">
-                <div class="statusbar on-dark"></div>
-                <div class="appbar on-dark"><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span><h4>問題を撮る</h4><span class="icon-button">⚡</span></div>
-                <div class="camera-view"><div class="camera-help">問題が枠いっぱいに入るように</div><div class="camera-paper">x² − 4x + 3 = 0<br>を解きなさい。</div><div class="crop-guide"></div></div>
-                <div class="camera-controls"><svg class="icon icon-lg"><use href="#i-photo"/></svg><div class="shutter"></div><span class="fine">1問だけ</span></div>
+              <div class="phone-screen">
+                <div class="statusbar"></div>
+                <div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span><h4>問題を見せる</h4><div></div></div>
+                <div class="phone-body">
+                  <div><span class="eyeline">START WITH ONE PROBLEM</span><h3 class="phone-title" style="font-size:17px">手元にある方法で<br>1問だけ選んでください。</h3></div>
+                  <div class="source-choice">
+                    <div class="source-row primary"><span class="source-icon"><svg class="icon icon-lg"><use href="#i-camera"/></svg></span><div><b>カメラで撮る</b><small>今見ている問題を撮影</small></div><svg class="icon icon-sm muted"><use href="#i-chevron"/></svg></div>
+                    <div class="source-row"><span class="source-icon"><svg class="icon icon-lg"><use href="#i-photo"/></svg></span><div><b>写真から選ぶ</b><small>スクリーンショットや以前の写真</small></div><svg class="icon icon-sm muted"><use href="#i-chevron"/></svg></div>
+                  </div>
+                  <div class="surface-card tint-yellow"><h5>問題とノートが同じ写真でもOK</h5><p>問題だけでも始められます。ノートはあとから追加できます。</p></div>
+                  <div class="grow"></div><p class="fine muted" style="text-align:center">選んだ写真は、送る前に確認できます。</p>
+                </div>
               </div>
               <span class="pin one">1</span>
             </div>
-            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>カメラ許可済み</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>シャッター</dd></div><div class="handoff-row"><dt>NEXT</dt><dd>CAP-02</dd></div><div class="annotation"><b>①</b> 「紙全体」ではなく1問の境界を明示する。</div></dl>
+            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>HOME-00 / HOME-01</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>カメラ → CAP-CAMERA</dd></div><div class="handoff-row"><dt>ALT</dt><dd>写真 → CAP-GALLERY</dd></div><div class="annotation"><b>①</b> どちらもCAP-02へ合流。カメラ許可拒否でも写真から続けられる。</div></dl>
           </article>
 
-          <div class="connector user"><span>撮影</span><i class="connector-line"></i></div>
+          <div class="connector user"><span>撮る / 選ぶ</span><i class="connector-line"></i></div>
 
           <article class="artboard">
-            <header class="artboard-meta"><div class="artboard-id"><code>CAP-02</code><span class="status new">NEW</span><span class="priority p0">P0</span></div><h3>撮影直後の確認</h3><p>端切れ・ぶれを送信前に確認</p></header>
+            <header class="artboard-meta"><div class="artboard-id"><code>CAP-02</code><span class="status refine">REFINE</span><span class="priority p0">P0</span></div><h3>撮影・選択後の共通確認</h3><p>端切れ・ぶれ・選び間違いを送信前に確認</p></header>
             <div class="device">
               <div class="phone-screen" style="background:#171b1a">
                 <div class="statusbar on-dark"></div>
-                <div class="appbar on-dark"><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span><h4>この範囲でいい？</h4><div></div></div>
+                <div class="appbar on-dark"><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span><h4>この写真でいい？</h4><div></div></div>
                 <div class="camera-view"><div class="camera-paper" style="top:18%;bottom:18%;font-size:11px">問3<br>x² − 4x + 3 = 0<br>を因数分解して解きなさい。</div><div class="crop-guide" style="inset:12% 8%"></div></div>
-                <div style="padding:11px 14px 16px;background:#171b1a" class="button-row"><div class="secondary-button" style="background:#2b302e;color:#fff;border-color:#4d5551">撮り直す</div><div class="primary-button yellow">この写真を使う</div></div>
+                <div style="padding:11px 14px 16px;background:#171b1a" class="button-row"><div class="secondary-button" style="background:#2b302e;color:#fff;border-color:#4d5551">別の写真</div><div class="primary-button yellow">この写真を使う</div></div>
               </div>
             </div>
-            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>撮影完了</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>この写真を使う</dd></div><div class="handoff-row"><dt>BACK</dt><dd>撮り直す → CAP-01</dd></div><div class="annotation">解析コストの前に、人が一番早く判定できるぶれ・欠けを確認。</div></dl>
+            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>撮影 / ライブラリ選択</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>この写真を使う</dd></div><div class="handoff-row"><dt>BACK</dt><dd>別の写真 → 元の入力方法</dd></div><div class="annotation">入力元を問わず同じ確認へ合流。問題の全体が読めるかだけ確かめる。</div></dl>
           </article>
 
           <div class="connector user"><span>この写真を使う</span><i class="connector-line"></i></div>
@@ -1014,21 +1111,92 @@
           </article>
         </div>
       </div>
+
+      <div class="subflow">
+        <div class="subflow-head"><code>C / INPUT SOURCES</code><b>入力方法だけ違い、確認以降は同じ</b><span>アプリ内でOSの写真UIを作り直さない / ノートは任意</span></div>
+        <div class="artboard-row">
+          <article class="artboard">
+            <header class="artboard-meta"><div class="artboard-id"><code>CAP-CAMERA</code><span class="status existing">EXISTING</span><span class="priority p0">P0</span></div><h3>その場でカメラ撮影</h3><p>Android camera / 1問の境界を案内</p></header>
+            <div class="device"><div class="phone-screen" style="background:#171b1a"><div class="statusbar on-dark"></div><div class="appbar on-dark"><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span><h4>問題を撮る</h4><span class="icon-button">⚡</span></div><div class="camera-view"><div class="camera-help">1問が枠いっぱいに入るように</div><div class="camera-paper">x² − 4x + 3 = 0<br>を解きなさい。</div><div class="crop-guide"></div></div><div class="camera-controls"><span class="fine">写真へ</span><div class="shutter"></div><span class="fine">1問だけ</span></div></div></div>
+            <dl class="handoff"><div class="handoff-row"><dt>FROM</dt><dd>CAP-00 / カメラ</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>シャッター</dd></div><div class="handoff-row"><dt>NEXT</dt><dd>CAP-02</dd></div><div class="annotation">既存のカメラ体験を維持。写真アイコンからライブラリへ切り替えられる。</div></dl>
+          </article>
+
+          <article class="artboard">
+            <header class="artboard-meta"><div class="artboard-id"><code>CAP-GALLERY</code><span class="status new">NEW</span><span class="priority p0">P0</span></div><h3>持っている写真から選ぶ</h3><p>Android Photo Picker / 選択は1枚</p></header>
+            <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span><h4>写真から選ぶ</h4><span class="tiny-chip">1枚</span></div><div class="phone-body">
+              <div class="row between"><b style="font-size:10px">最近の写真</b><span class="fine muted">Androidの写真選択</span></div>
+              <div class="photo-grid"><span class="photo-thumb"></span><span class="photo-thumb selected"></span><span class="photo-thumb"></span><span class="photo-thumb"></span><span class="photo-thumb"></span><span class="photo-thumb"></span><span class="photo-thumb"></span><span class="photo-thumb"></span><span class="photo-thumb"></span></div>
+              <div class="surface-card tint-blue"><p style="margin:0">スクリーンショットでも使えます。選んだあと、問題が読めるか確認します。</p></div>
+              <div class="grow"></div><div class="primary-button blue">この写真を選ぶ</div>
+            </div></div><span class="pin one">1</span></div>
+            <dl class="handoff"><div class="handoff-row"><dt>FROM</dt><dd>CAP-00 / 写真から選ぶ</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>1枚選択</dd></div><div class="handoff-row"><dt>NEXT</dt><dd>CAP-02</dd></div><div class="annotation"><b>①</b> Android Photo Pickerを使い、アプリ独自のギャラリー権限を増やさない。</div></dl>
+          </article>
+
+          <article class="artboard">
+            <header class="artboard-meta"><div class="artboard-id"><code>CAP-NOTE</code><span class="status refine">REFINE</span><span class="priority p1">P1</span></div><h3>ノートを任意で足す</h3><p>問題だけでも開始可 / 入力元を各枠で選ぶ</p></header>
+            <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-back"/></svg></span><h4>問題とノート</h4><div></div></div><div class="phone-body">
+              <div class="surface-card tint-green"><div class="row"><span class="source-icon"><svg class="icon"><use href="#i-check"/></svg></span><div><h5>問題の写真</h5><p>1枚選びました</p></div></div></div>
+              <div class="surface-card"><div class="row"><span class="source-icon"><svg class="icon"><use href="#i-book"/></svg></span><div><h5>ノート（任意）</h5><p>手を動かした所があると、先輩がそこから教えられます。</p></div></div><div class="button-row" style="margin-top:9px"><div class="secondary-button"><svg class="icon"><use href="#i-camera"/></svg>撮る</div><div class="secondary-button"><svg class="icon"><use href="#i-photo"/></svg>写真</div></div></div>
+              <div class="grow"></div><div class="primary-button">問題を確認する</div><div class="text-button">ノートなしで進む</div>
+            </div></div><span class="pin two">1</span></div>
+            <dl class="handoff"><div class="handoff-row"><dt>FROM</dt><dd>CAP-02 / 問題選択済み</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>ノート追加 / なしで進む</dd></div><div class="handoff-row"><dt>NEXT</dt><dd>OCR-01</dd></div><div class="annotation"><b>①</b> ノートを必須に見せず、追加する価値だけを説明する。</div></dl>
+          </article>
+        </div>
+      </div>
+
     </section>
     <section class="board-section" id="lesson-flow">
       <header class="section-head">
         <div class="section-index">02 / CORE LESSON</div>
-        <h2 class="section-title">授業のターンを、8状態で固定</h2>
-        <p class="section-copy">同じ問題・同じ板書・同じ音声Dockを保ったまま、話者と主操作だけを切り替える。チャット履歴は増やさず、今どちらが話しているか、次に何をすればよいかを常に一意にする。</p>
+        <h2 class="section-title">黒板と先輩の問いを残したまま、交代して話す</h2>
+        <p class="section-copy">同じ問題・同じ黒板・直近の問いを保ったまま、話者と主操作だけを切り替える。先輩の言葉は3行まで常時読め、必要なときだけ全文をスクロール表示する。チャット画面にはせず、授業の主役は黒板のままにする。</p>
       </header>
       <div class="review-strip">
-        <div class="review-item"><code>STATE MODEL</code><b>READY → SENPAI → HANDOFF → LISTEN</b></div>
-        <div class="review-item"><code>STATE MODEL</code><b>PROCESS → FOLLOW UP → REPAIR → DONE</b></div>
-        <div class="review-item"><code>CONTENT RULE</code><b>問題と板書は状態遷移で動かさない</b></div>
-        <div class="review-item"><code>ACTION RULE</code><b>主ボタンは各状態に1つだけ</b></div>
+        <div class="review-item"><code>BOARD RULE</code><b>問題・黒板・図表を消さない</b></div>
+        <div class="review-item"><code>WORDS RULE</code><b>直近3行 + 全文スクロール</b></div>
+        <div class="review-item"><code>VOICE RULE</code><b>タップで開始 / タップで終了</b></div>
+        <div class="review-item"><code>ACTION RULE</code><b>各状態の主ボタンは1つだけ</b></div>
       </div>
       <div class="subflow">
-        <div class="subflow-head"><code>A / HAPPY PATH</code><b>先輩の説明から、生徒の言い直しまで</b><span>全画面を同時比較 / 音声状態の差分が中心</span></div>
+        <div class="subflow-head"><code>A / READ &amp; SEE</code><b>先輩の言葉と、黒板の図表を必要な分だけ広げる</b><span>直近の問いは常時表示 / 全文・図表の拡大は利用者操作</span></div>
+        <div class="artboard-row">
+          <article class="artboard">
+            <header class="artboard-meta"><div class="artboard-id"><code>LES-WORDS</code><span class="status new">NEW</span><span class="priority p0">P0</span></div><h3>先輩のことばを全文で読む</h3><p>3行プレビューをタップ / 黒板は背後に保持</p></header>
+            <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span><h4>二次方程式</h4><span class="tiny-chip">1 / 3</span></div><div class="phone-body"><div class="blackboard full-bleed" style="min-height:350px"><span class="board-step">STEP 1 / 因数分解</span><div class="formula" style="margin-top:18px">(x − 1)(x − 3) = 0</div></div></div><div class="overlay"><div class="transcript-sheet"><div class="row between"><h5>先輩のことば</h5><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span></div><div class="transcript-scroll"><div class="transcript-turn"><b>いまの説明</b><p>まず、積と和に注目しよう。かけて3、たして−4になる2つの数を探すと、式が分けられるよ。</p></div><div class="transcript-turn"><b>直近の問い</b><p>なぜ、−1と−3の2数を選んだのか説明できる？ 黒板を見ながらで大丈夫。</p></div><div class="transcript-turn"><b>前の確認</b><p>この問題は、因数分解してから0になる条件を使う問題だね。</p></div></div><div class="secondary-button">黒板に戻る</div></div></div></div><span class="pin two">1</span></div>
+            <dl class="handoff"><div class="handoff-row"><dt>FROM</dt><dd>先輩のことば / 全文を見る</dd></div><div class="handoff-row"><dt>SCROLL</dt><dd>この問題の先輩発話のみ</dd></div><div class="handoff-row"><dt>BACK</dt><dd>閉じる → 元の授業状態</dd></div><div class="annotation"><b>①</b> 発話履歴はチャット化せず、下から開く読み物。録音開始後も消さない。</div></dl>
+          </article>
+
+          <article class="artboard">
+            <header class="artboard-meta"><div class="artboard-id"><code>BOARD-GRAPH</code><span class="status refine">REFINE</span><span class="priority p0">P0</span></div><h3>グラフで関係を見る</h3><p>既存plot要素 / 軸・注目点・問いを同じ黒板に</p></header>
+            <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span><h4>二次関数</h4><span class="tiny-chip">図を拡大</span></div><div class="phone-body">
+              <div class="paper-card" style="padding-block:8px"><span class="subject">QUESTION</span><div class="formula">y = x² − 4x + 3</div></div>
+              <div class="blackboard full-bleed" style="min-height:300px"><div class="board-visual-title">GRAPH / 頂点とx切片</div><svg class="board-chart" viewBox="0 0 240 155" role="img" aria-label="二次関数のグラフ。x切片は1と3、頂点は2マイナス1"><path class="grid" d="M20 30H230M20 70H230M20 110H230M60 12V140M105 12V140M150 12V140M195 12V140"/><path class="axis" d="M20 110H232M105 10V143"/><path class="curve" d="M35 18 C65 72 82 122 105 132 C128 142 147 96 177 38 C190 14 201 2 214 -6"/><circle class="mark" cx="82" cy="110" r="4"/><circle class="mark" cx="150" cy="110" r="4"/><circle class="mark" cx="116" cy="133" r="4"/><text x="77" y="124">1</text><text x="146" y="124">3</text><text x="122" y="145">(2,−1)</text><text x="214" y="105">x</text><text x="110" y="18">y</text></svg><div class="board-visual-note">黄色の3点を見ると、解とグラフの交点がつながる。</div></div>
+              <div class="last-question"><b>先輩の問い</b><br>「式の解は、グラフのどこに見えている？」</div>
+            </div></div><span class="pin one">1</span></div>
+            <dl class="handoff"><div class="handoff-row"><dt>DATA</dt><dd>BoardElement.plot</dd></div><div class="handoff-row"><dt>TAP</dt><dd>図だけを拡大 / 戻ると位置保持</dd></div><div class="handoff-row"><dt>A11Y</dt><dd>alt + 重要点を読み上げ</dd></div><div class="annotation"><b>①</b> 軸・単位・注目点を省かない。色だけで意味を持たせない。</div></dl>
+          </article>
+
+          <article class="artboard">
+            <header class="artboard-meta"><div class="artboard-id"><code>BOARD-TABLE</code><span class="status refine">REFINE</span><span class="priority p0">P0</span></div><h3>表で候補を比べる</h3><p>既存compare要素 / 行見出しと結論を明示</p></header>
+            <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span><h4>因数分解</h4><span class="tiny-chip">2 / 3</span></div><div class="phone-body">
+              <div class="blackboard full-bleed" style="min-height:330px"><div class="board-visual-title">COMPARE / 2数の候補</div><table class="board-table"><thead><tr><th></th><th>1 と 3</th><th>−1 と −3</th></tr></thead><tbody><tr><td>積</td><td>+3</td><td><span class="chalk-highlight">+3</span></td></tr><tr><td>和</td><td>+4</td><td><span class="chalk-highlight">−4</span></td></tr><tr><td>式</td><td>(x+1)(x+3)</td><td>(x−1)(x−3)</td></tr></tbody></table><div class="chalk-line"></div><h5>積と和の両方が合うのは、<br>−1 と −3。</h5><div class="board-visual-note">列を増やしすぎず、比較する観点を左に固定。</div></div>
+              <div class="senpai-words"><div class="senpai-words-head"><span class="avatar senpai" style="width:25px;height:25px;border-radius:8px">先</span><span>先輩のことば</span></div><p>「積だけで決めると2つ候補があるね。和まで見ると、どちらが残る？」</p></div>
+            </div></div></div>
+            <dl class="handoff"><div class="handoff-row"><dt>DATA</dt><dd>BoardElement.compare</dd></div><div class="handoff-row"><dt>LIMIT</dt><dd>2列 × 4行まで</dd></div><div class="handoff-row"><dt>FOCUS</dt><dd>現在比較中の行をチョーク囲み</dd></div><div class="annotation">表は答え一覧ではなく、判断に使う2つの観点を見せる。</div></dl>
+          </article>
+
+          <article class="artboard">
+            <header class="artboard-meta"><div class="artboard-id"><code>BOARD-FIGURE</code><span class="status refine">REFINE</span><span class="priority p0">P0</span></div><h3>図形へ直接書き込む</h3><p>既存circle / triangle / figure要素</p></header>
+            <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span><h4>円と接線</h4><span class="tiny-chip">図を拡大</span></div><div class="phone-body">
+              <div class="blackboard full-bleed" style="min-height:340px"><div class="board-visual-title">FIGURE / 半径と接線</div><svg class="board-geometry" viewBox="0 0 240 170" role="img" aria-label="中心Oの円と接点P、半径OPと接線が直角"><circle cx="102" cy="88" r="55"/><line x1="102" y1="88" x2="150" y2="61" class="key"/><line x1="125" y1="18" x2="185" y2="124"/><path d="M145 65l8 5 5-8" class="key"/><circle cx="102" cy="88" r="3"/><circle cx="150" cy="61" r="3"/><text x="91" y="104">O</text><text x="156" y="58">P</text><text x="165" y="104">接線</text></svg><div class="chalk-line"></div><h5>半径 OP ⟂ 接線</h5><div class="board-visual-note">いま見る線だけ黄色。図の外に長い説明を置かない。</div></div>
+              <div class="last-question"><b>先輩の問い</b><br>「直角になる2本は、図のどれとどれ？」</div>
+            </div></div><span class="pin one">1</span></div>
+            <dl class="handoff"><div class="handoff-row"><dt>DATA</dt><dd>circle / triangle / validated figure</dd></div><div class="handoff-row"><dt>TAP</dt><dd>図だけを拡大</dd></div><div class="handoff-row"><dt>RULE</dt><dd>現在の説明対象だけ黄色</dd></div><div class="annotation"><b>①</b> 図・式・問いが1枚の黒板としてつながる。</div></dl>
+          </article>
+        </div>
+      </div>
+      <div class="subflow">
+        <div class="subflow-head"><code>B / HAPPY PATH</code><b>先輩の説明から、生徒の言い直しまで</b><span>全画面を同時比較 / 音声状態の差分が中心</span></div>
         <div class="flow-row">
           <article class="artboard">
             <header class="artboard-meta"><div class="artboard-id"><code>LES-01</code><span class="status refine">REFINE</span><span class="priority p0">P0</span></div><h3>授業を始める直前</h3><p>接続完了 / 問題の読み合わせ</p></header>
@@ -1038,7 +1206,7 @@
                 <div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span><h4>二次方程式</h4><span class="tiny-chip">0 / 3</span></div>
                 <div class="phone-body">
                   <div class="paper-card"><span class="subject">TODAY'S QUESTION</span><h5>次の二次方程式を因数分解して解きなさい。</h5><div class="formula">x² − 4x + 3 = 0</div></div>
-                  <div class="blackboard">
+                  <div class="blackboard full-bleed">
                     <span class="board-step">READY</span>
                     <h5>まず、問題を一緒に読もう。</h5>
                     <p>何を求める問題か、先輩が短く確認します。</p>
@@ -1061,19 +1229,19 @@
                 <div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span><h4>二次方程式</h4><span class="tiny-chip">1 / 3</span></div>
                 <div class="phone-body">
                   <div class="paper-card" style="padding-block:8px"><span class="subject">QUESTION</span><div class="formula">x² − 4x + 3 = 0</div></div>
-                  <div class="blackboard" style="min-height:228px">
+                  <div class="blackboard full-bleed" style="min-height:228px">
                     <span class="board-step">STEP 1 / 因数分解</span>
                     <h5>かけて 3、<br>たして −4 になる2数</h5>
                     <div class="chalk-line"></div>
                     <div class="formula">(x − 1)(x − 3) = 0</div>
                     <span class="chalk-note">ここが最初の鍵</span>
                   </div>
-                  <div class="voice-dock"><div class="voice-state"><div class="avatar senpai">先</div><div class="voice-copy"><b>先輩が説明しています</b><span>「まず、積と和に注目します」</span></div><div class="wave"><i></i><i></i><i></i><i></i><i></i></div></div></div>
+                  <div class="senpai-words"><div class="senpai-words-head"><span class="avatar senpai" style="width:25px;height:25px;border-radius:8px">先</span><span>先輩のことば</span><div class="wave" style="margin-left:auto"><i></i><i></i><i></i><i></i><i></i></div></div><p>「まず、積と和に注目しよう。かけて3、たして−4になる2つの数を探すと、式が分けられるよ。」</p><div class="expand-copy">全文を見る</div></div>
                 </div>
               </div>
               <span class="pin two">1</span>
             </div>
-            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>assistant audio started</dd></div><div class="handoff-row"><dt>AUTO</dt><dd>再生終了 → LES-03</dd></div><div class="handoff-row"><dt>CONTROL</dt><dd>端末音量 / 一時停止のみ</dd></div><div class="annotation"><b>①</b> 再生中は押せるマイクを出さず、話者を誤認させない。</div></dl>
+            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>assistant audio started</dd></div><div class="handoff-row"><dt>AUTO</dt><dd>再生終了 → LES-03</dd></div><div class="handoff-row"><dt>ALT</dt><dd>全文を見る → LES-WORDS</dd></div><div class="annotation"><b>①</b> 発話を2行で切り捨てず3行まで見せる。マイクは再生終了まで出さない。</div></dl>
           </article>
 
           <div class="connector"><span>説明が終わる</span><i class="connector-line"></i></div>
@@ -1086,13 +1254,14 @@
                 <div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span><h4>二次方程式</h4><span class="tiny-chip">1 / 3</span></div>
                 <div class="phone-body">
                   <div class="turn-banner"><span class="avatar" style="width:25px;height:25px;border-radius:8px">私</span><span>次は、あなたの番です</span></div>
-                  <div class="blackboard" style="min-height:218px">
+                  <div class="blackboard full-bleed" style="min-height:210px">
                     <span class="board-step">YOUR TURN</span>
                     <h5>なぜこの2数を<br>選んだのか、言える？</h5>
                     <div class="chalk-line"></div>
                     <div class="formula">(x − 1)(x − 3)</div>
                     <p>完璧な言葉じゃなくて大丈夫。</p>
                   </div>
+                  <div class="last-question"><b>先輩の問い</b><br>「なぜ、−1と−3の2数を選んだのか説明できる？」</div>
                   <div class="voice-dock">
                     <div class="voice-copy" style="text-align:center"><b>準備ができたら始めます</b><span>勝手に録音は始まりません</span></div>
                     <div class="primary-button blue" style="margin-top:9px"><svg class="icon"><use href="#i-mic"/></svg>話しはじめる</div>
@@ -1113,8 +1282,8 @@
                 <div class="statusbar"></div>
                 <div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span><h4>二次方程式</h4><span class="tiny-chip" style="color:var(--coral)">● REC</span></div>
                 <div class="phone-body">
-                  <div class="paper-card" style="padding-block:8px"><span class="subject">QUESTION</span><div class="formula">x² − 4x + 3 = 0</div></div>
-                  <div class="blackboard" style="min-height:198px"><span class="board-step">YOUR EXPLANATION</span><h5>なぜこの2数を選んだ？</h5><div class="chalk-line"></div><div class="formula">積 = 3　/　和 = −4</div><p>板書はそのまま。見ながら話せます。</p></div>
+                  <div class="last-question"><b>先輩の問い</b><br>「なぜ、−1と−3の2数を選んだのか説明できる？」</div>
+                  <div class="blackboard full-bleed" style="min-height:198px"><span class="board-step">YOUR EXPLANATION</span><h5>黒板はそのまま。<br>見ながら話せます。</h5><div class="chalk-line"></div><div class="formula">積 = 3　/　和 = −4</div><p>話し終えたら下のボタンを押します。</p></div>
                   <div class="voice-dock">
                     <div class="mic-orb"><svg class="icon icon-lg"><use href="#i-mic"/></svg></div>
                     <div class="wave" style="justify-content:center;margin:6px 0"><i></i><i></i><i></i><i></i><i></i></div>
@@ -1136,7 +1305,7 @@
                 <div class="statusbar"></div>
                 <div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span><h4>二次方程式</h4><span class="tiny-chip">1 / 3</span></div>
                 <div class="phone-body">
-                  <div class="blackboard" style="min-height:216px"><span class="board-step">WHAT YOU SAID</span><h5>「かけて3、足して−4に<br>なるからです」</h5><div class="chalk-line"></div><p>あなたの説明を、先輩が聞いています。</p></div>
+                  <div class="blackboard full-bleed" style="min-height:216px"><span class="board-step">WHAT YOU SAID</span><h5>「かけて3、足して−4に<br>なるからです」</h5><div class="chalk-line"></div><p>あなたの説明を、先輩が聞いています。</p></div>
                   <div class="surface-card tint-blue"><div class="row"><div class="loader" style="width:28px;height:28px;border-width:3px;margin:0"></div><div><h5>次の問いを考えています</h5><p>通常は数秒で続きます</p></div></div></div>
                   <div class="grow"></div>
                   <div class="voice-dock"><div class="voice-state"><div class="avatar">私</div><div class="voice-copy"><b>音声は送信済み</b><span>もう録音していません</span></div><svg class="icon"><use href="#i-check"/></svg></div></div>
@@ -1155,9 +1324,9 @@
                 <div class="statusbar"></div>
                 <div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span><h4>二次方程式</h4><span class="tiny-chip">2 / 3</span></div>
                 <div class="phone-body">
-                  <div class="blackboard" style="min-height:240px"><span class="board-step">HINT 1 / 3</span><h5>符号にも注目してみよう。</h5><div class="chalk-line"></div><p>積が <span class="chalk-highlight">+3</span>、和が <span class="chalk-highlight">−4</span>。<br>2つの数の符号はどうなる？</p><span class="chalk-note">答えではなく足場</span></div>
-                  <div class="voice-dock">
-                    <div class="voice-state"><div class="avatar senpai">先</div><div class="voice-copy"><b>別の角度から聞きます</b><span>何度でも言い直せます</span></div></div>
+                  <div class="blackboard full-bleed" style="min-height:225px"><span class="board-step">HINT 1 / 3</span><h5>符号にも注目してみよう。</h5><div class="chalk-line"></div><p>積が <span class="chalk-highlight">+3</span>、和が <span class="chalk-highlight">−4</span>。<br>2つの数の符号はどうなる？</p><span class="chalk-note">答えではなく足場</span></div>
+                  <div class="senpai-words"><div class="senpai-words-head"><span class="avatar senpai" style="width:25px;height:25px;border-radius:8px">先</span><span>先輩のことば</span></div><p>「積がプラスなら同じ符号だよね。和がマイナスになるには、2つともどちらの符号かな？」</p><div class="expand-copy">これまでの会話を見る</div></div>
+                  <div class="voice-dock" style="margin-top:0">
                     <div class="button-row" style="margin-top:9px"><div class="secondary-button">もう一度聞く</div><div class="primary-button blue"><svg class="icon"><use href="#i-mic"/></svg>答えてみる</div></div>
                     <div class="text-button" style="min-height:26px">うまく言えない</div>
                   </div>
@@ -1176,7 +1345,7 @@
               <div class="phone-screen">
                 <div class="statusbar"></div>
                 <div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span><h4>二次方程式</h4><span class="tiny-chip">2 / 3</span></div>
-                <div class="phone-body"><div class="blackboard" style="min-height:350px"><span class="board-step">HINT 1 / 3</span><h5>符号にも注目してみよう。</h5><p>積が +3、和が −4。</p></div></div>
+                <div class="phone-body"><div class="blackboard full-bleed" style="min-height:350px"><span class="board-step">HINT 1 / 3</span><h5>符号にも注目してみよう。</h5><p>積が +3、和が −4。</p></div></div>
                 <div class="overlay">
                   <div class="dialog">
                     <div class="dialog-icon" style="background:var(--blue-soft);color:var(--blue)"><svg class="icon icon-lg"><use href="#i-help"/></svg></div>
@@ -1201,7 +1370,7 @@
                 <div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span><h4>二次方程式</h4><span class="tiny-chip">3 / 3</span></div>
                 <div class="phone-body">
                   <div class="turn-banner" style="background:var(--green-soft);color:var(--green)"><span class="step-dot" style="border:0;background:#fff"><svg class="icon icon-sm"><use href="#i-check"/></svg></span><span>最後まで言えました</span></div>
-                  <div class="blackboard" style="min-height:250px"><span class="board-step">COMPLETE</span><h5>因数分解して、<br>0になる条件まで説明できた。</h5><div class="chalk-line"></div><div class="formula">x = 1, 3</div><p>「積と和から2数を選ぶ」が今日の鍵。</p></div>
+                  <div class="blackboard full-bleed" style="min-height:250px"><span class="board-step">COMPLETE</span><h5>因数分解して、<br>0になる条件まで説明できた。</h5><div class="chalk-line"></div><div class="formula">x = 1, 3</div><p>「積と和から2数を選ぶ」が今日の鍵。</p></div>
                   <div class="grow"></div>
                   <div class="voice-dock"><div class="voice-state"><div class="avatar senpai">先</div><div class="voice-copy"><b>カルテを作ります</b><span>言えたことと、止まったところだけ</span></div><svg class="icon"><use href="#i-book"/></svg></div></div>
                 </div>
@@ -1414,7 +1583,7 @@
         <div class="subflow-head"><code>B / PERMISSION, LIMIT & EMPTY</code><b>マイク・通知・無料枠・データなし</b><span>感情が弱い瞬間ほど課金で押さない</span></div>
         <div class="flow-row">
           <article class="artboard">
-            <header class="artboard-meta"><div class="artboard-id"><code>REC-06</code><span class="status edge">EDGE</span><span class="priority p0">P0</span></div><h3>マイク許可がない</h3><p>ONB-02 / LES-03 / REVIEW-01分岐</p></header>
+            <header class="artboard-meta"><div class="artboard-id"><code>REC-06</code><span class="status edge">EDGE</span><span class="priority p0">P0</span></div><h3>マイク許可がない</h3><p>ONB-03 / LES-03 / REVIEW-01分岐</p></header>
             <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-back"/></svg></span><h4>マイクを使う</h4><div></div></div><div class="phone-body center">
               <div class="empty-illustration" style="background:var(--blue-soft);color:var(--blue);border:0"><svg class="icon icon-lg"><use href="#i-mic"/></svg></div><h3 class="phone-title">説明する声を<br>聞かせてください</h3><p class="phone-subtitle">声は授業中のやり取りとカルテ作成に使います。<br>許可は設定からいつでも変えられます。</p>
               <div style="width:100%" class="primary-button">マイクを許可する</div><div class="secondary-button" style="width:100%">今回は画面を見るだけ</div><div class="text-button">プライバシーの説明</div>
@@ -1677,15 +1846,15 @@
         <p class="section-copy">このHTMLはUI提案であり、Flutter実装そのものではない。画面ID単位で現行資産、変更種別、依存、受け入れ条件を対応させ、PRでどこまで実装するかを切り分けるための地図。</p>
       </header>
       <div class="delivery-wrap">
-        <div class="decision-note" style="margin-bottom:18px"><b>CURRENT SCOPE</b><span>このv3.2ではデザイン案と引き継ぎ仕様のみ。既存アプリのルート、API契約、課金ロジック、通知仕様は変更していない。実装時はP0を最初のPR、P1を次のPR、P2を別Issueに分ける。</span></div>
+        <div class="decision-note" style="margin-bottom:18px"><b>CURRENT SCOPE</b><span>このv3.3ではデザイン案と引き継ぎ仕様のみ。既存アプリのルート、API契約、課金ロジック、通知仕様は変更していない。実装時はP0を最初のPR、P1を次のPR、P2を別Issueに分ける。</span></div>
         <table class="delivery-table">
           <thead><tr><th>画面群</th><th>IDs</th><th>現行の主な対応先</th><th>変更</th><th>優先</th><th>依存 / 未決</th><th>受け入れ条件</th></tr></thead>
           <tbody>
-            <tr><td><b>初回導入</b></td><td><code>ONB-01–02</code></td><td><code>onboarding_screen.dart</code><br><code>onboarding_rehearsal.dart</code></td><td><span class="status refine">REFINE</span></td><td><span class="priority p0">P0</span></td><td>リハーサル台本は現行を再利用</td><td>2画面以内でマイク体験完了。許可拒否から戻れる。</td></tr>
-            <tr><td><b>ホーム</b></td><td><code>HOME-00–01</code></td><td><code>home_screen.dart</code></td><td><span class="status refine">REFINE</span></td><td><span class="priority p0">P0</span></td><td>復習queue / planの今日項目</td><td>空状態と再訪状態で主操作が常に「問題を撮る」。</td></tr>
-            <tr><td><b>撮影・解析</b></td><td><code>CAP-01–02</code><br><code>OCR-01–02</code></td><td><code>capture_screen.dart</code></td><td><span class="status refine">REFINE + NEW</span></td><td><span class="priority p0">P0</span></td><td>写真確認、問題文編集の実装範囲</td><td>撮影→確認→解析→問題確認を戻っても写真が消えない。</td></tr>
+            <tr><td><b>初回導入</b></td><td><code>ONB-01–04</code></td><td><code>onboarding_screen.dart</code><br><code>onboarding_rehearsal.dart</code></td><td><span class="status refine">REFINE</span></td><td><span class="priority p0">P0</span></td><td>リハーサル台本は現行を再利用</td><td>現行4役を保ち、マイクなしの練習でタップ操作とカルテまで理解できる。</td></tr>
+            <tr><td><b>ホーム</b></td><td><code>HOME-00–01</code></td><td><code>home_screen.dart</code></td><td><span class="status refine">REFINE</span></td><td><span class="priority p0">P0</span></td><td>復習queue / planの今日項目</td><td>空状態と再訪状態で主操作が常に「問題を見せる」。</td></tr>
+            <tr><td><b>撮影・解析</b></td><td><code>CAP-00</code><br><code>CAP-CAMERA</code><br><code>CAP-GALLERY</code><br><code>CAP-NOTE</code><br><code>CAP-02</code><br><code>OCR-01–02</code></td><td><code>capture_screen.dart</code></td><td><span class="status refine">REFINE + NEW</span></td><td><span class="priority p0">P0</span></td><td>Android Photo Picker / 問題文編集</td><td>カメラと写真が同じ確認へ合流し、戻っても選んだ画像が消えない。</td></tr>
             <tr><td><b>接続待ち</b></td><td><code>CONN-01</code></td><td><code>session_screen.dart</code></td><td><span class="status new">NEW</span></td><td><span class="priority p0">P0</span></td><td>startSession / Realtime接続状態</td><td>8秒超で低速状態へ移り、キャンセルで枠と写真を整合。</td></tr>
-            <tr><td><b>授業</b></td><td><code>LES-01–08</code></td><td><code>session_screen.dart</code><br>board / realtime controllers</td><td><span class="status refine">REFINE</span></td><td><span class="priority p0">P0</span></td><td>既存state machineとの対応表が必要</td><td>8状態で話者・REC・主操作が矛盾しない。問題と板書を保持。</td></tr>
+            <tr><td><b>授業</b></td><td><code>LES-01–08</code><br><code>LES-WORDS</code><br><code>BOARD-GRAPH</code><br><code>BOARD-TABLE</code><br><code>BOARD-FIGURE</code></td><td><code>session_screen.dart</code><br>board / realtime controllers</td><td><span class="status refine">REFINE</span></td><td><span class="priority p0">P0</span></td><td>既存state machineとの対応表が必要</td><td>タップ式録音で、録音中も黒板と問いを保持。発話は3行＋全文スクロール。図表は軸・見出し・要点を持つ。</td></tr>
             <tr><td><b>完了・カルテ</b></td><td><code>DONE-01</code><br><code>KARTE-01–02</code></td><td><code>celebration_screen.dart</code><br><code>karte_screen.dart</code></td><td><span class="status refine">REFINE</span></td><td><span class="priority p0">P0 / P1</span></td><td>根拠発話の表示長 / 共有導線</td><td>点数なし。言えたことは実発話、穴は停止箇所として表示。</td></tr>
             <tr><td><b>復習</b></td><td><code>REVIEW-01–03</code></td><td><code>review_screen.dart</code></td><td><span class="status refine">REFINE + NEW</span></td><td><span class="priority p0">P0</span></td><td>録音後の自己申告画面分割</td><td>問いは10秒、答え非表示、「言えた / まだ」の2択で保存。</td></tr>
             <tr><td><b>計画</b></td><td><code>PLAN-00–02</code></td><td><code>plan_screen.dart</code></td><td><span class="status refine">REFINE</span></td><td><span class="priority p1">P1</span></td><td>今日項目から撮影への文脈引き継ぎ</td><td>達成率なし。遅れの組み直しは事実を保ち、前より軽くする。</td></tr>
@@ -1703,7 +1872,7 @@
       </div>
     </section>
 
-    <footer class="board-footer"><span>KATARUTE Mobile UI Direction v3.2</span><span>Static review artifact — implementation is intentionally out of scope</span></footer>
+    <footer class="board-footer"><span>KATARUTE Mobile UI Direction v3.3</span><span>Static review artifact — implementation is intentionally out of scope</span></footer>
   </main>
 </body>
 </html>
