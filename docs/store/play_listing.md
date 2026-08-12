@@ -25,14 +25,17 @@ Apple 向けの定期購入の定型文(Apple ID・「設定 > Apple ID > サブ
 Play Console 側が **`かたるて`(ひらがな)** になっている。リポジトリと
 LP・アプリ内文言はすべて **`カタルテ`(カタカナ)** で、
 `docs/design_direction_v0.html` の基本情報も「カタルテ(語る × カルテ)」。
-**どちらかに寄せること。** 寄せる先はカタカナを推奨(既存資産が全部そちら)。
+**コンソール側をカタカナに寄せること**(既存資産が全部そちら)。
 
-あわせて、端末に入る表示名が `ai-sensei` のままなのも未修整:
+端末に入る表示名は `カタルテ` に修整済み:
 
 - `apps/mobile/android/app/src/main/AndroidManifest.xml` の `android:label`
 - `apps/mobile/ios/Runner/Info.plist` の `CFBundleDisplayName`
 
 ストア名とランチャー名が違うと、インストール後にアプリを見つけられない。
+日英で別の表示名にしたい場合(英語圏に `Katarute` を出す等)は、iOS は
+`InfoPlist.strings` のロケール別、Android は `values-<locale>/strings.xml` を
+足すことになる —— **いまは両ロケール共通で `カタルテ`**。
 
 ---
 
@@ -229,7 +232,21 @@ fvm flutter test tool/generate_app_icon.dart
 - 角丸とドロップシャドウは**Google側が付ける**ので、四角いまま渡す
 - Play はアルファを許すので、iOS の1024のようにアルファを落とす必要はない
 
+## URL
+
+| 申告先 | URL |
+| --- | --- |
+| プライバシーポリシー(必須) | `https://ubiqy.jp/privacy/` |
+| 利用規約 | `https://ubiqy.jp/terms/` |
+
+アプリ側も同じものを `--dart-define`(`PRIVACY_POLICY_URL` / `TERMS_URL`)で受ける。
+`apps/lp/public/{privacy,terms}/` の2ページとの正/副は未決
+([`../ci/store-setup.md`](../ci/store-setup.md) 0-2)。
+
 ## まだ埋まっていないもの
 
-- プライバシーポリシー / 利用規約 の公開URL(`apps/lp` の2ページを配信する)
-- アプリ名の表記統一(上記)とランチャー表示名の修整
+- **Play Console のアプリ名が `かたるて`(ひらがな)** —— コンソール側で
+  `カタルテ` に直す。端末の表示名(`android:label` / `CFBundleDisplayName`)は
+  `カタルテ` に修整済み
+- サポートURL(`SUPPORT_EMAIL` と同じ窓口を指す1枚)
+- 定期購入の価格と期間(`pivot_plan_v1.md` §6-2。原価の実測後)

@@ -445,7 +445,9 @@ fvm flutter test tool/generate_store_screenshots.dart   # スクショ一式</di
     <tr><th>著作権</th><td><code>2026 &lt;権利者名&gt;</code> — 未確定</td></tr>
     <tr><th>サポートURL</th><td>未確定 — <code>SUPPORT_EMAIL</code> と同じ窓口を指すページを1枚用意する</td></tr>
     <tr><th>マーケティングURL</th><td>任意。無ければ空でよい</td></tr>
-    <tr><th>プライバシーポリシーURL</th><td>未確定 — <code>PRIVACY_POLICY_URL</code> と同じものを入れる</td></tr>
+    <tr><th>プライバシーポリシーURL</th><td><code>https://ubiqy.jp/privacy/</code>
+      — <code>PRIVACY_POLICY_URL</code>(dart_define)と両ストアの申告で同じものを使う。
+      利用規約は <code>https://ubiqy.jp/terms/</code></td></tr>
     <tr><th>輸出コンプライアンス</th><td>済 — <code>ITSAppUsesNonExemptEncryption = false</code>(Info.plist)。HTTPSのみ</td></tr>
   </table>
 
@@ -517,8 +519,8 @@ Premium — 毎日、続けて何問も／穴の復習と履歴／先輩のあ�
 ・期間終了の24時間以上前に自動更新をオフにしない限り、自動的に更新されます。
 ・購読の管理と自動更新の解除は、購入後に端末の「設定」&gt;「Apple ID」&gt;「サブスクリプション」から行えます。
 ・無料トライアル期間が残っている状態で購読を開始した場合、残りの無料期間は失効します。
-・利用規約: &lt;TERMS_URL&gt;
-・プライバシーポリシー: &lt;PRIVACY_POLICY_URL&gt;</div></div>
+・利用規約: https://ubiqy.jp/terms/
+・プライバシーポリシー: https://ubiqy.jp/privacy/</div></div>
     <div><span class="count">EN / 3614 chars</span><div class="copy">The AI tutor that teaches you — then asks you to teach it back.
 
 Photograph a problem you are stuck on and a senpai — an older student — teaches it, writing on a board as they go. Then, right away: "Now explain it back to me." Wherever your explanation stalls becomes a gap you did not know you had, and it stays in your karte.
@@ -570,8 +572,8 @@ Premium — as many lessons a day as you like, gap review and history, follow-up
 - The subscription renews automatically unless auto-renew is turned off at least 24 hours before the end of the current period.
 - You can manage and cancel your subscription in Settings &gt; Apple ID &gt; Subscriptions.
 - Any unused portion of a free trial is forfeited when you purchase a subscription.
-- Terms of Use: &lt;TERMS_URL&gt;
-- Privacy Policy: &lt;PRIVACY_POLICY_URL&gt;</div></div>
+- Terms of Use: https://ubiqy.jp/terms/
+- Privacy Policy: https://ubiqy.jp/privacy/</div></div>
   </div>
 
   <h3>キーワード(100字)</h3>
@@ -682,7 +684,9 @@ Review reminders after 1, 3 and 7 days, requested on the first karte screen.</di
     <ul>
       <li>表示名を <code>カタルテ</code> に(<code>ios/Runner/Info.plist</code> の <code>CFBundleDisplayName</code> と
         <code>android/app/src/main/AndroidManifest.xml</code> の <code>android:label</code>。いまは <code>ai-sensei</code>)</li>
-      <li><code>PRIVACY_POLICY_URL</code> / <code>TERMS_URL</code> / <code>SUPPORT_EMAIL</code> の実体(規約はAppleの標準EULAでも可)</li>
+      <li><code>SUPPORT_EMAIL</code> の実体
+        (<code>PRIVACY_POLICY_URL</code> = <code>https://ubiqy.jp/privacy/</code> /
+        <code>TERMS_URL</code> = <code>https://ubiqy.jp/terms/</code> は確定)</li>
       <li>審査用サンプルノート画像の公開URL(<code>&lt;SAMPLE_NOTES_URL&gt;</code>)</li>
       <li>App Store Connect のサポートURL(1枚ページ)</li>
       <li>著作権表記の権利者名</li>
