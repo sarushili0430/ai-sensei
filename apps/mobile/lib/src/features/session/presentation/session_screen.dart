@@ -91,13 +91,19 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
 
     return Scaffold(
       body: SafeArea(
+        // **横の余白は子ごとに付ける。**板書だけは画面の左右いっぱいまで伸ばしたい
+        // (板は面であってカードではない。`board_view.dart`)。全体を包んで
+        // しまうと板が中央に浮いた掲示物になり、内側に余白を足せば実効幅が
+        // 340ptを割って式が横スクロールに落ちる。
         child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.lg),
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
           child: Column(
             children: <Widget>[
-              _SessionHeader(
-                title: board.title,
-                remaining: strings.remaining(state.remainingSeconds),
+              _Inset(
+                child: _SessionHeader(
+                  title: board.title,
+                  remaining: strings.remaining(state.remainingSeconds),
+                ),
               ),
               // **問題文は板書より上に、常に出す。**見出し(`board.title`)は
               // 先輩が付けた要約で、問題そのものではない。何を解いているかが
@@ -105,22 +111,30 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
               // (`docs/wireframe_board_v2.html` の1つ目)。
               if (problem != null) ...<Widget>[
                 const SizedBox(height: AppSpacing.sm),
-                _ProblemBlock(text: problem.text),
+                _Inset(child: _ProblemBlock(text: problem.text)),
               ],
               if (board.hasBoard) ...<Widget>[
+                const SizedBox(height: AppSpacing.md),
                 // **板書が主役。**残りの高さを全部渡す。
                 Expanded(child: _BoardStage(board: board)),
                 const SizedBox(height: AppSpacing.md),
-                _LessonFooter(phase: state.phase, subtitle: subtitle, wrappingUp: wrappingUp),
+                _Inset(child: _LessonFooter(phase: state.phase, wrappingUp: wrappingUp)),
               ] else
-                // **字幕は長さの上限を持たない。**先輩の1発話は board の `speech` と違って
-                // 120字で縛られていないので、会話が長くなると顔と字幕だけで画面を超える。
-                // `Spacer` で挟んでいたころは、そのぶんが**下の操作を押し出して溢れていた**
+                // **板書が無いときだけ、字幕を出す。**
+                //
+                // 字幕の根拠は「声を聞き取れない場所でも追えるように」だったが、
+                // このアプリは**教え返し**が本体で、そもそも声を出せない場所では
+                // 成立しない。板書が出ているなら、読むべきものは板書のほうにある。
+                //
+                // 板書が無い経路(板書に失敗した立て直し・古いAPIの復習)では、
+                // 先輩の言葉が**画面上の唯一の手がかり**なので、ここだけ残す。
+                //
+                // 高さは1つの箱として渡し、中でスクロールさせる。`Spacer` で挟んで
+                // いたころは、長い返事がそのまま**下の操作を画面の外へ押し出していた**
                 // (実機で「今日はここまで」に BOTTOM OVERFLOWED が重なった)。
-                // 余った高さを1つの箱として渡し、中でスクロールさせる。
                 Expanded(
                   child: CenteredScroll(
-                    padding: EdgeInsets.zero,
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                     children: <Widget>[
                       SenpaiFace(
                         mood: switch (state.phase) {
@@ -140,30 +154,33 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
                       const SizedBox(height: AppSpacing.md),
                       _StatusIndicator(phase: state.phase, wrappingUp: wrappingUp),
                       const SizedBox(height: AppSpacing.md),
-                      // 字幕。声を聞き取れない場所でも会話の流れを追えるようにする。
                       // 差し替わるときに入れ替わりが見えるよう、文ごとに切り替える。
                       _Subtitle(text: subtitle, align: TextAlign.center),
                     ],
                   ),
                 ),
               // パスは恥ではない。穴の記録として価値がある。
-              GhostButton(
-                label: strings.sessionPass,
-                onPressed: wrappingUp
-                    ? null
-                    : () => ref
-                        .read(sessionControllerProvider.notifier)
-                        .pass(strings.sessionPassMessage),
+              _Inset(
+                child: GhostButton(
+                  label: strings.sessionPass,
+                  onPressed: wrappingUp
+                      ? null
+                      : () => ref
+                          .read(sessionControllerProvider.notifier)
+                          .pass(strings.sessionPassMessage),
+                ),
               ),
-              ChunkyButton(
-                label: wrappingUp ? strings.sessionSummarizing : strings.sessionEnd,
-                color: AppColors.border,
-                foregroundColor: AppColors.ink,
-                // 押した瞬間に押せなくなる。もう受け取ってあることが、
-                // 文言と色の両方で分かるようにする。
-                onPressed: wrappingUp
-                    ? null
-                    : () => ref.read(sessionControllerProvider.notifier).finish(),
+              _Inset(
+                child: ChunkyButton(
+                  label: wrappingUp ? strings.sessionSummarizing : strings.sessionEnd,
+                  color: AppColors.border,
+                  foregroundColor: AppColors.ink,
+                  // 押した瞬間に押せなくなる。もう受け取ってあることが、
+                  // 文言と色の両方で分かるようにする。
+                  onPressed: wrappingUp
+                      ? null
+                      : () => ref.read(sessionControllerProvider.notifier).finish(),
+                ),
               ),
             ],
           ),
@@ -399,22 +416,15 @@ class _BoardGapNotice extends StatelessWidget {
 }
 
 /// 授業中の下の帯。**板書を消さずに**、先輩と自分の番を出す場所。
+///
+/// **字幕は置かない。**板書が出ているあいだ、読むべきものは板書のほうにある。
+/// ここに先輩の発話をそのまま流すと、板書に追い出したはずの説明が
+/// 文字で戻ってきて、**画面の主役が二重になる**(実機で、図と式が出ている下に
+/// 4段落の文字起こしが乗った)。ここが持つのは「いま誰の番か」だけ。
 class _LessonFooter extends StatelessWidget {
-  const _LessonFooter({
-    required this.phase,
-    required this.subtitle,
-    required this.wrappingUp,
-  });
-
-  /// 字幕に渡す高さの上限。**板書を押し出させないための天井**。
-  ///
-  /// 授業中の `speech` は契約で120字までだが、教え返しに入ると相手は会話LLMで、
-  /// そちらに上限は無い。長い返事がそのまま帯を伸ばすと、主役の板書が縮む
-  /// (伸びきると下の操作まで押し出す)。ここで止めて、中でスクロールさせる。
-  static const double _subtitleMaxHeight = 120;
+  const _LessonFooter({required this.phase, required this.wrappingUp});
 
   final SessionPhase phase;
-  final String subtitle;
   final bool wrappingUp;
 
   @override
@@ -432,25 +442,34 @@ class _LessonFooter extends StatelessWidget {
         ),
         const SizedBox(width: AppSpacing.md),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              // 教え返しは**指示が主役**。字幕より大きく、先に読める位置に出す。
-              if (yourTurn && !wrappingUp)
-                Text(strings.sessionExplainBack, style: Theme.of(context).textTheme.titleMedium),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: _subtitleMaxHeight),
-                child: SingleChildScrollView(
-                  child: _Subtitle(text: subtitle, align: TextAlign.start),
-                ),
-              ),
-            ],
+          child: Text(
+            // 番がどちらにあるかだけを、1行で。
+            yourTurn && !wrappingUp
+                ? strings.sessionExplainBack
+                : wrappingUp
+                    ? strings.sessionSummarizing
+                    : strings.sessionSenpaiTeaching,
+            style: Theme.of(context).textTheme.titleMedium,
           ),
         ),
         const SizedBox(width: AppSpacing.sm),
         _StatusIndicator(phase: phase, wrappingUp: wrappingUp),
       ],
+    );
+  }
+}
+
+/// 画面の左右の余白。**板書だけがこれを付けない**(板は画面幅いっぱいに敷く)。
+class _Inset extends StatelessWidget {
+  const _Inset({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+      child: child,
     );
   }
 }

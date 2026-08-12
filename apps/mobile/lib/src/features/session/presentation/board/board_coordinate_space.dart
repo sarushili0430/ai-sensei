@@ -1,9 +1,9 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../../../../theme/tokens.dart';
 import '../../domain/board.dart';
+import 'board_style.dart';
+import 'dart:math' as math;
 
 /// 「数学の座標」を「Canvasのピクセル座標」に変換する。
 ///
@@ -62,7 +62,7 @@ class BoardCoordinateSpace {
 
 /// 板書の図形に添えるラベル(頂点名・目盛の注記)を描く。
 /// 3つのpainterで同じ見た目にするための共通処理。
-void paintBoardLabel(Canvas canvas, String text, Offset anchor, {Color color = AppColors.ink}) {
+void paintBoardLabel(Canvas canvas, String text, Offset anchor, {Color color = BoardStyle.chalk}) {
   final TextPainter painter = TextPainter(
     text: TextSpan(
       text: text,

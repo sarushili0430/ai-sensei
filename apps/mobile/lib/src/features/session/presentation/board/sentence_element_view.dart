@@ -27,9 +27,13 @@ class SentenceElementView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final TextTheme textTheme = Theme.of(context).textTheme;
+    // 例文もチョークで書く(テーマの既定色は板の上では読めない)。
     final TextStyle base =
-        textTheme.bodyLarge?.copyWith(fontSize: BoardStyle.sentenceFontSize) ??
-            const TextStyle(fontSize: BoardStyle.sentenceFontSize);
+        textTheme.bodyLarge?.copyWith(
+              fontSize: BoardStyle.sentenceFontSize,
+              color: BoardStyle.chalk,
+            ) ??
+            const TextStyle(fontSize: BoardStyle.sentenceFontSize, color: BoardStyle.chalk);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -37,7 +41,7 @@ class SentenceElementView extends StatelessWidget {
         Text.rich(TextSpan(children: _spans(base))),
         if (gloss != null) ...<Widget>[
           const SizedBox(height: AppSpacing.xs),
-          Text(gloss!, style: textTheme.bodyMedium?.copyWith(color: AppColors.inkMuted)),
+          Text(gloss!, style: textTheme.bodyMedium?.copyWith(color: BoardStyle.chalkMuted)),
         ],
       ],
     );
@@ -57,7 +61,7 @@ class SentenceElementView extends StatelessWidget {
         text: needle,
         style: base.copyWith(
           decoration: TextDecoration.underline,
-          decorationColor: AppColors.blue,
+          decorationColor: BoardStyle.chalkKey,
           decorationThickness: BoardStyle.focusUnderlineThickness,
           fontWeight: FontWeight.w700,
         ),
