@@ -22,8 +22,22 @@ const H = 224;
 function frame(inner, w = W, h = H) {
   return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg" role="img"><rect width="${w}" height="${h}" fill="${BOARD}"/><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${CHALK}"/></marker><marker id="ahk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${ROLE.key.c}"/></marker></defs>${inner}</svg>`;
 }
+/**
+ * SVG の中の文字の下限。
+ *
+ * **SVG は文字も図と一緒に縮む。**端末側では直せないし、
+ * 端末の文字サイズ設定も効かない。実測すると 320 幅の viewBox を
+ * 340pt で出したときの倍率は 1.06 しかないので、
+ * **SVG に書いた px が、ほぼそのまま pt になる**。
+ * 8px は 8.5pt で、中高生がスマホで読むには小さい。
+ *
+ * ここを上げても足りなくなったら、そのときが
+ * 「SVG ではなく描画命令を送る」に切り替える合図(wireframe D-21)。
+ */
+const MIN_FONT = 10;
+
 const txt = (x, y, s, o = {}) =>
-  `<text x="${f(x)}" y="${f(y)}" fill="${o.fill || CHALK}" font-size="${o.size || 11}" ` +
+  `<text x="${f(x)}" y="${f(y)}" fill="${o.fill || CHALK}" font-size="${Math.max(o.size || 11, MIN_FONT)}" ` +
   `font-family="ui-sans-serif,system-ui,sans-serif" text-anchor="${o.anchor || "middle"}"` +
   `${o.weight ? ` font-weight="${o.weight}"` : ""}>${esc(s)}</text>`;
 const line = (x1, y1, x2, y2, o = {}) =>
@@ -51,6 +65,26 @@ function geometric(draws) {
     if (!inClip(p)) return;
     xs.push(p.x);
     ys.push(p.y);
+  };
+
+  // **重なったラベルは、無いのと同じ。**
+  // 点が近くに集まると `A(1, 0)` と `B(3, 0)` と目盛りが団子になる。
+  // 置いた場所を覚えておいて、ぶつかったら上下にずらす。
+  // ずらす先も全部ふさがっていたら、そこは**描かない**(重ねて出すより読める)。
+  const placed = [];
+  const placeLabel = (cx, cy, text, size, emit) => {
+    const w = String(text).length * size * 0.62;
+    const h = size * 1.15;
+    for (const dy of [0, -14, 14, -26, 26, -38, 38]) {
+      const box = { x0: cx - w / 2, x1: cx + w / 2, y0: cy + dy - h, y1: cy + dy + 3 };
+      const hit = placed.some(
+        (q) => box.x0 < q.x1 && box.x1 > q.x0 && box.y0 < q.y1 && box.y1 > q.y0,
+      );
+      if (hit) continue;
+      placed.push(box);
+      return emit(cy + dy);
+    }
+    return "";
   };
   for (const d of draws) {
     eat(d.p);
@@ -356,17 +390,20 @@ function geometric(draws) {
           `<circle cx="${f(X(d.p.x))}" cy="${f(Y(d.p.y))}" r="${d.small ? 2.2 : 2.8}" fill="${CHALK}"/>`,
         );
         // **名前と座標を別々の行に出すと、点が集まったところで必ず重なる。**
-        // 座標を出すときは1つのラベルにまとめる。
+        // 座標を出すときは1つのラベルにまとめ、置き場所も譲り合う。
         if (d.coord) {
+          const text = `${d.name ?? ""}${d.coord}`;
           out.push(
-            txt(X(d.p.x), Y(d.p.y) - 8, `${d.name ?? ""}${d.coord}`, {
-              fill: ROLE.key.c,
-              size: 9,
-              weight: 600,
-            }),
+            placeLabel(X(d.p.x), Y(d.p.y) - 8, text, 10, (y) =>
+              txt(X(d.p.x), y, text, { fill: ROLE.key.c, size: 10, weight: 600 }),
+            ),
           );
         } else if (d.name) {
-          out.push(txt(X(d.p.x), Y(d.p.y) - 7, d.name, { size: d.small ? 9 : 10, weight: 600 }));
+          out.push(
+            placeLabel(X(d.p.x), Y(d.p.y) - 7, d.name, 10, (y) =>
+              txt(X(d.p.x), y, d.name, { size: 10, weight: 600 }),
+            ),
+          );
         }
         break;
       default:
