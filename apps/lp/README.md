@@ -97,8 +97,11 @@ GitHub App からpushできないため)。
       各ページ冒頭の `.legal-draft` ブロックと、黄色でマークした `<span class="fill">` が
       未確定の箇所(運営者名・所在地・お問い合わせ先・制定日・保存期間・管轄裁判所)。
       **`fill` が1つでも残っているうちは公開しない**
-- [ ] 差し替え後、そのURLを `PRIVACY_POLICY_URL` / `TERMS_URL`(dart_defines)に入れる。
-      ペイウォールのリンクはここから読むので、空のビルドではリンクごと消える
+- [ ] **公開する正を1つに決める。** アプリとストアの申告は
+      `https://ubiqy.jp/privacy/` / `https://ubiqy.jp/terms/` を指している
+      (`PRIVACY_POLICY_URL` / `TERMS_URL`・[`../../docs/ci/store-setup.md`](../../docs/ci/store-setup.md) 0-2)。
+      この2ページを残すなら**中身を一致させる**か、そちらへのリンクに置き換える。
+      文面が食い違うと、申告と実物のずれとして審査で見られる
 - [ ] **ストアの申告と文面を突き合わせる。** 改善のための利用を書いた以上、
       App Privacy(App Store Connect)とデータセーフティ(Google Play Console)の
       利用目的に「分析」を足す必要がある。いまの申告は「アプリの機能」だけなので、
