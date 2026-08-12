@@ -9,6 +9,7 @@ import type {
 } from "./board.ts";
 import { extractJson } from "./karte.ts";
 import type { JobLogger } from "./log.ts";
+import { handsTurnToStudent } from "./senpai.ts";
 
 /**
  * フェーズ1「授業」— 板書レッスンの生成と、手順単位の配送・読み上げ。
@@ -226,6 +227,8 @@ const repairInstruction: Record<CurriculumLocale, (rejection: BoardStepRejection
       "直前の板書の手順が検証に落ちました。**その手順1つだけ**を書き直してください。",
       "返すのは手順1つのJSONオブジェクト(`index` / `speech` / `board`)だけです。",
       "配列にしない、前置きを書かない、コードフェンスで囲まない。",
+      // 直しがいちばん安い道へ落ちるのを塞ぐ(`board.ts` の schemaGuidance と同じ理由)。
+      "**`board` を `null` にして逃げないこと。**書くはずだったものを消すと、この手順は板書に何も残しません。",
       "",
       `落ちた理由: ${rejection.guidance}`,
       `落ちた手順: ${JSON.stringify(rejection.raw)}`,
@@ -235,6 +238,7 @@ const repairInstruction: Record<CurriculumLocale, (rejection: BoardStepRejection
       "The board step below failed validation. Rewrite **only that one step**.",
       "Return a single step JSON object (`index` / `speech` / `board`) and nothing else.",
       "No array, no preamble, no code fence.",
+      "**Do not fall back to `board: null`** — dropping it leaves nothing on the board for this step.",
       "",
       `Why it failed: ${rejection.guidance}`,
       `The step that failed: ${JSON.stringify(rejection.raw)}`,
@@ -329,6 +333,10 @@ export async function runBoardLesson(options: RunBoardLessonOptions): Promise<Bo
       if (signal?.aborted === true) return;
       await speak(step);
     },
+    // **問いかけたら、そこで止めて答えを待つ。**プロンプト側の「質問を出したら
+    // その板書はそこで終える」を、生成のぶれに任せずここで守る
+    // (`board.ts` の `stopAfter` にその判断を置かない理由も同じコメントにある)。
+    stopAfter: (step) => handsTurnToStudent(step.speech, locale),
     repair: (rejection) => repairStep({ llm, system, locale, rejection, signal, log }),
     repairHead: (rejection) =>
       askForJson({

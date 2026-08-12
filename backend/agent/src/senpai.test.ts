@@ -105,6 +105,28 @@ describe("handsTurnToStudent", () => {
     expect(handsTurnToStudent("Here is the discriminant.", "en")).toBe(false);
     expect(handsTurnToStudent("   ", "ja")).toBe(false);
   });
+
+  /**
+   * **実際に踏んだ壊れ方。** 問題文が読めなかった授業は
+   * 「問題、読んでもらってもいい?」から始まる(`senpai_board.*.md` の指示)。
+   * これを「まだ喋っている途中」と読むと、直後に教え返しの定型句が足され、
+   * **読み上げを頼まれた次の瞬間に、まだ教わっていない内容の説明を求められる。**
+   */
+  it("問いかけで終わっていれば、形が違っても番は渡っている", () => {
+    expect(handsTurnToStudent("問題、読んでもらってもいい?", "ja")).toBe(true);
+    expect(handsTurnToStudent("この式、まず何する?", "ja")).toBe(true);
+    // **全角の疑問符。**日本語の出力はほとんどこちらで、ここを取りこぼすと
+    // 日本語の授業ではターン制が丸ごと元に戻る(実際に一度、正規表現の中の
+    // 全角 `？` が半角に潰れていた)。半角に化けても落ちるよう、
+    // コードポイントで書いてある。
+    expect(handsTurnToStudent("D はプラスだよね。だから\uFF1F", "ja")).toBe(true);
+    expect(handsTurnToStudent("じゃあ、次はどうする\uFF1F ", "ja")).toBe(true);
+    expect(handsTurnToStudent("Could you read me the problem?", "en")).toBe(true);
+  });
+
+  it("文の途中の疑問符では止めない(終わりだけを見る)", () => {
+    expect(handsTurnToStudent("「なんで?」って思うよね。ここを見てほしい。", "ja")).toBe(false);
+  });
 });
 
 describe("renderLessonRecap", () => {

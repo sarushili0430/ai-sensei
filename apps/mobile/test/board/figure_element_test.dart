@@ -1,7 +1,6 @@
 import 'package:ai_sensei/src/features/session/domain/board.dart';
 import 'package:ai_sensei/src/features/session/presentation/board/board_element_view.dart';
 import 'package:ai_sensei/src/features/session/presentation/board/board_speech.dart';
-import 'package:ai_sensei/src/features/session/presentation/board/board_style.dart';
 import 'package:ai_sensei/src/features/session/presentation/board/figure_element_view.dart';
 import 'package:ai_sensei/src/l10n/strings.dart';
 import 'package:flutter/material.dart';
@@ -50,25 +49,49 @@ void main() {
       );
 
   group('描画', () {
-    testWidgets('SVGが描かれ、他のプリミティブと同じ高さに収まる', (WidgetTester tester) async {
+    /// **式や注記と横幅をそろえる。**
+    ///
+    /// 以前は高さを他のプリミティブに合わせ、横は比率のまま中央に
+    /// 置いていたので、板書の実効幅より細い箱に収まっていた。式は左端から
+    /// 幅いっぱいに並ぶので、**図だけが一段内側に浮いて見えた**(実機の指摘)。
+    testWidgets('SVGが描かれ、板書の幅いっぱいに広がる', (WidgetTester tester) async {
       await tester.pumpWidget(host(element));
       await tester.pumpAndSettle();
 
       expect(find.byType(SvgPicture), findsOneWidget);
-      expect(
-        tester.getSize(find.byType(FigureElementView)).height,
-        BoardStyle.graphicHeight,
-      );
+      expect(tester.getSize(find.byType(FigureElementView)).width, 340);
     });
 
-    /// **幅いっぱいに引き伸ばさない。**SVGは文字も一緒に拡大縮小されるので、
-    /// 横に伸ばすと縦も伸びて、板書の1手順として収まらなくなる。
-    testWidgets('板書の実効幅(340pt)でも高さが増えない', (WidgetTester tester) async {
+    /// 幅にそろえた結果、縦は比率のぶんだけ伸びる。**それでも1手順が
+    /// 画面を占めない**ように上限を持たせてある(板書は積み上がるので、
+    /// 1手順が大きすぎると前の行が押し出される)。
+    testWidgets('縦は比率のまま伸び、上限を超えない', (WidgetTester tester) async {
       await tester.pumpWidget(host(element));
       await tester.pumpAndSettle();
+
+      final double height = tester.getSize(find.byType(FigureElementView)).height;
+      // 320x224 の図を340ptに合わせると238pt。比率どおりに伸びていること。
+      expect(height, closeTo(340 * 224 / 320, 1));
+      expect(height, lessThanOrEqualTo(FigureElementView.maxHeight));
+    });
+
+    /// 縦長の図でも、1手順で画面を埋めない。
+    testWidgets('縦長のSVGは上限で止める', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        host(
+          const BoardElement.figure(
+            items: <Map<String, dynamic>>[],
+            svg: '<svg viewBox="0 0 100 400" xmlns="http://www.w3.org/2000/svg">'
+                '<rect width="100" height="400" fill="#2f3a35"/></svg>',
+            alt: '数直線',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
       expect(
         tester.getSize(find.byType(FigureElementView)).height,
-        lessThanOrEqualTo(BoardStyle.graphicHeight),
+        FigureElementView.maxHeight,
       );
     });
 

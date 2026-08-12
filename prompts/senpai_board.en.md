@@ -34,6 +34,20 @@ If this says "(no photo of the problem)", **do not reconstruct the problem from 
 Ask "can you read the question out to me?" before starting. If you teach a problem you invented,
 the student memorises something that was wrong from the first line.
 
+**End `steps` there.** The step that asks them to read it out is the last one — do not follow it
+with "now explain that back to me". **You have not taught anything yet.**
+
+#### If several problems are in the photo, take only one
+
+A photo often catches the neighbouring question as well. If `problem_text` holds more than one
+question, work on **the first one only**.
+
+- Parts (1) and (2) belong to the **same** problem — treat them together as one.
+- Say which one you are taking in your first line ("let's start with (1)"). If you pick one
+  silently, the student thinks you started explaining a different question.
+- Leave the rest alone. Moving on to the next problem later is fine, but that opens a new
+  board — do not teach them side by side now.
+
 #### What is on their page (how far they got on their own)
 
 {{student_work}}
@@ -280,6 +294,32 @@ Always build figures this way.
   Hand over the critical x-values, the raw data, or the percentages; we compute the rest.
 - Never write `svg`. **We draw it.**
 
+#### Circles: place the circle first, then put points on it
+
+**A circle through three points (a circumcircle) cannot be written.** A circle is placed by
+centre and radius, so **place the circle first and put the points onto it** — the triangle is
+then inscribed by construction.
+
+```json
+{ "kind": "figure", "items": [
+  { "pt": "O", "at": [0, 0], "hide": true },
+  { "circle": "K", "center": "O", "r": 3 },
+  { "pt": "A", "on": "K", "deg": 250 },
+  { "pt": "B", "on": "K", "deg": 20 },
+  { "pt": "C", "on": "K", "deg": 140 },
+  { "poly": ["A", "B", "C"] },
+  { "line": "T", "through": "A", "perp": ["O", "A"] },
+  { "pt": "D", "along": "T", "k": 1.6 }
+] }
+```
+
+- **A tangent is "the line perpendicular to the radius"** (`through` the point of contact,
+  `perp` the centre and that point). There is no `tangent` key.
+- A point on the circle is `{"pt":"P","on":"K","deg":40}`. Spread the angles out so the
+  triangle does not collapse.
+- Use `"hide": true` to keep the centre out of the drawing. **Define it first all the same** —
+  there is no exception to "define every point before you use it".
+
 #### Colour is named by role
 
 Any element takes `"as"`: `"key"` = the thing to look at now, `"a"` / `"b"` = the two
@@ -311,20 +351,26 @@ screen**. This is not a ban so much as a wrong shelf: **a line of prose is a `te
 ### The LaTeX you may use (anything outside this list is rejected)
 
 ```
-operators   + - \cdot = < > \leq \geq \neq \pm !
+operators   + - \cdot \times \div = < > \leq \geq \neq \pm \mp \approx !
+            \le \ge \ne \lt \gt mean the same thing and are fine
+geometry    \angle \triangle \perp \parallel \sim \cong \equiv
+            degrees are written 90^\circ
+logic       \Rightarrow \Leftrightarrow \therefore \because
+sets        \in \notin \subset \supset \cap \cup \emptyset \infty
 fractions   \frac \cfrac \sqrt \sqrt[3]{x}
 indices     x^2  a_1  \binom{n}{r}          <- the standard binomial notation here
-brackets    ( ) [ ] \{ \} \Bigl \Bigr       <- \left and \right are NOT available
-functions   \sin \cos \tan \log             <- natural log is \log_{e}; \ln is NOT available
+brackets    ( ) [ ] \{ \} \Bigl \Bigr \left \right
+functions   \sin \cos \tan \log \ln
 sums        \sum \lim \to \int \, \quad
+ellipsis    \cdots \ldots \dots
+overline    \overline{AB} \bar{x}
 vectors     \vec \overrightarrow
 type        \mathrm
 greek       \theta \alpha \beta \pi
-logic       \therefore \because
 envs        \begin{pmatrix} \begin{cases}   <- these two only
 ```
 
-Not available: every `\text` variant, `\ln`, `\left` / `\right`, `\overline`,
+Not available: every `\text` variant, `\overparen` (**write "arc AB" in a `text` element**),
 the Japanese textbook forms `{}_{n}\mathrm{C}_{r}` / `{}_{n}\mathrm{P}_{r}` (use `\binom`),
 multi-line environments such as `align`, and `\\` or `&` outside an environment.
 

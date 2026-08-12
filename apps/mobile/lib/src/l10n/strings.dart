@@ -316,6 +316,19 @@ class AppStrings {
   /// (コアループ §2「じゃあ今の、説明してみて」)。
   String get sessionExplainBack => _pick('説明してみて', 'Now you explain it');
 
+  /// 授業中に出す問題文の見出し(ワイヤー v2 の1つ目)。
+  ///
+  /// **撮影画面の `captureProblemTitle` とは別の文言にする。**あちらは
+  /// 「先輩はこの問題だと思っています」= 授業を始める前の**答え合わせ**で、
+  /// こちらは授業中に**いま何を解いているか**を出す札。同じ文を使うと、
+  /// 板書の上に確認の問いかけが常駐することになる。
+  String get sessionProblemTitle => _pick('問題', 'The problem');
+
+  /// 3行で畳んだ問題文を開く。**板書を押し出さないため**に畳んである
+  /// (契約の上限は600字で、全文を出すと板書が画面外へ出る)。
+  String get sessionProblemExpand => _pick('続きを読む', 'Read more');
+  String get sessionProblemCollapse => _pick('畳む', 'Show less');
+
   /// 板書がとぎれたとき(封筒の欠落・順序違反を検知した)。
   ///
   /// **黙って虫食いのまま出さない。**抜けたことに気づけないと、
@@ -740,6 +753,10 @@ class AppStrings {
   String boardSpeechSubscript(String index) => _pick('の 添字 $index', 'sub $index');
   String boardSpeechVector(String body) => _pick('ベクトル $body', 'vector $body');
 
+  /// 上線(`\overline{AB}` / `\bar{x}`)。線分・共役複素数・平均で使う。
+  /// **何を意味するかは文脈で変わる**ので、読み上げは「線が引いてある」までに留める。
+  String boardSpeechOverline(String body) => _pick('$body の上に線', '$body with a bar');
+
   /// 図形は「厳密な読み上げ」より「**何が描かれているか**」で足りる。
   String boardSpeechTriangle(String vertices, String marks) => _pick(
         '三角形 $vertices。$marks',
@@ -779,26 +796,69 @@ class AppStrings {
 
   /// 記号を言葉にする。**スクリーンリーダーごとの読み方の揺れを消す**ため、
   /// 記号のまま渡さずにこちらで言葉にしておく。
+  ///
+  /// **順序に意味がある。** `board_speech.dart` は上から順に `replaceAll` するので、
+  /// **長いものを先に置く**(`\cdots` より先に `\cdot` を当てると「かける s」に化ける)。
+  /// 同じ理由で `\infty` は `\in` より先、`\leq` は `\le` より先に並べてある。
+  /// ここに足すときは、その語を接頭辞に持つ語が上にあるかを必ず確かめること。
   Map<String, String> get boardSpeechSymbols => _ja
       ? const <String, String>{
-          r'\cdot': ' かける ', r'\pm': ' プラスマイナス ', r'\leq': ' 以下 ',
+          // 度。`^` ごと畳まないと「90 の 度 乗」に読める(指数の畳みが `\` に当たらない)。
+          r'^\circ': ' 度 ',
+          r'\cdots': ' 以下同様に ', r'\ldots': ' 以下同様に ', r'\dots': ' 以下同様に ',
+          r'\cdot': ' かける ', r'\pm': ' プラスマイナス ', r'\mp': ' マイナスプラス ',
+          r'\times': ' かける ', r'\div': ' わる ',
+          r'\leq': ' 以下 ',
           r'\geq': ' 以上 ', r'\neq': ' ノットイコール ', r'\to': ' に近づく ',
+          r'\le': ' 以下 ', r'\ge': ' 以上 ', r'\ne': ' ノットイコール ',
+          r'\lt': ' 小なり ', r'\gt': ' 大なり ', r'\approx': ' およそ等しい ',
           r'\therefore': ' よって ', r'\because': ' なぜならば ',
+          r'\Leftrightarrow': ' 同値 ', r'\Rightarrow': ' ならば ',
+          // 図形
+          r'\angle': ' 角 ', r'\triangle': ' 三角形 ', r'\perp': ' に垂直 ',
+          r'\parallel': ' に平行 ', r'\sim': ' 相似 ', r'\cong': ' 合同 ',
+          r'\equiv': ' 合同 ', r'\circ': ' 度 ',
+          // 集合
+          r'\emptyset': ' 空集合 ', r'\varnothing': ' 空集合 ',
+          r'\infty': ' 無限大 ', r'\notin': ' に属さない ', r'\in': ' に属する ',
+          r'\subset': ' は部分集合 ', r'\supset': ' を含む ',
+          r'\cap': ' かつ ', r'\cup': ' または ',
           r'\sum': ' 総和 ', r'\int': ' 積分 ', r'\lim': ' 極限 ',
           r'\sin': ' サイン ', r'\cos': ' コサイン ', r'\tan': ' タンジェント ',
-          r'\log': ' ログ ', r'\theta': ' シータ ', r'\alpha': ' アルファ ',
+          r'\log': ' ログ ', r'\ln': ' 自然対数 ', r'\theta': ' シータ ',
+          r'\alpha': ' アルファ ',
           r'\beta': ' ベータ ', r'\pi': ' パイ ',
+          // 集合の波括弧。構造の `{}` を落とす前に言葉にしないと、
+          // バックスラッシュだけが読み上げに残る。
+          r'\{': ' 集合 かっこ ', r'\}': ' 集合 かっことじ ',
           '=': ' イコール ', '+': ' プラス ', '-': ' マイナス ',
           '<': ' 小なり ', '>': ' 大なり ', '(': ' かっこ ', ')': ' かっことじ ',
         }
       : const <String, String>{
-          r'\cdot': ' times ', r'\pm': ' plus or minus ', r'\leq': ' less than or equal to ',
+          r'^\circ': ' degrees ',
+          r'\cdots': ' and so on ', r'\ldots': ' and so on ', r'\dots': ' and so on ',
+          r'\cdot': ' times ', r'\pm': ' plus or minus ', r'\mp': ' minus or plus ',
+          r'\times': ' times ', r'\div': ' divided by ',
+          r'\leq': ' less than or equal to ',
           r'\geq': ' greater than or equal to ', r'\neq': ' not equal to ',
+          r'\le': ' less than or equal to ', r'\ge': ' greater than or equal to ',
+          r'\ne': ' not equal to ', r'\lt': ' less than ', r'\gt': ' greater than ',
+          r'\approx': ' approximately equals ',
           r'\to': ' approaches ', r'\therefore': ' therefore ', r'\because': ' because ',
+          r'\Leftrightarrow': ' if and only if ', r'\Rightarrow': ' implies ',
+          r'\angle': ' angle ', r'\triangle': ' triangle ', r'\perp': ' perpendicular to ',
+          r'\parallel': ' parallel to ', r'\sim': ' is similar to ',
+          r'\cong': ' is congruent to ', r'\equiv': ' is congruent to ', r'\circ': ' degrees ',
+          r'\emptyset': ' the empty set ', r'\varnothing': ' the empty set ',
+          r'\infty': ' infinity ', r'\notin': ' is not in ', r'\in': ' is in ',
+          r'\subset': ' is a subset of ', r'\supset': ' contains ',
+          r'\cap': ' intersect ', r'\cup': ' union ',
           r'\sum': ' the sum of ', r'\int': ' the integral of ', r'\lim': ' the limit of ',
           r'\sin': ' sine ', r'\cos': ' cosine ', r'\tan': ' tangent ',
-          r'\log': ' log ', r'\theta': ' theta ', r'\alpha': ' alpha ',
+          r'\log': ' log ', r'\ln': ' natural log ', r'\theta': ' theta ',
+          r'\alpha': ' alpha ',
           r'\beta': ' beta ', r'\pi': ' pi ',
+          r'\{': ' open brace ', r'\}': ' close brace ',
           '=': ' equals ', '+': ' plus ', '-': ' minus ',
           '<': ' less than ', '>': ' greater than ', '(': ' open bracket ',
           ')': ' close bracket ',

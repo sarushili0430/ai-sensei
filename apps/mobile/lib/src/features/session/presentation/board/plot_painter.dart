@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../../../theme/tokens.dart';
 import '../../domain/board.dart';
 import 'board_coordinate_space.dart';
+import 'board_style.dart';
 import 'plot_expression.dart';
 
 /// 関数グラフ(`BoardElement.plot`)を描く。
@@ -78,13 +78,13 @@ class PlotPainter extends CustomPainter {
 
   void _paintAxes(Canvas canvas, Size size, BoardCoordinateSpace space, double minY, double maxY) {
     final Paint framePaint = Paint()
-      ..color = AppColors.border
+      ..color = BoardStyle.chalkMuted.withValues(alpha: 0.4)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
     canvas.drawRect(Offset.zero & size, framePaint);
 
     final Paint axisPaint = Paint()
-      ..color = AppColors.inkMuted
+      ..color = BoardStyle.chalkMuted
       ..strokeWidth = 1;
     // y=0 の軸(x軸)。定義域がまたいでいるときだけ描く。
     if (minY <= 0 && maxY >= 0) {
@@ -108,7 +108,7 @@ class PlotPainter extends CustomPainter {
     double maxY,
   ) {
     final Paint curvePaint = Paint()
-      ..color = AppColors.blue
+      ..color = BoardStyle.chalkKey
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.4
       ..strokeCap = StrokeCap.round
@@ -170,12 +170,12 @@ class PlotPainter extends CustomPainter {
   void _paintMarks(Canvas canvas, BoardCoordinateSpace space) {
     for (final PlotMark mark in marks) {
       final Offset point = space.toCanvasPoint(mark.at);
-      canvas.drawCircle(point, 4, Paint()..color = AppColors.hole);
+      canvas.drawCircle(point, 4, Paint()..color = BoardStyle.chalkKey);
       canvas.drawCircle(
         point,
         4,
         Paint()
-          ..color = AppColors.surface
+          ..color = BoardStyle.surface
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.5,
       );

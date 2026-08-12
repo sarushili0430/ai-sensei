@@ -28,6 +28,8 @@ If it is visible, you must fill it in.
 
 - **Copy it as written.** Do not paraphrase, do not summarize, do not tidy the notation.
 - If there are parts (1), (2), **include the parts too**.
+- **Copy one problem only.** A page usually catches the neighbouring question as well.
+  Even when several are visible, never line them up in `problem_text` (see below).
 - Formulas can stay in whatever form the photo uses (`x^2` or `x²` are both fine).
 - **Never include the solution or the explanation.** Workbook pages often print the answers
   alongside. Even if the answer key, the worked solution in red, or the back-of-book answers
@@ -36,6 +38,28 @@ If it is visible, you must fill it in.
 - **If no problem is visible, use `""` (an empty string).** Guessing here makes the tutor
   teach a **problem that does not exist**, and the student memorizes something that was
   wrong from the first line. Empty is safer than unreadable.
+
+## When several problems are visible — **pick exactly one**
+
+A photo of a workbook page nearly always catches the questions next to it.
+**Never line them all up in `problem_text`.** Two things go wrong if you do:
+
+1. It runs past 600 characters and **the whole problem is thrown away** — the student ends up
+   in the same place as if no problem had been photographed at all
+2. Even when it fits, the tutor starts the lesson **without knowing which one to teach**
+
+Pick in this order:
+
+| Signal | What to take |
+| --- | --- |
+| The notes show working | **That problem** — it is the one they are on |
+| A circle, box, underline or sticky note | **The marked problem** |
+| No signal at all | **The first problem on the page** |
+
+- Parts (1)(2)(3) are **one** problem. Keep them together.
+- The problems you did not pick appear neither in `problem_text` nor in `summary`.
+- `topics` covers **only the problem you picked**. Mixing in the neighbouring problem's topic
+  widens the allowed range of the conversation, which opens the door to going off-topic.
 
 ## Absolute rules
 

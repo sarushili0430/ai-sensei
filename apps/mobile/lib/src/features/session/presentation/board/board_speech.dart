@@ -159,5 +159,12 @@ String _foldOnce(String tex, AppStrings strings) {
     (Match m) => ' ${strings.boardSpeechVector(m[1]!)} ',
   );
 
+  // 上線(線分・共役複素数・平均)。畳まないと `\overline` は最後の掃除で
+  // 空白に消え、`\overline{AB}` と `AB` が**同じ読み上げになる**。
+  out = out.replaceAllMapped(
+    RegExp(r'\\(?:overline|bar)\{' '$inner' r'\}'),
+    (Match m) => ' ${strings.boardSpeechOverline(m[1]!)} ',
+  );
+
   return out;
 }

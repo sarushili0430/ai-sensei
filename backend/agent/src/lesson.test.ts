@@ -250,6 +250,64 @@ describe("runBoardLesson", () => {
     expect(result.reason).toBe("completed");
   });
 
+  /**
+   * **ターン制はプロンプトの願いではなく、ここで守る。**
+   *
+   * 板書プロンプトは「質問を出したら、その板書はそこで終える。`steps` を続けない」と
+   * 書いているが、生成が1回ぶれると問いかけごと12手順を一息で読み上げる。
+   * 生徒から見ると、先輩が自分の質問に自分で答えながら喋り続ける
+   * (2026-08-12 の「ターン制を守り切れていない」報告)。
+   */
+  it("問いかけたらそこで止めて、残りの手順は板書にも音声にも出さない", async () => {
+    const spoken: number[] = [];
+    const sink = recordingSink();
+    const board = channelWith(sink).startBoard();
+
+    const result = await runBoardLesson({
+      llm: stubLlm(
+        lessonJson([
+          step(0, "x^2 - 3x + 2 = 0"),
+          { index: 1, speech: "a、b、c がどれか、言ってみて。", board: null },
+          step(2, "D = 9 - 8 = 1"),
+          step(3, "x = 1, 2"),
+        ]),
+      ),
+      system: "s",
+      locale: "ja",
+      delivery: board,
+      speak: async (delivered) => {
+        spoken.push(delivered.index);
+      },
+    });
+
+    // 問いかけまでは届ける。その先は生徒の答えを聞いてから。
+    expect(spoken).toEqual([0, 1]);
+    expect(result.step_count).toBe(2);
+    // 壊れたのではなく、予定どおり番を渡しただけ。
+    expect(result.reason).toBe("completed");
+  });
+
+  it("疑問符で終わる第一声でも止まる(問題文が読めなかった授業の入口)", async () => {
+    const sink = recordingSink();
+    const board = channelWith(sink).startBoard();
+
+    const result = await runBoardLesson({
+      llm: stubLlm(
+        lessonJson([
+          { index: 0, speech: "問題、読んでもらってもいい?", board: null },
+          step(1, "x^2 - 3x + 2 = 0"),
+        ]),
+      ),
+      system: "s",
+      locale: "ja",
+      delivery: board,
+      speak: async () => {},
+    });
+
+    expect(result.step_count).toBe(1);
+    expect(result.reason).toBe("completed");
+  });
+
   // 板書の寿命は1つの問題。教え返しの間も残っていないと、説明する対象が消える。
   it("授業が終わっても板書は閉じない", async () => {
     const sink = recordingSink();

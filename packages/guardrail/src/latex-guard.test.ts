@@ -25,6 +25,20 @@ const measuredFormulas: readonly (readonly [string, string])[] = [
   ["\\quad で横に並べた連立方程式", "x + y = 5,\\quad x - y = 1"],
   ["定積分の計算途中(可変サイズ括弧)", "\\int_0^1 (3x^2+2x)\\,dx = \\Bigl[x^3+x^2\\Bigr]_0^1 = 2"],
   ["二項係数(海外課程の標準記法)", "\\binom{n}{r}"],
+  // 2026-08-12 の実測(`flutter_math_fork` で描画してPNGを目視)。
+  // **図形の記号が1つも無く、図形の単元が板書ごと落ちていた**ので足したもの。
+  ["接弦定理で書きたい角の等式", "\\angle CAD = \\angle ABC"],
+  ["相似", "\\triangle ABC \\sim \\triangle ADE"],
+  ["合同", "\\triangle ABC \\equiv \\triangle DEF"],
+  ["角度の単位", "\\angle A = 90^\\circ + 30^\\circ"],
+  ["平行と垂直", "AB \\parallel CD, \\quad AB \\perp EF"],
+  ["かける・わる・およそ", "2 \\times 3 \\div 4 \\approx 1.5"],
+  ["論証の矢印と短い綴りの不等号", "D > 0 \\Rightarrow x \\ne 0 \\Leftrightarrow x \\in A"],
+  ["集合", "A \\cap B \\subset A \\cup B, \\quad \\emptyset"],
+  ["上線(線分・平均)", "\\overline{AB} = 6, \\quad \\bar{x} = 5"],
+  ["数列の省略", "a_1 + a_2 + \\cdots + a_n"],
+  ["自動サイズの括弧", "\\left( \\frac{a}{b} \\right)"],
+  ["自然対数", "\\ln x = \\log_{e} x"],
 ];
 
 // 実測スパイク(2026-08-09)でPNGを目視し、崩れずに描けたもの。
@@ -76,12 +90,16 @@ describe("checkBoardLatex — 通すべきもの", () => {
 
 describe("checkBoardLatex — 弾くべきもの", () => {
   // 移植版が対応しているか未確認のもの。「KaTeXにあるから」で通してはいけない。
+  //
+  // `\overparen` は 2026-08-12 に実際に描かせて**落ちた**もの
+  // (`flutter_math_fork` が描けず、その行が「数式を表示できません」に化けた)。
+  // 弧は `text` の板書に「弧AB」と書く。
   it.each([
-    ["\\ln(\\log は許可、\\ln は未検証)", "\\ln x = 1"],
-    ["\\overline", "\\overline{AB} = 5"],
-    ["\\left \\right の可変括弧", "\\left( \\frac{1}{2} \\right)"],
+    ["\\overparen(弧の記号。実測で描けなかった)", "\\overparen{AB}"],
+    ["3×3の行列(実測していない)", "\\begin{bmatrix} 1 \\end{bmatrix}"],
+    ["\\mathbb(実測していない)", "\\mathbb{R}"],
   ])("%s を弾く", (_name, tex) => {
-    expect(checkBoardLatex(tex)).toMatchObject({ ok: false, reason: "unknown_command" });
+    expect(checkBoardLatex(tex)).toMatchObject({ ok: false });
   });
 
   // 描画とは別の危険。板書に外部リソースを引き込ませない。

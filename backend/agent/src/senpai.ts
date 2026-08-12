@@ -97,6 +97,26 @@ const HANDOFF_PATTERNS: Record<CurriculumLocale, RegExp[]> = {
   en: [/explain\b/i, /your own words/i, /tell me\b/i, /give it a (?:go|shot|try)/i, /try it\b/i],
 };
 
+/**
+ * 疑問符。**「〜してみて」型だけを番の受け渡しと見なしていたのが、実際の壊れ方だった。**
+ *
+ * 問題の写真が読めなかった授業は、板書プロンプトの指示どおり
+ * 「問題、読んでもらってもいい?」から始まる。これは上のどのパターンにも当たらないので
+ * `teachBackFallback` が**無条件で**「じゃあ今の、自分の言葉で説明してみて。」を続けていた
+ * (2026-08-12 の報告そのもの)。生徒から見ると、読み上げを頼まれた次の瞬間に
+ * **まだ何も教わっていない内容の説明を求められる**。
+ *
+ * 先輩が問いかけで終えたなら、形がどうであれ**番はもう生徒にある**。
+ *
+ * **全角の `？` はコードポイントで書く(`？`)。**
+ * 一度ここを `[??]` と生の字で書いて、`？` が半角に潰れたまま入っていた
+ * (見た目は2文字だが中身は `?` が2つで、全角では止まらない)。
+ * 日本語の出力はほとんど全角なので、**この取りこぼしは日本語の授業ぜんぶに効く** —
+ * 直したはずのターン制が、そのまま元に戻る。字で書けば次も同じ形で壊れるので、
+ * 目で見て違いの分かる書き方にしておく。
+ */
+const QUESTION_MARK = /[?？]\s*$/;
+
 export function teachBackPrompt(locale: CurriculumLocale): string {
   return TEACH_BACK_PROMPT[locale];
 }
@@ -115,6 +135,7 @@ export function reviewOpening(locale: CurriculumLocale): string {
 export function handsTurnToStudent(speech: string, locale: CurriculumLocale): boolean {
   const normalized = speech.trim();
   if (normalized.length === 0) return false;
+  if (QUESTION_MARK.test(normalized)) return true;
   return HANDOFF_PATTERNS[locale].some((pattern) => pattern.test(normalized));
 }
 
@@ -176,11 +197,33 @@ export function senpaiBoardLessonPrompt(input: SenpaiBoardLessonInput): string {
 }
 
 /**
+ * 板書に1行でも書いたか。**音声だけの手順は「教えた」に数えない。**
+ *
+ * `board: null` の手順は、切り分けの質問と相づちのための枠
+ * (`senpai_board.*.md` の要素表)。それしか出ていない授業は、
+ * 生徒の画面では**見出しだけの白い黒板**で、教わった中身はどこにも残っていない。
+ */
+export function wroteOnBoard(steps: readonly BoardStep[]): boolean {
+  return steps.some((step) => step.board !== null);
+}
+
+/**
  * 板書LLMが最後の一言で番を渡し忘れたときの、コード側の保険。
  *
  * プロンプトだけに任せると、生成が1回ぶれただけで「教えて終わり」になる。
  * 一方、すでに番を渡しているのに毎回定型句を足すと同じ質問を二度聞く。
  * 実際に配送できた最後の手順を見て、不足したときだけ教え返しへ戻す。
+ *
+ * **板書に1行も書いていない回では足さない。**「じゃあ今の」の「今の」が
+ * 存在しないので、教わっていないことの説明を求めることになる(§2 の逆)。
+ * 実際に起きていたのは次の並びで、しかも会話プロンプトは
+ * 「いまやっていること — 教え返し」で固定なので、**そのまま堂々巡りになる**:
+ *
+ *   先輩「問題、読んでもらってもいい?」  ← 写真から問題文が取れなかった授業の第一声
+ *   先輩「じゃあ今の、自分の言葉で説明してみて。」  ← ここ(無条件で足していた)
+ *
+ * 立て直しは呼び出し側の責務(`agent.ts` が `lessonFailedPrompt` を出す)。
+ * ここは「**足さない**」だけを決める。
  */
 export function teachBackFallback(
   context: Pick<SessionContext, "locale">,
@@ -188,6 +231,7 @@ export function teachBackFallback(
 ): string | null {
   const last = steps.at(-1);
   if (last === undefined || handsTurnToStudent(last.speech, context.locale)) return null;
+  if (!wroteOnBoard(steps)) return null;
   return teachBackPrompt(context.locale);
 }
 

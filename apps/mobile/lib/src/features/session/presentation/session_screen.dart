@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../common_widgets/centered_scroll.dart';
 import '../../../common_widgets/chunky_button.dart';
 import '../../../common_widgets/senpai_face.dart';
 import '../../../common_widgets/speaking_wave.dart';
@@ -13,6 +14,7 @@ import '../../capture/application/capture_controller.dart';
 import '../application/board_inbox.dart';
 import '../application/session_controller.dart';
 import '../domain/session.dart';
+import 'board/board_style.dart';
 import 'board/board_view.dart';
 
 /// 会話画面(ワイヤーフレームの03/04を1枚に統合)。
@@ -83,63 +85,103 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
         state.phase == SessionPhase.summarizing || state.phase == SessionPhase.finished;
 
     final BoardSnapshot board = state.board;
+    // 解析が読み取れた問題。読めなければ `null` で、そのときは何も出さない
+    // (「問題が読めませんでした」と書くと、先輩が読み上げを頼む前に
+    // 生徒が撮り直しに行ってしまう)。
+    final SessionProblem? problem = ref.watch(captureControllerProvider).session?.problem;
 
     return Scaffold(
       body: SafeArea(
+        // **横の余白は子ごとに付ける。**板書だけは画面の左右いっぱいまで伸ばしたい
+        // (板は面であってカードではない。`board_view.dart`)。全体を包んで
+        // しまうと板が中央に浮いた掲示物になり、内側に余白を足せば実効幅が
+        // 340ptを割って式が横スクロールに落ちる。
         child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.lg),
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
           child: Column(
             children: <Widget>[
-              _SessionHeader(
-                title: board.title,
-                remaining: strings.remaining(state.remainingSeconds),
+              _Inset(
+                child: _SessionHeader(
+                  title: board.title,
+                  remaining: strings.remaining(state.remainingSeconds),
+                ),
               ),
+              // **問題文は板書より上に、常に出す。**見出し(`board.title`)は
+              // 先輩が付けた要約で、問題そのものではない。何を解いているかが
+              // 画面のどこにも無いと、板書から逆算するしかなくなる
+              // (`docs/wireframe_board_v2.html` の1つ目)。
+              if (problem != null) ...<Widget>[
+                const SizedBox(height: AppSpacing.sm),
+                _Inset(child: _ProblemBlock(text: problem.text)),
+              ],
               if (board.hasBoard) ...<Widget>[
+                const SizedBox(height: AppSpacing.md),
                 // **板書が主役。**残りの高さを全部渡す。
                 Expanded(child: _BoardStage(board: board)),
                 const SizedBox(height: AppSpacing.md),
-                _LessonFooter(phase: state.phase, subtitle: subtitle, wrappingUp: wrappingUp),
-              ] else ...<Widget>[
-                const Spacer(),
-                SenpaiFace(
-                  mood: switch (state.phase) {
-                    SessionPhase.connecting => SenpaiMood.neutral,
-                    SessionPhase.listening || SessionPhase.explainBack => SenpaiMood.listening,
-                    SessionPhase.senpaiSpeaking || SessionPhase.senpaiTeaching => SenpaiMood.neutral,
-                    SessionPhase.summarizing => SenpaiMood.neutral,
-                    SessionPhase.finished => SenpaiMood.delighted,
-                    // 困り顔が出るのは**こちら側の不首尾**のときだけ
-                    // (`SenpaiMood.puzzled` の定義)。生徒が詰まったときには出さない。
-                    SessionPhase.failed => SenpaiMood.puzzled,
-                  },
-                  size: 160,
+                _Inset(child: _LessonFooter(phase: state.phase, wrappingUp: wrappingUp)),
+              ] else
+                // **板書が無いときだけ、字幕を出す。**
+                //
+                // 字幕の根拠は「声を聞き取れない場所でも追えるように」だったが、
+                // このアプリは**教え返し**が本体で、そもそも声を出せない場所では
+                // 成立しない。板書が出ているなら、読むべきものは板書のほうにある。
+                //
+                // 板書が無い経路(板書に失敗した立て直し・古いAPIの復習)では、
+                // 先輩の言葉が**画面上の唯一の手がかり**なので、ここだけ残す。
+                //
+                // 高さは1つの箱として渡し、中でスクロールさせる。`Spacer` で挟んで
+                // いたころは、長い返事がそのまま**下の操作を画面の外へ押し出していた**
+                // (実機で「今日はここまで」に BOTTOM OVERFLOWED が重なった)。
+                Expanded(
+                  child: CenteredScroll(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                    children: <Widget>[
+                      SenpaiFace(
+                        mood: switch (state.phase) {
+                          SessionPhase.connecting => SenpaiMood.neutral,
+                          SessionPhase.listening ||
+                          SessionPhase.explainBack => SenpaiMood.listening,
+                          SessionPhase.senpaiSpeaking ||
+                          SessionPhase.senpaiTeaching => SenpaiMood.neutral,
+                          SessionPhase.summarizing => SenpaiMood.neutral,
+                          SessionPhase.finished => SenpaiMood.delighted,
+                          // 困り顔が出るのは**こちら側の不首尾**のときだけ
+                          // (`SenpaiMood.puzzled` の定義)。生徒が詰まったときには出さない。
+                          SessionPhase.failed => SenpaiMood.puzzled,
+                        },
+                        size: 160,
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      _StatusIndicator(phase: state.phase, wrappingUp: wrappingUp),
+                      const SizedBox(height: AppSpacing.md),
+                      // 差し替わるときに入れ替わりが見えるよう、文ごとに切り替える。
+                      _Subtitle(text: subtitle, align: TextAlign.center),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: AppSpacing.md),
-                _StatusIndicator(phase: state.phase, wrappingUp: wrappingUp),
-                const SizedBox(height: AppSpacing.md),
-                // 字幕。声を聞き取れない場所でも会話の流れを追えるようにする。
-                // 差し替わるときに入れ替わりが見えるよう、文ごとに切り替える。
-                _Subtitle(text: subtitle, align: TextAlign.center),
-                const Spacer(),
-              ],
               // パスは恥ではない。穴の記録として価値がある。
-              GhostButton(
-                label: strings.sessionPass,
-                onPressed: wrappingUp
-                    ? null
-                    : () => ref
-                        .read(sessionControllerProvider.notifier)
-                        .pass(strings.sessionPassMessage),
+              _Inset(
+                child: GhostButton(
+                  label: strings.sessionPass,
+                  onPressed: wrappingUp
+                      ? null
+                      : () => ref
+                          .read(sessionControllerProvider.notifier)
+                          .pass(strings.sessionPassMessage),
+                ),
               ),
-              ChunkyButton(
-                label: wrappingUp ? strings.sessionSummarizing : strings.sessionEnd,
-                color: AppColors.border,
-                foregroundColor: AppColors.ink,
-                // 押した瞬間に押せなくなる。もう受け取ってあることが、
-                // 文言と色の両方で分かるようにする。
-                onPressed: wrappingUp
-                    ? null
-                    : () => ref.read(sessionControllerProvider.notifier).finish(),
+              _Inset(
+                child: ChunkyButton(
+                  label: wrappingUp ? strings.sessionSummarizing : strings.sessionEnd,
+                  color: AppColors.border,
+                  foregroundColor: AppColors.ink,
+                  // 押した瞬間に押せなくなる。もう受け取ってあることが、
+                  // 文言と色の両方で分かるようにする。
+                  onPressed: wrappingUp
+                      ? null
+                      : () => ref.read(sessionControllerProvider.notifier).finish(),
+                ),
               ),
             ],
           ),
@@ -174,6 +216,97 @@ class _SessionHeader extends StatelessWidget {
         Text(remaining, style: Theme.of(context).textTheme.bodySmall),
       ],
     );
+  }
+}
+
+/// いま解いている問題。**板書の上に、授業のあいだずっと出しておく。**
+///
+/// 板書は積み上がるので、問題文をスクロールの中に置くとすぐ画面外へ出る。
+/// けれど**教え返しの最中にいちばん見返したいのが問題文**なので、流さずに
+/// ここへ固定する(`docs/wireframe_board_v2.html`)。
+///
+/// **3行で頭打ちにする。** 契約の上限は600字(`problemTextMaxLength`)で、
+/// 全文を出すと板書が画面の外へ押し出される。撮影画面は全文表示のまま外側を
+/// スクロールさせているが、こちらは同じ手が使えない(押し出す先が板書になる)。
+/// 開いたときも、板書が見える高さが残るよう最大8行で止める。
+class _ProblemBlock extends StatefulWidget {
+  const _ProblemBlock({required this.text});
+
+  final String text;
+
+  @override
+  State<_ProblemBlock> createState() => _ProblemBlockState();
+}
+
+class _ProblemBlockState extends State<_ProblemBlock> {
+  static const int _collapsedLines = 3;
+  static const int _expandedLines = 8;
+
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppStrings strings = AppStrings.of(context);
+    final TextStyle? body = Theme.of(context).textTheme.bodyMedium;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        // **板書と素材を変える。** 問題は紙(白)、板書は地に直接。
+        // ラベルを読まなくても役割が分かるのは、文字ではなく面が違うから。
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Text(
+              strings.sessionProblemTitle,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.inkMuted),
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              widget.text,
+              style: body,
+              maxLines: _expanded ? _expandedLines : _collapsedLines,
+              overflow: TextOverflow.ellipsis,
+            ),
+            // **畳めることが分かる形にする。**省略記号だけだと、続きがあることに
+            // 気づいても開き方が分からない。短い問題文では出さない。
+            if (_isTruncated(context, body))
+              GestureDetector(
+                onTap: () => setState(() => _expanded = !_expanded),
+                child: Padding(
+                  padding: const EdgeInsets.only(top: AppSpacing.xs),
+                  child: Text(
+                    _expanded ? strings.sessionProblemCollapse : strings.sessionProblemExpand,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.blue),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 畳んだ状態で本文が入り切らないか。**実際に組んで測る** —
+  /// 文字数で判定すると、改行の多い問題文で「続きを読む」が出なくなる。
+  bool _isTruncated(BuildContext context, TextStyle? style) {
+    final double width = MediaQuery.sizeOf(context).width - AppSpacing.lg * 2 - AppSpacing.md * 2;
+    if (width <= 0) return false;
+    final TextPainter painter = TextPainter(
+      text: TextSpan(text: widget.text, style: style),
+      maxLines: _collapsedLines,
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout(maxWidth: width);
+    final bool overflows = painter.didExceedMaxLines;
+    painter.dispose();
+    return overflows;
   }
 }
 
@@ -245,14 +378,23 @@ class _BoardStageState extends State<_BoardStage> {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      controller: _controller,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          BoardView(steps: widget.board.steps),
-          if (widget.board.hasGap) const _BoardGapNotice(),
-        ],
+    // **板は動かない。動くのはチョークのほう。**
+    //
+    // 面を [BoardView] の中(= スクロールする側)だけに置くと、板が中身の高さに
+    // 縮んで、1〜2行しか書いていない授業では**画面の途中で板が終わる**。
+    // スクロールすると板の上下の縁も一緒に動くので、黒板ではなく黒い紙に見える。
+    // ここで授業の高さいっぱいに敷いておけば、書いた量に関わらず板は板のまま。
+    return ColoredBox(
+      color: BoardStyle.surface,
+      child: SingleChildScrollView(
+        controller: _controller,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            BoardView(steps: widget.board.steps),
+            if (widget.board.hasGap) const _BoardGapNotice(),
+          ],
+        ),
       ),
     );
   }
@@ -270,29 +412,37 @@ class _BoardGapNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        const Divider(color: AppColors.border, height: AppSpacing.lg),
-        Text(
-          AppStrings.of(context).sessionBoardGap,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.inkMuted),
-        ),
-      ],
+    // **板の上に書く一行なので、チョークの色で書く。**インクのままだと
+    // 黒に黒で、とぎれたことを伝える文だけが読めないまま残る。
+    // 左右の余白は [BoardView] の中ではないので、ここで同じ値を付ける。
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(BoardView.padding, 0, BoardView.padding, AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Divider(color: BoardStyle.chalkMuted, height: AppSpacing.lg),
+          Text(
+            AppStrings.of(context).sessionBoardGap,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: BoardStyle.chalkMuted,
+                ),
+          ),
+        ],
+      ),
     );
   }
 }
 
 /// 授業中の下の帯。**板書を消さずに**、先輩と自分の番を出す場所。
+///
+/// **字幕は置かない。**板書が出ているあいだ、読むべきものは板書のほうにある。
+/// ここに先輩の発話をそのまま流すと、板書に追い出したはずの説明が
+/// 文字で戻ってきて、**画面の主役が二重になる**(実機で、図と式が出ている下に
+/// 4段落の文字起こしが乗った)。ここが持つのは「いま誰の番か」だけ。
 class _LessonFooter extends StatelessWidget {
-  const _LessonFooter({
-    required this.phase,
-    required this.subtitle,
-    required this.wrappingUp,
-  });
+  const _LessonFooter({required this.phase, required this.wrappingUp});
 
   final SessionPhase phase;
-  final String subtitle;
   final bool wrappingUp;
 
   @override
@@ -310,20 +460,34 @@ class _LessonFooter extends StatelessWidget {
         ),
         const SizedBox(width: AppSpacing.md),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              // 教え返しは**指示が主役**。字幕より大きく、先に読める位置に出す。
-              if (yourTurn && !wrappingUp)
-                Text(strings.sessionExplainBack, style: Theme.of(context).textTheme.titleMedium),
-              _Subtitle(text: subtitle, align: TextAlign.start),
-            ],
+          child: Text(
+            // 番がどちらにあるかだけを、1行で。
+            yourTurn && !wrappingUp
+                ? strings.sessionExplainBack
+                : wrappingUp
+                    ? strings.sessionSummarizing
+                    : strings.sessionSenpaiTeaching,
+            style: Theme.of(context).textTheme.titleMedium,
           ),
         ),
         const SizedBox(width: AppSpacing.sm),
         _StatusIndicator(phase: phase, wrappingUp: wrappingUp),
       ],
+    );
+  }
+}
+
+/// 画面の左右の余白。**板書だけがこれを付けない**(板は画面幅いっぱいに敷く)。
+class _Inset extends StatelessWidget {
+  const _Inset({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+      child: child,
     );
   }
 }
