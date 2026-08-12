@@ -772,6 +772,11 @@ class AppStrings {
         'A graph of $fn for x from $min to $max. $marks',
       );
 
+  /// 作図の読み上げ。**SVGは読み上げられない**ので、サーバが一緒に送ってくる
+  /// `alt` をそのまま使う(作図の宣言はサーバが持っているので、文言も向こうで書ける)。
+  /// `alt` が無いときだけ、この定型に落ちる。
+  String get boardSpeechFigure => _pick('図', 'A figure');
+
   /// 記号を言葉にする。**スクリーンリーダーごとの読み方の揺れを消す**ため、
   /// 記号のまま渡さずにこちらで言葉にしておく。
   Map<String, String> get boardSpeechSymbols => _ja

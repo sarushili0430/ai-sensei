@@ -62,6 +62,10 @@ String describeElement(BoardElement element, AppStrings strings) {
         ),
     circle: (BoardPoint center, double r, List<String>? labels) =>
         strings.boardSpeechCircle(_number(r), (labels ?? const <String>[]).join('、')),
+    // 作図の宣言はサーバが持っているので、読み上げ文も向こうで書いてある。
+    // ここで items から組み立て直すと、サーバの文言と二重管理になる。
+    figure: (List<Map<String, dynamic>> items, String? svg, String? alt) =>
+        (alt == null || alt.isEmpty) ? strings.boardSpeechFigure : alt,
     // 英文はそのまま読ませる(TTSではなく画面読み上げなので、英語の音声で読まれる)。
     // 訳と焦点は付いていれば足す — **下線は音にならない**ので、
     // 「どこを見てほしいか」は言葉にしないと目の見えない生徒には届かない。

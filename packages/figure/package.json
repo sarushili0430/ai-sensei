@@ -1,0 +1,15 @@
+{
+  "name": "@ai-sensei/figure",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "作図の宣言(JSON)を座標に解き、SVGにする(すべて純関数)",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": ["src"],
+  "dependencies": {
+    "zod": "^3.24.1"
+  }
+}

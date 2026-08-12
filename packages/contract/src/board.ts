@@ -1,3 +1,4 @@
+import { figureItemsSchema } from "@ai-sensei/figure";
 import { z } from "zod";
 import { topicIdSchema } from "./karte.ts";
 
@@ -8,8 +9,12 @@ import { topicIdSchema } from "./karte.ts";
  *   - **数式・計算・図は板書、音声は問いかけと接続だけ。** これは見た目の話ではなく
  *     原価の主柱で、TTS文字数がそのまま請求額になる。だから「短く喋る」を
  *     プロンプトのお願いではなく **スキーマの上限** で守る({@link boardSpeechMaxLength})。
- *   - **自由描画をさせない。** 図形はプリミティブを4種(latex / text / plot / triangle / circle)に
- *     固定し、LLMにはパラメータだけ吐かせる。SVGもcanvasコマンドも受け取らない。
+ *   - **自由描画をさせない。** LLMにはパラメータだけ吐かせる。
+ *     **LLMが書いたSVGもcanvasコマンドも、どの枝からも入らない。**
+ *     `figure` は SVG を運ぶが、それは検証済みの `items`(関係の宣言)から
+ *     こちらが解いて描いたもの({@link figureElementSchema})。
+ *     `items` の語彙は `@ai-sensei/figure` が閉じていて、座標も長さも比も
+ *     **書かせずに計算する**ので、食い違った図は作れない。
  *   - **解答を丸ごと1要素に流し込めない。** 板書は「1手順=1行」であって答案の貼り付け場所ではない。
  *     `tex` / `body` の上限と、**1回の出力あたりの**手順数の上限
  *     ({@link boardLessonStepsMaxCount})の両方で縛る。
@@ -94,6 +99,19 @@ export const boardCompareRowsMaxCount = 4;
 export const boardLabelMaxLength = 24;
 
 /**
+ * `figure` の SVG の上限。
+ *
+ * 実測(`docs/figeval/` の39枚)で中央 3.1KB・90%点 7.3KB・最大 15.6KB。
+ * 16KB にすると全部通るが、板書は1問で最大 {@link boardStepsMaxCount} 手順ぶん
+ * 生き続けるので、**そこまで大きい図は板書として濃すぎる**とみなして 12KB で切る。
+ * 39枚中38枚が収まる線。ここを超えたら、図を分けるか語彙を見直す合図。
+ */
+export const boardFigureSvgMaxLength = 12_000;
+
+/** 図の読み上げ文。スクリーンリーダーと、目で見られないときの説明に使う。 */
+export const boardFigureAltMaxLength = 200;
+
+/**
  * **LLMが1回に出せる手順数の上限**({@link boardLessonSchema} の `steps`)。
  *
  * 判別式のような単元は6〜8手順で終わる。上限がないと、LLMは
@@ -154,7 +172,7 @@ export type BoardPoint = z.infer<typeof boardPointSchema>;
 /**
  * 板書に積む要素の種類。増やすときは Flutter 側の描画実装とセットで増やす。
  *
- * **教科ごとに使える枝は違う。** 数学は `latex` / `plot` / `triangle` / `circle`、
+ * **教科ごとに使える枝は違う。** 数学は `latex` / `plot` / `triangle` / `circle` / `figure`、
  * 英語は `sentence` / `compare`。`text` だけが両方で使える。
  * どちらを許すかはスキーマではなく agent 側(`boardKindsBySubject`)で閉じている —
  * contract は「表現できる形」を定義する層で、「いま許す形」は文脈で決まるため。
@@ -167,6 +185,7 @@ export const boardElementKinds = [
   "circle",
   "sentence",
   "compare",
+  "figure",
 ] as const;
 export type BoardElementKind = (typeof boardElementKinds)[number];
 
@@ -374,8 +393,42 @@ export const compareElementSchema = z
   .strict();
 
 /**
+ * 作図。**先輩が書くのは `items`(関係の宣言)だけ。**
+ *
+ * `svg` と `alt` は **agent が `@ai-sensei/figure` で解いて詰める**。
+ * 先輩が `svg` を書いてきても捨てる — そこを通すと自由描画になる。
+ *
+ * `items` を一緒に載せるのは、
+ *   - guardrail が「何を描いたか」を検査できる(SVGは検査できない)
+ *   - あとから端末側で描き直せる(D-21 の切り替え。SVGだけだと戻れない)
+ *   - 落ちたときに、そのまま先輩へ投げ直せる
+ * の3つのため。
+ *
+ * **中身の語彙は `@ai-sensei/figure` が持つ。**ここでは形だけ見て、
+ * 「知らないキー」「板書に載らない座標」「式に使えない名前」は
+ * {@link figureItemsSchema} が落とす。
+ */
+export const figureElementSchema = z
+  .object({
+    kind: z.literal("figure"),
+    /** 作図の宣言。語彙と書き方は `docs/figeval/spec.md`。 */
+    items: figureItemsSchema,
+    /**
+     * 解いて描いた SVG。**端末はこれを描くだけ。**
+     * 先輩の出力には無く、配送前に agent が詰める(だから `optional`)。
+     */
+    svg: z.string().min(1).max(boardFigureSvgMaxLength).optional(),
+    /** 図の読み上げ文。これも agent が詰める。 */
+    alt: z.string().min(1).max(boardFigureAltMaxLength).optional(),
+  })
+  .strict();
+
+/**
  * 板書に積む1要素。`kind` の discriminated union。
- * 自由描画(SVG・パス・任意テキストの塊)は **どの枝にも存在しない**。
+ *
+ * **自由描画は どの枝にも存在しない。**`figure` は SVG を運ぶが、
+ * その SVG は{@link figureElementSchema | 検証済みの `items` から こちらが生成したもの}で、
+ * 先輩が書いた SVG が通る道はどこにも無い。
  */
 export const boardElementSchema = z.discriminatedUnion("kind", [
   latexElementSchema,
@@ -385,6 +438,7 @@ export const boardElementSchema = z.discriminatedUnion("kind", [
   circleElementSchema,
   sentenceElementSchema,
   compareElementSchema,
+  figureElementSchema,
 ]);
 export type BoardElement = z.infer<typeof boardElementSchema>;
 

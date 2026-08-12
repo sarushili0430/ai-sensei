@@ -221,6 +221,16 @@ function describeBoard(board: BoardStep["board"], locale: CurriculumLocale): str
       }`;
     case "circle":
       return `${label}: ${locale === "en" ? "circle" : "円"} r = ${board.r}`;
+    case "figure":
+      // **名前のついた点を出す。**ここを「図」の一言で畳むと、先輩は自分が置いた点を
+      // 思い出せず、次の説明で同じ図を描き直す(D-12「図が育たない」の原因はこれだった)。
+      // `alt` は agent が詰めるので、まだ無い場合(検証前)は点の名前だけで書く。
+      return `${label}: ${board.alt ?? (locale === "en" ? "figure" : "図")}${(() => {
+        const names = board.items
+          .map((item) => item.pt)
+          .filter((name): name is string => typeof name === "string");
+        return names.length === 0 ? "" : ` [${names.join(" ")}]`;
+      })()}`;
     // 英語の板書。**例文と、そこで見せた焦点まで**を残す。
     // 「例文を出した」だけだと、教え返しで何を聞き返せばいいか決められない。
     case "sentence":

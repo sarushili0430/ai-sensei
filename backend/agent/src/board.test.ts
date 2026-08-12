@@ -1237,3 +1237,82 @@ describe("板書の範囲の照合(配送を通して)", () => {
     expect(repairHead).not.toHaveBeenCalled();
   });
 });
+
+describe("figure(作図)", () => {
+  const figureStep = (items: unknown) => ({
+    index: 0,
+    speech: "この図を見て",
+    board: { kind: "figure", items },
+  });
+
+  it("解けた図には svg と alt が入る(先輩は svg を書かない)", () => {
+    const verdict = validateStep(
+      figureStep([
+        { pt: "A", at: [0, 4] },
+        { pt: "B", at: [-3, -2] },
+        { pt: "C", at: [3, -2] },
+        { poly: ["A", "B", "C"] },
+      ]),
+      0,
+      "ja",
+    );
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok) return;
+    const board = verdict.step.board;
+    expect(board?.kind).toBe("figure");
+    if (board?.kind !== "figure") return;
+    expect(board.svg?.startsWith("<svg")).toBe(true);
+    expect(board.alt).toContain("多角形");
+  });
+
+  it("解けない図は落とし、理由をそのまま直しの指示にする", () => {
+    const verdict = validateStep(figureStep([{ circle: "K", center: "O", r: 3 }]), 0, "ja");
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) return;
+    expect(verdict.rejection.kind).toBe("figure");
+    expect(verdict.rejection.detail).toContain("未定義の点");
+    expect(verdict.rejection.guidance).toContain("未定義の点");
+  });
+
+  it("長さのラベルが実際と食い違う図は通さない", () => {
+    const verdict = validateStep(
+      figureStep([
+        { pt: "A", at: [0, 0] },
+        { pt: "B", at: [10, 0] },
+        { seg: ["A", "B"], label: "6" },
+      ]),
+      0,
+      "ja",
+    );
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) return;
+    expect(verdict.rejection.detail).toContain("実際の長さ");
+  });
+
+  it("先輩が svg を書いてきても、契約が受け取らない", () => {
+    const verdict = validateStep(
+      {
+        ...figureStep([{ pt: "A", at: [0, 0] }]),
+        board: {
+          kind: "figure",
+          items: [{ pt: "A", at: [0, 0] }],
+          svg: '<svg onload="alert(1)"/>',
+        },
+      },
+      0,
+      "ja",
+    );
+    // svg 自体は optional なので形は通るが、**こちらが解いた SVG で上書きされる**
+    if (!verdict.ok) return;
+    const board = verdict.step.board;
+    if (board?.kind !== "figure") return;
+    expect(board.svg).not.toContain("onload");
+  });
+
+  it("知らないキーは契約の段で落ちる", () => {
+    const verdict = validateStep(figureStep([{ pt: "A", at: [0, 0], colour: "red" }]), 0, "ja");
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) return;
+    expect(verdict.rejection.kind).toBe("schema");
+  });
+});
