@@ -401,8 +401,26 @@ Team ID は Apple Developer の右上、またはメンバーシップのペー�
 
 > **有料→無料の変更はできない。** 定期購入は「無料アプリ + アプリ内購入」で作る。
 
-パッケージ名 `jp.co.aiSensei` は**最初のAABをアップロードした時点で確定**し、
-以後変えられない。
+パッケージ名は **`jp.co.aiSensei`**(iOSのバンドルIDと同じ)。
+**最初のAABをアップロードした時点で確定**し、以後変えられない。
+
+> **なぜ小文字に直さないのか。**
+> Javaの慣習では全小文字だが、Androidの applicationId は大文字を許す
+> (各セグメントが英字始まり・英数字とアンダースコアのみ、が条件)ので
+> `jp.co.aiSensei` のままPlayに登録できる。
+> iOSは既に App ID・App Group(`group.jp.co.aiSensei.onesignal`)・
+> 拡張(`…OneSignalNotificationServiceExtension`)・プロビジョニング・
+> TestFlight配布まで `jp.co.aiSensei` で通っていて、ここを小文字に振り直すと
+> ASCのアプリレコードから作り直し(テスターの再招待つき)になる。
+> **両OSで大文字小文字だけ違う**のが一番事故るので、Androidを合わせる。
+
+Play Console・RevenueCat・(将来FCMを入れるなら)`google-services.json` の
+パッケージ名欄はどれも**大文字小文字を区別する**。`jp.co.aisensei` と打つと
+証明書やトークンの照合が黙って外れて、原因の分かりにくいエラーになる。
+**手打ちせずコピペすること。**
+
+なお**定期購入の商品IDは小文字しか使えない**(Playの制約)ので、
+パッケージ名と揃わないが問題ない(2-7)。
 
 ### 2-3. 署名(Play App Signing)
 

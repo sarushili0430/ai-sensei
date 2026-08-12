@@ -113,8 +113,12 @@ fvm flutter test
 
 | | 識別子 |
 | --- | --- |
-| iOS | `jp.co.aiSensei`(App Store Connect に登録済み) |
-| Android | `jp.co.aiSensei`(初回AABのアップロードまでは変更可) |
+| iOS | `jp.co.aiSensei`(App Store Connect 登録済み・TestFlight配布済み) |
+| Android | `jp.co.aiSensei`(iOSに揃える。初回AABのアップロードで確定) |
+
+大文字が混じるが、iOS側が既にこのIDでApp Group・拡張・プロビジョニングまで
+通っているので合わせる。両OSで大文字小文字だけ違うのが一番事故る。
+各コンソールへの入力は**コピペする**([`docs/ci/store-setup.md`](../../docs/ci/store-setup.md) 2-2)。
 
 配布は Codemagic(リポジトリ直下の `codemagic.yaml`)。
 `develop` へのpushで TestFlight に上がります。設定手順は
