@@ -8,7 +8,7 @@
 自分でも気づいていなかった **理解の穴** として「カルテ」に残り、1日・3日・7日後に
 もう一度たずねます。
 
-- ターゲット: 日本の高校生 / 対象科目: 高校数学(数I・A・II・B・III・C、新課程)
+- ターゲット: 日本の中高生 / 対象科目: 中学数学・高校数学(数I・A・II・B・III・C)・中学英語・高校英語
 - 日本語と英語の2言語。**海外の学習者には海外の課程**(Algebra 1 / Geometry /
   Algebra 2 / Precalculus / Calculus / Statistics)を出す
   ([ADR 0005](docs/adr.md#adr-0005))
@@ -25,9 +25,9 @@
 同じ `design_direction_v0.html` の後半にまとめてあります。スクショの実物は
 [`docs/store/screenshots/`](docs/store/screenshots)、生成はどちらも
 `apps/mobile/tool/` のスクリプトが行い、**絵の正はコード**です(画像を直接描き直さないこと)。
-Google Play の掲載テキスト(短い説明・詳しい説明の日英)とストアアイコン512pxは
-[`docs/store/play_listing.md`](docs/store/play_listing.md) にあります
-(`design_direction_v0.html` のメタデータはピボット前の文面なので、Play側はこちらが正)。
+Google Play の掲載テキスト(短い説明・詳しい説明の日英)・ストアアイコン512px・
+フィーチャーグラフィック・スマホ/7インチ/10インチのスクショは
+[`docs/store/play_listing.md`](docs/store/play_listing.md) にまとめてあります。
 
 ---
 
@@ -39,7 +39,7 @@ apps/lp/            紹介ページ(日英2枚・素のHTML/CSS)。Cloudflare Wo
 backend/api/        Cloudflare Workers + Hono — セッション作成 / カルテ保存 / 課金webhook
 backend/agent/      LiveKit Agents — VAD・STT・LLM・TTSの会話パイプライン + 板書生成(先輩キャラ)
 packages/contract/  APIとカルテと板書(`board.ts`)のスキーマ + fixture(モバイル/サーバ双方で契約を検証)
-packages/curriculum/高校数学カリキュラムマップ(純JSON。日本の課程と海外の課程を別に持つ)
+packages/curriculum/カリキュラムマップ(純JSON。中学/高校の数学と英語、海外の課程を別に持つ)
 packages/guardrail/ topic_idホワイトリスト照合・板書LaTeXのコマンド照合・数式音声の正規化などの純関数
 prompts/            システムプロンプトとfew-shot(`<id>.<locale>.md`。日英で別本。板書つき授業は`senpai_board.*.md`)
 docs/               企画資料・ワイヤーフレーム・ADR
