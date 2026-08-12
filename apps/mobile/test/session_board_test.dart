@@ -472,6 +472,46 @@ void main() {
         );
         expectNoOverflow(tester, 'とぎれた状態');
       });
+
+      /// **実機で踏んだ溢れ**(「今日はここまで」に BOTTOM OVERFLOWED が重なった)。
+      ///
+      /// 板書が無い会話では顔と字幕を `Spacer` で挟んでいた。授業中の `speech` は
+      /// 契約で120字までだが、**教え返しに入ると相手は会話LLMで上限が無い**。
+      /// 長い返事がそのまま固定の高さになり、下の操作を画面の外へ押し出していた。
+      testWidgets('狭い端末: 板書が無いまま長く喋られても溢れない ($lang)', (WidgetTester tester) async {
+        await pumpSession(
+          tester,
+          SessionState(
+            phase: SessionPhase.listening,
+            remainingSeconds: 1029,
+            lastSenpaiText: '円順列は、回転は同じと見なす。でもじゅず順列は、それに加えて裏返しも同じと見なすんだよ。' * 4,
+          ),
+          locale: locale,
+          size: smallPhoneSurface,
+        );
+
+        expect(find.byType(SenpaiFace), findsOneWidget);
+        expectNoOverflow(tester, '板書なしで長い字幕');
+      });
+
+      /// 板書があるときも、下の帯が伸びて板書を押し出さないこと。
+      testWidgets('狭い端末: 板書つきで長く喋られても溢れない ($lang)', (WidgetTester tester) async {
+        final SessionState state = packed(phase: SessionPhase.explainBack);
+        await pumpSession(
+          tester,
+          SessionState(
+            phase: state.phase,
+            remainingSeconds: state.remainingSeconds,
+            lastSenpaiText: 'そっだね。図があるといいよね。いま図は描けないんだけど、イメージとしては。' * 4,
+            board: state.board,
+          ),
+          locale: locale,
+          size: smallPhoneSurface,
+        );
+
+        expect(find.byType(BoardElementView), findsNWidgets(12));
+        expectNoOverflow(tester, '板書つきで長い字幕');
+      });
     }
 
     /// 板書を受け取らない会話(既存の復習)は、今までどおり顔が主役。

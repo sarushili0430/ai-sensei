@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../common_widgets/centered_scroll.dart';
 import '../../../common_widgets/chunky_button.dart';
 import '../../../common_widgets/senpai_face.dart';
 import '../../../common_widgets/speaking_wave.dart';
@@ -111,29 +112,40 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
                 Expanded(child: _BoardStage(board: board)),
                 const SizedBox(height: AppSpacing.md),
                 _LessonFooter(phase: state.phase, subtitle: subtitle, wrappingUp: wrappingUp),
-              ] else ...<Widget>[
-                const Spacer(),
-                SenpaiFace(
-                  mood: switch (state.phase) {
-                    SessionPhase.connecting => SenpaiMood.neutral,
-                    SessionPhase.listening || SessionPhase.explainBack => SenpaiMood.listening,
-                    SessionPhase.senpaiSpeaking || SessionPhase.senpaiTeaching => SenpaiMood.neutral,
-                    SessionPhase.summarizing => SenpaiMood.neutral,
-                    SessionPhase.finished => SenpaiMood.delighted,
-                    // 困り顔が出るのは**こちら側の不首尾**のときだけ
-                    // (`SenpaiMood.puzzled` の定義)。生徒が詰まったときには出さない。
-                    SessionPhase.failed => SenpaiMood.puzzled,
-                  },
-                  size: 160,
+              ] else
+                // **字幕は長さの上限を持たない。**先輩の1発話は board の `speech` と違って
+                // 120字で縛られていないので、会話が長くなると顔と字幕だけで画面を超える。
+                // `Spacer` で挟んでいたころは、そのぶんが**下の操作を押し出して溢れていた**
+                // (実機で「今日はここまで」に BOTTOM OVERFLOWED が重なった)。
+                // 余った高さを1つの箱として渡し、中でスクロールさせる。
+                Expanded(
+                  child: CenteredScroll(
+                    padding: EdgeInsets.zero,
+                    children: <Widget>[
+                      SenpaiFace(
+                        mood: switch (state.phase) {
+                          SessionPhase.connecting => SenpaiMood.neutral,
+                          SessionPhase.listening ||
+                          SessionPhase.explainBack => SenpaiMood.listening,
+                          SessionPhase.senpaiSpeaking ||
+                          SessionPhase.senpaiTeaching => SenpaiMood.neutral,
+                          SessionPhase.summarizing => SenpaiMood.neutral,
+                          SessionPhase.finished => SenpaiMood.delighted,
+                          // 困り顔が出るのは**こちら側の不首尾**のときだけ
+                          // (`SenpaiMood.puzzled` の定義)。生徒が詰まったときには出さない。
+                          SessionPhase.failed => SenpaiMood.puzzled,
+                        },
+                        size: 160,
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      _StatusIndicator(phase: state.phase, wrappingUp: wrappingUp),
+                      const SizedBox(height: AppSpacing.md),
+                      // 字幕。声を聞き取れない場所でも会話の流れを追えるようにする。
+                      // 差し替わるときに入れ替わりが見えるよう、文ごとに切り替える。
+                      _Subtitle(text: subtitle, align: TextAlign.center),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: AppSpacing.md),
-                _StatusIndicator(phase: state.phase, wrappingUp: wrappingUp),
-                const SizedBox(height: AppSpacing.md),
-                // 字幕。声を聞き取れない場所でも会話の流れを追えるようにする。
-                // 差し替わるときに入れ替わりが見えるよう、文ごとに切り替える。
-                _Subtitle(text: subtitle, align: TextAlign.center),
-                const Spacer(),
-              ],
               // パスは恥ではない。穴の記録として価値がある。
               GhostButton(
                 label: strings.sessionPass,
@@ -394,6 +406,13 @@ class _LessonFooter extends StatelessWidget {
     required this.wrappingUp,
   });
 
+  /// 字幕に渡す高さの上限。**板書を押し出させないための天井**。
+  ///
+  /// 授業中の `speech` は契約で120字までだが、教え返しに入ると相手は会話LLMで、
+  /// そちらに上限は無い。長い返事がそのまま帯を伸ばすと、主役の板書が縮む
+  /// (伸びきると下の操作まで押し出す)。ここで止めて、中でスクロールさせる。
+  static const double _subtitleMaxHeight = 120;
+
   final SessionPhase phase;
   final String subtitle;
   final bool wrappingUp;
@@ -420,7 +439,12 @@ class _LessonFooter extends StatelessWidget {
               // 教え返しは**指示が主役**。字幕より大きく、先に読める位置に出す。
               if (yourTurn && !wrappingUp)
                 Text(strings.sessionExplainBack, style: Theme.of(context).textTheme.titleMedium),
-              _Subtitle(text: subtitle, align: TextAlign.start),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: _subtitleMaxHeight),
+                child: SingleChildScrollView(
+                  child: _Subtitle(text: subtitle, align: TextAlign.start),
+                ),
+              ),
             ],
           ),
         ),
