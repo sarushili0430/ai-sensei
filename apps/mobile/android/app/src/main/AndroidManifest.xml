@@ -1,7 +1,23 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- debug/profile 用のマニフェストにしかINTERNETが無いので、
          releaseビルドで通信できるようここで宣言する。 -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- 広告IDを使わない。**Play Console の「広告ID」の申告と、AABの中身が
+         一致していないとリリースできない**(申告が「使用しない」なのに
+         この権限が入っていると弾かれる)。
+
+         広告SDKは入れていないが、この権限は依存ライブラリのマニフェストから
+         推移的に混入しうる(OneSignal / RevenueCat が候補)。混入の有無は
+         AARを解決しないと分からないので、**入る・入らないに関わらず結果を
+         「無い」に固定する**ためにここで消す。
+
+         消して困るのは広告IDを使った計測(RevenueCatのアトリビューション等)を
+         始めるときで、そのときはこの行を消して、Play Console の申告・
+         データセーフティ・コンテンツレーティングも合わせて直すこと。 -->
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID"
+        tools:node="remove"/>
     <!-- 会話(LiveKit)。MODIFY_AUDIO_SETTINGS はスピーカー/イヤホンの切り替えに要る。 -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
