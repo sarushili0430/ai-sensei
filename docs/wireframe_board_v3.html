@@ -1,0 +1,848 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>カタルテ — Mobile UI direction v3</title>
+  <style>
+    :root {
+      --ink: #25242b;
+      --muted: #6f7079;
+      --paper: #f5f2eb;
+      --surface: #fffefa;
+      --line: #d9d4c9;
+      --line-strong: #b9b4aa;
+      --blue: #087fc2;
+      --blue-soft: #dff3ff;
+      --yellow: #ffd93b;
+      --yellow-soft: #fff4b9;
+      --pink: #e85d8d;
+      --pink-soft: #ffe4ee;
+      --green: #18735b;
+      --green-soft: #dcefe9;
+      --board: #173c33;
+      --board-deep: #102f29;
+      --chalk: #f2efe4;
+      --chalk-dim: #b7c8bd;
+      --danger: #b64a4a;
+      --shadow: 0 18px 60px rgba(30, 32, 36, .11);
+      --phone-shadow: 0 26px 70px rgba(24, 26, 29, .23);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 8% -4%, rgba(255, 217, 59, .28), transparent 26rem),
+        radial-gradient(circle at 100% 14%, rgba(8, 127, 194, .11), transparent 30rem),
+        var(--paper);
+      color: var(--ink);
+      font-family: "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", system-ui, sans-serif;
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button, a { font: inherit; }
+    button { color: inherit; }
+    a { color: inherit; }
+
+    .page { width: min(1240px, calc(100% - 40px)); margin: 0 auto; }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      border-bottom: 1px solid rgba(185, 180, 170, .7);
+      background: rgba(245, 242, 235, .88);
+      backdrop-filter: blur(18px);
+    }
+
+    .topbar-inner {
+      min-height: 58px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    .brand { display: flex; align-items: center; gap: 11px; font-weight: 800; }
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      border-radius: 9px;
+      background: var(--ink);
+      color: #fff;
+      font-size: 15px;
+      box-shadow: 4px 4px 0 var(--yellow);
+    }
+    .version {
+      margin-left: 4px;
+      padding: 2px 8px;
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      color: var(--muted);
+      font: 700 10px/1.8 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: .08em;
+    }
+
+    .jump { display: flex; gap: 7px; }
+    .jump a {
+      padding: 7px 10px;
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .jump a:hover { background: #fff; color: var(--ink); }
+
+    .hero { padding: 76px 0 58px; }
+    .eyebrow {
+      margin: 0 0 12px;
+      color: var(--blue);
+      font: 800 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+    h1 {
+      max-width: 900px;
+      margin: 0;
+      font-size: clamp(36px, 6vw, 72px);
+      line-height: 1.08;
+      letter-spacing: -.045em;
+      text-wrap: balance;
+    }
+    .hero-lede {
+      max-width: 720px;
+      margin: 24px 0 0;
+      color: var(--muted);
+      font-size: clamp(16px, 2vw, 20px);
+      text-wrap: pretty;
+    }
+    .hero-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; }
+    .hero-tag {
+      padding: 7px 11px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(255, 254, 250, .72);
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    section { padding: 58px 0; }
+    .section-head {
+      display: grid;
+      grid-template-columns: minmax(240px, .65fr) 1.35fr;
+      gap: 40px;
+      align-items: end;
+      margin-bottom: 30px;
+    }
+    .section-no {
+      color: var(--blue);
+      font: 800 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: .12em;
+    }
+    h2 {
+      margin: 4px 0 0;
+      font-size: clamp(27px, 4vw, 43px);
+      line-height: 1.2;
+      letter-spacing: -.025em;
+      text-wrap: balance;
+    }
+    .section-copy { margin: 0; color: var(--muted); font-size: 15px; }
+
+    .delta-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .delta {
+      min-height: 190px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 254, 250, .82);
+    }
+    .delta b { display: block; margin: 15px 0 8px; font-size: 17px; line-height: 1.4; }
+    .delta p { margin: 0; color: var(--muted); font-size: 13px; }
+    .delta-icon {
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      font-weight: 900;
+    }
+    .delta:nth-child(1) .delta-icon { background: var(--yellow-soft); }
+    .delta:nth-child(2) .delta-icon { background: var(--green-soft); color: var(--green); }
+    .delta:nth-child(3) .delta-icon { background: var(--blue-soft); color: var(--blue); }
+
+    .lab {
+      padding: 28px;
+      border: 1px solid var(--line);
+      border-radius: 26px;
+      background: rgba(255, 254, 250, .78);
+      box-shadow: var(--shadow);
+    }
+    .lab-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .lab-title { font-size: 14px; font-weight: 800; }
+    .segmented {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      padding: 5px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: #eeece6;
+    }
+    .segmented button {
+      min-height: 34px;
+      padding: 6px 12px;
+      border: 0;
+      border-radius: 9px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .segmented button[aria-selected="true"] {
+      background: #fff;
+      color: var(--ink);
+      box-shadow: 0 2px 9px rgba(31, 33, 37, .12);
+    }
+    .lab-grid {
+      display: grid;
+      grid-template-columns: minmax(330px, 440px) minmax(280px, 1fr);
+      gap: clamp(30px, 6vw, 82px);
+      align-items: center;
+    }
+
+    .phone-wrap { display: grid; justify-items: center; }
+    .phone-label {
+      margin-bottom: 10px;
+      color: var(--muted);
+      font: 700 10px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .phone {
+      position: relative;
+      width: 390px;
+      height: 790px;
+      overflow: hidden;
+      border: 7px solid #202126;
+      border-radius: 42px;
+      background: #fbfaf7;
+      box-shadow: var(--phone-shadow);
+      transform-origin: top center;
+    }
+    .phone::before {
+      content: "";
+      position: absolute;
+      z-index: 10;
+      top: 8px;
+      left: 50%;
+      width: 92px;
+      height: 24px;
+      border-radius: 999px;
+      background: #202126;
+      transform: translateX(-50%);
+    }
+    .statusbar {
+      position: relative;
+      z-index: 8;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 18px;
+      color: var(--ink);
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .phone-screen { height: calc(100% - 40px); }
+
+    .lesson-screen { display: flex; flex-direction: column; background: #fbfaf7; }
+    .lesson-top {
+      display: grid;
+      grid-template-columns: 42px 1fr 42px;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 13px 10px;
+      border-bottom: 1px solid #e7e2d8;
+      background: #fbfaf7;
+    }
+    .icon-btn {
+      width: 40px;
+      height: 40px;
+      border: 0;
+      border-radius: 13px;
+      background: transparent;
+      font-size: 21px;
+    }
+    .lesson-title { min-width: 0; text-align: center; }
+    .lesson-title b { display: block; overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+    .lesson-title span { display: block; color: var(--muted); font-size: 10px; }
+    .lesson-meter { height: 3px; background: #e3dfd6; }
+    .lesson-meter i { display: block; width: 42%; height: 100%; background: var(--blue); transition: width .25s; }
+
+    .problem {
+      margin: 10px 12px;
+      padding: 10px 12px;
+      border: 1px solid #d7d1c5;
+      border-radius: 12px;
+      background: #fffefa;
+      box-shadow: 0 2px 0 #e8e3d8;
+      transition: .25s ease;
+    }
+    .problem-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .problem-chip {
+      padding: 2px 7px;
+      border-radius: 5px;
+      background: var(--ink);
+      color: #fff;
+      font-size: 9px;
+      font-weight: 900;
+      letter-spacing: .08em;
+    }
+    .problem-toggle { color: var(--muted); font-size: 10px; }
+    .problem p { margin: 6px 0 0; font-family: "Yu Mincho", serif; font-size: 13px; line-height: 1.45; }
+    .problem.is-folded { padding: 7px 10px; }
+    .problem.is-folded p { overflow: hidden; margin-top: 0; text-overflow: ellipsis; white-space: nowrap; }
+
+    .board {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+      margin: 0 0 0;
+      overflow: hidden;
+      background:
+        radial-gradient(120% 90% at 50% -10%, rgba(255, 255, 255, .075), transparent 64%),
+        repeating-linear-gradient(0deg, rgba(255,255,255,.012) 0, rgba(255,255,255,.012) 1px, transparent 1px, transparent 5px),
+        var(--board);
+      color: var(--chalk);
+      box-shadow: inset 0 5px 0 #8e7d61, inset 0 -7px 0 #9c8867;
+    }
+    .board::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: linear-gradient(90deg, rgba(0,0,0,.08), transparent 10%, transparent 90%, rgba(0,0,0,.08));
+    }
+    .board-inner { position: relative; z-index: 1; height: 100%; padding: 22px 20px 18px; }
+    .board-kicker { color: var(--chalk-dim); font-size: 9px; letter-spacing: .13em; }
+    .board h3 { margin: 6px 0 15px; color: #fffdf3; font-size: 16px; letter-spacing: .03em; }
+    .chalk-line { margin: 9px 0; color: var(--chalk); font-size: 14px; letter-spacing: .04em; text-shadow: 0 0 2px rgba(255,255,255,.22); }
+    .chalk-line.dim { color: var(--chalk-dim); font-size: 12px; }
+    .chalk-line strong { color: #ffe88a; font-weight: 700; }
+    .chalk-box { display: inline-block; margin-top: 7px; padding: 6px 10px; border: 1px solid rgba(242,239,228,.72); border-radius: 3px; }
+    .chalk-underline { border-bottom: 3px double #ffe88a; padding-bottom: 2px; }
+    .board-graph {
+      width: 100%;
+      height: 132px;
+      margin-top: 8px;
+      overflow: visible;
+    }
+    .board-graph line, .board-graph path, .board-graph circle { vector-effect: non-scaling-stroke; }
+
+    .voice-dock {
+      min-height: 90px;
+      padding: 10px 12px 13px;
+      border-top: 1px solid #e6e1d8;
+      background: #fffefa;
+    }
+    .speaker-row { display: flex; align-items: center; gap: 9px; }
+    .avatar {
+      display: grid;
+      place-items: center;
+      width: 34px;
+      height: 34px;
+      flex: none;
+      border-radius: 12px;
+      background: var(--yellow-soft);
+      font-size: 17px;
+    }
+    .speaker-copy { min-width: 0; flex: 1; }
+    .speaker-copy b { display: block; font-size: 11px; }
+    .speaker-copy span { display: block; overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+    .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--blue); box-shadow: 0 0 0 4px var(--blue-soft); }
+    .primary-action {
+      width: 100%;
+      min-height: 40px;
+      margin-top: 9px;
+      border: 0;
+      border-radius: 12px;
+      background: var(--ink);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 850;
+    }
+    .primary-action.turn { background: var(--blue); }
+    .primary-action.hint { background: var(--green); }
+
+    .turn-card {
+      position: absolute;
+      z-index: 3;
+      right: 14px;
+      bottom: 18px;
+      left: 14px;
+      padding: 14px;
+      border: 1px solid rgba(255, 255, 255, .35);
+      border-radius: 18px;
+      background: rgba(255, 254, 250, .96);
+      color: var(--ink);
+      box-shadow: 0 14px 42px rgba(0,0,0,.28);
+    }
+    .turn-card[hidden] { display: none; }
+    .turn-head { display: flex; align-items: center; gap: 9px; }
+    .turn-head i { width: 10px; height: 10px; border-radius: 50%; background: #e85d8d; box-shadow: 0 0 0 5px var(--pink-soft); }
+    .turn-head b { font-size: 13px; }
+    .turn-card p { margin: 7px 0 9px; color: var(--muted); font-size: 11px; }
+    .wave { display: flex; align-items: center; justify-content: center; gap: 3px; height: 24px; }
+    .wave i { width: 3px; border-radius: 99px; background: var(--blue); }
+    .wave i:nth-child(1), .wave i:nth-child(7) { height: 7px; }
+    .wave i:nth-child(2), .wave i:nth-child(6) { height: 14px; }
+    .wave i:nth-child(3), .wave i:nth-child(5) { height: 20px; }
+    .wave i:nth-child(4) { height: 24px; }
+
+    .notes { display: grid; gap: 13px; }
+    .note {
+      display: grid;
+      grid-template-columns: 32px 1fr;
+      gap: 12px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: #fffefa;
+    }
+    .note-no {
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      border-radius: 9px;
+      background: var(--ink);
+      color: #fff;
+      font: 800 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .note b { display: block; margin-bottom: 4px; font-size: 14px; }
+    .note p { margin: 0; color: var(--muted); font-size: 12px; }
+    .decision {
+      margin-top: 15px;
+      padding: 16px 18px;
+      border-left: 4px solid var(--blue);
+      border-radius: 0 12px 12px 0;
+      background: var(--blue-soft);
+      color: #23556f;
+      font-size: 12px;
+    }
+
+    .settings-screen { display: flex; flex-direction: column; background: #f6f4ef; }
+    .settings-top {
+      padding: 8px 18px 13px;
+      border-bottom: 1px solid #e4dfd6;
+      background: rgba(251,250,247,.96);
+    }
+    .settings-top h3 { margin: 0; font-size: 24px; letter-spacing: -.03em; }
+    .settings-scroll { flex: 1; overflow: hidden; padding: 12px 12px 22px; }
+    .settings-summary {
+      padding: 15px;
+      border-radius: 18px;
+      background: var(--ink);
+      color: #fff;
+      box-shadow: 0 8px 22px rgba(37,36,43,.18);
+    }
+    .settings-summary small { color: #c9c8ce; font-size: 9px; letter-spacing: .08em; }
+    .settings-summary h4 { margin: 5px 0 2px; font-size: 16px; }
+    .settings-summary p { margin: 0; color: #d8d7dc; font-size: 10px; }
+    .summary-pills { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 11px; }
+    .summary-pills span { padding: 4px 7px; border: 1px solid #5d5c64; border-radius: 999px; font-size: 9px; }
+
+    .setting-label { margin: 17px 7px 6px; color: var(--muted); font-size: 9px; font-weight: 900; letter-spacing: .08em; }
+    .setting-group { overflow: hidden; border: 1px solid #e1ddd3; border-radius: 15px; background: #fffefa; }
+    .setting-row {
+      display: grid;
+      grid-template-columns: 34px 1fr auto;
+      align-items: center;
+      gap: 9px;
+      min-height: 58px;
+      padding: 8px 11px;
+      border-bottom: 1px solid #ece8df;
+    }
+    .setting-row:last-child { border-bottom: 0; }
+    .setting-icon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: #efede7; font-size: 15px; }
+    .setting-copy b { display: block; font-size: 12px; }
+    .setting-copy span { display: block; color: var(--muted); font-size: 9.5px; line-height: 1.35; }
+    .setting-value { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 10px; }
+    .setting-value.ok { color: var(--green); font-weight: 800; }
+    .chev { color: #aaa7a0; font-size: 16px; }
+    .switch { position: relative; width: 36px; height: 22px; border-radius: 999px; background: #c9c7c1; }
+    .switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+    .switch.on { background: var(--blue); }
+    .switch.on::after { left: 17px; }
+    .settings-bottom {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      min-height: 60px;
+      border-top: 1px solid #e1ddd4;
+      background: #fffefa;
+    }
+    .nav-item { display: grid; place-items: center; align-content: center; gap: 2px; color: #8a888f; font-size: 9px; }
+    .nav-item b { font-size: 17px; line-height: 1; }
+    .nav-item.active { color: var(--blue); font-weight: 850; }
+
+    .settings-detail { display: none; }
+    .settings-detail.is-active { display: block; }
+    .detail-back { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; color: var(--blue); font-size: 11px; font-weight: 800; }
+    .detail-title { margin: 0 3px 12px; font-size: 18px; }
+    .detail-card { margin-bottom: 10px; padding: 14px; border: 1px solid #e1ddd3; border-radius: 15px; background: #fffefa; }
+    .detail-card b { display: block; font-size: 12px; }
+    .detail-card p { margin: 5px 0 0; color: var(--muted); font-size: 10px; }
+    .choice { display: flex; align-items: center; justify-content: space-between; min-height: 47px; border-bottom: 1px solid #ece8df; font-size: 11px; }
+    .choice:last-child { border-bottom: 0; }
+    .radio { display: grid; place-items: center; width: 20px; height: 20px; border: 2px solid var(--blue); border-radius: 50%; }
+    .radio::after { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--blue); }
+    .os-handoff { padding: 12px; border-radius: 12px; background: var(--blue-soft); color: #23556f; font-size: 10px; }
+
+    .matrix { overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: #fffefa; }
+    .matrix-row { display: grid; grid-template-columns: 1.2fr .8fr 1.3fr; border-bottom: 1px solid var(--line); }
+    .matrix-row:last-child { border-bottom: 0; }
+    .matrix-row > * { padding: 13px 16px; font-size: 12px; }
+    .matrix-head { background: #ece9e1; font-weight: 850; }
+    .state { justify-self: start; padding: 3px 8px; border-radius: 999px; font-size: 9px; font-weight: 900; }
+    .state.keep { background: var(--green-soft); color: var(--green); }
+    .state.refine { background: var(--yellow-soft); color: #755f00; }
+    .state.new { background: var(--pink-soft); color: var(--pink); }
+
+    .rules { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .rule { padding: 19px; border: 1px solid var(--line); border-radius: 16px; background: #fffefa; }
+    .rule b { display: block; margin-bottom: 5px; font-size: 14px; }
+    .rule p { margin: 0; color: var(--muted); font-size: 12px; }
+    .rule code { color: var(--blue); font-size: 10px; }
+
+    .footer { padding: 38px 0 70px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    .footer b { color: var(--ink); }
+
+    @media (max-width: 900px) {
+      .jump { display: none; }
+      .section-head { grid-template-columns: 1fr; gap: 12px; }
+      .delta-grid { grid-template-columns: 1fr; }
+      .lab-grid { grid-template-columns: 1fr; }
+      .notes { max-width: 620px; margin: 0 auto; }
+      .matrix-row { grid-template-columns: 1fr; padding: 10px 0; }
+      .matrix-row > * { padding: 4px 14px; }
+      .matrix-head { display: none; }
+    }
+
+    @media (max-width: 540px) {
+      .page { width: min(100% - 24px, 1240px); }
+      .hero { padding-top: 48px; }
+      section { padding: 44px 0; }
+      .lab { padding: 16px 10px 22px; border-radius: 20px; }
+      .lab-toolbar { align-items: stretch; flex-direction: column; padding: 0 4px; }
+      .segmented { display: grid; grid-template-columns: repeat(2, 1fr); }
+      .phone { width: 360px; height: 730px; max-width: calc(100vw - 44px); }
+      .rules { grid-template-columns: 1fr; }
+      .topbar-inner { min-height: 52px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="page topbar-inner">
+      <div class="brand"><span class="brand-mark">カ</span>カタルテ <span class="version">UI DIRECTION V3</span></div>
+      <nav class="jump" aria-label="ページ内ナビゲーション">
+        <a href="#lesson">授業</a><a href="#settings">設定</a><a href="#scope">実装範囲</a><a href="#rules">原則</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="page hero">
+      <p class="eyebrow">From wireframe board v2 to product-ready v3</p>
+      <h1>黒板に集中できる。<br>迷わず、自分の番がわかる。</h1>
+      <p class="hero-lede">v2の黒板・紙の問題文・ターン制を残しながら、授業中の情報量を整え、設定画面まで同じ思想でつないだ改善案。</p>
+      <div class="hero-tags">
+        <span class="hero-tag">黒板が主役</span><span class="hero-tag">状態ごとに主操作は1つ</span>
+        <span class="hero-tag">日本語で迷わない</span><span class="hero-tag">設定は目的別</span>
+      </div>
+    </div>
+
+    <section>
+      <div class="page">
+        <div class="section-head">
+          <div><span class="section-no">00 / DELTA</span><h2>v2から変えること</h2></div>
+          <p class="section-copy">v2は構造の発見に強い。v3は、実装へ移せる画面の優先順位と、使い続けるための設定体験まで決める。</p>
+        </div>
+        <div class="delta-grid">
+          <article class="delta"><span class="delta-icon">01</span><b>「何をしているか」を固定位置に置く</b><p>先輩が説明中／あなたの番／ヒント確認中を、色だけに頼らず文言と操作で示す。</p></article>
+          <article class="delta"><span class="delta-icon">02</span><b>問題文は残す。でも黒板を圧迫しない</b><p>最初は紙として見せ、説明が進んだら1行へ畳む。いつでも戻せる。</p></article>
+          <article class="delta"><span class="delta-icon">03</span><b>設定を「機能の倉庫」から変える</b><p>学習、通知、見やすさ、契約・サポートに分け、状態と次の行動を同じ場所に出す。</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="lesson">
+      <div class="page">
+        <div class="section-head">
+          <div><span class="section-no">01 / LESSON</span><h2>授業画面 v3</h2></div>
+          <p class="section-copy">下の切替を押すと、同じ画面が授業状態に応じてどう変わるか確認できます。画面全体を入れ替えず、黒板と下部操作だけを変える設計です。</p>
+        </div>
+        <div class="lab">
+          <div class="lab-toolbar">
+            <span class="lab-title">授業状態を切り替える</span>
+            <div class="segmented" role="tablist" aria-label="授業状態">
+              <button type="button" data-lesson="listen" aria-selected="true">先輩が説明中</button>
+              <button type="button" data-lesson="turn" aria-selected="false">あなたの番</button>
+              <button type="button" data-lesson="hint" aria-selected="false">ヒント確認</button>
+            </div>
+          </div>
+          <div class="lab-grid">
+            <div class="phone-wrap">
+              <span class="phone-label">390 × 790 / interactive prototype</span>
+              <div class="phone" aria-label="授業画面のモック">
+                <div class="statusbar"><span>9:41</span><span>● ●● 100%</span></div>
+                <div class="phone-screen lesson-screen">
+                  <header class="lesson-top">
+                    <button class="icon-btn" aria-label="授業を閉じる">×</button>
+                    <div class="lesson-title"><b>二次関数の最大・最小</b><span id="lessonMeta">先輩が説明中 · 12:08</span></div>
+                    <button class="icon-btn" aria-label="その他の操作">···</button>
+                  </header>
+                  <div class="lesson-meter"><i id="lessonMeter"></i></div>
+                  <article class="problem is-folded" id="problemCard">
+                    <div class="problem-head"><span class="problem-chip">問題</span><span class="problem-toggle">タップで全文</span></div>
+                    <p>y = x² − 4x + 3 の最小値と、そのときの x を求めよ。</p>
+                  </article>
+                  <div class="board">
+                    <div class="board-inner" id="boardContent">
+                      <div class="board-kicker">平方完成して、頂点を見る</div>
+                      <h3>y = x² − 4x + 3</h3>
+                      <p class="chalk-line">= (x − 2)² − 1</p>
+                      <p class="chalk-line dim">(x − 2)² は 0 以上だから…</p>
+                      <p class="chalk-line"><span class="chalk-underline">x = 2 のとき最小</span></p>
+                      <p class="chalk-line chalk-box"><strong>最小値 −1</strong></p>
+                      <svg class="board-graph" viewBox="0 0 300 132" aria-label="二次関数のグラフ">
+                        <line x1="18" y1="104" x2="284" y2="104" stroke="#9fb5aa" stroke-width="1"/>
+                        <line x1="95" y1="14" x2="95" y2="120" stroke="#9fb5aa" stroke-width="1"/>
+                        <path d="M25 22 Q157 184 278 19" fill="none" stroke="#f2efe4" stroke-width="2.2"/>
+                        <circle cx="155" cy="112" r="3.5" fill="#ffe88a"/>
+                        <text x="162" y="126" fill="#ffe88a" font-size="10">(2, −1)</text>
+                      </svg>
+                    </div>
+                    <div class="turn-card" id="turnCard" hidden>
+                      <div class="turn-head"><i></i><b>あなたの番です</b></div>
+                      <p>「なぜ最小値が −1 になるか」を自分の言葉で説明してみよう。</p>
+                      <div class="wave" aria-label="マイク入力中"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                    </div>
+                  </div>
+                  <footer class="voice-dock">
+                    <div class="speaker-row"><span class="avatar">先</span><span class="speaker-copy"><b id="speakerTitle">先輩が説明しています</b><span id="speakerText">「平方完成すると、頂点が見えてくるよ」</span></span><i class="live-dot" id="liveDot"></i></div>
+                    <button class="primary-action" id="lessonAction">わかった。次へ</button>
+                  </footer>
+                </div>
+              </div>
+            </div>
+            <div>
+              <div class="notes" id="lessonNotes">
+                <article class="note"><span class="note-no">A</span><div><b>上部は文脈だけ</b><p>単元、経過時間、退出だけ。授業中に不要な設定や状態は置かない。</p></div></article>
+                <article class="note"><span class="note-no">B</span><div><b>問題文は畳める紙</b><p>出題の出所は残しながら、説明が始まったら黒板へ高さを返す。</p></div></article>
+                <article class="note"><span class="note-no">C</span><div><b>下部は「今」と「次」</b><p>誰が話しているかと、今押せる主操作を隣に置く。常に1つだけ強調する。</p></div></article>
+              </div>
+              <div class="decision"><b>v3の判断:</b> 字幕を黒板の外へ戻さない。発話の要点は板書として残し、読み上げ中の1文だけ下部に短く出す。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="settings">
+      <div class="page">
+        <div class="section-head">
+          <div><span class="section-no">02 / SETTINGS</span><h2>設定画面 v3</h2></div>
+          <p class="section-copy">現状の学年・通知・契約・規約・端末IDは残す。並べ方を「実装の都合」ではなく、利用者が探す目的へ変える。</p>
+        </div>
+        <div class="lab">
+          <div class="lab-toolbar">
+            <span class="lab-title">設定の入口と詳細を切り替える</span>
+            <div class="segmented" role="tablist" aria-label="設定画面">
+              <button type="button" data-settings="overview" aria-selected="true">設定トップ</button>
+              <button type="button" data-settings="learning" aria-selected="false">学習</button>
+              <button type="button" data-settings="notifications" aria-selected="false">通知</button>
+              <button type="button" data-settings="accessibility" aria-selected="false">音声と表示</button>
+            </div>
+          </div>
+          <div class="lab-grid">
+            <div class="phone-wrap">
+              <span class="phone-label">settings information architecture</span>
+              <div class="phone" aria-label="設定画面のモック">
+                <div class="statusbar"><span>9:41</span><span>● ●● 100%</span></div>
+                <div class="phone-screen settings-screen">
+                  <header class="settings-top"><h3 id="settingsHeader">設定</h3></header>
+                  <div class="settings-scroll">
+                    <div class="settings-detail is-active" data-settings-panel="overview">
+                      <section class="settings-summary">
+                        <small>あなたの学習設定</small><h4>高校数学 · 日本語</h4><p>復習通知はオンです</p>
+                        <div class="summary-pills"><span>高校生</span><span>読み上げ 標準</span><span>通知 オン</span></div>
+                      </section>
+                      <div class="setting-label">学習</div>
+                      <div class="setting-group">
+                        <div class="setting-row"><span class="setting-icon">学</span><span class="setting-copy"><b>学習範囲</b><span>写真から探す単元の範囲</span></span><span class="setting-value">高校生 <i class="chev">›</i></span></div>
+                        <div class="setting-row"><span class="setting-icon">♬</span><span class="setting-copy"><b>音声と表示</b><span>読み上げ速度・字幕・文字サイズ</span></span><span class="setting-value">標準 <i class="chev">›</i></span></div>
+                        <div class="setting-row"><span class="setting-icon">鈴</span><span class="setting-copy"><b>復習のお知らせ</b><span>OSの通知設定と予約状況</span></span><span class="setting-value ok">届きます <i class="chev">›</i></span></div>
+                      </div>
+                      <div class="setting-label">契約とサポート</div>
+                      <div class="setting-group">
+                        <div class="setting-row"><span class="setting-icon">★</span><span class="setting-copy"><b>カタルテ Plus</b><span>プランの確認・購入の復元</span></span><span class="setting-value">無料 <i class="chev">›</i></span></div>
+                        <div class="setting-row"><span class="setting-icon">?</span><span class="setting-copy"><b>ヘルプとアプリ情報</b><span>問い合わせ・規約・バージョン</span></span><i class="chev">›</i></div>
+                      </div>
+                    </div>
+
+                    <div class="settings-detail" data-settings-panel="learning">
+                      <span class="detail-back">‹ 設定</span><h4 class="detail-title">学習範囲</h4>
+                      <div class="detail-card"><b>写真から探す単元の範囲</b><p>ここで選んでも、ほかの学年の質問が禁止されることはありません。</p></div>
+                      <div class="setting-group"><div class="choice"><span>中学生</span><span></span></div><div class="choice"><span>高校生</span><span class="radio"></span></div></div>
+                      <div class="detail-card" style="margin-top:10px"><b>表示言語</b><p>端末の「アプリの言語」設定を使用します。</p><div class="choice"><span>日本語</span><span class="setting-value">OS設定 ›</span></div></div>
+                    </div>
+
+                    <div class="settings-detail" data-settings-panel="notifications">
+                      <span class="detail-back">‹ 設定</span><h4 class="detail-title">復習のお知らせ</h4>
+                      <div class="detail-card"><b style="color:var(--green)">● 通知は届く状態です</b><p>復習が必要な穴を、1日後・3日後・7日後に知らせます。解決済みの通知は自動で止まります。</p></div>
+                      <div class="setting-group"><div class="setting-row"><span class="setting-icon">鈴</span><span class="setting-copy"><b>端末の通知設定</b><span>音・バナー・ロック画面</span></span><i class="chev">›</i></div></div>
+                      <p class="os-handoff">通知の許可はOSが管理します。アプリ内に別のオン／オフを作らず、現在の状態と移動先だけを示します。</p>
+                    </div>
+
+                    <div class="settings-detail" data-settings-panel="accessibility">
+                      <span class="detail-back">‹ 設定</span><h4 class="detail-title">音声と表示</h4>
+                      <div class="setting-label">先輩の音声</div>
+                      <div class="setting-group"><div class="choice"><span>読み上げ速度</span><span class="setting-value">標準 ›</span></div><div class="choice"><span>効果音</span><span class="switch on"></span></div></div>
+                      <div class="setting-label">見やすさ</div>
+                      <div class="setting-group"><div class="choice"><span>読み上げ中の文を表示</span><span class="switch on"></span></div><div class="choice"><span>文字サイズ</span><span class="setting-value">端末の設定 ›</span></div><div class="choice"><span>動きを少なくする</span><span class="switch"></span></div></div>
+                      <p class="os-handoff">読み上げ速度と字幕は新規提案。文字サイズ・動きの軽減は端末設定を尊重する実装を優先します。</p>
+                    </div>
+                  </div>
+                  <footer class="settings-bottom"><span class="nav-item"><b>⌂</b>ホーム</span><span class="nav-item"><b>□</b>計画</span><span class="nav-item active"><b>⚙</b>設定</span></footer>
+                </div>
+              </div>
+            </div>
+            <div>
+              <div class="notes">
+                <article class="note"><span class="note-no">A</span><div><b>最初に「現在地」を要約</b><p>高校生／日本語／通知オンを探し回らなくても、最初のカードで分かる。</p></div></article>
+                <article class="note"><span class="note-no">B</span><div><b>OS管理の項目は二重に持たない</b><p>通知・言語・文字サイズは、状態を見せてOS設定へ正しく渡す。</p></div></article>
+                <article class="note"><span class="note-no">C</span><div><b>端末IDは最上位に置かない</b><p>問い合わせ時だけ必要な技術情報は「ヘルプとアプリ情報」の詳細へまとめる。</p></div></article>
+                <article class="note"><span class="note-no">D</span><div><b>未実装案を明確に分ける</b><p>読み上げ速度・字幕・効果音は新しい提案。既存機能の並べ替えと混同しない。</p></div></article>
+              </div>
+              <div class="decision"><b>v3の判断:</b> 設定トップは最大5入口まで。契約、規約、バージョン、端末IDを同じ粒度で並べない。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="scope">
+      <div class="page">
+        <div class="section-head">
+          <div><span class="section-no">03 / SCOPE</span><h2>実装へ移すときの境界</h2></div>
+          <p class="section-copy">見た目だけの変更と、新しい仕様を分離する。最初のPRで全部を実装しない。</p>
+        </div>
+        <div class="matrix">
+          <div class="matrix-row matrix-head"><span>項目</span><span>扱い</span><span>理由</span></div>
+          <div class="matrix-row"><b>黒板・問題カード・下部操作の再配置</b><span class="state refine">既存を改善</span><span>現在の授業状態とデータで作れる</span></div>
+          <div class="matrix-row"><b>学年・通知・契約・サポートの再編</b><span class="state refine">既存を改善</span><span>機能を増やさず情報設計を直せる</span></div>
+          <div class="matrix-row"><b>OSの言語・文字サイズへの導線</b><span class="state keep">既存を尊重</span><span>状態の二重管理を避ける</span></div>
+          <div class="matrix-row"><b>読み上げ速度・字幕・効果音</b><span class="state new">新規提案</span><span>保存先と音声制御の仕様決めが必要</span></div>
+          <div class="matrix-row"><b>親アカウント</b><span class="state keep">追加しない</span><span>既存の「親アカウントを作らない」方針を維持</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="rules">
+      <div class="page">
+        <div class="section-head">
+          <div><span class="section-no">04 / RULES</span><h2>v3で守る6原則</h2></div>
+          <p class="section-copy">画面を増やしても崩れないように、具体的な実装ルールへ落とす。</p>
+        </div>
+        <div class="rules">
+          <article class="rule"><code>01 / FOCUS</code><b>授業では黒板が最大</b><p>ヘッダー、問題、字幕は必要な高さだけを使う。</p></article>
+          <article class="rule"><code>02 / ONE ACTION</code><b>強いボタンは1画面1つ</b><p>「次へ」「話す」「ヒントを見る」を同時に強調しない。</p></article>
+          <article class="rule"><code>03 / STATE</code><b>色だけで状態を伝えない</b><p>説明中／あなたの番を文言、位置、操作の3つで示す。</p></article>
+          <article class="rule"><code>04 / SYSTEM</code><b>OS設定を尊重する</b><p>通知・言語・アクセシビリティをアプリ内で二重管理しない。</p></article>
+          <article class="rule"><code>05 / DISCLOSURE</code><b>技術情報は必要時に開く</b><p>端末IDやビルド番号はサポート詳細に畳む。</p></article>
+          <article class="rule"><code>06 / ACCESS</code><b>44px・文字拡大・動き軽減</b><p>見た目の完成度と操作可能性を同じ品質として扱う。</p></article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer"><div class="page"><b>カタルテ UI direction v3</b> — v2を置き換えず、次の実装判断を行うための提案。</div></footer>
+
+  <script>
+    (() => {
+      const lessonData = {
+        listen: {
+          meta: '先輩が説明中 · 12:08', meter: '42%', title: '先輩が説明しています',
+          text: '「平方完成すると、頂点が見えてくるよ」', action: 'わかった。次へ', actionClass: '', dot: true,
+          turn: false, folded: true,
+          board: `<div class="board-kicker">平方完成して、頂点を見る</div><h3>y = x² − 4x + 3</h3><p class="chalk-line">= (x − 2)² − 1</p><p class="chalk-line dim">(x − 2)² は 0 以上だから…</p><p class="chalk-line"><span class="chalk-underline">x = 2 のとき最小</span></p><p class="chalk-line chalk-box"><strong>最小値 −1</strong></p><svg class="board-graph" viewBox="0 0 300 132" aria-label="二次関数のグラフ"><line x1="18" y1="104" x2="284" y2="104" stroke="#9fb5aa" stroke-width="1"/><line x1="95" y1="14" x2="95" y2="120" stroke="#9fb5aa" stroke-width="1"/><path d="M25 22 Q157 184 278 19" fill="none" stroke="#f2efe4" stroke-width="2.2"/><circle cx="155" cy="112" r="3.5" fill="#ffe88a"/><text x="162" y="126" fill="#ffe88a" font-size="10">(2, −1)</text></svg>`
+        },
+        turn: {
+          meta: 'あなたの番 · 13:02', meter: '55%', title: '聞いています',
+          text: 'うまく言えなくても大丈夫。途中から先輩が手伝います。', action: '話し終わった', actionClass: 'turn', dot: false,
+          turn: true, folded: true,
+          board: `<div class="board-kicker">ここまでの板書</div><h3>y = (x − 2)² − 1</h3><p class="chalk-line dim">問い：なぜ最小値が −1？</p><p class="chalk-line">① (x − 2)² は <span class="chalk-underline">0 以上</span></p><p class="chalk-line">② いちばん小さいのは 0 のとき</p><p class="chalk-line chalk-box"><strong>自分の言葉で説明</strong></p>`
+        },
+        hint: {
+          meta: 'ヒントを確認中 · 13:31', meter: '63%', title: '先輩からのヒント',
+          text: '「二乗した数は、いちばん小さくていくつ？」', action: 'もう一度説明する', actionClass: 'hint', dot: false,
+          turn: false, folded: false,
+          board: `<div class="board-kicker">言いにくかったところだけ戻る</div><h3>二乗した数の最小は？</h3><p class="chalk-line">3² = 9　 1² = 1</p><p class="chalk-line">0² = <strong>0</strong></p><p class="chalk-line dim">マイナスを二乗しても 0 より小さくならない</p><p class="chalk-line chalk-box"><span class="chalk-underline">(x − 2)² ≥ 0</span></p>`
+        }
+      };
+
+      const lessonButtons = [...document.querySelectorAll('[data-lesson]')];
+      const meta = document.querySelector('#lessonMeta');
+      const meter = document.querySelector('#lessonMeter');
+      const speakerTitle = document.querySelector('#speakerTitle');
+      const speakerText = document.querySelector('#speakerText');
+      const action = document.querySelector('#lessonAction');
+      const dot = document.querySelector('#liveDot');
+      const turnCard = document.querySelector('#turnCard');
+      const problem = document.querySelector('#problemCard');
+      const board = document.querySelector('#boardContent');
+
+      lessonButtons.forEach((button) => button.addEventListener('click', () => {
+        const next = lessonData[button.dataset.lesson];
+        lessonButtons.forEach((item) => item.setAttribute('aria-selected', String(item === button)));
+        meta.textContent = next.meta;
+        meter.style.width = next.meter;
+        speakerTitle.textContent = next.title;
+        speakerText.textContent = next.text;
+        action.textContent = next.action;
+        action.className = `primary-action ${next.actionClass}`;
+        dot.style.visibility = next.dot ? 'visible' : 'hidden';
+        turnCard.hidden = !next.turn;
+        problem.classList.toggle('is-folded', next.folded);
+        board.innerHTML = next.board;
+      }));
+
+      problem.addEventListener('click', () => problem.classList.toggle('is-folded'));
+
+      const settingButtons = [...document.querySelectorAll('[data-settings]')];
+      const settingPanels = [...document.querySelectorAll('[data-settings-panel]')];
+      const settingsHeader = document.querySelector('#settingsHeader');
+      settingButtons.forEach((button) => button.addEventListener('click', () => {
+        const name = button.dataset.settings;
+        settingButtons.forEach((item) => item.setAttribute('aria-selected', String(item === button)));
+        settingPanels.forEach((panel) => panel.classList.toggle('is-active', panel.dataset.settingsPanel === name));
+        settingsHeader.textContent = name === 'overview' ? '設定' : '';
+      }));
+    })();
+  </script>
+</body>
+</html>
