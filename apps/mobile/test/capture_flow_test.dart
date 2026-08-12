@@ -13,11 +13,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// 撮影 → 単元の確認 → 会話開始。
 ///
-/// 不具合報告: この「会話開始」の瞬間に「今日のセッションは終わり」と出た。
-/// 単元を確認しただけでセッションを作り直していたため、写真解析で押さえた
-/// 1回に加えてもう1回を要求し、無料枠(1日1回)に自分でぶつかっていた。
+/// 不具合報告: 写真を撮って単元を確かめただけで「今日のセッションは終わり」と出た。
+/// **今日の1回を数えるのは会話が始まったとき**(`POST /v1/sessions/{id}/start`)に
+/// 変えてあるので、ここで見るのは「どの操作でどの入口を叩くか」。
 
-Map<String, dynamic> _sessionJson(
+/// 写真を読んだ応答。**部屋の鍵は入らない。** 入っていたら、鍵を持っている =
+/// いつでも始められる になり、数える位置を移した意味が消える。
+Map<String, dynamic> _analysisJson(
   String sessionId,
   List<String> topicIds, {
   Map<String, dynamic>? problem,
@@ -26,11 +28,6 @@ Map<String, dynamic> _sessionJson(
     'session_id': sessionId,
     'kind': 'new',
     'problem': problem,
-    'livekit': <String, dynamic>{
-      'url': 'wss://test.livekit.cloud',
-      'token': 'token-for-${topicIds.join("+")}',
-      'room': sessionId,
-    },
     'detected_topics': <Map<String, dynamic>>[
       for (final String topicId in topicIds)
         <String, dynamic>{
@@ -43,6 +40,19 @@ Map<String, dynamic> _sessionJson(
           'confidence': topicId == topicIds.first ? 0.92 : 0.41,
         },
     ],
+  };
+}
+
+/// 会話を始めた応答。**この応答が返った時点で今日の1回を使っている。**
+Map<String, dynamic> _startJson(String sessionId) {
+  return <String, dynamic>{
+    'session_id': sessionId,
+    'kind': 'new',
+    'livekit': <String, dynamic>{
+      'url': 'wss://test.livekit.cloud',
+      'token': 'token',
+      'room': sessionId,
+    },
     'limits': <String, dynamic>{'max_seconds': 1200, 'lesson_allowed_today': false},
   };
 }
@@ -84,10 +94,13 @@ void main() {
       if (request.method == 'PATCH') {
         final Map<String, dynamic> body = jsonDecode(request.body) as Map<String, dynamic>;
         final List<String> topicIds = (body['topic_ids'] as List<dynamic>).cast<String>();
-        return json(_sessionJson('ses_1', topicIds), 200);
+        return json(_analysisJson('ses_1', topicIds), 200);
+      }
+      if (request.url.path.endsWith('/start')) {
+        return json(_startJson('ses_1'), 200);
       }
       return json(
-        _sessionJson(
+        _analysisJson(
           'ses_1',
           <String>['M1-NIJI-GURAFU', 'M1-NIJI-HANBETSU'],
           problem: problem,
@@ -124,16 +137,20 @@ void main() {
     final SessionStart? session = await controller.confirmAndStart();
 
     expect(session, isNotNull);
-    // 同じセッションのまま。ここが2本目のPOSTだと無料枠を使い切ってしまう
+    // 同じセッションのまま。ここが2本目の POST /v1/sessions だと、同じ写真を
+    // もう一度Vision LLMに通すことになる
     expect(session!.sessionId, 'ses_1');
-    expect(calls.length, 2);
+    expect(calls.length, 3);
     expect(calls[0].method, 'POST');
     expect(calls[0].url.path, '/v1/sessions');
     expect(calls[1].method, 'PATCH');
     expect(calls[1].url.path, '/v1/sessions/ses_1/topics');
+    // 部屋の鍵はここでしか出ない = 今日の1回を使うのもここ
+    expect(calls[2].method, 'POST');
+    expect(calls[2].url.path, '/v1/sessions/ses_1/start');
   });
 
-  test('単元をひとつも外していなければ、サーバへは行かない', () async {
+  test('単元をひとつも外していなければ、単元の反映には行かない', () async {
     final List<http.BaseRequest> calls = <http.BaseRequest>[];
     final ProviderContainer container = containerWith(calls);
     addTearDown(container.dispose);
@@ -146,7 +163,26 @@ void main() {
 
     await controller.confirmAndStart();
 
-    expect(calls.length, 1);
+    expect(calls.map((http.BaseRequest call) => call.url.path), <String>[
+      '/v1/sessions',
+      '/v1/sessions/ses_1/start',
+    ]);
+  });
+
+  /// **不具合報告そのもの。** 撮って単元を確かめただけで今日の1回が消えていた。
+  /// 会話を始めるまで `/start` を叩かないことが、そのまま「数えない」の中身。
+  test('撮って単元を確かめただけでは、会話の開始を呼ばない', () async {
+    final List<http.BaseRequest> calls = <http.BaseRequest>[];
+    final ProviderContainer container = containerWith(calls);
+    addTearDown(container.dispose);
+
+    final CaptureController controller = container.read(captureControllerProvider.notifier);
+    controller.setPhoto(photo);
+    await controller.analyze();
+    controller.toggleTopic('M1-NIJI-GURAFU');
+
+    expect(calls.map((http.BaseRequest call) => call.url.path), <String>['/v1/sessions']);
+    expect(container.read(captureControllerProvider).session, isNull);
   });
 
   /// 2枚の写真の**枠**(計画書 §4-1・`api.ts` の `sessionPhotoParts`)。
@@ -243,8 +279,7 @@ void main() {
       expect(state.problemPhoto, isNotNull);
     });
 
-    /// 解析はセッションを作る = 今日の1回を使う。あとから足して解析し直すと
-    /// 2回目扱いになるので、足せるのは解析の前だけにしてある。
+    /// あとから足しても写真は読み直されないので、足せるのは解析の前だけにしてある。
     test('解析したあとは、問題の写真を足せない', () async {
       final List<http.BaseRequest> calls = <http.BaseRequest>[];
       final ProviderContainer container = containerWith(calls);

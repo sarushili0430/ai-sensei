@@ -92,31 +92,39 @@ void main() {
           headers: <String, String>{'content-type': 'application/json; charset=utf-8'},
         );
       }
-      final Map<String, dynamic> body = <String, dynamic>{
-        'session_id': 'ses_1',
-        'kind': 'new',
-        'livekit': <String, dynamic>{
-          'url': 'wss://test.livekit.cloud',
-          'token': 'token',
-          'room': 'ses_1',
-        },
-        'detected_topics': topics ??
-            <Map<String, dynamic>>[
-              <String, dynamic>{
-                'topic_id': 'M2-ZUKEI-ENCHOKU',
-                'course': '数学II',
-                'unit': '図形と方程式',
-                'topic': '円と直線の位置関係',
-                'label': '数学II',
-                'confidence': 0.92,
+      // 部屋の鍵が出るのは会話の開始だけ。**解析の応答には載せない** —
+      // 載せると、鍵を持っている = いつでも始められる になり、
+      // 回数を会話の開始で数える形が画面のテストからも見えなくなる。
+      final Map<String, dynamic> body = request.url.path.endsWith('/start')
+          ? <String, dynamic>{
+              'session_id': 'ses_1',
+              'kind': 'new',
+              'livekit': <String, dynamic>{
+                'url': 'wss://test.livekit.cloud',
+                'token': 'token',
+                'room': 'ses_1',
               },
-            ],
-        'problem': problem,
-        'limits': <String, dynamic>{'max_seconds': 1200, 'lesson_allowed_today': false},
-      };
+              'limits': <String, dynamic>{'max_seconds': 1200, 'lesson_allowed_today': false},
+            }
+          : <String, dynamic>{
+              'session_id': 'ses_1',
+              'kind': 'new',
+              'detected_topics': topics ??
+                  <Map<String, dynamic>>[
+                    <String, dynamic>{
+                      'topic_id': 'M2-ZUKEI-ENCHOKU',
+                      'course': '数学II',
+                      'unit': '図形と方程式',
+                      'topic': '円と直線の位置関係',
+                      'label': '数学II',
+                      'confidence': 0.92,
+                    },
+                  ],
+              'problem': problem,
+            };
       return http.Response.bytes(
         utf8.encode(jsonEncode(body)),
-        201,
+        request.url.path.endsWith('/start') ? 200 : 201,
         headers: <String, String>{'content-type': 'application/json; charset=utf-8'},
       );
     });

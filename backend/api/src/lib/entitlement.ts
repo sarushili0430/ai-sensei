@@ -6,6 +6,10 @@ import type { UserRecord } from "../repository/types.ts";
  *
  * Free    : 1日1セッション / Premiumと同じ最長20分 / 当日のカルテ閲覧まで
  * Premium : 通常の1日1〜2回には当たらない非表示のフェアユース上限 / 最長20分
+ *
+ * **数えるのは「先輩と話した回数」**で、写真を読んだ回数ではない
+ * (枠を押さえるのは `POST /v1/sessions/{id}/start`)。撮って単元を確かめただけの
+ * 人が、会話を1度もしないまま「今日はここまで」になるのを止めるための線引き。
  */
 
 export function isPremiumNow(user: UserRecord | null, now: Date): boolean {
@@ -41,13 +45,36 @@ export function sessionsPerDay(input: {
     : input.limits.freeSessionsPerDay;
 }
 
+/**
+ * 1回の授業に何度まで写真を読み直してよいか。
+ *
+ * **回数を数える位置を会話の開始へ移したので、解析はこの上限だけが守っている。**
+ * 撮り直し・単元の見直し・気が変わってやめる、を余裕で吸収する数にする一方、
+ * 解析だけを延々と繰り返してVision LLMの原価を積む使い方はここで止まる。
+ *
+ * 環境変数にしていないのは、これがユーザーに見せる約束ではないから。
+ * 見せる約束(1日に何回話せるか)は `FREE_SESSIONS_PER_DAY` 側にある。
+ * なお読み取れなかった写真は行ごと消えるので、この数に入るのは
+ * **解析が通ったぶんだけ**。
+ */
+export const analysesPerSessionSlot = 5;
+
+/** その日に許す写真解析の本数。授業の枠とは別物(理由は上の定数)。 */
+export function analysesPerDay(input: {
+  user: UserRecord | null;
+  now: Date;
+  limits: Limits;
+}): number {
+  return sessionsPerDay(input) * analysesPerSessionSlot;
+}
+
 /** 上限の数値を返さず、いま授業を始められるかだけを共有する。 */
 export function canStartSessionToday(input: SessionLimitInput): boolean {
   return input.sessionsToday < sessionsPerDay(input);
 }
 
 /** 枠を押さえたあとの応答。`sessionsToday` は押さえた分を含む当日の本数。 */
-export function reservedAllowance(
+export function startedAllowance(
   input: SessionLimitInput,
 ): Extract<SessionAllowance, { allowed: true }> {
   const premium = isPremiumNow(input.user, input.now);

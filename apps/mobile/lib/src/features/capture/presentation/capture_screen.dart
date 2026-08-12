@@ -40,14 +40,17 @@ import '../application/capture_controller.dart';
 ///
 /// ## 解析の前に一度止まる理由
 ///
-/// 撮ってすぐ解析していたのを、確認を1枚挟む形に変えた。理由は2つあり、
-/// どちらも**解析がセッションを作る = 今日の1回を使う**ことから来ている:
+/// 撮ってすぐ解析していたのを、確認を1枚挟む形に変えた。
 ///
-///   1. **問題の写真を足せるのは、解析の前だけ。** あとから足して解析し直すと
-///      2回目のセッション扱いになり、無料枠を食う(`confirmAndStart` の
-///      コメントと同じ理由)。任意の2枚目に居場所を作るには、ここしかない
+///   1. **問題の写真を足せるのは、解析の前だけ。** あとから足しても写真は
+///      読み直されない(`capture_controller.dart` の `setProblemPhoto`)。
+///      任意の2枚目に居場所を作るには、ここしかない
 ///   2. 撮った直後の1枚をそのまま送っていたので、ぶれていても気づけないまま
-///      今日の1回が消えていた
+///      Vision LLMに通していた
+///
+/// **今日の1回を使うのはここではない。** 数えるのは会話が始まったときなので
+/// (`api.ts` の `startSessionResponseSchema`)、解析まで進んでから撮り直しても
+/// 授業の回数は減らない。
 ///
 /// **どちらか1枚で始められる**(§4-1)。1枚に問題とノートの両方が写ることが
 /// 多いので、2枚必須にすると撮影の摩擦だけが増える。ここで出すのは「撮れ」ではなく
@@ -207,7 +210,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     // **1枚も撮っていないあいだは「撮れました」でもない。** ここで選んでいるのは
     // 何を撮るかで、そこに「ノートは無い」という答えが含まれている。
     final String title;
-    if (state.session != null || state.isSubmitting) {
+    if (state.analysis != null || state.isSubmitting) {
       title = strings.captureConfirmTitle;
     } else if (state.hasAnyPhoto) {
       title = strings.captureReviewTitle;
@@ -263,7 +266,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     if (state.isSubmitting || _picking) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (state.session == null) {
+    if (state.analysis == null) {
       return _PhotoReview(
         state: state,
         onRetake: _pickPhoto,
@@ -276,7 +279,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
 }
 
 /// 何を撮るかを選ぶ画面であり、撮ったものの確認でもある。
-/// **解析(= 今日の1回を使う)の直前に一度だけ止まる。**
+/// **解析(= Vision LLMに通す)の直前に一度だけ止まる。**
 ///
 /// 2つの枠を並べているのは見た目のためではない。ノートはR2に保存され、
 /// 問題の紙面は解析後に破棄される — **どちらの枠に入れたかでしか区別できない**
@@ -535,10 +538,10 @@ class _TopicConfirm extends ConsumerWidget {
 /// 価値がまったく違う(計画書 §1-1「AIが理解している建て付けのアプリほど
 /// 誤読が致命傷になる」)。
 ///
-/// **合っているかを問わない。** ここで直す手段が無い(セッションはもう
-/// 作られていて、撮り直すと今日の1回を使い直すことになる)のに問いかけると、
-/// 答えようのない問いになる。事実として置いておけば、ちがっていれば
-/// 会話の最初に本人が言う — それが §1-1 の「誤読の保険」そのもの。
+/// **合っているかを問わない。** ここは読み合わせの場で、正誤の申告を求める場では
+/// ない。ちがっていれば会話の最初に本人が言う — それが §1-1 の「誤読の保険」そのもの。
+/// (授業の回数を数えるのは会話が始まったときなので、戻って撮り直しても
+/// 今日の1回は減らない。)
 class _ProblemReadback extends StatelessWidget {
   const _ProblemReadback({required this.problem});
 

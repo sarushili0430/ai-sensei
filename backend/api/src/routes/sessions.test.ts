@@ -1,9 +1,10 @@
-import type { CreateSessionResponse } from "@ai-sensei/contract";
+import type { CreateSessionResponse, StartSessionResponse } from "@ai-sensei/contract";
 import {
   createSessionResponseSchema,
   problemTextMaxLength,
   sessionMetadataSchema,
   sessionPhotoParts,
+  startSessionResponseSchema,
 } from "@ai-sensei/contract";
 import { localeOfTopicId } from "@ai-sensei/curriculum";
 import { formatProblemText, formatVisibleWork, getPrompt } from "@ai-sensei/prompts";
@@ -56,58 +57,100 @@ function patchTopics(sessionId: string, body: unknown, headers: Record<string, s
   );
 }
 
+/**
+ * 会話を始める。**今日の1回を数えるのはここだけ**なので、枠の話は全部この入口に集まる。
+ */
+function startSession(
+  sessionId: string,
+  body: unknown = {},
+  headers: Record<string, string> = {},
+  env = bindings,
+) {
+  return app.request(
+    `/v1/sessions/${sessionId}/start`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: {
+        "content-type": "application/json",
+        "x-device-id": testDeviceId,
+        ...headers,
+      },
+    },
+    env,
+  );
+}
+
+/** 写真を読ませて、そのまま会話を始める。トークンと文脈を見るテストはここを通る。 */
+async function analyzeThenStart(
+  form: FormData = createSessionForm(),
+  env = bindings,
+): Promise<StartSessionResponse> {
+  const created = await app.request(
+    "/v1/sessions",
+    { method: "POST", body: form, headers: { "x-device-id": testDeviceId } },
+    env,
+  );
+  expect(created.status).toBe(201);
+  const session = (await created.json()) as CreateSessionResponse;
+
+  const started = await startSession(session.session_id, {}, {}, env);
+  expect(started.status).toBe(200);
+  return (await started.json()) as StartSessionResponse;
+}
+
+/** トークンに載って agent へ届く会話文脈。 */
+async function metadataOf<T = Record<string, unknown>>(
+  started: StartSessionResponse,
+  env = bindings,
+): Promise<T> {
+  const claims = await verifyJwt(started.livekit.token, env.LIVEKIT_API_SECRET);
+  return JSON.parse(String(claims?.["metadata"])) as T;
+}
+
+async function makePremium(): Promise<void> {
+  await services.repository.ensureUser(testDeviceId, new Date());
+  await services.repository.setPremium({
+    deviceId: testDeviceId,
+    isPremium: true,
+    expiresAt: null,
+    rcAppUserId: "rc_1",
+  });
+}
+
 describe("POST /v1/sessions", () => {
-  it("写真から単元を検出し、LiveKitトークンを返す", async () => {
+  it("写真から単元を検出する", async () => {
     const response = await post(createSessionForm());
     expect(response.status).toBe(201);
 
     const body = (await response.json()) as CreateSessionResponse;
     expect(createSessionResponseSchema.safeParse(body).success).toBe(true);
     expect(body.detected_topics.map((topic) => topic.topic_id)).toContain("M2-ZUKEI-ENCHOKU");
-    expect(body.livekit.room).toBe(body.session_id);
   });
 
-  it("LiveKitトークンに会話の文脈(許可トピック)を載せる", async () => {
-    const response = await post(createSessionForm());
-    const body = (await response.json()) as CreateSessionResponse;
+  /**
+   * **写真を読んだだけでは部屋の鍵を渡さない。**
+   *
+   * 鍵を持っている = いつでも会話を始められるので、ここでトークンを配ったまま
+   * 「会話の開始で数える」と言っても、数える口をクライアント側に置いたのと同じになる。
+   * `strict()` のスキーマなので、うっかり足し戻したらこのテストが落ちる。
+   */
+  it("この時点ではLiveKitトークンを渡さない(数えるのは会話の開始)", async () => {
+    const body = (await (await post(createSessionForm())).json()) as Record<string, unknown>;
 
-    const claims = await verifyJwt(body.livekit.token, bindings.LIVEKIT_API_SECRET);
-    expect(claims).not.toBeNull();
-    const metadata = JSON.parse(String(claims?.["metadata"])) as {
-      allowed_topic_ids: string[];
-      max_seconds: number;
-    };
-    expect(metadata.allowed_topic_ids).toContain("M2-ZUKEI-ENCHOKU");
-    // 前提トピックまで深掘りを許す
-    expect(metadata.allowed_topic_ids).toContain("M1-NIJI-HANBETSU");
-    expect(metadata.max_seconds).toBe(1200);
+    expect(body["livekit"]).toBeUndefined();
+    expect(body["limits"]).toBeUndefined();
+    expect(createSessionResponseSchema.safeParse(body).success).toBe(true);
   });
 
-  // 名前つきワーカーのときは、トークンでディスパッチしないと部屋に誰も来ない
-  it("LIVEKIT_AGENT_NAMEがあれば、トークンで先輩を呼ぶ", async () => {
-    const named = testBindings({ LIVEKIT_AGENT_NAME: "ai-sensei-senpai" });
-    const response = await app.request(
-      "/v1/sessions",
-      { method: "POST", body: createSessionForm(), headers: { "x-device-id": testDeviceId } },
-      named,
+  it("写真を読んだだけでは、今日の1回を使わない", async () => {
+    expect((await post(createSessionForm())).status).toBe(201);
+
+    // 撮り直して単元を確かめ直しても、まだ1回も話していないのだから通る
+    expect((await post(createSessionForm())).status).toBe(201);
+    expect(await services.repository.countStartedSessionsOnDate(testDeviceId, "2026-08-03")).toBe(
+      0,
     );
-    const body = (await response.json()) as CreateSessionResponse;
-
-    const claims = await verifyJwt(body.livekit.token, named.LIVEKIT_API_SECRET);
-    const roomConfig = claims?.["roomConfig"] as { agents: { agent_name: string }[] } | undefined;
-    expect(roomConfig?.agents[0]?.agent_name).toBe("ai-sensei-senpai");
-    // 文脈はジョブ側にも載せる(エージェントが参加者を待たずに読めるように)
-    const dispatched = JSON.parse(
-      String((roomConfig?.agents[0] as { metadata?: string } | undefined)?.metadata),
-    ) as { allowed_topic_ids: string[] };
-    expect(dispatched.allowed_topic_ids).toContain("M2-ZUKEI-ENCHOKU");
-  });
-
-  it("LIVEKIT_AGENT_NAMEが空なら自動ディスパッチに任せる", async () => {
-    const response = await post(createSessionForm());
-    const body = (await response.json()) as CreateSessionResponse;
-    const claims = await verifyJwt(body.livekit.token, bindings.LIVEKIT_API_SECRET);
-    expect(claims?.["roomConfig"]).toBeUndefined();
   });
 
   it("デバイスIDがなければ401", async () => {
@@ -119,57 +162,41 @@ describe("POST /v1/sessions", () => {
     expect(response.status).toBe(401);
   });
 
-  // 無料枠はサーバ側で数える(クライアント改竄対策)
-  it("無料ユーザーは1日1セッションまで", async () => {
-    expect((await post(createSessionForm())).status).toBe(201);
+  /**
+   * 今日の授業を使い切った人は、**写真を読む前に**止める。
+   * 解析まで走らせてから断ると、Vision LLMの原価だけが積み上がる。
+   */
+  it("今日の授業を使い切っていれば、解析まで進まない", async () => {
+    await analyzeThenStart();
 
-    const second = await post(createSessionForm());
-    expect(second.status).toBe(402);
-    const body = (await second.json()) as { error: { code: string; retry_after_seconds: number } };
+    const analyzer = services.analyzer as RecordingAnalyzer;
+    const callsBefore = analyzer.calls.length;
+
+    const response = await post(createSessionForm());
+    expect(response.status).toBe(402);
+    const body = (await response.json()) as {
+      error: { code: string; retry_after_seconds: number };
+    };
     expect(body.error.code).toBe("free_limit_reached");
     // 「また明日」と言えるように、翌日までの秒数を返す
     expect(body.error.retry_after_seconds).toBeGreaterThan(0);
+    expect(analyzer.calls.length).toBe(callsBefore);
   });
 
-  it("Premiumは通常利用の2回目まで通り、無料と同じ20分を使える", async () => {
-    await services.repository.ensureUser(testDeviceId, new Date());
-    await services.repository.setPremium({
-      deviceId: testDeviceId,
-      isPremium: true,
-      expiresAt: null,
-      rcAppUserId: "rc_1",
-    });
-
-    await post(createSessionForm());
-    const second = await post(createSessionForm());
-    expect(second.status).toBe(201);
-
-    const body = (await second.json()) as CreateSessionResponse;
-    expect(body.limits.max_seconds).toBe(1200);
-    expect(body.limits.lesson_allowed_today).toBe(true);
-  });
-
-  it("Premiumは3回を使ったあとの4回目をフェアユースとして止める", async () => {
-    await services.repository.ensureUser(testDeviceId, new Date());
-    await services.repository.setPremium({
-      deviceId: testDeviceId,
-      isPremium: true,
-      expiresAt: null,
-      rcAppUserId: "rc_1",
-    });
-
-    for (let count = 0; count < 3; count += 1) {
+  /**
+   * 解析だけを延々と繰り返す使い方は止める。**通常の撮り直しでは当たらない**
+   * 高さに置いてあり(`analysesPerSessionSlot`)、当たっても文言は日次上限と同じ。
+   */
+  it("会話を始めないまま解析を繰り返すと、解析側の上限で止まる", async () => {
+    for (let count = 0; count < 5; count += 1) {
       expect((await post(createSessionForm())).status).toBe(201);
     }
 
-    const fourth = await post(createSessionForm());
-    expect(fourth.status).toBe(429);
-    const body = (await fourth.json()) as {
-      error: { code: string; message: string; retry_after_seconds: number };
-    };
-    expect(body.error.code).toBe("fair_use_limit_reached");
-    expect(body.error.message).not.toMatch(/[0-9０-９]/);
-    expect(body.error.retry_after_seconds).toBeGreaterThan(0);
+    const sixth = await post(createSessionForm());
+    expect(sixth.status).toBe(402);
+    expect(((await sixth.json()) as { error: { code: string } }).error.code).toBe(
+      "free_limit_reached",
+    );
   });
 
   it("数学のノートでなければ撮り直しを促す", async () => {
@@ -287,7 +314,7 @@ describe("POST /v1/sessions", () => {
     expect(body.error.code).toBe("photo_unreadable");
   });
 
-  it("読み取れない写真は今日の無料枠を消費しない", async () => {
+  it("読み取れない写真は今日の解析の枠も消費しない", async () => {
     const form = new FormData();
     form.set("photo", new File([new Uint8Array([0, 1, 2, 3])], "note", { type: "image/heic" }));
     form.set("meta", JSON.stringify({ kind: "new", locale: "ja" }));
@@ -295,6 +322,209 @@ describe("POST /v1/sessions", () => {
 
     // 押さえた枠が返っていれば、撮り直した1枚はちゃんと通る
     expect((await post(createSessionForm())).status).toBe(201);
+    expect(services.repository.sessions.size).toBe(1);
+  });
+});
+
+/**
+ * **回数を数えるのはここ。**
+ *
+ * 不具合報告: 写真を撮って単元を確かめただけで「今日はここまで」になった。
+ * 生徒にとっての1回は「先輩と話した回数」なので、枠を押さえる位置を
+ * 解析(POST /v1/sessions)から会話の開始へ移した。
+ */
+describe("POST /v1/sessions/{id}/start", () => {
+  async function analyze(form: FormData = createSessionForm()): Promise<CreateSessionResponse> {
+    const response = await post(form);
+    expect(response.status).toBe(201);
+    return (await response.json()) as CreateSessionResponse;
+  }
+
+  it("会話を始めたときに、部屋の鍵と上限を返す", async () => {
+    const session = await analyze();
+
+    const response = await startSession(session.session_id);
+    expect(response.status).toBe(200);
+
+    const body = (await response.json()) as StartSessionResponse;
+    expect(startSessionResponseSchema.safeParse(body).success).toBe(true);
+    expect(body.session_id).toBe(session.session_id);
+    expect(body.livekit.room).toBe(session.session_id);
+    expect(body.limits.max_seconds).toBe(1200);
+  });
+
+  it("LiveKitトークンに会話の文脈(許可トピック)を載せる", async () => {
+    const started = await analyzeThenStart();
+
+    const metadata = await metadataOf<{ allowed_topic_ids: string[]; max_seconds: number }>(
+      started,
+    );
+    expect(metadata.allowed_topic_ids).toContain("M2-ZUKEI-ENCHOKU");
+    // 前提トピックまで深掘りを許す
+    expect(metadata.allowed_topic_ids).toContain("M1-NIJI-HANBETSU");
+    expect(metadata.max_seconds).toBe(1200);
+  });
+
+  // 名前つきワーカーのときは、トークンでディスパッチしないと部屋に誰も来ない
+  it("LIVEKIT_AGENT_NAMEがあれば、トークンで先輩を呼ぶ", async () => {
+    const named = testBindings({ LIVEKIT_AGENT_NAME: "ai-sensei-senpai" });
+    const started = await analyzeThenStart(createSessionForm(), named);
+
+    const claims = await verifyJwt(started.livekit.token, named.LIVEKIT_API_SECRET);
+    const roomConfig = claims?.["roomConfig"] as { agents: { agent_name: string }[] } | undefined;
+    expect(roomConfig?.agents[0]?.agent_name).toBe("ai-sensei-senpai");
+    // 文脈はジョブ側にも載せる(エージェントが参加者を待たずに読めるように)
+    const dispatched = JSON.parse(
+      String((roomConfig?.agents[0] as { metadata?: string } | undefined)?.metadata),
+    ) as { allowed_topic_ids: string[] };
+    expect(dispatched.allowed_topic_ids).toContain("M2-ZUKEI-ENCHOKU");
+  });
+
+  it("LIVEKIT_AGENT_NAMEが空なら自動ディスパッチに任せる", async () => {
+    const started = await analyzeThenStart();
+    const claims = await verifyJwt(started.livekit.token, bindings.LIVEKIT_API_SECRET);
+    expect(claims?.["roomConfig"]).toBeUndefined();
+  });
+
+  // 無料枠はサーバ側で数える(クライアント改竄対策)
+  it("無料ユーザーは1日1回しか会話を始められない", async () => {
+    const first = await analyze();
+    const second = await analyze();
+
+    expect((await startSession(first.session_id)).status).toBe(200);
+
+    // 2本目は解析まで済んでいても、会話は始められない
+    const response = await startSession(second.session_id);
+    expect(response.status).toBe(402);
+    const body = (await response.json()) as {
+      error: { code: string; retry_after_seconds: number };
+    };
+    expect(body.error.code).toBe("free_limit_reached");
+    expect(body.error.retry_after_seconds).toBeGreaterThan(0);
+  });
+
+  /**
+   * つなぎ直し・押し直しで枠が減らないこと。
+   * ここが緩むと、電波の悪い場所で1回押し直しただけで今日の授業が終わる。
+   */
+  it("同じセッションを始め直しても、二重に数えない", async () => {
+    const session = await analyze();
+
+    const first = await startSession(session.session_id);
+    const again = await startSession(session.session_id);
+
+    expect(first.status).toBe(200);
+    expect(again.status).toBe(200);
+    expect(await services.repository.countStartedSessionsOnDate(testDeviceId, "2026-08-03")).toBe(
+      1,
+    );
+  });
+
+  it("Premiumは通常利用の2回目まで通り、無料と同じ20分を使える", async () => {
+    await makePremium();
+
+    await analyzeThenStart();
+    const second = await analyzeThenStart();
+
+    expect(second.limits.max_seconds).toBe(1200);
+    expect(second.limits.lesson_allowed_today).toBe(true);
+  });
+
+  it("Premiumは3回を使ったあとの4回目をフェアユースとして止める", async () => {
+    await makePremium();
+
+    // 4本とも先に解析まで済ませてから始める。あとから撮ると、始める前に
+    // 解析側の事前判定で止まってしまい、**この入口の上限**を見たことにならない。
+    const ids: string[] = [];
+    for (let count = 0; count < 4; count += 1) ids.push((await analyze()).session_id);
+    for (const id of ids.slice(0, 3)) {
+      expect((await startSession(id)).status).toBe(200);
+    }
+
+    const response = await startSession(ids[3] as string);
+    expect(response.status).toBe(429);
+    const body = (await response.json()) as {
+      error: { code: string; message: string; retry_after_seconds: number };
+    };
+    expect(body.error.code).toBe("fair_use_limit_reached");
+    expect(body.error.message).not.toMatch(/[0-9０-９]/);
+    expect(body.error.retry_after_seconds).toBeGreaterThan(0);
+  });
+
+  it("他人のセッションは始められない", async () => {
+    const session = await analyze();
+
+    const response = await startSession(
+      session.session_id,
+      {},
+      { "x-device-id": "99999999-8888-7777-6666-555555555555" },
+    );
+    expect(response.status).toBe(404);
+  });
+
+  it("終わったセッションは始め直せない", async () => {
+    const session = await analyze();
+    await services.repository.completeSession({
+      sessionId: session.session_id,
+      completedAt: new Date().toISOString(),
+      durationSeconds: 300,
+    });
+
+    expect((await startSession(session.session_id)).status).toBe(404);
+  });
+
+  // 契約は作成時にも見ているが、そこから期限が切れることがある。
+  // 従量原価が動くのはこの入口なので、ここでもう一度見る。
+  it("復習は、始めるときにもPremiumを確かめる", async () => {
+    await makePremium();
+    await services.repository.insertKarte(
+      {
+        id: "kar_seed",
+        session_id: "ses_seed",
+        device_id: testDeviceId,
+        created_at: "2026-08-01T11:00:00.000Z",
+        topic_ids: ["M1-NIJI-GURAFU"],
+        said_well: [],
+        term_notes: [],
+        followup_question: null,
+      },
+      [
+        {
+          id: "hol_seed",
+          device_id: testDeviceId,
+          karte_id: "kar_seed",
+          topic_id: "M1-NIJI-GURAFU",
+          desc: "平方完成のなぜで説明が止まった",
+          severity: "high",
+          evidence: null,
+          quiz: null,
+          status: "open",
+          created_at: "2026-08-01T11:00:00.000Z",
+          filled_at: null,
+        },
+      ],
+    );
+
+    const form = new FormData();
+    form.set("meta", JSON.stringify({ kind: "review", locale: "ja", hole_id: "hol_seed" }));
+    const session = (await (await post(form)).json()) as CreateSessionResponse;
+
+    await services.repository.setPremium({
+      deviceId: testDeviceId,
+      isPremium: false,
+      expiresAt: null,
+      rcAppUserId: "rc_1",
+    });
+
+    const response = await startSession(session.session_id);
+    expect(response.status).toBe(402);
+    expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+      "premium_required",
+    );
+  });
+
+  it("知らないセッションは404", async () => {
+    expect((await startSession("ses_unknown")).status).toBe(404);
   });
 });
 
@@ -331,16 +561,6 @@ describe("復習セッション", () => {
     return "hol_seed";
   }
 
-  async function makePremium(): Promise<void> {
-    await services.repository.ensureUser(testDeviceId, new Date());
-    await services.repository.setPremium({
-      deviceId: testDeviceId,
-      isPremium: true,
-      expiresAt: null,
-      rcAppUserId: null,
-    });
-  }
-
   function reviewForm(holeId: string): FormData {
     const form = new FormData();
     form.set("meta", JSON.stringify({ kind: "review", locale: "ja", hole_id: holeId }));
@@ -368,11 +588,8 @@ describe("復習セッション", () => {
     // 写真がなくても、穴から単元を引く
     expect(body.detected_topics.map((topic) => topic.topic_id)).toEqual(["M1-NIJI-GURAFU"]);
 
-    const claims = await verifyJwt(body.livekit.token, bindings.LIVEKIT_API_SECRET);
-    const metadata = JSON.parse(String(claims?.["metadata"])) as {
-      problem_text: string;
-      review_hole: unknown;
-    };
+    const started = await analyzeThenStart(reviewForm(holeId));
+    const metadata = await metadataOf<{ problem_text: string; review_hole: unknown }>(started);
     // 穴を問題文に偽装しない。写真なしの事実と、教え直す根拠は別の欄で運ぶ。
     expect(metadata.problem_text).toBe("(問題の写真なし)");
     expect(metadata.review_hole).toEqual({
@@ -402,15 +619,8 @@ describe("復習セッション", () => {
     const form = new FormData();
     form.set("meta", JSON.stringify({ kind: "review", locale: "en", hole_id: holeId }));
 
-    const response = await post(form);
-    expect(response.status).toBe(201);
-
-    const body = (await response.json()) as CreateSessionResponse;
-    const claims = await verifyJwt(body.livekit.token, bindings.LIVEKIT_API_SECRET);
-    const metadata = JSON.parse(String(claims?.["metadata"])) as {
-      locale: string;
-      photo_summary: string;
-    };
+    const started = await analyzeThenStart(form);
+    const metadata = await metadataOf<{ locale: string; photo_summary: string }>(started);
 
     expect(metadata.locale).toBe("ja");
     expect(metadata.photo_summary).toBe("前回、平方完成のなぜで説明が止まった");
@@ -436,19 +646,20 @@ describe("復習セッション", () => {
  * §1-1「AIが理解している建て付けのアプリほど誤読が致命傷になる」の急所。
  */
 describe("問題文", () => {
+  /** 解析だけ。問題文を「アプリに返すか」を見るテストはこちら。 */
   async function start(options: { problemPhoto?: File } = {}) {
     const response = await post(createSessionForm({}, options));
     expect(response.status).toBe(201);
     return (await response.json()) as CreateSessionResponse;
   }
 
-  async function metadataOf(body: CreateSessionResponse) {
-    const claims = await verifyJwt(body.livekit.token, bindings.LIVEKIT_API_SECRET);
-    return JSON.parse(String(claims?.["metadata"])) as { problem_text: string };
+  /** 会話まで進める。問題文が「先輩に届くか」を見るテストはこちら。 */
+  function problemTextOf(form: FormData = createSessionForm()) {
+    return analyzeThenStart(form).then((started) => metadataOf<{ problem_text: string }>(started));
   }
 
   it("解析が読み取った問題文を、エージェントに渡す文脈に載せる", async () => {
-    const metadata = await metadataOf(await start());
+    const metadata = await problemTextOf();
     expect(metadata.problem_text).toBe(analysisFixture.problem_text);
     // 要約(何が写っているか)を問題文として流用しない。これが元の不具合そのもの。
     expect(metadata.problem_text).not.toBe(analysisFixture.summary);
@@ -521,7 +732,7 @@ describe("問題文", () => {
     const body = await start();
 
     expect(body.problem).toBeNull();
-    expect((await metadataOf(body)).problem_text).toBe("(問題の写真なし)");
+    expect((await problemTextOf()).problem_text).toBe("(問題の写真なし)");
   });
 
   /**
@@ -543,10 +754,9 @@ describe("問題文", () => {
       ...testServices(),
       analyzer: new RecordingAnalyzer({ ...analysisFixtureEn, problem_text: "" }, {}),
     };
-    const response = await post(createSessionForm({ locale: "en" }));
-    const body = (await response.json()) as CreateSessionResponse;
+    const metadata = await problemTextOf(createSessionForm({ locale: "en" }));
 
-    expect((await metadataOf(body)).problem_text).toBe("(no photo of the problem)");
+    expect(metadata.problem_text).toBe("(no photo of the problem)");
   });
 
   /**
@@ -560,7 +770,7 @@ describe("問題文", () => {
     const body = await start();
 
     expect(body.problem).toBeNull();
-    expect((await metadataOf(body)).problem_text).toBe("(問題の写真なし)");
+    expect((await problemTextOf()).problem_text).toBe("(問題の写真なし)");
   });
 
   /**
@@ -580,7 +790,7 @@ describe("問題文", () => {
     const body = await start();
 
     expect(body.problem).toBeNull();
-    expect((await metadataOf(body)).problem_text).toBe(formatProblemText(null, "ja"));
+    expect((await problemTextOf()).problem_text).toBe(formatProblemText(null, "ja"));
   });
 
   // 単元を絞り込むだけで問題文が消えると、先輩が問題を見ないまま教える状態に戻る。
@@ -591,13 +801,18 @@ describe("問題文", () => {
       topic_ids: ["M2-ZUKEI-ENCHOKU"],
     });
     const body = (await response.json()) as CreateSessionResponse;
-
     expect(body.problem).toEqual(session.problem);
-    expect((await metadataOf(body)).problem_text).toBe(analysisFixture.problem_text);
+
+    const started = (
+      await startSession(session.session_id)
+    ).json() as Promise<StartSessionResponse>;
+    const metadata = await metadataOf<{ problem_text: string }>(await started);
+    expect(metadata.problem_text).toBe(analysisFixture.problem_text);
   });
 
   it("エージェントに渡す文脈は contract のスキーマを満たす", async () => {
-    const claims = await verifyJwt((await start()).livekit.token, bindings.LIVEKIT_API_SECRET);
+    const started = await analyzeThenStart();
+    const claims = await verifyJwt(started.livekit.token, bindings.LIVEKIT_API_SECRET);
     const parsed = sessionMetadataSchema.safeParse(JSON.parse(String(claims?.["metadata"])));
     expect(parsed.success ? null : parsed.error.issues).toBeNull();
   });
@@ -619,12 +834,11 @@ describe("問題だけのセッション", () => {
     return form;
   }
 
-  async function metadataOf(body: CreateSessionResponse) {
-    const claims = await verifyJwt(body.livekit.token, bindings.LIVEKIT_API_SECRET);
-    return JSON.parse(String(claims?.["metadata"])) as {
-      problem_text: string;
-      visible_work: string;
-    };
+  /** 会話まで進めて、先輩に届く文脈を読む。 */
+  function contextOf(form: FormData) {
+    return analyzeThenStart(form).then((started) =>
+      metadataOf<{ problem_text: string; visible_work: string }>(started),
+    );
   }
 
   it("ノートが無くてもセッションが始まる", async () => {
@@ -670,8 +884,7 @@ describe("問題だけのセッション", () => {
   it("student_work は「(なし)」ではなく「ノートの写真なし」になる", async () => {
     services = testServices({ analysis: { ...analysisFixture, visible_work: [] } });
 
-    const response = await post(problemOnlyForm());
-    const metadata = await metadataOf((await response.json()) as CreateSessionResponse);
+    const metadata = await contextOf(problemOnlyForm());
     expect(metadata.visible_work).toBe("(ノートの写真なし)");
     expect(metadata.visible_work).not.toBe("(なし)");
   });
@@ -681,8 +894,7 @@ describe("問題だけのセッション", () => {
       ...testServices(),
       analyzer: new RecordingAnalyzer({ ...analysisFixtureEn, visible_work: [] }, {}),
     };
-    const response = await post(problemOnlyForm({ locale: "en" }));
-    const metadata = await metadataOf((await response.json()) as CreateSessionResponse);
+    const metadata = await contextOf(problemOnlyForm({ locale: "en" }));
 
     // 文言の正本は `@ai-sensei/prompts` の formatVisibleWork(プロンプトが名指ししている)。
     // API側で組み立て直していないことを、正本と突き合わせて固定する。
@@ -696,10 +908,12 @@ describe("問題だけのセッション", () => {
     const created = await post(problemOnlyForm());
     const session = (await created.json()) as CreateSessionResponse;
 
-    const response = await patchTopics(session.session_id, {
-      topic_ids: ["M2-ZUKEI-ENCHOKU"],
-    });
-    const metadata = await metadataOf((await response.json()) as CreateSessionResponse);
+    expect(
+      (await patchTopics(session.session_id, { topic_ids: ["M2-ZUKEI-ENCHOKU"] })).status,
+    ).toBe(200);
+
+    const started = (await (await startSession(session.session_id)).json()) as StartSessionResponse;
+    const metadata = await metadataOf<{ visible_work: string }>(started);
     expect(metadata.visible_work).toBe("(ノートの写真なし)");
   });
 
@@ -717,8 +931,7 @@ describe("問題だけのセッション", () => {
   });
 
   it("ノートがあるときは、従来どおり読み取った内容を渡す", async () => {
-    const response = await post(createSessionForm());
-    const metadata = await metadataOf((await response.json()) as CreateSessionResponse);
+    const metadata = await contextOf(createSessionForm());
     expect(metadata.visible_work).toContain(analysisFixture.visible_work[0]);
   });
 
@@ -741,7 +954,7 @@ describe("問題だけのセッション", () => {
     form.set("meta", JSON.stringify({ kind: "new", locale: "ja" }));
 
     expect((await post(form)).status).toBe(422);
-    // 読めない写真で今日の1回を失わせない(従来の約束)
+    // 読めない写真で解析の枠を失わせない(従来の約束)
     expect((await post(createSessionForm())).status).toBe(201);
   });
 
@@ -788,9 +1001,7 @@ describe("問題だけのセッション", () => {
     const form = new FormData();
     form.set("meta", JSON.stringify({ kind: "review", locale: "ja", hole_id: "hol_seed" }));
 
-    const response = await post(form);
-    expect(response.status).toBe(201);
-    const metadata = await metadataOf((await response.json()) as CreateSessionResponse);
+    const metadata = await contextOf(form);
     expect(metadata.visible_work).toBe("(なし)");
   });
 });
@@ -805,9 +1016,9 @@ describe("検出単元の確信度", () => {
   });
 });
 
-// レビュー指摘: 無料枠の判定と行の作成が離れていると、同時投稿で二重に通る
-describe("無料枠の押さえ方", () => {
-  it("解析に失敗したら、その日の1回を消費しない", async () => {
+// レビュー指摘: 上限の判定と行の作成が離れていると、同時投稿で二重に通る
+describe("解析枠の押さえ方", () => {
+  it("解析に失敗したら、その日の解析の枠を消費しない", async () => {
     services = testServices({
       analysis: {
         subject: "other",
@@ -827,7 +1038,7 @@ describe("無料枠の押さえ方", () => {
     expect((await post(createSessionForm())).status).toBe(201);
   });
 
-  it("解析の前に行を作って枠を押さえる", async () => {
+  it("解析の前に行を作って解析の枠を押さえる", async () => {
     let sessionsDuringAnalysis = -1;
     services.analyzer = {
       async analyze() {
@@ -837,14 +1048,32 @@ describe("無料枠の押さえ方", () => {
     };
 
     await post(createSessionForm());
-    // 解析中にはもう行がある = 同時に来た2本目は無料枠に弾かれる
+    // 解析中にはもう行がある = 同時に来た解析も同じ枠を数える
     expect(sessionsDuringAnalysis).toBe(1);
   });
 });
 
+/**
+ * 授業枠の原子性。**枠を押さえるのは会話の開始**になったので、
+ * 同時実行の穴もそちらへ移っている。
+ *
+ * 解析まで済ませたセッションを人数分そろえてから、いっせいに始める。
+ * 「数えてから書く」実装に戻すと、全員が同じ「まだ空いている」を見て通る。
+ */
 describe("同時実行の授業枠", () => {
-  it("無料は同時に3本投げても1本しか通らない", async () => {
-    const wait = concurrencyBarrier(3);
+  async function analyzed(count: number): Promise<string[]> {
+    const ids: string[] = [];
+    for (let index = 0; index < count; index += 1) {
+      const response = await post(createSessionForm());
+      expect(response.status).toBe(201);
+      ids.push(((await response.json()) as CreateSessionResponse).session_id);
+    }
+    return ids;
+  }
+
+  /** `/start` が `ensureUser` を通ったところで全員をそろえる関門。 */
+  function lineUpAt(count: number): void {
+    const wait = concurrencyBarrier(count);
     const repository = services.repository;
     const original = repository.ensureUser.bind(repository);
     repository.ensureUser = async (deviceId: string, now: Date) => {
@@ -852,10 +1081,15 @@ describe("同時実行の授業枠", () => {
       await wait();
       return user;
     };
+  }
 
-    const responses = await Promise.all(Array.from({ length: 3 }, () => post(createSessionForm())));
+  it("無料は同時に3本始めても1本しか通らない", async () => {
+    const ids = await analyzed(3);
+    lineUpAt(3);
+
+    const responses = await Promise.all(ids.map((id) => startSession(id)));
     expect(responses.map((response) => response.status).sort((a, b) => a - b)).toEqual([
-      201, 402, 402,
+      200, 402, 402,
     ]);
 
     const rejected = responses.filter((response) => response.status === 402);
@@ -866,30 +1100,19 @@ describe("同時実行の授業枠", () => {
       "free_limit_reached",
       "free_limit_reached",
     ]);
-    expect(repository.sessions.size).toBe(1);
+    expect(await services.repository.countStartedSessionsOnDate(testDeviceId, "2026-08-03")).toBe(
+      1,
+    );
   });
 
-  it("Premiumは同時に5本投げても3本しか通らない", async () => {
-    const repository = services.repository;
-    await repository.ensureUser(testDeviceId, new Date());
-    await repository.setPremium({
-      deviceId: testDeviceId,
-      isPremium: true,
-      expiresAt: null,
-      rcAppUserId: "rc_1",
-    });
+  it("Premiumは同時に5本始めても3本しか通らない", async () => {
+    await makePremium();
+    const ids = await analyzed(5);
+    lineUpAt(5);
 
-    const wait = concurrencyBarrier(5);
-    const original = repository.ensureUser.bind(repository);
-    repository.ensureUser = async (deviceId: string, now: Date) => {
-      const user = await original(deviceId, now);
-      await wait();
-      return user;
-    };
-
-    const responses = await Promise.all(Array.from({ length: 5 }, () => post(createSessionForm())));
+    const responses = await Promise.all(ids.map((id) => startSession(id)));
     expect(responses.map((response) => response.status).sort((a, b) => a - b)).toEqual([
-      201, 201, 201, 429, 429,
+      200, 200, 200, 429, 429,
     ]);
 
     const rejected = responses.filter((response) => response.status === 429);
@@ -900,7 +1123,9 @@ describe("同時実行の授業枠", () => {
       "fair_use_limit_reached",
       "fair_use_limit_reached",
     ]);
-    expect(repository.sessions.size).toBe(3);
+    expect(await services.repository.countStartedSessionsOnDate(testDeviceId, "2026-08-03")).toBe(
+      3,
+    );
   });
 });
 
@@ -909,14 +1134,14 @@ describe("同時実行の授業枠", () => {
  * 単元を確認しただけでセッションを作り直していたため、無料枠を2回消費していた。
  */
 describe("PATCH /v1/sessions/{id}/topics", () => {
-  async function startSession(): Promise<CreateSessionResponse> {
+  async function analyze(): Promise<CreateSessionResponse> {
     const response = await post(createSessionForm());
     expect(response.status).toBe(201);
     return (await response.json()) as CreateSessionResponse;
   }
 
-  it("単元を絞っても、今日の無料枠を二重に消費しない", async () => {
-    const session = await startSession();
+  it("単元を絞っても、セッションは作り直さない", async () => {
+    const session = await analyze();
 
     const response = await patchTopics(session.session_id, {
       locale: "ja",
@@ -926,35 +1151,48 @@ describe("PATCH /v1/sessions/{id}/topics", () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as CreateSessionResponse;
     expect(createSessionResponseSchema.safeParse(body).success).toBe(true);
-    // 同じセッションのまま。行が増えていなければ枠も増えない
+    // 同じセッションのまま。行が増えていなければ、解析も枠も二重にならない
     expect(body.session_id).toBe(session.session_id);
     expect(services.repository.sessions.size).toBe(1);
-    expect(body.limits.lesson_allowed_today).toBe(false);
   });
 
-  it("外した単元は許可リストから消え、トークンも出し直す", async () => {
-    const session = await startSession();
+  // 単元を確かめただけの人は、まだ1回も話していない。
+  it("単元を確かめただけでは、今日の1回を使わない", async () => {
+    const session = await analyze();
+    await patchTopics(session.session_id, { topic_ids: ["M2-ZUKEI-ENCHOKU"] });
+
+    expect(await services.repository.countStartedSessionsOnDate(testDeviceId, "2026-08-03")).toBe(
+      0,
+    );
+    const progress = await app.request(
+      "/v1/me/progress",
+      { headers: { "x-device-id": testDeviceId } },
+      bindings,
+    );
+    const body = (await progress.json()) as { limits: { lesson_allowed_today: boolean } };
+    expect(body.limits.lesson_allowed_today).toBe(true);
+  });
+
+  it("外した単元は、始めるときのトークンにも載らない", async () => {
+    const session = await analyze();
 
     const response = await patchTopics(session.session_id, {
       topic_ids: ["M1-NIJI-HANBETSU"],
     });
     const body = (await response.json()) as CreateSessionResponse;
-
     expect(body.detected_topics.map((topic) => topic.topic_id)).toEqual(["M1-NIJI-HANBETSU"]);
-    expect(body.livekit.token).not.toBe(session.livekit.token);
 
-    const claims = await verifyJwt(body.livekit.token, bindings.LIVEKIT_API_SECRET);
-    const metadata = JSON.parse(String(claims?.["metadata"])) as {
-      allowed_topic_ids: string[];
-      photo_summary: string;
-    };
+    const started = (await (await startSession(session.session_id)).json()) as StartSessionResponse;
+    const metadata = await metadataOf<{ allowed_topic_ids: string[]; photo_summary: string }>(
+      started,
+    );
     expect(metadata.allowed_topic_ids).not.toContain("M2-ZUKEI-ENCHOKU");
     // 写真をもう一度解析しなくても、会話の文脈は残っている
     expect(metadata.photo_summary).toBe(analysisFixture.summary);
   });
 
   it("解析時の確信度をそのまま返す(チップの見た目が変わらない)", async () => {
-    const session = await startSession();
+    const session = await analyze();
 
     const response = await patchTopics(session.session_id, {
       topic_ids: ["M2-ZUKEI-ENCHOKU"],
@@ -964,7 +1202,7 @@ describe("PATCH /v1/sessions/{id}/topics", () => {
   });
 
   it("検出していない単元には差し替えられない", async () => {
-    const session = await startSession();
+    const session = await analyze();
 
     const response = await patchTopics(session.session_id, {
       topic_ids: ["M1-NIJI-GURAFU"],
@@ -976,7 +1214,7 @@ describe("PATCH /v1/sessions/{id}/topics", () => {
   });
 
   it("他人のセッションは触れない", async () => {
-    const session = await startSession();
+    const session = await analyze();
 
     const response = await patchTopics(
       session.session_id,
@@ -987,7 +1225,7 @@ describe("PATCH /v1/sessions/{id}/topics", () => {
   });
 
   it("終わったセッションは触れない", async () => {
-    const session = await startSession();
+    const session = await analyze();
     await services.repository.completeSession({
       sessionId: session.session_id,
       completedAt: new Date().toISOString(),
@@ -1001,21 +1239,16 @@ describe("PATCH /v1/sessions/{id}/topics", () => {
   });
 
   it("Premiumも会話時間の上限は20分のまま", async () => {
-    await services.repository.ensureUser(testDeviceId, new Date());
-    await services.repository.setPremium({
-      deviceId: testDeviceId,
-      isPremium: true,
-      expiresAt: null,
-      rcAppUserId: "rc_1",
-    });
-    const session = await startSession();
+    await makePremium();
+    const session = await analyze();
 
-    const response = await patchTopics(session.session_id, {
-      topic_ids: ["M2-ZUKEI-ENCHOKU"],
-    });
-    const body = (await response.json()) as CreateSessionResponse;
-    expect(body.limits.max_seconds).toBe(1200);
-    expect(body.limits.lesson_allowed_today).toBe(true);
+    expect(
+      (await patchTopics(session.session_id, { topic_ids: ["M2-ZUKEI-ENCHOKU"] })).status,
+    ).toBe(200);
+
+    const started = (await (await startSession(session.session_id)).json()) as StartSessionResponse;
+    expect(started.limits.max_seconds).toBe(1200);
+    expect(started.limits.lesson_allowed_today).toBe(true);
   });
 });
 
@@ -1047,16 +1280,13 @@ describe("locale=en のセッション", () => {
   });
 
   it("エージェントに渡す文脈も英語で揃える", async () => {
-    const response = await post(createSessionForm({ locale: "en" }));
-    const body = (await response.json()) as CreateSessionResponse;
-
-    const claims = await verifyJwt(body.livekit.token, bindings.LIVEKIT_API_SECRET);
-    const metadata = JSON.parse(String(claims?.["metadata"])) as {
+    const started = await analyzeThenStart(createSessionForm({ locale: "en" }));
+    const metadata = await metadataOf<{
       locale: string;
       allowed_topics: string;
       allowed_topic_ids: string[];
       question_seeds: string;
-    };
+    }>(started);
 
     expect(metadata.locale).toBe("en");
     expect(metadata.allowed_topics).toContain("Algebra 2 / Coordinate Geometry");
@@ -1067,7 +1297,7 @@ describe("locale=en のセッション", () => {
   });
 
   it("エラー文言も英語で返す", async () => {
-    await post(createSessionForm({ locale: "en" }));
+    await analyzeThenStart(createSessionForm({ locale: "en" }));
     const response = await post(createSessionForm({ locale: "en" }));
 
     expect(response.status).toBe(402);
@@ -1089,8 +1319,8 @@ describe("locale=en のセッション", () => {
     const body = (await response.json()) as CreateSessionResponse;
     expect(body.detected_topics.map((topic) => topic.topic_id)).toEqual(["A2-COORD-CIRCLE"]);
 
-    const claims = await verifyJwt(body.livekit.token, bindings.LIVEKIT_API_SECRET);
-    const metadata = JSON.parse(String(claims?.["metadata"])) as { locale: string };
+    const started = (await (await startSession(session.session_id)).json()) as StartSessionResponse;
+    const metadata = await metadataOf<{ locale: string }>(started);
     expect(metadata.locale).toBe("en");
   });
 });

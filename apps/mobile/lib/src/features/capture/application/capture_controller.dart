@@ -10,7 +10,14 @@ import '../../settings/application/school_stage_controller.dart';
 
 part 'capture_controller.g.dart';
 
-/// 撮影 → (問題の写真は任意で追加)→ 解析 → 単元と問題文の確認 → セッション開始。
+/// 撮影 → (問題の写真は任意で追加)→ 解析 → 単元と問題文の確認 → 会話の開始。
+///
+/// **今日の1回を使うのは最後の一歩だけ。** 解析([analyze])まではセッションを
+/// 作るだけで数えず、会話を始める([confirmAndStart] / [startReview])ときに
+/// サーバが枠を押さえてトークンを返す。だから状態も2つに分かれている:
+///
+///   - [CaptureState.analysis] … 写真から読めたもの(単元・問題文)。数えない
+///   - [CaptureState.session]  … 始まった会話(部屋の鍵)。**これが返った = 1回使った**
 ///
 /// 単元のチップは**外せる**。写真解析が外したときに、ユーザーが直せる余地を残す
 /// (「修正可能なチップUI」)。
@@ -25,6 +32,7 @@ class CaptureState {
   const CaptureState({
     this.photo,
     this.problemPhoto,
+    this.analysis,
     this.session,
     this.excludedTopicIds = const <String>{},
     this.isSubmitting = false,
@@ -40,15 +48,20 @@ class CaptureState {
   /// 撮影の摩擦だけが増える。無ければ解析器はノートの写真から問題文を読み取る。
   final File? problemPhoto;
 
+  /// 写真を読んだ結果。**ここまでは今日の1回を使っていない。**
+  final SessionAnalysis? analysis;
+
+  /// 始まった会話。**入った時点で今日の1回を使っている**(部屋の鍵つき)。
   final SessionStart? session;
+
   final Set<String> excludedTopicIds;
   final bool isSubmitting;
   final ApiException? error;
 
   /// 読み取れた問題文。読めなければ null。
-  SessionProblem? get problem => session?.problem;
+  SessionProblem? get problem => analysis?.problem;
 
-  List<DetectedTopic> get topics => session?.detectedTopics ?? const <DetectedTopic>[];
+  List<DetectedTopic> get topics => analysis?.detectedTopics ?? const <DetectedTopic>[];
 
   List<String> get selectedTopicIds => topics
       .where((DetectedTopic it) => !excludedTopicIds.contains(it.topicId))
@@ -72,6 +85,7 @@ class CaptureState {
   CaptureState copyWith({
     File? photo,
     File? problemPhoto,
+    SessionAnalysis? analysis,
     SessionStart? session,
     Set<String>? excludedTopicIds,
     bool? isSubmitting,
@@ -81,6 +95,7 @@ class CaptureState {
     return CaptureState(
       photo: photo ?? this.photo,
       problemPhoto: problemPhoto ?? this.problemPhoto,
+      analysis: analysis ?? this.analysis,
       session: session ?? this.session,
       excludedTopicIds: excludedTopicIds ?? this.excludedTopicIds,
       isSubmitting: isSubmitting ?? this.isSubmitting,
@@ -100,17 +115,16 @@ class CaptureController extends _$CaptureController {
   /// ノートを撮り直したときに2枚目が黙って消える。撮影のたびに白紙に戻すのは
   /// 画面に入ったときの [reset] の役目で、ここではない。
   void setPhoto(File photo) {
-    if (state.session != null) return;
+    if (state.analysis != null) return;
     state = state.copyWith(photo: photo, clearError: true);
   }
 
   /// 問題の写真を足す(任意)。**解析の前にしか呼ばれない。**
   ///
-  /// 解析はセッションを作る = 今日の1回を使う操作なので、あとから足して
-  /// 解析し直すことはできない(`confirmAndStart` のコメントと同じ理由)。
-  /// だから2枚目を足せるのは、まだ解析していないあいだだけ。
+  /// 解析はもう済んでいるので、あとから足しても読み直されない
+  /// (読み直すには撮影からやり直す = この画面に入り直す)。
   void setProblemPhoto(File photo) {
-    if (state.session != null) return;
+    if (state.analysis != null) return;
     state = state.copyWith(problemPhoto: photo, clearError: true);
   }
 
@@ -120,7 +134,7 @@ class CaptureController extends _$CaptureController {
     state = state.copyWith(excludedTopicIds: excluded);
   }
 
-  /// 写真を送って単元を検出する(まだ会話は始めない)。
+  /// 写真を送って単元を検出する(**まだ会話は始めないので、今日の1回も使わない**)。
   ///
   /// **どちらか1枚あれば出せる**([CaptureState.hasAnyPhoto])。
   /// 問題だけでも成立するのは、手も付けられない問題を持ってきた生徒に
@@ -130,7 +144,7 @@ class CaptureController extends _$CaptureController {
 
     state = state.copyWith(isSubmitting: true, clearError: true);
     try {
-      final SessionStart session = await ref.read(apiClientProvider).createSession(
+      final SessionAnalysis analysis = await ref.read(apiClientProvider).createSession(
             photo: state.photo,
             problemPhoto: state.problemPhoto,
             locale: locale,
@@ -138,10 +152,10 @@ class CaptureController extends _$CaptureController {
             schoolStage: ref.read(schoolStageControllerProvider).wireValue,
           );
       state = state.copyWith(
-        session: session,
+        analysis: analysis,
         isSubmitting: false,
         // 確信度の低い候補は、はじめから外しておく(押しつけない)
-        excludedTopicIds: session.detectedTopics
+        excludedTopicIds: analysis.detectedTopics
             .where((DetectedTopic it) => !it.isConfident)
             .map((DetectedTopic it) => it.topicId)
             .toSet(),
@@ -161,32 +175,36 @@ class CaptureController extends _$CaptureController {
     }
   }
 
-  /// 単元の確認を反映してからセッションを始める。
+  /// 単元の確認を反映してから、**会話を始める**。
   ///
-  /// チップを外しただけでは、サーバ側のセッションとLiveKitトークンは
-  /// 解析時の単元のままになる。**外した単元を先輩が教えてしまう**ので、
-  /// 選択が変わっていればサーバへ反映する。
+  /// チップを外しただけでは、サーバ側のセッションは解析時の単元のままになる。
+  /// **外した単元を先輩が教えてしまう**ので、選択が変わっていれば先に反映する。
   ///
-  /// ここでセッションを作り直してはいけない。写真の解析時点で今日の1回は
-  /// 押さえてあるので、作り直すと2回目扱いになり、会話を始める瞬間に
-  /// 「今日のセッションはここまで」と返ってしまう。
+  /// ここでセッションを作り直してはいけない。同じ写真をもう一度Vision LLMに
+  /// 通すことになり、解析の回数だけを見ている上限にも二重に当たる。
+  ///
+  /// **今日の1回を使うのはこの最後の一歩。** 上限に当たるならここで
+  /// `free_limit_reached` が返るので、撮影画面のまま文言を出せる。
   Future<SessionStart?> confirmAndStart({String locale = 'ja'}) async {
-    final SessionStart? current = state.session;
+    final SessionAnalysis? current = state.analysis;
     if (current == null) return null;
-    if (state.excludedTopicIds.isEmpty) return current;
 
     state = state.copyWith(isSubmitting: true, clearError: true);
     try {
-      final SessionStart session = await ref.read(apiClientProvider).updateSessionTopics(
+      if (state.excludedTopicIds.isNotEmpty) {
+        final SessionAnalysis narrowed = await ref.read(apiClientProvider).updateSessionTopics(
+              sessionId: current.sessionId,
+              topicIds: state.selectedTopicIds,
+              locale: locale,
+            );
+        state = state.copyWith(analysis: narrowed, excludedTopicIds: <String>{});
+      }
+
+      final SessionStart session = await ref.read(apiClientProvider).startSession(
             sessionId: current.sessionId,
-            topicIds: state.selectedTopicIds,
             locale: locale,
           );
-      state = state.copyWith(
-        session: session,
-        isSubmitting: false,
-        excludedTopicIds: <String>{},
-      );
+      state = state.copyWith(session: session, isSubmitting: false);
       return session;
     } on ApiException catch (error) {
       state = state.copyWith(isSubmitting: false, error: error);
@@ -204,15 +222,22 @@ class CaptureController extends _$CaptureController {
   }
 
   /// 復習(プッシュ起点)。写真は送らず、埋めにいく穴を指定する。
+  ///
+  /// 単元を確かめる画面が無いので、作成と開始を続けて呼ぶ。
+  /// **数える位置は新規授業と同じ**(開始のほう)。
   Future<SessionStart?> startReview(String holeId, {String locale = 'ja'}) async {
     state = const CaptureState(isSubmitting: true);
     try {
-      final SessionStart session = await ref.read(apiClientProvider).createSession(
+      final SessionAnalysis analysis = await ref.read(apiClientProvider).createSession(
             kind: 'review',
             holeId: holeId,
             locale: locale,
           );
-      state = state.copyWith(session: session, isSubmitting: false);
+      final SessionStart session = await ref.read(apiClientProvider).startSession(
+            sessionId: analysis.sessionId,
+            locale: locale,
+          );
+      state = state.copyWith(analysis: analysis, session: session, isSubmitting: false);
       return session;
     } on ApiException catch (error) {
       state = state.copyWith(isSubmitting: false, error: error);

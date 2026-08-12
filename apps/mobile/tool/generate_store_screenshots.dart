@@ -320,6 +320,13 @@ const SessionStart _sampleSessionStart = SessionStart(
   kind: 'realtime',
   livekit:
       LiveKitConnection(url: 'wss://example', token: 'token', room: 'room'),
+  limits: SessionLimits(maxSeconds: 300, lessonAllowedToday: true),
+);
+
+/// 撮影から渡される解析の結果(単元と問題文)。会話の開始とは別の値。
+const SessionAnalysis _sampleSessionAnalysis = SessionAnalysis(
+  sessionId: 'ses_1',
+  kind: 'realtime',
   detectedTopics: <DetectedTopic>[
     DetectedTopic(
       topicId: 'M1-NIJI-HANBETSU',
@@ -330,7 +337,6 @@ const SessionStart _sampleSessionStart = SessionStart(
       confidence: 0.9,
     ),
   ],
-  limits: SessionLimits(maxSeconds: 300, lessonAllowedToday: true),
 );
 
 class _FakeSessionController extends SessionController {
@@ -347,7 +353,10 @@ class _FakeSessionController extends SessionController {
 
 class _FakeCaptureController extends CaptureController {
   @override
-  CaptureState build() => const CaptureState(session: _sampleSessionStart);
+  CaptureState build() => const CaptureState(
+    analysis: _sampleSessionAnalysis,
+    session: _sampleSessionStart,
+  );
 }
 
 /// カルテに残る板書。3枚目の「根拠」の節をここで埋める。

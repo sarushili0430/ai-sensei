@@ -8,7 +8,7 @@ import type {
   ReviewScheduleRecord,
   SessionContext,
   SessionRecord,
-  SessionReservation,
+  SessionStartResult,
   UserRecord,
 } from "./types.ts";
 
@@ -74,25 +74,39 @@ export class D1Repository implements Repository {
       .run();
   }
 
-  async countSessionsOnDate(deviceId: string, localDate: string): Promise<number> {
+  async countStartedSessionsOnDate(deviceId: string, localDate: string): Promise<number> {
     const row = await this.db
-      .prepare("SELECT COUNT(*) AS count FROM sessions WHERE device_id = ? AND local_date = ?")
+      .prepare(
+        `SELECT COUNT(*) AS count FROM sessions
+          WHERE device_id = ? AND local_date = ? AND started_at IS NOT NULL`,
+      )
       .bind(deviceId, localDate)
       .first<{ count: number }>();
     return row?.count ?? 0;
   }
 
-  async reserveSessionSlot(input: {
+  async createSession(input: {
     session: SessionRecord;
-    maxPerDay: number;
-  }): Promise<SessionReservation> {
+    maxAnalysesPerDay: number;
+  }): Promise<boolean> {
     const { session } = input;
-    const insert = this.db
+    /**
+     * 上限確認とINSERTは同じSQL文に入れる。SQLiteでは1文が原子的に実行され、
+     * 書き込みも直列化されるため、同時実行は同じ古いCOUNTを見たまま両方通れない。
+     *
+     * ここで数えるのは**その日に作った行の全部**(started_at は見ない)。
+     * 解析の原価は会話を始めたかどうかに関係なく発生するので、始めなかった
+     * セッションもこちらの上限には数える。
+     *
+     * day_seqのUNIQUE INDEXは意図的に使わない。デプロイはマイグレーションが先なので、
+     * 列を書かない旧Workerが既定値0を重ねる窓でINDEXがあると、2行目から失敗するため。
+     */
+    const insert = await this.db
       .prepare(
         `INSERT INTO sessions
            (id, device_id, kind, status, created_at, completed_at, local_date,
-            photo_key, topic_ids, hole_id, duration_seconds, context)
-         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            photo_key, topic_ids, hole_id, duration_seconds, context, started_at)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
           WHERE (SELECT COUNT(*) FROM sessions WHERE device_id = ? AND local_date = ?) < ?`,
       )
       .bind(
@@ -108,34 +122,83 @@ export class D1Repository implements Repository {
         session.hole_id,
         session.duration_seconds,
         session.context ? JSON.stringify(session.context) : null,
+        session.started_at,
         session.device_id,
         session.local_date,
+        input.maxAnalysesPerDay,
+      )
+      .run();
+    return changesOf(insert.meta) > 0;
+  }
+
+  async startSession(input: {
+    sessionId: string;
+    deviceId: string;
+    startedAt: string;
+    localDate: string;
+    maxPerDay: number;
+  }): Promise<SessionStartResult> {
+    /**
+     * 授業枠の確保 = この1文。上限の確認と `started_at` の書き込みが同じ文なので、
+     * 同時に押された2本が同じ古いCOUNTを見て両方通ることがない。
+     *
+     * `started_at IS NULL` を条件に入れてあるので、**再送は2度目を数えない**
+     * (changesが0になり、下で「もう始まっている」として読み直される)。
+     */
+    const start = this.db
+      .prepare(
+        `UPDATE sessions
+            SET started_at = ?, local_date = ?
+          WHERE id = ?
+            AND device_id = ?
+            AND started_at IS NULL
+            AND (
+              SELECT COUNT(*) FROM sessions AS counted
+               WHERE counted.device_id = ?
+                 AND counted.local_date = ?
+                 AND counted.started_at IS NOT NULL
+            ) < ?`,
+      )
+      .bind(
+        input.startedAt,
+        input.localDate,
+        input.sessionId,
+        input.deviceId,
+        input.deviceId,
+        input.localDate,
         input.maxPerDay,
       );
-    const count = this.db
-      .prepare("SELECT COUNT(*) AS count FROM sessions WHERE device_id = ? AND local_date = ?")
-      .bind(session.device_id, session.local_date);
+    // 「押さえられなかった」と「もう押さえてある」は結果が正反対なので、
+    // changesだけでは決められない。同じトランザクションで行を読み直す。
+    const read = this.db
+      .prepare(
+        `SELECT started_at,
+                (SELECT COUNT(*) FROM sessions AS counted
+                  WHERE counted.device_id = sessions.device_id
+                    AND counted.local_date = sessions.local_date
+                    AND counted.started_at IS NOT NULL) AS sessions_today
+           FROM sessions
+          WHERE id = ? AND device_id = ?`,
+      )
+      .bind(input.sessionId, input.deviceId);
 
-    /**
-     * 上限確認とINSERTは同じSQL文に入れる。SQLiteでは1文が原子的に実行され、
-     * 書き込みも直列化されるため、同時実行は同じ古いCOUNTを見たまま両方通れない。
-     *
-     * day_seqのUNIQUE INDEXは意図的に使わない。デプロイはマイグレーションが先なので、
-     * 列を書かない旧Workerが既定値0を重ねる窓でINDEXがあると、2行目から失敗するため。
-     * batchは同じトランザクションでINSERTと件数取得を行い、changesが0なら上限到達とする。
-     */
-    const results = await this.db.batch<{ count: number }>([insert, count]);
-    const insertResult = results[0];
-    if (!insertResult) throw new Error("授業枠のINSERT結果がありません");
-    const changes = changesOf(insertResult.meta);
+    const results = await this.db.batch<{ started_at: string | null; sessions_today: number }>([
+      start,
+      read,
+    ]);
+    const startResult = results[0];
+    if (!startResult) throw new Error("授業枠のUPDATE結果がありません");
+    const changes = changesOf(startResult.meta);
 
-    const countResult = results[1];
-    const sessionsToday = countResult?.results[0]?.count;
-    if (typeof sessionsToday !== "number") {
-      throw new Error("授業枠の確保後の件数を読み取れません");
+    const row = results[1]?.results[0];
+    if (!row) return { started: false };
+    if (changes > 0)
+      return { started: true, alreadyStarted: false, sessionsToday: row.sessions_today };
+    // 更新できなかったのに始まっている = 前に押さえた枠がそのまま生きている。
+    if (row.started_at !== null) {
+      return { started: true, alreadyStarted: true, sessionsToday: row.sessions_today };
     }
-    if (changes === 0) return { reserved: false };
-    return { reserved: true, sessionsToday };
+    return { started: false };
   }
 
   async updateSessionTopics(input: {
@@ -456,7 +519,7 @@ export class D1Repository implements Repository {
 /** metaの形が変わったとき、全員を上限到達として黙って止めずに異常を表へ出す。 */
 function changesOf(meta: Record<string, unknown>): number {
   const changes = meta["changes"];
-  if (typeof changes !== "number") throw new Error("授業枠のINSERT件数を読み取れません");
+  if (typeof changes !== "number") throw new Error("書き込んだ行数を読み取れません");
   return changes;
 }
 

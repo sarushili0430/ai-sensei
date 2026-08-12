@@ -13,7 +13,7 @@ import {
 } from "@ai-sensei/contract";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../app.ts";
-import type { HoleRecord, KarteRecord } from "../repository/types.ts";
+import type { HoleRecord, KarteRecord, SessionRecord } from "../repository/types.ts";
 import { type TestServices, testBindings, testDeviceId, testServices } from "../test-support.ts";
 
 let services: TestServices;
@@ -38,6 +38,33 @@ function answerReview(holeId: string, body: unknown, deviceId = testDeviceId) {
     },
     bindings,
   );
+}
+
+function sessionRow(id: string, overrides: Partial<SessionRecord> = {}): SessionRecord {
+  return {
+    id,
+    device_id: testDeviceId,
+    kind: "new",
+    status: "open",
+    created_at: "2026-08-03T13:00:00.000Z",
+    completed_at: null,
+    local_date: "2026-08-03",
+    photo_key: null,
+    topic_ids: [],
+    hole_id: null,
+    duration_seconds: null,
+    context: null,
+    started_at: null,
+    ...overrides,
+  };
+}
+
+/** 会話まで進んだセッション。**数えられるのはこれだけ**(`started_at` が入っている)。 */
+async function startedSession(id: string, overrides: Partial<SessionRecord> = {}): Promise<void> {
+  await services.repository.createSession({
+    session: sessionRow(id, { started_at: "2026-08-03T13:00:00.000Z", ...overrides }),
+    maxAnalysesPerDay: 99,
+  });
 }
 
 async function seedHole(overrides: Partial<HoleRecord> = {}): Promise<HoleRecord> {
@@ -96,26 +123,24 @@ describe("GET /v1/me/progress", () => {
   });
 
   it("無料ユーザーが今日の枠を使ったあとは授業不可を返す", async () => {
-    await services.repository.reserveSessionSlot({
-      session: {
-        id: "ses_today",
-        device_id: testDeviceId,
-        kind: "new",
-        status: "open",
-        created_at: "2026-08-03T13:00:00.000Z",
-        completed_at: null,
-        local_date: "2026-08-03",
-        photo_key: null,
-        topic_ids: [],
-        hole_id: null,
-        duration_seconds: null,
-        context: null,
-      },
-      maxPerDay: 1,
-    });
+    await startedSession("ses_today", { status: "open" });
 
     const body = (await (await get("/v1/me/progress")).json()) as ProgressResponse;
     expect(body.limits.lesson_allowed_today).toBe(false);
+  });
+
+  /**
+   * 写真を読んだだけのセッションは行としては在るが、先輩とは1度も話していない。
+   * ここを行数で数えていた頃は、撮って単元を確かめただけでホームの導線が閉じた。
+   */
+  it("写真を読んだだけで会話していないセッションは数えない", async () => {
+    await services.repository.createSession({
+      session: sessionRow("ses_analyzed", { started_at: null }),
+      maxAnalysesPerDay: 5,
+    });
+
+    const body = (await (await get("/v1/me/progress")).json()) as ProgressResponse;
+    expect(body.limits.lesson_allowed_today).toBe(true);
   });
 
   it("Premiumはフェアユース枠が残っていれば授業可で、無料と同じ20分を返す", async () => {
@@ -129,22 +154,10 @@ describe("GET /v1/me/progress", () => {
   it("Premiumも3回を使ったあとは今日の授業不可だけを返す", async () => {
     await makePremium();
     for (let count = 0; count < 3; count += 1) {
-      await services.repository.reserveSessionSlot({
-        session: {
-          id: `ses_premium_${count}`,
-          device_id: testDeviceId,
-          kind: "new",
-          status: "completed",
-          created_at: "2026-08-03T13:00:00.000Z",
-          completed_at: "2026-08-03T13:20:00.000Z",
-          local_date: "2026-08-03",
-          photo_key: null,
-          topic_ids: [],
-          hole_id: null,
-          duration_seconds: 1200,
-          context: null,
-        },
-        maxPerDay: 3,
+      await startedSession(`ses_premium_${count}`, {
+        status: "completed",
+        completed_at: "2026-08-03T13:20:00.000Z",
+        duration_seconds: 1200,
       });
     }
 
@@ -420,25 +433,20 @@ async function seedReportKarte(input: {
   holes?: HoleRecord[];
 }): Promise<void> {
   const sessionId = `ses_${input.id}`;
-  const reservation = await services.repository.reserveSessionSlot({
-    session: {
-      id: sessionId,
-      device_id: testDeviceId,
-      kind: "new",
+  const created = await services.repository.createSession({
+    session: sessionRow(sessionId, {
       status: "completed",
       created_at: input.createdAt,
       completed_at: input.createdAt,
       local_date: input.localDate,
-      photo_key: null,
       topic_ids: input.topicIds,
-      hole_id: null,
       duration_seconds: 900,
-      context: null,
-    },
+      started_at: input.createdAt,
+    }),
     // これは原価上限のテストではなく、月次集計の履歴を作る足場。
-    maxPerDay: 99,
+    maxAnalysesPerDay: 99,
   });
-  if (!reservation.reserved) throw new Error("親レポート用セッションを作れませんでした");
+  if (!created) throw new Error("親レポート用セッションを作れませんでした");
 
   await services.repository.insertKarte(
     {
