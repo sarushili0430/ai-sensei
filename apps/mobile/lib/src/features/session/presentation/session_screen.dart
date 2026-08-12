@@ -83,6 +83,10 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
         state.phase == SessionPhase.summarizing || state.phase == SessionPhase.finished;
 
     final BoardSnapshot board = state.board;
+    // 解析が読み取れた問題。読めなければ `null` で、そのときは何も出さない
+    // (「問題が読めませんでした」と書くと、先輩が読み上げを頼む前に
+    // 生徒が撮り直しに行ってしまう)。
+    final SessionProblem? problem = ref.watch(captureControllerProvider).session?.problem;
 
     return Scaffold(
       body: SafeArea(
@@ -94,6 +98,14 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
                 title: board.title,
                 remaining: strings.remaining(state.remainingSeconds),
               ),
+              // **問題文は板書より上に、常に出す。**見出し(`board.title`)は
+              // 先輩が付けた要約で、問題そのものではない。何を解いているかが
+              // 画面のどこにも無いと、板書から逆算するしかなくなる
+              // (`docs/wireframe_board_v2.html` の1つ目)。
+              if (problem != null) ...<Widget>[
+                const SizedBox(height: AppSpacing.sm),
+                _ProblemBlock(text: problem.text),
+              ],
               if (board.hasBoard) ...<Widget>[
                 // **板書が主役。**残りの高さを全部渡す。
                 Expanded(child: _BoardStage(board: board)),
@@ -174,6 +186,97 @@ class _SessionHeader extends StatelessWidget {
         Text(remaining, style: Theme.of(context).textTheme.bodySmall),
       ],
     );
+  }
+}
+
+/// いま解いている問題。**板書の上に、授業のあいだずっと出しておく。**
+///
+/// 板書は積み上がるので、問題文をスクロールの中に置くとすぐ画面外へ出る。
+/// けれど**教え返しの最中にいちばん見返したいのが問題文**なので、流さずに
+/// ここへ固定する(`docs/wireframe_board_v2.html`)。
+///
+/// **3行で頭打ちにする。** 契約の上限は600字(`problemTextMaxLength`)で、
+/// 全文を出すと板書が画面の外へ押し出される。撮影画面は全文表示のまま外側を
+/// スクロールさせているが、こちらは同じ手が使えない(押し出す先が板書になる)。
+/// 開いたときも、板書が見える高さが残るよう最大8行で止める。
+class _ProblemBlock extends StatefulWidget {
+  const _ProblemBlock({required this.text});
+
+  final String text;
+
+  @override
+  State<_ProblemBlock> createState() => _ProblemBlockState();
+}
+
+class _ProblemBlockState extends State<_ProblemBlock> {
+  static const int _collapsedLines = 3;
+  static const int _expandedLines = 8;
+
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppStrings strings = AppStrings.of(context);
+    final TextStyle? body = Theme.of(context).textTheme.bodyMedium;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        // **板書と素材を変える。** 問題は紙(白)、板書は地に直接。
+        // ラベルを読まなくても役割が分かるのは、文字ではなく面が違うから。
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Text(
+              strings.sessionProblemTitle,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.inkMuted),
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              widget.text,
+              style: body,
+              maxLines: _expanded ? _expandedLines : _collapsedLines,
+              overflow: TextOverflow.ellipsis,
+            ),
+            // **畳めることが分かる形にする。**省略記号だけだと、続きがあることに
+            // 気づいても開き方が分からない。短い問題文では出さない。
+            if (_isTruncated(context, body))
+              GestureDetector(
+                onTap: () => setState(() => _expanded = !_expanded),
+                child: Padding(
+                  padding: const EdgeInsets.only(top: AppSpacing.xs),
+                  child: Text(
+                    _expanded ? strings.sessionProblemCollapse : strings.sessionProblemExpand,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.blue),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 畳んだ状態で本文が入り切らないか。**実際に組んで測る** —
+  /// 文字数で判定すると、改行の多い問題文で「続きを読む」が出なくなる。
+  bool _isTruncated(BuildContext context, TextStyle? style) {
+    final double width = MediaQuery.sizeOf(context).width - AppSpacing.lg * 2 - AppSpacing.md * 2;
+    if (width <= 0) return false;
+    final TextPainter painter = TextPainter(
+      text: TextSpan(text: widget.text, style: style),
+      maxLines: _collapsedLines,
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout(maxWidth: width);
+    final bool overflows = painter.didExceedMaxLines;
+    painter.dispose();
+    return overflows;
   }
 }
 

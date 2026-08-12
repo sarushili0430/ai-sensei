@@ -105,6 +105,24 @@ describe("handsTurnToStudent", () => {
     expect(handsTurnToStudent("Here is the discriminant.", "en")).toBe(false);
     expect(handsTurnToStudent("   ", "ja")).toBe(false);
   });
+
+  /**
+   * **実際に踏んだ壊れ方。** 問題文が読めなかった授業は
+   * 「問題、読んでもらってもいい?」から始まる(`senpai_board.*.md` の指示)。
+   * これを「まだ喋っている途中」と読むと、直後に教え返しの定型句が足され、
+   * **読み上げを頼まれた次の瞬間に、まだ教わっていない内容の説明を求められる。**
+   */
+  it("問いかけで終わっていれば、形が違っても番は渡っている", () => {
+    expect(handsTurnToStudent("問題、読んでもらってもいい?", "ja")).toBe(true);
+    expect(handsTurnToStudent("この式、まず何する?", "ja")).toBe(true);
+    // 全角の疑問符(日本語のTTS入力には両方が混ざる)
+    expect(handsTurnToStudent("D はプラスだよね。だから?", "ja")).toBe(true);
+    expect(handsTurnToStudent("Could you read me the problem?", "en")).toBe(true);
+  });
+
+  it("文の途中の疑問符では止めない(終わりだけを見る)", () => {
+    expect(handsTurnToStudent("「なんで?」って思うよね。ここを見てほしい。", "ja")).toBe(false);
+  });
 });
 
 describe("renderLessonRecap", () => {

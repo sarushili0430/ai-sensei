@@ -208,15 +208,25 @@ const boardKindsBySubject: Record<CurriculumSubject, readonly string[]> = {
   english: ["sentence", "compare", "text"],
 };
 
-/** 契約に合わなかったときの指示。LaTeXの理由別の文面は guardrail 側にある。 */
+/**
+ * 契約に合わなかったときの指示。LaTeXの理由別の文面は guardrail 側にある。
+ *
+ * **`null` を逃げ道として書かない。** 以前は「〜のどれか、または null にすること」と
+ * 書いていたが、それは**落ちた板書を消せば検査を通る**と教えているのと同じで、
+ * いちばん安いのがその道になる。直った手順が音声だけになると、
+ * 授業は最後まで進むのに黒板は白いまま — しかも配送層から見れば全部成功なので、
+ * **どこにも記録が残らない**(2026-08-12 の「板書が描画されない」報告で、
+ * 図が落ちた手順がここを通っていた)。`null` が正しいのは切り分けの質問だけで、
+ * それはプロンプト本文の役割。**直しの指示では常に置き場所を名指しする。**
+ */
 const schemaGuidanceBySubject: Record<CurriculumSubject, Record<CurriculumLocale, string>> = {
   math: {
-    ja: "手順の形が契約に合っていません。speech は120字以内の話し言葉(数式を入れない)、board は latex / text / plot / triangle / circle / figure のどれか、または null にすること。figure の items に書けるキーは決まっていて、知らないキーは通りません。",
-    en: "The step does not match the contract. Keep speech under 120 characters of plain spoken language (no formulas), and make board one of latex / text / plot / triangle / circle / figure, or null. A figure's items accept a fixed set of keys — anything else is rejected.",
+    ja: "手順の形が契約に合っていません。speech は120字以内の話し言葉(数式を入れない)、board は latex / text / plot / triangle / circle / figure のどれかにすること。figure の items に書けるキーは決まっていて、知らないキーは通りません。**board を null にして逃げないこと** — 書くはずだったものは、式なら latex、図なら figure、それでも書けなければ text の一行に置き換えて送ります。",
+    en: "The step does not match the contract. Keep speech under 120 characters of plain spoken language (no formulas), and make board one of latex / text / plot / triangle / circle / figure. A figure's items accept a fixed set of keys — anything else is rejected. **Do not fall back to board: null** — put what you meant to write in latex, in figure, or failing that in a one-line text element.",
   },
   english: {
-    ja: "手順の形が契約に合っていません。speech は120字以内の話し言葉、board は sentence(例文) / compare(2列の対比表) / text(一行の注記) のどれか、または null にすること。**英語の板書に数式は置きません。**",
-    en: "The step does not match the contract. Keep speech under 120 characters of plain spoken language, and make board one of sentence / compare / text, or null. **Never put formulas on an English board.**",
+    ja: "手順の形が契約に合っていません。speech は120字以内の話し言葉、board は sentence(例文) / compare(2列の対比表) / text(一行の注記) のどれかにすること。**英語の板書に数式は置きません。** **board を null にして逃げないこと** — 書くはずだったものは sentence か text に置き換えて送ります。",
+    en: "The step does not match the contract. Keep speech under 120 characters of plain spoken language, and make board one of sentence / compare / text. **Never put formulas on an English board.** **Do not fall back to board: null** — put what you meant to write in a sentence or text element instead.",
   },
 };
 
@@ -633,6 +643,23 @@ export type AppendBoardOptions = {
    * 板書が音声より何行先に出ていると読みにくいかを見てから決める値。
    */
   onStep?: (step: BoardStep) => void | Promise<void>;
+  /**
+   * 手順を1つ出し終えた時点で、**そこで説明を打ち切るか**を決める。
+   *
+   * 板書プロンプトは「質問を出したら、その板書はそこで終える。`steps` を続けないで
+   * ください。答えを聞く前に次の手順を書くのは、**自分で答えを埋めて先に進む**ことで、
+   * 申告させるより悪い」と書いているが、**それを守らせる仕組みが配送側に無かった。**
+   * 守れなかった出力は、問いかけを含む12手順を一息で読み上げる — 生徒から見ると
+   * 先輩が**自分の質問に自分で答えながら喋り続ける**(2026-08-12 の「ターン制を
+   * 守り切れていない」報告)。
+   *
+   * 打ち切りは `interrupted` ではなく **`completed`**。生徒が割り込んだのではなく、
+   * 先輩が**予定どおり番を渡した**ので、この回の説明はそこで完結している。
+   *
+   * **何を「番の受け渡し」と見るかはここでは決めない。**判定は会話の言語の問題で、
+   * この層は言語を知らない(`senpai.ts` の `handsTurnToStudent` が持つ)。
+   */
+  stopAfter?: (step: BoardStep) => boolean;
   repair?: StepRepair;
   /**
    * 範囲外の単元で板書を始めようとしたときに、見出しを作り直させる。
@@ -836,6 +863,7 @@ export class BoardDelivery {
       chunks,
       signal,
       onStep,
+      stopAfter,
       repair,
       repairHead,
       maxRepairAttempts = defaultMaxRepairAttempts,
@@ -844,6 +872,13 @@ export class BoardDelivery {
     const rejections: BoardStepRejection[] = [];
     const before = this.sent;
     let reason: BoardCloseReason = "completed";
+    /**
+     * {@link AppendBoardOptions.stopAfter} で自分から降りたか。
+     *
+     * **途中で切れた出力(`board_stream_truncated`)と区別する**ために要る。
+     * こちらは残りを**読まないと決めた**だけで、壊れてはいない。
+     */
+    let handedOver = false;
 
     if (this.closed) {
       // 上限で閉じた板書に積もうとした。呼び出し側は知らずに呼びうるので、
@@ -966,12 +1001,24 @@ export class BoardDelivery {
           // 板書を出してから喋る(§3-2)。ここで待つのは意図的で、
           // 音声が板書を追い越すと「ここ、見て」が空の盤面を指すことになる。
           await onStep?.(verdict.step);
+
+          // 番を渡したら、そこで止める。**読み上げたあとに見る**のは、
+          // 問いかけそのものは生徒に届けきる必要があるから。
+          if (stopAfter?.(verdict.step) === true) {
+            this.log?.info("board_turn_handed_over", {
+              board_id: this.boardId,
+              index: verdict.step.index,
+            });
+            handedOver = true;
+            break consume;
+          }
         }
       }
 
       // ルートの `}` まで読めていない = 途中で切れた出力。送った手順は有効だが、
       // 「1回ぶん全部送った」とは言えないので `completed` にはしない。
-      if (reason === "completed" && !parser.completed) {
+      // **自分から降りた回は別**(残りを読まないと決めただけで、壊れていない)。
+      if (reason === "completed" && !handedOver && !parser.completed) {
         this.log?.warn("board_stream_truncated", {
           board_id: this.boardId,
           appended: this.sent - before,
@@ -1004,7 +1051,10 @@ export class BoardDelivery {
       releaseIterator(iterator);
     }
 
-    if (reason === "interrupted") releaseIterator(iterator);
+    // 上流を離す。番を渡して降りたときも同じ — 残りの手順は**読まないと決めた**ので、
+    // 接続を掴んだままだと、誰も聞かない板書の出力トークンを払い続ける
+    // (`lesson.ts` の `createAnthropicLessonClient` が HTTP ごと切る)。
+    if (reason === "interrupted" || handedOver) releaseIterator(iterator);
 
     // 上限に達した板書だけは、ここで閉じる。
     if (this.opened && !this.closed && this.sent >= boardStepsMaxCount) {

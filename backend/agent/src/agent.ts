@@ -28,6 +28,7 @@ import { boardCloseReasonFor, createAnthropicLessonClient, runBoardLesson } from
 import { JobLogger } from "./log.ts";
 import { runPlanSession } from "./plan-session.ts";
 import {
+  handsTurnToStudent,
   lessonFailedPrompt,
   reviewOpening,
   senpaiBoardLessonPrompt,
@@ -418,10 +419,15 @@ async function teachWithBoard(options: TeachOptions): Promise<BoardDelivery | un
     speak: (step: BoardStep) => sayAndWait(session, step.speech, log, { addToChatCtx: false }),
   });
 
+  // **手順数ではなく「板書に何行載ったか」を見る。**手順数だけを記録していたので、
+  // 音声だけの手順が並んだ授業(= 生徒の画面は白いまま)が成功として通っていた。
+  const written = lesson.steps.filter((step) => step.board !== null).length;
   log.info("lesson_finished", {
     board_id: lesson.board_id,
     opened: lesson.opened,
     steps: lesson.step_count,
+    // 0 なら黒板は見出しだけで空。
+    written,
     reason: lesson.reason,
     rejections: lesson.rejections.length,
   });
@@ -452,6 +458,26 @@ async function teachWithBoard(options: TeachOptions): Promise<BoardDelivery | un
 
   if (signal.aborted) {
     // 生徒がもう喋っている。会話LLMがその発話に答えるので、こちらからは何も言わない。
+    return board;
+  }
+
+  // **手順は出たのに、板書には1行も載らなかった。**
+  //
+  // 検証に落ちた手順を直すときの逃げ道が `board: null` だったころは、ここが
+  // 「成功した授業」として通り抜けていた(`lesson_finished` は手順数しか見ていない)。
+  // 生徒の画面は見出しだけの白い黒板で、先輩だけが喋り続ける。
+  //
+  // ただし**問いかけで終わった回は正常**(切り分けの質問は `board: null` が正しい形)。
+  // 番を渡していれば黙って待つ — ここで立て直しの一言を足すと、答えようとしている
+  // 生徒に「板書が出せなかった」と被せることになる。
+  if (written === 0 && !handsTurnToStudent(lesson.steps.at(-1)?.speech ?? "", context.locale)) {
+    log.warn("lesson_wrote_nothing", {
+      board_id: lesson.board_id,
+      steps: lesson.step_count,
+      reason: lesson.reason,
+      rejections: lesson.rejections.length,
+    });
+    session.say(lessonFailedPrompt(context.locale, context.kind));
     return board;
   }
 

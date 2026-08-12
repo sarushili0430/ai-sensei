@@ -508,6 +508,71 @@ describe("設計上の約束がプロンプトに書かれている", () => {
   });
 
   /**
+   * **図形の授業が板書ごと落ちていた**(2026-08-12)。許可リストに ∠ も △ も ° も無く、
+   * `\angle CAD = \angle ABC` は必ず弾かれる。落ちた手順は配送層がその回の説明ごと
+   * 打ち切るので、**記号1つで授業が終わる**。
+   *
+   * 一覧の正は `packages/guardrail` の `allowedLatexCommands`(実測で足すもの)。
+   * ここで見るのは、**プロンプト側の一覧がそこに追いついているか**だけ —
+   * ずれると、描けるのにモデルが使わない(狭い)か、書いて弾かれる(広い)。
+   */
+  it("板書のLaTeX一覧に、図形と論証の記号が両方の言語で載っている", () => {
+    const ja = getPrompt("senpai_board", "ja").body;
+    const en = getPrompt("senpai_board", "en").body;
+
+    for (const command of ["\\angle", "\\triangle", "\\sim", "\\perp", "^\\circ", "\\Rightarrow"]) {
+      expect(ja, `senpai_board (ja) に ${command} が無い`).toContain(command);
+      expect(en, `senpai_board (en) に ${command} が無い`).toContain(command);
+    }
+
+    // 実測で描けなかったものは「使えない」側に残っていること。
+    expect(ja).toContain("\\overparen");
+    expect(en).toContain("\\overparen");
+  });
+
+  /**
+   * 外接円と接線。**語彙には無いが、既存のキーの組み合わせで書ける。**
+   * 書き方を教えていなかったので、図形の問題で図が1枚も出ていなかった。
+   */
+  it("円と接線の書き方が両方の言語に載っている", () => {
+    const ja = getPrompt("senpai_board", "ja").body;
+    const en = getPrompt("senpai_board", "en").body;
+
+    expect(ja).toContain("3点を通る円」は書けません");
+    expect(ja).toContain('"perp": ["O", "A"]');
+    expect(en).toContain("cannot be written");
+    expect(en).toContain('"perp": ["O", "A"]');
+  });
+
+  /**
+   * 1枚の写真に複数の問題が写る経路。**解析が全部並べると600字を超えて丸ごと捨てられ**、
+   * 生徒には「問題が写っていない」と同じ結果になる(`resolveSessionProblem` の `too_long`)。
+   * 収まった場合も、先輩はどれを教えるか分からないまま始める。
+   */
+  it("複数の問題が写ったときの決めが、解析と板書の両方に書かれている", () => {
+    for (const locale of ["ja", "en"] as const) {
+      const analysis = getPrompt("photo_analysis", locale).body;
+      const board = getPrompt("senpai_board", locale).body;
+      const marker = locale === "ja" ? "1つだけ" : "one";
+      expect(analysis, `photo_analysis (${locale})`).toContain(marker);
+      expect(board, `senpai_board (${locale})`).toContain(marker);
+    }
+    // 選び方が「最初の1問」まで書かれていること(理由だけだとモデルは並べ続ける)。
+    expect(getPrompt("photo_analysis", "ja").body).toContain("いちばん最初の問題");
+    expect(getPrompt("photo_analysis", "en").body).toContain("The first problem on the page");
+  });
+
+  /**
+   * 問題文が読めなかった授業の入口。「問題、読んでもらってもいい?」で**終える**。
+   * ここで `steps` を続けると、読み上げを頼んだ直後に
+   * 「じゃあ今の、説明してみて」が続き、教わっていない説明を求めることになる。
+   */
+  it("読み上げを頼んだらそこで終える、が両方の言語に書かれている", () => {
+    expect(getPrompt("senpai_board", "ja").body).toContain("そこで `steps` を終えてください");
+    expect(getPrompt("senpai_board", "en").body).toContain("End `steps` there");
+  });
+
+  /**
    * 【申告させず、やらせる】。このアプリの出発点(インセプションデッキ §1
    * 「わかったと感じた状態と説明できる状態は別物で、前者は本人には区別がつかない」)を
    * 教え方に落としたもので、**ここが緩むと、本人が分かっていない地点から授業が始まる**。

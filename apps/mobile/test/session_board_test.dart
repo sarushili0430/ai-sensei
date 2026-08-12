@@ -184,6 +184,7 @@ void main() {
       SessionState state, {
       Locale locale = const Locale('ja'),
       Size size = phoneSurface,
+      SessionProblem? problem,
     }) async {
       await pumpApp(
         tester,
@@ -191,7 +192,7 @@ void main() {
         locale: locale,
         size: size,
         overrides: <Object?>[
-          captureControllerProvider.overrideWith(FakeCaptureController.new),
+          captureControllerProvider.overrideWith(() => FakeCaptureController(problem)),
           sessionControllerProvider.overrideWith(() => FakeSessionController(state)),
         ],
       );
@@ -257,6 +258,57 @@ void main() {
       // 聞いている顔で待つ(試験官にはしない)。
       final SenpaiFace face = tester.widget(find.byType(SenpaiFace));
       expect(face.mood, SenpaiMood.listening);
+    });
+
+    /// **何を解いているかが画面のどこにも無かった。**
+    ///
+    /// 出ていたのは `board.title`(先輩が付けた見出し)だけで、問題そのものは
+    /// 撮影画面を離れた瞬間に見えなくなる。教え返しの最中にいちばん見返したいのが
+    /// 問題文なので、板書の上に置いて授業のあいだ残す
+    /// (`docs/wireframe_board_v2.html` の1つ目)。
+    testWidgets('解いている問題が、板書の上に出る', (WidgetTester tester) async {
+      await pumpSession(
+        tester,
+        teaching(<String>['x^2 - 3x + 2 = 0']),
+        problem: const SessionProblem(
+          text: 'x^2 - 4x + k = 0 が異なる2つの実数解をもつような定数 k の値の範囲を求めよ。',
+          source: ProblemSource.problemPhoto,
+        ),
+      );
+
+      expect(find.text(ja.sessionProblemTitle), findsOneWidget);
+      expect(find.textContaining('異なる2つの実数解'), findsOneWidget);
+      // 板書はそのまま主役。問題文を足したぶんで実効幅を削らない。
+      expect(tester.getSize(find.byType(BoardView)).width, greaterThanOrEqualTo(340));
+    });
+
+    /// **読めなかったことを画面で騒がない。**「問題が読み取れませんでした」と出すと、
+    /// 先輩が読み上げを頼む前に、生徒は撮り直しに行ってしまう。
+    testWidgets('問題文が読めていなければ、何も出さない', (WidgetTester tester) async {
+      await pumpSession(tester, teaching(<String>['x^2 - 3x + 2 = 0']));
+
+      expect(find.text(ja.sessionProblemTitle), findsNothing);
+    });
+
+    /// 契約の上限は600字。全文をそのまま出すと**板書が画面の外へ出る**ので、
+    /// 3行で畳んで「続きを読む」を出す。
+    testWidgets('長い問題文は畳まれ、開いても板書が残る', (WidgetTester tester) async {
+      await pumpSession(
+        tester,
+        teaching(<String>['x^2 - 3x + 2 = 0']),
+        problem: SessionProblem(
+          text: '次の問いに答えよ。${'円と直線の位置関係について、中心と直線の距離を用いて説明せよ。' * 8}',
+          source: ProblemSource.notesPhoto,
+        ),
+      );
+
+      expect(find.text(ja.sessionProblemExpand), findsOneWidget);
+      await tester.tap(find.text(ja.sessionProblemExpand));
+      await tester.pumpAndSettle();
+
+      expect(find.text(ja.sessionProblemCollapse), findsOneWidget);
+      // 開いても板書は画面に残る(押し出さない)。
+      expect(find.byType(BoardElementView), findsOneWidget);
     });
 
     testWidgets('とぎれたら、板書は残したままそのことを出す', (WidgetTester tester) async {
@@ -437,15 +489,22 @@ void main() {
 }
 
 /// 会話画面が「セッションはある」と読めるようにするだけの差し替え。
+///
+/// [problem] を渡すと、解析が問題文を読み取れた状態になる。
 class FakeCaptureController extends CaptureController {
+  FakeCaptureController([this.problem]);
+
+  final SessionProblem? problem;
+
   @override
-  CaptureState build() => const CaptureState(
+  CaptureState build() => CaptureState(
     session: SessionStart(
       sessionId: 'ses_1',
       kind: 'new',
-      livekit: LiveKitConnection(url: 'wss://example', token: 't', room: 'ses_1'),
-      detectedTopics: <DetectedTopic>[],
-      limits: SessionLimits(maxSeconds: 1200, lessonAllowedToday: true),
+      livekit: const LiveKitConnection(url: 'wss://example', token: 't', room: 'ses_1'),
+      detectedTopics: const <DetectedTopic>[],
+      problem: problem,
+      limits: const SessionLimits(maxSeconds: 1200, lessonAllowedToday: true),
     ),
   );
 }
