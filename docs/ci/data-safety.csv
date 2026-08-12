@@ -13,13 +13,13 @@ PSL_SUPPORT_DATA_DELETION_BY_USER,DATA_DELETION_YES,false,SINGLE_CHOICE,Do you p
 PSL_SUPPORT_DATA_DELETION_BY_USER,DATA_DELETION_NO,true,SINGLE_CHOICE,Do you provide a way for users to request that their data is deleted? / No
 PSL_SUPPORT_DATA_DELETION_BY_USER,DATA_DELETION_NO_AUTO_DELETED,false,SINGLE_CHOICE,"Do you provide a way for users to request that their data is deleted? / No, but user data is automatically deleted within 90 days"
 PSL_DATA_DELETION_URL,,,MAYBE_REQUIRED,Delete data URL
-PSL_DATA_COLLECTION_COMPLIES_FAMILY_POLICY,,false,OPTIONAL,"Only answer this question if you've indicated that your app's target age group includes children, or you've opted into the Designed for Families program. If either of the above is true, you are required to follow the Google Play Families Policy (https://support.google.com/googleplay/android-developer/answer/9893335). Do you want to let users know about this commitment in the Data safety section on your store listing?"
-PSL_INDEPENDENTLY_VALIDATED,,false,OPTIONAL,"Has your app successfully completed an independent security review, according to the Mobile Application Security Assessment (MASA) framework? Only answer ""yes"" if the review is in good standing."
-PSL_UPI_BADGE_OPT_IN,,false,OPTIONAL,Do you want to show this badge on your store listing?
-PSL_HAS_OUTSIDE_APP_ACCOUNTS,,false,OPTIONAL,Can users login to your app with accounts created outside of the app?
-PSL_OUTSIDE_APP_ACCOUNT_TYPES,PSL_LOGIN_WITH_OUTSIDE_APP_ID,false,MULTIPLE_CHOICE,"How are these accounts created? / Out of app identification (e.g. SIM binding, service subscription)"
-PSL_OUTSIDE_APP_ACCOUNT_TYPES,PSL_LOGIN_THROUGH_EMPLOYMENT_OR_ENTERPRISE_ACCOUNT,false,MULTIPLE_CHOICE,"How are these accounts created? / Through employment, or enterprise accounts"
-PSL_OUTSIDE_APP_ACCOUNT_TYPES,PSL_OUTSIDE_APP_ACCOUNT_TYPE_OTHER,false,MULTIPLE_CHOICE,How are these accounts created? / Other
+PSL_DATA_COLLECTION_COMPLIES_FAMILY_POLICY,,,OPTIONAL,"Only answer this question if you've indicated that your app's target age group includes children, or you've opted into the Designed for Families program. If either of the above is true, you are required to follow the Google Play Families Policy (https://support.google.com/googleplay/android-developer/answer/9893335). Do you want to let users know about this commitment in the Data safety section on your store listing?"
+PSL_INDEPENDENTLY_VALIDATED,,,OPTIONAL,"Has your app successfully completed an independent security review, according to the Mobile Application Security Assessment (MASA) framework? Only answer ""yes"" if the review is in good standing."
+PSL_UPI_BADGE_OPT_IN,,,OPTIONAL,Do you want to show this badge on your store listing?
+PSL_HAS_OUTSIDE_APP_ACCOUNTS,,,OPTIONAL,Can users login to your app with accounts created outside of the app?
+PSL_OUTSIDE_APP_ACCOUNT_TYPES,PSL_LOGIN_WITH_OUTSIDE_APP_ID,,MULTIPLE_CHOICE,"How are these accounts created? / Out of app identification (e.g. SIM binding, service subscription)"
+PSL_OUTSIDE_APP_ACCOUNT_TYPES,PSL_LOGIN_THROUGH_EMPLOYMENT_OR_ENTERPRISE_ACCOUNT,,MULTIPLE_CHOICE,"How are these accounts created? / Through employment, or enterprise accounts"
+PSL_OUTSIDE_APP_ACCOUNT_TYPES,PSL_OUTSIDE_APP_ACCOUNT_TYPE_OTHER,,MULTIPLE_CHOICE,How are these accounts created? / Other
 PSL_OUTSIDE_APP_ACCOUNT_TYPE_SPECIFY,,,MAYBE_REQUIRED,Describe how these accounts are created
 PSL_DATA_TYPES_PERSONAL,PSL_NAME,false,MULTIPLE_CHOICE,Personal info / Name
 PSL_DATA_TYPES_PERSONAL,PSL_EMAIL,false,MULTIPLE_CHOICE,Personal info / Email address
