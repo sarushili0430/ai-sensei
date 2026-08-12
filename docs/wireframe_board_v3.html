@@ -261,6 +261,21 @@
     .connector.system .connector-line { background: var(--coral); }
     .connector.system .connector-line::after { border-color: var(--coral); }
 
+    .branch-pair { flex: 0 0 auto; }
+    .branch-pair-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 30px;
+      margin: 0 5px 8px;
+      color: var(--blue);
+      font-size: 9px;
+      font-weight: 850;
+      letter-spacing: .04em;
+    }
+    .branch-pair-head::before { content: ""; width: 22px; height: 1px; background: var(--blue); }
+    .branch-pair-row { display: flex; align-items: flex-start; gap: 18px; }
+
     .artboard { flex: 0 0 292px; width: 292px; }
     .artboard-meta { min-height: 84px; padding: 0 5px 10px; }
     .artboard-id { display: flex; align-items: center; gap: 6px; min-height: 22px; }
@@ -739,6 +754,11 @@
     .button-demo .disabled { background: #d9dcda; color: #929994; }
     .voice-demo { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
     .voice-demo > div { min-height: 72px; display: grid; place-items: center; align-content: center; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--app); font-size: 8px; text-align: center; }
+    .content-grammar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .content-grammar > div { min-height: 112px; padding: 10px; border-radius: 10px; background: var(--board); color: var(--chalk); }
+    .content-grammar code { color: var(--yellow); font-size: 8px; font-weight: 800; }
+    .content-grammar b { display: block; margin: 8px 0 4px; font-size: 10px; }
+    .content-grammar span { color: var(--chalk-dim); font-size: 8px; line-height: 1.45; }
     .token-ruler { display: flex; align-items: flex-end; gap: 10px; height: 78px; }
     .token-ruler div { display: grid; place-items: end center; min-width: 36px; border-radius: 5px 5px 0 0; background: var(--blue-soft); color: #175e7e; font: 800 8px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; }
     .token-ruler .s4 { height: 12px; }.token-ruler .s8 { height: 20px; }.token-ruler .s12 { height: 30px; }.token-ruler .s16 { height: 40px; }.token-ruler .s24 { height: 56px; }.token-ruler .s32 { height: 72px; }
@@ -994,7 +1014,7 @@
                     <div class="task-card-bottom"><span>1日前のおさらい</span><span class="chip yellow">声で復習</span></div>
                   </div>
                   <div class="surface-card tint-blue"><div class="row"><svg class="icon"><use href="#i-photo"/></svg><div><h5>新しい問題を聞く</h5><p>撮るか、持っている写真から選ぶ</p></div></div></div>
-                  <div class="row between"><span class="muted fine">今週</span><span class="fine strong">言えたこと 4つ</span></div>
+                  <div class="row between"><span class="muted fine">今週の学び</span><span class="row fine strong">言えたこと 4つ <svg class="icon icon-sm"><use href="#i-chevron"/></svg></span></div>
                   <div class="grow"></div>
                   <div class="primary-button"><svg class="icon"><use href="#i-photo"/></svg>問題を見せる</div>
                 </div>
@@ -1002,7 +1022,7 @@
               </div>
               <span class="pin one">1</span><span class="pin two">2</span>
             </div>
-            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>通常起動</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>問題を見せる</dd></div><div class="handoff-row"><dt>ALT</dt><dd>今日の復習 → REVIEW-01</dd></div><div class="annotation"><b>①</b> 今日やる1つを先頭。<b>②</b> 「撮る」に限定せず、入力方法は次で選ぶ。</div></dl>
+            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>通常起動</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>問題を見せる</dd></div><div class="handoff-row"><dt>ALT</dt><dd>今日の復習 → REVIEW-01 / 今週の学び → KARTE-02</dd></div><div class="annotation"><b>①</b> 今日やる1つを先頭。<b>②</b> 「撮る」に限定せず、入力方法は次で選ぶ。</div></dl>
           </article>
 
           <div class="connector user"><span>問題を見せる</span><i class="connector-line"></i></div>
@@ -1075,7 +1095,7 @@
                 <div class="phone-body">
                   <div class="paper-card"><span class="subject">数学I / 二次方程式</span><h5>問3　次の二次方程式を因数分解して解きなさい。</h5><div class="formula">x² − 4x + 3 = 0</div></div>
                   <div class="row wrap"><span class="chip blue">数学I</span><span class="chip">二次方程式</span><span class="chip"><svg class="icon icon-sm"><use href="#i-edit"/></svg>修正</span></div>
-                  <div class="surface-card tint-yellow"><div class="row"><svg class="icon"><use href="#i-info"/></svg><p style="margin:0;color:#675418">ここではまだ今日の授業回数に数えません。</p></div></div>
+                  <div class="surface-card tint-yellow"><div class="row"><svg class="icon"><use href="#i-info"/></svg><p style="margin:0;color:#675418">読み違いがあれば、授業を始める前に直せます。</p></div></div>
                   <div class="grow"></div>
                   <div class="primary-button">この問題で始める</div>
                   <div class="text-button">別の写真を撮る</div>
@@ -1083,7 +1103,7 @@
               </div>
               <span class="pin one">1</span><span class="pin three">2</span>
             </div>
-            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>解析成功</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>この問題で始める</dd></div><div class="handoff-row"><dt>NEXT</dt><dd>CONN-01 / ここで枠を確保</dd></div><div class="annotation"><b>①</b> 誤読を編集可能に。<b>②</b> 回数消費の瞬間を文脈内で伝える。</div></dl>
+            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>解析成功</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>この問題で始める</dd></div><div class="handoff-row"><dt>NEXT</dt><dd>CONN-01 / セッション作成</dd></div><div class="annotation"><b>①</b> 誤読を編集可能に。<b>②</b> 修正してから始められることを明示。</div></dl>
           </article>
 
           <div class="connector user"><span>授業を開始</span><i class="connector-line"></i></div>
@@ -1386,13 +1406,13 @@
       <header class="section-head">
         <div class="section-index">03 / LEARNING LOOP</div>
         <h2 class="section-title">授業の成果を、次の行動へ返す</h2>
-        <p class="section-copy">祝福は短く、カルテは採点せず、復習は10秒で答えられる一問にする。計画と親レポートは独立した機能にせず、授業で実際に話した内容から自然につながる循環として並べる。</p>
+        <p class="section-copy">一緒に解いた授業を、カルテ、1・3・7日後の復習、会話で作る計画、本人確認後の家族共有へつなぐ。4機能を別々のダッシュボードにはせず、同じ「自分の言葉」の記録を次の行動へ使う。</p>
       </header>
       <div class="review-strip">
-        <div class="review-item"><code>COPY RULE</code><b>点数・正答率・達成率を出さない</b></div>
-        <div class="review-item"><code>EVIDENCE RULE</code><b>本人が実際に言った言葉だけを残す</b></div>
+        <div class="review-item"><code>CORE RULE</code><b>点数・正答率・達成率を出さない</b></div>
         <div class="review-item"><code>REVIEW RULE</code><b>1 / 3 / 7日後に同じ穴を聞く</b></div>
         <div class="review-item"><code>PLAN RULE</code><b>できなかった日は責めずに軽く組み直す</b></div>
+        <div class="review-item"><code>FAMILY RULE</code><b>本人が読んでから、成長の過程だけ共有</b></div>
       </div>
       <div class="subflow">
         <div class="subflow-head"><code>A / AFTER LESSON</code><b>完了 → カルテ → 次の再訪</b><span>結果を評価ではなく、次に使える記録にする</span></div>
@@ -1414,33 +1434,27 @@
             <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-back"/></svg></span><h4>8月13日のカルテ</h4><span class="icon-button"><svg class="icon"><use href="#i-share"/></svg></span></div><div class="phone-body">
               <div class="surface-card tint-green"><span class="eyeline" style="color:var(--green)">言えたこと</span><div class="metric" style="margin-top:7px"><span class="metric-mark"><svg class="icon icon-sm"><use href="#i-check"/></svg></span><div><b>積と和に注目する理由</b><span>「かけて3、足して−4になるから」と説明しました。</span></div></div></div>
               <div><div class="settings-section-title">次に埋める穴</div><div class="hole-card"><b>2数の符号を決めるところ</b><p>「符号は…たぶん両方マイナス」で説明が止まりました。</p></div></div>
-              <div class="surface-card tint-blue"><div class="row between"><div><h5>次のおさらい</h5><p>明日、10秒だけ声に出します</p></div><span class="chip blue">8/14</span></div></div>
-              <div class="grow"></div><div class="primary-button blue"><svg class="icon"><use href="#i-mic"/></svg>いま一度だけ言ってみる</div>
+              <div class="surface-card tint-blue"><div class="row between"><div><h5>次のおさらい</h5><p>明日、10秒だけ確かめます</p></div><span class="chip blue">8/14</span></div></div>
+              <div class="grow"></div><div class="primary-button blue"><svg class="icon"><use href="#i-book"/></svg>いまおさらいする</div>
             </div></div><span class="pin one">1</span><span class="pin two">2</span></div>
-            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>授業完了 / カルテ生成済み</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>いま一度言う → REVIEW-01</dd></div><div class="handoff-row"><dt>RETURN</dt><dd>HOME-01</dd></div><div class="annotation"><b>①</b> 根拠発話を表示。<b>②</b> 穴は人格評価にしない。</div></dl>
+            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>授業完了 / カルテ生成済み</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>いまおさらいする → REVIEW-01</dd></div><div class="handoff-row"><dt>RETURN</dt><dd>HOME-01</dd></div><div class="annotation"><b>①</b> 根拠発話を表示。<b>②</b> 穴は人格評価にしない。</div></dl>
           </article>
           <div class="connector"><span>1日後</span><i class="connector-line"></i></div>
           <article class="artboard">
             <header class="artboard-meta"><div class="artboard-id"><code>REVIEW-01</code><span class="status refine">REFINE</span><span class="priority p0">P0</span></div><h3>10秒のおさらい</h3><p>通知 / ホーム / カルテから到達</p></header>
             <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span><h4>1日前のおさらい</h4><span class="tiny-chip">約10秒</span></div><div class="phone-body">
-              <span class="eyeline">二次方程式</span><h3 class="phone-title">どうして2つとも<br>マイナスになる？</h3><p class="phone-subtitle">答えは表示しません。思い出して、声に出してみよう。</p>
+              <span class="eyeline">二次方程式</span><h3 class="phone-title">どうして2つとも<br>マイナスになる？</h3><p class="phone-subtitle">答えは表示しません。口に出さなくても、自分で言えたか選べます。</p>
               <div class="blackboard" style="min-height:178px"><span class="board-step">REMEMBER</span><div class="formula" style="font-size:19px;margin-top:24px">(x − 1)(x − 3)</div><p>積は +3、和は −4</p></div>
-              <div class="grow"></div><div class="primary-button blue"><svg class="icon"><use href="#i-mic"/></svg>声に出して答える</div><div class="secondary-button">今日はあとで</div>
+              <div class="grow"></div><div class="primary-button"><svg class="icon"><use href="#i-check"/></svg>言えた</div><div class="secondary-button">まだ言えない</div><div class="text-button"><svg class="icon icon-sm"><use href="#i-mic"/></svg>声で確かめる（任意）</div><div class="text-button">今日はあとで</div>
             </div></div></div>
-            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>通知 / HOME / KARTE</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>声に出す</dd></div><div class="handoff-row"><dt>ALT</dt><dd>今日はあとで → 元画面</dd></div><div class="annotation">拒否できる短い依頼にし、催促や連続記録を出さない。</div></dl>
+            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>通知 / HOME / KARTE</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>言えた → REVIEW-03A / まだ → REVIEW-03B</dd></div><div class="handoff-row"><dt>OPTION</dt><dd>声で確かめる → REVIEW-REC（Premium・任意）</dd></div><div class="handoff-row"><dt>ALT</dt><dd>今日はあとで → 元画面</dd></div><div class="annotation">テキストの自己申告だけで完了できる。音声を復習の必須条件にしない。</div></dl>
           </article>
-          <div class="connector user"><span>声に出す</span><i class="connector-line"></i></div>
+          <div class="connector user"><span>自己申告で分岐</span><i class="connector-line"></i></div>
+          <div class="branch-pair">
+            <div class="branch-pair-head">排他的な2つの完了状態（どちらも復習完了）</div>
+            <div class="branch-pair-row">
           <article class="artboard">
-            <header class="artboard-meta"><div class="artboard-id"><code>REVIEW-02</code><span class="status new">NEW</span><span class="priority p0">P0</span></div><h3>自己申告で復習を閉じる</h3><p>採点なし / 2つの等価な出口</p></header>
-            <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span><h4>おさらい</h4><div></div></div><div class="phone-body center">
-              <div class="avatar" style="width:68px;height:68px;border-radius:22px;font-size:20px">私</div><span class="eyeline">YOU SAID IT OUT LOUD</span><h3 class="phone-title">声に出してみて、<br>どうだった？</h3><p class="phone-subtitle">正解判定はしません。自分の感覚を選んでください。</p>
-              <div style="width:100%" class="stack"><div class="primary-button"><svg class="icon"><use href="#i-check"/></svg>言えた</div><div class="secondary-button">まだ言えない</div></div><p class="fine muted">「まだ」は3日後にもう一度聞きます。</p>
-            </div></div><span class="pin two">1</span></div>
-            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>発話終了</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>言えた / まだ言えない</dd></div><div class="handoff-row"><dt>NEXT</dt><dd>REVIEW-03</dd></div><div class="annotation"><b>①</b> 「まだ」をネガティブ色にせず、次の予定だけ伝える。</div></dl>
-          </article>
-          <div class="connector"><span>保存</span><i class="connector-line"></i></div>
-          <article class="artboard">
-            <header class="artboard-meta"><div class="artboard-id"><code>REVIEW-03</code><span class="status new">NEW</span><span class="priority p1">P1</span></div><h3>復習完了</h3><p>言えた場合 / 次の再訪を明示</p></header>
+            <header class="artboard-meta"><div class="artboard-id"><code>REVIEW-03A</code><span class="status new">NEW</span><span class="priority p1">P1</span></div><h3>復習完了・言えた</h3><p>言えた場合 / 次の再訪を明示</p></header>
             <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="phone-body center">
               <div class="celebration-mark" style="width:82px;height:82px;border-radius:25px;box-shadow:8px 8px 0 var(--violet-soft)"><svg class="icon icon-lg"><use href="#i-check"/></svg></div><h3 class="phone-title">今日は、言えました。</h3><p class="phone-subtitle">同じところを3日後にもう一度。<br>思い出せるかだけ確かめます。</p>
               <div class="surface-card" style="width:100%;text-align:left"><div class="timeline"><div class="timeline-row"><span class="timeline-date">8/14</span><span class="timeline-task">1日後</span><span class="chip green">完了</span></div><div class="timeline-row"><span class="timeline-date">8/16</span><span class="timeline-task">3日後</span><span class="chip">予定</span></div><div class="timeline-row"><span class="timeline-date">8/20</span><span class="timeline-task">7日後</span><span class="chip">予定</span></div></div></div>
@@ -1448,11 +1462,47 @@
             </div></div></div>
             <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>復習結果保存成功</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>ホームに戻る</dd></div><div class="handoff-row"><dt>NEXT</dt><dd>HOME-01</dd></div><div class="annotation">達成率ではなく、次に同じ問いが来る日だけを見せる。</div></dl>
           </article>
+          <article class="artboard">
+            <header class="artboard-meta"><div class="artboard-id"><code>REVIEW-03B</code><span class="status new">NEW</span><span class="priority p1">P1</span></div><h3>復習完了・まだ</h3><p>失敗扱いにせず / 次の再訪を明示</p></header>
+            <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="phone-body center">
+              <div class="empty-illustration"><svg class="icon icon-lg"><use href="#i-book"/></svg></div><span class="eyeline">STILL LEARNING</span><h3 class="phone-title">今日は、ここまで。</h3><p class="phone-subtitle">「まだ」は、次に聞く場所がわかった合図。<br>同じ問いを3日後にもう一度聞きます。</p>
+              <div class="surface-card tint-yellow" style="width:100%;text-align:left"><div class="metric"><span class="metric-mark"><svg class="icon icon-sm"><use href="#i-plan"/></svg></span><div><b>次のおさらい</b><span>8月16日・約10秒</span></div></div></div>
+              <div style="width:100%" class="primary-button">ホームに戻る</div><div class="text-button">カルテを見る</div>
+            </div></div></div>
+            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>「まだ」保存成功</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>ホームに戻る</dd></div><div class="handoff-row"><dt>NEXT</dt><dd>HOME-01</dd></div><div class="annotation">成功画面を流用せず、責めない言葉で次の予定だけを示す。</div></dl>
+          </article>
+            </div>
+          </div>
         </div>
       </div>
 
       <div class="subflow">
-        <div class="subflow-head"><code>B / RETURN SURFACES</code><b>カルテ一覧・学習計画・親レポート</b><span>再訪タブと共有の改善案</span></div>
+        <div class="subflow-head"><code>A2 / OPTIONAL VOICE</code><b>声で確かめたいときだけ開く補助経路</b><span>音声を使わなくても、上の主経路だけで復習は完了できる</span></div>
+        <div class="flow-row">
+          <article class="artboard">
+            <header class="artboard-meta"><div class="artboard-id"><code>REVIEW-REC</code><span class="status new">NEW</span><span class="priority p0">P0</span></div><h3>問いを見ながら言い直す</h3><p>タップで終了 / 問いと黒板を保持</p></header>
+            <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span><h4>1日前のおさらい</h4><span class="state-chip" style="background:var(--coral-soft);color:#9a3158">REC</span></div><div class="phone-body">
+              <div class="blackboard full-bleed" style="min-height:246px"><span class="board-step">REMEMBER / YOUR TURN</span><h5>どうして2つとも<br>マイナスになる？</h5><div class="chalk-line"></div><div class="formula">積は +3、和は −4</div><p>黒板を見ながらで大丈夫。</p></div>
+              <div class="last-question"><b>いま答える問い</b><br>「積と和から、符号をどう決めた？」</div>
+              <div class="grow"></div><div class="voice-dock"><div class="voice-copy" style="text-align:center"><b>あなたの声を聞いています</b><span>問いは録音中も消えません</span></div><div class="primary-button" style="margin-top:9px"><svg class="icon"><use href="#i-pause"/></svg>話し終わった</div></div>
+            </div></div><span class="pin one">1</span><span class="pin two">2</span></div>
+            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>REVIEW-01「声で確かめる」 / Premium</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>話し終わった → REVIEW-02</dd></div><div class="handoff-row"><dt>KEEP</dt><dd>問い / 黒板 / 経過時間</dd></div><div class="annotation"><b>①</b> 録音開始で問いを消さない。<b>②</b> 長押し不要で、同じ場所を再タップして終える。</div></dl>
+          </article>
+          <div class="connector user"><span>話し終わった</span><i class="connector-line"></i></div>
+          <article class="artboard">
+            <header class="artboard-meta"><div class="artboard-id"><code>REVIEW-02</code><span class="status new">NEW</span><span class="priority p0">P0</span></div><h3>自己申告へ合流する</h3><p>音声の採点なし / 2つの等価な出口</p></header>
+            <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span><h4>おさらい</h4><div></div></div><div class="phone-body center">
+              <div class="avatar" style="width:68px;height:68px;border-radius:22px;font-size:20px">私</div><span class="eyeline">YOU SAID IT OUT LOUD</span><h3 class="phone-title">声に出してみて、<br>どうだった？</h3><p class="phone-subtitle">正解判定はしません。自分の感覚を選んでください。</p>
+              <div style="width:100%" class="stack"><div class="primary-button"><svg class="icon"><use href="#i-check"/></svg>言えた</div><div class="secondary-button">まだ言えない</div></div><p class="fine muted">「まだ」は3日後にもう一度聞きます。</p>
+            </div></div><span class="pin two">1</span></div>
+            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>任意の音声確認終了</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>言えた → REVIEW-03A</dd></div><div class="handoff-row"><dt>ALT</dt><dd>まだ言えない → REVIEW-03B</dd></div><div class="annotation"><b>①</b> 音声経路も上の2つの完了状態へ合流し、独自の採点を加えない。</div></dl>
+          </article>
+          <div class="connector"><span>主経路の<br>03A / 03Bへ合流</span><i class="connector-line"></i></div>
+        </div>
+      </div>
+
+      <div class="subflow">
+        <div class="subflow-head"><code>B / RETURN SURFACES</code><b>カルテ一覧・会話で作る計画・家族への共有</b><span>既存3タブを保ち、カルテから必要な枝だけ開く</span></div>
         <div class="flow-row">
           <article class="artboard">
             <header class="artboard-meta"><div class="artboard-id"><code>KARTE-02</code><span class="status new">NEW</span><span class="priority p1">P1</span></div><h3>カルテ一覧</h3><p>ホームから履歴へ / 穴を次の行動に</p></header>
@@ -1472,9 +1522,31 @@
               <div class="empty-illustration"><svg class="icon icon-lg"><use href="#i-plan"/></svg></div><h3 class="phone-title">テストまでの道順を、<br>先輩と話して決める</h3><p class="phone-subtitle">聞くのは3つだけ。<br>テスト日・範囲・使う教材。</p>
               <div style="width:100%" class="primary-button"><svg class="icon"><use href="#i-mic"/></svg>先輩と計画をつくる</div><p class="fine muted">一度に全部入力しなくて大丈夫です。</p>
             </div><nav class="bottom-nav"><span class="nav-item"><span class="nav-icon"><svg class="icon"><use href="#i-home"/></svg></span>ホーム</span><span class="nav-item active"><span class="nav-icon"><svg class="icon"><use href="#i-plan"/></svg></span>計画</span><span class="nav-item"><span class="nav-icon"><svg class="icon"><use href="#i-settings"/></svg></span>設定</span></nav></div></div>
-            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>計画タブ / plan=null</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>先輩と計画をつくる</dd></div><div class="handoff-row"><dt>NEXT</dt><dd>音声計画セッション</dd></div><div class="annotation">空のカレンダーを出さず、3つの聞き取りで作れることを明示。</div></dl>
+            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>計画タブ / plan=null</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>先輩と計画をつくる</dd></div><div class="handoff-row"><dt>NEXT</dt><dd>PLAN-READY</dd></div><div class="annotation">空のカレンダーを出さず、3つの聞き取りで作れることを明示。</div></dl>
           </article>
-          <div class="connector"><span>計画作成</span><i class="connector-line"></i></div>
+          <div class="connector"><span>先輩が聞く</span><i class="connector-line"></i></div>
+          <article class="artboard">
+            <header class="artboard-meta"><div class="artboard-id"><code>PLAN-READY</code><span class="status new">NEW</span><span class="priority p0">P0</span></div><h3>質問を読んでから話す</h3><p>録音待機 / タップ前はマイクOFF</p></header>
+            <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span><h4>計画をつくる</h4><span class="tiny-chip">1 / 3</span></div><div class="phone-body">
+              <div class="senpai-words"><div class="senpai-words-head"><span class="avatar senpai" style="width:25px;height:25px;border-radius:8px">先</span><span>先輩のことば</span></div><p>「まずテスト日を教えて。だいたいでも大丈夫。わかっている範囲から一緒に決めよう。」</p><div class="expand-copy">これまでの会話を見る</div></div>
+              <div class="settings-section-title">わかったこと</div><div class="settings-group"><div class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#i-plan"/></svg></span><div><b>テスト日</b><small>これから聞きます</small></div><span class="chip">未確認</span></div><div class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#i-book"/></svg></span><div><b>範囲・教材</b><small>このあと順番に聞きます</small></div><span class="setting-value">未確認</span></div></div>
+              <div class="last-question"><b>いまの質問</b><br>「テスト日はいつ？ だいたいでも大丈夫」</div>
+              <div class="grow"></div><div class="voice-dock"><div class="voice-copy" style="text-align:center"><b>準備ができたらタップ</b><span>押すまでは録音しません</span></div><div class="primary-button blue" style="margin-top:9px"><svg class="icon"><use href="#i-mic"/></svg>話しはじめる</div></div>
+            </div></div><span class="pin one">1</span><span class="pin two">2</span></div>
+            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>PLAN-00 / 先輩の質問再生後</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>話しはじめる → PLAN-CONV</dd></div><div class="handoff-row"><dt>KEEP</dt><dd>直近の質問 / 確認済み条件</dd></div><div class="annotation"><b>①</b> 会話開始と録音開始を分ける。<b>②</b> 読んで考える時間を奪わない。</div></dl>
+          </article>
+          <div class="connector user"><span>話しはじめる</span><i class="connector-line"></i></div>
+          <article class="artboard">
+            <header class="artboard-meta"><div class="artboard-id"><code>PLAN-CONV</code><span class="status new">NEW</span><span class="priority p0">P0</span></div><h3>先輩と話して条件を集める</h3><p>フォームなし / タップ開始・終了を授業と共通化</p></header>
+            <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span><h4>計画をつくる</h4><span class="tiny-chip">1 / 3</span></div><div class="phone-body">
+              <div class="senpai-words"><div class="senpai-words-head"><span class="avatar senpai" style="width:25px;height:25px;border-radius:8px">先</span><span>先輩のことば</span></div><p>「まずテスト日を教えて。だいたいでも大丈夫。わかっている範囲から一緒に決めよう。」</p><div class="expand-copy">これまでの会話を見る</div></div>
+              <div class="settings-section-title">わかったこと</div><div class="settings-group"><div class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#i-plan"/></svg></span><div><b>テスト日</b><small>いま聞いています</small></div><span class="chip yellow">回答中</span></div><div class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#i-book"/></svg></span><div><b>範囲・教材</b><small>このあと順番に聞きます</small></div><span class="setting-value">未確認</span></div></div>
+              <div class="last-question"><b>いまの質問</b><br>「テスト日はいつ？ だいたいでも大丈夫」</div>
+              <div class="grow"></div><div class="voice-dock"><div class="voice-copy" style="text-align:center"><b>あなたの声を聞いています</b><span>先輩の質問は上に残っています</span></div><div class="primary-button" style="margin-top:9px"><svg class="icon"><use href="#i-pause"/></svg>話し終わった</div></div>
+            </div></div><span class="pin one">1</span><span class="pin two">2</span></div>
+            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>PLAN-READY / mic enabled</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>話し終わった / 次の問いへ</dd></div><div class="handoff-row"><dt>DONE</dt><dd>3条件確認 → PLAN-01</dd></div><div class="annotation"><b>①</b> 先輩の直近発話を残す。<b>②</b> 授業・復習と同じタップ式音声Dockにする。</div></dl>
+          </article>
+          <div class="connector"><span>3つ確認</span><i class="connector-line"></i></div>
           <article class="artboard">
             <header class="artboard-meta"><div class="artboard-id"><code>PLAN-01</code><span class="status refine">REFINE</span><span class="priority p1">P1</span></div><h3>今日が先頭の計画</h3><p>計画あり / 達成率を出さない</p></header>
             <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="appbar transparent"><div></div><h4>計画</h4><span class="icon-button"><svg class="icon"><use href="#i-edit"/></svg></span></div><div class="phone-body">
@@ -1499,7 +1571,7 @@
           </article>
           <div class="connector user"><span>共有を見る</span><i class="connector-line"></i></div>
           <article class="artboard">
-            <header class="artboard-meta"><div class="artboard-id"><code>REPORT-01</code><span class="status refine">REFINE</span><span class="priority p1">P1</span></div><h3>親レポートの共有前確認</h3><p>Premium / 本人が内容を確認して共有</p></header>
+            <header class="artboard-meta"><div class="artboard-id"><code>REPORT-01</code><span class="status refine">REFINE</span><span class="priority p1">P1</span></div><h3>家族への共有前確認</h3><p>Premium / 本人が内容を確認して共有</p></header>
             <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-back"/></svg></span><h4>今月のまとめ</h4><span class="icon-button"><svg class="icon"><use href="#i-share"/></svg></span></div><div class="phone-body">
               <div class="settings-summary" style="background:var(--board)"><small>8月の学び</small><h5>自分の言葉で話した記録</h5><p>共有する前に、本人が内容を確認します。</p></div>
               <div class="surface-card tint-green"><span class="eyeline" style="color:var(--green)">言えるようになった</span><h5 style="margin-top:7px">二次方程式の因数を選ぶ理由</h5><p>「積と和を両方見る」と説明できました。</p></div>
@@ -1508,6 +1580,18 @@
               <div class="grow"></div><div class="primary-button"><svg class="icon"><use href="#i-share"/></svg>この内容を共有する</div><div class="text-button">今回は共有しない</div>
             </div></div><span class="pin one">1</span></div>
             <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>月次レポートを開く</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>OS共有シート</dd></div><div class="handoff-row"><dt>BACK</dt><dd>元画面へ戻る</dd></div><div class="annotation"><b>①</b> 自動送信せず、本人が読んでから共有する。</div></dl>
+          </article>
+          <div class="connector user"><span>メールで共有</span><i class="connector-line"></i></div>
+          <article class="artboard">
+            <header class="artboard-meta"><div class="artboard-id"><code>REPORT-02</code><span class="status new">NEW</span><span class="priority p1">P1</span></div><h3>家族が受け取る内容</h3><p>メール本文 / 見守りアカウントは作らない</p></header>
+            <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-back"/></svg></span><h4>8月の学びのまとめ</h4><div></div></div><div class="phone-body">
+              <div class="surface-card"><span class="eyeline">KATARUTE / AUGUST</span><h5 style="margin-top:7px">今月、自分の言葉で話したこと</h5><p>カタルテで本人が確認し、共有したまとめです。</p></div>
+              <div class="settings-section-title">言えるようになったこと</div><div class="surface-card tint-green"><h5>二次方程式</h5><p>「積と和を両方見る」と、因数を選ぶ理由まで説明できました。</p></div>
+              <div class="settings-section-title">いま取り組んでいること</div><div class="hole-card"><b>三角関数の符号</b><p>単位円と式をつなげて説明する練習中です。</p></div>
+              <div class="surface-card tint-blue"><h5>声をかけるなら</h5><p>「何点だった？」ではなく、「どこを説明できた？」と聞いてみてください。</p></div>
+              <div class="grow"></div><p class="fine muted">順位・正答率・他の利用者との比較は含めません。</p>
+            </div></div><span class="pin one">1</span></div>
+            <dl class="handoff"><div class="handoff-row"><dt>FROM</dt><dd>REPORT-01 / email composer</dd></div><div class="handoff-row"><dt>CONTENT</dt><dd>言えたこと / 取り組み中 / 声かけ例</dd></div><div class="handoff-row"><dt>RULE</dt><dd>点数・比較・常時監視なし</dd></div><div class="annotation"><b>①</b> 家族向けは管理画面にせず、本人が選んだ月次メールだけにする。</div></dl>
           </article>
         </div>
       </div>
@@ -1528,12 +1612,12 @@
         <div class="subflow-head"><code>A / CAPTURE & NETWORK</code><b>撮影・解析・接続の復帰状態</b><span>通常フローの該当画面へ戻す</span></div>
         <div class="flow-row">
           <article class="artboard">
-            <header class="artboard-meta"><div class="artboard-id"><code>REC-01</code><span class="status edge">EDGE</span><span class="priority p0">P0</span></div><h3>カメラ許可がない</h3><p>CAP-01分岐 / 写真選択は使える</p></header>
+            <header class="artboard-meta"><div class="artboard-id"><code>REC-01</code><span class="status edge">EDGE</span><span class="priority p0">P0</span></div><h3>カメラ許可がない</h3><p>CAP-CAMERA分岐 / 写真選択は使える</p></header>
             <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span><h4>問題を撮る</h4><div></div></div><div class="phone-body center">
               <div class="empty-illustration" style="background:var(--orange-soft);color:var(--orange);border:0"><svg class="icon icon-lg"><use href="#i-camera"/></svg></div><h3 class="phone-title">カメラを使えません</h3><p class="phone-subtitle">設定でカメラを許可すると、問題を撮れます。<br>写真ライブラリから選ぶこともできます。</p>
               <div style="width:100%" class="stack"><div class="primary-button">設定をひらく</div><div class="secondary-button"><svg class="icon"><use href="#i-photo"/></svg>写真から選ぶ</div><div class="text-button">ホームに戻る</div></div>
             </div></div><span class="pin two">1</span></div>
-            <dl class="handoff"><div class="handoff-row"><dt>FROM</dt><dd>CAP-01 / permission denied</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>OSアプリ設定</dd></div><div class="handoff-row"><dt>ALT</dt><dd>写真選択 / HOME-01</dd></div><div class="annotation"><b>①</b> 設定へ行かなくても進める代替手段を同格で置く。</div></dl>
+            <dl class="handoff"><div class="handoff-row"><dt>FROM</dt><dd>CAP-CAMERA / permission denied</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>OSアプリ設定</dd></div><div class="handoff-row"><dt>ALT</dt><dd>CAP-GALLERY / HOME-01</dd></div><div class="annotation"><b>①</b> 設定へ行かなくても進める代替手段を同格で置く。</div></dl>
           </article>
           <div class="connector system"><span>解析失敗</span><i class="connector-line"></i></div>
           <article class="artboard">
@@ -1543,7 +1627,7 @@
               <div class="system-banner error-banner"><svg class="icon"><use href="#i-warning"/></svg><span><b>問題文を読み取れませんでした。</b><br>文字を明るく、大きく入れると読みやすくなります。</span></div>
               <div class="grow"></div><div class="primary-button"><svg class="icon"><use href="#i-camera"/></svg>この写真を撮り直す</div><div class="secondary-button"><svg class="icon"><use href="#i-edit"/></svg>問題文を自分で入力する</div><div class="text-button">同じ写真でもう一度試す</div>
             </div></div><span class="pin one">1</span></div>
-            <dl class="handoff"><div class="handoff-row"><dt>FROM</dt><dd>OCR-01 / parse failure</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>写真を保持してCAP-01</dd></div><div class="handoff-row"><dt>ALT</dt><dd>手入力 / 同じ写真でretry</dd></div><div class="annotation"><b>①</b> 原因コードでなく、次の撮り方を具体的に書く。</div></dl>
+            <dl class="handoff"><div class="handoff-row"><dt>FROM</dt><dd>OCR-01 / parse failure</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>写真を保持してCAP-02</dd></div><div class="handoff-row"><dt>ALT</dt><dd>手入力 / 同じ写真でretry</dd></div><div class="annotation"><b>①</b> 原因コードでなく、次の撮り方を具体的に書く。</div></dl>
           </article>
           <div class="connector system"><span>低速</span><i class="connector-line"></i></div>
           <article class="artboard">
@@ -1637,9 +1721,9 @@
             <header class="artboard-meta"><div class="artboard-id"><code>EMPTY-01</code><span class="status new">NEW</span><span class="priority p1">P1</span></div><h3>いま復習する穴がない</h3><p>review queue empty / 成果として扱う</p></header>
             <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-close"/></svg></span><h4>おさらい</h4><div></div></div><div class="phone-body center">
               <div class="empty-illustration" style="background:var(--green-soft);color:var(--green);border:0"><svg class="icon icon-lg"><use href="#i-check"/></svg></div><h3 class="phone-title">いまは、埋めにいく穴が<br>ありません</h3><p class="phone-subtitle">今日の分は終わっています。<br>新しい問題を先輩に聞くこともできます。</p>
-              <div style="width:100%" class="primary-button"><svg class="icon"><use href="#i-camera"/></svg>新しい問題を撮る</div><div class="secondary-button" style="width:100%">ホームに戻る</div>
+              <div style="width:100%" class="primary-button"><svg class="icon"><use href="#i-photo"/></svg>新しい問題を見せる</div><div class="secondary-button" style="width:100%">ホームに戻る</div>
             </div></div></div>
-            <dl class="handoff"><div class="handoff-row"><dt>FROM</dt><dd>review queue = empty</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>CAP-01</dd></div><div class="handoff-row"><dt>BACK</dt><dd>HOME-01</dd></div><div class="annotation">「データがありません」ではなく、今日は完了していると伝える。</div></dl>
+            <dl class="handoff"><div class="handoff-row"><dt>FROM</dt><dd>review queue = empty</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>CAP-00</dd></div><div class="handoff-row"><dt>BACK</dt><dd>HOME-01</dd></div><div class="annotation">「データがありません」ではなく、今日は完了していると伝える。</div></dl>
           </article>
         </div>
       </div>
@@ -1647,8 +1731,8 @@
     <section class="board-section" id="settings-ia">
       <header class="section-head">
         <div class="section-index">05 / SETTINGS IA</div>
-        <h2 class="section-title">設定を“目的”で6つに分ける</h2>
-        <p class="section-copy">長い1枚の設定リストを、学習・通知・音声と表示・契約・サポート・データ管理に分ける。トップでは状態だけを要約し、各詳細画面では選択肢の意味、OS依存、危険操作をその場で説明する。</p>
+        <h2 class="section-title">設定を“何を整えたいか”で分ける</h2>
+        <p class="section-copy">現行の単純な一覧を、学習プロフィール、授業と入力、復習通知、契約、サポート、データ管理へ整理する。トップは現在値が読める目次に留め、Androidで管理する許可・言語・通知をアプリ内の偽スイッチで重複管理しない。</p>
       </header>
       <div class="review-strip">
         <div class="review-item"><code>IA RULE</code><b>設定トップは状態の目次にする</b></div>
@@ -1663,9 +1747,9 @@
           <article class="artboard">
             <header class="artboard-meta"><div class="artboard-id"><code>SET-00</code><span class="status refine">REFINE</span><span class="priority p0">P0</span></div><h3>設定トップ</h3><p>全利用者 / 6カテゴリの状態を要約</p></header>
             <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="appbar transparent"><div></div><h4>設定</h4><div></div></div><div class="phone-body scroll-fade">
-              <div class="settings-summary"><small>CURRENT PLAN</small><h5>無料プラン</h5><p>今日の授業 0 / 1回 ・ 次回は明日</p></div>
+              <div class="settings-summary"><small>CURRENT PLAN</small><h5>無料プラン</h5><p>カルテと短いおさらいが使えます</p></div>
               <div class="settings-section-title">学習と使い方</div>
-              <div class="settings-group"><div class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#i-book"/></svg></span><div><b>学習プロフィール</b><small>高校生 / 日本語</small></div><svg class="icon icon-sm muted"><use href="#i-chevron"/></svg></div><div class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#i-bell"/></svg></span><div><b>先輩からのおさらい</b><small>届きます</small></div><svg class="icon icon-sm muted"><use href="#i-chevron"/></svg></div><div class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#i-volume"/></svg></span><div><b>音声と表示</b><small>標準 / 端末の文字サイズ</small></div><svg class="icon icon-sm muted"><use href="#i-chevron"/></svg></div></div>
+              <div class="settings-group"><div class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#i-book"/></svg></span><div><b>学習プロフィール</b><small>高校生 / 日本語</small></div><svg class="icon icon-sm muted"><use href="#i-chevron"/></svg></div><div class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#i-mic"/></svg></span><div><b>授業と入力</b><small>タップ式 / 先輩のことば3行 / 写真も使える</small></div><svg class="icon icon-sm muted"><use href="#i-chevron"/></svg></div><div class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#i-bell"/></svg></span><div><b>先輩からのおさらい</b><small>届きます</small></div><svg class="icon icon-sm muted"><use href="#i-chevron"/></svg></div></div>
               <div class="settings-section-title">契約とサポート</div>
               <div class="settings-group"><div class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#i-card"/></svg></span><div><b>Premiumと契約</b><small>無料プラン</small></div><svg class="icon icon-sm muted"><use href="#i-chevron"/></svg></div><div class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#i-help"/></svg></span><div><b>ヘルプとフィードバック</b><small>報告・問い合わせ・規約</small></div><svg class="icon icon-sm muted"><use href="#i-chevron"/></svg></div><div class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#i-lock"/></svg></span><div><b>プライバシーとデータ</b><small>端末ID・データ管理</small></div><svg class="icon icon-sm muted"><use href="#i-chevron"/></svg></div></div>
             </div><nav class="bottom-nav"><span class="nav-item"><span class="nav-icon"><svg class="icon"><use href="#i-home"/></svg></span>ホーム</span><span class="nav-item"><span class="nav-icon"><svg class="icon"><use href="#i-plan"/></svg></span>計画</span><span class="nav-item active"><span class="nav-icon"><svg class="icon"><use href="#i-settings"/></svg></span>設定</span></nav></div><span class="pin one">1</span><span class="pin two">2</span></div>
@@ -1676,7 +1760,7 @@
             <header class="artboard-meta"><div class="artboard-id"><code>SET-01</code><span class="status refine">REFINE</span><span class="priority p0">P0</span></div><h3>学習プロフィール</h3><p>学年は単元探索範囲 / 制限ではない</p></header>
             <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-back"/></svg></span><h4>学習プロフィール</h4><div></div></div><div class="phone-body">
               <div><span class="eyeline">SCHOOL STAGE</span><h3 class="phone-title" style="font-size:17px">学年</h3><p class="phone-subtitle" style="margin-top:4px">撮った写真から、どの単元を先に探すかが変わります。選ばない範囲が禁止になるわけではありません。</p></div>
-              <div class="settings-group"><div class="setting-row"><span class="setting-icon">中</span><div><b>中学生</b><small>数学・理科・英語</small></div><span class="radio"></span></div><div class="setting-row"><span class="setting-icon">高</span><div><b>高校生</b><small>数学I〜C・理科・英語</small></div><span class="radio on"></span></div></div>
+              <div class="settings-group"><div class="setting-row"><span class="setting-icon">中</span><div><b>中学生</b><small>中学数学・中学英語</small></div><span class="radio"></span></div><div class="setting-row"><span class="setting-icon">高</span><div><b>高校生</b><small>高校数学・高校英語</small></div><span class="radio on"></span></div></div>
               <div class="settings-section-title">アプリの言語</div><div class="settings-group"><div class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#i-globe"/></svg></span><div><b>日本語</b><small>端末のアプリ言語設定を使用</small></div><span class="setting-value">変更 <svg class="icon icon-sm"><use href="#i-chevron"/></svg></span></div></div>
               <div class="surface-card tint-blue"><div class="row"><svg class="icon"><use href="#i-info"/></svg><p style="margin:0">変更は次に写真を読み取るときから反映されます。</p></div></div>
               <div class="grow"></div><p class="fine muted">保存ボタンはありません。選ぶとすぐ反映されます。</p>
@@ -1695,15 +1779,27 @@
             </div></div><span class="pin one">1</span></div>
             <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>SET-00 / 通知</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>Android通知設定</dd></div><div class="handoff-row"><dt>STATE</dt><dd>granted / deniedの2状態</dd></div><div class="annotation"><b>①</b> 何が届くか・届かないかを先に約束する。</div></dl>
           </article>
-          <div class="connector user"><span>音声と表示</span><i class="connector-line"></i></div>
+          <div class="connector user"><span>授業と入力</span><i class="connector-line"></i></div>
           <article class="artboard">
-            <header class="artboard-meta"><div class="artboard-id"><code>SET-03</code><span class="status new">NEW</span><span class="priority p1">P1</span></div><h3>音声と表示</h3><p>授業体験に関わる設定を集約</p></header>
-            <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-back"/></svg></span><h4>音声と表示</h4><div></div></div><div class="phone-body">
-              <div class="settings-section-title">先輩の音声</div><div class="settings-group"><div class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#i-volume"/></svg></span><div><b>話す速さ</b><small>授業と計画の音声</small></div><span class="setting-value">標準 <svg class="icon icon-sm"><use href="#i-chevron"/></svg></span></div><div class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#i-headphones"/></svg></span><div><b>音声の確認</b><small>「今日はどの問題？」</small></div><span class="setting-value"><svg class="icon"><use href="#i-play"/></svg></span></div></div>
-              <div class="settings-section-title">表示</div><div class="settings-group"><div class="setting-row"><span class="setting-icon">Aa</span><div><b>文字サイズ</b><small>端末の設定に合わせます</small></div><span class="setting-value">標準</span></div><div class="setting-row"><span class="setting-icon">↯</span><div><b>動きを減らす</b><small>紙吹雪・板書アニメーション</small></div><span class="toggle"></span></div><div class="setting-row"><span class="setting-icon">字</span><div><b>字幕を常に表示</b><small>先輩の発話を文字でも表示</small></div><span class="toggle on"></span></div></div>
-              <div class="surface-card tint-yellow"><p style="margin:0;color:#675418">マイクとカメラの許可はAndroid設定で変更できます。</p></div><div class="grow"></div>
+            <header class="artboard-meta"><div class="artboard-id"><code>SET-03</code><span class="status new">NEW</span><span class="priority p0">P0</span></div><h3>授業と入力</h3><p>話す・読む・見せる設定を同じ場所へ</p></header>
+            <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-back"/></svg></span><h4>授業と入力</h4><div></div></div><div class="phone-body">
+              <div class="settings-section-title">話す・聞く</div><div class="settings-group"><div class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#i-mic"/></svg></span><div><b>話す操作</b><small>授業・復習・計画で共通</small></div><span class="setting-value">タップ式</span></div><div class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#i-volume"/></svg></span><div><b>先輩が話す速さ</b><small>すべての音声</small></div><span class="setting-value">標準 <svg class="icon icon-sm"><use href="#i-chevron"/></svg></span></div></div>
+              <div class="settings-section-title">読む・見る</div><div class="settings-group"><div class="setting-row"><span class="setting-icon">字</span><div><b>先輩のことば</b><small>3行で表示 / 全文はスクロール</small></div><span class="setting-value">表示</span></div><div class="setting-row"><span class="setting-icon">Aa</span><div><b>文字サイズ</b><small>Androidの設定に合わせます</small></div><span class="setting-value">標準</span></div><div class="setting-row"><span class="setting-icon">↯</span><div><b>動きを減らす</b><small>板書の表示をすぐ完了</small></div><span class="toggle"></span></div></div>
+              <div class="settings-group"><div class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#i-photo"/></svg></span><div><b>カメラ・写真・マイク</b><small>許可状態と使い方</small></div><svg class="icon icon-sm muted"><use href="#i-chevron"/></svg></div></div>
+              <div class="grow"></div><p class="fine muted">話す操作と先輩のことばは、迷わないよう全場面で同じです。</p>
             </div></div></div>
-            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>SET-00 / 音声と表示</dd></div><div class="handoff-row"><dt>PRIMARY</dt><dd>行ごとに即時反映</dd></div><div class="handoff-row"><dt>A11Y</dt><dd>fontScale 1.0–1.3 / reduce motion</dd></div><div class="annotation">アプリ固有の体験設定だけを持ち、音量や端末文字サイズを二重管理しない。</div></dl>
+            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>SET-00 / 授業と入力</dd></div><div class="handoff-row"><dt>INPUT</dt><dd>許可状態 → SET-INPUT</dd></div><div class="handoff-row"><dt>A11Y</dt><dd>fontScale 1.0–1.3 / reduce motion</dd></div><div class="annotation">操作の一貫性は設定値にせず約束として表示。端末の音量・文字サイズは二重管理しない。</div></dl>
+          </article>
+          <div class="connector user"><span>許可状態を見る</span><i class="connector-line"></i></div>
+          <article class="artboard">
+            <header class="artboard-meta"><div class="artboard-id"><code>SET-INPUT</code><span class="status new">NEW</span><span class="priority p1">P1</span></div><h3>入力とAndroidの許可</h3><p>権限の役割を分け、OS設定を正にする</p></header>
+            <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-back"/></svg></span><h4>カメラ・写真・マイク</h4><div></div></div><div class="phone-body">
+              <div class="surface-card tint-blue"><h5>許可は、使う直前に聞きます</h5><p>最初にまとめて要求しません。ここでは現在の状態と用途だけ確認できます。</p></div>
+              <div class="settings-group"><div class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#i-camera"/></svg></span><div><b>カメラ</b><small>その場で問題やノートを撮る</small></div><span class="chip green">許可済み</span></div><div class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#i-photo"/></svg></span><div><b>写真から選ぶ</b><small>Androidの写真選択を毎回使う</small></div><span class="setting-value">許可不要</span></div><div class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#i-mic"/></svg></span><div><b>マイク</b><small>先輩へ説明する声を送る</small></div><span class="chip yellow">未許可</span></div></div>
+              <div class="surface-card tint-yellow"><h5>写真全体へのアクセスは求めません</h5><p>選んだ1枚だけをアプリへ渡すAndroid Photo Pickerを使います。</p></div>
+              <div class="grow"></div><div class="secondary-button">Androidのアプリ設定をひらく</div>
+            </div></div><span class="pin one">1</span></div>
+            <dl class="handoff"><div class="handoff-row"><dt>IN</dt><dd>SET-03 / 入力</dd></div><div class="handoff-row"><dt>STATE</dt><dd>camera / mic permission</dd></div><div class="handoff-row"><dt>OS</dt><dd>Android App Details Settings</dd></div><div class="annotation"><b>①</b> 写真選択は広いストレージ権限と混同させない。</div></dl>
           </article>
         </div>
       </div>
@@ -1714,8 +1810,8 @@
           <article class="artboard">
             <header class="artboard-meta"><div class="artboard-id"><code>SET-04A</code><span class="status refine">REFINE</span><span class="priority p0">P0</span></div><h3>契約 — 無料プラン</h3><p>RevenueCat設定済み / entitlementなし</p></header>
             <div class="device"><div class="phone-screen"><div class="statusbar"></div><div class="appbar"><span class="icon-button"><svg class="icon"><use href="#i-back"/></svg></span><h4>Premiumと契約</h4><div></div></div><div class="phone-body">
-              <div class="settings-summary"><small>CURRENT PLAN</small><h5>無料プラン</h5><p>1日1回の授業 / カルテとおさらい</p></div>
-              <div class="surface-card tint-blue"><h5>Premiumなら</h5><p>毎日つづけて何問も聞けて、先輩のあと追い質問も使えます。</p></div>
+              <div class="settings-summary"><small>CURRENT PLAN</small><h5>無料プラン</h5><p>授業・カルテ・短いおさらい</p></div>
+              <div class="surface-card tint-blue"><h5>Premiumなら</h5><p>ひとつの問題を続けて深掘りし、先輩へ別の聞き方も頼めます。</p></div>
               <div class="primary-button">Premiumを見る</div>
               <div class="settings-section-title">購入</div><div class="settings-group"><div class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#i-refresh"/></svg></span><div><b>購入を復元</b><small>別の端末で購入した場合</small></div><svg class="icon icon-sm muted"><use href="#i-chevron"/></svg></div></div>
               <div class="grow"></div><p class="fine muted">価格・トライアル・期間はストアから取得した内容だけを表示します。</p>
@@ -1770,13 +1866,13 @@
       </header>
       <div class="spec-grid">
         <article class="spec-card"><h3>Semantic color</h3><p>役割が同じなら、画面が変わっても意味を変えない。</p><div class="swatches">
-          <div class="swatch"><span class="swatch-color" style="background:var(--app)"></span><div><b>surface / canvas</b><br><span class="muted">通常背景</span></div><code>#F7F4ED</code></div>
-          <div class="swatch"><span class="swatch-color" style="background:var(--ink)"></span><div><b>content / primary</b><br><span class="muted">本文・主操作</span></div><code>#202522</code></div>
-          <div class="swatch"><span class="swatch-color" style="background:var(--board)"></span><div><b>lesson / board</b><br><span class="muted">板書領域</span></div><code>#173D33</code></div>
-          <div class="swatch"><span class="swatch-color" style="background:var(--yellow)"></span><div><b>turn / attention</b><br><span class="muted">本人の番</span></div><code>#F4CA4A</code></div>
-          <div class="swatch"><span class="swatch-color" style="background:var(--blue)"></span><div><b>action / voice</b><br><span class="muted">音声操作・リンク</span></div><code>#247EAA</code></div>
-          <div class="swatch"><span class="swatch-color" style="background:var(--green)"></span><div><b>success / filled</b><br><span class="muted">保存・言えた</span></div><code>#27745E</code></div>
-          <div class="swatch"><span class="swatch-color" style="background:var(--coral)"></span><div><b>attention / hole</b><br><span class="muted">穴・注釈</span></div><code>#CE6967</code></div>
+          <div class="swatch"><span class="swatch-color" style="background:var(--app)"></span><div><b>surface / canvas</b><br><span class="muted">通常背景</span></div><code>#FBFAF7</code></div>
+          <div class="swatch"><span class="swatch-color" style="background:var(--ink)"></span><div><b>content / primary</b><br><span class="muted">本文・主操作</span></div><code>#33323D</code></div>
+          <div class="swatch"><span class="swatch-color" style="background:var(--board)"></span><div><b>lesson / board</b><br><span class="muted">板書領域</span></div><code>#2F3A35</code></div>
+          <div class="swatch"><span class="swatch-color" style="background:var(--yellow)"></span><div><b>turn / attention</b><br><span class="muted">本人の番</span></div><code>#FFD93B</code></div>
+          <div class="swatch"><span class="swatch-color" style="background:var(--blue)"></span><div><b>action / voice</b><br><span class="muted">音声操作・リンク</span></div><code>#0EA5E9</code></div>
+          <div class="swatch"><span class="swatch-color" style="background:var(--green)"></span><div><b>success / filled</b><br><span class="muted">保存・言えた</span></div><code>#278268</code></div>
+          <div class="swatch"><span class="swatch-color" style="background:var(--coral)"></span><div><b>attention / hole</b><br><span class="muted">穴・注釈</span></div><code>#FF7AA8</code></div>
           <div class="swatch"><span class="swatch-color" style="background:var(--danger)"></span><div><b>error / danger</b><br><span class="muted">障害・削除のみ</span></div><code>#AE4545</code></div>
         </div></article>
 
@@ -1812,14 +1908,19 @@
           <div class="voice-demo">
             <div><div class="avatar senpai">先</div><b>先輩が説明中</b><div class="wave"><i></i><i></i><i></i><i></i><i></i></div></div>
             <div><div class="avatar">私</div><b>あなたの番</b><span class="chip blue">話しはじめる</span></div>
-            <div><div class="mic-orb" style="width:40px;height:40px;border-width:4px;margin:0"><svg class="icon"><use href="#i-mic"/></svg></div><b>録音中</b><span class="state-chip" style="background:var(--coral-soft);color:var(--coral)">REC</span></div>
+            <div><div class="mic-orb" style="width:40px;height:40px;border-width:4px;margin:0"><svg class="icon"><use href="#i-mic"/></svg></div><b>録音中</b><span class="chip blue">話し終わった</span></div>
             <div><div class="loader" style="width:34px;height:34px;border-width:3px"></div><b>整理中</b><span class="muted">録音は終了</span></div>
           </div>
-          <div class="decision-note" style="margin-top:14px"><b>STATE RULE</b><span>録音中だけ赤いRECを使う。処理中に波形を出さない。先輩再生中に押せるマイクを出さない。音だけで状態を伝えない。</span></div>
+          <div class="decision-note" style="margin-top:14px"><b>STATE RULE</b><span>タップで開始し、同じ場所の「話し終わった」で終了。録音中も黒板・直近の問い・先輩のことばを残す。処理中に波形を出さず、先輩再生中に押せるマイクを出さない。</span></div>
+        </article>
+
+        <article class="spec-card wide"><h3>Senpai words &amp; board content grammar</h3><p>発話を読めることと、黒板の実効幅を両立する共通構造。</p>
+          <div class="content-grammar"><div><code>WORDS</code><b>直近3行</b><span>全文は下から開いてスクロール。録音開始でも消さない。</span></div><div><code>GRAPH</code><b>軸・単位・注目点</b><span>要点を色だけに頼らず、読み上げ用の説明も持つ。</span></div><div><code>TABLE</code><b>2列 × 4行まで</b><span>比較観点を左に固定し、いま見る行だけを強調。</span></div><div><code>FIGURE</code><b>図へ直接注釈</b><span>式・図・直近の問いを同じ黒板上でつなげる。</span></div></div>
+          <div class="decision-note" style="margin-top:14px"><b>BOARD RULE</b><span>問題は白い紙、説明は全幅の黒板、先輩の発話は補助領域。カードやチャット履歴で式・図の幅を削らない。</span></div>
         </article>
 
         <article class="spec-card wide"><h3>Banner & feedback hierarchy</h3><p>内容と復帰可能性で使い分ける。Snackbarに重要な次操作を入れない。</p>
-          <div class="component-stack"><div class="turn-banner"><span class="avatar" style="width:25px;height:25px;border-radius:8px">私</span><span><b>Turn banner</b>　次は、あなたの番です</span></div><div class="system-banner"><svg class="icon"><use href="#i-info"/></svg><span><b>Inline information</b><br>ここではまだ今日の授業回数に数えません。</span></div><div class="system-banner error-banner"><svg class="icon"><use href="#i-warning"/></svg><span><b>Recoverable error</b><br>問題文を読み取れませんでした。写真は残っています。</span></div><div class="surface-card tint-green"><div class="row"><svg class="icon"><use href="#i-check"/></svg><div><h5>Success feedback</h5><p>最後まで言えました。カルテに保存しました。</p></div></div></div></div>
+          <div class="component-stack"><div class="turn-banner"><span class="avatar" style="width:25px;height:25px;border-radius:8px">私</span><span><b>Turn banner</b>　次は、あなたの番です</span></div><div class="system-banner"><svg class="icon"><use href="#i-info"/></svg><span><b>Inline information</b><br>読み違いがあれば、授業を始める前に直せます。</span></div><div class="system-banner error-banner"><svg class="icon"><use href="#i-warning"/></svg><span><b>Recoverable error</b><br>問題文を読み取れませんでした。写真は残っています。</span></div><div class="surface-card tint-green"><div class="row"><svg class="icon"><use href="#i-check"/></svg><div><h5>Success feedback</h5><p>最後まで言えました。カルテに保存しました。</p></div></div></div></div>
         </article>
 
         <article class="spec-card"><h3>Redline / Android frame</h3><p>390 × 844dpを基準に、端末差はSafeAreaで吸収する。</p><div class="redline-stage"><div class="redline-device"></div><span class="measure top">390dp</span><span class="measure side">56dp app bar</span><span class="measure tap">48dp tap</span><span class="measure safe">system safe inset</span></div></article>
@@ -1856,18 +1957,18 @@
             <tr><td><b>接続待ち</b></td><td><code>CONN-01</code></td><td><code>session_screen.dart</code></td><td><span class="status new">NEW</span></td><td><span class="priority p0">P0</span></td><td>startSession / Realtime接続状態</td><td>8秒超で低速状態へ移り、キャンセルで枠と写真を整合。</td></tr>
             <tr><td><b>授業</b></td><td><code>LES-01–08</code><br><code>LES-WORDS</code><br><code>BOARD-GRAPH</code><br><code>BOARD-TABLE</code><br><code>BOARD-FIGURE</code></td><td><code>session_screen.dart</code><br>board / realtime controllers</td><td><span class="status refine">REFINE</span></td><td><span class="priority p0">P0</span></td><td>既存state machineとの対応表が必要</td><td>タップ式録音で、録音中も黒板と問いを保持。発話は3行＋全文スクロール。図表は軸・見出し・要点を持つ。</td></tr>
             <tr><td><b>完了・カルテ</b></td><td><code>DONE-01</code><br><code>KARTE-01–02</code></td><td><code>celebration_screen.dart</code><br><code>karte_screen.dart</code></td><td><span class="status refine">REFINE</span></td><td><span class="priority p0">P0 / P1</span></td><td>根拠発話の表示長 / 共有導線</td><td>点数なし。言えたことは実発話、穴は停止箇所として表示。</td></tr>
-            <tr><td><b>復習</b></td><td><code>REVIEW-01–03</code></td><td><code>review_screen.dart</code></td><td><span class="status refine">REFINE + NEW</span></td><td><span class="priority p0">P0</span></td><td>録音後の自己申告画面分割</td><td>問いは10秒、答え非表示、「言えた / まだ」の2択で保存。</td></tr>
-            <tr><td><b>計画</b></td><td><code>PLAN-00–02</code></td><td><code>plan_screen.dart</code></td><td><span class="status refine">REFINE</span></td><td><span class="priority p1">P1</span></td><td>今日項目から撮影への文脈引き継ぎ</td><td>達成率なし。遅れの組み直しは事実を保ち、前より軽くする。</td></tr>
-            <tr><td><b>親レポート</b></td><td><code>REPORT-01</code></td><td><code>parent_report_screen.dart</code></td><td><span class="status refine">REFINE</span></td><td><span class="priority p1">P1</span></td><td>OS共有形式 / 個人情報コピー</td><td>自動送信なし。本人が全内容を確認してから共有。</td></tr>
+            <tr><td><b>復習</b></td><td><code>REVIEW-01–02</code><br><code>REVIEW-03A–03B</code><br><code>REVIEW-REC</code></td><td><code>review_screen.dart</code></td><td><span class="status refine">REFINE + NEW</span></td><td><span class="priority p0">P0</span></td><td>自己申告の分岐 / 任意の録音状態</td><td>問いは10秒、答え非表示。音声なしの「言えた / まだ」で完了でき、任意のタップ式録音中も問いを残す。</td></tr>
+            <tr><td><b>計画</b></td><td><code>PLAN-00–02</code><br><code>PLAN-READY</code><br><code>PLAN-CONV</code></td><td><code>plan_screen.dart</code></td><td><span class="status refine">REFINE + NEW</span></td><td><span class="priority p0">P0</span></td><td>音声セッション状態 / 今日項目から撮影への文脈</td><td>フォームなしで3条件を会話確認。直近の質問を残し、明示タップ後だけ録音し、遅れは前より軽く組み直す。</td></tr>
+            <tr><td><b>家族への共有</b></td><td><code>REPORT-01–02</code></td><td><code>parent_report_screen.dart</code></td><td><span class="status refine">REFINE</span></td><td><span class="priority p1">P1</span></td><td>メール本文 / 個人情報コピー</td><td>自動送信・点数・比較・監視なし。本人が全内容を確認してから月次メールで共有。</td></tr>
             <tr><td><b>回復状態</b></td><td><code>REC-01–07</code><br><code>LIMIT-01</code><br><code>EMPTY-01</code></td><td>capture / session / review各画面</td><td><span class="status edge">EDGE</span></td><td><span class="priority p0">P0</span></td><td>写真・板書・発話の保持境界を要確認</td><td>全状態にretry以外の出口。保持・破棄される情報を明記。</td></tr>
             <tr><td><b>課金</b></td><td><code>PAY-01–02</code></td><td><code>paywall_screen.dart</code><br><code>thanks_screen.dart</code></td><td><span class="status refine">REFINE</span></td><td><span class="priority p1">P1</span></td><td>RevenueCat Offering / Play Store</td><td>価格はSDKのみ。失敗時は購入disabled理由と戻る出口を表示。</td></tr>
-            <tr><td><b>設定</b></td><td><code>SET-00–07</code></td><td><code>settings_screen.dart</code></td><td><span class="status refine">REFINE + NEW</span></td><td><span class="priority p0">P0 / P2</span></td><td>新規ルートを作るか同一画面内pushか</td><td>全カテゴリへ2タップ以内。OS状態とアプリ状態を二重管理しない。</td></tr>
+            <tr><td><b>設定</b></td><td><code>SET-00–07</code><br><code>SET-INPUT</code></td><td><code>settings_screen.dart</code></td><td><span class="status refine">REFINE + NEW</span></td><td><span class="priority p0">P0 / P2</span></td><td>新規ルートを作るか同一画面内pushか</td><td>全カテゴリへ2タップ以内。タップ式操作を明示し、OSの許可・通知・言語を二重管理しない。</td></tr>
           </tbody>
         </table>
         <div class="spec-grid" style="padding:20px 0 0;grid-template-columns:repeat(3,1fr)">
-          <article class="spec-card"><h3>P0 / Core usability</h3><p>最初に実装・検証する単位</p><div class="check-list"><div class="check-row"><span class="check-mark">1</span><div><b>撮影〜授業の一本道</b><span>CAP / OCR / CONN</span></div></div><div class="check-row"><span class="check-mark">2</span><div><b>授業8状態</b><span>音声stateと主操作を同期</span></div></div><div class="check-row"><span class="check-mark">3</span><div><b>回復状態</b><span>写真・発話・板書を保持</span></div></div><div class="check-row"><span class="check-mark">4</span><div><b>設定トップ整理</b><span>現行機能の置き場所を改善</span></div></div></div></article>
-          <article class="spec-card"><h3>P1 / Learning continuity</h3><p>学習が一度で終わらないための単位</p><div class="check-list"><div class="check-row"><span class="check-mark">1</span><div><b>カルテ一覧と復習完了</b><span>次の再訪を明確にする</span></div></div><div class="check-row"><span class="check-mark">2</span><div><b>計画の今日先頭化</b><span>ホームとも接続する</span></div></div><div class="check-row"><span class="check-mark">3</span><div><b>契約2状態</b><span>無料 / Premiumを分離</span></div></div><div class="check-row"><span class="check-mark">4</span><div><b>アクセシビリティ設定</b><span>字幕と動きを減らす</span></div></div></div></article>
-          <article class="spec-card"><h3>P2 / Data controls</h3><p>仕様決定を伴う別Issue候補</p><div class="check-list"><div class="check-row"><span class="check-mark">1</span><div><b>学習データ削除</b><span>サーバー / 端末の対象を確定</span></div></div><div class="check-row"><span class="check-mark">2</span><div><b>カルテ全履歴</b><span>保持期間と検索要否</span></div></div><div class="check-row"><span class="check-mark">3</span><div><b>共有形式</b><span>テキスト / 画像 / PDF</span></div></div><div class="check-row"><span class="check-mark">4</span><div><b>手動問題文入力</b><span>対象科目と文字数制約</span></div></div></div></article>
+          <article class="spec-card"><h3>P0 / Core usability</h3><p>最初に実装・検証する単位</p><div class="check-list"><div class="check-row"><span class="check-mark">1</span><div><b>写真選択〜授業の一本道</b><span>CAP / OCR / CONN</span></div></div><div class="check-row"><span class="check-mark">2</span><div><b>読める先輩のことば</b><span>3行＋全文 / 録音中も保持</span></div></div><div class="check-row"><span class="check-mark">3</span><div><b>タップ式の音声操作</b><span>授業・復習・計画で共通</span></div></div><div class="check-row"><span class="check-mark">4</span><div><b>黒板の図表</b><span>グラフ・表・図形の要点を明示</span></div></div></div></article>
+          <article class="spec-card"><h3>P1 / Learning continuity</h3><p>学習が一度で終わらないための単位</p><div class="check-list"><div class="check-row"><span class="check-mark">1</span><div><b>カルテと1 / 3 / 7日復習</b><span>点数なしで次の再訪へ</span></div></div><div class="check-row"><span class="check-mark">2</span><div><b>会話で作る計画</b><span>フォームなし / 崩れたら軽くする</span></div></div><div class="check-row"><span class="check-mark">3</span><div><b>家族への月次共有</b><span>本人確認 / 点数・監視なし</span></div></div><div class="check-row"><span class="check-mark">4</span><div><b>設定の目的別IA</b><span>入力・表示・OS許可を説明</span></div></div></div></article>
+          <article class="spec-card"><h3>P2 / Data controls</h3><p>仕様決定を伴う別Issue候補</p><div class="check-list"><div class="check-row"><span class="check-mark">1</span><div><b>学習データ削除</b><span>サーバー / 端末の対象を確定</span></div></div><div class="check-row"><span class="check-mark">2</span><div><b>カルテ全履歴</b><span>保持期間と検索要否</span></div></div><div class="check-row"><span class="check-mark">3</span><div><b>家族共有の保持範囲</b><span>送信履歴をアプリに残すか決定</span></div></div><div class="check-row"><span class="check-mark">4</span><div><b>手動問題文入力</b><span>対象科目と文字数制約</span></div></div></div></article>
         </div>
       </div>
     </section>
