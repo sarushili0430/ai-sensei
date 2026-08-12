@@ -456,9 +456,12 @@ export function solve(items) {
       // 原点は必ず置く(原点との線分を引きたくなるのが普通で、無いと落ちていた)。
       pts.O = pts.O ?? { x: 0, y: 0 };
       const zs = {};
+      // **与えられた点も描く。**登録するだけだと、元の点が図に出ない。
       Object.entries(it.points || {}).forEach(([nm, v]) => {
         zs[nm] = { x: v[0], y: v[1] };
         pts[nm] = zs[nm];
+        draws.push({ t: 'pt', p: zs[nm], name: nm, coord: `(${fmt(v[0])}, ${fmt(v[1])})` });
+        draws.push({ t: 'seg', a: { x: 0, y: 0 }, b: zs[nm], names: ['O', nm], as: 'aux', length: Math.hypot(v[0], v[1]) });
       });
       (it.ops || []).forEach((op) => {
         const src = pts[op.of];
@@ -466,6 +469,7 @@ export function solve(items) {
         const a = (op.deg || 0) * Math.PI / 180, k = op.times ?? 1;
         pts[op.to] = { x: k * (src.x * Math.cos(a) - src.y * Math.sin(a)), y: k * (src.x * Math.sin(a) + src.y * Math.cos(a)) };
         draws.push({ t: 'pt', p: pts[op.to], name: op.to, coord: `(${fmt(pts[op.to].x)}, ${fmt(pts[op.to].y)})` });
+        draws.push({ t: 'seg', a: { x: 0, y: 0 }, b: pts[op.to], names: ['O', op.to], as: 'key', length: Math.hypot(pts[op.to].x, pts[op.to].y) });
       });
       draws.push({ t: 'complexPlane', points: Object.keys(pts), span: it.span || 4 });
     } else if (it.polar) {
