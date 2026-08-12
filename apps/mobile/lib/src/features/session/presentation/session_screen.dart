@@ -14,6 +14,7 @@ import '../../capture/application/capture_controller.dart';
 import '../application/board_inbox.dart';
 import '../application/session_controller.dart';
 import '../domain/session.dart';
+import 'board/board_style.dart';
 import 'board/board_view.dart';
 
 /// 会話画面(ワイヤーフレームの03/04を1枚に統合)。
@@ -377,14 +378,23 @@ class _BoardStageState extends State<_BoardStage> {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      controller: _controller,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          BoardView(steps: widget.board.steps),
-          if (widget.board.hasGap) const _BoardGapNotice(),
-        ],
+    // **板は動かない。動くのはチョークのほう。**
+    //
+    // 面を [BoardView] の中(= スクロールする側)だけに置くと、板が中身の高さに
+    // 縮んで、1〜2行しか書いていない授業では**画面の途中で板が終わる**。
+    // スクロールすると板の上下の縁も一緒に動くので、黒板ではなく黒い紙に見える。
+    // ここで授業の高さいっぱいに敷いておけば、書いた量に関わらず板は板のまま。
+    return ColoredBox(
+      color: BoardStyle.surface,
+      child: SingleChildScrollView(
+        controller: _controller,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            BoardView(steps: widget.board.steps),
+            if (widget.board.hasGap) const _BoardGapNotice(),
+          ],
+        ),
       ),
     );
   }
@@ -402,15 +412,23 @@ class _BoardGapNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        const Divider(color: AppColors.border, height: AppSpacing.lg),
-        Text(
-          AppStrings.of(context).sessionBoardGap,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.inkMuted),
-        ),
-      ],
+    // **板の上に書く一行なので、チョークの色で書く。**インクのままだと
+    // 黒に黒で、とぎれたことを伝える文だけが読めないまま残る。
+    // 左右の余白は [BoardView] の中ではないので、ここで同じ値を付ける。
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(BoardView.padding, 0, BoardView.padding, AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Divider(color: BoardStyle.chalkMuted, height: AppSpacing.lg),
+          Text(
+            AppStrings.of(context).sessionBoardGap,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: BoardStyle.chalkMuted,
+                ),
+          ),
+        ],
+      ),
     );
   }
 }
