@@ -1070,8 +1070,86 @@ footer a {
 }
 
 .join-step .btn + .tiny,
-.join-step p + .tiny {
+.join-step p + .tiny,
+.join-step .shot + .tiny,
+.join-step .tiny + .tiny {
   margin-top: 13px;
+}
+
+/* Google グループの画面の写し。
+ *
+ * 参加していない人には、参加ボタンのすぐ下に
+ * 「このコンテンツにアクセスする権限がありません」が大きく出る
+ * (会話をメンバーだけに見せる設定にしているため)。
+ * **これをエラーだと思って引き返す人が出る**ので、
+ * どこを押すのかを絵で先に見せる。Googleの画面が変わったら写しも直すこと。 */
+.shot {
+  margin: 16px 0 0;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--r-card);
+  overflow: hidden;
+}
+
+.shot-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex-wrap: wrap;
+  padding: 13px 16px;
+  border-bottom: 2px solid var(--border);
+}
+
+.shot-name {
+  font-weight: 900;
+  font-size: 15px;
+}
+
+/* 押す先。実物は Google の青い枠のボタン */
+.shot-cta {
+  border: 2px solid var(--blue);
+  border-radius: var(--r-chip);
+  padding: 4px 15px;
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--blue-d);
+  box-shadow: 0 0 0 4px var(--blue-l);
+}
+
+.shot-point {
+  font-size: 12.5px;
+  font-weight: 900;
+  color: var(--blue-d);
+}
+
+.shot-body {
+  padding: 22px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--ink-mut);
+}
+
+/* 禁止マーク。実物のグレーの丸に斜線 */
+.shot-deny {
+  display: block;
+  position: relative;
+  width: 26px;
+  height: 26px;
+  margin: 0 auto 9px;
+  border: 2.5px solid var(--ink-mut);
+  border-radius: 50%;
+  opacity: 0.45;
+}
+
+.shot-deny::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: -2px;
+  right: -2px;
+  height: 2.5px;
+  background: var(--ink-mut);
+  transform: rotate(-45deg);
 }
 
 /* 手順のあとに続く見出し(うまくいかないとき / 参加すると、どうなるか) */

@@ -75,8 +75,36 @@
       </p>
       <a class="btn btn-primary" href="https://groups.google.com/g/ai-sensei">グループに参加する</a>
       <p class="tiny">
-        開いた先の「グループに参加」を押せば完了です。ボタンが開けない場合は、
-        <code class="atom">ai-sensei+subscribe@googlegroups.com</code> に空のメールを送っても参加できます。
+        飛んだ先で、グループ名の右にある
+        <strong>「グループに参加」ボタンを押してください。</strong>
+        ここを押すまでは参加になりません。
+      </p>
+
+      <!-- Google グループの画面の写し。
+           参加していない人には、参加ボタンのすぐ下に
+           「このコンテンツにアクセスする権限がありません」が大きく出る
+           (会話をメンバーだけに見せる設定にしているため)。
+           **これをエラーだと思って引き返す人が出る**ので、
+           どこを押すのかと、その表示が正常であることを絵で先に見せる。 -->
+      <figure class="shot" role="img" aria-label="Google グループの画面。グループ名「ai-sensei」の右に「グループに参加」ボタンが並び、その下に「このコンテンツにアクセスする権限がありません」と表示されている。">
+        <div class="shot-head">
+          <span class="shot-name">ai-sensei</span>
+          <span class="shot-cta">グループに参加</span>
+          <span class="shot-point">← これ</span>
+        </div>
+        <div class="shot-body">
+          <span class="shot-deny"></span>
+          <p>このコンテンツにアクセスする権限がありません</p>
+        </div>
+      </figure>
+
+      <p class="tiny">
+        <strong>「権限がありません」と出ても、まちがいではありません。</strong>
+        参加していない人に会話を見せない設定にしてあるだけです。そのまま「グループに参加」を押せば入れます。
+      </p>
+      <p class="tiny">
+        ボタンが開けない場合は、<code class="atom">ai-sensei+subscribe@googlegroups.com</code>
+        に空のメールを送っても参加できます。
         グループのアドレスは <code class="atom">ai-sensei@googlegroups.com</code>。
       </p>
     </li>
