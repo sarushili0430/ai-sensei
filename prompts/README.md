@@ -131,7 +131,7 @@ variables: [photo_summary, visible_work, allowed_topics, question_seeds, lesson_
 
 | プロンプトに書くこと | コード側の相手 |
 | --- | --- |
-| 締めるときは「今日はここまでにしよっか」 / "Let's stop here for today" を明示して終える | `backend/agent/src/closing.ts` の `CLOSING_PATTERNS`。文言を変えるときは検出とテストも更新する |
+| 締めるときは「**今日は**ここまでにしよっか」 / "Let's stop here for today" を明示して終える(「説明はここまで」のような話の区切りの言い方では締めない) | `backend/agent/src/closing.ts` の `CLOSING_PATTERNS`。「今日は」「そろそろ」のような**今日ぜんぶを指す語**を前に要求している。文言を変えるときは検出とテストも更新する |
 | 採点しない・「合ってる / 違う」を宣告しない | **無し。**プロンプトだけが守っている |
 | 命令・催促をしない、数字を見せない(約束4) | **無し。**同上 |
 | 先に答えを埋めない(まず言わせる) | **無し。**`containsAnswerLeak()` は当てられない(下記) |
