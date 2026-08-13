@@ -32,7 +32,16 @@ android {
     // permission_handler_android 14 が compileSdk 37 を要求する。
     // Flutter 3.44.8 の flutter.compileSdkVersion はまだ 36 なので、
     // SDKが追いつくまではここで明示的に上書きする。
+    //
+    // API 37 のプラットフォームは Google がマイナー版付きでしか配っていない
+    // (`platforms;android-37.0` / `android-37.1`。`android-37` は存在しない)。
+    // そしてマイナー版を持つ API では hash string にもマイナーが入る
+    // ―― API 36.0 だけが `android-36` に特別扱いされ、37.0 は `android-37.0`。
+    // なので compileSdk = 37 だけだと AGP は `android-37` を探して
+    //   Failed to find target with hash string 'android-37'
+    // で落ちる。プラットフォームを入れても直らないので、マイナーまで指定する。
     compileSdk = 37
+    compileSdkMinor = 0
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

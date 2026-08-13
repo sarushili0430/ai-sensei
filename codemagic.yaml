@@ -459,6 +459,10 @@ workflows:
           keyPassword=$CM_KEY_PASSWORD
           EOF
 
+      # compileSdk 37 のプラットフォームは AGP が自動でダウンロードする。
+      # ディレクトリ名を android-37 に揃えるステップがここにあったが、
+      # 名前の問題ではなかったので消した(詳細は app/build.gradle.kts の compileSdkMinor)。
+
       - name: AAB をビルド
         working_directory: apps/mobile
         script: |
