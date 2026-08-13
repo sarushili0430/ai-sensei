@@ -22,6 +22,11 @@ const revenueCatEventSchema = z.object({
     app_user_id: z.string().optional(),
     /** ミリ秒エポック。解約後も期限までは有効。 */
     expiration_at_ms: z.number().nullable().optional(),
+    /**
+     * 猶予期間(ストア側の Grace period)の終わり。BILLING_ISSUE に付く。
+     * 支払いの再試行中も、ここまでは使わせる。
+     */
+    grace_period_expiration_at_ms: z.number().nullable().optional(),
     entitlement_ids: z.array(z.string()).nullable().optional(),
     /** TRANSFER のみ。移行元/移行先の app_user_id(複数あり得る)。 */
     transferred_from: z.array(z.string()).nullable().optional(),
@@ -45,10 +50,51 @@ const grantingTypes = new Set([
  * CANCELLATION(解約予約)は期限まで使えるので**ここに入れない**。
  * 払ったぶんは最後まで使える、が誠実さ(HAMM)の最低線。
  *
+ * BILLING_ISSUE も**ここに入れない**。あれは「支払いの再試行が始まった」で、
+ * 失効ではない(下の handleBillingIssue)。
+ *
  * TRANSFER も**ここに入れない**。剥奪ではなく付け替えなので、
  * 移行元から外して移行先に付ける(下の handleTransfer)。
  */
-const revokingTypes = new Set(["EXPIRATION", "BILLING_ISSUE", "REFUND"]);
+const revokingTypes = new Set(["EXPIRATION", "REFUND"]);
+
+/**
+ * BILLING_ISSUE の適用。**剥奪しない。**
+ *
+ * このイベントは「カードが通らなかったので再試行を始めた」の通知で、
+ * ストア側の猶予期間(Play: Grace period / Apple: Billing Retry)のあいだ
+ * RevenueCat の entitlement は**有効なまま**。
+ *
+ * ここで剥奪していたころは、猶予期間のあいだだけ
+ *   アプリ(SDKのCustomerInfo) = Premium / サーバ(users.is_premium) = 無料
+ * になった。画面の出し分けはサーバ側が正(docs/revenuecat.md §9)なので、
+ * **カードを更新すれば直るはずの数日間、授業も復習も止まる**。
+ * entitlement は変わっていないので premium_sync も読み直さない。
+ *
+ * やることは期限を猶予期間の終わりまで延ばすことだけ。
+ * 猶予が明けても払われなければ EXPIRATION が来て、そこで剥奪される。
+ */
+async function handleBillingIssue(input: {
+  repository: Services["repository"];
+  deviceId: string;
+  /** 猶予期間の終わり。無ければ従来の期限。どちらも無ければ null。 */
+  until: string | null;
+}): Promise<void> {
+  const { repository, deviceId, until } = input;
+
+  // 期限の材料が無いときは**触らない**。ここで expiresAt: null を書くと
+  // 「無期限」の意味になり(handleTransfer 参照)、支払いに失敗しただけの人が
+  // 永久Premiumになる。直前の RENEWAL が入れた期限をそのまま残せば、
+  // 猶予がどうであれ EXPIRATION で正しく終わる。
+  if (until === null) return;
+
+  await repository.setPremium({
+    deviceId,
+    isPremium: true,
+    expiresAt: until,
+    rcAppUserId: deviceId,
+  });
+}
 
 /**
  * TRANSFER の適用。
@@ -152,6 +198,19 @@ webhooksRoute.post("/revenuecat", async (c) => {
 
   const expiresAt =
     event.expiration_at_ms != null ? new Date(event.expiration_at_ms).toISOString() : null;
+  const graceExpiresAt =
+    event.grace_period_expiration_at_ms != null
+      ? new Date(event.grace_period_expiration_at_ms).toISOString()
+      : null;
+
+  if (event.type === "BILLING_ISSUE") {
+    await handleBillingIssue({
+      repository,
+      deviceId,
+      until: graceExpiresAt ?? expiresAt,
+    });
+    return c.json({ ok: true });
+  }
 
   if (grantingTypes.has(event.type)) {
     await repository.setPremium({
