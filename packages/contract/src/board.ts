@@ -482,6 +482,8 @@ export const boardStepSchema = z
      * 読み上げる文。問いかけと接続だけ(§3-1)。
      * LaTeXコマンドが混ざっていたら、それは板書に置くべきものを喋らせている。
      * `$` は英語の文章題で通貨として出るので見ない。見るのは `\` + 英字だけ。
+     * `∠` や `°` などの記号は自然な説明に必要で、TTS側で読み替えるため弾かない。
+     * ここで弾くと手順自体を捨てて生徒へ届かなくなる。
      */
     speech: z.string().min(1).max(boardSpeechMaxLength).regex(noLatexCommandPattern, {
       message: "speech に数式(LaTeX)を入れないでください。数式は board に置きます",
