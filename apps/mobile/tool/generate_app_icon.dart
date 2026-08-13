@@ -83,6 +83,15 @@ void main() {
       'xxhdpi': 324,
       'xxxhdpi': 432,
     };
+    // Androidの通知欄に出すsmall iconは24dp基準。OneSignalが既定で探す
+    // `ic_stat_onesignal_default` として、ランチャーとは別サイズで配る。
+    const Map<String, int> notificationDp = <String, int>{
+      'mdpi': 24,
+      'hdpi': 36,
+      'xhdpi': 48,
+      'xxhdpi': 72,
+      'xxxhdpi': 96,
+    };
 
     for (final MapEntry<String, int> entry in legacyDp.entries) {
       final String dir = '$_android/mipmap-${entry.key}';
@@ -117,12 +126,24 @@ void main() {
       );
     }
 
+    for (final MapEntry<String, int> entry in notificationDp.entries) {
+      final String dir = '$_android/drawable-${entry.key}';
+      Directory(dir).createSync(recursive: true);
+      await _writePng(
+        '$dir/ic_stat_onesignal_default.png',
+        await AppMark.rasterize(entry.value, skin: AppMarkSkin.monochrome),
+      );
+    }
+
     Directory('$_android/mipmap-anydpi-v26').createSync(recursive: true);
     for (final String name in <String>['ic_launcher', 'ic_launcher_round']) {
       File('$_android/mipmap-anydpi-v26/$name.xml').writeAsStringSync(_adaptiveIconXml);
     }
     File('$_android/values/ic_launcher_background.xml').writeAsStringSync(
       _backgroundColorXml(AppColors.blue),
+    );
+    File('$_android/values/onesignal_notification.xml').writeAsStringSync(
+      _notificationAccentColorXml(AppColors.blue),
     );
 
     // --- Play Console のストア掲載アイコン ---
@@ -285,6 +306,17 @@ String _backgroundColorXml(Color color) {
 <!-- tool/generate_app_icon.dart が生成する。手で編集しない。 -->
 <resources>
     <color name="ic_launcher_background">#${hex.toUpperCase()}</color>
+</resources>
+''';
+}
+
+String _notificationAccentColorXml(Color color) {
+  final String argb = color.toARGB32().toRadixString(16).padLeft(8, '0');
+  return '''
+<?xml version="1.0" encoding="utf-8"?>
+<!-- tool/generate_app_icon.dart が生成する。手で編集しない。 -->
+<resources>
+    <string name="onesignal_notification_accent_color">${argb.toUpperCase()}</string>
 </resources>
 ''';
 }
