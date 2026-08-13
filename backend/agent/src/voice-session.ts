@@ -4,6 +4,7 @@ import { type JobContext, voice } from "@livekit/agents";
 import * as anthropic from "@livekit/agents-plugin-anthropic";
 import * as deepgram from "@livekit/agents-plugin-deepgram";
 import type { AgentConfig } from "./config.ts";
+import { JapaneseSentenceTokenizer } from "./sentence-tokenizer.ja.ts";
 
 /**
  * 音声パイプラインの組み立てをここだけに置く。
@@ -76,6 +77,9 @@ export function createVoiceSession(options: VoiceSessionOptions): voice.AgentSes
     tts: new deepgram.TTS({
       apiKey: config.DEEPGRAM_API_KEY,
       model: locale === "en" ? config.DEEPGRAM_TTS_MODEL_EN : config.DEEPGRAM_TTS_MODEL_JA,
+      // 既定分割器は半角の文末記号しか見ないため、日本語では生成完了までTTSへ渡らない。
+      // 英語は既定の英語向け規則のままにし、日本語だけ早く確定した文を送る。
+      ...(locale === "ja" ? { sentenceTokenizer: new JapaneseSentenceTokenizer() } : {}),
     }),
     // LiveKit SDK 1.6.1 の `voice/agent_activity.ts` は会話・`session.say()` とも先に `tee()` し、
     // TTS枝だけへ `performTTSInference` 内でこの変換を適用する。字幕枝は元の文字列のまま流れる。
