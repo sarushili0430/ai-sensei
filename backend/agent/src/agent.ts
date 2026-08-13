@@ -7,7 +7,7 @@ import {
   type TextStreamPublisher,
   createTextStreamBoardSink,
 } from "./board.ts";
-import { closingGraceMs, isClosingUtterance } from "./closing.ts";
+import { isClosingUtterance } from "./closing.ts";
 import { type AgentConfig, loadConfig } from "./config.ts";
 import {
   type AgentContext,
@@ -510,13 +510,10 @@ function waitForEnd(
 ): Promise<EndedReason> {
   return new Promise<EndedReason>((resolve) => {
     let settled = false;
-    let graceTimer: ReturnType<typeof setTimeout> | undefined;
-
     const finish = (reason: EndedReason) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      clearTimeout(graceTimer);
       resolve(reason);
     };
 
@@ -525,10 +522,12 @@ function waitForEnd(
       remainingSeconds(context, startedAt, new Date()) * 1000,
     );
 
-    // 締めの言葉を言ったら、読み上げが終わる余白だけ待って閉じる
+    // SDK 1.6.1 の `voice/agent_activity.js` で確認: `forwardSegment` の約2180・2191行は
+    // `audioOutput.waitForPlayout()` を await してから返り、約2350行でその後に
+    // `_conversationItemAdded(assistantMessage)` を呼ぶ。固定時間で待つと長い締めを推測で
+    // 切ることになるため、検出した時点で完了にする。
     registerClosing(() => {
-      if (settled || graceTimer) return;
-      graceTimer = setTimeout(() => finish("completed"), closingGraceMs);
+      finish("completed");
     });
 
     session.on(voice.AgentSessionEventTypes.Close, () => finish("user_left"));
