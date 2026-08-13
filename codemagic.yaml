@@ -459,6 +459,55 @@ workflows:
           keyPassword=$CM_KEY_PASSWORD
           EOF
 
+      - name: compileSdk 37 のプラットフォームを用意する
+        # Google は SDK プラットフォームをマイナー版付きの命名に切り替えており、
+        # いま配られているのは `platforms;android-37.0`(ディレクトリも android-37.0)。
+        # 一方 AGP 9.0.1 は build.gradle.kts の `compileSdk = 37` を
+        # hash string `android-37` として探すので、自動ダウンロードが成功しても
+        #   Failed to find target with hash string 'android-37' in: .../android-sdk
+        # で落ちる。しかも落ちるのは R8 のタスク解決時 —— Gradleを4分回したあと。
+        #
+        # ここで名前を揃えておく。中身は同じものなので別名を張るだけでよい。
+        # compileSdk を 36 に下げる手は使えない(permission_handler_android 14 が 37 を要求する)。
+        script: |
+          set -euo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/share/android-sdk}}"
+          platforms="$sdk_root/platforms"
+          mkdir -p "$platforms"
+
+          if [ -d "$platforms/android-37" ]; then
+            echo "android-37 は既にある"
+            exit 0
+          fi
+
+          # マイナー版なしのパッケージが配られているならそれが本筋。
+          # 存在しない名前を渡すと sdkmanager は失敗するので、失敗は握りつぶして次へ。
+          if command -v sdkmanager >/dev/null 2>&1; then
+            yes | sdkmanager --install "platforms;android-37" >/dev/null 2>&1 || true
+            [ -d "$platforms/android-37" ] || \
+              yes | sdkmanager --install "platforms;android-37.0" >/dev/null 2>&1 || true
+          fi
+
+          if [ -d "$platforms/android-37" ]; then
+            echo "sdkmanager が android-37 を入れた"
+            exit 0
+          fi
+
+          if [ -d "$platforms/android-37.0" ]; then
+            ln -s "android-37.0" "$platforms/android-37"
+            echo "android-37.0 に android-37 の別名を張った"
+            ls -l "$platforms"
+            exit 0
+          fi
+
+          echo "android-37 も android-37.0 も入っていない。SDK の中身:"
+          ls -l "$platforms" || true
+          echo
+          echo "Google が 37 系の配布をやめた可能性がある。"
+          echo "apps/mobile/android/app/build.gradle.kts の compileSdk と"
+          echo "permission_handler_android の要求 SDK を確認すること。"
+          exit 1
+
       - name: AAB をビルド
         working_directory: apps/mobile
         script: |
