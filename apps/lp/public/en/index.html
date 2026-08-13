@@ -51,6 +51,7 @@
       <a href="#how">How it works</a>
       <a href="#karte">Karte</a>
       <a href="#review">Review</a>
+      <a href="#beta">Beta</a>
       <a href="#plans">Pricing</a>
       <a href="#faq">FAQ</a>
     </nav>
@@ -79,10 +80,14 @@
         Wherever you stall becomes a <strong>gap</strong> you did not know you had.
       </p>
       <div class="cta-row">
-        <span class="btn btn-soon" role="note">Coming to the App Store and Google Play</span>
-        <a class="btn btn-primary" href="https://github.com/sarushili0430/ai-sensei">Follow the build (GitHub)</a>
+        <a class="btn btn-primary" href="#beta">Join the closed beta</a>
+        <a class="btn btn-ghost" href="https://github.com/sarushili0430/ai-sensei">Follow the build (GitHub)</a>
       </div>
-      <p class="tiny">No account. No email. Just an anonymous device ID.</p>
+      <p class="tiny">
+        Right now the only build we hand out is the Android pre-release test
+        (the App Store and Google Play listings are still in the works).<br>
+        No account. No email in the app itself. Just an anonymous device ID.
+      </p>
     </div>
 
     <div class="phone" role="img" aria-label="The lesson screen. The senpai's board reads “Two roots ⇔ D &gt; 0” and “D = (−4)² − 4k &gt; 0”, and the senpai asks “Now explain it back — why do we look at D?”">
@@ -340,6 +345,81 @@
   </div>
 </section>
 
+<!-- ================= Closed beta =================
+     一枚しか入口を作らない。この Google グループが Play の**テスター名簿そのもの**で、
+     Play Console > テスト > クローズドテスト > テスター に
+     ai-sensei@googlegroups.com を登録してある(docs/ci/store-setup.md 2-4-1)。
+     **グループのアドレスを変えると、テスターが全員まとめて外れる。**
+     日本語版(../index.html #beta)と対の内容。片方だけ直さないこと。 -->
+<section id="beta">
+  <div class="wrap">
+    <p class="eyebrow">Closed beta</p>
+    <h2 class="sec-title">Before the store listing, we need <span class="mk">people who actually use it.</span></h2>
+    <p class="lede">
+      The pre-release build goes out through a Google Group. Joining the group puts you on the
+      Google Play tester roster, and the install instructions arrive in the group as soon as the
+      build is up. Joining is free, and nothing is charged during the test.
+    </p>
+
+    <div class="cta-row">
+      <a class="btn btn-primary" href="https://groups.google.com/g/ai-sensei">Join the group and become a tester</a>
+      <a class="btn btn-ghost" href="https://github.com/sarushili0430/ai-sensei/issues">Report what you hit</a>
+    </div>
+    <p class="tiny">
+      You need to be signed in to a Google account. The group address is
+      <code>ai-sensei@googlegroups.com</code> — if the button will not open, sending an empty
+      email to <code>ai-sensei+subscribe@googlegroups.com</code> joins you just the same.
+    </p>
+
+    <div class="grid grid-3">
+      <div class="card step">
+        <span class="num">1</span>
+        <h3>Join the group</h3>
+        <p>Use <strong>the Google account that is signed in on your Android device</strong>. The group is the tester roster itself, so joining with a different account means the build never reaches you.</p>
+      </div>
+      <div class="card step">
+        <span class="num">2</span>
+        <h3>Wait for the link</h3>
+        <p>When the build is up, we post the Play “become a tester” link to the group. Opt in there and the app installs from the Play Store like any other.</p>
+      </div>
+      <div class="card step">
+        <span class="num">3</span>
+        <h3>Open it now and then, for two weeks</h3>
+        <p>Every couple of days, one question is enough — photograph it, get taught, teach it back. <strong>Without a record of real use, the build cannot be submitted for release.</strong></p>
+      </div>
+    </div>
+
+    <table class="spec">
+      <tbody>
+        <tr>
+          <th scope="row">Device</th>
+          <td><strong>Android only</strong> for now (Google Play closed testing). iPhone builds go out through TestFlight, which this group cannot distribute.</td>
+        </tr>
+        <tr>
+          <th scope="row">Cost</th>
+          <td>None. Premium features are open during the test and no checkout screen appears.</td>
+        </tr>
+        <tr>
+          <th scope="row">What we ask</th>
+          <td>Roughly two weeks, opening it every other day for one problem. And a note whenever something breaks or an explanation looks wrong.</td>
+        </tr>
+        <tr>
+          <th scope="row">What we do not ask</th>
+          <td>Star ratings, posts about it, or bringing friends in. None of that is a condition of taking part.</td>
+        </tr>
+        <tr>
+          <th scope="row">Leaving</th>
+          <td>Leave the group and you are done. Nobody asks why and nobody tries to talk you out of it — deleting the app is enough on its own.</td>
+        </tr>
+        <tr>
+          <th scope="row">What becomes visible</th>
+          <td><strong>Joining shows your email address and display name to the developer</strong> — that is how Google Groups and the Play Console work. Other testers cannot see them; the group is configured that way. The app itself still runs on an anonymous device ID that is never tied to your address.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
 <!-- ================= Pricing ================= -->
 <section id="plans">
   <div class="wrap">
@@ -378,6 +458,14 @@
     <p class="eyebrow">FAQ</p>
     <h2 class="sec-title">The usual questions</h2>
     <div class="faq">
+      <details>
+        <summary>Can I join the closed beta on an iPhone?</summary>
+        <p>Not yet. The <a href="#beta">closed beta</a> runs on Google Play’s machinery, so the only builds it can hand out are Android ones. The iPhone build will go out through TestFlight, and that announcement goes to the same group — <strong>join now and the iOS invite reaches you too.</strong></p>
+      </details>
+      <details>
+        <summary>Does joining the group mean a lot of email?</summary>
+        <p>No. Only we can post to it, and we post two things: that a build is out, and that something significant changed. It is not a place where testers talk to each other, which is also why your address stays invisible to the rest of them.</p>
+      </details>
       <details>
         <summary>Can I use it somewhere I can’t speak?</summary>
         <p>The review side, yes — it’s one text question that takes about ten seconds, so a train or a
@@ -430,10 +518,10 @@
     <h2>You cannot feel the gap <span class="mk">until you try to say it out loud.</span></h2>
     <p class="lede">So you say it out loud, the moment after you are taught.</p>
     <div class="cta-row">
-      <span class="btn btn-soon" role="note">Coming to the App Store and Google Play</span>
-      <a class="btn btn-primary" href="https://github.com/sarushili0430/ai-sensei">Follow the build (GitHub)</a>
+      <a class="btn btn-primary" href="#beta">Join the closed beta</a>
+      <a class="btn btn-ghost" href="https://github.com/sarushili0430/ai-sensei">Follow the build (GitHub)</a>
     </div>
-    <p class="tiny">Built in public. The source is MIT-licensed.</p>
+    <p class="tiny">Android test build only, for now. Built in public — the source is MIT-licensed.</p>
   </div>
 </section>
 
@@ -449,6 +537,7 @@
       <p class="foot-brand" style="font-size:13px">Product</p>
       <ul>
         <li><a href="#how">How it works</a></li>
+        <li><a href="#beta">Closed beta</a></li>
         <li><a href="#plans">Pricing</a></li>
         <li><a href="#faq">FAQ</a></li>
         <li><a href="../" hreflang="ja" lang="ja">日本語</a></li>
@@ -458,6 +547,7 @@
       <p class="foot-brand" style="font-size:13px">Development</p>
       <ul>
         <li><a href="https://github.com/sarushili0430/ai-sensei">GitHub (MIT)</a></li>
+        <li><a href="https://groups.google.com/g/ai-sensei">Tester group</a></li>
         <li><a href="https://github.com/sarushili0430/ai-sensei/issues">Support &amp; bug reports</a></li>
         <li><a href="https://shipaton.revenuecat.com/">RevenueCat Shipaton 2026</a></li>
         <!-- 提出前に足すもの: SUPPORT_EMAIL。値が決まるまで、無いものへのリンクは置かない。 -->

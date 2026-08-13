@@ -16,13 +16,20 @@ apps/lp/
 `assets.directory` が `./public` を指しているので、ここから外に置いたファイルは
 配信されません(逆に、`public/` に置いたものは全部そのまま公開されます)。
 
-想定している使い道は3つです。
+想定している使い道は4つです。
 
 | 用途 | 使う場所 |
 | --- | --- |
 | マーケティングURL | App Store Connect(任意) |
 | サポートURL | App Store Connect / Google Play Console(**必須**。いまは GitHub Issues を窓口にしている) |
 | 提出資料からの導線 | Shipaton / Devpost / #BuildInPublic の投稿 |
+| クローズドテストのテスター募集 | `#beta` の節。SNS・学校・知人へ配るURLはここ1本にする |
+
+**テスターの入口は `#beta` の Google グループ(`ai-sensei@googlegroups.com`)だけ。**
+このグループが Play Console に登録したテスター名簿そのものなので、
+**アドレスを変えるとテスターが全員まとめて外れます**(12人/14日のカウントも切れる)。
+グループ側の設定と Play Console 側の紐づけは
+[`docs/ci/store-setup.md`](../../docs/ci/store-setup.md) 2-4-1。
 
 ## 作りの前提
 
@@ -111,7 +118,13 @@ GitHub App からpushできないため)。
 - [ ] 規約とポリシーの英語版。米国配信は Shipaton の参加要件なので、日本語だけでは足りない
 - [ ] `SUPPORT_EMAIL` → フッタの問い合わせ先に追加(いまは GitHub Issues のみ)
 - [ ] `public/404.html` → 足したら `wrangler.jsonc` の `not_found_handling` を `"404-page"` に
-- [ ] 配信開始 → ヒーローと締めの「App Store / Google Play で配信予定」を実際のバッジとリンクに差し替え。
+- [ ] **クローズドテストのトラックが公開されたら、`#beta` のステップ2に Play の参加用URL
+      (`https://play.google.com/apps/testing/jp.co.aiSensei`)を足す。**
+      いまは「グループ宛に案内を送る」としか書いていない ——
+      リリースが1本も承認されていない間、このURLは「テスターではありません」の
+      画面にしかならないため([`docs/ci/store-setup.md`](../../docs/ci/store-setup.md) 2-4-1)
+- [ ] 配信開始 → ヒーローと締めの CTA(いまはクローズドベータ)を実際のストアバッジとリンクに差し替え。
       iOS が先に出るので、**片方だけ出た状態**(App Storeのリンク + Google Playは「配信予定」)を
-      一度は通ることになる。両方まとめて差し替えないこと
+      一度は通ることになる。両方まとめて差し替えないこと。
+      `styles.css` の `.btn-soon` は、そのときのために残してある
 - [ ] OGP画像(`og:image`)。1200×630。`apps/mobile/tool/` と同じく**コードから生成する**こと

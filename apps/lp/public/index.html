@@ -52,6 +52,7 @@
       <a href="#how">しくみ</a>
       <a href="#karte">カルテ</a>
       <a href="#review">復習</a>
+      <a href="#beta">ベータ</a>
       <a href="#plans">料金</a>
       <a href="#faq">よくある質問</a>
     </nav>
@@ -77,10 +78,13 @@
         わからない問題を撮ると、先輩AIが<strong>板書つきで教えて</strong>くれます。そのあとすぐ、「じゃあ今の、説明してみて」。説明が止まった場所が、自分でも気づいていなかった<strong>理解の穴</strong>としてカルテに残ります。
       </p>
       <div class="cta-row">
-        <span class="btn btn-soon" role="note">App Store / Google Play で配信予定</span>
-        <a class="btn btn-primary" href="https://github.com/sarushili0430/ai-sensei">開発の途中を見る（GitHub）</a>
+        <a class="btn btn-primary" href="#beta">クローズドベータに参加する</a>
+        <a class="btn btn-ghost" href="https://github.com/sarushili0430/ai-sensei">開発の途中を見る（GitHub）</a>
       </div>
-      <p class="tiny">アカウント作成なし。匿名の端末IDだけではじめられます。</p>
+      <p class="tiny">
+        いまは Android の配信前テストだけを配っています（App Store / Google Play での配信は準備中）。<br>
+        アカウント作成なし。匿名の端末IDだけではじめられます。
+      </p>
     </div>
 
     <!-- 授業モード。中身はオンボーディングのリハーサル(strings.dart)と同じ1問 -->
@@ -331,6 +335,86 @@
   </div>
 </section>
 
+<!-- ================= クローズドベータ =================
+     入口は Google グループ1つだけ。このグループが Play の**テスター名簿そのもの**で、
+     Play Console > テスト > クローズドテスト > テスター に
+     ai-sensei@googlegroups.com を登録してある(docs/ci/store-setup.md 2-4-1)。
+     **グループのアドレスを変えると、テスターが全員まとめて外れる。**
+
+     Play の参加用URL(https://play.google.com/apps/testing/jp.co.aiSensei)を
+     ここに直接置いていないのは、クローズドテストのリリースが1本も承認されていない間、
+     そのURLが「テスターではありません」のページにしかならないため。
+     案内はグループ宛に送る(= 参加した人にだけ届く)。トラックが公開されたら、
+     apps/lp/README.md「公開前に埋めるもの」の該当行に従ってリンクを足すこと。 -->
+<section id="beta">
+  <div class="wrap">
+    <p class="eyebrow">クローズドベータ</p>
+    <h2 class="sec-title">ストアに出す前に、<span class="mk">本当に使う人</span>を探しています。</h2>
+    <p class="lede">
+      配信前のテスト版を Google グループ経由で配っています。グループに参加すると、そのまま
+      Google Play のテスター名簿に入ります。テスト版の準備ができ次第、インストールの案内が
+      グループ宛に届きます。参加も利用も無料で、テスト中に課金は発生しません。
+    </p>
+
+    <div class="cta-row">
+      <a class="btn btn-primary" href="https://groups.google.com/g/ai-sensei">グループに参加してテスターになる</a>
+      <a class="btn btn-ghost" href="https://github.com/sarushili0430/ai-sensei/issues">気づいたことを報告する</a>
+    </div>
+    <p class="tiny">
+      参加には Google アカウントへのログインが必要です。グループのアドレスは
+      <code>ai-sensei@googlegroups.com</code> —— ボタンが開けない場合は、
+      <code>ai-sensei+subscribe@googlegroups.com</code> に空のメールを送っても参加できます。
+    </p>
+
+    <div class="grid grid-3">
+      <div class="card step">
+        <span class="num">1</span>
+        <h3>グループに参加する</h3>
+        <p><strong>Android 端末で使っている Google アカウント</strong>で参加してください。ここがテスター名簿そのものなので、別のアカウントで入るとテスト版が降ってきません。</p>
+      </div>
+      <div class="card step">
+        <span class="num">2</span>
+        <h3>案内を待って入れる</h3>
+        <p>テスト版が上がったら、グループ宛に Play の「テストに参加」リンクを送ります。そこで参加を押すと、Playストアからふつうに入ります。</p>
+      </div>
+      <div class="card step">
+        <span class="num">3</span>
+        <h3>2週間、ときどき開く</h3>
+        <p>2日に1回、1問でかまいません。撮って、教わって、教え返す。<strong>実際に使われた記録がないと、配信の申請に出せません。</strong></p>
+      </div>
+    </div>
+
+    <table class="spec">
+      <tbody>
+        <tr>
+          <th scope="row">対象の端末</th>
+          <td>いまは <strong>Android のみ</strong>（Google Play のクローズドテスト）。iPhone は TestFlight で別に配るので、このグループでは配れません。</td>
+        </tr>
+        <tr>
+          <th scope="row">費用</th>
+          <td>かかりません。テスト中は Premium の機能も含めて無料で、決済画面が出ることもありません。</td>
+        </tr>
+        <tr>
+          <th scope="row">お願いすること</th>
+          <td>2週間ほど、2日に1回くらい開いて1問通してみること。うまく動かない・説明がおかしいと思ったところの報告。</td>
+        </tr>
+        <tr>
+          <th scope="row">お願いしないこと</th>
+          <td>レビューの星をつけること、SNSでの拡散、知り合いの勧誘。どれも参加の条件ではありません。</td>
+        </tr>
+        <tr>
+          <th scope="row">やめるとき</th>
+          <td>グループから脱退すれば終わりです。理由を聞いたり、引き止めたりしません。アプリを消すだけでも構いません。</td>
+        </tr>
+        <tr>
+          <th scope="row">見えるもの</th>
+          <td><strong>参加すると、あなたのメールアドレスと表示名が開発者に見えます</strong>（Google グループと Play Console の仕様）。ほかのテスターからは見えない設定にしてあります。アプリ本体は匿名の端末IDのままで、メールアドレスとは結びつきません。</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
 <!-- ================= 料金 ================= -->
 <section id="plans">
   <div class="wrap">
@@ -367,6 +451,14 @@
     <p class="eyebrow">よくある質問</p>
     <h2 class="sec-title">気になるところ</h2>
     <div class="faq">
+      <details>
+        <summary>iPhone でもクローズドベータに参加できますか?</summary>
+        <p>いまは参加できません。<a href="#beta">クローズドベータ</a>は Google Play のしくみに乗っているので、配れるのは Android だけです。iPhone 向けは TestFlight で別に配る予定で、そちらの案内も同じグループに流します。<strong>いま参加しておけば、iOS のテスト版が出たときにも届きます。</strong></p>
+      </details>
+      <details>
+        <summary>ベータに参加すると、グループにメールがたくさん届きますか?</summary>
+        <p>届きません。投稿できるのは運営だけにしてあり、送るのはテスト版の配信と、大きな変更のお知らせだけです。テスター同士のやりとりの場ではないので、あなたのメールアドレスがほかの参加者に見えることもありません。</p>
+      </details>
       <details>
         <summary>声を出せない場所でも使えますか?</summary>
         <p>復習は使えます。入口は1問10秒のテキストの小テストなので、電車でもリビングでも深夜でも回せます。ただし授業モード（板書つきで教わって、その場で教え返す）は声が前提です。教え返すこと自体がこのアプリの中身なので、ここはテキストに置き換えていません。</p>
@@ -406,10 +498,10 @@
     <h2>わかったつもりは、<span class="mk">説明してみるまで気づけない。</span></h2>
     <p class="lede">だから、教わったその場で教え返します。</p>
     <div class="cta-row">
-      <span class="btn btn-soon" role="note">App Store / Google Play で配信予定</span>
-      <a class="btn btn-primary" href="https://github.com/sarushili0430/ai-sensei">開発の途中を見る（GitHub）</a>
+      <a class="btn btn-primary" href="#beta">クローズドベータに参加する</a>
+      <a class="btn btn-ghost" href="https://github.com/sarushili0430/ai-sensei">開発の途中を見る（GitHub）</a>
     </div>
-    <p class="tiny">ソースコードは MIT ライセンスで公開しています。</p>
+    <p class="tiny">いまは Android のテスト版のみ。ソースコードは MIT ライセンスで公開しています。</p>
   </div>
 </section>
 
@@ -425,6 +517,7 @@
       <p class="foot-brand" style="font-size:13px">プロダクト</p>
       <ul>
         <li><a href="#how">しくみ</a></li>
+        <li><a href="#beta">クローズドベータ</a></li>
         <li><a href="#plans">料金</a></li>
         <li><a href="#faq">よくある質問</a></li>
         <li><a href="./en/" hreflang="en" lang="en">English</a></li>
@@ -434,6 +527,7 @@
       <p class="foot-brand" style="font-size:13px">開発</p>
       <ul>
         <li><a href="https://github.com/sarushili0430/ai-sensei">GitHub（MIT）</a></li>
+        <li><a href="https://groups.google.com/g/ai-sensei">テスターのグループ</a></li>
         <li><a href="https://github.com/sarushili0430/ai-sensei/issues">お問い合わせ・不具合の報告</a></li>
         <li><a href="https://shipaton.revenuecat.com/">RevenueCat Shipaton 2026</a></li>
         <!-- 提出前に足すもの: サポート窓口のメール(SUPPORT_EMAIL)。

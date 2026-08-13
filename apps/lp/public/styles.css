@@ -134,6 +134,12 @@ section:first-of-type {
   border-top: 0;
 }
 
+/* ヘッダが sticky なので、アンカーで飛ぶと見出しがその下に潜る。
+   .nav-in の高さ(62px)ぶん、飛び先を手前で止める。 */
+section[id] {
+  scroll-margin-top: 62px;
+}
+
 .eyebrow {
   font-size: 12px;
   font-weight: 700;
@@ -157,6 +163,21 @@ section:first-of-type {
   font-size: 12.5px;
   color: var(--ink-mut);
   line-height: 1.7;
+}
+
+/* そのまま書き写す値(グループのアドレスなど)。丸ゴシックだと
+   記号の切れ目が読めないので、ここだけ等幅に落とす。 */
+code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.92em;
+  background: var(--blue-l);
+  border-radius: 6px;
+  padding: 1px 6px;
+
+  /* break-all / anywhere にしないこと —— どちらも、次の行に丸ごと
+     収まる場合でもアドレスの途中(ai- / sensei@googlegroups.com)で切る。
+     break-word だけが「まず行送りしてみて、それでも入らなければ割る」。 */
+  overflow-wrap: break-word;
 }
 
 /* ------------------------------------------------------------------ *
@@ -237,7 +258,11 @@ section:first-of-type {
   box-shadow: none;
 }
 
-/* まだ出していないものを、出しているように見せない */
+/* まだ出していないものを、出しているように見せない。
+   クローズドベータの導線を足した時点で使い手はいなくなったが、消さないこと ——
+   iOS が先に配信されて Android が追いつくまでの間、
+   「App Store は実リンク / Google Play は配信予定」の並びをもう一度作る
+   (apps/lp/README.md「公開前に埋めるもの」)。 */
 .btn-soon {
   background: var(--surface);
   color: var(--ink-mut);
@@ -828,6 +853,22 @@ section:first-of-type {
   margin-top: 10px;
   font-size: 14px;
   color: var(--ink-mut);
+}
+
+/* クローズドベータ —— このページで唯一「いま押せる」導線なので、
+   締めのCTAと同じように背景を白へ落として、地のセクションから浮かせる。 */
+#beta {
+  background: var(--surface);
+}
+
+#beta .spec {
+  margin-top: 26px;
+}
+
+/* ボタンの下の但し書き。1080px いっぱいに伸ばすと、
+   同じ長さのアドレスが2本並んで読む順を見失う。 */
+#beta .cta-row + .tiny {
+  max-width: 46em;
 }
 
 /* 締めのCTA */
