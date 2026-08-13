@@ -72,7 +72,17 @@ workflow を足すときはこの変数も一緒に設定すること。
 
 | 変数 | 中身 | Secure |
 | --- | --- | --- |
-| `GCLOUD_SERVICE_ACCOUNT_CREDENTIALS` | Play Console のサービスアカウントJSON(丸ごと) | ✅ |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_CREDENTIALS` | Play Console のサービスアカウントJSON(丸ごと) | ✅ |
+
+旧名は `GCLOUD_SERVICE_ACCOUNT_CREDENTIALS`。Codemagic 側で非推奨になり、
+ビルドログに
+
+> Warning: Using environment variable GCLOUD_SERVICE_ACCOUNT_CREDENTIALS to
+> define argument value is deprecated and will be removed in a future release.
+
+が出るようになったので `codemagic.yaml` は新しい名前を参照している。
+**Codemagic UI > 変数グループ `google-play` 側も同じ名前に付け替えること。**
+片方だけ直すと `credentials` が空のまま Play へのアップロードで落ちる。
 
 ## 2. iOS の署名
 

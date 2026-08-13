@@ -418,7 +418,9 @@ workflows:
       java: 17
       groups:
         - mobile-dart-defines
-        # GCLOUD_SERVICE_ACCOUNT_CREDENTIALS(Play Consoleのサービスアカウント)
+        # GOOGLE_PLAY_SERVICE_ACCOUNT_CREDENTIALS(Play Consoleのサービスアカウント)
+        # 旧名 GCLOUD_SERVICE_ACCOUNT_CREDENTIALS は Codemagic 側で非推奨。
+        # Codemagic UI の変数グループでも新しい名前に付け替えること。
         - google-play
       vars:
         # assert_dart_defines が、どちらのRevenueCat鍵を要求するかの判定に使う
@@ -487,7 +489,7 @@ workflows:
 
     publishing:
       google_play:
-        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        credentials: $GOOGLE_PLAY_SERVICE_ACCOUNT_CREDENTIALS
         track: internal
         submit_as_draft: true
       email:

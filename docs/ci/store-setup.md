@@ -613,7 +613,9 @@ Play Console にAABを上げたあとなら
 4. 権限は **「リリース」**(アプリ単位でよい。
    `リリースの作成・公開` と `テストトラックへの公開` があれば足りる)
 5. JSON を丸ごと Codemagic の変数グループ `google-play` の
-   `GCLOUD_SERVICE_ACCOUNT_CREDENTIALS` に **Secure で** 入れる
+   `GOOGLE_PLAY_SERVICE_ACCOUNT_CREDENTIALS` に **Secure で** 入れる
+   (旧名 `GCLOUD_SERVICE_ACCOUNT_CREDENTIALS` は非推奨。すでに旧名で
+   登録してある場合は新しい名前に付け替える)
 
 ### 2-10. RevenueCat(Google側)
 
