@@ -6,6 +6,8 @@ import type { UserRecord } from "../repository/types.ts";
  *
  * Free    : 1日1セッション / Premiumと同じ最長20分 / 当日のカルテ閲覧まで
  * Premium : 通常の1日1〜2回には当たらない非表示のフェアユース上限 / 最長20分
+ * βテスト : 期間中は全員がPremium相当。本数だけ `BETA_SESSIONS_PER_DAY` で緩める
+ *           ({@link isBetaOpenAccess})
  *
  * **数えるのは「先輩と話した回数」**で、写真を読んだ回数ではない
  * (枠を押さえるのは `POST /v1/sessions/{id}/start`)。撮って単元を確かめただけの
@@ -16,6 +18,38 @@ export function isPremiumNow(user: UserRecord | null, now: Date): boolean {
   if (!user?.is_premium) return false;
   if (!user.premium_expires_at) return true;
   return new Date(user.premium_expires_at).getTime() > now.getTime();
+}
+
+/**
+ * クローズドβの開放期間かどうか(`BETA_OPEN_ACCESS_UNTIL`)。
+ *
+ * この期間、**アプリを入れられるのは限定公開テストの名簿に載っている人だけ**
+ * なので、「全員」と「テスター」が同じ集合になる。だから端末IDを集めて
+ * 1人ずつ付けて回る必要がなく、機種変更でIDが変わっても付け直しが要らない。
+ *
+ * 一般公開したらこの前提は崩れる。**期限で自動的に切れる**ようにしてあるのは、
+ * 外し忘れたフラグが「なぜか誰も課金画面を見ない」という形でしか
+ * 発覚しないため。
+ */
+export function isBetaOpenAccess(input: { now: Date; limits: Limits }): boolean {
+  const until = input.limits.betaOpenAccessUntil;
+  return until !== null && input.now.getTime() < until.getTime();
+}
+
+/**
+ * 機能を解放してよいか。**課金判定を見るところは、すべてこれを通す。**
+ *
+ * 復習の音声授業・学習プラン・親レポート・あと追い質問・ペイウォールの出し分けが
+ * ここに集まっている。β開放を `isPremiumNow` の中に混ぜず1枚上に置いたのは、
+ * `isPremiumNow` が**本当に払ったかどうか**を答え続ける必要があるから
+ * (webhookの同期とTRANSFERの引き継ぎはそちらを見る)。
+ */
+export function hasPremiumAccess(input: {
+  user: UserRecord | null;
+  now: Date;
+  limits: Limits;
+}): boolean {
+  return isBetaOpenAccess(input) || isPremiumNow(input.user, input.now);
 }
 
 export type SessionAllowance =
@@ -40,6 +74,9 @@ export function sessionsPerDay(input: {
   now: Date;
   limits: Limits;
 }): number {
+  // β開放中は「使い放題」の体感を出すが、上限そのものは外さない。
+  // LiveKit・STT・LLM・TTSの従量原価はテスターでも同じだけ動く。
+  if (isBetaOpenAccess(input)) return input.limits.betaSessionsPerDay;
   return isPremiumNow(input.user, input.now)
     ? input.limits.premiumSessionsPerDay
     : input.limits.freeSessionsPerDay;
@@ -79,7 +116,7 @@ export function sessionMaxSeconds(input: {
   now: Date;
   limits: Limits;
 }): number {
-  return isPremiumNow(input.user, input.now)
+  return hasPremiumAccess(input)
     ? input.limits.premiumSessionMaxSeconds
     : input.limits.freeSessionMaxSeconds;
 }
@@ -135,7 +172,9 @@ export function limitReachedAllowance(input: {
   limits: Limits;
   timezoneOffsetMinutes?: number;
 }): Extract<SessionAllowance, { allowed: false }> {
-  const premium = isPremiumNow(input.user, input.now);
+  // β開放中のテスターもここでは「解放済み」側。無料枠として返すと、
+  // 課金しなくてよいと伝えてある相手にアプリが購入画面を出してしまう。
+  const premium = hasPremiumAccess(input);
   return {
     allowed: false,
     lessonAllowedToday: false,

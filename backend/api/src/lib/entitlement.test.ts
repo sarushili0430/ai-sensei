@@ -3,9 +3,12 @@ import type { UserRecord } from "../repository/types.ts";
 import {
   analysesPerDay,
   canReissueToken,
+  hasPremiumAccess,
+  isBetaOpenAccess,
   isPremiumNow,
   limitReachedAllowance,
   secondsUntilLocalMidnight,
+  sessionMaxSeconds,
   sessionsPerDay,
   shouldShowPaywall,
   startedAllowance,
@@ -16,8 +19,13 @@ const limits = {
   premiumSessionsPerDay: 3,
   freeSessionMaxSeconds: 1200,
   premiumSessionMaxSeconds: 1200,
+  betaOpenAccessUntil: null,
+  betaSessionsPerDay: 10,
 };
 const now = new Date("2026-08-03T13:24:07.000Z"); // 22:24 JST
+
+/** クローズドβの開放中(期限は `now` より後)。 */
+const betaLimits = { ...limits, betaOpenAccessUntil: new Date("2026-09-30T15:00:00.000Z") };
 
 function user(overrides: Partial<UserRecord> = {}): UserRecord {
   return {
@@ -49,6 +57,63 @@ describe("isPremiumNow", () => {
 
   it("ユーザーが未登録なら無効", () => {
     expect(isPremiumNow(null, now)).toBe(false);
+  });
+});
+
+/**
+ * クローズドβの開放。
+ *
+ * 配れるのが限定公開テストの名簿に載っている人だけ、という前提で
+ * **期間中は全員をPremium相当**にする。前提が崩れる日(一般公開)に備えて、
+ * 期限を過ぎたら勝手に通常営業へ戻ることをここで固定する。
+ */
+describe("isBetaOpenAccess / hasPremiumAccess", () => {
+  it("期限内なら、課金していない人も機能が開く", () => {
+    expect(isBetaOpenAccess({ now, limits: betaLimits })).toBe(true);
+    expect(hasPremiumAccess({ user: user(), now, limits: betaLimits })).toBe(true);
+  });
+
+  it("期限を過ぎたら通常営業に戻る(外し忘れても勝手に終わる)", () => {
+    const expired = { ...limits, betaOpenAccessUntil: new Date("2026-08-01T00:00:00.000Z") };
+    expect(isBetaOpenAccess({ now, limits: expired })).toBe(false);
+    expect(hasPremiumAccess({ user: user(), now, limits: expired })).toBe(false);
+  });
+
+  it("未設定なら何も変わらない", () => {
+    expect(isBetaOpenAccess({ now, limits })).toBe(false);
+    expect(hasPremiumAccess({ user: user(), now, limits })).toBe(false);
+    expect(hasPremiumAccess({ user: user({ is_premium: true }), now, limits })).toBe(true);
+  });
+
+  // β開放は「解放してよいか」の判定であって、支払いの記録ではない。
+  // ここが混ざると、webhookの同期やTRANSFERの引き継ぎが嘘の期限を掴む。
+  it("β開放中でも、払っていない人は isPremiumNow では false のまま", () => {
+    expect(isPremiumNow(user(), now)).toBe(false);
+  });
+});
+
+describe("β開放中の使い放題", () => {
+  it("1日の本数が BETA_SESSIONS_PER_DAY まで開く", () => {
+    expect(sessionsPerDay({ user: user(), now, limits: betaLimits })).toBe(10);
+  });
+
+  it("会話の長さはPremiumと同じ(質はプランで変えない)", () => {
+    expect(sessionMaxSeconds({ user: user(), now, limits: betaLimits })).toBe(1200);
+  });
+
+  it("上限に当たっても課金導線へ倒さない(無料枠ではなくフェアユース扱い)", () => {
+    const allowance = limitReachedAllowance({ user: user(), now, limits: betaLimits });
+    expect(allowance.reason).toBe("fair_use_limit_reached");
+  });
+
+  it("使い放題でも上限は外さない(従量原価はテスターでも同じだけ動く)", () => {
+    const allowance = startedAllowance({
+      user: user(),
+      sessionsToday: 10,
+      now,
+      limits: betaLimits,
+    });
+    expect(allowance.lessonAllowedToday).toBe(false);
   });
 });
 

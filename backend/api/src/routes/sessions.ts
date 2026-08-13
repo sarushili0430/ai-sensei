@@ -33,7 +33,7 @@ import {
   analysesPerDay,
   canReissueToken,
   canStartSessionToday,
-  isPremiumNow,
+  hasPremiumAccess,
   limitReachedAllowance,
   sessionMaxSeconds,
   sessionsPerDay,
@@ -103,7 +103,7 @@ sessionsRoute.post("/", async (c) => {
   // Premium境界に戻る。画面だけで止めても `hole_id` を直接送れば迂回できるため、
   // サーバ側で判定する。**従量原価が動くのは `/start` なので、そちらでも見る** —
   // ここは、始める前に断るための早い門。
-  if (meta.kind === "review" && !isPremiumNow(user, at)) {
+  if (meta.kind === "review" && !hasPremiumAccess({ user, now: at, limits })) {
     throw apiError("premium_required", { locale });
   }
 
@@ -395,7 +395,7 @@ sessionsRoute.post("/:sessionId/start", async (c) => {
   const user = await repository.ensureUser(deviceId, at);
   // 契約は作成時にも見ているが、そこから期限が切れていることがある。
   // 従量原価が動くのはこの入口なので、ここでもう一度見る。
-  if (session.kind === "review" && !isPremiumNow(user, at)) {
+  if (session.kind === "review" && !hasPremiumAccess({ user, now: at, limits })) {
     throw apiError("premium_required", { locale });
   }
 

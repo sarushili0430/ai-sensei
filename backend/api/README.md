@@ -128,6 +128,14 @@ await app.request("/v1/sessions", { method: "POST", body: form }, testBindings()
 クライアントの申告を信用しない。制限に当たったときは翌日0時(JST)までの秒数を返し、
 上限値を見せず「また明日、続きを聞かせてください」と言えるようにしている。
 
+**クローズドβのあいだは、期限つきで全員をPremium相当にする。**
+`BETA_OPEN_ACCESS_UNTIL` が入っている間、`hasPremiumAccess` が課金の有無を見ずに
+true を返す(本数だけ `BETA_SESSIONS_PER_DAY`、既定10)。この期間にアプリを入れられるのは
+限定公開テストの名簿に載っている人だけなので、端末IDを1つずつ登録して回らずに済む。
+**機能の解放を見る場所はすべて `hasPremiumAccess` を通し、`isPremiumNow` は
+「本当に払ったか」を答え続ける** —— 混ぜると、webhookの同期とTRANSFERの期限引き継ぎが
+嘘の値を掴む。切り替えかたと外し忘れの危険は [docs/deploy.md](../../docs/deploy.md#クローズドβのあいだ無料で開放する)。
+
 **数えるのは「先輩と話した回数」。写真を読んだ回数ではない。** 以前は解析
 (`POST /v1/sessions`)で枠を押さえていたので、撮って単元を確かめただけの生徒が
 会話を1度もしないまま「今日はここまで」になっていた。いまは `POST /{id}/start` が
