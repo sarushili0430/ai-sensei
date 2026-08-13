@@ -175,9 +175,21 @@ code {
   padding: 1px 6px;
 
   /* break-all / anywhere にしないこと —— どちらも、次の行に丸ごと
-     収まる場合でもアドレスの途中(ai- / sensei@googlegroups.com)で切る。
+     収まる場合でもアドレスの途中で切る。
      break-word だけが「まず行送りしてみて、それでも入らなければ割る」。 */
   overflow-wrap: break-word;
+}
+
+/* 書き写される前提のアドレスは、1つの塊として運ぶ。
+   **ハイフンは既定で改行位置になる**ので、上の overflow-wrap では止まらず
+   `ai-` / `sensei@googlegroups.com` に割れる —— 拾い書きした人が取りこぼす。
+   入りきらない幅では、ページを横に広げるかわりに、この塊の中だけを流す。 */
+code.atom {
+  display: inline-block;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow-x: auto;
+  vertical-align: bottom;
 }
 
 /* ------------------------------------------------------------------ *
@@ -969,6 +981,114 @@ footer a {
   }
 
   .btn {
+    width: 100%;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * クローズドベータの参加手順(/beta/ と /en/beta/)
+ *
+ * LPの #beta が「参加するかどうかを決める材料」で、こちらは「入りかた」。
+ * SNS・学校・知人に投げるURLがこのページなので、
+ * **上から順に押していけば終わる**形以外のものを置かない。
+ * ------------------------------------------------------------------ */
+
+.join {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 40px 20px 72px;
+}
+
+.join h1 {
+  font-size: clamp(24px, 5vw, 31px);
+  margin-bottom: 13px;
+}
+
+.join .lede {
+  max-width: none;
+}
+
+/* 参加の前提。押す前に「自分に当てはまるか」がここで分かるようにする */
+.join-need {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.join-steps {
+  list-style: none;
+  margin: 30px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.join-step {
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--r-card);
+  padding: 22px;
+}
+
+/* まだ押せない手順(ステップ2)。破線にして、
+   押せるものと同じ見た目で並べない —— .btn-soon と揃えている */
+.join-step-wait {
+  background: transparent;
+  border-style: dashed;
+}
+
+.join-step h2 {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  font-size: 18px;
+  margin-bottom: 10px;
+}
+
+.join-step .num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  flex: none;
+  background: var(--ink);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.join-step p {
+  font-size: 14.5px;
+}
+
+.join-step .btn {
+  margin-top: 16px;
+}
+
+.join-step .btn + .tiny,
+.join-step p + .tiny {
+  margin-top: 13px;
+}
+
+/* 手順のあとに続く見出し(うまくいかないとき / 参加すると、どうなるか) */
+.join-h {
+  font-size: 20px;
+  margin: 44px 0 4px;
+}
+
+.join .faq,
+.join .spec {
+  margin-top: 16px;
+}
+
+@media (max-width: 560px) {
+  /* 手順のボタンは、指で押す前提なので横いっぱいに開く。
+     .btn の 560px 以下の指定と同じ */
+  .join-step .btn {
     width: 100%;
   }
 }

@@ -9,7 +9,9 @@ apps/lp/
   public/                ここだけが公開される
     index.html           日本語
     en/index.html        English
-    styles.css           2枚で共有する唯一のスタイルシート
+    beta/index.html      クローズドベータの参加手順(日本語)
+    en/beta/index.html   同(English)
+    styles.css           全ページで共有する唯一のスタイルシート
 ```
 
 **サイトに出すものは `public/` の中だけに置くこと。** `wrangler.jsonc` の
@@ -23,13 +25,18 @@ apps/lp/
 | マーケティングURL | App Store Connect(任意) |
 | サポートURL | App Store Connect / Google Play Console(**必須**。いまは GitHub Issues を窓口にしている) |
 | 提出資料からの導線 | Shipaton / Devpost / #BuildInPublic の投稿 |
-| クローズドテストのテスター募集 | `#beta` の節。SNS・学校・知人へ配るURLはここ1本にする |
+| クローズドテストのテスター募集 | `public/beta/`。SNS・学校・知人へ配るURLはここ1本にする |
 
-**テスターの入口は `#beta` の Google グループ(`ai-sensei@googlegroups.com`)だけ。**
+**テスターの入口は Google グループ(`ai-sensei@googlegroups.com`)だけ。**
 このグループが Play Console に登録したテスター名簿そのものなので、
 **アドレスを変えるとテスターが全員まとめて外れます**(12人/14日のカウントも切れる)。
 グループ側の設定と Play Console 側の紐づけは
 [`docs/ci/store-setup.md`](../../docs/ci/store-setup.md) 2-4-1。
+
+**LPの `#beta` と `public/beta/` で役割を分けています。**
+`#beta` は「参加するかどうかを決める材料」(費用・お願いすること・何が開発者に見えるか)まで。
+**①グループに参加 ②Playの参加用URLを押す、という手順は `public/beta/` にだけ書く。**
+両方に書くと、Playのリリース状況で変わる手順が2箇所に散って必ず片方が古くなります。
 
 ## 作りの前提
 
@@ -118,11 +125,14 @@ GitHub App からpushできないため)。
 - [ ] 規約とポリシーの英語版。米国配信は Shipaton の参加要件なので、日本語だけでは足りない
 - [ ] `SUPPORT_EMAIL` → フッタの問い合わせ先に追加(いまは GitHub Issues のみ)
 - [ ] `public/404.html` → 足したら `wrangler.jsonc` の `not_found_handling` を `"404-page"` に
-- [ ] **クローズドテストのトラックが公開されたら、`#beta` のステップ2に Play の参加用URL
-      (`https://play.google.com/apps/testing/jp.co.aiSensei`)を足す。**
-      いまは「グループ宛に案内を送る」としか書いていない ——
-      リリースが1本も承認されていない間、このURLは「テスターではありません」の
-      画面にしかならないため([`docs/ci/store-setup.md`](../../docs/ci/store-setup.md) 2-4-1)
+- [ ] **クローズドテストのトラックにリリースが載ったら、`public/beta/` と
+      `public/en/beta/` のステップ2を押せるようにする。** 具体的には、`<li>` から
+      `join-step-wait` を外して、`<span class="btn btn-soon">` を
+      `<a class="btn btn-primary" href="https://play.google.com/apps/testing/jp.co.aiSensei">`
+      に差し替え、後ろの `.tiny` から「いまはまだ開いても『テスターではありません』と出ます」を消す。
+      リリースが1本も承認されていない間このURLは「テスターではありません」の画面に
+      しかならないので、先に出さない([`docs/ci/store-setup.md`](../../docs/ci/store-setup.md) 2-4-1)。
+      **日英2枚とも直すこと**
 - [ ] 配信開始 → ヒーローと締めの CTA(いまはクローズドベータ)を実際のストアバッジとリンクに差し替え。
       iOS が先に出るので、**片方だけ出た状態**(App Storeのリンク + Google Playは「配信予定」)を
       一度は通ることになる。両方まとめて差し替えないこと。

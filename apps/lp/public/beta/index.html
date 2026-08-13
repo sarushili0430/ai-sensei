@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>クローズドベータに参加する — カタルテ</title>
+<meta name="description" content="カタルテ(ai-sensei)のクローズドベータへの入りかた。Google グループに参加して、Google Play の参加用URLを押すだけの2ステップ。Android のみ。">
+
+<!-- 日英2枚で1組(../en/beta/)。片方だけ直さないこと。
+     公開ドメインが決まったら、この3行と og:url を絶対URLに直す。 -->
+<link rel="alternate" hreflang="ja" href="./">
+<link rel="alternate" hreflang="en" href="../en/beta/">
+<link rel="alternate" hreflang="x-default" href="./">
+
+<meta property="og:type" content="website">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:title" content="クローズドベータに参加する — カタルテ">
+<meta property="og:description" content="ストアに出す前のカタルテを先に使ってもらっています。Google グループに参加して、Play の参加用URLを押すだけ。">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#FBFAF7">
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230EA5E9'/%3E%3Cpath d='M40.3 77.5L25.5 83.5L20.7 59.1Z' fill='%23FBFAF7'/%3E%3Ccircle cx='50' cy='47.5' r='31.5' fill='%23FBFAF7'/%3E%3Cg fill='none' stroke='%2333323D' stroke-width='5.2' stroke-linecap='round'%3E%3Cpath d='M30 46Q37.5 37 45 46'/%3E%3Cpath d='M55 46Q62.5 37 70 46'/%3E%3Cpath d='M58.4 57.3A8.5 5 0 0 1 41.6 57.2'/%3E%3C/g%3E%3C/svg%3E">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="../">
+      <svg viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+        <rect width="100" height="100" rx="22" fill="#0EA5E9"/>
+        <path d="M40.3 77.5 L25.5 83.5 L20.7 59.1 Z" fill="#FBFAF7"/>
+        <circle cx="50" cy="47.5" r="31.5" fill="#FBFAF7"/>
+        <circle cx="29.5" cy="53.5" r="4.2" fill="#FFC0D4"/>
+        <circle cx="70.5" cy="53.5" r="4.2" fill="#FFC0D4"/>
+        <g fill="none" stroke="#33323D" stroke-width="5.2" stroke-linecap="round">
+          <path d="M30 46 Q37.5 37 45 46"/>
+          <path d="M55 46 Q62.5 37 70 46"/>
+          <path d="M58.4 57.3 A8.5 5 0 0 1 41.6 57.2"/>
+        </g>
+      </svg>
+      カタルテ
+    </a>
+    <a class="lang" href="../en/beta/" hreflang="en" lang="en">English</a>
+  </div>
+</header>
+
+<main class="join">
+
+  <p class="eyebrow">クローズドベータ</p>
+  <h1>クローズドベータに参加する</h1>
+  <p class="lede">
+    ストアに出す前のカタルテを、先に使ってもらっています。やることは2つ ——
+    <strong>Google グループに参加して、Google Play の参加用URLを押す</strong>だけです。
+    費用はかかりません。
+  </p>
+
+  <p class="join-need">
+    <span class="badge">Android 端末</span>
+    <span class="badge">Google アカウント</span>
+    <span class="badge badge-warm">所要 3分</span>
+  </p>
+
+  <ol class="join-steps">
+    <li class="join-step">
+      <h2><span class="num">1</span>グループに参加する</h2>
+      <p>
+        <strong>Android 端末で使っている Google アカウント</strong>で参加してください。
+        このグループが Google Play のテスター名簿そのものなので、別のアカウントで参加すると、
+        ステップ2で「テスターではありません」と言われて先に進めません。
+      </p>
+      <a class="btn btn-primary" href="https://groups.google.com/g/ai-sensei">グループに参加する</a>
+      <p class="tiny">
+        開いた先の「グループに参加」を押せば完了です。ボタンが開けない場合は、
+        <code class="atom">ai-sensei+subscribe@googlegroups.com</code> に空のメールを送っても参加できます。
+        グループのアドレスは <code class="atom">ai-sensei@googlegroups.com</code>。
+      </p>
+    </li>
+
+    <!-- ステップ2のボタンは、クローズドテストのトラックにリリースが1本でも
+         承認されるまで .btn-soon(押せない見た目)のまま。
+         それより前にリンクにすると、押した人が全員
+         「あなたはテスターではありません」の画面に落ちる。
+         トラックが公開されたら、この li から -wait を外して
+         <a class="btn btn-primary" href="https://play.google.com/apps/testing/jp.co.aiSensei">
+         に差し替える(apps/lp/README.md「公開前に埋めるもの」)。 -->
+    <li class="join-step join-step-wait">
+      <h2><span class="num">2</span>Play の参加用URLを押す</h2>
+      <p>
+        グループへの参加が済んだら、Google Play 側で「テスターになる」を押します。
+        <strong>ここを踏んで、はじめて配信の対象になります</strong> ——
+        グループに入っただけでは、テスト版は降ってきません。
+      </p>
+      <span class="btn btn-soon" role="note">テスト版の配信がはじまったら押せます</span>
+      <p class="tiny">
+        参加用URLは <code>https://play.google.com/apps/testing/jp.co.aiSensei</code>。
+        <strong>いまはまだ開いても「テスターではありません」と出ます。</strong>
+        配信がはじまったらグループ宛にお知らせして、このボタンも押せるようにします。
+        ステップ1まで済ませておけば、あとは待つだけです。
+      </p>
+    </li>
+
+    <li class="join-step">
+      <h2><span class="num">3</span>Play ストアから入れる</h2>
+      <p>
+        「テスターになる」を押すと、Play ストアのカタルテのページが開けるようになります。
+        あとはふつうのアプリと同じで、そこからインストールしてください。
+        <strong>アプリを開いたあとに、アカウントを作る手順はありません。</strong>
+      </p>
+      <p class="tiny">
+        押してすぐは反映されていないことがあります(数分〜数時間)。
+        「アイテムが見つかりません」と出たら、少し置いてから参加用URLをもう一度開いてください。
+      </p>
+    </li>
+  </ol>
+
+  <h2 class="join-h">うまくいかないとき</h2>
+  <div class="faq">
+    <details>
+      <summary>「あなたはテスターではありません」と出る</summary>
+      <p>ほとんどはアカウント違いです。<strong>グループに参加したアカウントと、いまブラウザでログインしているアカウントが同じか</strong>を確かめてください。Google のアカウント切り替えは、参加用URLを開く前に済ませておく必要があります。</p>
+      <p>アカウントが合っているなら、グループへの参加が Play 側に伝わるまでの待ちです。しばらく置いてからもう一度開いてください。</p>
+    </details>
+    <details>
+      <summary>Play ストアで検索しても出てこない</summary>
+      <p>出てきません。クローズドテスト中のアプリは検索に載らないので、<strong>参加用URLから開くのが唯一の入口</strong>です。インストール後はホーム画面のアイコンからふつうに起動できます。</p>
+    </details>
+    <details>
+      <summary>iPhone でも参加できますか?</summary>
+      <p>いまは参加できません。このしくみは Google Play のものなので、配れるのは Android だけです。iPhone 向けは TestFlight で別に配る予定で、<strong>その案内も同じグループに流します</strong> —— いまステップ1だけ済ませておけば、iOS のテスト版が出たときにも届きます。</p>
+    </details>
+    <details>
+      <summary>グループにメールがたくさん届きませんか?</summary>
+      <p>届きません。投稿できるのは運営だけにしてあり、送るのはテスト版の配信と、大きな変更のお知らせだけです。テスター同士のやりとりの場ではないので、あなたのメールアドレスがほかの参加者に見えることもありません。</p>
+    </details>
+  </div>
+
+  <h2 class="join-h">参加すると、どうなるか</h2>
+  <table class="spec">
+    <tbody>
+      <tr>
+        <th scope="row">費用</th>
+        <td>かかりません。テスト中は Premium の機能も含めて無料で、決済画面が出ることもありません。</td>
+      </tr>
+      <tr>
+        <th scope="row">お願いすること</th>
+        <td>2週間ほど、2日に1回くらい開いて1問通してみること。うまく動かない・説明がおかしいと思ったところの<a href="https://github.com/sarushili0430/ai-sensei/issues">報告</a>。</td>
+      </tr>
+      <tr>
+        <th scope="row">お願いしないこと</th>
+        <td>レビューの星をつけること、SNSでの拡散、知り合いの勧誘。どれも参加の条件ではありません。</td>
+      </tr>
+      <tr>
+        <th scope="row">見えるもの</th>
+        <td><strong>参加すると、あなたのメールアドレスと表示名が開発者に見えます</strong>（Google グループと Play Console の仕様）。ほかのテスターからは見えない設定にしてあります。アプリ本体は匿名の端末IDのままで、メールアドレスとは結びつきません。</td>
+      </tr>
+      <tr>
+        <th scope="row">やめるとき</th>
+        <td>グループから脱退すれば終わりです。理由を聞いたり、引き止めたりしません。アプリを消すだけでも構いません。</td>
+      </tr>
+      <tr>
+        <th scope="row">扱われかた</th>
+        <td>ノートの写真と会話の文字起こしは、カルテを作るためと、説明の分かりにくさを直すために保存します。詳しくは<a href="../privacy/">プライバシーポリシー</a>と<a href="../terms/">利用規約</a>を。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <a class="legal-back" href="../#beta">← カタルテのトップへ</a>
+
+</main>
+
+</body>
+</html>

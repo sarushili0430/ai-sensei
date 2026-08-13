@@ -341,11 +341,10 @@
      ai-sensei@googlegroups.com を登録してある(docs/ci/store-setup.md 2-4-1)。
      **グループのアドレスを変えると、テスターが全員まとめて外れる。**
 
-     Play の参加用URL(https://play.google.com/apps/testing/jp.co.aiSensei)を
-     ここに直接置いていないのは、クローズドテストのリリースが1本も承認されていない間、
-     そのURLが「テスターではありません」のページにしかならないため。
-     案内はグループ宛に送る(= 参加した人にだけ届く)。トラックが公開されたら、
-     apps/lp/README.md「公開前に埋めるもの」の該当行に従ってリンクを足すこと。 -->
+     **手順そのものは ./beta/ に置く。ここには書かない。** この節は
+     「参加するかどうかを決める材料」までで、①グループに参加 ②Playの参加用URLを押す
+     の順番と、詰まったときの直しかたは参加ページの担当。
+     SNS・学校・知人に投げるURLも ./beta/ のほう。 -->
 <section id="beta">
   <div class="wrap">
     <p class="eyebrow">クローズドベータ</p>
@@ -357,32 +356,15 @@
     </p>
 
     <div class="cta-row">
-      <a class="btn btn-primary" href="https://groups.google.com/g/ai-sensei">グループに参加してテスターになる</a>
-      <a class="btn btn-ghost" href="https://github.com/sarushili0430/ai-sensei/issues">気づいたことを報告する</a>
+      <a class="btn btn-primary" href="./beta/">参加のしかたを見る</a>
+      <a class="btn btn-ghost" href="https://groups.google.com/g/ai-sensei">グループに直接参加する</a>
     </div>
     <p class="tiny">
-      参加には Google アカウントへのログインが必要です。グループのアドレスは
-      <code>ai-sensei@googlegroups.com</code> —— ボタンが開けない場合は、
-      <code>ai-sensei+subscribe@googlegroups.com</code> に空のメールを送っても参加できます。
+      やることは2つ ——
+      <strong>Google グループ（<code class="atom">ai-sensei@googlegroups.com</code>）に参加して、
+      Google Play の参加用URLを押す</strong>だけです。所要3分。
+      手順と、詰まったときの直しかたは<a href="./beta/">参加ページ</a>にまとめてあります。
     </p>
-
-    <div class="grid grid-3">
-      <div class="card step">
-        <span class="num">1</span>
-        <h3>グループに参加する</h3>
-        <p><strong>Android 端末で使っている Google アカウント</strong>で参加してください。ここがテスター名簿そのものなので、別のアカウントで入るとテスト版が降ってきません。</p>
-      </div>
-      <div class="card step">
-        <span class="num">2</span>
-        <h3>案内を待って入れる</h3>
-        <p>テスト版が上がったら、グループ宛に Play の「テストに参加」リンクを送ります。そこで参加を押すと、Playストアからふつうに入ります。</p>
-      </div>
-      <div class="card step">
-        <span class="num">3</span>
-        <h3>2週間、ときどき開く</h3>
-        <p>2日に1回、1問でかまいません。撮って、教わって、教え返す。<strong>実際に使われた記録がないと、配信の申請に出せません。</strong></p>
-      </div>
-    </div>
 
     <table class="spec">
       <tbody>
@@ -527,7 +509,7 @@
       <p class="foot-brand" style="font-size:13px">開発</p>
       <ul>
         <li><a href="https://github.com/sarushili0430/ai-sensei">GitHub（MIT）</a></li>
-        <li><a href="https://groups.google.com/g/ai-sensei">テスターのグループ</a></li>
+        <li><a href="./beta/">ベータに参加する</a></li>
         <li><a href="https://github.com/sarushili0430/ai-sensei/issues">お問い合わせ・不具合の報告</a></li>
         <li><a href="https://shipaton.revenuecat.com/">RevenueCat Shipaton 2026</a></li>
         <!-- 提出前に足すもの: サポート窓口のメール(SUPPORT_EMAIL)。
