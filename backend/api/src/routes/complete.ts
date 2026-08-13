@@ -12,8 +12,9 @@ import {
   toLocalDate,
 } from "@ai-sensei/guardrail";
 import { Hono } from "hono";
-import type { AppEnv } from "../env.ts";
-import { isPremiumNow, shouldShowPaywall } from "../lib/entitlement.ts";
+import type { AppEnv, Limits } from "../env.ts";
+import { readLimits } from "../env.ts";
+import { hasPremiumAccess, shouldShowPaywall } from "../lib/entitlement.ts";
 import { apiError } from "../lib/errors.ts";
 import type {
   HoleRecord,
@@ -56,7 +57,10 @@ completeRoute.post("/:sessionId/complete", async (c) => {
   const existing = await repository.getKarteBySession(session.id);
   if (existing) {
     log?.info("complete_replayed", { session_id: session.id });
-    return c.json(await buildResponse({ repository, at, session, stored: existing }), 200);
+    return c.json(
+      await buildResponse({ repository, at, session, stored: existing, limits: readLimits(c.env) }),
+      200,
+    );
   }
 
   const parsed = completeSessionRequestSchema.safeParse(await c.req.json());
@@ -114,7 +118,7 @@ completeRoute.post("/:sessionId/complete", async (c) => {
   }));
 
   const user = await repository.getUser(session.device_id);
-  const premium = isPremiumNow(user, at);
+  const premium = hasPremiumAccess({ user, now: at, limits: readLimits(c.env) });
 
   const karteRecord: KarteRecord = {
     id: karteId,
@@ -255,8 +259,9 @@ export async function buildResponse(input: {
   at: Date;
   session: SessionRecord;
   stored: { karte: KarteRecord; holes: HoleRecord[] };
+  limits: Limits;
 }): Promise<CompleteSessionResponse> {
-  const { repository, at, session, stored } = input;
+  const { repository, at, session, stored, limits } = input;
 
   const [sessionDates, allHoles, user] = await Promise.all([
     repository.sessionDates(session.device_id),
@@ -278,7 +283,7 @@ export async function buildResponse(input: {
     review_schedule: [],
     progress: computeProgress(sessionDates, allHoles, toLocalDate(at)),
     show_paywall: shouldShowPaywall({
-      isPremium: isPremiumNow(user, at),
+      isPremium: hasPremiumAccess({ user, now: at, limits }),
       completedSessionCount: sessionDates.length,
       holesFound: stored.holes.length,
     }),
@@ -303,5 +308,8 @@ completeRoute.get("/:sessionId/result", async (c) => {
     return c.json({ status: "pending" }, 202);
   }
 
-  return c.json(await buildResponse({ repository, at, session, stored }), 200);
+  return c.json(
+    await buildResponse({ repository, at, session, stored, limits: readLimits(c.env) }),
+    200,
+  );
 });

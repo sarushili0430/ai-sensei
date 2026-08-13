@@ -171,6 +171,67 @@ describe("GET /v1/me/progress", () => {
   });
 });
 
+/**
+ * クローズドβの開放(`BETA_OPEN_ACCESS_UNTIL`)。
+ *
+ * テスターに「無料で使い放題」と伝えている以上、**アプリが課金導線を出さない**
+ * ところまでがこの設定の仕事。判定はサーバに1本化されているので、
+ * ここが通れば復習・プラン・親レポート・ペイウォールの出し分けも同じ答えになる。
+ */
+describe("クローズドβの開放中", () => {
+  const betaBindings = testBindings({
+    BETA_OPEN_ACCESS_UNTIL: "2026-09-30T15:00:00.000Z",
+    BETA_SESSIONS_PER_DAY: "10",
+  });
+  const getAsBetaTester = (path: string) =>
+    app.request(path, { headers: { "x-device-id": testDeviceId } }, betaBindings);
+
+  it("課金していない人にも is_premium: true を返す(アプリの課金導線が出ない)", async () => {
+    const body = (await (await getAsBetaTester("/v1/me/progress")).json()) as ProgressResponse;
+    expect(body.is_premium).toBe(true);
+    expect(body.limits).toEqual({ max_seconds: 1200, lesson_allowed_today: true });
+  });
+
+  it("無料枠の1本を使っても、今日はまだ授業を受けられる", async () => {
+    await startedSession("ses_today", { status: "open" });
+
+    const body = (await (await getAsBetaTester("/v1/me/progress")).json()) as ProgressResponse;
+    expect(body.limits.lesson_allowed_today).toBe(true);
+  });
+
+  it("使い放題でも上限は外さない(10本使ったら今日はおしまい)", async () => {
+    for (let count = 0; count < 10; count += 1) {
+      await startedSession(`ses_beta_${count}`, {
+        status: "completed",
+        completed_at: "2026-08-03T13:20:00.000Z",
+        duration_seconds: 1200,
+      });
+    }
+
+    const body = (await (await getAsBetaTester("/v1/me/progress")).json()) as ProgressResponse;
+    expect(body.limits.lesson_allowed_today).toBe(false);
+  });
+
+  it("親レポートも開く", async () => {
+    const body = (await (
+      await getAsBetaTester("/v1/me/parent-report")
+    ).json()) as ParentReportResponse;
+    expect(body.requires_premium).toBe(false);
+  });
+
+  it("期限を過ぎたら通常営業に戻る", async () => {
+    const expired = testBindings({ BETA_OPEN_ACCESS_UNTIL: "2026-08-01T00:00:00.000Z" });
+    const response = await app.request(
+      "/v1/me/progress",
+      { headers: { "x-device-id": testDeviceId } },
+      expired,
+    );
+
+    const body = (await response.json()) as ProgressResponse;
+    expect(body.is_premium).toBe(false);
+  });
+});
+
 describe("GET /v1/me/reviews", () => {
   it("無料ユーザーにも復習キューを返し、授業可否は混ぜない", async () => {
     await seedHole();
