@@ -1,7 +1,5 @@
 import type { BoardStep, CompleteSessionRequest } from "@ai-sensei/contract";
 import { type JobContext, type JobProcess, defineAgent, voice } from "@livekit/agents";
-import * as anthropic from "@livekit/agents-plugin-anthropic";
-import * as deepgram from "@livekit/agents-plugin-deepgram";
 import * as silero from "@livekit/agents-plugin-silero";
 import {
   BoardChannel,
@@ -37,6 +35,8 @@ import {
   teachBackFallback,
 } from "./senpai.ts";
 import { TranscriptCollector } from "./transcript.ts";
+import { observeVoiceMetrics } from "./voice-metrics.ts";
+import { createVoiceSession } from "./voice-session.ts";
 
 /**
  * 先輩AIのセッション。計画書 §2 のコアループの前半2つを回す。
@@ -121,31 +121,14 @@ export default defineAgent({
 
     const collector = new TranscriptCollector(startedAt, context);
 
-    const session = new voice.AgentSession({
-      vad: ctx.proc.userData["vad"] as never,
-      // localeはAPIが受け付ける値なので、STTの言語もそれに合わせる。
-      // 日本語のモデルのまま英語を流すと、認識が崩れて会話が成立しない。
-      stt: new deepgram.STT({
-        model: "nova-2-general",
-        language: context.locale,
-        interimResults: true,
-      }),
-      llm: new anthropic.LLM({
-        apiKey: config.ANTHROPIC_API_KEY,
-        model: config.LLM_MODEL_CONVERSATION,
-        // 先輩の文体を安定させたいので、振れ幅は小さめにする
-        temperature: 0.6,
-      }),
-      // 声は**言語ごとにモデルが分かれる**。1ボイスに言語を渡す作りではないので、
-      // localeで選び分ける(日本語ボイスに英語を喋らせることはできない)。
-      // SDK 1.6.1 の `TTSModels` は英語ボイスしか型に持たないが、`model` の型は
-      // `TTSModels | string` で、実体はAPIへそのまま渡るだけなので日本語ボイスも通る。
-      tts: new deepgram.TTS({
-        apiKey: config.DEEPGRAM_API_KEY,
-        model:
-          context.locale === "en" ? config.DEEPGRAM_TTS_MODEL_EN : config.DEEPGRAM_TTS_MODEL_JA,
-      }),
+    const session = createVoiceSession({
+      ctx,
+      config,
+      locale: context.locale,
+      llmTemperature: 0.6,
     });
+    // 最初の発話から遅延と割り込みを測る。start後では最初のターンを取りこぼす。
+    const voiceMetrics = observeVoiceMetrics(session, log);
 
     // 会話が自然に終わったことを、締めの発話で見る。
     // これがないと、うまく終わった会話も上限時間まで部屋が空回りする。
@@ -243,6 +226,7 @@ export default defineAgent({
       turns: transcript.length,
       user_spoke: collector.hasUserSpeech,
       board_steps: board?.stepCount ?? 0,
+      ...voiceMetrics.summary(endedAt),
     });
 
     const karteStartedAt = Date.now();

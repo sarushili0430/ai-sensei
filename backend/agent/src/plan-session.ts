@@ -10,8 +10,6 @@ import {
   type ToolContext,
   voice,
 } from "@livekit/agents";
-import * as anthropic from "@livekit/agents-plugin-anthropic";
-import * as deepgram from "@livekit/agents-plugin-deepgram";
 import type { AgentConfig } from "./config.ts";
 import { type PlanSessionContext, remainingSeconds } from "./context.ts";
 import type { JobLogger } from "./log.ts";
@@ -21,6 +19,8 @@ import {
   inspectPlanTurn,
   postPlanComplete,
 } from "./study-plan.ts";
+import { observeVoiceMetrics } from "./voice-metrics.ts";
+import { createVoiceSession } from "./voice-session.ts";
 
 type ReadyPlan = {
   plan: StudyPlanDraft;
@@ -41,23 +41,14 @@ export async function runPlanSession(input: {
     finish: ((reason: CompletePlanSessionRequest["ended_reason"]) => void) | null;
   } = { ready: null, finish: null };
 
-  const session = new voice.AgentSession({
-    vad: ctx.proc.userData["vad"] as never,
-    stt: new deepgram.STT({
-      model: "nova-2-general",
-      language: context.locale,
-      interimResults: true,
-    }),
-    llm: new anthropic.LLM({
-      apiKey: config.ANTHROPIC_API_KEY,
-      model: config.LLM_MODEL_CONVERSATION,
-      temperature: 0.4,
-    }),
-    tts: new deepgram.TTS({
-      apiKey: config.DEEPGRAM_API_KEY,
-      model: context.locale === "en" ? config.DEEPGRAM_TTS_MODEL_EN : config.DEEPGRAM_TTS_MODEL_JA,
-    }),
+  const session = createVoiceSession({
+    ctx,
+    config,
+    locale: context.locale,
+    llmTemperature: 0.4,
   });
+  // 計画も同じ会話基盤なので、開始前から同じ尺度で品質を比べられるようにする。
+  const voiceMetrics = observeVoiceMetrics(session, log);
 
   const agent = new PlanVoiceAgent({
     context,
@@ -131,6 +122,7 @@ export async function runPlanSession(input: {
     duration_seconds: durationSeconds,
     plan_ready: state.ready !== null,
     source: state.ready?.source ?? null,
+    ...voiceMetrics.summary(endedAt),
   });
   const ready = state.ready;
   if (ready === null) {
