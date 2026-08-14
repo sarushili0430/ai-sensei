@@ -59,8 +59,15 @@ export function createVoiceSession(options: VoiceSessionOptions): voice.AgentSes
     vad: ctx.proc.userData["vad"] as never,
     // localeはAPIが受け付ける値なので、STTの言語もそれに合わせる。
     // 日本語のモデルのまま英語を流すと、認識が崩れて会話が成立しない。
+    //
+    // モデルは `nova-3`。ドッグフーディングの「中々声を聞き取ってくれない」への対応で、
+    // `nova-2-general` から上げた。Nova-3 は日本語のモノリンガル(`language=ja`)を
+    // ストリーミングで正式にサポートしている(Deepgramのモデル対応表で確認済み)。
+    // **`nova-3-general` と書かないこと。**プラグイン(1.6.1)の `#validateModel` は
+    // `nova-3-general` を英語以外の言語で `nova-2-general` へ黙って戻すが、
+    // `nova-3` はそのままAPIへ通す。同じモデルの別名なのに、名前で挙動が分かれる。
     stt: new deepgram.STT({
-      model: "nova-2-general",
+      model: "nova-3",
       language: locale,
       interimResults: true,
     }),

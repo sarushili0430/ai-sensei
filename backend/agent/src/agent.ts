@@ -78,7 +78,14 @@ import { createVoiceSession } from "./voice-session.ts";
 export default defineAgent({
   prewarm: async (proc: JobProcess) => {
     // VADモデルのロードは重いので、ジョブが来る前に温めておく
-    proc.userData["vad"] = await silero.VAD.load();
+    proc.userData["vad"] = await silero.VAD.load({
+      // 既定の0.5では、小さい声・マイクから離れた声の立ち上がりを取りこぼす。
+      // VADが発話開始を出せないと、その発話はターンとして拾われない —
+      // 生徒からは「先輩が聞いてくれない」に見える(ドッグフーディングの報告)。
+      // 下げるほど生活音の誤検出は増えるが、誤検出は文字にならなければターンに
+      // ならないので、取りこぼしより被害が小さい。まず0.4で確かめる。
+      activationThreshold: 0.4,
+    });
   },
 
   entry: async (ctx: JobContext) => {
