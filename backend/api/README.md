@@ -1,206 +1,223 @@
 # @ai-sensei/api
 
-Cloudflare Workers + Hono。セッション作成・カルテ保存・課金webhookを担当する。
+Cloudflare Workers + Hono. Handles session creation, karte storage and the billing
+webhook.
 
-## エンドポイント
+## Endpoints
 
-| メソッド | パス | 認証 | 役割 |
+| Method | Path | Auth | Role |
 | --- | --- | --- | --- |
-| POST | `/v1/sessions` | `X-Device-Id` | 写真解析 → 単元判定(**この時点では数えない**) |
-| PATCH | `/v1/sessions/{id}/topics` | `X-Device-Id` | チップUIで外した単元を反映する(解析し直さない) |
-| POST | `/v1/sessions/{id}/start` | `X-Device-Id` | **会話の開始。今日の1回を数え**、LiveKitルームとトークンを返す |
-| POST | `/v1/sessions/{id}/complete` | `Bearer INTERNAL_API_TOKEN` | agentが呼ぶ。カルテ保存 + 復習プッシュ予約 |
-| GET | `/v1/sessions/{id}/result` | `X-Device-Id` | アプリが会話後に結果を取りに来る(生成中は202) |
-| GET | `/v1/me/progress` | `X-Device-Id` | 連続日数と埋めた穴 |
-| GET | `/v1/me/reviews` | `X-Device-Id` | 無料の小テスト + 音声授業のPremium要否 |
-| POST | `/v1/me/reviews/{holeId}` | `X-Device-Id` | 小テストの自己申告(言えた / まだ言えない) |
-| POST | `/v1/webhooks/revenuecat` | 共有シークレット | entitlement同期 |
-| GET | `/health` | なし | 死活確認。どの環境かを名乗る(`{"ok":true,"environment":"production"}`) |
+| POST | `/v1/sessions` | `X-Device-Id` | Photo analysis -> unit detection (**nothing is counted yet**) |
+| PATCH | `/v1/sessions/{id}/topics` | `X-Device-Id` | Applies units removed in the chip UI (no re-analysis) |
+| POST | `/v1/sessions/{id}/start` | `X-Device-Id` | **Starts the conversation, counting today's use**, and returns the LiveKit room and token |
+| POST | `/v1/sessions/{id}/complete` | `Bearer INTERNAL_API_TOKEN` | Called by the agent. Stores the karte and books review pushes |
+| GET | `/v1/sessions/{id}/result` | `X-Device-Id` | The app fetches the result after a conversation (202 while generating) |
+| GET | `/v1/me/progress` | `X-Device-Id` | Streak days and filled holes |
+| GET | `/v1/me/reviews` | `X-Device-Id` | The free quiz plus whether the voice lesson needs Premium |
+| POST | `/v1/me/reviews/{holeId}` | `X-Device-Id` | The quiz self-report (said it / not yet) |
+| POST | `/v1/webhooks/revenuecat` | shared secret | Entitlement sync |
+| GET | `/health` | none | Liveness. Reports which environment (`{"ok":true,"environment":"production"}`) |
 
-認証は**匿名デバイスID**。アカウント作成を要求しないので、
-クライアントが生成したUUIDを `X-Device-Id` で送るだけ。
+Auth is an **anonymous device id**. No account is required: the client sends a UUID it
+generated in `X-Device-Id`.
 
-`/complete` だけは agent が呼ぶ内部エンドポイントで、共有シークレット1本
-(`INTERNAL_API_TOKEN`)で通している。**これは静的・無期限・スコープ無しなので、
-セッションスコープの短命トークンに移す予定**。当面このままにする判断と、
-素直に見えて成立しない経路(LiveKitトークンの `metadata` はアプリから読める)は
-[ADR 0003](../../docs/adr.md#adr-0003) に書いてある。
+Only `/complete` is an internal endpoint called by the agent, protected by one shared
+secret (`INTERNAL_API_TOKEN`). **It is static, has no expiry and no scope, so it will
+move to a short-lived session-scoped token.** The decision to leave it for now, and
+the routes that look obvious but do not work (the LiveKit token's `metadata` is
+readable from the app), are in [ADR 0003](../../docs/adr.md#adr-0003).
 
-## ローカル開発
+## Local development
 
 ```bash
 cp .dev.vars.example .dev.vars
-pnpm --filter @ai-sensei/api migrate:local   # D1にスキーマを流す
+pnpm --filter @ai-sensei/api migrate:local   # apply the schema to D1
 pnpm --filter @ai-sensei/api dev             # http://localhost:8787
 ```
 
-ローカルではD1/R2/KVをminiflareが偽物で用意するので、**IDの差し替えは要らない**
-(`wrangler.toml` のトップレベルが `wrangler dev` 専用の設定になっている)。
+Locally, miniflare provides fakes for D1/R2/KV, so **no ids need substituting**
+(`wrangler.toml`'s top level is the `wrangler dev`-only configuration).
 
-## デプロイ
+## Deployment
 
-環境は **develop / production の2本**。手順は [`docs/deploy.md`](../../docs/deploy.md)。
+There are **two environments, develop and production**. Steps are in
+[`docs/deploy.md`](../../docs/deploy.md).
 
 ```bash
-pnpm run deploy:develop      # develop ブランチ相当
-pnpm run deploy:production   # main ブランチ相当
+pnpm run deploy:develop      # the develop branch
+pnpm run deploy:production   # the main branch
 
-pnpm run migrate:develop     # D1のマイグレーション(--remote)
+pnpm run migrate:develop     # D1 migrations (--remote)
 pnpm run migrate:production
 
-pnpm run secret:develop LIVEKIT_API_KEY   # secretは環境ごとに登録する
-pnpm run tail:develop                     # ログを流し見る
+pnpm run secret:develop LIVEKIT_API_KEY   # secrets are registered per environment
+pnpm run tail:develop                     # watch the logs
 ```
 
-`develop`/`main` へのpushでGitHub Actionsが同じことをやる
-([`docs/ci/deploy.yml`](../../docs/ci/deploy.yml))。
+A push to `develop`/`main` makes GitHub Actions do the same
+([`docs/ci/deploy.yml`](../../docs/ci/deploy.yml)).
 
-**`--env` を付けない `wrangler deploy` は使わない。** トップレベルの名前
-(`ai-sensei-api`)で3本目のワーカーができてしまうので、`pnpm run deploy` は
-付け忘れとみなして落ちるようにしてある。
+**Never use `wrangler deploy` without `--env`.** It would create a third worker under
+the top-level name (`ai-sensei-api`), so `pnpm run deploy` treats a missing flag as a
+mistake and fails.
 
-`GET /health` は `{"ok":true,"environment":"develop"}` のように環境名を返す。
-2本のワーカーは見た目が同じなので、URLの取り違えにこれで気づける。
+`GET /health` returns the environment name, as in
+`{"ok":true,"environment":"develop"}`. The two workers look identical, so this is how
+a mixed-up URL is noticed.
 
-## 会話の相手(agent)をどう呼ぶか
+## How the conversation partner (agent) is called
 
-`POST /v1/sessions/{id}/start` はルーム作成とトークン発行までを行い、**後輩(agent)を
-呼ぶのはLiveKit側**。呼び方は2通りあり、ワーカーの登録の仕方で決まる。
+`POST /v1/sessions/{id}/start` creates the room and issues the token; **LiveKit calls
+the agent**. There are two ways, decided by how the worker is registered.
 
-| ワーカー | 呼び方 | APIの設定 |
+| Worker | How it is called | API setting |
 | --- | --- | --- |
-| 名前なし | 自動ディスパッチ(全ルーム) | `LIVEKIT_AGENT_NAME` を設定しない |
-| 名前つき | 明示ディスパッチ | `LIVEKIT_AGENT_NAME` に同じ名前を入れる |
+| Unnamed | Auto dispatch (every room) | do not set `LIVEKIT_AGENT_NAME` |
+| Named | Explicit dispatch | put the same name in `LIVEKIT_AGENT_NAME` |
 
-**LiveKit Cloud のエージェントホスティングは `LIVEKIT_AGENT_NAME` を自動で入れる**
-ので、そこに載せたら名前つきになる。名前つきワーカーは自動ディスパッチの
-対象外なので、APIが `roomConfig` で呼ばないと**部屋は開くのに誰も来ない**
-(アプリは「聞いています」のまま止まり、会話もカルテも起きない)。
+**LiveKit Cloud agent hosting sets `LIVEKIT_AGENT_NAME` automatically**, so deploying
+there makes it named. Named workers are excluded from auto dispatch, so unless the API
+calls them via `roomConfig`, **the room opens and nobody arrives** (the app sits on
+"listening", and neither conversation nor karte happens).
 
-どちらで動いているかは `session_created` ログの `agent_dispatch`
-(`explicit` / `automatic`)で分かる。
+Which mode is in effect is visible in the `session_created` log's `agent_dispatch`
+(`explicit` / `automatic`).
 
-## ログと監視
+## Logs and monitoring
 
-Workers の Observability(`wrangler.toml` の `[observability]`)を有効にしてある。
-**すべてのログは1行1JSON**で、ダッシュボードでも `wrangler tail` でも
-フィールドで絞り込める。
+Workers Observability (`[observability]` in `wrangler.toml`) is enabled.
+**Every log is one JSON per line**, filterable by field in the dashboard and in
+`wrangler tail`.
 
 ```bash
 pnpm run tail:develop
 ```
 
-| event | いつ | 主なフィールド |
+| event | When | Main fields |
 | --- | --- | --- |
-| `http_request` | 全リクエストに1行 | `route` `status` `duration_ms` `error_code` |
-| `session_created` | セッションを作った | `session_id` `topic_ids` `agent_dispatch` |
-| `session_rejected` | 写真が読めない等(想定内) | `session_id` `status` |
-| `photo_analysis_failed` | Vision APIが落ちた(想定外) | `session_id` `error_message` |
-| `karte_stored` | カルテを保存した | `session_id` `ended_reason` `holes` `transcript_turns` |
-| `complete_unauthorized` | agentの内部トークンがずれている | `session_id` |
-| `unhandled_error` | 想定外。アプリには internal_error | `route` `error_stack` |
+| `http_request` | One line per request | `route` `status` `duration_ms` `error_code` |
+| `session_created` | A session was created | `session_id` `topic_ids` `agent_dispatch` |
+| `session_rejected` | Unreadable photo etc. (expected) | `session_id` `status` |
+| `photo_analysis_failed` | The Vision API failed (unexpected) | `session_id` `error_message` |
+| `karte_stored` | A karte was stored | `session_id` `ended_reason` `holes` `transcript_turns` |
+| `complete_unauthorized` | The agent's internal token has drifted | `session_id` |
+| `unhandled_error` | Unexpected; the app sees internal_error | `route` `error_stack` |
 
-全レスポンスに `x-trace-id` を返す。ユーザーからの報告とログを突き合わせるのは
-この値だけなので、問い合わせ対応ではまずこれを聞く。
+Every response returns `x-trace-id`. It is the only way to match a user report against
+the logs, so ask for it first in support.
 
-`SENTRY_DSN` を登録すると、`unhandled_error` と各 `*_failed` がSentryにも飛ぶ
-(未設定なら何も送らず、構造化ログだけ)。写真・カルテ・デバイスIDは送らない。
-リクエストの1行が邪魔なときは `LOG_LEVEL=error` で失敗だけに絞れる。
+With `SENTRY_DSN` registered, `unhandled_error` and each `*_failed` also go to Sentry
+(unset, nothing is sent and only structured logs remain). Photos, kartes and device ids
+are never sent. When the per-request line is noise, `LOG_LEVEL=error` narrows it to
+failures.
 
-## テスト
+## Tests
 
-`pnpm test`(vitest)。**miniflareを起こさずにルートの振る舞いを確かめられる**ように、
-永続化・写真解析・通知の3つを差し替え可能にしてある。
+`pnpm test` (vitest). Persistence, photo analysis and notifications are all swappable
+so **route behaviour can be checked without starting miniflare**.
 
 ```ts
 const app = createApp({ services: () => testServices() });
 await app.request("/v1/sessions", { method: "POST", body: form }, testBindings());
 ```
 
-- `repository/memory.ts` — D1の代わり
-- `test-support.ts` — 写真解析のスタブ、通知の記録用スケジューラ、バインディング
+- `repository/memory.ts` — in place of D1
+- `test-support.ts` — the photo-analysis stub, a recording notification scheduler, bindings
 
-## 設計上のポイント
+## Design points
 
-**授業枠はサーバで数える。** 無料は1日1セッション、Premiumは通常の1日1〜2回には
-当たらない3セッションを非表示のフェアユース上限にする。1回の品質はプランで変えず、
-どちらも15〜20分の授業を完走できる最長20分。判定は `lib/entitlement.ts` にあり、
-クライアントの申告を信用しない。制限に当たったときは翌日0時(JST)までの秒数を返し、
-上限値を見せず「また明日、続きを聞かせてください」と言えるようにしている。
+**Lesson slots are counted on the server.** Free is one session a day; Premium's
+hidden fair-use cap is three, which ordinary use (1-2 a day) never reaches. Quality
+does not vary by plan: both get up to 20 minutes, enough for a 15-20 minute lesson. The
+decision lives in `lib/entitlement.ts` and never trusts the client's claim. On hitting
+the cap it returns the seconds until midnight (JST) so the app can say "tell me the
+rest tomorrow" without showing the number.
 
-**クローズドβのあいだは、期限つきで全員をPremium相当にする。**
-`BETA_OPEN_ACCESS_UNTIL` が入っている間、`hasPremiumAccess` が課金の有無を見ずに
-true を返す(本数だけ `BETA_SESSIONS_PER_DAY`、既定10)。この期間にアプリを入れられるのは
-限定公開テストの名簿に載っている人だけなので、端末IDを1つずつ登録して回らずに済む。
-**機能の解放を見る場所はすべて `hasPremiumAccess` を通し、`isPremiumNow` は
-「本当に払ったか」を答え続ける** —— 混ぜると、webhookの同期とTRANSFERの期限引き継ぎが
-嘘の値を掴む。切り替えかたと外し忘れの危険は [docs/deploy.md](../../docs/deploy.md#クローズドβのあいだ無料で開放する)。
+**During the closed beta, everyone is Premium-equivalent, with an expiry.**
+While `BETA_OPEN_ACCESS_UNTIL` is set, `hasPremiumAccess` returns true without checking
+payment (only the count comes from `BETA_SESSIONS_PER_DAY`, default 10). Only people on
+the limited-release tester list can install the app during that period, so there is no
+need to register device ids one by one.
+**Every feature-unlock check goes through `hasPremiumAccess`, while `isPremiumNow`
+keeps answering "did they actually pay"** - conflated, webhook sync and TRANSFER expiry
+inheritance would grab false values. How to switch it, and the risk of forgetting to
+remove it, are in [docs/deploy.md](../../docs/deploy.md).
 
-**数えるのは「先輩と話した回数」。写真を読んだ回数ではない。** 以前は解析
-(`POST /v1/sessions`)で枠を押さえていたので、撮って単元を確かめただけの生徒が
-会話を1度もしないまま「今日はここまで」になっていた。いまは `POST /{id}/start` が
-`sessions.started_at` を書く1文で枠を押さえ、**同じ操作でトークンを発行する**。
-順番は入れ替えられない — 枠を取れなければ鍵は出ないし、鍵が出たなら枠は取れている。
-解析の時点で鍵を配ると「鍵を持っている = いつでも始められる」になり、
-数える口をクライアント側に置いたのと同じになる。
+**What is counted is conversations with the senpai, not photos read.** The slot used to
+be claimed at analysis time (`POST /v1/sessions`), so a student who only photographed
+and confirmed the unit was told "that's it for today" without a single conversation.
+Now `POST /{id}/start` claims the slot in the one statement that writes
+`sessions.started_at`, **and issues the token in the same operation**.
+The order cannot be swapped - no slot means no key, and a key means the slot was taken.
+Handing out the key at analysis time would mean "holding the key = able to start any
+time", which puts the counter on the client.
 
-つなぎ直しで押し直しても二重には数えない(`started_at IS NULL` を条件に入れてあるので、
-2度目は枠を数え直さずトークンだけ出し直す)。数える日(`local_date`)も開始時に
-書き直すので、日付をまたいで始めた会話は始めた日の1本になる。
+A retry does not count twice (`started_at IS NULL` is in the condition, so the second
+attempt reissues only the token). The counted day (`local_date`) is rewritten at start
+too, so a conversation begun across midnight counts on the day it started.
 
-**出し直せるのは、最初の鍵が生きているあいだだけ**(`canReissueToken`。上限時間 + 余白)。
-無条件に出し直せると、部屋に入らないまま開いたセッションが**期限のない鍵の引換券**になる —
-会話が成立しなければ `/complete` も来ないので行は open のまま残り、翌日そのIDで押せば、
-今日の枠を減らさずに授業が1回増えてしまう。窓を過ぎたセッションは404にして、
-アプリ側にも同じIDを握り続けさせない。
+**A token can be reissued only while the first key is alive** (`canReissueToken`: the
+time cap plus a margin). Reissuing unconditionally would make a session opened without
+entering the room a voucher for a key with no expiry - without a conversation
+`/complete` never arrives, the row stays open, and pressing that id tomorrow adds a
+lesson without spending today's slot. Sessions past the window return 404, so the app
+does not keep holding the same id either.
 
-**解析には別の、ずっと緩い上限がある。** 会話を始めなくてもVision LLMの原価は
-発生するので、1日に作れるセッション行は `analysesPerDay`(授業の枠 × 5)で止める。
-通常の撮り直しでは当たらない高さで、当たったときの文言は日次上限と同じ。
-加えて、今日の授業を使い切っている人は**写真を読む前に**断る(`/v1/sessions` の事前判定)。
+**Analysis has a separate, far looser cap.** Vision LLM cost is incurred even without a
+conversation, so the session rows creatable in a day are capped by `analysesPerDay`
+(the lesson slot x 5). It sits where ordinary retakes never reach it, and its wording
+matches the daily cap. On top of that, anyone who has used up today's lessons is
+refused **before the photo is read** (the pre-check in `/v1/sessions`).
 
-**ガードレールは2枚目もここで効かせる。** `/complete` で受け取ったカルテの穴は、
-そのセッションの許可トピックで照合し、外れたタグは落とす(`filterHoleTopicIds`)。
-的外れなタグを残すと、復習の通知まで的外れになるため。
+**The second guardrail runs here too.** The holes in the karte received at `/complete`
+are matched against that session's allowed topics, and off-list tags are dropped
+(`filterHoleTopicIds`), because an off-target tag makes the review notification
+off-target too.
 
-**小テストは無料、音声で先輩を呼び直す授業モードはPremium。** `/v1/me/reviews` は
-全ユーザーにキューを返すが、`kind=review` の `/v1/sessions` はサーバ側でもPremiumを
-要求する。レスポンスのフラグだけに任せると、初回カルテで配った `hole_id` を使って
-直接呼べてしまうため。穴の所有者(device_id)もセッション作成時と完了時の両方で確かめる。
+**The quiz is free; calling the senpai back by voice is Premium.** `/v1/me/reviews`
+returns the queue for every user, but `/v1/sessions` with `kind=review` requires
+Premium server-side as well. Relying on the response flag alone would let the
+`hole_id` handed out in the first karte be used to call directly. The hole's owner
+(device_id) is checked both at session creation and at completion.
 
-**`/complete` は冪等。** agentがタイムアウトで再送すると、素通しではカルテも穴も
-通知予約も二重にできる。すでにカルテがあるセッションには、保存済みのものを返す。
+**`/complete` is idempotent.** When the agent resends after a timeout, passing it
+through would duplicate the karte, the holes and the notification bookings. For a
+session that already has a karte, the stored one is returned.
 
-**上限の判定と書き込みは同じ1文にする。** 判定と書き込みが離れていると、同時に2本
-投げられたときに両方が「今日はまだ0回」を見て通る。授業枠は `started_at` を書く
-UPDATE の `WHERE` に上限のCOUNTを入れ、解析枠は条件付きINSERTで押さえる
-(SQLiteは1文が原子的なので、同時実行が同じ古いCOUNTを見て両方通れない)。
-解析に失敗したら行を消すので、読み取れなかった写真で解析の枠を失うこともない。
+**The cap check and the write are one statement.** Separated, two concurrent requests
+both see "zero uses today" and both pass. The lesson slot puts the cap's COUNT into the
+`WHERE` of the UPDATE that writes `started_at`, and the analysis slot is claimed with a
+conditional INSERT (SQLite executes one statement atomically, so concurrent requests
+cannot both pass on the same stale COUNT). A failed analysis deletes the row, so an
+unreadable photo never costs an analysis slot.
 
-**通知の失敗で体験を止めない。** OneSignalの予約に失敗しても、カルテは返す。
-穴が埋まったときは、残っている予約を取り消す(埋めた穴について通知が来るのが
-いちばん白けるので)。
+**A failed notification never stops the experience.** The karte is returned even if the
+OneSignal booking failed. When a hole is filled, the remaining bookings are cancelled
+(a notification about a hole you already filled is the most deflating thing there is).
 
-**解約予約ではPremiumを剥がさない。** RevenueCatの `CANCELLATION` は解約予約であり、
-期限まではPremiumのまま。払ったぶんは最後まで使える、が誠実さ(HAMM)の最低線。
+**A scheduled cancellation does not revoke Premium.** RevenueCat's `CANCELLATION` is a
+scheduled cancellation and stays Premium until expiry. "What was paid for stays usable
+to the end" is the floor of honesty (HAMM).
 
-**D1に点数の列を置かない。** `kartes` テーブルにスコア列はなく、
-数えるのは連続日数と埋めた穴だけ。
+**No score column in D1.** The `kartes` table has no score column; only streak days and
+filled holes are counted.
 
-**`locale` は言語だけでなく課程を切り替える。** `POST /v1/sessions` の `locale` は、
-Vision LLMに渡すカリキュラムマップ(日本の数学I〜C / 海外の Algebra 1〜)と
-プロンプト本体を選ぶ。解析器が別の課程の `topic_id` を返しても落とす。
-チップUIに出る科目名も、そのままその課程の言語で返る
-([ADR 0005](../../docs/adr.md#adr-0005))。
+**`locale` switches the curriculum, not just the language.** `POST /v1/sessions`'s
+`locale` selects the curriculum map handed to the Vision LLM (Japanese Math I-C /
+overseas Algebra 1+) and the prompt itself. A `topic_id` returned from another
+curriculum is rejected. The course names shown on chips come back in that curriculum's
+language too ([ADR 0005](../../docs/adr.md#adr-0005)).
 
-**穴の言語は `topic_id` から引く。** `locale` をDBに持たない代わりに、
-`M2-...`(日本)/ `A2-...`(海外)の接頭辞でその穴の言語が決まる。復習の通知文
-(`/complete` で予約)と復習キューの一行(`/v1/me/reviews`)はこれに従うので、
-端末の言語設定を変えても、日本語で説明した穴が英語で届くことはない。
+**A hole's language comes from its `topic_id`.** Instead of storing `locale` in the DB,
+the prefix `M2-...` (Japan) or `A2-...` (overseas) decides that hole's language. The
+review notification (booked at `/complete`) and the review queue's one-liner
+(`/v1/me/reviews`) follow it, so changing the device language never delivers a hole
+explained in Japanese in English.
 
-## LiveKitトークン
+## The LiveKit token
 
-`server-sdk-js` はNode APIに依存するため、WorkersではWebCryptoで
-JWT(HS256)を自前で組んでいる(`lib/livekit.ts`)。
-トークンの `metadata` に、写真の解釈・許可トピック・質問の種・残り秒数を載せて
-エージェントへ渡す。**会話中のガードレールはこのmetadataを基準にする。**
+`server-sdk-js` depends on Node APIs, so on Workers the JWT (HS256) is built by hand
+with WebCrypto (`lib/livekit.ts`).
+The token's `metadata` carries the photo interpretation, the allowed topics, the
+question seeds and the remaining seconds to the agent. **The in-conversation guardrails
+use that metadata as their baseline.**

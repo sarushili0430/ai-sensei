@@ -1,59 +1,62 @@
 # prompts/
 
-システムプロンプトとfew-shot。**Markdownが正**で、差分レビューできるようにここに置く。
+System prompts and few-shot examples. **The Markdown is authoritative**, kept here so
+it can be reviewed as a diff.
 
-ファイル名は `<id>.<locale>.md`。**言語ごとに別本**を持つ
-([ADR 0005](../docs/adr.md#adr-0005))。
+File names are `<id>.<locale>.md`. **Each language gets its own book**
+([ADR 0005](../docs/adr.md#adr-0005)).
 
-| id | 使う場所 | 役割 |
+| id | Where it is used | Role |
 | --- | --- | --- |
-| `photo_analysis` | backend/api(Vision LLM) | ノート写真 → 単元検出・質問の種 |
-| `senpai_conversation` | agent(会話LLM) | 先輩ペルソナ + 教え返しのガードレール([ピボット計画 v1](../docs/pivot_plan_v1.md) §2) |
-| `question_types_few_shot` | agent | 教え返しを聞くときの聞き方4型をそろえるfew-shot |
-| `karte_generation` | agent(セッション終了時) | transcript → カルテJSON |
-| `math_speech_hints` | 両方 | 数式音声の補正ヒント(§4(d)) |
-| `senpai_board` | agent(新規 / 復習の板書LLM) | 写真または対象穴を起点に、先輩ペルソナ + 板書JSON生成([ピボット計画 v1](../docs/pivot_plan_v1.md) §2・§3) |
-| `study_plan` | agent(計画モード) | 先輩が**口で聞いて**学習計画を組む / 組み直す(同 §4-3) |
+| `photo_analysis` | backend/api (Vision LLM) | Notes photo -> unit detection, question seeds |
+| `senpai_conversation` | agent (conversation LLM) | The senpai persona plus the teach-back guardrails ([pivot plan v1](../docs/pivot_plan_v1.md) §2) |
+| `question_types_few_shot` | agent | Few-shot examples aligning the four ways of asking while listening to teach-back |
+| `karte_generation` | agent (at session end) | transcript -> karte JSON |
+| `math_speech_hints` | both | Correction hints for spoken maths (§4(d)) |
+| `senpai_board` | agent (board LLM, new and review) | The senpai persona plus board JSON, grounded in the photo or the target hole ([pivot plan v1](../docs/pivot_plan_v1.md) §2, §3) |
+| `study_plan` | agent (plan mode) | The senpai building or rebuilding a study plan **by ear** (same, §4-3) |
 
-現在のロケールは `ja` と `en` の2つ。**id の数 × 2ロケール**が揃って
-いないとテストが落ちる(片方だけ足すと、その言語のセッションだけ静かに
-日本語へフォールバックする)。id を1つ足すたびに `.md` は2本増え、
-`packages/prompts/src/index.ts` の `promptIds` にも足す。
+There are two locales, `ja` and `en`. Tests fail unless **id count x 2 locales** are
+all present (adding only one makes that language's sessions silently fall back to
+Japanese). Each new id adds two `.md` files and an entry in `promptIds` in
+`packages/prompts/src/index.ts`.
 
-日本語の本文に「英語で答えてください」を足す作りにはしない。足す作りだと
-ペルソナも禁止事項も日本語のまま英語で言い直されるだけで、few-shot は
-日本語の例文のままになる。**文体の見本がない状態**で英語を喋らせると、
-先輩の口調ではなく試験官の口調に寄る。
+Never build this by appending "answer in English" to a Japanese body. That only
+restates the persona and the bans in Japanese, and the few-shot examples stay
+Japanese. Speaking English **with no example of the tone** drifts from the senpai's
+voice towards an examiner's.
 
-## TypeScriptからの読み込み
+## Loading from TypeScript
 
-Workers/agentはファイルシステムを前提にできないため、Markdownを文字列定数へ変換した
-`packages/prompts/src/generated.ts` を経由します。**手で編集しないこと。**
+Workers and the agent cannot assume a filesystem, so it goes through
+`packages/prompts/src/generated.ts`, where the Markdown is converted into string
+constants. **Do not edit it by hand.**
 
 ```bash
-pnpm --filter @ai-sensei/prompts generate   # .md → generated.ts
+pnpm --filter @ai-sensei/prompts generate   # .md -> generated.ts
 ```
 
-`.md` を編集して再生成を忘れると `packages/prompts/src/index.test.ts` が落ちます。
+Editing a `.md` and forgetting to regenerate fails
+`packages/prompts/src/index.test.ts`.
 
 ```ts
-getPrompt("senpai_conversation", "en");       // 言語を指定して取り出す
-conversationSystemPrompt(variables, "en");    // few-shot と音声ヒントも英語で同梱
-boardLessonSystemPrompt(variables, "en");     // 先輩(新規 / 復習の板書)+ 音声ヒント
-studyPlanSystemPrompt(variables, "en");       // 先輩(計画)。音声ヒントは同梱しない
+getPrompt("senpai_conversation", "en");       // fetch by language
+conversationSystemPrompt(variables, "en");    // few-shot and speech hints bundled in English too
+boardLessonSystemPrompt(variables, "en");     // senpai (board, new and review) + speech hints
+studyPlanSystemPrompt(variables, "en");       // senpai (plan). Speech hints are not bundled
 ```
 
-`study_plan` にだけ音声ヒントを同梱していないのは、あれが**数式の読み上げ**
-(「さんぶんのに」= 2/3)を直すためのもので、計画の聞き取りに出てくる数字が
-**日付・ページ番号・問題集の名前**という別物だからです。計画側で要る聞き取りの注意は
-`study_plan.<locale>.md` に直接書いてあります。
+Only `study_plan` omits the speech hints, because those fix **spoken maths**
+("さんぶんのに" = 2/3), whereas the numbers in a plan interview are **dates, page
+numbers and workbook names** - different things. The listening notes the plan side
+needs are written directly in `study_plan.<locale>.md`.
 
-未対応の言語は黙って `ja` に落とします(ここで例外にすると、言語が1つ増えた
-瞬間に会話が始まらなくなるため)。
+Unsupported languages fall back to `ja` silently (throwing here would stop
+conversations the moment a language was added).
 
-## フロントマター
+## Front matter
 
-各ファイルの先頭に、埋め込み変数の一覧を持たせています。
+Each file starts with the list of variables it embeds.
 
 ```yaml
 ---
@@ -64,86 +67,93 @@ variables: [photo_summary, visible_work, allowed_topics, question_seeds, lesson_
 ---
 ```
 
-`renderPrompt()` は `variables` に宣言されていない変数を渡すとエラーにし、
-本文に残った未展開の `{{...}}` も検出します(プロンプトの穴埋め漏れは、
-そのままLLMの範囲逸脱につながるため)。
+`renderPrompt()` errors on a variable not declared in `variables`, and also detects
+unexpanded `{{...}}` left in the body (an unfilled prompt blank leads straight to the
+LLM going out of scope).
 
-**同じ id なら、ロケール間で `variables` を揃えること。** ずれていると
-片方の言語だけ `renderPrompt` が落ちます(= その言語では会話が始まらない)。
-テストで見ています。
+**Keep `variables` identical across locales for the same id.** Drift makes
+`renderPrompt` fail in one language only (= conversations never start in that
+language). A test checks it.
 
-## 書くときの約束
+## Rules for writing them
 
-プロンプトは仕様書です。以下はコードのガードレール(`@ai-sensei/guardrail`)と
-**二重に**書きます。片方だけ直さないこと。**言語ごとにも二重**です
-(英語側だけ抜けると、海外のユーザーにだけ約束が破られる)。
+Prompts are specifications. The following are written **twice**, here and in the code
+guardrails (`@ai-sensei/guardrail`). Never fix only one side. They are also **written
+twice per language** (missing on the English side breaks the promise for overseas
+users only).
 
-| # | 約束 | |
+| # | Promise | |
 | --- | --- | --- |
-| 1 | ~~答え・解き方・正解を言わない~~ → **教える。そのあと教え返させる** | **2026-08-09 改正** |
-| 2 | 写真に写っていない話題に触れない(topic_idは許可リストから選ぶ) | 維持 |
-| 3 | 点数・評価語を使わない | 維持 |
-| 4 | パス(説明できない)を責めない | 維持 |
+| 1 | ~~never state the answer, the method or the solution~~ -> **teach it, then have them teach it back** | **revised 2026-08-09** |
+| 2 | Never touch topics absent from the photo (topic_ids come from the allow-list) | unchanged |
+| 3 | No scores or evaluative language | unchanged |
+| 4 | Never blame a pass (being unable to explain) | unchanged |
 
-### 1番目の改正について(2026-08-09)
+### About the revision to promise 1 (2026-08-09)
 
-家庭教師AIへのピボットで、**1番目だけが改正されました**
-([ピボット計画 v1](../docs/pivot_plan_v1.md) §0「憲法の部分改正」)。
-残る3つは無傷です。**この事実を知らずに「答えを教えない」に戻すと、製品が別物になります。**
+The pivot to a tutoring AI **revised only the first promise**
+([pivot plan v1](../docs/pivot_plan_v1.md) §0, "a partial amendment to the
+constitution"). The other three are untouched. **Reverting to "never give the answer"
+without knowing this makes it a different product.**
 
-> **答えを教える。そのあと、あなたに教え返してもらう。**
+> **Give the answer. Then have the student teach it back to you.**
 
-改正が及ぶ範囲は id ごとに違います。プロンプトを直すときは、まずどちらかを確かめること。
+How far the revision reaches differs per id. Check which side an id is on before
+editing its prompt.
 
-| id | 1番目の扱い |
+| id | Treatment of promise 1 |
 | --- | --- |
-| `senpai_board` | **改正後。** 写真の問題も復習の穴も教える。ただし教えっぱなしにせず、必ず説明してもらうところまで行く |
-| `senpai_conversation` `question_types_few_shot` | **改正後。** 説明が詰まったら教える。ただし**先に答えを埋めない** — まず言わせてから(言ってしまうと、そこが穴だったのかが永久に分からなくなる) |
-| `photo_analysis` | **改正前のまま。** 解析器の出力は「何を教えるか」を決めるための材料で、ここに解答が入ると誤読が下流に固定される |
-| `karte_generation` | 対象外(採点しない ≒ 約束3の側の話) |
-| `study_plan` | 対象外(計画は教える場ではない)。効くのは約束3「点数をつけない」のほう |
+| `senpai_board` | **Post-revision.** Teaches both the photographed problem and the review hole - but never stops at teaching; it always reaches the point of having the student explain |
+| `senpai_conversation`, `question_types_few_shot` | **Post-revision.** Teaches when the explanation stalls - but **never fills the answer in first**; make them say it first (say it yourself and whether that was a hole is lost forever) |
+| `photo_analysis` | **Pre-revision, unchanged.** The analyser's output decides what gets taught, and an answer here fixes a misreading downstream |
+| `karte_generation` | Out of scope (no grading, which is promise 3's territory) |
+| `study_plan` | Out of scope (a plan is not where teaching happens). What applies is promise 3, "no scores" |
 
-`@ai-sensei/guardrail` の `containsAnswerLeak()` は**改正前の約束1を見るための関数**で、
-教える先輩(板書・会話)には**もう当てていません**(agent 側の呼び出しは削除済み)。
-当てたままだと、先輩が詰まった箇所を教えるたびに漏れとして記録され、警告が鳴りっぱなしになります。
-板書側の二重書きの相手は別で、こちらです:
+`containsAnswerLeak()` in `@ai-sensei/guardrail` **checks the pre-revision promise 1**
+and is **no longer applied** to the teaching senpai (board or conversation); the
+agent's calls have been removed. Left on, it would log a leak every time the senpai
+explains the stuck point and keep the warning permanently lit.
+The board side's double-write counterparts are these instead:
 
-| プロンプトに書くこと | コード側の相手 |
+| Written in the prompt | Counterpart in code |
 | --- | --- |
-| `speech` は120字以内・数式を読み上げない | `contract` の `boardSpeechMaxLength` と `speech` のLaTeX禁止 |
-| 使ってよいLaTeXコマンドの一覧 | `guardrail` の `allowedLatexCommands` |
-| 日本語は数式ではなく `text` 要素へ | `guardrail` の `text_in_math` |
-| 1手順=1行(`\\` を使わない・多行環境を使わない) | `contract` の `tex` の正規表現 / `guardrail` の `row_separator_outside_environment` |
-| 長い式は `=` の前で割って2手順にする | **コード側の相手がまだいない**(計画書 §3-6b。W2でNode側の幅推定を入れるまで、ここはプロンプトだけが守っている) |
+| `speech` is at most 120 characters and never reads formulas aloud | `contract`'s `boardSpeechMaxLength` and the LaTeX ban on `speech` |
+| The list of usable LaTeX commands | `guardrail`'s `allowedLatexCommands` |
+| Japanese goes in a `text` element, not a formula | `guardrail`'s `text_in_math` |
+| One step = one line (no `\\`, no multi-line environments) | `contract`'s `tex` regex / `guardrail`'s `row_separator_outside_environment` |
+| Split long formulas before the `=` into two steps | **No counterpart in code yet** (plan §3-6b. Until width estimation lands on the Node side in W2, only the prompt upholds this) |
 
-学習計画(`study_plan`)の二重書きの相手は、さらに別です:
+Study plans (`study_plan`) have different counterparts again:
 
-| プロンプトに書くこと | コード側の相手 |
+| Written in the prompt | Counterpart in code |
 | --- | --- |
-| 目標点・達成率を書かない | `contract` の `studyPlanSchema`(`strict()` に置き場が無い) |
-| 1日は合計120分まで / 1項目10〜60分 | `contract` の `planDayMinutesMax` と `planItemMinutes*` |
-| `material` は聞いた教材の**番号** | `contract` の `material` の添字と範囲検査 |
-| 日付は昇順・テスト日を越えない | `contract` の `checkPlanShape` |
-| `topic_ids` は許可リストから選ぶ | `guardrail` の `filterHoleTopicIds()` と同じ照合(**計画向けはまだ無い** — 下記) |
-| 組み直しで `intake` を聞き直さない | **コード側の相手がいない。**ここはプロンプトだけが守っている |
+| No target scores or completion rates | `contract`'s `studyPlanSchema` (`strict()` leaves nowhere to put them) |
+| At most 120 minutes a day / 10-60 minutes an item | `contract`'s `planDayMinutesMax` and `planItemMinutes*` |
+| `material` is the **index** of a material we heard about | `contract`'s `material` index and its range check |
+| Dates ascend and never pass the test date | `contract`'s `checkPlanShape` |
+| `topic_ids` come from the allow-list | The same matching as `guardrail`'s `filterHoleTopicIds()` (**none for plans yet** - see below) |
+| A rebuild does not re-ask `intake` | **No counterpart in code.** Only the prompt upholds this |
 
-教え返し(`senpai_conversation`)にも、締めの検出という二重書きの相手があります。
+Teach-back (`senpai_conversation`) has a double-write counterpart too, in closing
+detection.
 
-| プロンプトに書くこと | コード側の相手 |
+| Written in the prompt | Counterpart in code |
 | --- | --- |
-| 締めるときは「**今日は**ここまでにしよっか」 / "Let's stop here for today" を明示して終える(「説明はここまで」のような話の区切りの言い方では締めない) | `backend/agent/src/closing.ts` の `CLOSING_PATTERNS`。「今日は」「そろそろ」のような**今日ぜんぶを指す語**を前に要求している。文言を変えるときは検出とテストも更新する |
-| 採点しない・「合ってる / 違う」を宣告しない | **無し。**プロンプトだけが守っている |
-| 命令・催促をしない、数字を見せない(約束4) | **無し。**同上 |
-| 先に答えを埋めない(まず言わせる) | **無し。**`containsAnswerLeak()` は当てられない(下記) |
+| To close, end explicitly with "**今日は**ここまでにしよっか" / "Let's stop here for today" (never with a phrase that merely marks a break, like "説明はここまで") | `CLOSING_PATTERNS` in `backend/agent/src/closing.ts`, which requires a preceding word scoping the whole day ("今日は", "そろそろ"). Changing the wording means updating the detection and its tests |
+| No grading, never pronounce "right / wrong" | **None.** Only the prompt upholds it |
+| No orders, no nagging, no numbers (promise 4) | **None.** As above |
+| Never fill the answer in first (make them say it) | **None.** `containsAnswerLeak()` cannot be applied (see below) |
 
-「先に答えを埋めない」に機械の相手がいないのは、**字面では判定できない**からです。
-同じ「答えは2点で交わる」が、生徒が説明したあとなら正しく、説明する前なら違反になる。
-判定に要るのは語句ではなく**ターンの順序**なので、`containsAnswerLeak()` の
-正規表現では原理的に置き換えられません。ここを機械で見るなら、その設計から始めること。
+"Never fill the answer in first" has no mechanical counterpart because **it cannot be
+judged from wording**. The same sentence "the answer is that they intersect at two
+points" is correct after the student has explained and a violation before. What the
+judgement needs is **turn order**, not vocabulary, so `containsAnswerLeak()`'s regex
+cannot replace it in principle. Checking this mechanically starts with designing that.
 
-配役が後輩から先輩に変わって**新しく開いた穴**です。後輩は「勉強しろ」と言えませんが、
-先輩は言える立場なので、ここが緩むと素で言います。書き換えるときは弱めないこと。
+This is a hole **newly opened** by recasting the AI from kouhai to senpai. A kouhai
+cannot say "go study", but a senpai can, so loosening this means it will. Do not
+weaken it when rewriting.
 
-差し込む定型句も本文と同じ言語で書きます(`(なし)` / `(none)`、
-`先輩:` / `Senpai:`、板書の引用符 `「」` / `"`)。
-日本語が1行混ざると、そこだけ日本語で返ってきます。
+Inserted fixed phrases are written in the same language as the body
+(`(なし)` / `(none)`, `先輩:` / `Senpai:`, board quotes `「」` / `"`).
+One Japanese line mixed in makes that part come back in Japanese.

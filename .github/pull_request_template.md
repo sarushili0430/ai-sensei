@@ -1,22 +1,22 @@
-## 何を変えたか
+## What changed
 
-<!-- 1〜3行。読む人が差分を開く前に全体像を掴めるように。 -->
+<!-- 1-3 lines, so a reader gets the shape before opening the diff. -->
 
-## なぜ
+## Why
 
-<!-- 企画資料のどの決定に対応するか(例: ADR 0001 モノレポ構成 / 計画書 §4 モード設計)。 -->
+<!-- Which planning decision it corresponds to (e.g. ADR 0001 monorepo layout / plan §4 mode design). -->
 
-## 確認したこと
+## What was checked
 
-- [ ] `npm run verify`(typecheck + シークレット走査 + ユニットテスト)
-- [ ] `cd apps/mobile && flutter test`(モバイルに変更がある場合)
-- [ ] 秘匿情報を含めていない(更新するのは `*.example` のテンプレートだけ)
+- [ ] `npm run verify` (typecheck + secret scan + unit tests)
+- [ ] `cd apps/mobile && flutter test` (if mobile changed)
+- [ ] No secrets included (only `*.example` templates are updated)
 
-## 設計上の約束の再確認
+## Design promises, re-checked
 
-- [ ] 答え・解説を生成していない
-- [ ] 点数を出していない(数えるのは連続日数と埋めた穴の数だけ)
+- [ ] No answers or worked solutions generated
+- [ ] No scores shown (only streak days and filled holes are counted)
 
-## 残タスク / 次のPR
+## Remaining work / next PR
 
-<!-- 積み残しがあれば書く。なければ「なし」。 -->
+<!-- Anything left over. "None" if there is nothing. -->

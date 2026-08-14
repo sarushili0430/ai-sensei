@@ -1,32 +1,37 @@
 # @ai-sensei/curriculum
 
-カリキュラムマップ。
-**後輩AIが触れてよい話題の全集合**であり、同時に「穴」のタグ付け語彙でもある。
+The curriculum map.
+**The complete set of topics the AI may touch**, and at the same time the vocabulary
+for tagging holes.
 
-**課程(track)ごとに1本**持つ([ADR 0005](../../docs/adr.md#adr-0005) /
-[ADR 0007](../../docs/adr.md#adr-0007))。
-日本の課程を英訳したものは、どこの国のカリキュラムでもないので作らない。
+There is **one per curriculum (track)** ([ADR 0005](../../docs/adr.md#adr-0005) /
+[ADR 0007](../../docs/adr.md#adr-0007)).
+An English translation of the Japanese curriculum is nobody's curriculum, so it is not
+made.
 
-| track | ファイル | 課程 | トピック数 |
+| track | File | Curriculum | Topics |
 | --- | --- | --- | --- |
-| `hs_math_ja` | `data/curriculum.v0.json` | 数学I / A / II / B / III / C(新課程) | 52 |
+| `hs_math_ja` | `data/curriculum.v0.json` | Math I / A / II / B / III / C (current guidelines) | 52 |
 | `hs_math_en` | `data/curriculum.intl.v0.json` | Algebra 1 / Geometry / Algebra 2 / Precalculus / Calculus / Statistics | 57 |
-| `jhs_math_ja` | `data/curriculum.jhs-math.v0.json` | 中学数学(第1〜3学年 × 数と式 / 図形 / 関数 / データの活用) | 27 |
-| `jhs_english_ja` | `data/curriculum.jhs-english.v0.json` | 中学英語(文法事項 / 文構造 / 音声) | 25 |
-| `hs_english_ja` | `data/curriculum.hs-english.v0.json` | 英語コミュニケーションI・II / 論理・表現I | 32 |
+| `jhs_math_ja` | `data/curriculum.jhs-math.v0.json` | Middle-school maths (years 1-3 x numbers and expressions / geometry / functions / data) | 27 |
+| `jhs_english_ja` | `data/curriculum.jhs-english.v0.json` | Middle-school English (grammar / sentence structure / phonology) | 25 |
+| `hs_english_ja` | `data/curriculum.hs-english.v0.json` | English Communication I/II, Logic & Expression I | 32 |
 
-1つの track は `{ locale, subject, stage }` を持つ(`src/schema.ts` の `tracks`)。
+Each track carries `{ locale, subject, stage }` (`tracks` in `src/schema.ts`).
 
-- **`locale`(指導言語)は「先輩が話す言語」であって、教える中身の言語ではない。**
-  日本の中学生が英語を学ぶ課程は `locale: "ja"` — 先輩は日本語で話し、
-  通知も日本語で届く。
-- `subject` は板書に使える要素と、同梱する音声補正ヒントを決める。
-- `stage` はプロンプトに貼る課程を絞るのに使う。
+- **`locale` (the language of instruction) is "the language the senpai speaks", not the
+  language of what is taught.** The curriculum where Japanese middle-schoolers learn
+  English is `locale: "ja"` - the senpai speaks Japanese and notifications arrive in
+  Japanese.
+- `subject` decides which board elements are usable and which speech-correction hints
+  are bundled.
+- `stage` narrows which curricula get pasted into a prompt.
 
-実体は純JSON。TypeScript以外(Flutter・Python版agent)からも同じファイルを読める。
-`src/` は読み出しヘルパと整合性チェック。**データを変えるのはJSONだけ**。
+The data itself is plain JSON, readable from outside TypeScript too (Flutter, a Python
+agent). `src/` holds the read helpers and the integrity checks. **Only the JSON is
+edited to change data.**
 
-## 使い方
+## Usage
 
 ```ts
 import {
@@ -39,53 +44,54 @@ import {
   tracksForStage,
 } from "@ai-sensei/curriculum";
 
-// サーバ側ガード: LLMが返したtopic_idがカリキュラム内か(全課程横断)
+// Server guard: is the topic_id the LLM returned in the curriculum (across all of them)
 isKnownTopicId("M2-ZUKEI-ENCHOKU"); // true
 isKnownTopicId("A2-COORD-CIRCLE");  // true
 
-// 写真解析テキストから単元候補を引く(課程を絞る)
+// Find candidate units from photo-analysis text (narrowed by curriculum)
 suggestTopics("distance from the center to the line", 5, { tracks: ["hs_math_en"] });
 
-// 穴の深掘り: 「そもそも判別式って何のためにある?」の質問先を決める
-prerequisitesOf("M2-ZUKEI-ENCHOKU"); // → [M1-NIJI-HANBETSU, M2-ZUKEI-TENTO-KYORI]
+// Digging into a hole: where "what is a discriminant even for?" should go
+prerequisitesOf("M2-ZUKEI-ENCHOKU"); // -> [M1-NIJI-HANBETSU, M2-ZUKEI-TENTO-KYORI]
 
-// 一覧をプロンプトや画面に出すときは、必ず課程で絞る
+// Always narrow by curriculum when listing for a prompt or a screen
 topicsForTracks(tracksForStage("high_school", "ja"));
 
-// 穴の言語は topic_id から決まる(通知文・復習画面がこれを使う)
+// A hole's language follows from its topic_id (notifications and the review screen use this)
 localeOfTopicId("A1-QUAD-SOLVE"); // "en"
 
-// チップや計画画面に出す短いラベル
+// The short label for chips and the plan screen
 topicLabel(findTopic("M2-ZUKEI-ENCHOKU")!); // "数学II"
 ```
 
-`topics` / `findTopic` / `isKnownTopicId` は**全課程横断**で見る。IDが
-課程をまたいで衝突しないので、ガードレールの照合は課程を気にせず通せる。
-逆に、**一覧を人やLLMに見せるときは `topicsForTracks` で絞る**。混ぜると
-英語のノートに「数学II / 図形と方程式」というチップが出る。
+`topics` / `findTopic` / `isKnownTopicId` look **across every curriculum**. Ids never
+collide between curricula, so guardrail matching can ignore which one it is.
+Conversely, **narrow with `topicsForTracks` when showing a list to a human or an LLM**.
+Mixed, an English notebook gets a "Math II / coordinate geometry" chip.
 
-「その言語の課程を全部」を返す関数は**意図的に用意していない**。課程が増えた日に
-無言でプロンプトが倍になるため。`tracksForStage(stage, locale)` と組で使うこと。
+There is **deliberately no function returning "every curriculum in that language"**,
+because the day a curriculum is added the prompt would silently double. Use it together
+with `tracksForStage(stage, locale)`.
 
-## トピックを追加するとき
+## Adding a topic
 
 ```jsonc
 {
-  "id": "M2-ZUKEI-ENCHOKU",       // {コース接頭辞}-{単元}-{トピック} を大文字ローマ字で
-  "course": "数学II",              // 接頭辞と一致していないとCIで落ちる
+  "id": "M2-ZUKEI-ENCHOKU",       // {course prefix}-{unit}-{topic}, uppercase romaji
+  "course": "数学II",              // CI fails if it disagrees with the prefix
   "unit": "図形と方程式",
   "topic": "円と直線の位置関係",
-  "goals": [                       // 質問生成のネタ元。最低1つは説明を問える形にする
+  "goals": [                       // source material for questions; at least one must ask for an explanation
     "中心と直線の距離dと半径rの比較で位置関係を判定できる",
     "2つの方法の使い分けの理由を説明できる"
   ],
-  "prerequisites": ["M1-NIJI-HANBETSU"],  // 穴の深掘り先。**同じ言語・同じ教科の**存在するID
-  "keywords": ["円の方程式", "判別式"]     // 写真解析テキストとの突き合わせ用
+  "prerequisites": ["M1-NIJI-HANBETSU"],  // where digging goes. An existing id **in the same language and subject**
+  "keywords": ["円の方程式", "判別式"]     // for matching against photo-analysis text
 }
 ```
 
-海外向けも同じ形。接頭辞は `A1`(Algebra 1)/ `GE`(Geometry)/ `A2`(Algebra 2)/
-`PC`(Precalculus)/ `CL`(Calculus)/ `ST`(Statistics)。
+Overseas curricula use the same shape. Prefixes are `A1` (Algebra 1), `GE` (Geometry),
+`A2` (Algebra 2), `PC` (Precalculus), `CL` (Calculus) and `ST` (Statistics).
 
 ```jsonc
 {
@@ -102,78 +108,89 @@ topicLabel(findTopic("M2-ZUKEI-ENCHOKU")!); // "数学II"
 }
 ```
 
-### `grade_hint`(英語の課程だけ)
+### `grade_hint` (English curricula only)
 
-学年の目安。**表示ラベルにしか使わない。範囲の判定には絶対に使わない。**
+A rough grade. **Used for display labels only, never for scope decisions.**
 
-学習指導要領は中学校英語の文法事項を**学年別に配当していない**(解説の付録7は
-「中学校」一括で示し、配当は各校・教科書会社の裁量と本文にある)。
-「中1でbe動詞」は教科書側の慣行なので、これで範囲を絞ると、別の教科書を
-使っている生徒の単元が消える。
+The national guidelines **do not allocate middle-school English grammar by grade**
+(appendix 7 of the commentary presents it for "middle school" as a whole and states in
+the body that allocation is each school's and publisher's discretion).
+"be-verbs in year 7" is a textbook convention, so narrowing the scope by it would erase
+units for students using a different textbook.
 
-読んでよいのは `topicLabel()` ただ1つ。`suggestTopics` / `resolveDetectedTopics` に
-**学年を渡す引数は存在しない**のが、この約束の実体。
-学年が課程そのもので決まる中学数学(`course` が「中学1年 数学」)には書かない
-— 書くと `checkIntegrity` が落とす。
+`topicLabel()` is the only thing allowed to read it. That `suggestTopics` /
+`resolveDetectedTopics` have **no parameter for a grade** is what makes this promise
+real. It is not written for middle-school maths, where the grade follows from the
+course itself (`course` is "中学1年 数学") - writing it makes `checkIntegrity` fail.
 
-## 課程を1本足すとき
+## Adding a curriculum
 
-1. `src/schema.ts` の `trackIds` に id を足す
-2. 同じく `tracks` に `{ locale, subject, stage }` を書く
-3. `jaCourseNames` などにコース名、`courseCodeByName` / `trackByCourseCode` に接頭辞
-4. `courseNamesByTrack` にその課程で使えるコース名
-5. `data/` に JSON を足し、`src/index.ts` の `curricula` に登録
-6. **`packages/contract/src/karte.ts` の `topicIdSchema` の正規表現に接頭辞を足す**
-   (contract は依存を持たない層なので二重定義。忘れると新しいIDが形で弾かれる)
-7. **`apps/mobile/lib/src/l10n/strings.dart` の `planSubject()` に分岐を足す**
-   (`apps/mobile/test/curriculum_label_test.dart` が忘れを検出する)
+1. Add the id to `trackIds` in `src/schema.ts`
+2. Write `{ locale, subject, stage }` into `tracks` in the same file
+3. Add the course name to `jaCourseNames` and friends, and the prefix to
+   `courseCodeByName` / `trackByCourseCode`
+4. Add the usable course names to `courseNamesByTrack`
+5. Add the JSON under `data/` and register it in `curricula` in `src/index.ts`
+6. **Add the prefix to `topicIdSchema`'s regex in `packages/contract/src/karte.ts`**
+   (contract is a dependency-free layer, hence the duplicate definition. Forget it and
+   new ids are rejected on shape)
+7. **Add a branch to `planSubject()` in `apps/mobile/lib/src/l10n/strings.dart`**
+   (`apps/mobile/test/curriculum_label_test.dart` catches an omission)
 
-`curricula` が `Record<TrackId, Curriculum>` なので、1 で id を足して 5 を忘れると
-**型で落ちる**。
+Since `curricula` is a `Record<TrackId, Curriculum>`, adding an id in step 1 and
+forgetting step 5 **fails type checking**.
 
-チェックは `pnpm test` の中で回る:
+The checks run inside `pnpm test`:
 
-- スキーマ(zod)— 未知フィールドは `strict()` で弾く
-- ID重複 / 未定義の前提 / 自己参照 / 循環(**全課程横断**)
-- IDの接頭辞と `course` の一致、接頭辞とファイルの `track` の一致、
-  `course` とその課程の一致
-- **別の言語・別の教科をまたいだ前提参照** — Algebra 2 の前提が 数学II に
-  なっていないこと。段(中学 → 高校)はまたいでよい
-- `grade_hint` が英語の課程にしか無いこと
-- 宣言だけしてトピックが0件のコースが無いこと
-- **新課程の配当**(`hs_math_ja`)— ベクトルが数学C、統計的な推測が数学B、
-  仮説検定が数学I にあること(旧課程の知識で書き足すとここで落ちる)
-- **科目名が訳語になっていないこと**(`hs_math_en`)— "Math II" のような名前を弾く
+- The schema (zod) - unknown fields are rejected by `strict()`
+- Duplicate ids / undefined prerequisites / self-references / cycles (**across every
+  curriculum**)
+- The id prefix matching `course`, the prefix matching the file's `track`, and `course`
+  matching that curriculum
+- **Prerequisite references crossing a language or a subject** - an Algebra 2
+  prerequisite must not be Math II. Crossing stages (middle -> high school) is allowed
+- `grade_hint` appearing only in English curricula
+- No course declared with zero topics
+- **The current guidelines' allocation** (`hs_math_ja`) - vectors in Math C, statistical
+  inference in Math B, hypothesis testing in Math I (adding from the old guidelines
+  fails here)
+- **Course names that are translations** (`hs_math_en`) - names like "Math II" are
+  rejected
 
-## v0の範囲
+## v0's scope
 
-到達目標は技能(「因数分解できる」/ "Factor by pattern")だけで終わらせず、
-**各トピックに必ず1つ以上、説明を問える目標**(「〜の理由を説明できる」/
-"Explain why ...")を入れる。このアプリが測るのは説明であって正誤ではないので、
-ここが薄いと質問が「解けますか?」になってしまう。テストで全トピックを検査している。
+Learning goals must not stop at skills ("can factorise" / "Factor by pattern"): **every
+topic carries at least one goal that asks for an explanation** ("can explain why ..." /
+"Explain why ..."). This app measures explanation rather than correctness, so a thin
+set here makes the questions amount to "can you solve it?". A test checks every topic.
 
-`hs_math_ja` は数I・数IIの頻出単元を厚めに、数A/B/III/Cは主要単元を1〜3トピックずつ。
-`hs_math_en` は Algebra 1 → Calculus の主系列に Statistics を並走させた構成で、
-行列・級数展開のように国や学校で扱いが割れるものは v0 では持たない。
+`hs_math_ja` covers Math I and II's frequent units in depth, with 1-3 topics for the
+main units of A/B/III/C. `hs_math_en` runs Algebra 1 -> Calculus as the main line with
+Statistics alongside; things treated differently by country or school, such as matrices
+and series expansions, are absent in v0.
 
-`jhs_math_ja` は学習指導要領の領域(A 数と式 / B 図形 / C 関数 / D データの活用)を
-学年ごとに割った27件。`jhs_english_ja` は解説の付録7「外国語の言語材料」から
-文法事項・文構造を起こした25件で、**学年は `grade_hint`(表示専用)にしか無い**。
+`jhs_math_ja` is 27 entries split by year across the guidelines' domains (A numbers and
+expressions / B geometry / C functions / D data). `jhs_english_ja` is 25 entries drawn
+from appendix 7 "foreign language materials" (grammar and sentence structure), where
+**the year exists only in `grade_hint`, which is display-only**.
 
-`hs_english_ja` は「5領域 × 論理の型」(解説本文)と、付録9の文法事項8項目
-(不定詞 / 関係代名詞 / 関係副詞 / 接続詞 / 助動詞 / 前置詞 / 時制及び相 / 仮定法)で
-32件。**付録9の高校の欄は「中学校の言語材料に加えて扱うもの」だけを示す**ので、
-中学と重なる7項目は複製せず、`prerequisites` で中学英語(`JE-*`)を指している
-(中学に無いのは関係副詞だけ)。
+`hs_english_ja` is 32 entries from "five skill areas x forms of logic" (the commentary
+body) plus appendix 9's eight grammar items (infinitives / relative pronouns / relative
+adverbs / conjunctions / modals / prepositions / tense and aspect / subjunctive).
+**Appendix 9's high-school column lists only what is handled in addition to the
+middle-school materials**, so the seven items overlapping middle school are not
+duplicated; `prerequisites` points at middle-school English (`JE-*`) instead (only
+relative adverbs are absent from middle school).
 
-### キーワードの書き方(英語の課程)
+### Writing keywords (English curricula)
 
-**1語の一般英単語は入れない。** 英語のノートには `is` / `for` / `when` が必ず
-出てくるので、それをキーワードにすると常にそのトピックが最上位に来る。
-日本語の文法用語を主にし、英語は2語以上の句(`have been` / `in front of`)か、
-その文法に特有の語(`whose` / `than`)だけにする。
+**Never include a single common English word.** An English notebook always contains
+`is`, `for` and `when`, so a keyword like that puts its topic on top every time.
+Use Japanese grammatical terms mainly, and for English only phrases of two or more
+words (`have been`, `in front of`) or words specific to that grammar (`whose`, `than`).
 
-それでも英語は数学よりキーワードが効きにくい(ノートに「to不定詞」とは書かれず、
-写っているのは英文)。**空振り前提で `fallback_topic_id` を置く**のはそのため。
+Even so, keywords work less well for English than for maths (a notebook does not say
+"to-infinitive"; it contains English sentences). That is why **`fallback_topic_id`
+exists, on the assumption that keywords will miss**.
 
-拡充の手順は、LLMで下書き → 人手レビュー → JSONに追記 → `pnpm test`。
+To expand: draft with an LLM -> human review -> append to the JSON -> `pnpm test`.

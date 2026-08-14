@@ -1,224 +1,260 @@
 # @ai-sensei/contract
 
-`apps/mobile`(Dart)・`backend/api`(TS)・`agent`(TS)の3者をつなぐ契約。
-言語をまたぐので「型」ではなく **スキーマとfixture** を正とする。
+The contract joining `apps/mobile` (Dart), `backend/api` (TS) and `agent` (TS).
+It crosses languages, so **schemas and fixtures** are authoritative, not types.
 
 ```
-src/         zodスキーマ(TypeScript側の正)
-fixtures/    実データのサンプル。TS・Dartの両方のテストがこれをパースする
-schema/      zodから生成したJSON Schema(Dart実装時の参照用。コミット済み)
+src/         zod schemas (authoritative on the TypeScript side)
+fixtures/    real-data samples. Both the TS and Dart tests parse these
+schema/      JSON Schema generated from zod (the reference for Dart; committed)
 ```
 
-## 契約ドリフトの検知
+## Detecting contract drift
 
-1. `src/fixtures.test.ts` — 全fixtureをzodでパースする(TS側)
-2. `apps/mobile/test/contract_fixture_test.dart` — 同じfixtureをfreezedのモデルでパースする(Dart側)
-3. `src/json-schema.test.ts` — `schema/*.json` がzodと一致しているか
+1. `src/fixtures.test.ts` — parses every fixture with zod (TS side)
+2. `apps/mobile/test/contract_fixture_test.dart` — parses the same fixtures with the
+   freezed models (Dart side)
+3. `src/json-schema.test.ts` — checks `schema/*.json` matches zod
 
-zodを変えたら:
+After changing zod:
 
 ```bash
-pnpm --filter @ai-sensei/contract generate:schema   # schema/*.json を再生成
-pnpm test                                          # fixtureとの整合を確認
+pnpm --filter @ai-sensei/contract generate:schema   # regenerate schema/*.json
+pnpm test                                          # confirm the fixtures still line up
 ```
 
-fixtureに新しい形が必要になったら、**fixtureを先に書いてからスキーマを直す**。
-fixtureはレビューで一番読まれる場所なので、実際に起きる会話の粒度で書く。
+When a fixture needs a new shape, **write the fixture first, then change the schema**.
+Fixtures are the most-read part in review, so write them at the granularity of a real
+conversation.
 
-## カルテのスキーマで守っていること
+## What the karte schema protects
 
-- **点数・正答率のフィールドを持たない。** `strict()` なので、後から `score` を足そうとすると
-  テストが落ちる。数えるのは連続日数(`streak_days`)と埋めた穴(`filled_holes`)だけ。
-- **穴は最大5件。** カルテを責める道具にしないため、上限をスキーマで縛る。
-- **解答・解説の入る場所がない。** `said_well` / `holes` / `term_notes` の3つだけで、
-  正しい解法を書き込むフィールドは意図的に用意していない。
-  **この制約は残るが、理由が変わった。** 以前は「答えを教えないため」だった。
-  ピボット([`docs/pivot_plan_v1.md`](../../docs/pivot_plan_v1.md) §0・約束1の改正
-  「答えを教える。そのあと教え返させる」)で、先輩は解法を教えるようになっている。
-  解法が入るのは **板書**(`src/board.ts`)であって、カルテではない。
-  カルテは**その場で観測できたこと**の記録で、AIが教えた内容を書き戻す場所ではない
-  (書き戻すと、AIの誤読を1/3/7日の復習で強化してしまう。計画書 §2 の小テストの設計制約と同じ理由)。
-- `severity` は復習の並び順にだけ使い、UIには数値として出さない。
+- **No fields for scores or accuracy.** It is `strict()`, so adding `score` later
+  fails the tests. Only streak days (`streak_days`) and filled holes (`filled_holes`)
+  are counted.
+- **At most five holes.** The cap is in the schema so the karte never becomes a tool
+  for blame.
+- **Nowhere for answers or worked solutions.** There are only `said_well` / `holes` /
+  `term_notes`, with no field for the correct method by design.
+  **The constraint remains, but its reason changed.** It used to be "never give the
+  answer". After the pivot ([`docs/pivot_plan_v1.md`](../../docs/pivot_plan_v1.md) §0,
+  the revision to promise 1: "give the answer, then have them teach it back"), the
+  senpai does teach methods. Methods go on the **board** (`src/board.ts`), not in the
+  karte. The karte records **what could be observed at the time** and is not where the
+  AI's own teaching is written back (writing it back would reinforce the AI's
+  misreading through the 1/3/7-day reviews - the same reason as the quiz's design
+  constraint in plan §2).
+- `severity` only affects review ordering and never appears as a number in the UI.
 
-## 板書のスキーマで守っていること
+## What the board schema protects
 
-解法が入る唯一の場所。だからこそ縛りが要る(`src/board.ts` の冒頭に根拠を書いてある)。
+The only place methods live, which is exactly why it needs constraints (the reasoning
+is at the top of `src/board.ts`).
 
-- **`speech` は120字まで。** 日本語TTSの約330字/分から逆算した、1手順20〜25秒ぶん。
-  「数式・計算・図は板書、音声は問いかけと接続だけ」(計画書 §3-1)は見た目ではなく**原価の主柱**なので、
-  プロンプトのお願いではなくスキーマで守る。数式を読み上げ始めた瞬間に必ず超える。
-- **自由描画がない。** 要素は `latex` / `text` / `plot` / `triangle` / `circle` の5種で、
-  LLMが出せるのはパラメータだけ。SVGもcanvasコマンドも受け取るフィールドがない。
-- **解答を丸ごと1要素に流し込めない。** `tex`(200字)・`body`(100字)の上限、
-  多行LaTeX環境(`align` など)の禁止、**1回の出力あたりの**手順数の上限(12)の3枚で塞ぐ。
-  1要素の上限だけだと「1行ずつだが40行」で抜けられる。
-- **手順数の上限は2つある。混同すると板書が毎ターン消える。**
-  | 定数 | 何の上限か | 値 |
+- **`speech` is at most 120 characters**, derived from Japanese TTS at ~330 chars/min,
+  i.e. 20-25 seconds per step. "Formulas, working and figures on the board; speech only
+  for questions and connective tissue" (plan §3-1) is not a look but **a main cost
+  driver**, so it is enforced by the schema rather than asked for in the prompt.
+  Reading a formula aloud always exceeds it.
+- **No freehand drawing.** The elements are `latex` / `text` / `plot` / `triangle` /
+  `circle`, and the LLM emits only parameters. There is no field to receive SVG or
+  canvas commands.
+- **A whole worked answer cannot be poured into one element.** Three things block it:
+  the `tex` (200) and `body` (100) caps, the ban on multi-line LaTeX environments
+  (`align` etc.), and the **per-output** step cap (12). Per-element caps alone can be
+  escaped as "one line at a time, but 40 lines".
+- **There are two step caps. Confusing them erases the board every turn.**
+  | Constant | What it caps | Value |
   | --- | --- | --- |
-  | `boardLessonStepsMaxCount` | **LLMが1回に出せる**手順数(`board-lesson` の `steps`) | 12 |
-  | `boardStepsMaxCount` | **板書1枚**(= 1つの問題)に積める手順数(ワイヤーの `index` / `step_count`) | 40 |
+  | `boardLessonStepsMaxCount` | Steps **the LLM may emit at once** (`board-lesson`'s `steps`) | 12 |
+  | `boardStepsMaxCount` | Steps stackable on **one board** (= one problem); the wire's `index` / `step_count` | 40 |
 
-  板書は1つの問題ぶん生き続け、何回かの説明(切り分け → 教える → 教え返させる)が
-  同じ `board_id` に積み上がる。**LLMを呼ぶたびに `board_open` を送ると、
-  会話が1往復するたびに板書が消える**(計画書 §3-2 の「前の行は消さない」が毎ターン破れる)。
-- **LLMが出す形と、data channelを流れる形を分けている。** `board-lesson` は識別子を持たない
-  (幻覚したIDが配送層に流れ込まないように)。宛先・順序・板書の切り替えは封筒
-  (`board-channel-log` の各メッセージ)の責務。**通し番号の付け直しも配送層**で、
-  LLMは自分が何回目の呼び出しかを知らない(知らせると幻覚した番号がワイヤーに出る)。
-- 送信経路は **LiveKit の Text Streams(agent → mobile・topic `board`)** で、
-  `backend/api` を経由しない。下の「主なエンドポイント」表に出てこないのはそのため。
-- **LaTeXコマンドの中身は照合しない。** ここが見るのは長さと「1行かどうか」だけ。
-  `flutter_math_fork` が描けるかの検証は `packages/guardrail` と agent の担当
-  (計画書 §3-6 の三段構え)。contract は依存を持たない層なので、`topicIdSchema` と同じ分担にする。
+  A board lives for one problem, and several explanations (diagnose -> teach -> have
+  them teach back) stack onto the same `board_id`. **Sending `board_open` on every LLM
+  call erases the board on every exchange** (breaking plan §3-2's "never erase earlier
+  lines" each turn).
+- **What the LLM emits is separate from what flows on the data channel.**
+  `board-lesson` carries no identifiers (so hallucinated ids cannot reach the delivery
+  layer). Destination, ordering and board switching are the envelope's job (each
+  message in `board-channel-log`). **Assigning running numbers is also the delivery
+  layer's job**; the LLM does not know which call this is (telling it puts hallucinated
+  numbers on the wire).
+- The transport is **LiveKit Text Streams** (agent -> mobile, topic `board`), not
+  `backend/api`. That is why it does not appear in the endpoint table below.
+- **LaTeX command contents are not matched here.** This layer checks length and "is it
+  one line". Whether `flutter_math_fork` can render it is `packages/guardrail`'s and the
+  agent's job (plan §3-6's three stages). contract is a dependency-free layer, with the
+  same split as `topicIdSchema`.
 
-## 問題文(グラウンディング)で守っていること
+## What the problem text (grounding) protects
 
-計画書 §0 の決定4「問題とノートをセットで送る」。ここに欄が無かったため、agent は
-`problem_text` に `photo_summary`(「何が写っているか」の要約)を流用していた =
-**先輩が問題そのものを見ないまま教えていた。**
+Plan §0's decision 4, "send the problem and the notes together". The absence of a field
+here is why the agent reused `photo_summary` ("what is in the picture") as
+`problem_text` = **the senpai taught without seeing the problem itself**.
 
-- **2枚の写真は寿命が違う。** `sessionPhotoParts` がパート名を分けている。
-  `photo`(ノート)はR2に保存し、`problem_photo`(教科書・問題集の紙面 = **他者の著作物**)は
-  **解析後に破棄して保存しない**。§4-1 / §10-4 で未決だった件を「解析後破棄」で決着させたもの。
-- **要るのはどちらか1枚。両方無いときだけ弾く。** ノートも問題も必須ではない。
-  **ノートを必須にしていた頃、この契約は自分自身の破棄の約束を破っていた** —
-  ノートが無い生徒には紙面をノート枠に入れる以外の道が無く、結果として
-  他者の著作物がR2に保存されていた。破棄を保証する道は「紙面をノート枠に入れる動機を消す」
-  ことしかないので、ノートの必須をやめた。
-  「ノートを撮らない生徒を正規の経路として認める」のは承知のうえで、
-  **「手も付けられない」は家庭教師の中心的な用件**(約束1の改正後)。
-  誤読の保険は教え返しフェーズ側にあるので無傷(§1-1)。
-  **残る穴**: 問題を `photo` 枠に入れて送られれば保存される。枠の取り違えまでは防げない。
-- どちらか一方が壊れていても、もう片方が読めれば進む。**読めた枚数がゼロのときだけ**弾く。
-- **`text` と `source` は1つのオブジェクト。** 「本文はあるが出どころが無い」を表現できなくする
-  (`karte.ts` の `status` / `filled_at` と同じ考え方)。
-- **`problem` をアプリにも返す。** `null` のときだけ §4-1 のヒントを出せるようにするためと、
-  **読み取った問題文をそのまま見せて誤読を早く表面化させる**ため(§1-1)。
-- **600字は安全弁。** 超えるのは紙面を丸ごと書き起こしたときで、章末の解答が混ざる。
-  切り詰めず、`backend/api` 側で**丸ごと捨てる**(設問の途中で切れた問題を教えないため)。
+- **The two photos have different lifetimes.** `sessionPhotoParts` splits the part
+  names. `photo` (notes) is stored in R2; `problem_photo` (a textbook or workbook page
+  = **someone else's copyrighted work**) is **discarded after analysis and never
+  stored**. This settles what §4-1 / §10-4 left open, as "discard after analysis".
+- **Only one of the two is needed; reject only when both are missing.** Neither the
+  notes nor the problem is mandatory.
+  **Back when notes were mandatory, this contract broke its own discard promise**: a
+  student with no notes had no route but to put the page in the notes slot, so someone
+  else's copyrighted work ended up stored in R2. The only way to guarantee discarding
+  was to remove the motive for putting a page in the notes slot, so notes stopped being
+  required.
+  Legitimising students who do not photograph their notes is accepted, because
+  **"I can't even start" is a central tutoring request** (after the revision to promise 1).
+  The insurance against misreading lives in the teach-back phase and is untouched (§1-1).
+  **The remaining hole**: a problem sent in the `photo` slot is stored. Slot confusion
+  cannot be prevented.
+- If one is broken, the other still lets the session proceed. It is rejected **only
+  when zero photos were readable**.
+- **`text` and `source` are one object**, so "text without a source" is unrepresentable
+  (the same idea as `karte.ts`'s `status` / `filled_at`).
+- **`problem` is returned to the app too**, so the §4-1 hint can be shown only when it
+  is `null`, and so **the transcribed problem text is shown verbatim and a misreading
+  surfaces early** (§1-1).
+- **600 characters is a safety valve.** Exceeding it means the whole page was
+  transcribed, mixing in the chapter's answers. It is not truncated but **discarded
+  whole** on the `backend/api` side (so a problem cut mid-question is never taught).
 
-### `session-metadata` — LiveKitトークンに載る、agent への文脈
+### `session-metadata` — the agent's context, carried on the LiveKit token
 
-HTTPのボディではなく**トークンの `metadata` クレーム**に入るので、下の
-「主なエンドポイント」の表には出てこない。それでも backend/api ↔ agent の契約としては
-いちばん重く、**会話プロンプトの穴埋めにそのまま流れ込む**。型が無いまま運用した結果が上の不具合。
+It rides the **token's `metadata` claim**, not an HTTP body, so it does not appear in
+the endpoint table below. It is nonetheless the heaviest part of the backend/api <->
+agent contract, and **flows straight into the conversation prompt's blanks**. Running
+it without a type is what caused the bug above.
 
-- 文字列の欄は**整形済み**で、そのままプロンプトに貼られる。空のときのプレースホルダまで
-  含めて `locale` の言語で揃える。
-- **`problem_text` は空にならない**(`.min(1)`)。読めなかった場合も
-  その言語のプレースホルダ(日本語なら `(問題の写真なし)`)が入った状態で届くので、
-  **agent 側で空を埋めてはいけない**。埋める場所が2つあると、
-  `prompts/senpai_board.*.md` が名指しで見ている文言とずれ、
-  「問題文を推測で組み立てないこと」という指示が発火しなくなる。
-- **`visible_work` も空にならない**(`.min(1)`)。こちらは**3つの状態を区別して**届く:
-  箇条書き(読み取れた) / `(なし)`(**撮ったが手をつけた形跡が無い**) /
-  `(ノートの写真なし)`(**そもそも撮っていない**)。
-  3つ目は問題だけを送る経路が正規化されたことで生まれた状態で、混ぜると先輩は
-  「まだ何もやっていない生徒」から「手が止まった場所」を探しはじめる。
-- 新しいAPIの **`review_hole` は `review` のときだけ1件入り、`new` では `null`。** 復習には
-  問題写真が無いので、穴の `desc` を `problem_text` に偽装しない。対象の `topic_id`、
-  前回止まった地点の説明、根拠になった本人の発話だけを運び、前回のカルテ全体は運ばない。
-  `said_well` や別の穴まで混ぜると、1回1穴の復習が前回セッション全体の再講義へ広がるため。
-  ただし欄自体は、古いAPIと新しいagentが共存するデプロイの窓に限り省略できる。
-  その復習はagentが警告を残し、従来の板書なし会話へ縮退する。
+- String fields are **pre-formatted** and pasted straight into the prompt. Placeholders
+  for empty values included, they match `locale`'s language.
+- **`problem_text` is never empty** (`.min(1)`). When unreadable it still arrives with
+  that language's placeholder (in Japanese, `(問題の写真なし)`), so **the agent must
+  not fill blanks**. Two fill sites would drift from the wording
+  `prompts/senpai_board.*.md` matches by name, and the instruction "do not reconstruct
+  the problem text by guessing" would stop firing.
+- **`visible_work` is never empty either** (`.min(1)`), and arrives with **three
+  distinguishable states**: bullets (readable), `(なし)` (**photographed, but no sign of
+  work**), and `(ノートの写真なし)` (**never photographed at all**).
+  The third appeared once the problem-only path was legitimised; conflated, the senpai
+  starts hunting for "where they got stuck" in a student who has not started.
+- The new API's **`review_hole` holds one entry only for `review` and is `null` for
+  `new`.** A review has no problem photo, so the hole's `desc` is never disguised as
+  `problem_text`. It carries only the target `topic_id`, the description of where they
+  stalled last time and the student's own words behind it - never the whole previous
+  karte. Mixing in `said_well` or other holes would widen a one-hole review into a
+  re-lecture of the entire previous session.
+  The field itself may be omitted only during the deployment window where an old API
+  coexists with a new agent. The agent logs a warning for such a review and degrades to
+  the old board-less conversation.
 
-## 学習計画のスキーマで守っていること
+## What the study-plan schema protects
 
-音声だけで作る([`docs/pivot_plan_v1.md`](../../docs/pivot_plan_v1.md) §4-3)。
-**フォーム入力は §1 で却下された案**なので、`src/plan.ts` にフィールドを1つ足すことは、
-先輩の質問を1つ増やすことと同じだと考える。聞くのは **テストの日 / 範囲 / 使っている教材** の3つだけ。
+Built by voice alone ([`docs/pivot_plan_v1.md`](../../docs/pivot_plan_v1.md) §4-3).
+**Form input was the option rejected in §1**, so adding one field to `src/plan.ts` is
+treated as adding one senpai question. Only three things are asked: **the test date,
+the scope and the materials in use**.
 
-- **点数のフィールドがない。** 目標点・正答率・理解度・偏差値・消化率の置き場が無い。
-  `strict()` なので後から足すとテストが落ちる。学習計画は**約束2がいちばん破られやすい場所**で
-  (「目標80点」「今週の達成率」は計画アプリの定番)、しかも §5 の親レポートに載る前提なので、
-  ここに置いた数字は**そのまま親に届く**(§5-2 の ❌ 側)。
-  **実績の学習時間も持たない** — `minutes` は予定の目安で、実測を持つと
-  「今週◯時間」から ❌「学習時間ランキング」まで一歩。
-- **事実と割り当てが分かれている。** `intake`(聞き取った事実)は組み直しても変わらない。
-  組み直しは `days` だけを作り直す。風邪をひいてもテスト日は動かない。
-  混ぜると、組み直すたびに聞き取りをやり直すことになる(= フォームに戻る)。
-- **持っていない教材を割り当てられない。** `material` は名前ではなく `intake.materials` への
-  **添字**。文字列で持たせると「青チャートの例題42」を、青チャートを持っていない生徒に
-  割り当てられる(`board.ts` の `angleMark.vertex` と同じ手)。
-- **守れない計画を書けない。** 1日の合計は `planDayMinutesMax`(120分)まで、
-  割り当てはテスト日を越えない。守られなかった計画は
-  「計画は自分には無理だ」だけを教えるので、上限をスキーマで持つ。
-- **日付は暦の1日**(`YYYY-MM-DD`)で、瞬間では持たない。UTCの瞬間で持つと、
-  端末のタイムゾーン次第で**テストが前日に動く**。`karte.ts` の `last_session_date` と同じ扱い。
-- **縮退版が同じ形で出せる。** §7「遅れたら落とす順」①で、計画の自動生成は
-  「先輩が定型テンプレを提案するだけ」に落ちる。LLMにしか埋められないフィールドを作らないのが
-  その条件で、どちらが組んだかは `source`(`senpai` / `template`)に残す。
-  残さないと、**縮退したまま運用に入ったことに誰も気づけない**。
-- **単元の妥当性は照合しない。** 範囲の `topic_ids` がカリキュラム内か、割り当てた単元が
-  範囲(またはその前提)に収まっているかは `packages/guardrail` の担当。
-  contract は依存を持たない層で前提関係を知らない(`topicIdSchema` と同じ分担)。
-- **`days` に無い日と、`items` が空の日は意味が違う。** 前者は計画の対象外、
-  後者は先輩が「ここは休もう」と置いた日。休みの入っていない計画は、
-  最初に崩れた日に丸ごと捨てられる。
-- **LLMが出す単位は「計画」ではなく「1ターン」**(`study-plan-turn` = `{speech, plan}`)。
-  計画は聞き取りの会話の**途中で**生まれるので、「テストいつ?」と聞く回と
-  「じゃあ、こんな感じでどう?」と計画を出す回を同じ形にしてある
-  (`board.ts` の `{speech, board}` と同じ組み方)。
-  識別子・`source`・組み直しの時刻はLLMに持たせず、保存側が付ける。
+- **No score fields.** There is nowhere for target scores, accuracy, comprehension,
+  deviation values or completion rates. It is `strict()`, so adding one later fails the
+  tests. Study plans are **where promise 2 is easiest to break** ("target: 80", "this
+  week's completion rate" are planning-app staples), and they are meant for §5's parent
+  report, so a number placed here **reaches the parent verbatim** (the ❌ side of §5-2).
+  **Actual study time is not held either** - `minutes` is a planned estimate, and
+  holding measurements is one step from "X hours this week" to ❌ "study-time
+  leaderboard".
+- **Facts and assignments are separate.** `intake` (the facts heard) does not change on
+  a rebuild; a rebuild regenerates only `days`. Catching a cold does not move the test
+  date. Conflated, every rebuild re-runs the interview (= a form again).
+- **You cannot assign material the student does not have.** `material` is an **index**
+  into `intake.materials`, not a name. Held as a string, "Blue Chart example 42" could
+  be assigned to a student who does not own Blue Chart (the same trick as `board.ts`'s
+  `angleMark.vertex`).
+- **You cannot write an unkeepable plan.** A day totals at most `planDayMinutesMax`
+  (120 minutes), and no assignment passes the test date. An unkept plan teaches only
+  "plans are not for me", so the cap lives in the schema.
+- **Dates are calendar days** (`YYYY-MM-DD`), never instants. Held as UTC instants,
+  **the test moves a day earlier** depending on the device timezone. Treated like
+  `karte.ts`'s `last_session_date`.
+- **The degraded version emits the same shape.** In §7's "what to drop first" ①, plan
+  generation falls back to "the senpai proposes a fixed template". Creating no field
+  only an LLM can fill is the condition for that, and who built it is recorded in
+  `source` (`senpai` / `template`). Without it, **nobody would notice a degraded build
+  went into production**.
+- **Unit validity is not matched here.** Whether the scope's `topic_ids` are in the
+  curriculum, and whether an assigned unit falls within the scope (or its
+  prerequisites), is `packages/guardrail`'s job. contract is a dependency-free layer
+  and knows nothing about prerequisites (the same split as `topicIdSchema`).
+- **A day absent from `days` differs from a day with empty `items`.** The former is
+  outside the plan; the latter is a day the senpai placed as "let's rest here". A plan
+  with no rest days gets abandoned whole on the first day it slips.
+- **The LLM's unit is one turn, not one plan** (`study-plan-turn` = `{speech, plan}`).
+  A plan is born *during* the interview, so the turn asking "when is the test?" and the
+  turn producing the plan share one shape (composed like `board.ts`'s
+  `{speech, board}`). Identifiers, `source` and the rebuild timestamp are not given to
+  the LLM; the storage side adds them.
 
-| スキーマ | 誰が読む |
+| Schema | Who reads it |
 | --- | --- |
-| `study-plan-turn`(`planTurnSchema`) | agent が計画モードのLLM出力を検証する |
-| `study-plan`(`studyPlanSchema`) | 計画画面と、(将来の)親レポート |
+| `study-plan-turn` (`planTurnSchema`) | The agent validating plan-mode LLM output |
+| `study-plan` (`studyPlanSchema`) | The plan screen and (eventually) the parent report |
 
-## JSON Schema に現れない不変条件
+## Invariants absent from JSON Schema
 
-`schema/*.json` はDart実装時の参照用だが、**zodの `.refine()` / `.superRefine()` は
-JSON Schema に何も残さない**。単一の正規表現で書けるものは `.regex()` で書いてあるので
-`pattern` として残る(残っていることを `src/json-schema.test.ts` が固定している)。
-残りは JSON Schema では原理的に書けないので、**Dart側は手で実装する**必要がある。
-「契約ドリフトの検知」の3本足のうち、**Dart側の足がここだけ細くなる**。
+`schema/*.json` is the reference for Dart implementation, but **zod's `.refine()` /
+`.superRefine()` leave nothing in JSON Schema**. Anything expressible as a single
+regex is written with `.regex()` so it survives as a `pattern` (and
+`src/json-schema.test.ts` pins that it does). The rest cannot be expressed in JSON
+Schema at all, so **the Dart side must implement it by hand**. Of contract drift
+detection's three legs, **only the Dart leg thins out here**.
 
-| 不変条件 | どこ | Dart側でやること |
+| Invariant | Where | What Dart must do |
 | --- | --- | --- |
-| `domain` は `min < max` | `plot` | 描画前に検査して落とす |
-| `focus` は `text` の部分文字列 | `sentence` | 見つからなければ**下線を引かずに文だけ描く**(文ごと落とすと例文が消える) |
-| 手順の `index` は0始まりで1ずつ増える(**`board-lesson` では1回の出力の中で / `board_step` では板書1枚の中で**) | `board-lesson` / `board_step` | 期待値と突き合わせる(**板書ごとに数える**。1回の出力ごとではない) |
-| 封筒の `seq` は0始まりで1ずつ増える(種別をまたいで) | `board-channel-log` | 飛んだら**欠落として扱う** |
-| `board_close.step_count` が実際に届いた手順数と一致する | 同上 | **末尾の欠落**の検知 |
-| 手順は `board_open` と `board_close` の間にしか来ない | 同上 | 未開封の `board_id` は捨てる |
-| `board_open` は前の板書を消す(それ以外で板書は消えない) | 同上 | 受信時に盤面をクリア |
-| 1つのセッションのメッセージだけが混ざる(`session_id` が全部同じ) | 同上 | **別セッション宛ては捨てる**(宛先の確認) |
-| `days[].date` は昇順で、同じ日が2回来ない | `study-plan` | 重複は**片方を捨てず落とす**(どちらが正か決められない) |
-| `days[].date` はテスト日以前 | 同上 | テスト後の日は描画しない |
-| `items[].material` は `intake.materials` の添字の範囲内 | 同上 | 範囲外は**教材名を出さずに描く**(存在しない本を表示しない) |
-| 1日の `minutes` の合計は120分まで | 同上 | 超えていたら**そのまま出さない**(守れない計画を渡さない) |
+| `domain` has `min < max` | `plot` | Check before drawing and reject |
+| `focus` is a substring of `text` | `sentence` | If not found, **draw the sentence without the underline** (dropping the sentence would lose the example) |
+| A step's `index` starts at 0 and increases by 1 (**within one output for `board-lesson`; within one board for `board_step`**) | `board-lesson` / `board_step` | Compare against the expected value (**count per board**, not per output) |
+| An envelope's `seq` starts at 0 and increases by 1 (across message kinds) | `board-channel-log` | A skip means **treat it as a gap** |
+| `board_close.step_count` matches the number of steps actually delivered | as above | Detects **a missing tail** |
+| Steps only ever come between `board_open` and `board_close` | as above | Discard messages for an unopened `board_id` |
+| `board_open` erases the previous board (nothing else does) | as above | Clear the surface on receipt |
+| Only one session's messages are mixed in (`session_id` is identical throughout) | as above | **Discard messages for another session** (destination check) |
+| `days[].date` ascends and never repeats | `study-plan` | On a duplicate, **reject rather than keeping one** (there is no way to say which is right) |
+| `days[].date` is on or before the test date | as above | Do not draw days after the test |
+| `items[].material` is within `intake.materials`'s index range | as above | Out of range means **draw without the material name** (never show a book that does not exist) |
+| A day's `minutes` total at most 120 | as above | If exceeded, **do not show it** (never hand over an unkeepable plan) |
 
-**`seq` と `step_count` はモバイル側の欠落検知そのもの。** JSON Schema だけを見て実装すると、
-板書が虫食いのまま黙って表示される。`session_id` も同じ性質で、
-**部屋を取り違えた配送を受信側で落とす**ための宛先確認。
+**`seq` and `step_count` are mobile's gap detection itself.** Implemented from the JSON
+Schema alone, a moth-eaten board is displayed silently. `session_id` is the same kind
+of thing: a destination check so **a misrouted delivery is dropped by the receiver**.
 
-### JSON Schema には出ているが、Dartの型に落ちないもの
+### Present in JSON Schema, but not expressible in Dart's types
 
-こちらは理由が違う。**JSON Schema には制約が出力されている**(`src/json-schema.test.ts` が
-出ていることを固定している)が、**Dartの `List<T>` は固定長を型で表現できない**。
-参照を読んでも型に落とし込めないので、結局**上の表と同じく実行時チェックが要る**。
+These are different. **The constraint is emitted into JSON Schema**
+(`src/json-schema.test.ts` pins that), but **Dart's `List<T>` cannot express a fixed
+length in the type**. Reading the reference does not give you a type, so **runtime
+checks are needed as with the table above**.
 
-| 不変条件 | JSON Schema での表現 | Dart側でやること |
+| Invariant | In JSON Schema | What Dart must do |
 | --- | --- | --- |
-| `triangle.vertices` は3点ちょうど | `minItems: 3` / `maxItems: 3` | 長さ3を実行時に検査する |
-| `triangle.labels` は付けるなら3つ揃える | 同上(`labels` は省略可) | 省略可・付いたら長さ3を検査する |
+| `triangle.vertices` is exactly three points | `minItems: 3` / `maxItems: 3` | Check the length is 3 at runtime |
+| `triangle.labels`, if given, has all three | as above (`labels` is optional) | Optional; if present, check the length is 3 |
 
-zod側がタプル(`z.tuple`)なのは、**同種の値の固定長列は配列で持つ**という
-`board.ts` の方針による(異種の値の組 — `{x, y}` や `{min, max}` — だけをオブジェクトにする)。
+zod uses a tuple (`z.tuple`) because of `board.ts`'s policy that **a fixed-length
+sequence of same-kind values is an array** (only heterogeneous pairs - `{x, y}`,
+`{min, max}` - become objects).
 
-## 主なエンドポイント
+## Main endpoints
 
-| メソッド | パス | 誰が呼ぶ |
+| Method | Path | Who calls it |
 | --- | --- | --- |
-| POST | `/v1/sessions` | mobile(写真 + meta を multipart で。**まだ数えない**) |
-| PATCH | `/v1/sessions/{id}/topics` | mobile(チップUIで外した単元の反映) |
-| POST | `/v1/sessions/{id}/start` | mobile(**会話の開始。ここで今日の1回を数え**、部屋の鍵が返る) |
-| POST | `/v1/sessions/{id}/complete` | agent(内部トークン必須) |
-| GET | `/v1/me/progress` | mobile(ホーム画面) |
-| GET | `/v1/me/reviews` | mobile(無料の小テスト。音声授業の可否は `/v1/me/progress` の `limits.lesson_allowed_today`) |
-| POST | `/v1/me/reviews/{holeId}` | mobile(小テストの自己申告) |
+| POST | `/v1/sessions` | mobile (photo + meta as multipart. **Nothing is counted yet**) |
+| PATCH | `/v1/sessions/{id}/topics` | mobile (applying units removed in the chip UI) |
+| POST | `/v1/sessions/{id}/start` | mobile (**starts the conversation, counting today's use**, and returns the room key) |
+| POST | `/v1/sessions/{id}/complete` | agent (internal token required) |
+| GET | `/v1/me/progress` | mobile (home screen) |
+| GET | `/v1/me/reviews` | mobile (the free quiz. Whether a voice lesson is allowed comes from `/v1/me/progress`'s `limits.lesson_allowed_today`) |
+| POST | `/v1/me/reviews/{holeId}` | mobile (the quiz self-report) |
 | POST | `/v1/webhooks/revenuecat` | RevenueCat |
 
-エラーはすべて `{ "error": { "code", "message" } }` の形で返す。
-クライアントは `code` で分岐し、`message` はそのまま表示する(煽らない文体で書く)。
+Every error is returned as `{ "error": { "code", "message" } }`.
+Clients branch on `code` and display `message` as-is (written without nagging).

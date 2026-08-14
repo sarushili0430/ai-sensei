@@ -1,6 +1,7 @@
-# CI ワークフローのテンプレート
+# CI workflow templates
 
-このディレクトリのYAMLは、そのまま `.github/workflows/` に配置して使うテンプレートです。
+The YAML here is a set of templates meant to be dropped into `.github/workflows/`
+as-is.
 
 ```bash
 mkdir -p .github/workflows
@@ -11,70 +12,71 @@ cp docs/ci/golden.yml       .github/workflows/golden.yml
 git add .github/workflows/ && git commit -m "ci: enable CI and deploy workflows"
 ```
 
-コピー先が既にあるときは、**テンプレート側が正**なので上書きしてよい
-(差分を確認するなら `diff docs/ci/ci.yml .github/workflows/ci.yml`)。
+When the destination already exists, **the template is authoritative** and may be
+overwritten (to inspect the difference first, `diff docs/ci/ci.yml
+.github/workflows/ci.yml`).
 
-> **`.github/workflows/` を直接編集したら、テンプレートに書き戻すこと。**
-> `.github/workflows/` を直接いじれるのはリポジトリオーナーだけなので、
-> そこだけ進んでテンプレートが取り残されることがあります。実際に
-> `ci.yml` の「変更されたディレクトリに応じてジョブを出し分ける」設定
-> (コミット `c6d9f94`)がテンプレートに入っておらず、**上の `cp` を素直に流すと
-> その設定が消える**状態になっていました(2026-08-10 に同期済み)。
-> `diff` が空でないときは、**どちらが新しいかを先に確かめてから** `cp` してください。
+> **If you edit `.github/workflows/` directly, write it back into the template.**
+> Only the repository owner can edit `.github/workflows/` directly, so it can move
+> ahead while the template is left behind. That really happened: `ci.yml`'s
+> per-directory job filtering (commit `c6d9f94`) was missing from the template, so
+> **running the `cp` above would have deleted it** (synced on 2026-08-10).
+> When `diff` is non-empty, **work out which side is newer before** running `cp`.
 
-> **なぜテンプレート置き場なのか**
-> GitHub App(Claude Code等の自動化)は `workflows` 権限を持たないため、
-> `.github/workflows/` 配下のファイルをpushできません(`refusing to allow a GitHub App
-> to create or update workflow`)。リポジトリオーナーが手元で上記のコピーを1度だけ
-> コミットすれば、以降の更新も同じ手順で反映できます。
+> **Why a template directory?**
+> A GitHub App (Claude Code and other automation) has no `workflows` permission and
+> cannot push files under `.github/workflows/` (`refusing to allow a GitHub App to
+> create or update workflow`). Once the repository owner commits the copy above by
+> hand, later updates follow the same procedure.
 
-## ワークフロー一覧
+## The workflows
 
-| ファイル | トリガ | 内容 |
+| File | Trigger | Content |
 | -------- | ------ | ---- |
-| `ci.yml` | `develop`/`main` へのpush、全PR | `pnpm run lint`(Biome)/ `pnpm run typecheck` / `pnpm test` / Workerのdry-runビルド / Flutter(analyze + test)/ シークレット走査 |
-| `deploy.yml` | `develop`/`main` へのpush(`backend/api` などに変更があったとき)、手動実行 | `backend/api` を Cloudflare Workers へデプロイ。`develop`→develop環境 / `main`→production環境 |
-| `deploy-agent.yml` | `develop`/`main` へのpush(`backend/agent` などに変更があったとき)、手動実行 | `backend/agent` を LiveKit Cloud へデプロイ(ソースを送り、ビルドは向こうで走る) |
-| `golden.yml` | **手動実行のみ** | golden test のPNGを Linux で焼き直し、artifact として出す(下記) |
+| `ci.yml` | push to `develop`/`main`, every PR | `pnpm run lint` (Biome) / `pnpm run typecheck` / `pnpm test` / a dry-run Worker build / Flutter (analyze + test) / secret scanning |
+| `deploy.yml` | push to `develop`/`main` (when `backend/api` and friends changed), manual | Deploys `backend/api` to Cloudflare Workers. `develop` -> develop environment, `main` -> production |
+| `deploy-agent.yml` | push to `develop`/`main` (when `backend/agent` and friends changed), manual | Deploys `backend/agent` to LiveKit Cloud (the source is sent and the build runs there) |
+| `golden.yml` | **manual only** | Re-bakes the golden test PNGs on Linux and publishes them as an artifact (see below) |
 
-`deploy.yml` には Cloudflare のAPIトークンが要ります。リソースの作成・secretの登録・
-トークンの権限までの手順は [`docs/deploy.md`](../deploy.md) にまとめてあります。
-**リソースIDを差し替えるまでデプロイは走りません**(`wrangler.toml` に
-`REPLACE_ME` が残っていたらワークフローの最初のステップで落ちます)。
+`deploy.yml` needs a Cloudflare API token. Creating resources, registering secrets
+and the token's permissions are covered in [`docs/deploy.md`](../deploy.md).
+**No deploy runs until the resource ids are filled in** (a remaining `REPLACE_ME` in
+`wrangler.toml` fails the workflow's first step).
 
-`deploy-agent.yml` には LiveKit のAPIキーと、`lk agent create` が返す agent のID
-(Variables の `LIVEKIT_AGENT_ID`)が要ります。**初回の登録だけは手元で行います**
-(手順は [`docs/deploy-agent.md`](../deploy-agent.md))。
+`deploy-agent.yml` needs a LiveKit API key and the agent id returned by
+`lk agent create` (the `LIVEKIT_AGENT_ID` variable). **Only the first registration is
+done by hand** (see [`docs/deploy-agent.md`](../deploy-agent.md)).
 
-Flutterのバージョンは `apps/mobile/.fvmrc` から読みます(手元のfvmとCIで同じ値を使う)。
-golden test は **Linuxのラスタライズを正** とするので、生成もCIで行います。
+The Flutter version is read from `apps/mobile/.fvmrc` (so local fvm and CI use the
+same value). Golden tests treat **Linux rasterization as authoritative**, so they are
+generated in CI too.
 
-lint・typecheck・test は `if: !cancelled()` で連ねてあるので、
-lintが落ちても後続が走ります(1回のCIで直すべき箇所をまとめて見られるように)。
+lint, typecheck and test are chained with `if: !cancelled()`, so what follows runs
+even when lint fails (so one CI run shows everything that needs fixing).
 
-`apps/mobile` のビルドとTestFlight配布は Codemagic 側(リポジトリ直下の
-`codemagic.yaml`)で行うため、GitHub Actions では扱いません。
-Codemagic側でやる設定(YAMLへの切り替え・APIキー・keystore・変数グループ)は
-[`codemagic.md`](./codemagic.md)、
-ビルドを受け取る側(App Store Connect / Play Console)の設定は
-[`store-setup.md`](./store-setup.md) にまとめてあります。
+Building and distributing `apps/mobile` happens on Codemagic (`codemagic.yaml` at the
+repository root), so GitHub Actions does not handle it.
+The Codemagic-side setup (switching to YAML, API keys, keystore, variable groups) is
+in [`codemagic.md`](./codemagic.md), and the receiving side (App Store Connect / Play
+Console) is in [`store-setup.md`](./store-setup.md).
 
-golden test の正となる実行はこちら(ubuntu-latest)です。Codemagicはmacなので、
-`golden` タグを付けて `--exclude-tags golden` で外しています。
+The authoritative golden run is here (ubuntu-latest). Codemagic runs macOS, so
+goldens are tagged `golden` and excluded with `--exclude-tags golden`.
 
-## golden を焼き直す(`golden.yml`)
+## Re-baking goldens (`golden.yml`)
 
-`ci.yml` は golden を**照合するだけ**で、焼き直しはしません。
-焼き直しは `golden.yml` を **Actions から手動で起動**します
-(Actions → Update goldens → Run workflow → ブランチを選ぶ)。
-成果物は artifact `goldens` に入るので、落として
-`apps/mobile/test/golden/goldens/` に置き、**テストファイルと同じコミット**に入れます。
-使い方の全体は [`apps/mobile/test/golden/README.md`](../../apps/mobile/test/golden/README.md)。
+`ci.yml` only **compares** goldens; it never re-bakes them.
+Re-baking is started **manually from Actions** via `golden.yml`
+(Actions → Update goldens → Run workflow → choose a branch).
+The output lands in the `goldens` artifact: download it, put it in
+`apps/mobile/test/golden/goldens/` and commit it **in the same commit as the test
+file**. The whole workflow is described in
+[`apps/mobile/test/golden/README.md`](../../apps/mobile/test/golden/README.md).
 
-**自動起動にしていないのは意図的**です。pushのたびに焼き直すと、golden は
-常に現状追認になり、**壊れを検知する能力を失います**。
+**Not running it automatically is deliberate.** Re-baking on every push makes goldens
+a permanent rubber stamp and **destroys their ability to detect breakage**.
 
-Flutterのバージョンは `ci.yml` と**同じ `.fvmrc` から読みます**。
-「同じ値を書く」ではなく「同じファイルから読む」形にしてあるのは、
-`.fvmrc` を上げたときに片方だけ古いまま残ると、**焼いた瞬間から差分の出るPNG**が
-できあがるためです。ランナーも `ubuntu-latest` で揃えています。
+The Flutter version is read **from the same `.fvmrc` as `ci.yml`**.
+It reads the same file rather than repeating the same value, because if bumping
+`.fvmrc` left one side stale, the baked PNGs would **differ from the moment they were
+created**. The runner is `ubuntu-latest` on both sides too.

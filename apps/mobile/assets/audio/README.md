@@ -1,55 +1,62 @@
-# プリレンダ音声
+# Pre-rendered audio
 
-このディレクトリの `.m4a` は、授業冒頭(計画書 §3-2)で端末内再生する短い一言です。
-アプリから TTS API は呼びません。何回鳴っても通信・従量原価はゼロです。
+The `.m4a` files here are the short lines played on the device at the start of a
+lesson (plan §3-2). The app never calls a TTS API, so however often they play, there
+is no network traffic and no metered cost.
 
-## 現在のファイルは無音プレースホルダ
+## The current files are silent placeholders
 
-リポジトリに入っている2本はどちらも、ffmpeg で作った **0.8秒の無音**です。実際の先輩の
-声ではありません。実音声を生成できない環境でも、アセットの束ね方・再生経路・失敗時の
-縮退をテストできるように置いてあります。この README と git 履歴がプレースホルダの印です。
+Both files in the repository are **0.8 seconds of silence** made with ffmpeg, not the
+senpai's real voice. They exist so the asset bundling, the playback path and the
+degradation on failure can be tested even where real audio cannot be generated. This
+README and the git history are the marker that they are placeholders.
 
-| cue | ja | en | 鳴る瞬間 |
+| cue | ja | en | When it plays |
 | --- | --- | --- | --- |
-| `lesson_opening` | なるほど、じゃあ一緒に見てみようか。 | Okay, let's take a look at this together. | LiveKit 接続後〜最初の板書手順/先輩の発話 |
+| `lesson_opening` | なるほど、じゃあ一緒に見てみようか。 | Okay, let's take a look at this together. | After the LiveKit connection, until the first board step or senpai utterance |
 
-文字(吹き出し)はすべての cue で残るため、消音モード・アプリ側の音声無効化・ファイル
-欠落でも情報は失われません。
+The text (speech bubble) remains for every cue, so no information is lost on silent
+mode, with audio disabled in the app, or with a missing file.
 
-## Deepgram の実音声へ差し替える
+## Replacing them with real Deepgram audio
 
-`backend/agent` と同じ API キー・声モデルを設定し、リポジトリルートで実行します。
+Configure the same API key and voice model as `backend/agent`, then run from the
+repository root.
 
 ```bash
 node --experimental-strip-types --env-file=backend/agent/.env \
   scripts/generate-prerendered-audio.ts
 ```
 
-`.env` を使わない場合は `DEEPGRAM_API_KEY` を環境変数で渡してください。モデルの既定値も
-agent と同じです。
+Without `.env`, pass `DEEPGRAM_API_KEY` as an environment variable. The model
+defaults match the agent's:
 
-- ja: `DEEPGRAM_TTS_MODEL_JA`、未指定なら `aura-2-izanami-ja`
-- en: `DEEPGRAM_TTS_MODEL_EN`、未指定なら `aura-2-andromeda-en`
+- ja: `DEEPGRAM_TTS_MODEL_JA`, defaulting to `aura-2-izanami-ja`
+- en: `DEEPGRAM_TTS_MODEL_EN`, defaulting to `aura-2-andromeda-en`
 
-スクリプトは Deepgram `/v1/speak` から AAC を受け、インストール済みの `ffmpeg` で m4a に
-包み、完成したファイルだけを原子的に同名へ差し替えます。送るのは上表の固定文だけで、
-ユーザーの問題・板書・発話は読みません。生成対象を API 呼び出しなしで確認するには:
+The script receives AAC from Deepgram's `/v1/speak`, wraps it into m4a with the
+installed `ffmpeg`, and atomically swaps only finished files into place. It sends
+only the fixed lines in the table above and never reads the user's problem, board or
+speech. To see what would be generated without calling the API:
 
 ```bash
 node --experimental-strip-types scripts/generate-prerendered-audio.ts --list
 ```
 
-差し替え後は2本を実際に聴き、日英・声・語尾・前後の無音を確認してからコミットします。
-少なくともコンテナと長さは次で確認できます。
+After replacing them, listen to both, check the Japanese and English, the voice, the
+endings and the leading/trailing silence, then commit. At minimum the container and
+duration can be checked with:
 
 ```bash
 ffprobe -v error -show_entries format=filename,duration \
   -of default=noprint_wrappers=1 apps/mobile/assets/audio/*.m4a
 ```
 
-## 再生時の約束
+## Playback promises
 
-- iOS は `AVAudioSessionCategory.ambient`、Android は ringer mode と media volume を読み、
-  無音・マナーモードを優先します。アプリは音量を変更しません。
-- アセット欠落・デコード失敗・停止失敗は画面へ伝播させません。音は装飾で、吹き出しが正本です。
-- 授業 cue は最初の板書手順か先輩の発話が来たら停止します。2つの声を重ねません。
+- iOS uses `AVAudioSessionCategory.ambient`; Android reads the ringer mode and media
+  volume. Silent and vibrate modes win. The app never changes the volume.
+- A missing asset, a decode failure or a failed stop never propagates to the screen.
+  The audio is decoration; the speech bubble is authoritative.
+- The lesson cue stops as soon as the first board step or senpai utterance arrives.
+  Two voices never overlap.

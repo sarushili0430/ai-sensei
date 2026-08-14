@@ -1,6 +1,6 @@
 # @ai-sensei/figure
 
-作図の宣言(JSON)を座標に解き、SVG にする。
+Solves a figure declaration (JSON) into coordinates and renders it as SVG.
 
 ```ts
 import { drawFigure } from "@ai-sensei/figure";
@@ -10,40 +10,45 @@ const r = drawFigure([
   { pt: "B", from: "A", dist: 6, deg: -20 },
   { pt: "C", from: "A", dist: 4, deg: -70 },
   { line: "L", bisect: ["B", "A", "C"] },
-  { pt: "D", meet: ["L", ["B", "C"]] },   // BD:DC = 6:4 が、指定せずに出る
+  { pt: "D", meet: ["L", ["B", "C"]] },   // BD:DC = 6:4 falls out without being specified
 ]);
 r.ok ? r.svg : r.errors;
 ```
 
-## 考え方
+## The idea
 
-**モデルが書くのは「関係」だけで、座標はこちらが決める。**
-一貫していなければならない値 — 長さ・比・符号・矢印・面積・確率・サイコロの目 — を
-書かせないので、**食い違った図は作れない**。
+**The model writes only relations; we decide the coordinates.**
+Values that must be consistent - lengths, ratios, signs, arrows, areas,
+probabilities, die pips - are never written by the model, so **an inconsistent figure
+cannot be produced**.
 
-- 長さのラベルが実際と違えば落とす(`"6"` と書いた辺が 10 なら通さない)
-- 比は `part` で書かせ、`part` どうしの比が実際の長さの比と合うかを見る
-- 増減表の符号と矢印は曲線から出す。渡すのは極値の x だけ
-- 箱ひげ図の五数要約・散布図の相関係数・正規分布の面積は、データから計算する
+- A length label that disagrees with reality is rejected (a side labelled `"6"` that
+  is actually 10 does not pass)
+- Ratios are written with `part`, and the ratio between `part`s is checked against
+  the real length ratio
+- A sign table's signs and arrows come from the curve; only the extremum's x is passed
+- A box plot's five-number summary, a scatter plot's correlation coefficient and a
+  normal distribution's area are computed from the data
 
-## なぜ `solve.js` / `render.js` だけ JS なのか
+## Why only `solve.js` / `render.js` are JS
 
-**意図的**。ここは「知らない形の JSON を受け取り、駄目なら投げる」コードで、
-安全は実行時の検査(`schema.ts` と `solve()` 自身の throw)が担っている。
-`noUncheckedIndexedAccess` の下で書き直すと `!` が100個増えるだけで、
-**実測240回で通っているコードに、測っていない変更を入れる**ことになる。
+**Deliberately.** This is code that takes JSON of an unknown shape and throws when it
+is bad, and safety comes from runtime checks (`schema.ts` and `solve()`'s own throws).
+Rewriting it under `noUncheckedIndexedAccess` would only add a hundred `!`s -
+**an unmeasured change to code that passes 240 measured runs**.
 
-型は外から見える形に付けてある(`solve.d.ts` / `render.d.ts` / `schema.ts`)。
-振る舞いは実測の出力で固定してある:
+Types are attached to the shape visible from outside (`solve.d.ts` / `render.d.ts` /
+`schema.ts`). The behaviour is pinned by the measured output:
 
 ```
-node --experimental-strip-types docs/figeval/verify-port.mjs    # 移植でこわれていないか
-node --experimental-strip-types docs/figeval/verify-schema.mjs  # 契約が実測を弾かないか
+node --experimental-strip-types docs/figeval/verify-port.mjs    # did the port break anything
+node --experimental-strip-types docs/figeval/verify-schema.mjs  # does the contract reject the measurements
 ```
 
-## 語彙を足すとき
+## Adding vocabulary
 
-条件は1つ、**機械で検算できる不変量が1本書けること**。
-手順と実測は `docs/figeval/README.md`、単元との対応は `docs/figeval/units.md`。
-`figureKeys` にキーを足し忘れると丸ごと通らなくなるので、`verify-schema.mjs` を必ず回す
-(実際 `conic` の `a`/`b` を書き忘れて、これで見つけた)。
+One condition: **you can write one machine-checkable invariant for it.**
+The procedure and the measurements are in `docs/figeval/README.md`; the mapping to
+curriculum units is in `docs/figeval/units.md`.
+Forgetting to add a key to `figureKeys` makes the whole item fail, so always run
+`verify-schema.mjs` (that is how the missing `a`/`b` for `conic` was found).

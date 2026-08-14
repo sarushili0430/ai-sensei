@@ -1,202 +1,221 @@
 # @ai-sensei/guardrail
 
-Workersとagentの両方から使う純関数群。**すべて副作用なし・依存なし**なので、
-ユニットテストで仕様を固定できる。
+Pure functions used by both Workers and the agent. **No side effects, no dependencies**,
+so the specification can be pinned by unit tests.
 
-| モジュール | 役割 |
+| Module | Role |
 | --- | --- |
-| `topic-guard.ts` | セッションの許可単元を組み立て、カルテの単元タグを照合する |
-| `latex-guard.ts` | 板書LaTeXのコマンド照合。描けない式を端末に送らない |
-| `plan-guard.ts` | 学習計画の単元照合。範囲外の単元が入った計画を通さない |
-| `problem-guard.ts` | 書き起こした問題文の妥当性。解答が混ざったまま先輩に渡さない |
-| `math-speech.ts` | 日本語STTの数式読み上げを正規化する |
-| `spaced-repetition.ts` | 翌日 → 3日後 → 7日後の予約と、通知文の生成 |
-| `progress.ts` | 連続日数と「埋めた穴」のカウンタ |
+| `topic-guard.ts` | Builds a session's allowed units and matches the karte's unit tags |
+| `latex-guard.ts` | Command matching for board LaTeX. Never send an unrenderable formula to the device |
+| `plan-guard.ts` | Unit matching for study plans. Never pass a plan containing out-of-scope units |
+| `problem-guard.ts` | Validity of the transcribed problem text. Never hand the senpai text with the answer mixed in |
+| `math-speech.ts` | Normalizes Japanese STT's spoken maths |
+| `spaced-repetition.ts` | The +1 / +3 / +7-day bookings and the notification wording |
+| `progress.ts` | The streak and "filled holes" counters |
 
-## 単元の許可リスト
+## The unit allow-list
 
-写真から検出した単元と、その前提を許可リストにする。`backend/api` はこの一覧を
-先輩のプロンプトとセッションメタデータへ渡す。
+The units detected from the photo, plus their prerequisites, become the allow-list.
+`backend/api` passes that list to the senpai's prompt and to the session metadata.
 
 ```ts
-const allowed = buildAllowedTopics(detectedTopicIds); // 写真の単元 + その前提2段
+const allowed = buildAllowedTopics(detectedTopicIds); // the photo's units + two levels of prerequisites
 const topicsForPrompt = allowedTopicList(allowed);
 ```
 
-**前提を何段たどるかの既定(`conversationPrerequisiteDepth` = 2)は、
-プロンプトが先輩に約束している段数と一致していなければなりません。**
-`prompts/senpai_board.{ja,en}.md` は許可リストについて「前提が2段ぶん入っています」と
-説明しており、ここが浅いと2段目の前提が一覧に入らず、説明と実データがずれます。
-呼び出し側でオプションを書き足すのではなく**既定を正しくしてある**のは、
-元の不具合が「呼び出し側が書き忘れた」形そのものだったためです。
+**The default prerequisite depth (`conversationPrerequisiteDepth` = 2) must match the
+number of levels the prompt promises the senpai.**
+`prompts/senpai_board.{ja,en}.md` says the allow-list contains "two levels of
+prerequisites", and going shallower keeps the second level out of the list, so the
+description and the real data disagree.
+**The default was made correct** rather than adding the option at the call site,
+because the original bug was exactly the shape of "the caller forgot to write it".
 
-`backend/agent/src/board.ts` の `validateStep()` が見るのは手順のスキーマとLaTeXで、
-板書のtopic_idをこの許可集合とは照合しません。旧「後輩が質問を生成する」経路の
-質問文ガードは、ピボット後に本番の呼び出し元が無くなったため削除しました。
+`validateStep()` in `backend/agent/src/board.ts` checks a step's schema and its LaTeX;
+it does not match the board's topic_ids against this allow-set. The question-text guard
+from the old "the kouhai generates questions" path was deleted after the pivot, once it
+had no production caller.
 
-`filterHoleTopicIds()` はカルテの穴に付いたtopic_idへ同じ許可集合を当てる。
-範囲外のタグが付くと、復習の通知まで的外れになるため。
+`filterHoleTopicIds()` applies the same allow-set to the topic_ids on the karte's
+holes, because an out-of-scope tag makes the review notification off-target too.
 
-| reason | 何を防ぐか |
+| reason | What it prevents |
 | --- | --- |
-| `malformed_topic_id` | IDの形が壊れている |
-| `unknown_topic_id` | LLMがIDを捏造した(大学数学・他教科) |
-| `topic_not_allowed` | カリキュラム内だが写真に写っていない単元 |
+| `malformed_topic_id` | The id's shape is broken |
+| `unknown_topic_id` | The LLM fabricated an id (university maths, another subject) |
+| `topic_not_allowed` | In the curriculum, but not in the photo |
 
-## 板書LaTeXの照合
+## Board LaTeX matching
 
-`flutter_math_fork` はKaTeXのDart移植で、本家が通すコマンドを全部は描けない。
-**描けないコマンドが端末に届くと、板書がその行だけ空白か例外になる。**
+`flutter_math_fork` is a Dart port of KaTeX and cannot render everything the original
+accepts. **A command it cannot render reaches the device and that board line becomes
+blank or throws.**
 
 ```ts
 const verdict = checkBoardLatex(step.board.tex);
 if (!verdict.ok) {
-  // latexRejectionGuidance[verdict.reason] を添えて再生成させる
+  // regenerate with latexRejectionGuidance[verdict.reason] attached
 }
 ```
 
-検証は三段構え(`docs/pivot_plan_v1.md` §3-6)で、**ここは②だけ**を持つ。
+Validation has three stages (`docs/pivot_plan_v1.md` §3-6), and **only stage 2 lives
+here**.
 
-| 層 | どこ | 何を防ぐ |
+| Stage | Where | What it prevents |
 | --- | --- | --- |
-| ① 式テンプレート | プロンプト | 許可コマンドの誤った**組み合わせ方** |
-| ② コマンドの照合 | **`latex-guard.ts`** | 移植版が**対応していない**コマンド |
-| ③ KaTeXでの実パース | `backend/agent` | **構文の壊れ**(括弧の閉じ忘れ・引数の過不足) |
+| 1 formula templates | the prompt | wrong **combinations** of allowed commands |
+| 2 command matching | **`latex-guard.ts`** | commands the port does **not support** |
+| 3 real KaTeX parse | `backend/agent` | **broken syntax** (unclosed braces, wrong arity) |
 
-③をここに置かないのは、このパッケージの「外部依存なし」を壊さないため。
-文字数の上限と多行環境(`align` 等)の禁止は `@ai-sensei/contract` の責務なので、重複して実装しない。
+Stage 3 is not here so this package's "no external dependencies" stays true.
+Character caps and the ban on multi-line environments (`align` etc.) are
+`@ai-sensei/contract`'s job and are not implemented twice.
 
-| reason | 何を防ぐか |
+| reason | What it prevents |
 | --- | --- |
-| `unknown_command` | **描画を実測していないコマンド**(`\ln` `\overline` `\left` など)。`\href` `\includegraphics` も副次的に落ちる |
-| `text_in_math` | **数式の中の文章・日本語**。`\text{よって}` は tofu(黒い棒)になる。禁止ではなく**置き場所が違う**ので、理由を分けて `text` 要素に誘導する |
-| `unknown_environment` | `pmatrix` / `cases` 以外の環境 |
-| `unbalanced_environment` | `\begin` と `\end` が対応していない |
-| `row_separator_outside_environment` | 環境の外の `\\` `&`。板書は**1手順=1行** |
+| `unknown_command` | **Commands whose rendering was never measured** (`\ln`, `\overline`, `\left` and friends). `\href` and `\includegraphics` fall out as a side effect |
+| `text_in_math` | **Prose or Japanese inside a formula.** `\text{よって}` becomes tofu (black bars). It is not a ban but a **wrong location**, so it gets its own reason and points at the `text` element |
+| `unknown_environment` | Environments other than `pmatrix` / `cases` |
+| `unbalanced_environment` | `\begin` and `\end` do not match |
+| `row_separator_outside_environment` | `\\` or `&` outside an environment. A board is **one step = one line** |
 
-**許可リストは実測でPNGを目視したものだけを入れる。** 「KaTeXのドキュメントに載っているから」で
-足してはいけない。移植版が対応しているとは限らないというのが、この層が存在する理由そのもの。
-未検証で保留しているもの(`\ln` `\overline` `\left` `\right`、3×3以上の行列、
-3行以上の `cases`)は `latex-guard.ts` のコメントに一覧がある。
+**Only what has been rendered to PNG and inspected goes on the allow-list.** Never add
+something "because it is in KaTeX's documentation": that the port may not support it is
+precisely why this layer exists. What is unverified and on hold (`\ln`, `\overline`,
+`\left`, `\right`, matrices of 3x3 or larger, `cases` with three or more rows) is
+listed in `latex-guard.ts`'s comments.
 
-**逆向きのずれも起きる。** 実測したのに許可し忘れると、描ける式が再生成で捨てられ、
-レイテンシと原価だけが増える。`latex-guard.test.ts` の `measuredFormulas` が
-**実測した式と許可リストの突き合わせ**で、実測で式を足したらここにも足す。
+**Drift also happens the other way.** Forgetting to allow something already measured
+makes regeneration throw away renderable formulas, adding only latency and cost.
+`measuredFormulas` in `latex-guard.test.ts` is **the cross-check between the measured
+formulas and the allow-list**; when measurement adds a formula, add it there too.
 
-指示(`latexRejectionGuidance`)は**行き先まで書く**。「表せないものは日本語で書くこと」で
-終えると、LLMは `\text{よって}` を書き、次のターンで `text_in_math` に落ちて堂々巡りになる。
-数式にできないものの行き先は、常に「`text` の板書として送る」に揃える。
+The guidance (`latexRejectionGuidance`) **says where to go**. Ending at "write what
+cannot be expressed in Japanese" makes the LLM write `\text{よって}`, fail as
+`text_in_math` the next turn, and loop. Anything that cannot be a formula is always
+sent to "put it on the board as `text`".
 
-**日本語は数式に入れない。** `\text{よって}` は KaTeX のフォントに日本語グリフが無いため
-文字化けする。`\text` 系のコマンドだけでなく、`\mathrm{よって}` や裸のかな・漢字も
-同じ理由で落とす(コマンド名の列挙では塞げないため、`tex` 全体を見ている)。
+**No Japanese in formulas.** `\text{よって}` garbles because KaTeX's font has no
+Japanese glyphs. Not only the `\text` family but `\mathrm{よって}` and bare kana or
+kanji are rejected for the same reason (listing command names cannot close it, so the
+whole `tex` is checked).
 
-`\\` と `&` は **`pmatrix` / `cases` の内側でだけ**通す。無条件に弾くと行列も場合分けも落ち、
-無条件に通すと1行のはずの板書が2行に割れる。
+`\\` and `&` pass **only inside `pmatrix` / `cases`**. Rejecting them unconditionally
+loses matrices and case analysis; allowing them unconditionally splits a one-line board
+into two.
 
-## 学習計画の単元照合
+## Study-plan unit matching
 
-`@ai-sensei/contract` の `plan.ts` は依存を持たない層なので**前提関係を知らない**。
-結果、「テスト範囲は三角関数」と聞き取った計画に「ベクトルを2時間」の日が入っていても
-スキーマは通り、画面にも出る。ここがその穴を塞ぐ。
+`plan.ts` in `@ai-sensei/contract` is a dependency-free layer and **knows nothing about
+prerequisites**. So a plan whose interview recorded "the test covers trigonometry" can
+contain a day of "two hours of vectors", pass the schema and reach the screen. This
+closes that hole.
 
 ```ts
 const scope = checkPlanScope(plan.intake.scope.topic_ids);
 if (!scope.ok) {
-  // planRejectionGuidance[scope.reason] を添えて作り直させる
+  // rebuild it with planRejectionGuidance[scope.reason] attached
 }
 const { rejected } = filterPlanItems(plan.days.flatMap((day) => day.items), scope.allowed);
 ```
 
-**範囲と割り当てで落とし方をわざと変えている。**
+**Scope and assignments are rejected differently on purpose.**
 
-| | 落とし方 | 理由 |
+| | How it fails | Why |
 | --- | --- | --- |
-| **範囲**(`checkPlanScope`) | 1つでも壊れていたら**全体を落とす** | 黙って1単元を捨てると**実際より狭いテスト**に向けた計画ができる。生徒は範囲の一部を勉強しないまま当日を迎え、しかも気づけない |
-| **割り当て**(`filterPlanItems`) | **1件ずつ**落とす | 生成物なので、1日が範囲外でも残りは使える(`filterHoleTopicIds` と同じ) |
+| **Scope** (`checkPlanScope`) | One broken entry **fails the whole thing** | Silently dropping one unit produces a plan aimed at **a narrower test than the real one**. The student reaches the day without studying part of the scope, with no way to notice |
+| **Assignments** (`filterPlanItems`) | Dropped **one at a time** | They are generated output, so one out-of-scope day leaves the rest usable (as with `filterHoleTopicIds`) |
 
-**前提は2段まで許す**(`planPrerequisiteDepth`)。会話側(`conversationPrerequisiteDepth`)と
-**同じ値だが、別の定数のままにしてある** — 会話側は原価(セッション時間)の都合で
-浅くしたくなることがあり、そのとき計画まで黙って追随すると、正当な復習日
-(「まず三角比を思い出す日」)が範囲外として落ちはじめるため。
+**Prerequisites go two levels deep** (`planPrerequisiteDepth`). It is the **same value
+as the conversation side (`conversationPrerequisiteDepth`) but kept a separate
+constant** - the conversation side may want to go shallower for cost (session time),
+and having plans silently follow would start rejecting legitimate revision days ("a day
+to recall trigonometric ratios first") as out of scope.
 
-2段で止める根拠は実カリキュラムでの計測(`plan-guard.ts` に表がある):
-前提の連鎖はいちばん長いもので5段しかなく、**2段で飽和する**(3段目以降で増えるのは
-平均0.5件ほど)。3段にしても「もう1日ぶんの復習」が増えるのではなく、遠い単元が
-ぽつぽつ入るだけになる。かつ前提の辺は学習の順序に沿って伸びるので、
-**2段広げても別の系列には届かない**(三角関数の計画にベクトルは入らない)。
+The reason it stops at two comes from measuring the real curricula (there is a table in
+`plan-guard.ts`): the longest prerequisite chain is only five levels, and **it saturates
+at two** (level three and beyond adds about 0.5 on average). Three levels does not buy
+another day of revision; it just sprinkles in distant units. And because prerequisite
+edges extend along the learning order, **two levels never reach another strand**
+(vectors never enter a trigonometry plan).
 
-指示(`planRejectionGuidance`)は**範囲を書き換えない方向**を向いていること。
-「範囲外です」だけ返すと、LLMは範囲(`intake.scope.topic_ids`)のほうを書き換えて
-辻褄を合わせる — それは**聞き取った事実の改竄**で、計画は通っても
-生徒のテスト範囲とは別物になる。
+The guidance (`planRejectionGuidance`) must point **away from rewriting the scope**.
+Returning only "out of scope" makes the LLM rewrite the scope
+(`intake.scope.topic_ids`) to make things add up - which **falsifies the interviewed
+facts**, so the plan passes while describing a different test.
 
-**課程の混在はここでだけ見る**(`mixed_curricula`)。1つの計画は1つのテストのものなので、
-日本の課程と海外の課程が同じ範囲に並ぶことはない。混ざっているのは
-LLMが両方の記憶から引いたということで、範囲の残りも信用できない。
+**Mixed curricula are checked only here** (`mixed_curricula`). One plan belongs to one
+test, so Japanese and overseas curricula never share a scope. A mix means the LLM drew
+on both memories, and the rest of the scope is untrustworthy too.
 
-## 問題文の妥当性
+## Problem-text validity
 
-書き起こした `problem_text` はそのまま板書LLMに渡り、**その授業で教える内容の起点**になる。
-解答が混ざると先輩は解き方を組み立てずに答えを写し、**板書が「答え合わせの表示器」に劣化する**
-(改正後の約束1で「答えを教える」ことは許されているが、板書の価値は解き方の筋道のほう)。
+The transcribed `problem_text` goes straight to the board LLM and becomes **the
+starting point of what that lesson teaches**. An answer mixed in makes the senpai copy
+the answer instead of building the method, and **the board degrades into an answer
+display** (post-revision promise 1 permits giving the answer, but the board's value is
+the reasoning).
 
 ```ts
 const verdict = checkProblemText(problemText);
 if (!verdict.ok) {
-  // backend/api の resolveSessionProblem() は problem を null に畳み、理由をログに残す
+  // backend/api's resolveSessionProblem() folds problem to null and logs the reason
 }
 ```
 
-**呼び出し側は再解析しません**(`backend/api` の `resolveSessionProblem()`)。
-解答が混ざる原因は「紙面のどこを写したか」なので、**同じ写真をもう一度投げても同じものが返る** —
-Vision の課金とセッション開始の数秒を払って同じ結果を得るだけになりやすいためです。
-落ちたら `problem` を `null` にして、先輩は「問題、読んでもらってもいい?」から始めます。
+**The caller does not re-analyse** (`resolveSessionProblem()` in `backend/api`).
+Answers get mixed in because of *what part of the page was photographed*, so **sending
+the same photo again returns the same thing** - it usually just buys the same result
+for the price of Vision plus seconds of session start.
+On rejection, `problem` becomes `null` and the senpai opens with "could you read the
+problem out?".
 
-そのため **`problemRejectionGuidance` はいまどこからも使われていません。**
-再生成の経路を足すときのために、理由と対で置いてあります
-(`latexRejectionGuidanceByLocale` は agent が実際に板書の再生成へ添えています)。
+That is why **`problemRejectionGuidance` is currently unused**. It is kept, paired with
+its reason, for whenever a regeneration path is added
+(`latexRejectionGuidanceByLocale`, by contrast, really is attached by the agent when
+regenerating a board).
 
-**方針は「完全な判定を目指さない。迷ったら通す」。**
-過検出のほうが害が大きい — 正当な問題文を落とすと `problem_text` は空になり、
-先輩は「(問題の写真なし)」から始める = **問題が写っているのに見ないまま教える**、
-いちばん避けたかった状態に自分で戻る。
+**The policy is "perfection is not the goal; when unsure, let it through".**
+Over-detection does more harm: rejecting a legitimate problem text leaves
+`problem_text` empty and the senpai starts from "(no problem photo)" = **teaching
+without looking at a problem that is right there**, the very state we wanted to avoid.
 
-| reason | 何を防ぐか |
+| reason | What it prevents |
 | --- | --- |
-| `solution_included` | 章末の答え・赤字の解説・`∴` が問題文に流れ込んでいる。**見出しは囲みかコロンを必須**にして、「解答用紙に記入せよ」「答えを四捨五入せよ」を巻き込まない |
-| `not_a_problem` | 散文が1語も無い断片(`x^2 - 3x + 2 = 0` だけ)。何を問われているか書かれていない |
+| `solution_included` | The chapter's answers, red commentary or `∴` flowed into the problem text. **Headings require a bracket or a colon**, so "write on the answer sheet" and "round your answer" are not caught |
+| `not_a_problem` | A fragment with no prose at all (just `x^2 - 3x + 2 = 0`). It does not say what is being asked |
 
-**入れていない判定と理由**は `problem-guard.ts` の冒頭にある(「よって」は設問側にも出る /
-裸の `Answer:` は**空欄の解答欄の見出し**として解く前の紙面にも印刷されている、など)。
+**What is deliberately absent, and why**, is at the top of `problem-guard.ts` ("よって"
+occurs in questions too; a bare `Answer:` is printed above a blank answer box on the
+page before anything is solved; and so on).
 
-**ロケールを取らない。** 解答の見出しは日本語と英語で文字種が重ならないので、
-両方同時に当てても取り違えない。引数を減らして「間違ったロケールを渡して素通りする」
-経路自体を無くしてある。
+**It takes no locale.** Answer headings do not share character sets between Japanese
+and English, so applying both at once cannot confuse them. One fewer argument removes
+the "passed the wrong locale and it slipped through" path entirely.
 
-## 数式音声の正規化
+## Spoken-maths normalization
 
-「エックスのにじょう」→ `x^2`、「さんぶんのに」→ `2/3`。
-**やりすぎないこと**を方針にしていて、普通の日本語を壊さないことをテストで固定している。
-「かける」「わる」は数と数に挟まれているときだけ演算子にする(「時間をかける」を
-`時間を×` にしてしまうと、カルテの材料そのものが壊れるため)。
-文脈依存の補正(「ディー」が距離dか判別式Dか)は、写真文脈を持つLLM側の仕事。
+"エックスのにじょう" -> `x^2`, "さんぶんのに" -> `2/3`.
+The policy is **do not overreach**, and tests pin that ordinary Japanese is not broken.
+"かける" and "わる" become operators only when sandwiched between two numbers (turning
+"時間をかける" into "時間を×" would corrupt the karte's raw material itself).
+Context-dependent correction (is "ディー" the distance d or the discriminant D) is the
+job of the LLM, which has the photo's context.
 
-## 間隔反復
+## Spaced repetition
 
-`scheduleReviews(holeIds, completedAt)` が穴ごとに3件の予約を返す。
-基準はUTCではなく**ローカル日付**(既定JST)で、通知は20:00に置く。
-深夜0時台のセッションで「翌日」がずれないことをテストしている。
+`scheduleReviews(holeIds, completedAt)` returns three bookings per hole.
+The baseline is the **local date** (JST by default), not UTC, and notifications land at
+20:00. A test pins that "the next day" does not slip for a session just after midnight.
 
-通知文は `buildReviewPrompt()`。後輩からのお願いの形で、責める語彙を使わない
-(テストで語彙を禁止している)。
+The notification wording comes from `buildReviewPrompt()`. It takes the form of a
+request from the agent and uses no blaming vocabulary (a test bans that vocabulary).
 
-## 進捗カウンタ
+## Progress counters
 
-`computeStreak()` は、**きのうまで続いていれば連続を生かす**。
-朝いちばんにホームを開いたユーザーを毎日がっかりさせないため。
-途切れるのは丸1日空いたときだけ。
+`computeStreak()` **keeps the streak alive if it ran through yesterday**, so a user who
+opens home first thing in the morning is not disappointed every day. It breaks only
+after a full day's gap.
 
-`ProgressCounters` は `streak_days` / `filled_holes` / `open_holes` /
-`last_session_date` の4つだけで、スコアに類するフィールドを持たない
-(テストでキー一覧を固定している)。
+`ProgressCounters` holds only `streak_days` / `filled_holes` / `open_holes` /
+`last_session_date` and no score-like field (a test pins the key list).

@@ -1,84 +1,85 @@
 # golden test
 
-主要画面のスクリーンショット比較。**見た目の崩れ**よりも、
-設計上の約束が画面から消えていないかを見るために置いています。
+Screenshot comparison of the main screens. It exists less to catch visual glitches
+than to check that the design promises have not disappeared from the screen.
 
-## 生成は CI(Linux)を正とします
+## CI (Linux) is authoritative for generation
 
-フォントのラスタライズはOSで変わるので、**macOSで生成したものをコミットすると
-CIとの差分が永久に消えません。** 手元で焼いたPNGはコミットしないでください。
+Font rasterization differs per OS, so **committing PNGs generated on macOS leaves a
+permanent diff against CI**. Do not commit PNGs baked locally.
 
-手元で走らせてよいのは、**差分を見るため**だけです:
+Running locally is fine only to **look at the diff**:
 
 ```bash
 cd apps/mobile
-fvm flutter test --tags golden          # 落ちた差分は failures/ に出る
-fvm flutter test --update-goldens --tags golden   # 手元で見るだけ。コミットしない
+fvm flutter test --tags golden          # failures land in failures/
+fvm flutter test --update-goldens --tags golden   # for local viewing only; do not commit
 ```
 
-## CIで焼き直す手順
+## Re-baking in CI
 
-1. GitHub の **Actions → Update goldens → Run workflow** で、対象のブランチを選んで起動
-2. 実行ログの **Show which goldens changed** で、どのPNGが書き換わったかを見る
-3. artifact **`goldens`** を落とす
-4. 中身を `apps/mobile/test/golden/goldens/` に**そのまま置く**
-5. **1枚ずつ目で見る**(下記)
-6. テストファイルと**同じコミット**に入れる(下記)
+1. On GitHub, **Actions → Update goldens → Run workflow**, choosing the branch
+2. Read **Show which goldens changed** in the run log to see which PNGs were rewritten
+3. Download the **`goldens`** artifact
+4. Put its contents into `apps/mobile/test/golden/goldens/` **as-is**
+5. **Look at every image** (see below)
+6. Commit them **in the same commit** as the test file (see below)
 
-ワークフローの実体は [`docs/ci/golden.yml`](../../../../docs/ci/golden.yml) です
-(`.github/workflows/` へのコピー手順は [`docs/ci/README.md`](../../../../docs/ci/README.md))。
+The workflow itself is [`docs/ci/golden.yml`](../../../../docs/ci/golden.yml)
+(how it is copied into `.github/workflows/` is in
+[`docs/ci/README.md`](../../../../docs/ci/README.md)).
 
-### 焼き直すと「全部」書き換わります
+### Re-baking rewrites *everything*
 
-`--update-goldens` は golden タグの付いたテストを**すべて**焼き直すので、
-板書だけを直したつもりでも、画面側のPNGが一緒に更新されることがあります。
-それ自体は正しい(基準が1つに揃う)のですが、**artifact に入ってくる枚数は
-自分がいじった数より多い**前提で受け取ってください。
+`--update-goldens` re-bakes **every** test tagged golden, so a change meant only for
+the board can update the screen PNGs too. That is correct in itself (one shared
+baseline), but expect **more images in the artifact than you touched**.
 
-### 目で見る工程は飛ばせません
+### The review step cannot be skipped
 
-**`--update-goldens` は「いま描けたもの」を無条件に正として書き込みます。**
-壊れた画面を焼けば、壊れた画面が「正」になり、以降その壊れは検知されません。
-golden test が守れるのは**人が一度目で見て承認したもの**だけです。
+**`--update-goldens` writes whatever rendered as the new truth, unconditionally.**
+Bake a broken screen and the broken screen becomes correct, and that breakage is
+never detected again. A golden test can only protect what a human has looked at and
+approved once.
 
-置いたあとに `fvm flutter test --tags golden` を走らせても、
-それは「さっき焼いたものと同じか」を見ているだけで、**正しさの確認にはなりません。**
+Running `fvm flutter test --tags golden` after placing them only asks "is this the
+same as what I just baked" - it is not a correctness check.
 
-### PNGとテストファイルは同じコミットに入れる
+### Commit the PNGs and the test file together
 
-`matchesGoldenFile` は比較対象のPNGが**無いとき**、pixel diff ではなく
-「ファイルが見つからない」で落ちます。テストファイルだけ先にコミットすると、
-**PNGが入るまでCIが赤いまま**になります(ピボット計画 v1 §10-8)。
+When the comparison PNG is **missing**, `matchesGoldenFile` fails with "file not
+found" rather than a pixel diff. Committing only the test file leaves **CI red until
+the PNGs land** (pivot plan v1 §10-8).
 
-golden の実効ゲートは GitHub Actions だけです。Codemagic は macOS なので
-`--exclude-tags golden` で外しています(`codemagic.yaml`)。
-つまりここが赤いと、**気づく場所が他にありません。**
+GitHub Actions is the only effective gate for goldens. Codemagic runs macOS and
+excludes them with `--exclude-tags golden` (`codemagic.yaml`). So when this is red,
+**there is nowhere else to notice it**.
 
-## 落ちたとき
+## When it fails
 
-`test/golden/failures/` に差分画像が出ます(`*_masterImage.png` /
-`*_testImage.png` / `*_isolatedDiff.png`)。CIでは失敗時にartifactとして
-上がるので、そこから落とせます。
+Diff images appear in `test/golden/failures/` (`*_masterImage.png` /
+`*_testImage.png` / `*_isolatedDiff.png`). CI uploads them as an artifact on failure,
+so they can be downloaded from there.
 
-まず**自分の変更が意図したものか**を見てください。意図したものなら、上の手順で焼き直します。
-意図しない差分なら、焼き直すのではなくコードを直します。
+First check **whether your change was intended**. If it was, re-bake using the steps
+above. If the diff was not intended, fix the code rather than re-baking.
 
-## フォント
+## Fonts
 
-`assets/fonts/ZenMaruGothic-*.ttf`(SIL OFL 1.1)を `loadAppFonts()` で
-読み込んでから描画します。読み込まないとAhem(四角)で描画され、
-字形の崩れに気づけません。
+`assets/fonts/ZenMaruGothic-*.ttf` (SIL OFL 1.1) is loaded with `loadAppFonts()`
+before rendering. Without it, rendering uses Ahem (solid squares) and broken glyphs
+go unnoticed.
 
-### 板書(数式)を焼くときの注意
+### Note when baking board (formula) goldens
 
-`loadAppFonts()` は `FontManifest.json` の family 名から `packages/xxx/` プレフィックスを
-**剥がして**登録します(アプリ自身の `ZenMaruGothic` はプレフィックス無しなのでこれで正しい)。
-一方 `flutter_math_fork` は自分のフォントを `'packages/flutter_math_fork/KaTeX_Main'` という
-**プレフィックス込みの名前**で参照します。
+`loadAppFonts()` registers family names from `FontManifest.json` with the
+`packages/xxx/` prefix **stripped** (correct for the app's own `ZenMaruGothic`, which
+has no prefix). `flutter_math_fork`, however, refers to its fonts by the
+**prefixed** name `'packages/flutter_math_fork/KaTeX_Main'`.
 
-そのまま流用すると、数式が**黒塗りの四角(tofu)で描画**されます。気づかずにこれを
-golden として焼くと、**テストは通るのに実際は文字化けしている**という、
-検知能力のない golden ができあがります(ピボット計画 v1 §3-6c)。
+Used as-is, formulas render as **solid black squares (tofu)**. Baking that as a
+golden unnoticed produces a golden with no detection power at all: **the test passes
+while the real thing is garbled** (pivot plan v1 §3-6c).
 
-板書の golden を焼く前に、`loadAppFonts()` がプレフィックスを保持する形になっているか、
-または板書専用のフォントローダーを使っているかを確かめてください。
+Before baking a board golden, confirm that `loadAppFonts()` preserves the prefix, or
+that a board-specific font loader is used.

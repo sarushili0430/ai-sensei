@@ -1,51 +1,51 @@
 # dart_defines/
 
-`--dart-define` に渡す値をまとめた **JSON** を置く場所。
-Flutter の `--dart-define-from-file` はこのディレクトリの `*.json` をそのまま食べます。
+Where the **JSON** files of `--dart-define` values live. Flutter's
+`--dart-define-from-file` reads `*.json` from this directory directly.
 
 ```bash
 cp dart_defines/local.example.json dart_defines/local.json
 tool/run.sh --debug --dart_define=local
 ```
 
-`tool/run.sh` を通さず素の Flutter で叩くなら同じことです:
+Bypassing `tool/run.sh` and calling Flutter directly is the same thing:
 
 ```bash
 fvm flutter run --debug --dart-define-from-file=dart_defines/local.json
 ```
 
-`*.example.json` 以外の `.json` は **コミットされません**(ルートの `.gitignore`)。
-環境を増やしたいときは `staging.json` / `prod.json` のように足してください。
-`tool/run.sh --dart_define=staging` で拾えます。
+Any `.json` other than `*.example.json` is **not committed** (root `.gitignore`).
+To add an environment, add `staging.json` / `prod.json` and so on;
+`tool/run.sh --dart_define=staging` picks them up.
 
-## ここに入れてよいもの
+## What may go in here
 
-**公開値だけです。** `--dart-define` の値はビルド成果物に埋め込まれ、
-逆アセンブルで読めます。秘密鍵は1つも置かないでください
-(サーバ側 = `backend/` に置くこと)。
+**Public values only.** `--dart-define` values are embedded in the build artifact
+and readable by disassembly. Do not put a single secret key here (those belong on
+the server, in `backend/`).
 
-JSON なのでコメントが書けません。各キーの意味は以下。
+JSON has no comments, so the keys are documented below.
 
-| キー | 意味 |
+| Key | Meaning |
 | --- | --- |
-| `API_BASE_URL` | `backend/api` のURL。ローカルは `http://localhost:8787`。実機から母艦を見るなら母艦のLAN IP(例 `http://192.168.1.10:8787`)。空なら `http://localhost:8787` に落ちる |
-| `REVENUECAT_IOS_PUBLIC_SDK_KEY` | RevenueCat のiOS用公開鍵(`appl_` で始まる)。ストアに商品を作ったあとの本番用 |
-| `REVENUECAT_ANDROID_PUBLIC_SDK_KEY` | 同 Android用(`goog_` で始まる) |
-| `REVENUECAT_SDK_KEY` | Test Store の鍵(`test_` で始まる)。App Store Connect / Play Console に商品を作る前でも購入フローを最後まで通せる、RevenueCat側の疑似ストア。**iOS/Androidで同じ値**を使う。上の2つが空のときだけ使われる |
-| `REVENUECAT_ENTITLEMENT_ID` | ダッシュボードの Entitlement identifier(表示名ではないほう)。空なら `premium`。ここがずれると、課金は成立するのに何も解放されない |
-| `REVENUECAT_OFFERING_ID` | 既定以外の Offering を出したいときだけ(価格の実験用)。空なら current |
-| `ONESIGNAL_APP_ID` | プッシュ受信。App IDは公開値。`backend/api` の `ONESIGNAL_APP_ID` と**同じ値**にすること。アプリ側(`push_repository.dart` の `PushConfig`)は既定値を持たないので、**空のビルドでは通知機能ごと無効**(初期化も端末登録もしない)。REST API Key はサーバ側にあり、ここには置かない |
-| `SENTRY_DSN` | クラッシュと**縮退**の監視(計画書 §10-7)。DSNは公開前提の値なので secure にしなくてよい。アプリ側(`src/telemetry/telemetry.dart` の `SentryConfig`)は既定値を持たないので、**空のビルドでは監視ごと無効**(SDKの初期化もしない)。値は Sentry のプロジェクト設定 > Client Keys (DSN) から取る |
-| `PRIVACY_POLICY_URL` | 設定画面から出るリンク。`https://ubiqy.jp/privacy/`(両ストアの申告と同じものを入れる)。空のあいだは設定画面に行ごと出ない(押しても開かない行を出さないため)。サブスクを載せる以上、審査で必ず見られる |
-| `TERMS_URL` | 同上。`https://ubiqy.jp/terms/` |
-| `SUPPORT_EMAIL` | 先輩の説明・板書・質問がおかしかったときの報告先。AI生成コンテンツを含むアプリの導線として要る |
+| `API_BASE_URL` | `backend/api`'s URL. Locally `http://localhost:8787`. To reach your machine from a device, its LAN IP (e.g. `http://192.168.1.10:8787`). Empty falls back to `http://localhost:8787` |
+| `REVENUECAT_IOS_PUBLIC_SDK_KEY` | RevenueCat's iOS public key (starts with `appl_`). For production, once products exist in the store |
+| `REVENUECAT_ANDROID_PUBLIC_SDK_KEY` | The same for Android (starts with `goog_`) |
+| `REVENUECAT_SDK_KEY` | The Test Store key (starts with `test_`). RevenueCat's simulated store, which lets the purchase flow run end to end before products exist in App Store Connect / Play Console. **The same value for iOS and Android.** Used only when both keys above are empty |
+| `REVENUECAT_ENTITLEMENT_ID` | The dashboard's Entitlement identifier (not the display name). Empty means `premium`. Get this wrong and purchases succeed while nothing unlocks |
+| `REVENUECAT_OFFERING_ID` | Only when showing an Offering other than the default (for price experiments). Empty means current |
+| `ONESIGNAL_APP_ID` | Push reception. The App ID is a public value. Keep it **identical** to `backend/api`'s `ONESIGNAL_APP_ID`. The app (`PushConfig` in `push_repository.dart`) has no default, so **an empty build disables notifications entirely** (no init, no device registration). The REST API Key lives on the server and never here |
+| `SENTRY_DSN` | Monitoring for crashes and degradations (plan §10-7). A DSN is meant to be public and need not be secure. The app (`SentryConfig` in `src/telemetry/telemetry.dart`) has no default, so **an empty build disables monitoring entirely** (the SDK is not initialised). Take the value from Sentry's project settings > Client Keys (DSN) |
+| `PRIVACY_POLICY_URL` | The link shown from the settings screen. `https://ubiqy.jp/privacy/` (the same as declared in both stores). While empty, the row does not appear at all (no rows that do nothing when tapped). With a subscription in the app, review will always look for it |
+| `TERMS_URL` | As above. `https://ubiqy.jp/terms/` |
+| `SUPPORT_EMAIL` | Where to report a bad explanation, board or question from the senpai. Required as a route for an app containing AI-generated content |
 
-値は文字列・数値・真偽値だけです(入れ子のオブジェクト/配列は Flutter が受け付けません。
-`tool/run.sh` は渡す前にそこを見て落とします)。
+Values may only be strings, numbers or booleans (Flutter rejects nested objects and
+arrays; `tool/run.sh` checks for that and fails before passing them on).
 
-## CI との関係
+## Relation to CI
 
-Codemagic はこのファイルを読みません。ビルドマシンの環境変数
-(変数グループ `mobile-dart-defines`)を `codemagic.yaml` が `--dart-define=` に
-展開しています。**キーを足したらそちらにも足すこと** —— 足し忘れると、
-手元では動くのに配布ビルドだけ空、という差になります。
+Codemagic does not read these files. The build machine's environment variables
+(the `mobile-dart-defines` variable group) are expanded into `--dart-define=` by
+`codemagic.yaml`. **Adding a key here means adding it there too** - forget and it
+works locally while the distributed build gets an empty value.

@@ -1,12 +1,13 @@
-# docs/business — 事業・経営の意思決定
+# docs/business — business decisions
 
-プロダクトの方向性・市場・提携など、**事業側の意思決定と方針メモ**を置く場所。
-技術の意思決定は [`../adr/`](../adr) に、開発スコープの合意は
-[`../inception-deck.md`](../inception-deck.md) に置く(ここには置かない)。
+Where product direction, market and partnership notes live: **business-side
+decisions and policy memos**. Technical decisions go in [`../adr/`](../adr), and
+the agreed development scope in
+[`../inception-deck.md`](../inception-deck.md) (not here).
 
-ここの文書が「やらないことリスト」と食い違ったときは、デッキが正。
-デッキを動かしたくなったら、先にデッキを書き換えるPRを出す。
+When a document here conflicts with the "won't do" list, the deck wins.
+To move the deck, open a PR that rewrites the deck first.
 
-| 文書 | 内容 | 状態 |
+| Document | Content | Status |
 | --- | --- | --- |
-| [`business_direction_v0.md`](business_direction_v0.md) | カタルテから「本」への道筋 — ピボット2案の整理・PoCの3段再定義(H1体験/H2技術/H3事業)・料金とセッション設計(§3-2は棄却→§3-3が現行案)・「AIは問題を理解していない」問題への構え・出版業界への入り方 | 議論のたたき台(9/30まで開発スコープは動かさない) |
+| [`business_direction_v0.md`](business_direction_v0.md) | The route from Katarute to "the book" — the two pivot options, the PoC redefined in three stages (H1 experience / H2 technology / H3 business), pricing and session design (§3-2 rejected, §3-3 is the current proposal), the stance on "the AI does not understand the problem", and how to enter the publishing industry | Discussion draft (development scope does not move before 9/30) |

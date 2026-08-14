@@ -1,66 +1,72 @@
-# 図の一発生成を測る
+# Measuring one-shot figure generation
 
-`docs/wireframe_board_v2.html` の D-18 に載せた数字を出したもの。
-**「描けたか」ではなく「図が正しいか」**を測る。
+This produced the numbers in D-18 of `docs/wireframe_board_v2.html`.
+It measures **whether the figure is correct**, not whether one was drawn.
 
 ```
-bash run.sh          # 8問 × 2モデル × 3回 = 48回。out/ に生の出力が落ちる
-node check.mjs       # 採点
-TRIALS=5 MODELS="sonnet haiku" bash run.sh    # 増やすとき
+bash run.sh          # 8 problems x 2 models x 3 runs = 48. Raw output lands in out/
+node check.mjs       # scoring
+TRIALS=5 MODELS="sonnet haiku" bash run.sh    # to run more
 ```
 
-`out/` に結果が残っていれば飛ばすので、途中で止めても続きから走る。
+Results already in `out/` are skipped, so an interrupted run resumes.
 
-## 中身
+## What is here
 
-| ファイル | 何か |
+| File | What it is |
 |---|---|
-| `spec.md` | モデルに渡す仕様(システムプロンプト)。**これがそのまま `prompts/` に入る候補** |
-| `units.md` | **高校数学の全単元 × 必要な図 × いまの語彙。**出典つき |
-| `problems.mjs` | 各単元の典型問題と、**図から機械で測る不変量** |
-| `solver.mjs` | 作図 → 座標。ワイヤーフレームの `solve()` と同じもの(描画は落としてある) |
-| `check.mjs` | 採点。3段に分ける |
-| `run.sh` | モデルを回す |
+| `spec.md` | The spec handed to the model (the system prompt). **This is the candidate that goes into `prompts/` as-is** |
+| `units.md` | **Every high-school maths unit x the figure it needs x today's vocabulary**, with sources |
+| `problems.mjs` | A typical problem per unit, plus **invariants measured mechanically from the figure** |
+| `solver.mjs` | Construction -> coordinates. The same `solve()` as the wireframe (with rendering removed) |
+| `check.mjs` | Scoring, in three tiers |
+| `run.sh` | Runs the models |
 
-## 3段に分ける理由
+## Why three tiers
 
-混ぜると「直せば動く」を「動く」と読み違えるから。
+Conflated, "works if you fix it" reads as "works".
 
-- **`×J`** … JSON として読めない
-- **`×語`** … 読めるが語彙が違う・未定義の点を使う → **絵が出ない(気づける)**
-- **`×図`** … 絵は出るが**幾何が間違っている** → **気づけない。いちばん危ない**
-- **`○`** … 不変量まで通った
+- **`×J`** ... unreadable as JSON
+- **`×voc`** ... readable, but the vocabulary is wrong or an undefined point is used
+  -> **no figure appears (noticeable)**
+- **`×fig`** ... a figure appears but **the geometry is wrong** -> **unnoticeable,
+  and the most dangerous**
+- **`○`** ... passed even the invariants
 
-## 問題の選び方
+## How the problems are chosen
 
-**作図で組み立てたときだけ成り立ち、座標を当てずっぽうで書くと崩れる量**を測る。
-たとえば中線の問題は「2本の交点として G を置け」としか言わず、
-**3本目がそこを通るか**を見る。通るなら、作図として正しく組めている。
+They measure **an amount that only holds when built by construction and collapses
+when coordinates are guessed**. The median problem, for instance, only says "place G
+as the intersection of two medians" and then checks **whether the third passes
+through it**. If it does, the construction was assembled correctly.
 
-## 語彙を足すとき
+## Adding vocabulary
 
-1. `units.md` に「どの単元で要るか」を書く
-2. **機械で検算できる不変量を1本決める。**決まらないなら足さない
-3. `spec.md` に書式を足す(モデルが読むのはここだけ)
-4. `solver.mjs` に実装する。**一貫していなければならない値は、書かせずに計算する**
-5. `problems.mjs` に典型問題と不変量を足す
-6. 自作の模範解答で通ることを確かめてから、`run.sh` を回す
+1. Write in `units.md` which unit needs it
+2. **Decide one machine-checkable invariant.** If none can be decided, do not add it
+3. Add the syntax to `spec.md` (the only file the model reads)
+4. Implement it in `solver.mjs`. **Values that must be consistent are computed, never
+   written**
+5. Add a typical problem and its invariant to `problems.mjs`
+6. Confirm your own model answer passes, then run `run.sh`
 
-**5 と 6 を飛ばさない。**この会話では、飛ばさなかったおかげで
-「長さラベルが実際の長さと合っていない図」を出荷前に見つけられた。
+**Do not skip 5 and 6.** Not skipping them is how "a figure whose length label
+disagrees with the real length" was caught before shipping.
 
-## 落ちたときの読み方
+## Reading a failure
 
-- `×語` … **絵が出ない。**気づけるので、エラー文を付けて投げ直せば直ることが多い
-- `×図` … **絵は出る。中身が違う。**いちばん危ない。語彙の穴を疑う
-- `–` … 通信の失敗。分母から外している(モデルの成績ではない)
+- `×voc` ... **no figure appears.** Noticeable, and usually fixed by throwing it back
+  with the error text
+- `×fig` ... **a figure appears with wrong contents.** The most dangerous. Suspect a
+  gap in the vocabulary
+- `–` ... a transport failure. Excluded from the denominator (it is not the model's score)
 
-`×図` が出たら、まず**モデルではなく語彙を疑う**。この会話で出た `×図` の多くは、
-「言いたいことを書く手段が無くて、近いもので代用した」結果だった。
+When `×fig` appears, **suspect the vocabulary before the model**. Most of the `×fig`
+results here came from "there was no way to say it, so something close was substituted".
 
-## 測り方の落とし穴(実際に踏んだ)
+## A measurement pitfall (actually hit)
 
-`while read ... done < prompts.tsv` の中で `claude -p` を起動すると、
-**claude が標準入力を引き継いで残りの問題を全部読む。**
-8問まとめて答える出力が出て、モデルがカンニングしたように見える。
-`</dev/null` で塞ぐこと。`run.sh` にはその対策が入っている。
+Starting `claude -p` inside `while read ... done < prompts.tsv` makes
+**claude inherit stdin and consume the remaining problems**.
+The output answers all 8 at once and the model looks like it cheated.
+Close it with `</dev/null`; `run.sh` has that fix in place.
