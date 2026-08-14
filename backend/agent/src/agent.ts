@@ -210,6 +210,8 @@ export default defineAgent({
     void ended.then(() => interrupt.abort());
 
     let board: BoardDelivery | undefined;
+    // 再入の窓口(`serveBoardRequests`)の寿命。板書を締める前に畳み終わりを待つ。
+    let boardServing: Promise<void> | undefined;
     if (lessonMode) {
       const taught = await teachWithBoard({
         ctx,
@@ -238,7 +240,7 @@ export default defineAgent({
           return true;
         };
         // 窓口が落ちても会話は続ける(板書の再入が失われるだけで、致命ではない)。
-        serveBoardRequests({
+        boardServing = serveBoardRequests({
           taught,
           agent,
           session,
@@ -267,6 +269,17 @@ export default defineAgent({
     // 先に部屋を閉じる。開けたままだと上限時間を超えて話し続けられてしまう。
     const endedAt = new Date();
     await session.close().catch(() => undefined);
+
+    // **板書を締める前に、再入の窓口が畳み終わるのを待つ。**中断そのものは
+    // `interrupt.abort()` がもう伝えている。待たずに締めると、再入のパスが
+    // 送信しかけていた `board_step` と `board_close` が**同じ `seq` を取り合う**
+    // (`sendEnvelope` は送信を直列化していない)— 受信側にはそれが欠落に見えて、
+    // 正常に終わったセッションの板書が最後の1通でとぎれ判定になる。
+    // 上限つきで待つのは、詰まった `sendText` にカルテ生成まで道連れに
+    // されないため(セッションはもう閉じたので、待ちは配送の残りだけ)。
+    if (boardServing !== undefined) {
+      await drainBoardServing(boardServing, log);
+    }
 
     // **板書を締めるのはここだけ。**1つの問題が終わったので閉じる(§3-2)。
     // セッションを閉じたあとに送るのは、締めの封筒より先に声を止めたいから
@@ -634,6 +647,36 @@ async function teachWithBoard(options: TeachOptions): Promise<TaughtLesson | und
 }
 
 /**
+ * 再入の窓口が畳み終わるまで待つ時間の上限。
+ *
+ * 中断後に残る仕事は「送信しかけの封筒1通と読み上げの端切れ」だけで、
+ * セッションはもう閉じている(読み上げはそこで解ける)。5秒はモバイル側が
+ * 封筒1通を諦める時間(`_boardStreamTimeout`)と同じ桁 — それより長く粘っても、
+ * 相手はもうその封筒を待っていない。
+ */
+const boardServingDrainTimeoutMs = 5_000;
+
+/**
+ * 再入の窓口(`serveBoardRequests`)の畳み終わりを、上限つきで待つ。
+ *
+ * 待ち切れなかったときは警告だけ残して先へ進む — ここで無限に待つと、
+ * 詰まった `sendText` 1本がカルテ生成まで道連れにする。
+ */
+async function drainBoardServing(serving: Promise<void>, log: JobLogger): Promise<void> {
+  let timer: NodeJS.Timeout | undefined;
+  const timedOut = await Promise.race([
+    serving.then(() => false),
+    new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(true), boardServingDrainTimeoutMs);
+    }),
+  ]);
+  clearTimeout(timer);
+  if (timedOut) {
+    log.warn("board_serving_drain_timeout", { timeout_ms: boardServingDrainTimeoutMs });
+  }
+}
+
+/**
  * 教え返しの最中の「板書して」を、**同じ板書の続き**で応え続ける。
  *
  * 授業ループを抜けても板書は開いたまま(`board_close` はセッションの終わりだけ)で、
@@ -691,7 +734,9 @@ async function serveBoardRequests(options: {
       // ここから先に確定した発話は、ふつうの会話として応える(`teachWithBoard` と同じ)。
       agent.endLesson();
     }
-    const appended = lessonSteps(lesson.turns).length - before;
+    /** この依頼で新しく配送できた手順。 */
+    const appendedSteps = lessonSteps(lesson.turns).slice(before);
+    const appended = appendedSteps.length;
 
     if (appended === 0) {
       // 板書では応えられなかった(生成が丸ごと落ちた)。**黙って終わらせない** —
@@ -720,11 +765,27 @@ async function serveBoardRequests(options: {
     taught.turns = lesson.turns;
     const leftover = utterances.tryTake();
 
-    log.info("board_request_served", {
-      board_id: lesson.board_id,
-      appended,
-      reason: lesson.reason,
-    });
+    // **手順数ではなく「板書に何行載ったか」も見る**(`lesson_finished` の `written` と
+    // 同じ理由)。板書と名指しされた依頼に声だけで応えた回は、ここが 0 になる。
+    // それでも会話LLMへは倒さない — 会話LLMも板書に書く口を持たないので、
+    // 倒した先で出るのは二重の返事だけ。確認の問いかけ(`board: null`)で止まって
+    // 答えを待った回も正常にここを通る。頻発するなら継続プロンプトを疑う材料として、
+    // warn で区別して残す。
+    const written = appendedSteps.filter((step) => step.board !== null).length;
+    if (written === 0) {
+      log.warn("board_request_wrote_nothing", {
+        board_id: lesson.board_id,
+        appended,
+        reason: lesson.reason,
+      });
+    } else {
+      log.info("board_request_served", {
+        board_id: lesson.board_id,
+        appended,
+        written,
+        reason: lesson.reason,
+      });
+    }
 
     // 積んだ続きも教え返しの文脈に入れる。ここを怠ると、先輩は
     // 「いま自分が書いたもの」を知らないまま説明の続きを聞くことになる。
