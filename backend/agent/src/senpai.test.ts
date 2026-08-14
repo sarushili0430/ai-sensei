@@ -2,12 +2,16 @@ import type { BoardStep } from "@ai-sensei/contract";
 import { describe, expect, it } from "vitest";
 import { readSessionContext } from "./context.ts";
 import {
+  type LessonTurn,
+  asksForTeachBack,
   handsTurnToStudent,
+  lessonContinuationInstruction,
   lessonFailedPrompt,
   lessonRecapMaxLength,
   renderLessonRecap,
   reviewOpening,
   senpaiConversationPrompt,
+  studentSilenceMarker,
   teachBackPrompt,
 } from "./senpai.ts";
 import { sessionMetadataJson } from "./test-support.ts";
@@ -50,11 +54,12 @@ const englishContext = readSessionContext(
   }),
 );
 
-const step = (index: number, speech: string, board: BoardStep["board"]): BoardStep => ({
-  index,
-  speech,
-  board,
+const step = (index: number, speech: string, board: BoardStep["board"]): LessonTurn => ({
+  kind: "step",
+  step: { index, speech, board },
 });
+
+const said = (text: string): LessonTurn => ({ kind: "student", text });
 
 describe("定型の一言", () => {
   it("言語ごとに別の文言を返す", () => {
@@ -129,6 +134,35 @@ describe("handsTurnToStudent", () => {
   });
 });
 
+describe("asksForTeachBack", () => {
+  // 授業の往復を終える唯一の合図。板書プロンプトが最後の手順に固定している文言の族。
+  it("教え返しへの受け渡しだけを true にする", () => {
+    expect(asksForTeachBack("じゃあ今の、自分の言葉で説明してみて。", "ja")).toBe(true);
+    expect(asksForTeachBack(teachBackPrompt("ja"), "ja")).toBe(true);
+    expect(asksForTeachBack(teachBackPrompt("en"), "en")).toBe(true);
+    expect(asksForTeachBack("Now explain that back to me in your own words.", "en")).toBe(true);
+  });
+
+  /**
+   * 途中の問いかけは番を渡すが(`handsTurnToStudent` は true)、授業は終わらない。
+   * ここを取り違えると、質問を1つしただけで板書の続きが書けなくなる —
+   * 「先輩がすぐ説明を投げてくる」というドッグフーディングの報告の形そのもの。
+   */
+  it("途中の問いかけでは終わらない", () => {
+    for (const speech of [
+      "最小公倍数、何になると思う?",
+      "この式の a と b と c、どれ?",
+      "最初の一手、言ってみて。",
+      "これ、まず何する?",
+    ]) {
+      expect(asksForTeachBack(speech, "ja"), speech).toBe(false);
+      expect(handsTurnToStudent(speech, "ja"), speech).toBe(true);
+    }
+    expect(asksForTeachBack("What do you think the LCM is?", "en")).toBe(false);
+    expect(asksForTeachBack("", "ja")).toBe(false);
+  });
+});
+
 describe("renderLessonRecap", () => {
   it("板書の種類ごとに1行で書き下す", () => {
     const recap = renderLessonRecap(
@@ -153,6 +187,41 @@ describe("renderLessonRecap", () => {
     ]);
   });
 
+  /**
+   * 往復した授業では、生徒の答えも要約に入る。ここが無いと、会話LLMは
+   * 「最小公倍数、何になると思う?」に生徒がもう答えたことを知らず、
+   * **同じ質問をもう一度聞く**ところから教え返しが始まる。
+   */
+  it("生徒の発話をロール名つきで挟む", () => {
+    const recap = renderLessonRecap(
+      [
+        step(0, "最小公倍数、何になると思う?", null),
+        said("12だと思う"),
+        step(1, "そう、12だよね。", { kind: "latex", tex: "x = 12" }),
+      ],
+      "ja",
+    );
+
+    expect(recap.split("\n")).toEqual([
+      "1. 「最小公倍数、何になると思う?」",
+      "ユーザー: 「12だと思う」",
+      "2. 「そう、12だよね。」 / 板書: x = 12",
+    ]);
+  });
+
+  it("英語では英語のロール名と引用符になる", () => {
+    const recap = renderLessonRecap(
+      [step(0, "What do you think the LCM is?", null), said("Twelve, I think")],
+      "en",
+    );
+
+    expect(recap.split("\n")).toEqual([
+      '1. "What do you think the LCM is?"',
+      'Student: "Twelve, I think"',
+    ]);
+    expect(recap).not.toMatch(/[ぁ-んァ-ン一-龯]/);
+  });
+
   // instructions は毎ターン全部送られる。板書1枚は最大40手順あるので、
   // 上限がないと会話のたびに板書ぶんの入力トークンを払い続けることになる。
   it("上限を超えたら末尾を落とす(先頭は残す)", () => {
@@ -173,6 +242,53 @@ describe("renderLessonRecap", () => {
     expect(renderLessonRecap([], "ja")).toContain("まだ板書には何も出していません");
     expect(renderLessonRecap([], "en")).toContain("nothing on the board yet");
     expect(renderLessonRecap([], "en")).not.toMatch(/[ぁ-んァ-ン一-龯]/);
+  });
+});
+
+describe("lessonContinuationInstruction", () => {
+  const turns: LessonTurn[] = [
+    step(0, "まず、式をそのまま書くね。", { kind: "latex", tex: "x^2 - 3x + 2 = 0" }),
+    step(1, "最小公倍数、何になると思う?", null),
+    said("えっと、12?"),
+  ];
+
+  it("ここまでのやりとりと、続きだけを書く指示が入る", () => {
+    const instruction = lessonContinuationInstruction(turns, "ja");
+
+    expect(instruction).toContain("x^2 - 3x + 2 = 0");
+    expect(instruction).toContain("生徒: 「えっと、12?」");
+    expect(instruction).toContain("続きだけを書きます");
+    expect(instruction).toContain("`index` はまた 0 から");
+  });
+
+  // 答えの直前が読めないと、続きがその答えと噛み合わない。
+  // 教え返しの要約(先頭を残す)とは逆で、こちらは**末尾**を残す。
+  it("溢れたら先頭を落として、直近のやりとりを残す", () => {
+    const many: LessonTurn[] = Array.from({ length: 60 }, (_, index) =>
+      step(index, `${index}番目。${"あ".repeat(90)}`, null),
+    );
+    many.push(said("最後の答え"));
+
+    const instruction = lessonContinuationInstruction(many, "ja");
+
+    expect(instruction).toContain("最後の答え");
+    expect(instruction).not.toContain("「0番目。");
+  });
+
+  it("英語では英語の指示になる", () => {
+    const instruction = lessonContinuationInstruction(
+      [step(0, "What do you think the LCM is?", null), said("Twelve?")],
+      "en",
+    );
+
+    expect(instruction).toContain('Student: "Twelve?"');
+    expect(instruction).toContain("write only what comes next");
+    expect(instruction).not.toMatch(/[ぁ-んァ-ン一-龯]/);
+  });
+
+  it("沈黙の記録は会話の言語で書かれている", () => {
+    expect(studentSilenceMarker("ja")).toBe("(返事はなかった)");
+    expect(studentSilenceMarker("en")).toBe("(no reply)");
   });
 });
 
