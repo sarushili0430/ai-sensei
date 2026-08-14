@@ -1,155 +1,158 @@
-# ピボット計画 v1 — 「家庭教師AI(先輩)」へ
+# Pivot Plan v1 — toward "the private-tutor AI (Senpai)"
 
-作成日: 2026-08-09 / 対象: App Store バイナリ提出 2026-09-05 → Shipaton 提出 2026-09-30
-一次情報: [`inception-deck.md`](inception-deck.md)・[`business/business_direction_v0.md`](business/business_direction_v0.md)
+Written: 2026-08-09 / Target: App Store binary submission 2026-09-05 → Shipaton submission 2026-09-30
+Primary sources: [`inception-deck.md`](inception-deck.md), [`business/business_direction_v0.md`](business/business_direction_v0.md)
 
-この文書は、**提出物ごと「家庭教師AI」に差し替える**という決定と、その具体的な設計・計画を記録する。
-[`inception-deck.md`](inception-deck.md) の §0「4つの約束」の**1番目を部分改正する**ので、
-デッキを書き換えるPRとセットで扱うこと(§9)。
+This document records the decision to **replace the whole submission with a private-tutor AI**, plus the
+design and plan that follow from it. It **partially amends the first of the four promises** in
+[`inception-deck.md`](inception-deck.md) §0, so ship it together with the PR that rewrites the deck (§9).
 
 ---
 
-## 0. 決定事項(2026-08-09)
+## 0. Decisions (2026-08-09)
 
-| # | 決定 |
+| # | Decision |
 | --- | --- |
-| 1 | **提出物ごと家庭教師AIに差し替える**(現行スコープ死守はやめる) |
-| 2 | **板書レイヤーを作る**(LaTeX + 図形プリミティブ数種)。音声だけでは数学は教えられない |
-| 3 | **キャラは「先輩」に配役変更**(後輩から) |
-| 4 | **問題とノートをセットで送る**(グラウンディング) |
-| 5 | **セッションは質問1つにつき15〜20分** |
-| 6 | **払うのは親**。月5,000円を仮置き(実測後に確定・§6) |
-| 7 | **学習計画機能を入れる**(親向けの説明材料として必要。ただしフォームではなく音声で作る) |
-| 8 | ~~**同席型(自習室)をやる**。ただし原価ゼロで実装する~~ → **2026-08-11に撤回**([ADR 0006](adr.md#adr-0006))。原価ではなく注意を使っていたため畳んだ。板書はカルテへ移した |
+| 1 | **Replace the whole submission with a private-tutor AI** (stop defending the current scope) |
+| 2 | **Build a board layer** (LaTeX + a few figure primitives). Voice alone cannot teach math |
+| 3 | **Recast the character as a "senpai"** (was a kouhai) |
+| 4 | **Send the problem and the notebook together** (grounding) |
+| 5 | **One session = one question, 15–20 min** |
+| 6 | **The parent pays.** ¥5,000/month as a placeholder (fixed after measurement, §6) |
+| 7 | **Add study planning** (needed as an explanation to parents — but built by voice, not a form) |
+| 8 | ~~**Do the co-presence (study room) mode**, at zero marginal cost~~ → **withdrawn 2026-08-11** ([ADR 0006](adr.md#adr-0006)). Folded because it spent attention, not cost. The board moved to the karte |
 
-### 憲法の部分改正
+### Partial constitutional amendment
 
-デッキ §0 の4つの約束のうち、**1番目だけを改正する**。残る3つは無傷。
+Of the four promises in deck §0, **only the first is amended**. The other three are untouched.
 
-| # | 約束 | 改正後 |
+| # | Promise | After |
 | --- | --- | --- |
-| 1 | ~~答えを教えない~~ | **教える。そのあと教え返させる** |
-| 2 | 点数を出さない | 維持(親レポートで最も破られやすい・§5-2) |
-| 3 | パスを恥にしない | 維持 |
-| 4 | 煽らない | 維持(上限は「先輩の判断」として実装・§6-3) |
+| 1 | ~~Never give the answer~~ | **Teach. Then have them teach it back** |
+| 2 | No scores | Kept (most easily broken in the parent report, §5-2) |
+| 3 | Passing is never shameful | Kept |
+| 4 | No nagging | Kept (the cap ships as "the senpai's judgement", §6-3) |
 
-新しい一言:
+The new one-liner:
 
-> **答えを教える。そのあと、あなたに教え返してもらう。**
+> **We give you the answer. Then you teach it back to us.**
 > The AI tutor that teaches you — then asks you to teach it back.
 
-アプリ名「カタルテ(語る × カルテ)」は**生き残る**。教え返すのはユーザーなので、語るのは今もユーザー。
+The name "Katarute" (*kataru* × *karte*) **survives**: the user is the one teaching back, so the user is
+still the one talking.
 
 ---
 
-## 1. なぜこの形か — 4つの問題が同時に解ける
+## 1. Why this shape — it solves four problems at once
 
-「教えて終わり」ではなく「教える → その場で教え返させる」を1周にした理由。
+Why the loop is "teach → have them teach it back on the spot" rather than "teach and stop".
 
-1. **誤読の保険が残る。** AIが問題を誤読しても、ユーザーの説明が破綻することで表面化する。
-   [`business_direction_v0.md` §3-3](business/business_direction_v0.md) の
-   「AIが理解している建て付けのアプリほど誤読が致命傷になる」への唯一の手当て
-2. **原価が構造的に閉じる。** AIが喋るのは「教える」区間だけ。残りはユーザーが喋る。
-   TTS支配項が青天井にならない
-3. **OneSignal賞($25k・最有力)が生き残る。** 説明が詰まった箇所は今まで通り**観測事実**として
-   カルテに残り、1/3/7日の再訪が成立する。「質問した内容をメモ」だけでは
-   known-unknowns しか拾えず、カルテが劣化する
-4. **既存資産がほぼ全部生きる。** 新規開発が板書レイヤー1つに絞れる(§8の棚卸し)
+1. **The misreading insurance survives.** If the AI misreads the problem, the user's explanation breaks
+   down and the misreading surfaces. It is the only remedy for
+   [`business_direction_v0.md` §3-3](business/business_direction_v0.md) — "the more the app is built on the
+   AI understanding things, the more fatal a misreading is"
+2. **Cost closes structurally.** The AI only speaks during the "teach" span; the user speaks for the rest,
+   so the TTS-dominated term does not run away
+3. **The OneSignal prize ($25k, our best shot) survives.** Places where the explanation stalls still land in
+   the karte as **observed fact**, so the 1/3/7-day revisit still works. "Note what they asked about" would
+   only capture known-unknowns and would degrade the karte
+4. **Almost every existing asset stays.** New development narrows to the board layer alone (inventory in §8)
 
-### 却下した案とその理由
+### Options we rejected, and why
 
-| 案 | 却下理由 |
+| Option | Why rejected |
 | --- | --- |
-| 教えて終わり(教え返させない) | 誤読が致命傷になる。原価が閉じない。カルテの根拠が消える |
-| 「質問した内容をメモ」を穴の定義にする | known-unknowns しか拾えない。`business_direction_v0.md §3-3`「わかったつもりの穴は、本人が『怪しい』と思っていない場所にある」に反する |
-| 小テストをAIが採点する | 約束2が死ぬ。かつ**AIの誤読を1/3/7日で3回強化する**(最悪の失敗モード) |
-| 常時マイクの同席型 | STT/VADが在室時間ぶん課金される。原価が別物になる → §4-2 の原価ゼロ実装に置換 |
-| 回数制限(1日N回) | 不満を生む。`business_direction_v0.md §3-3` の棄却判断は今も有効 → §6-3 の「先輩が締める」に置換 |
-| 学習計画をフォーム入力で作る | 価値を体験する前の摩擦が最大。初回離脱 → §4-3 の音声入力に置換 |
+| Teach and stop (no teach-back) | Misreadings become fatal. Cost never closes. The karte loses its evidence |
+| Define a gap as "what they asked about" | Only captures known-unknowns. Contradicts `business_direction_v0.md §3-3`: "the gaps you think you understand sit where you don't suspect anything" |
+| Have the AI grade the quiz | Kills promise 2, and **reinforces the AI's misreading three times over 1/3/7 days** (the worst failure mode) |
+| Co-presence with the mic always open | STT/VAD bill for the whole time in the room. A different cost structure → replaced by the zero-cost build in §4-2 |
+| A hard cap (N per day) | Breeds resentment. The rejection in `business_direction_v0.md §3-3` still holds → replaced by "the senpai calls it a day" in §6-3 |
+| Build the study plan from a form | Maximum friction before any value is felt; first-run drop-off → replaced by voice input in §4-3 |
 
 ---
 
-## 2. コアループ
+## 2. The core loop
 
 ```
-問題+ノートを撮る
+photograph the problem + the notebook
   ↓
-先輩が板書つきで教える              ← 新規: 板書レイヤー(§3)
+the senpai teaches, with a board          ← new: the board layer (§3)
   ↓
-「じゃあ今の、説明してみて」          ← 既存: 会話パイプライン
+"okay, explain that back to me"           ← existing: the conversation pipeline
   ↓
-詰まった箇所が穴としてカルテに残る    ← 既存: karte生成
+where they stall becomes a gap in the karte  ← existing: karte generation
   ↓
-1/3/7日後に小テストで再訪            ← 既存: OneSignal + 出題生成を追加
-  ├ 言えた   → 穴が埋まる。10秒で終了(声を出さなくていい)
-  └ 詰まった → その場で先輩を呼び直す → 授業モードへ
+revisit via a quiz after 1/3/7 days       ← existing: OneSignal + new question generation
+  ├ said it     → the gap closes. Done in 10s (no need to speak aloud)
+  └ stalled     → call the senpai back right there → lesson mode
 ```
 
-**小テストを入口に、説明を本体にする**のがポイント。
-通常は10秒のテキストで完結するので、デッキ §7-5 の未解決懸念(「高校生が声を出せない。
-電車・リビング・深夜」)にそのまま答えになっている。
+The point is to make **the quiz the entrance and the explanation the body**. It normally finishes as 10
+seconds of text, which directly answers the open concern in deck §7-5 ("high schoolers can't speak aloud —
+trains, living rooms, late at night").
 
-### 小テストの設計制約(重要)
+### Quiz design constraints (important)
 
-| ルール | 理由 |
+| Rule | Why |
 | --- | --- |
-| **出題元は「ユーザーが説明した内容」。AIが教えた内容から作らない** | AIの誤読を間隔反復で強化しないため |
-| **採点はAIではなく自己申告**(言えた / 言えなかった) | 約束2「点数を出さない」を守る。判定者は本人 |
-| 1回1問・テキストで10秒 | 摩擦をゼロにする。再訪率が本体 |
+| **Questions come from what the user explained, never from what the AI taught** | So spaced repetition never reinforces the AI's misreading |
+| **Self-reported, not AI-graded** (said it / didn't) | Keeps promise 2, "no scores". The judge is the student |
+| One question, text, 10 seconds | Zero friction. Revisit rate is the real metric |
 
 ---
 
-## 3. 板書レイヤー(最大の新規開発・最大のリスク)
+## 3. The board layer (the biggest new build, and the biggest risk)
 
-### 3-1. 設計原則 — これは見た目の機能ではなく、原価の主柱
+### 3-1. Design principle — this is a cost pillar, not a cosmetic feature
 
-> **数式・計算・図は板書。音声は問いかけと接続だけ。**
+> **Formulas, arithmetic and figures go on the board. Voice carries only the question and the connective tissue.**
 
-本物の家庭教師は、書いている間は喋っていない。この原則は体験改善と原価削減が同じ一手になる
-([`business_direction_v0.md` §3-3](business/business_direction_v0.md) と同じ構造)。
-
-```
-❌ 音声のみ  「エックスの二乗マイナス3エックスプラス2イコールゼロなので、
-              判別式Dは9マイナス8で1、これは正だから…」(60字)
-
-✅ 板書あり  板書: x² − 3x + 2 = 0  →  D = 9 − 8 = 1 > 0
-              音声: 「ここ、Dを見てほしいんだけど — プラスだよね。だから?」(25字)
-```
-
-TTS文字数が半分以下になり、しかも理解しやすい。**この原則を破る実装は却下する。**
-
-### 3-2. 同期方式 — 手順単位(ミリ秒同期はしない)
-
-会話は「トークンが出た端からTTSに流す」ことで低レイテンシを得ている。板書は構造を必要とする。
-この衝突を、**同期の粒度を手順に落とす**ことで解く。
+A real tutor is not talking while they write. This principle makes experience and cost the same move (the
+same structure as [`business_direction_v0.md` §3-3](business/business_direction_v0.md)).
 
 ```
-LLM が {speech, board} の配列をストリーミングJSONで出力
-  ↓ agent が「手順1つ」完成するたびに
-board を LiveKit data channel で送信 → 直後に speech を TTS
+❌ voice only  "x squared minus three x plus two equals zero, so the discriminant D
+                is nine minus eight, one, which is positive, therefore…"  (60 chars)
+
+✅ with board  board: x² − 3x + 2 = 0  →  D = 9 − 8 = 1 > 0
+                voice: "look at D here — it's positive, right? So?"  (25 chars)
+```
+
+TTS character count halves, and it is easier to follow. **Any implementation that breaks this principle is
+rejected.**
+
+### 3-2. Sync model — per step (no millisecond sync)
+
+Conversation gets its low latency by streaming tokens into TTS as they arrive; the board needs structure.
+We resolve the conflict by **dropping the sync granularity to one step**.
+
+```
+the LLM streams an array of {speech, board} as streaming JSON
+  ↓ each time the agent completes one step
+send board over the LiveKit data channel → then speech to TTS
   ↓
-フロントは受信順に1行ずつ積む(前の行は消さない・残り続ける)
+the frontend stacks one line per arrival (earlier lines are never erased)
 ```
 
-| 案 | 判定 |
+| Option | Verdict |
 | --- | --- |
-| **A. 手順単位の同期** | **採用。**割り込み可能・レイテンシ許容・実装が現実的 |
-| B. 全部生成してから再生 | 却下。会話でなくなる(割り込めない・待たされる) |
-| C. TTSのword timestampで語単位同期 | 却下。4週間では死ぬ |
+| **A. Per-step sync** | **Adopted.** Interruptible, latency-tolerant, realistic to build |
+| B. Generate everything, then play | Rejected. It stops being a conversation (no interruption, long wait) |
+| C. Word-level sync via TTS word timestamps | Rejected. Would kill us inside four weeks |
 
-**残る問題**: 最初の手順が出るまでの数秒が無音になる。
-→ 「なるほど、じゃあ一緒に見てみようか」を**事前生成音声アセット**で埋める
-(§3-3 の「相づちのプリレンダ」と同じ発想。TTS呼び出しゼロ)。
+**Remaining problem**: a few seconds of silence before the first step arrives.
+→ Fill it with a **pre-generated audio asset** ("right, let's take a look together") — same idea as the
+pre-rendered backchannels in §3-3, with zero TTS calls.
 
-### 3-3. 契約スキーマ(`packages/contract` に置く)
+### 3-3. Contract schema (lives in `packages/contract`)
 
 ```ts
-// packages/contract/src/board.ts (新規)
+// packages/contract/src/board.ts (new)
 export type BoardStep = {
   index: number;
-  /** 読み上げる文。問いかけと接続だけ。数式を音声で読み上げない(§3-1) */
+  /** The sentence to speak. Questions and connectives only — never read a formula aloud (§3-1) */
   speech: string;
-  /** 板書に積む要素。null なら音声のみ(相づち・確認) */
+  /** The element to stack on the board. null means voice only (backchannel, confirmation) */
   board: BoardElement | null;
 };
 
@@ -161,466 +164,478 @@ export type BoardElement =
   | { kind: "circle"; center: Pt; r: number; labels?: string[] };
 ```
 
-- 図形は**プリミティブを3〜4種に固定**し、LLMにはパラメータだけ吐かせる(自由描画をさせない)
-- LaTeX描画は Flutter 側で `flutter_math_fork`
-- 送信は LiveKit data channel。`packages/contract` に置いて**モバイルとagentの両方が同じ形を検証する**
-  (既存の `api.ts` / `karte.ts` と同じ方針)
+- Figures are **fixed to three or four primitives**; the LLM emits parameters only (no free drawing)
+- LaTeX rendering is `flutter_math_fork` on the Flutter side
+- Sent over the LiveKit data channel. It lives in `packages/contract` so **mobile and the agent validate the
+  same shape** (the same policy as the existing `api.ts` / `karte.ts`)
 
-### 3-4. W1末のゲート(8/16)
+### 3-4. The gate at the end of W1 (8/16)
 
-> **板書つきで1問教わって「わかる」に到達するか。**
+> **Can you learn one problem with the board and reach "I get it"?**
 
-**未達時のフォールバックを先に決めておく**(判断を先送りしない)。
-ただし**フォールバックは2種類あり、別物である**ことに注意する。
+**Decide the fallback in advance** (don't defer the call). Note that there are **two fallbacks, and they are
+different things**.
 
-| 壊れ方 | フォールバック |
+| Failure mode | Fallback |
 | --- | --- |
-| **生成の質**が出ない(LLMの板書がわかりにくい) | LLMに自由に板書させるのをやめ、**解法ステップのテンプレに沿わせる**。テンプレは単元ごとに数種(「方程式を解く」「グラフを描いて交点を見る」「場合分けする」) |
-| **描画**が壊れる(LaTeXが表示できない・崩れる) | 上のテンプレ化では**守れない**。§3-6 の許可コマンド照合で、描画できる範囲にスキーマ側から縛る |
+| **Generation quality** is missing (the LLM's board is hard to follow) | Stop letting the LLM board freely; **make it follow a solution-step template**. A few templates per unit ("solve the equation", "graph it and read off the intersection", "split into cases") |
+| **Rendering** breaks (LaTeX won't display, or displays wrong) | Templating **does not help here**. Constrain from the schema side via the allow-list check in §3-6 |
 
-### 3-5. Flutter側の実装方針(2026-08-09 調査で確定)
+### 3-5. Flutter implementation plan (settled by the 2026-08-09 investigation)
 
-`livekit_client 2.10.0` / Flutter 3.44.8 の実ソースを読んで確認した結果。
+Confirmed by reading the actual sources of `livekit_client 2.10.0` / Flutter 3.44.8.
 
-| 論点 | 決定 | 根拠 |
+| Question | Decision | Evidence |
 | --- | --- | --- |
-| **受信経路** | **Text Streams API**(`registerTextStreamHandler` + 専用topic)。生の `publishData` は使わない | `stream_writer.dart` が内部で常に `Reliability.reliable` に固定する。一方 `publishData` の `reliable` 既定は **false(LOSSY)** で、書き忘れると欠落・順不同が起きる。**地雷そのものを踏まない経路を選ぶ** |
-| **順序保証** | reliable経路が面倒を見る | `engine.dart` で送信側が単調増加 `sequence` を付与、受信側が重複排除、再接続時は `lastMessageSeq` 以降を再送 |
-| **1手順の受信単位** | **1手順 = 1ストリーム**とし、`readAll()` で完成を待つ | チャンク境界をまたぐ部分JSONを自前で組み立てる必要がなくなる。封筒に index を持たせてあるので、欠落は受信側で検知できる |
-| **readAll()の完了順(2026-08-10・実装で判明)** | 受信側は `readAll()` を1本の Future の鎖(`session_controller.dart` の `_boardQueue`)に**直列化**する | ハンドラは封筒の到着順に呼ばれるが、`readAll()` の完了順まで同じとは限らない(封筒ごとにチャンク数が違えば、後に届いた封筒が先に読み終わる)。追い越しが起きると、受信側の `seq` 検算はそれを**欠落として誤認**する——実際には全部届いているのに板書がとぎれる。**罠として重い**: 追い越しが起きるかどうかは封筒ごとのチャンク数(= `tex` や `speech` の長さ)と回線次第なので、**同じ問題を教わっても起きたり起きなかったりする**。しかも症状は「板書がとぎれました」——配送は正常なのに、欠落検知のほうが誤報する。これを知らずに再実装すると、原因の切り分けに何日か溶ける |
-| **LaTeX描画** | `flutter_math_fork` 0.7.4(**リスクあり・§3-6**) | Flutter 3.44.8 と互換。高校数学に必要な範囲(分数・根号・指数・添字・総和・積分・行列・`cases`)は非サポート一覧に含まれない |
-| **図形描画** | **`CustomPainter` を自前で書く**(`fl_chart` は不採用) | `fl_chart` に三角形・角度マークに対応する型がない。加えて既存の `common_widgets/marker_text.dart` が「進捗値でペン先を走らせる `CustomPainter`」を既に確立しており、**板書の「1行ずつ積んで残り続ける」要件と設計思想が一致する**。`AppDurations.draw = 420ms` も流用できる |
-| **golden test** | 要素ごとに単体golden + 「3手順積んだ最終状態」を1枚 | 既存の `reduceMotion`(`test/support/harness.dart`)でアニメを終了状態に固定する運用に乗せる。タイミングではなく最終状態を検証対象にする |
+| **Receive path** | **Text Streams API** (`registerTextStreamHandler` + a dedicated topic). Never raw `publishData` | `stream_writer.dart` always pins `Reliability.reliable` internally, whereas `publishData` defaults `reliable` to **false (LOSSY)** — forget it once and you get loss and reordering. **Pick the path that has no mine to step on** |
+| **Ordering** | The reliable path handles it | In `engine.dart` the sender attaches a monotonic `sequence`, the receiver dedupes, and on reconnect everything after `lastMessageSeq` is resent |
+| **Unit of receipt** | **One step = one stream**, awaited to completion with `readAll()` | No need to hand-assemble partial JSON across chunk boundaries. The envelope carries an index, so the receiver can still detect loss |
+| **readAll() completion order (found in implementation, 2026-08-10)** | The receiver **serializes** `readAll()` onto a single Future chain (`_boardQueue` in `session_controller.dart`) | Handlers fire in envelope arrival order, but `readAll()` does not necessarily *complete* in that order (envelopes with fewer chunks finish sooner). When one overtakes another, the receiver's `seq` check **misreads it as loss** — the board breaks up even though everything arrived. **A heavy trap**: whether overtaking happens depends on per-envelope chunk count (i.e. the length of `tex` / `speech`) and the connection, so **the same problem can teach fine one time and break the next**. And the symptom is "the board broke up" — delivery was fine; the loss detector is the thing crying wolf. Re-implement this without knowing it and you lose days to triage |
+| **LaTeX rendering** | `flutter_math_fork` 0.7.4 (**risky, §3-6**) | Compatible with Flutter 3.44.8. Everything high-school math needs (fractions, radicals, exponents, subscripts, sums, integrals, matrices, `cases`) is absent from the unsupported list |
+| **Figure rendering** | **Hand-write a `CustomPainter`** (`fl_chart` rejected) | `fl_chart` has no type for triangles or angle marks. The existing `common_widgets/marker_text.dart` already establishes "a `CustomPainter` driven by a progress value", which **matches the board's stack-one-line-and-keep-it requirement**. `AppDurations.draw = 420ms` is reusable too |
+| **golden test** | A unit golden per element, plus one shot of "three steps stacked" | Rides the existing `reduceMotion` practice (`test/support/harness.dart`) that pins animations to their end state. We verify the final state, not the timing |
 
-**副産物**: 板書が既存の蛍光マーカー表現と同じ筆致になる。カルテの黄/ピンクのマーカーと
-板書のペン先が同じモーション言語で揃うので、Design Award の観点でも有利。
+**Side benefit**: the board picks up the same stroke as the existing highlighter treatment. The karte's
+yellow/pink marker and the board's pen tip share one motion language — good for the Design Award too.
 
-### 3-6. LaTeXの検証(`packages/guardrail`)— 三段構え
+### 3-6. LaTeX validation (`packages/guardrail`) — three layers
 
-`flutter_math_fork` は**最終リリースが2025-05-21(約15ヶ月前)、Open issue 43件**、
-本家 `flutter_math` はメンテ終了。これを4週間のクリティカルパスに置く以上、
-**描画できないものが送られてこない**ことを保証する層が要る。
+`flutter_math_fork`'s **last release was 2025-05-21 (~15 months ago), with 43 open issues**, and upstream
+`flutter_math` is unmaintained. Putting that on a four-week critical path demands a layer that guarantees
+**nothing unrenderable is ever sent**.
 
-**2026-08-09 の実測スパイクで、描画そのものは合格。**約30式(教科書記法の
-`{}_n\mathrm{P}_r` / `{}_n\mathrm{C}_r`、二項定理、`pmatrix`、`cases`、`\overrightarrow`、
-`\lim`、定積分、極形式を含む)をPNG化して目視し、**崩れ0件**を確認した。
-依存衝突もなし(`flutter_svg` / `provider` など9パッケージが推移的に増えるのみ)。
+**The 2026-08-09 measurement spike passed on rendering itself.** ~30 formulas (textbook notation
+`{}_n\mathrm{P}_r` / `{}_n\mathrm{C}_r`, the binomial theorem, `pmatrix`, `cases`, `\overrightarrow`,
+`\lim`, definite integrals, polar form) were rendered to PNG and inspected: **zero broken**. No dependency
+conflicts either (nine packages such as `flutter_svg` / `provider` come in transitively, nothing more).
 
-検証は3層に分ける。**単層では防げない壊れ方がそれぞれ違う**ため。
+Validation splits into three layers, because **each catches a different way of breaking**.
 
-| 層 | どこ | 何を防ぐ |
+| Layer | Where | What it prevents |
 | --- | --- | --- |
-| **① 式テンプレート** | プロンプト(生成側) | 「許可コマンドの正しい**組み合わせ方**」までは②で保証できない(`\frac{\frac{}{}}{}{}` の引数過不足など)。定数部を固定し変数だけ埋めさせる形を、頻出の式について用意する |
-| **② コマンドのホワイトリスト** | `packages/guardrail`(純関数) | **移植版が対応していない**コマンドを弾く。許可するのは実測でPNGを見て確認したものだけ(下記)。`\href` `\includegraphics` 等も副次的に落ちる |
-| **③ KaTeXでの実パース** | `backend/agent`(送信前) | **構文の壊れ**(括弧の閉じ忘れ・引数の過不足)を弾く。`flutter_math_fork` はKaTeXのDart移植なので、Node側で本家KaTeXにパースさせれば構文エラーは事前に捕まる。※KaTeXが通っても移植版が対応しているとは限らないので、②と併用が必須 |
+| **① Formula templates** | Prompt (generation side) | Layer ② can't guarantee the **correct combination** of allowed commands (wrong arity in `\frac{\frac{}{}}{}{}` and friends). Fix the constant parts and let the model fill in variables, for the common formulas |
+| **② Command whitelist** | `packages/guardrail` (pure functions) | Rejects commands **the port doesn't support**. Only what was verified by looking at rendered PNGs is allowed (below). Also incidentally drops `\href`, `\includegraphics`, etc. |
+| **③ Real parse in KaTeX** | `backend/agent` (before sending) | Rejects **broken syntax** (unclosed braces, wrong arity). `flutter_math_fork` is a Dart port of KaTeX, so parsing with real KaTeX on the Node side catches syntax errors up front. Note: passing KaTeX does not imply the port supports it, so ② is still mandatory |
 
-外れたものは agent 側で**再生成させる**(`topic_id` のホワイトリスト照合と同じ二重ガードの構え。デッキ §6)。
+Rejects are **regenerated** on the agent side (the same double-guard stance as the `topic_id` whitelist
+check, deck §6).
 
-**②の実測済みホワイトリスト(初版)**:
+**Layer ②'s measured whitelist (first edition)**:
 
 ```
-演算・関係   + - \cdot = < > \leq \geq \neq \pm !
-分数・根号   \frac \cfrac \sqrt \sqrt[]
-添字・指数   ^{} _{}   ({}_{n}\mathrm{P}_{r} 形式の左肩添字を含む)
-括弧         ( ) [ ] \{ \} | |
-関数         \sin \cos \tan \log_{}
-総和・極限   \sum_{}^{} \lim_{} \to \int_{}^{} \,
-ベクトル     \vec{} \overrightarrow{}
-論理         \therefore \because      ← 2026-08-09 実測で追加(∴ ∵ とも正しく描画)
-環境         \begin{pmatrix} \begin{cases}
-書体         \mathrm{}        ← 教科書記法の P・C に必須
-ギリシャ     \theta \alpha \beta \pi
+operators/relations  + - \cdot = < > \leq \geq \neq \pm !
+fractions/radicals   \frac \cfrac \sqrt \sqrt[]
+sub/superscripts     ^{} _{}   (including left-shoulder subscripts, {}_{n}\mathrm{P}_{r})
+brackets             ( ) [ ] \{ \} | |
+functions            \sin \cos \tan \log_{}
+sums/limits          \sum_{}^{} \lim_{} \to \int_{}^{} \,
+vectors              \vec{} \overrightarrow{}
+logic                \therefore \because      ← added 2026-08-09 (∴ ∵ both render correctly)
+environments         \begin{pmatrix} \begin{cases}
+type styles          \mathrm{}        ← required for textbook-notation P and C
+Greek                \theta \alpha \beta \pi
 ```
 
-**禁止(実測で確定)**: `\text{}` に日本語を入れると文字化けする(§3-6d)。
+**Forbidden (established by measurement)**: Japanese inside `\text{}` renders as tofu (§3-6d).
 
-未検証(W2で追加実測): `\ln`、3×3以上の行列、3行以上の `cases`、`\overline{}`、
-ダークモード、実機でのjank。
+Unverified (measure in W2): `\ln`, matrices 3×3 and larger, `cases` with 3+ rows, `\overline{}`, dark mode,
+jank on a real device.
 
-`packages/contract` は依存を持たない層なので上限(文字数)だけを持ち、
-**コマンドの中身の照合は guardrail 側**に置く(`karte.ts` の `topicIdSchema` と同じ分担)。
+`packages/contract` is a dependency-free layer, so it carries only the ceiling (character count);
+**command-level checking lives in guardrail** (the same split as `topicIdSchema` in `karte.ts`).
 
-### 3-6b. 長い式が画面幅に収まらない(2026-08-09 実測で決着)
+### 3-6b. Long formulas overflow the screen width (settled by measurement, 2026-08-09)
 
-実測スパイクで加法定理が **800px 幅のキャンバスで溢れた**。スパイク側はこれを
-「テストハーネスの固定幅の不備」と扱ったが、**これは誤り**。
+In the spike, the addition formulas **overflowed an 800px-wide canvas**. The spike wrote that off as "a flaw
+in the test harness's fixed width", which is **wrong**.
 
-- iPhone 15 の論理幅は **393pt**。板書の余白を引くと実効 **340pt 程度**
-- つまり溢れたキャンバスは、**実機より倍以上広い**
-- そして加法定理は、高校数学で長い式の部類ではない
-  (解の公式・底の変換・二項定理・因数分解の途中式はもっと長い)
+- The iPhone 15's logical width is **393pt**. Minus the board's padding, the effective width is about **340pt**
+- So the canvas that overflowed is **more than twice as wide as a real device**
+- And the addition formulas are not a long formula by high-school standards
+  (the quadratic formula, change of base, the binomial theorem, and factoring intermediates are all longer)
 
-**「長い式がはみ出す」はエッジケースではなく板書の常態**であり、
-`flutter_math_fork` が描けるかとは独立した、板書レイヤーの設計上の宿題。
+**"Long formulas overflow" is the board's normal state, not an edge case** — a design task for the board
+layer that is independent of what `flutter_math_fork` can render.
 
-**実測結果(実効幅340pt = iPhone 15 の393ptから板書の余白を引いた見積もり)**:
-用意した10式のうち **4式が実際に溢れた**。
+**Measured (effective width 340pt = the iPhone 15's 393pt minus estimated board padding)**:
+**4 of the 10** formulas prepared actually overflowed.
 
-| 式 | 実測幅 | |
+| Formula | Measured width | |
 | --- | --- | --- |
-| 3次因数分解 `x^3-6x^2+11x-6=(x-1)(x-2)(x-3)` | **449.6pt** | 溢れる(最大) |
-| 加法定理 | **380.9pt** | 溢れる |
-| 展開の途中式 | **373.0pt** | 溢れる |
-| 定積分の計算途中 | **351.8pt** | 溢れる |
-| 二項定理 / 解の公式 / 底の変換 / 連立方程式 | 148〜270pt | 収まる |
+| Cubic factoring `x^3-6x^2+11x-6=(x-1)(x-2)(x-3)` | **449.6pt** | overflows (worst) |
+| Addition formulas | **380.9pt** | overflows |
+| Expansion intermediate | **373.0pt** | overflows |
+| Definite-integral intermediate | **351.8pt** | overflows |
+| Binomial theorem / quadratic formula / change of base / simultaneous equations | 148–270pt | fits |
 
-**決定: C(分割)を本命、A(縮小)を保険として併用する。**
+**Decision: C (split) is the primary, A (shrink) is the insurance, used together.**
 
-| 案 | 実測での判定 |
+| Option | Verdict from measurement |
 | --- | --- |
-| **C. 式を分割して複数手順にする** | **本命。**`=` の前後で2行に分けると、**縮小なしで**余裕を持って収まる。教科書・黒板の書き方と同じで高校生に馴染む。分割は**LLM側の責務**になるのでプロンプトに跳ねる |
-| **A. `FittedBox` で自動縮小** | **保険として有効。ただし下限がある。**溢れた4式は縮小率54〜97%でどれも読めた。ただし自然幅600pt級(4次式の展開)を340ptに詰めると縮小率54%=実効13pt で「ぎりぎり」、200pt箱(32%)で「厳しい」、150pt箱(24%)で**判読不能**。→ **縮小率が70%を下回る手順は、agent側で分割し直す**という閾値を設計に入れる |
-| B. 横スクロール | **不採用(実測でも裏付け)。**`= (x - 1)(x -` のように唐突に切れ、**静止画では続きがある手がかりが一切出ない**。「これで全部だ」と誤読させる。板書の価値(音声を聞いていない瞬間でも、後で見返しても全部そこにある)と正面から矛盾する |
+| **C. Split the formula across steps** | **Primary.** Breaking either side of `=` onto two lines fits comfortably **without shrinking**. It matches how textbooks and blackboards write, so it reads naturally. Splitting becomes the **LLM's responsibility**, so it lands in the prompt |
+| **A. Auto-shrink with `FittedBox`** | **Valid as insurance, but it has a floor.** All four overflowing formulas stayed readable at 54–97%. But squeezing a 600pt-natural-width formula (a quartic expansion) into 340pt gives 54% = an effective 13pt, "just barely"; a 200pt box (32%) is "hard"; a 150pt box (24%) is **illegible**. → Bake in a threshold: **any step below 70% gets re-split on the agent side** |
+| B. Horizontal scroll | **Rejected (and measurement backs it).** It cuts off abruptly, as in `= (x - 1)(x -`, and **a still image gives no hint that anything follows**. It invites "that's all of it". Head-on contradiction with what the board is for (it's all there even if you weren't listening, and when you look back later) |
 
-**70%を下回ったとき**(= agent側の分割が効いていない、起きてはいけない状態):
-それ以上は縮めず(実測で32%は「厳しい」・24%は「判読不能」)、**横スクロールに逃がす**。
-ただし**右端にフェードの手がかりを必ず出す** — 手がかりの無い横スクロールは、
-案Bを不採用にした理由(「これで全部だ」と誤読させる)をそのまま再現するため。
+**When it does drop below 70%** (i.e. agent-side splitting isn't working — a state that shouldn't happen):
+stop shrinking (measurement says 32% is "hard" and 24% is "illegible") and **fall back to horizontal
+scroll** — but **always show a fade cue at the right edge**, since a scroll with no cue reproduces exactly
+the reason option B was rejected ("that's all of it").
 
-> **W2の宿題**: この状態を本番で観測する手段がない(現状は `debugPrint` のみ)。
-> Sentryに送らないと、**agent側の分割が機能していないことに永遠に気づけない**。
+> **W2 homework**: there is no way to observe this state in production today (only `debugPrint`). Without
+> sending it to Sentry, **we will never learn that agent-side splitting stopped working.**
 
-**契約への跳ね返り**: `board.ts` の `tex` は `maxLength: 200`(**文字数**)で縛っているが、
-**表示幅は文字数では決まらない**。実測がそれを示している:
+**Consequences for the contract**: `board.ts` constrains `tex` with `maxLength: 200` (**characters**), but
+**display width is not a function of character count**. The measurements show it:
 
-| 式 | 文字数 | 実測幅 |
+| Formula | Characters | Measured width |
 | --- | --- | --- |
-| 底の変換(`\frac` が入れ子 = 縦に伸びる) | 39 | **148.0pt** |
-| 3次因数分解(横一列) | **38**(ほぼ同じ) | **449.6pt** |
+| Change of base (nested `\frac` = grows vertically) | 39 | **148.0pt** |
+| Cubic factoring (one horizontal line) | **38** (near-identical) | **449.6pt** |
 
-**ほぼ同じ文字数で表示幅が3倍違う。** よって `maxLength` は
-「暴走的に長い入力を弾く安全弁」としては機能するが、**表示幅の保証としては機能しない**。
+**Near-identical character counts, 3× the display width.** So `maxLength` works as a **safety valve against
+runaway input**, but **not as a guarantee of display width**.
 
-- **短期(W1)**: 契約は構造の制約(1行であること・多行環境の禁止・安全弁としての文字数上限)だけを担い、
-  **表示幅の保証はモバイル側の描画(A+C)に寄せる**。契約は現状のままでよい
-- **中期(W2以降の候補)**: 層③(Node側のKaTeX)を拡張し、**フォントメトリクスから推定描画幅を計算**する。
-  実効幅を超える手順は **agent側で自動的に2手順に分割してから送る**。
-  これができれば「文字数」ではなく「実際に食う幅」で縛れる
+- **Short term (W1)**: the contract carries structural constraints only (single line, no multi-line
+  environments, a character ceiling as a safety valve), and **display width is guaranteed by mobile-side
+  rendering (A + C)**. The contract can stay as it is
+- **Medium term (candidate for W2+)**: extend layer ③ (KaTeX on Node) to **estimate render width from font
+  metrics**, and **split any over-width step into two on the agent side before sending**. Then we can
+  constrain by "width actually consumed" rather than character count
 
-### 3-6d. 【罠】`\text{}` の中の日本語は文字化けする
+### 3-6d. [Trap] Japanese inside `\text{}` renders as tofu
 
-`\text{よって}\ x=2` を描画すると、**「よって」が黒い棒(tofu)になる**(PNGで確認済み)。
-KaTeXのフォント(`KaTeX_Main`)が日本語グリフを持たないため。
-同じ画面のアプリ側の日本語ラベルは正常に描画されているので、**数式ブロックの中だけの問題**。
+Rendering `\text{よって}\ x=2` turns **"よって" into black bars (tofu)** (confirmed in PNG), because KaTeX's
+font (`KaTeX_Main`) has no Japanese glyphs. Japanese labels elsewhere on the same screen render fine, so
+**it is confined to the formula block**.
 
-**LLMが最もやりたがる書き方なので、明示的に弾く。** ただしこれは「禁止」ではなく
-**「置き場所が違う」**話で、契約には既に正しい置き場がある — `board.ts` の
-`{ kind: "text", body }` が日本語の一行を置く場所。ガードレールの再生成指示は
-「数式に日本語を入れるな」ではなく **「日本語は `text` 要素として送れ」** と書くこと。
+**Reject it explicitly, because it's the way the LLM most wants to write.** But this is not "forbidden" so
+much as **"wrong place"** — the contract already has the right one: `{ kind: "text", body }` in `board.ts`
+is where a line of Japanese goes. So the guardrail's regeneration instruction should say **"send Japanese as
+a `text` element"**, not "don't put Japanese in formulas".
 
-※ 実機ではシステムの日本語フォントにフォールバックする可能性が理屈上あるが(テスト環境には
-システムフォントがない)、**直ったとしても数式ブロックに日本語を入れる理由がない**ので禁止のままでよい。
+Note: a real device could in principle fall back to a system Japanese font (the test environment has none),
+but **even if it did there is no reason to put Japanese in a formula block**, so the ban stands.
 
-なお `\therefore`(∴)・`\because`(∵)は**正しく描画される**ことを確認済み。許可リストに追加した。
+`\therefore` (∴) and `\because` (∵) were confirmed to **render correctly** and have been added to the
+allow-list.
 
-### 3-6c. 【罠】golden test のフォント読み込み
+### 3-6c. [Trap] Font loading in golden tests
 
-`test/support/harness.dart` の `loadAppFonts()` は `FontManifest.json` の family 名から
-`packages/xxx/` プレフィックスを**剥がして**登録する(アプリ自身の `ZenMaruGothic` は
-プレフィックス無しなのでこれで正しい)。一方 `flutter_math_fork` は自分のフォントを
-`'packages/flutter_math_fork/KaTeX_Main'` という**プレフィックス込みの名前**で参照する。
+`loadAppFonts()` in `test/support/harness.dart` **strips** the `packages/xxx/` prefix from the family names
+in `FontManifest.json` before registering them (correct for the app's own `ZenMaruGothic`, which has no
+prefix). But `flutter_math_fork` refers to its own fonts by the **prefixed** name
+`'packages/flutter_math_fork/KaTeX_Main'`.
 
-そのまま流用すると、widget test 上で数式が**黒塗りの四角(tofu)で描画される**。
-気づかずにこれを golden として撮ると、**「テストは通るが実際は文字化けしている」**
-という、検知能力のない golden test ができあがる。
+Reuse it as-is and formulas render as **black squares (tofu)** in widget tests. Capture that as a golden
+without noticing and you get a golden test that **passes while the real thing is mojibake** — one with no
+detection power at all.
 
-**板書の golden を本実装するときは、`loadAppFonts()` をプレフィックス保持版に直すか、
-板書専用のフォントローダーを用意すること。**
+**When implementing the board goldens for real, either fix `loadAppFonts()` to preserve prefixes, or provide
+a board-specific font loader.**
 
-### 3-7. あわせて直すもの
+### 3-7. Fix alongside
 
-- `apps/mobile/pubspec.yaml` の `livekit_client: ^2.3.5` は、実解決が **2.10.0**。
-  今回の設計は 2.10.0 の API を前提にしているので、**宣言を `^2.10.0` に引き上げる**
-  (ロックを作り直したときに古いAPIへ解決される事故を防ぐ)
+- `livekit_client: ^2.3.5` in `apps/mobile/pubspec.yaml` actually resolves to **2.10.0**. This design assumes
+  the 2.10.0 API, so **raise the declaration to `^2.10.0`** (so regenerating the lockfile can't silently
+  resolve back to the old API)
 
 ---
 
-## 4. モード設計
+## 4. Mode design
 
-### 4-1. 授業モード(有料・従量原価が発生する)
+### 4-1. Lesson mode (paid, incurs marginal cost)
 
-- 質問1つにつき15〜20分を目安。問題+ノートの写真を起点にする
-- 板書つきで教える → 教え返させる → カルテ生成 → 小テスト生成
-- **写真は2枚必須にしない。**「問題も写っていると先輩が迷子になりません」というヒントに留める
-  (1枚に両方写るケースが多い)
-- 問題の写真は**教科書・問題集の紙面 = 著作物**。解析には送るが、
-  **R2に保存し続けるかは分けて判断する**(解析後破棄なら、将来の出版社交渉でも説明が立つ。
-  [`business_direction_v0.md` §6](business/business_direction_v0.md))
+- Roughly 15–20 min per question. Starts from photos of the problem + the notebook
+- Teach with the board → have them teach it back → generate the karte → generate the quiz
+- **Don't require two photos.** Keep it a hint: "the senpai won't get lost if the problem is in the shot too"
+  (one photo often contains both)
+- The problem photo is **a textbook or workbook page = copyrighted material**. We send it for analysis, but
+  **whether we keep it in R2 is a separate decision** (discarding after analysis is defensible in future
+  publisher negotiations — [`business_direction_v0.md` §6](business/business_direction_v0.md))
 
-### 4-2. 自習室モード — **撤回**(2026-08-11)
+### 4-2. Study-room mode — **withdrawn** (2026-08-11)
 
-**実装したが畳んだ。**[ADR 0006](adr.md#adr-0006) が正。
+**Built, then folded.** [ADR 0006](adr.md#adr-0006) is authoritative.
 
-原価ゼロという設計目標は達成できていた(STT / TTS / LLM / LiveKit を1つも起動せず、
-通信は退室時のD1書き込み1回だけ)。畳んだ理由は原価ではなく、**コアループのどこにも
-接続していなかった**こと:
+The zero-cost design goal was met (no STT / TTS / LLM / LiveKit started at all; the only traffic was a
+single D1 write on leaving). It was folded not over cost but because it **connected to no part of the core
+loop**:
 
-- 自習室から先へ進む道は「先輩、ちょっといい?」= 撮影だけで、**ホームと同じ行き先**。
-  常設タブを1つ使って、既にある入口を複製していた
-- 滞在時間は約束2(点数を出さない)により生徒へ返せず、`/v1/me/progress` にも
-  親レポートにも載らなかった。**生徒の画面に一度も出ない数字**のために、常設タブと
-  D1の表を持っていた
-- ホームの主操作が2本に割れ、先輩が締めた日は「押せるほうがどちらか」を色で
-  見分けさせていた。締めた日の行き先は、コアループの内側にある**復習**が正しい
+- The only way forward from the study room was "senpai, got a minute?" = taking a photo, i.e. **the same
+  destination as home**. It spent a permanent tab duplicating an entrance we already had
+- Time spent couldn't be shown to the student under promise 2 (no scores), and appeared in neither
+  `/v1/me/progress` nor the parent report. We kept a permanent tab and a D1 table for **a number that never
+  once reached the student's screen**
+- Home's primary action split in two, and on days the senpai had wrapped up we made colour tell you which
+  one was pressable. On those days the right destination is **review**, which is inside the core loop
 
-**さっきの板書が残っている**という価値だけは実体があったので、カルテの
-「先輩が書いたもの」の節へ移した。授業の寿命を超えて板書が読み返せることは変わらない。
+The one part with real substance — **the board from the last lesson is still there** — moved to the karte's
+"what the senpai wrote" section. Boards still outlive the lesson and stay readable.
 
-### 4-3. 計画モード(有料・音声で作る)
+### 4-3. Planning mode (paid, built by voice)
 
-**フォーム入力をゼロにする。**既存の音声パイプラインの再利用のみ。
+**Zero form input.** Reuse of the existing voice pipeline only.
 
 ```
-先輩「テストいつ?」        → 「9月10日」
-先輩「範囲は?」            → 「数IIの三角関数、教科書120〜150ページ」
-先輩「使ってる参考書ある?」→ 「4STEPと青チャート」
-先輩「じゃあ、こんな感じでどう?」→ 計画が画面に出る
+senpai "when's the test?"          → "September 10th"
+senpai "what's the scope?"         → "Math II trig, textbook pp. 120–150"
+senpai "any workbooks you use?"    → "4STEP and the Blue Chart"
+senpai "how about something like this?" → the plan appears on screen
 ```
 
-- 崩れたら口頭で組み直す:「風邪ひいて3日できなかった」→「じゃあ組み直そっか」
-- Studyplus 等のフォーム型との差別化がそのまま生まれる
-- 遅延したら**先輩が定型テンプレを提案するだけ**に縮退する(§7の落とす順①)
+- When it falls apart, rebuild it by voice: "I was sick, lost three days" → "let's redo it then"
+- The differentiation from form-based tools like Studyplus falls out for free
+- If we run late, degrade to **the senpai just proposing a fixed template** (drop order ① in §7)
 
 ---
 
-## 5. 親が払う — 発見する人と払う人が違う
+## 5. The parent pays — the discoverer and the payer are different people
 
-### 5-1. 課金導線の本体は「親に頼みやすくする機能」
+### 5-1. The real paywall is "make it easy to ask your parent"
 
-高校生がストアで見つける。**親はストアを見ないし、アプリも起動しない。**
-成立する導線は1本だけ。
+The high schooler finds it on the store. **The parent never looks at the store and never opens the app.**
+Only one funnel works.
 
 ```
-高校生が使う → 良いと感じる → 親に頼む → 親が承認(ファミリー共有の承認と購入のリクエスト)
-                               ↑ ここを実装する
+student uses it → likes it → asks a parent → parent approves (Family Sharing "Ask to Buy")
+                              ↑ this is the part we build
 ```
 
-- カルテを「今月のレポート」として書き出し、**LINE / メールで親に送れる**
-- そのレポートに「続けるには月5,000円かかります」が自然に載っている
-- 親は、**紙の答案では絶対に見えないもの**(子が数学をどう理解しているか)を初めて見る
+- Export the karte as "this month's report" and **let them send it to a parent over LINE or email**
+- That report naturally carries "continuing costs ¥5,000/month"
+- The parent sees, for the first time, **something a graded paper can never show**: how their child
+  understands math
 
-**ペイウォール画面を作り込むより、共有できるレポートを作る方が転換する。** 実装優先度を上げる。
+**Building a shareable report converts better than polishing a paywall screen.** Raise its priority.
 
-### 5-2. 親レポートに載せていいもの / いけないもの(約束2の防衛線)
+### 5-2. What may and may not go in the parent report (the defensive line for promise 2)
 
-親向けレポートは、約束2「点数を出さない」が最も破られやすい場所。先に線を引く。
+The parent report is where promise 2, "no scores", is most likely to break. Draw the line first.
 
-| ✅ 載せる | ❌ 載せない |
+| ✅ Include | ❌ Exclude |
 | --- | --- |
-| 埋めた穴の数 | 正答率 |
-| 連続日数 | 偏差値・理解度スコア |
-| 説明できるようになった単元名 | 学習時間ランキング |
-| **本人の説明の引用**(「判別式は、解が何個あるか調べるやつです」) | 他ユーザーとの比較 |
+| Number of gaps closed | Accuracy rate |
+| Day streak | Deviation scores, comprehension scores |
+| Names of units they can now explain | Study-time rankings |
+| **A quote of the student's own explanation** ("the discriminant is the thing that tells you how many solutions there are") | Comparison against other users |
 
-**本人の言葉の引用が最強。** 数字より刺さるし、他のどの学習アプリにもできない。
+**The quote is the strongest item.** It lands harder than a number, and no other study app can produce it.
 
 ---
 
-## 6. 価格と原価
+## 6. Price and cost
 
-### 6-1. 原価の実測(1セッション18分想定)
+### 6-1. Measured cost (assuming an 18-minute session)
 
-| 費目 | 前提 | 板書なし | **板書あり(§3-1適用)** |
+| Item | Assumption | Without board | **With board (§3-1)** |
 | --- | --- | --- | --- |
-| TTS | AI発話 × 日本語330字/分 | ¥54〜108 | **¥25〜50** |
-| STT | マイク開放時間 × ¥1.2〜2/分 | ¥24〜40 | **¥8〜14**(VADゲート) |
-| LLM | 15〜20往復 + 板書の構造化出力 | ¥30〜60 | ¥30〜60 |
-| Vision解析 | 問題+ノート2枚 | ¥10〜15 | ¥10〜15 |
-| カルテ+小テスト生成 | 終了時 | ¥10〜15 | ¥10〜15 |
-| LiveKit | 接続分 | ¥5〜10 | ¥5〜10 |
-| **合計** | | **¥135〜250** | **¥70〜120** |
+| TTS | AI speech × 330 Japanese chars/min | ¥54–108 | **¥25–50** |
+| STT | mic-open time × ¥1.2–2/min | ¥24–40 | **¥8–14** (VAD gate) |
+| LLM | 15–20 turns + structured board output | ¥30–60 | ¥30–60 |
+| Vision | 2 images, problem + notebook | ¥10–15 | ¥10–15 |
+| Karte + quiz generation | On finish | ¥10–15 | ¥10–15 |
+| LiveKit | Connected minutes | ¥5–10 | ¥5–10 |
+| **Total** | | **¥135–250** | **¥70–120** |
 
-**すべて机上。W3のテレメトリで実測に置き換えてから価格を確定する**
-([`business_direction_v0.md` §3-3](business/business_direction_v0.md) の宿題)。
+**All of this is on paper. Replace it with W3 telemetry before fixing the price**
+(the homework in [`business_direction_v0.md` §3-3](business/business_direction_v0.md)).
 
-**STTのゲート**: AIが喋っている区間はフルSTTを回さず、VADだけ回して発話検出時にSTTを開く。
+**STT gating**: while the AI is speaking, don't run full STT — run VAD only and open STT on speech onset.
 
-### 6-2. 価格
+### 6-2. Price
 
-| プラン | 価格 | 位置づけ |
+| Plan | Price | Role |
 | --- | --- | --- |
-| 週額 | ¥1,200〜1,500 | **入口の主役。**テスト前スパイク型。9月中間テストで転換データが取れる |
-| 月額 | ¥5,000 | 本命。予備校(月30,000円)との相対で親に説明する |
-| 年額 | ¥40,000 | 受験学年の親向け |
+| Weekly | ¥1,200–1,500 | **The main entrance.** Pre-test spike shape. The September midterms give us conversion data |
+| Monthly | ¥5,000 | The real one. Explained to parents relative to cram school (¥30,000/month) |
+| Yearly | ¥40,000 | For parents of exam-year students |
 
-- Apple 15%控除後の手取り ¥4,250。1日1回(月30回)の原価 ¥2,100〜3,600 → **粗利 ¥650〜2,150**
-- **板書優先(§3-1)なしでは月5,000円でも赤字。**値上げは D の代わりにならない
-- 1日2回(月60回)は板書ありでも赤字圏 → §6-3 の上限が必要
+- Net of Apple's 15% cut: ¥4,250. Once a day (30/month) costs ¥2,100–3,600 → **gross margin ¥650–2,150**
+- **Without the board-first principle (§3-1), even ¥5,000/month loses money.** Raising the price is not a
+  substitute for it
+- Twice a day (60/month) is loss-making even with the board → the cap in §6-3 is required
 
-**アンカーの注意**: 「予備校 月30,000円 vs 5,000円」はこちらが提示したい比較。
-高校生が実際に隣に並べるのは**手元の無料AI**。5,000円は
-「無料AIとは別物だと最初の1セッションでわからせる」という**自分に課した品質基準**として扱う。
+**On anchoring**: "cram school ¥30,000/month vs ¥5,000" is the comparison *we* want to make. What a high
+schooler actually puts next to us is **the free AI in their hand**. Treat ¥5,000 as **a quality bar we set
+ourselves**: the first session has to make it obvious this is not that.
 
-### 6-3. 無料枠と上限
+### 6-3. Free tier and cap
 
-| | 内容 | 原価 |
+| | Contents | Cost |
 | --- | --- | --- |
-| **無料** | カルテ・小テスト・復習・1/3/7日の通知 + 授業モードの初回1〜2回 | ほぼゼロ |
-| **有料** | 授業モード・計画モード・親レポート | 従量 |
+| **Free** | Karte, quiz, review, 1/3/7-day notifications + the first one or two lesson-mode sessions | Near zero |
+| **Paid** | Lesson mode, planning mode, parent report | Metered |
 
-**原価が発生するものだけが有料**。説明が一行で済む(HAMM賞にそのまま出せる)。
+**Only the things that cost money are paid**, so the explanation fits in one line (submittable as-is for the
+HAMM prize).
 
-上限は**回数制限として見せない**。先輩の人格として実装する。
+Don't surface the cap **as a quota**. Implement it as the senpai's personality.
 
 ```
-❌ 「本日の残り回数: 0/3」          ← 数字を見せた瞬間に不満になる
-✅ 「今日はここまでにしよっか。      ← 制限ではなく、先生の判断
-      詰め込みすぎても入らないから。
-      明日また続きやろう」
+❌ "Sessions left today: 0/3"        ← resentment starts the moment a number appears
+✅ "Let's stop here for today.        ← a teacher's judgement, not a limit
+     Cramming more won't stick.
+     We'll pick it up tomorrow"
 ```
 
-- 通常利用(1日1〜2回)では**一度も発火しない**値にする
-- UIに数字は一切出さない。**利用規約にだけフェアユースを書く**
-  ([`business_direction_v0.md` §3-3](business/business_direction_v0.md) の「表に出さないフェアユース上限」)
-- 実装は `backend/api/src/lib/entitlement.ts` の `checkSessionAllowance` を拡張
+- Set the value so normal use (1–2 per day) **never triggers it**
+- No numbers in the UI at all. **Fair use lives only in the terms of service**
+  (the "fair-use cap we don't surface" in
+  [`business_direction_v0.md` §3-3](business/business_direction_v0.md))
+- Implemented by extending `checkSessionAllowance` in `backend/api/src/lib/entitlement.ts`
 
 ---
 
-## 7. スケジュール(4週間)
+## 7. Schedule (4 weeks)
 
-**実質の締切は 9/30 ではなく 9/5(金)のバイナリ提出。**
-ストアで**一般公開済み**であることが Shipaton の必須要件で、審査48h + リジェクト1回分の
-バッファが要る(デッキ §7-2「9月中旬の初提出は危険」)。
+**The real deadline is the 9/5 (Fri) binary submission, not 9/30.** Shipaton requires the app to be
+**publicly released** on the store, and we need buffer for 48h review plus one rejection (deck §7-2, "a first
+submission in mid-September is dangerous").
 
-**制約は実装工数ではなく、①試行回数 ②App Review の待ち時間 ③意思決定の帯域。**
-AIによって行数は圧縮されるが、この3つは圧縮されない。
+**The constraints are not engineering hours but ① iteration count ② App Review latency ③ decision
+bandwidth.** AI compresses lines of code; it does not compress those three.
 
-### W1(8/10〜8/16)— 板書レイヤーと憲法改正
+### W1 (8/10–8/16) — the board layer and the constitutional amendment
 
-最大のリスクを最初に置く。
+Put the biggest risk first.
 
-- [ ] 板書レイヤーのスパイク: `{speech, board}` のストリーミングJSON → 手順単位で data channel 送信
-- [ ] LaTeX描画(`flutter_math_fork`)+ 図形プリミティブ3〜4種
-- [ ] 設計原則「数式は板書・音声は問いかけだけ」をプロンプトに実装
-- [ ] 冒頭のプリレンダ音声アセット(無音を埋める)
-- [ ] 先輩ペルソナのプロンプト(ja)書き直し・ElevenLabs voice の再選定
-- [ ] インセプションデッキの改正PR(§0)
+- [ ] Board-layer spike: streaming JSON of `{speech, board}` → send per step over the data channel
+- [ ] LaTeX rendering (`flutter_math_fork`) + 3–4 figure primitives
+- [ ] Implement "formulas on the board, voice only for questions" in the prompt
+- [ ] Pre-rendered opening audio asset (fills the silence)
+- [ ] Rewrite the senpai persona prompt (ja); re-pick the ElevenLabs voice
+- [ ] Amendment PR for the inception deck (§0)
 
-> **8/16 ゲート: 板書つきで1問教わって「わかる」に到達するか。**
-> 未達なら §3-4 のフォールバック(解法ステップのテンプレ)へ即座に切り替える。
+> **8/16 gate: can you learn one problem with the board and reach "I get it"?**
+> If not, switch immediately to the §3-4 fallback (solution-step templates).
 
-### W2(8/17〜8/23)— 1周を閉じる
+### W2 (8/17–8/23) — close one full loop
 
-- [ ] 「じゃあ今の、説明してみて」→ カルテ → 小テスト生成(§2の設計制約を守る)
-- [ ] 1/3/7日の通知を小テスト起点に組み替え(自己申告・AIに採点させない)
-- [x] ~~**自習室モード**(原価ゼロ)+ プリレンダ音声の声かけ~~ → 実装後に撤回([ADR 0006](adr.md#adr-0006))
-- [ ] 課金の枠組み変更(週1,200 / 月5,000 / 年40,000)・無料枠の再定義(`entitlement.ts`)
-- [ ] 「先輩が締める」暗黙上限 + 利用規約のフェアユース記載
+- [ ] "Okay, explain that back to me" → karte → quiz generation (honouring the §2 constraints)
+- [ ] Rebuild the 1/3/7-day notifications around the quiz (self-reported, never AI-graded)
+- [x] ~~**Study-room mode** (zero cost) + pre-rendered voice prompts~~ → withdrawn after implementation ([ADR 0006](adr.md#adr-0006))
+- [ ] Change the billing frame (¥1,200/wk, ¥5,000/mo, ¥40,000/yr) and redefine the free tier (`entitlement.ts`)
+- [ ] Implicit cap via "the senpai calls it a day" + fair use in the terms of service
 
-### W3(8/24〜8/30)— 親と、英語
+### W3 (8/24–8/30) — parents, and English
 
-- [ ] **親レポート + 共有導線**(§5-1。ペイウォールの本体)
-- [ ] **音声で作る学習計画**(§4-3。縮退版でよい)
-- [ ] 英語ロケール(先輩プロンプト en・few-shot・UI文言)
-- [ ] **セッション単価のテレメトリ**(§6-1。実測なしに価格を確定させない)
+- [ ] **Parent report + sharing funnel** (§5-1 — this *is* the paywall)
+- [ ] **Voice-built study plan** (§4-3; the degraded version is fine)
+- [ ] English locale (senpai prompt en, few-shots, UI copy)
+- [ ] **Per-session cost telemetry** (§6-1 — don't fix the price without measurement)
 
-### W4(8/31〜9/4)— 提出物
+### W4 (8/31–9/4) — the deliverables
 
-- [ ] ストア素材を全撮り直し(アイコン・スクショ5枚・説明文・キーワード)
-- [ ] 審査メモ(AI生成コンテンツとガードレールの説明)
-- [ ] README・インセプションデッキ・一言(英文正文)の書き直し
-- [ ] **9/5 バイナリ提出**
+- [ ] Reshoot every store asset (icon, 5 screenshots, description, keywords)
+- [ ] Review notes (explaining AI-generated content and the guardrails)
+- [ ] Rewrite the README, the inception deck, and the one-liner (English is authoritative)
+- [ ] **9/5 binary submission**
 
-### W5〜W8(9/6〜9/30)
+### W5–W8 (9/6–9/30)
 
-公開 → 実ユーザー獲得 → **9月中間テスト前のスパイクで課金データ収集** → デモ動画2分 → 9/25 早期提出。
+Release → acquire real users → **collect billing data on the September midterm spike** → 2-minute demo video
+→ early submission on 9/25.
 
-### 遅れたら落とす順(先に決めておく)
+### Drop order if we run late (decided in advance)
 
-1. 学習計画の自動化 → 先輩が定型テンプレを提案するだけに縮退
-2. 親レポートの外部共有 → アプリ内表示のみ(スクショで送ってもらう)
-3. 英語ロケールを主要画面のみ(残りは動画字幕で補う)
+1. Study-plan automation → degrade to the senpai proposing a fixed template
+2. External sharing of the parent report → in-app display only (they screenshot it)
+3. English locale on the main screens only (subtitles cover the rest in the video)
 
-**板書レイヤーと「教える → 教え返させる」の1周は絶対に落とさない。** これがプロダクトそのもの。
+**The board layer and one full "teach → teach it back" loop are never dropped.** They are the product.
 
-### H0(ダグフーディング)
+### H0 (dogfooding)
 
-W1のスパイクが通った時点で、**まず自分で1週間回す**
-([`business_direction_v0.md` §3-3](business/business_direction_v0.md) の H0)。
-「板書つきで教わって、教え返して、3日後に小テストが来る」を自分で1周してから価格を確定する。
+Once the W1 spike passes, **run it on myself for a week first**
+(H0 in [`business_direction_v0.md` §3-3](business/business_direction_v0.md)).
+Do one full "learn with the board, teach it back, get a quiz three days later" loop myself before fixing the
+price.
 
 ---
 
-## 8. 資産の棚卸し
+## 8. Asset inventory
 
-| 残る | 書き換え | 捨てる |
+| Keep | Rewrite | Drop |
 | --- | --- | --- |
-| LiveKit会話パイプライン | `prompts/kohai_conversation.{ja,en}.md` → 先輩版 | 後輩キャラのビジュアル・表情差分 |
-| カルテ生成・穴の抽出 | `prompts/question_types.few_shot.{ja,en}.md` | — |
-| OneSignal 1/3/7日 | `prompts/karte_generation.{ja,en}.md`(小テスト出題を追加) | — |
-| RevenueCat(consumable枠も既存) | `backend/api/src/lib/entitlement.ts`(無料枠の再定義) | 旧価格 |
-| D1 / R2 スキーマ・`packages/contract` | `packages/contract` に `board.ts` を追加 | — |
-| 撮影フロー | 問題+ノートの2枚対応 | — |
-| 祝福・連続日数・「埋めた穴」カウンター | オンボーディング4枚 | 旧ストア素材一式 |
-| `packages/curriculum` | topic_id 照合 → 「教える範囲の妥当性」チェックに転用 | 「答えを教えない」ためのガードレール用途 |
-| アプリ名「カタルテ」 | — | — |
+| LiveKit conversation pipeline | `prompts/kohai_conversation.{ja,en}.md` → senpai version | Kouhai character visuals and expression variants |
+| Karte generation, gap extraction | `prompts/question_types.few_shot.{ja,en}.md` | — |
+| OneSignal 1/3/7 days | `prompts/karte_generation.{ja,en}.md` (add quiz generation) | — |
+| RevenueCat (a consumable slot already exists) | `backend/api/src/lib/entitlement.ts` (redefine the free tier) | Old prices |
+| D1 / R2 schema, `packages/contract` | Add `board.ts` to `packages/contract` | — |
+| Capture flow | Support two images, problem + notebook | — |
+| Celebration, day streak, "gaps closed" counter | The four onboarding screens | The entire old store asset set |
+| `packages/curriculum` | Repurpose topic_id matching into a "is this in scope to teach" check | Its use as a guardrail for "never give the answer" |
+| The app name "Katarute" | — | — |
 
 ---
 
-## 9. 賞のスタックの組み替え
+## 9. Restacking the prizes
 
-| 賞 | 現行の根拠 | ピボット後 |
+| Prize | Current basis | After the pivot |
 | --- | --- | --- |
-| **Peace Prize** $15k | 「答えを教えるAIが思考力を奪う時代に、説明させるアプリ」 | 物語が反転して消滅。**代わりに「塾にも家庭教師にも通えない子に、家庭教師を」= 教育アクセス格差**。むしろ強い。ただし価格設計と矛盾させないこと(§6) |
-| **OneSignal** $25k | 間隔反復が製品機能そのもの | **維持できる。**小テスト起点でも、出題元が「本人が説明した内容」であれば後付けにならない(§2) |
-| **Design Award** $15k | キャラ演出 | **上がる。**板書レイヤー(授業モードと、カルテに残る板書)が動画・静止画で最も映える |
-| **HAMM** $15k | ペイウォール設計 | **上がる。**「原価が発生するものだけが有料」+ 暗黙上限(§6-3) |
-| Next Gen / #BuildInPublic | 学生 + public repo | 影響なし |
+| **Peace Prize** $15k | "In an era where answer-giving AI robs people of thinking, an app that makes you explain" | The story inverts and disappears. **Replaced by "a private tutor for kids who can reach neither a cram school nor a tutor" = educational access inequality**, which is stronger — but it must not contradict the pricing (§6) |
+| **OneSignal** $25k | Spaced repetition is the product itself | **Holds.** Even quiz-first, it isn't bolted on as long as the questions come from what the student explained (§2) |
+| **Design Award** $15k | Character staging | **Improves.** The board layer (in lesson mode, and left behind in the karte) photographs and films best |
+| **HAMM** $15k | Paywall design | **Improves.** "Only the things that cost money are paid" + the implicit cap (§6-3) |
+| Next Gen / #BuildInPublic | Student + public repo | Unaffected |
 
 ---
 
-## 10. 残るリスクと未決
+## 10. Remaining risks and open questions
 
-1. **8/16の板書ゲート。**ここが最大。曖昧に通過させないこと(デッキ §7-1 と同じ轍)
-2. **月5,000円は仮置き。**W3のテレメトリの実測後に確定する。落ち幅が大きければ値下げ余地が生まれ、
-   それは苦学生ミッションに直接効く
-3. **「苦学生」の定義がまだ曖昧。**(a) 家に金がない (b) 地方で塾が近くにない (c) 親が教育に投資しない —
-   月5,000円で届くのは (b) のみ。(a)(c) を本気で入れるなら無料でも使える道が必要で、
-   それは Peace Prize の物語そのものになる。**10月以降の判断**
-4. **著作物(問題の紙面)の保存可否**(§4-1)
-5. **未成年 + AI生成コンテンツの App Review。**Kids Category には入れない(13歳以上)。
-   審査メモでガードレールを説明する(デッキ §5)
-6. **同席型が本当に使われるか。**原価ゼロなので賭けとしては安いが、
-   滞在時間が伸びなければ課金導線としては機能しない
-7. **【提出前に必ず塞ぐ】クラッシュ監視が存在しない。**
-   `apps/mobile/pubspec.yaml` に `sentry_flutter: ^9.26.0` が入っていて DSN の設定欄もあるが、
-   **`lib/` に `Sentry.` の呼び出しが1件もなく、`main.dart` に初期化もない**(2026-08-09 確認)。
-   つまり**1件も飛ばない**。9/5提出→公開後、ソロ運用でクラッシュが起きても気づけず、
-   ユーザーは黙って離脱する。**依存だけ入って動いていない状態は、入っていないより危険**
-   (「入れたつもり」で運用に入る)。Sentry はスポンサー活用としても挙げている。
-   導入時の設計方針: `captureException` ではなく `captureMessage(level: warning)` を縮退状態に使う /
-   同一 `board_id` で連発しないよう間引く / `tex` は先頭数十文字と縮小率だけに絞る。
+1. **The 8/16 board gate.** The biggest one. Do not wave it through (same rut as deck §7-1)
+2. **¥5,000/month is a placeholder.** Fix it after the W3 telemetry. A big drop creates room to lower the
+   price, which serves the struggling-student mission directly
+3. **"Struggling student" is still vaguely defined.** (a) no money at home, (b) rural, no cram school nearby,
+   (c) parents don't invest in education — ¥5,000/month only reaches (b). Seriously including (a) and (c)
+   requires a free path, and that path *is* the Peace Prize story. **A decision for October onward**
+4. **Whether we may store copyrighted material (the problem page)** (§4-1)
+5. **App Review for minors + AI-generated content.** Stay out of the Kids Category (13+). Explain the
+   guardrails in the review notes (deck §5)
+6. **Whether co-presence actually gets used.** It's a cheap bet at zero cost, but if time-in-app doesn't
+   rise it doesn't work as a billing funnel
+7. **[Must close before submission] There is no crash monitoring.**
+   `apps/mobile/pubspec.yaml` has `sentry_flutter: ^9.26.0` and there is a slot for the DSN, but **`lib/`
+   contains not one `Sentry.` call and `main.dart` has no init** (confirmed 2026-08-09). So **nothing is ever
+   sent**. After the 9/5 submission and release, a solo operator would never notice a crash and users would
+   leave in silence. **A dependency that is present but inert is more dangerous than an absent one** (you go
+   live believing it's covered). Sentry is also listed as a sponsor we can leverage.
+   Design notes for when we wire it up: use `captureMessage(level: warning)` for degraded states rather than
+   `captureException`; throttle so the same `board_id` doesn't fire repeatedly; send only the first few dozen
+   characters of `tex` plus the shrink ratio.
 
-   **穴は3層とも空いている**(2026-08-09 確認)。Dartコードだけ書いても飛ばない:
+   **All three layers are open** (confirmed 2026-08-09). Writing Dart alone won't send anything:
 
-   | 層 | 状態 |
+   | Layer | State |
    | --- | --- |
-   | Dartコード | `Sentry.` の呼び出しゼロ・`main.dart` に初期化なし |
-   | 環境変数 | `dart_defines.env` の `SENTRY_DSN=` が**空** |
-   | ビルド設定 | `codemagic.yaml` は9個の `--dart-define` を渡すが **`SENTRY_DSN` だけ渡していない** |
+   | Dart code | Zero `Sentry.` calls; no init in `main.dart` |
+   | Environment | `SENTRY_DSN=` in `dart_defines.env` is **empty** |
+   | Build config | `codemagic.yaml` passes nine `--dart-define`s but **not `SENTRY_DSN`** |
 
-   しかも `codemagic.yaml` は dSYMs を「クラッシュのシンボル化(Sentry)に要る」というコメント付きで
-   artifact 保存している。**送り先が無いのにシンボルだけ保管している**状態。
+   And `codemagic.yaml` archives dSYMs as an artifact with a comment saying they're "needed for crash
+   symbolication (Sentry)". **We're storing the symbols with nowhere to send them.**
 
-8. **【コミット順序の制約】板書の golden test を単独でコミットするとCIが落ちる。**
-   `.github/workflows/ci.yml` の flutter ジョブは **`flutter test`(除外タグなし)** を Linux で走らせる
-   (`codemagic.yaml` は `--exclude-tags golden` で除外しているので、**goldenの実効ゲートは GH Actions だけ**)。
-   `matchesGoldenFile` は比較対象のPNGが**無いと** pixel diff ではなく「ファイルが見つからない」で失敗する。
-   手元(macOS)で生成したPNGはコミットしない方針(`test/golden/README.md`)なので、
-   **Linux基準のPNGを用意してからテストファイルと同時にコミットする**こと。
+8. **[Commit-order constraint] Committing the board golden tests on their own will break CI.**
+   The flutter job in `.github/workflows/ci.yml` runs **`flutter test` with no tag exclusions** on Linux
+   (`codemagic.yaml` excludes them with `--exclude-tags golden`, so **GH Actions is the only effective golden
+   gate**). When the reference PNG is **missing**, `matchesGoldenFile` fails with "file not found" rather
+   than a pixel diff. Our policy is not to commit PNGs generated locally on macOS
+   (`test/golden/README.md`), so **prepare Linux-baseline PNGs and commit them together with the test file**.
 
-9. **新しい依存でネイティブビルドを通していない。**
-   `flutter_math_fork` の追加で `flutter_svg` / `vector_graphics` 系が推移的に9パッケージ増えたが、
-   確認したのは `flutter test` / `flutter analyze`(Dartレベル)だけ。
-   **9/5提出の計画で、依存グラフが変わった状態のビルド可否をCodemagicの本番ビルドで初めて知るのは危険。**
+9. **The new dependency has never been through a native build.**
+   Adding `flutter_math_fork` pulled in nine transitive packages around `flutter_svg` / `vector_graphics`,
+   but all we've run is `flutter test` / `flutter analyze` (the Dart level). **With a 9/5 submission plan,
+   finding out whether the changed dependency graph builds for the first time in a Codemagic production build
+   is dangerous.**
 
-10. **`livekit_client` の宣言(`^2.3.5`)と実解決(`2.10.0`)の乖離**(§3-7)。板書の設計は 2.10.0 の
-    API を前提にしているので、クリーンな `pub get` で古い版に解決される余地が残っている。**未対応。**
+10. **`livekit_client`'s declaration (`^2.3.5`) diverges from what it resolves to (`2.10.0`)** (§3-7). The
+    board design assumes the 2.10.0 API, so a clean `pub get` could still resolve to the old version.
+    **Not yet addressed.**
 
 ---
 
-## 11. 次の一手
+## 11. Next move
 
-**W1の板書スパイクから着手する。** 最短の入口は
-`packages/contract/src/board.ts` のスキーマ設計と data channel の契約を先に固めること
-(モバイルとagentの両方が同じ形を検証するのが既存の方針)。
+**Start with the W1 board spike.** The shortest entrance is to settle the schema in
+`packages/contract/src/board.ts` and the data-channel contract first (existing policy is that mobile and the
+agent both validate the same shape).
