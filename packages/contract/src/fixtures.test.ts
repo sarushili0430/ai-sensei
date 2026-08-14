@@ -36,22 +36,22 @@ function loadFixture(name: string): unknown {
 }
 
 describe("fixture", () => {
-  // Flutter側のテストも同じファイルを読む。両側が通れば契約は揃っている。
+  // Flutter's tests read the same files. If both sides pass, the contract is aligned.
   it.each(fixtureFileNames)("%s.json が対応スキーマを満たす", (name) => {
     const schema = fixtureSchemas[fixtureFileSchemas[name] as keyof typeof fixtureSchemas];
     const parsed = schema.safeParse(loadFixture(name));
     expect(parsed.success ? null : parsed.error.issues).toBeNull();
   });
 
-  // 海外向けの課程のfixtureが消えると、英語のセッションのかたちを
-  // 誰も検査しなくなる(接頭辞を変えた瞬間に気づけない)。
+  // If the overseas-curriculum fixtures disappear, nobody checks the shape of an
+  // English session (a prefix change would go unnoticed).
   it("日本の課程と海外の課程、両方のかたちを持っている", () => {
     expect(fixtureFileNames).toContain("karte");
     expect(fixtureFileNames).toContain("karte.en");
     expect(fixtureFileNames).toContain("create-session-response.en");
     expect(fixtureFileNames).toContain("board-lesson.en");
-    // 英語の課程の板書。数学の板書とは使える要素が重ならないので、
-    // これが消えると sentence / compare の形を誰も検査しなくなる。
+    // An English-curriculum board. Its usable elements do not overlap maths, so
+    // losing this leaves sentence / compare unchecked.
     expect(fixtureFileNames).toContain("board-lesson.english");
     expect(fixtureFileNames).toContain("study-plan.en");
     expect(fixtureFileNames).toContain("parent-report");
@@ -73,8 +73,8 @@ describe("親レポートのスキーマ", () => {
   }
 
   /**
-   * 禁止したい概念を「画面で出さない」だけにすると、APIには残り、あとから一行で復活する。
-   * 契約が strict で拒否するところまでを、この一覧で固定する。
+   * Banning a concept only "on screen" leaves it in the API, one line from coming
+   * back. This list pins that the contract rejects it under strict.
    */
   it("正答率・理解度スコア・偏差値・学習時間ランキング・他ユーザー比較を受け付けない", () => {
     for (const extra of [
@@ -162,8 +162,8 @@ describe("カルテのスキーマ", () => {
     expect(karteDraftSchema.safeParse(draft).success).toBe(false);
   });
 
-  // status と filled_at がずれると、復習キューと埋めた穴カウンターが
-  // 食い違った数字を出す
+  // If status and filled_at drift apart, the review queue and the filled-holes
+  // counter report different numbers
   it("open な穴に filled_at が入っていたら弾く", () => {
     const karte = loadFixture("karte") as { holes: Record<string, unknown>[] };
     const broken = {
@@ -212,7 +212,7 @@ describe("カルテのスキーマ", () => {
 });
 
 describe("板書のスキーマ", () => {
-  /** 有効な手順1つ。壊し方だけをテストごとに変える。 */
+  /** One valid step. Each test varies only how it is broken. */
   function step(overrides: Record<string, unknown> = {}) {
     return {
       index: 0,
@@ -226,8 +226,8 @@ describe("板書のスキーマ", () => {
     return { title: "判別式で解の個数を見る", topic_ids: ["M1-NIJI-HANBETSU"], steps };
   }
 
-  // 音声は問いかけと接続だけ(§3-1)。原則をプロンプトではなくスキーマで守る。
-  // ここを緩めるとTTS原価が線形に増える。
+  // Speech is questions and connective tissue only (§3-1). The principle is
+  // enforced by the schema, not the prompt. Loosen it and TTS cost grows linearly.
   it("speechが長すぎる手順を弾く(1手順=20〜25秒)", () => {
     expect(boardSpeechMaxLength).toBe(120);
     expect(boardStepSchema.safeParse(step({ speech: "あ".repeat(120) })).success).toBe(true);
@@ -244,8 +244,8 @@ describe("板書のスキーマ", () => {
     expect(boardStepSchema.safeParse(step({ board: null })).success).toBe(true);
   });
 
-  // 板書は「1手順=1行」であって、答案の貼り付け場所ではない。
-  // 1要素の上限・多行環境の禁止・手順数の上限の3つで塞ぐ。
+  // The board is "one step = one line", not a place to paste an answer sheet.
+  // Blocked by three things: per-element caps, the multi-line ban, and the step cap.
   it("解答を丸ごと1要素に流し込めない", () => {
     expect(
       boardStepSchema.safeParse(
@@ -263,8 +263,8 @@ describe("板書のスキーマ", () => {
     ).toBe(false);
   });
 
-  // 上限は**1回の出力**にかかる(板書1枚の上限 boardStepsMaxCount とは別物)。
-  // 1回でこれを超えるなら、それは板書ではなく答案。
+  // The cap applies per output (distinct from boardStepsMaxCount, the per-board cap).
+  // Exceeding it in one output makes it an answer sheet, not a board.
   it("1回の出力に手順を詰め込みすぎた板書を弾く(1行ずつ40行という抜け道を塞ぐ)", () => {
     const steps = Array.from({ length: boardLessonStepsMaxCount + 1 }, (_, index) =>
       step({ index }),
@@ -278,7 +278,7 @@ describe("板書のスキーマ", () => {
     ).toBe(false);
   });
 
-  // 自由描画をさせない。プリミティブを固定し、パラメータだけ吐かせる。
+  // No freehand drawing. The primitives are fixed and only parameters are emitted.
   it("知らない種類の板書要素を弾く", () => {
     expect(
       boardStepSchema.safeParse(step({ board: { kind: "svg", d: "M0 0 L10 10" } })).success,
@@ -305,7 +305,7 @@ describe("板書のスキーマ", () => {
     expect(boardStepSchema.safeParse(step({ board: plot })).success).toBe(false);
   });
 
-  // 封筒(data channel)とLLM出力は別物。混ぜると幻覚したIDが配送層に流れ込む。
+  // The envelope (data channel) and LLM output are different things. Conflated, hallucinated ids reach the delivery layer.
   it("LLMの出す板書に session_id / board_id を持たせない", () => {
     const withIds = { ...lesson([step()]), session_id: "ses_1", board_id: "brd_1" };
     expect(boardLessonSchema.safeParse(withIds).success).toBe(false);
@@ -351,10 +351,11 @@ describe("板書のスキーマ", () => {
     });
 
     /**
-     * **板書の寿命は「1回の説明」ではなく「1つの問題」。**
-     * 1回のLLM出力に12手順の上限があるのは「答案を一度に流し込ませない」ためで、
-     * 板書1枚の上限とは別物。両者を同じ数にすると、**会話が1往復するたびに
-     * 板書を開き直す**しかなくなり、§3-2 の「前の行は消さない」が毎ターン破れる。
+     * A board lives for one problem, not one explanation.
+     * The 12-step cap on a single LLM output exists to stop an answer sheet being
+     * poured in at once, and is distinct from the per-board cap. Making them the
+     * same number would force reopening the board on every exchange, breaking
+     * §3-2's "never erase earlier lines" each turn.
      */
     it("ワイヤーの index は1回の出力の上限を超えられる(板書は問題ぶん続く)", () => {
       expect(boardStepsMaxCount).toBeGreaterThan(boardLessonStepsMaxCount);
@@ -373,7 +374,7 @@ describe("板書のスキーマ", () => {
       };
       expect(boardChannelMessageSchema.safeParse(message).success).toBe(true);
 
-      // ただし板書1枚の上限は超えられない(打ち切りの安全弁)
+      // It still cannot exceed the per-board cap (the cutoff safety valve)
       const overflow = {
         ...message,
         step: { ...message.step, index: boardStepsMaxCount },
@@ -431,9 +432,10 @@ describe("学習計画のスキーマ", () => {
   }
 
   /**
-   * 約束2「点数を出さない」は、学習計画でいちばん破られやすい
-   * (「目標80点」「今週の達成率」は計画アプリの定番)。しかも §5 の親レポートに
-   * 載る前提なので、ここに置いた数字はそのまま親に届く。
+   * Promise 2 ("no scores") is easiest to break in study plans ("target: 80",
+   * "this week's completion rate" are planning-app staples). And since this is
+   * meant to appear in §5's parent report, a number placed here reaches the parent
+   * verbatim.
    */
   it("目標点・正答率・達成率のフィールドを受け付けない(strict)", () => {
     for (const extra of [{ target_score: 80 }, { accuracy: 0.7 }, { completion_rate: 0.5 }]) {
@@ -447,14 +449,14 @@ describe("学習計画のスキーマ", () => {
     expect(studyPlanSchema.safeParse(broken).success).toBe(false);
   });
 
-  // テストが終わったあとの日に課題を置く計画は、誰もやらない。
+  // Nobody does work placed on a day after the test.
   it("テスト日より後の日には置けない", () => {
     const broken = plan();
     broken.days[broken.days.length - 1]!.date = "2026-09-11";
     expect(studyPlanSchema.safeParse(broken).success).toBe(false);
   });
 
-  // 同じ日が2回出ると画面にその日が二重に並び、どちらが正かを決める根拠がない。
+  // A duplicate day shows twice on screen with nothing to say which is authoritative.
   it("日付が昇順でない・同じ日が2回ある計画を弾く", () => {
     const swapped = plan();
     const first = swapped.days[0]!.date;
@@ -468,8 +470,8 @@ describe("学習計画のスキーマ", () => {
   });
 
   /**
-   * `material` を名前ではなく添字にしてある理由そのもの。
-   * 文字列だったら「青チャートの例題42」を、青チャートを持っていない生徒に割り当てられる。
+   * Exactly why `material` is an index rather than a name. As a string, "Blue Chart
+   * example 42" could be assigned to a student who does not own Blue Chart.
    */
   it("聞き取っていない教材を割り当てられない", () => {
     const broken = plan();
@@ -486,7 +488,7 @@ describe("学習計画のスキーマ", () => {
     expect(studyPlanDraftSchema.safeParse(noMaterials).success).toBe(true);
   });
 
-  // 守られなかった計画は「計画は自分には無理だ」だけを教える。
+  // An unkept plan teaches only "plans are not for me".
   it("1日に詰め込みすぎた計画を弾く", () => {
     const broken = draft();
     broken.days[0]!.items = [
@@ -498,7 +500,7 @@ describe("学習計画のスキーマ", () => {
     expect(studyPlanDraftSchema.safeParse(broken).success).toBe(false);
   });
 
-  // 休みの入っていない計画は、最初に崩れた日に丸ごと捨てられる。
+  // A plan with no rest days gets abandoned whole on the first day it slips.
   it("休む日(itemsが空)を置ける", () => {
     const rest = draft().days.find((day) => day.items.length === 0);
     expect(rest).toBeDefined();
@@ -514,7 +516,7 @@ describe("学習計画のスキーマ", () => {
     expect(studyPlanDraftSchema.safeParse(tooLong).success).toBe(false);
   });
 
-  // 板書と同じ理由。識別子と来歴をLLMに持たせると、幻覚したIDが下流に流れ込む。
+  // Same reason as the board. Identifiers and provenance on the LLM let hallucinated ids reach downstream.
   it("LLMの出す計画に id / source / revisions を持たせない", () => {
     for (const extra of [{ id: "pln_1" }, { source: "senpai" }, { revisions: [] }]) {
       expect(studyPlanDraftSchema.safeParse({ ...draft(), ...extra }).success).toBe(false);
@@ -522,8 +524,8 @@ describe("学習計画のスキーマ", () => {
   });
 
   /**
-   * 組み直しの理由と引用はLLMが出すが、**時刻は出させない**(いまが何時か知らない)。
-   * 押すのは保存側。`id` を持たせないのと同じ理由。
+   * The LLM emits the rebuild reason and the quote, but never the time (it does not
+   * know what time it is). The storage side stamps it - the same reason as `id`.
    */
   it("LLMの出す組み直しに時刻を持たせない", () => {
     const rebuilt = { ...draft(), revision: { reason: "behind", said: "3日できなかった" } };
@@ -537,8 +539,8 @@ describe("学習計画のスキーマ", () => {
   });
 
   /**
-   * §7「遅れたら落とす順」①の縮退版が**本当に落とせる形か**を固定する。
-   * LLMにしか埋められないフィールドが1つでもあると、定型テンプレに落とせなくなる。
+   * Pins that §7's "what to drop first" ① degraded path really is droppable.
+   * One field only an LLM can fill would make the fixed template impossible.
    */
   it("定型テンプレでも埋められる(縮退版が同じ形で出せる)", () => {
     const intake = draft().intake; // 聞き取りは縮退版でも同じように取れる
@@ -566,8 +568,9 @@ describe("学習計画のスキーマ", () => {
   });
 
   /**
-   * 組み直しの引用は §5-2「本人の説明の引用」としてそのまま親に届く。
-   * 本人が言っていない組み直し(縮退版・アプリ側の判断)は null が正しい。
+   * A rebuild's quote reaches the parent verbatim as §5-2's "a quote of the
+   * student's explanation". A rebuild the student never spoke about (degraded path,
+   * app-side decision) is correctly null.
    */
   it("組み直しの理由は、本人が言っていなければ null にできる", () => {
     const withoutQuote = plan();
@@ -578,7 +581,7 @@ describe("学習計画のスキーマ", () => {
     expect(studyPlanSchema.safeParse(withoutQuote).success).toBe(false);
   });
 
-  // 事実が変わった組み直しと、進みが変わっただけの組み直しは別物。
+  // A rebuild after the facts changed differs from one where only the pace changed.
   it("知らない組み直しの理由を弾く", () => {
     const broken = plan();
     broken.revisions[0]!["reason"] = "lazy";
@@ -592,8 +595,9 @@ describe("学習計画のスキーマ", () => {
   });
 
   /**
-   * 計画は聞き取りの会話の途中で生まれる(§4-3)。「テストいつ?」と聞く回と
-   * 計画を出す回は同じ形の1ターンで、違いは `plan` が入っているかどうかだけ。
+   * A plan is born during the interview conversation (§4-3). The turn asking "when
+   * is the test?" and the turn producing the plan are the same shape; the only
+   * difference is whether `plan` is present.
    */
   describe("聞き取りの1ターン", () => {
     it("まだ聞いている途中のターンは plan が null", () => {
@@ -629,8 +633,9 @@ describe("APIスキーマ", () => {
   });
 
   /**
-   * 写真の問題と復習の穴は別の根拠。新規授業に穴を混ぜるのは弾く一方、
-   * 新しいagentを先に出す窓では、古いAPIが作る欄なしの復習も読めなければならない。
+   * A photographed problem and a review hole are different grounds. Mixing a hole
+   * into a new lesson is rejected, while in the window where a new agent ships
+   * first, a field-less review from the old API must still be readable.
    */
   it("session metadata は欄のない旧reviewを読み、新規授業への穴の混入を弾く", () => {
     const metadata = loadFixture("session-metadata") as Record<string, unknown>;
@@ -675,7 +680,7 @@ describe("APIスキーマ", () => {
       limits: { max_seconds: 300, remaining_sessions_today: 0 },
     };
 
-    // §6-3「UIに数字は一切出さない」を、古い数値契約を拒否することで守る。
+    // Upholds §6-3 ("never show numbers in the UI") by rejecting the old numeric contract.
     expect(createSessionResponseSchema.safeParse(withRemainingCount).success).toBe(false);
     expect(createSessionResponseSchema.safeParse(response).success).toBe(true);
   });

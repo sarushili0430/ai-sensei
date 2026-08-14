@@ -32,7 +32,7 @@ describe("scheduleReviews", () => {
   });
 
   it("深夜のセッションでも、ローカル日付を基準に翌日を決める", () => {
-    // 8/4 00:30 JST = 8/3 15:30Z。翌日は 8/5 ではなく 8/5 JST。
+    // 8/4 00:30 JST = 8/3 15:30Z. The next day is 8/5 JST, not 8/5 UTC.
     const lateNight = new Date("2026-08-03T15:30:00.000Z");
     const [first] = scheduleReviews(["hol_1"], lateNight);
     expect(first?.scheduled_at).toBe("2026-08-05T11:00:00.000Z");
@@ -56,7 +56,7 @@ describe("nextReviewStep", () => {
 });
 
 describe("activeStepDays", () => {
-  // 遅延したら間隔反復を3段階から翌日のみに縮小する
+  // When running late, shrink spaced repetition from three steps to the next day only
   it("縮小モードでは翌日だけにする", () => {
     expect(activeStepDays()).toEqual([1, 3, 7]);
     expect(activeStepDays(true)).toEqual([1]);
@@ -92,8 +92,9 @@ describe("buildReviewPrompt", () => {
   });
 });
 
-// 通知の言語は端末の設定ではなく、穴の課程で決まる(呼び出し側が
-// topic_id から引く)。取り違えると、日本語で説明した穴が英語で届く。
+// The notification's language comes from the hole's curriculum, not the device setting
+// (the caller derives it from topic_id). Getting it wrong delivers a hole explained in
+// Japanese in English.
 describe("buildReviewPrompt(英語)", () => {
   it("後輩からのお願いの形にする", () => {
     expect(

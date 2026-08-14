@@ -22,34 +22,38 @@ import { parentReportResponseSchema } from "./parent-report.ts";
 import { planTurnSchema, studyPlanSchema } from "./plan.ts";
 
 /**
- * fixture名 → スキーマの対応表。
+ * The fixture name -> schema table.
  *
- * 同じfixtureを Flutter(freezed) と TypeScript(zod) の両方でパースすることで、
- * 片側だけスキーマを変えた「契約ドリフト」をCIで検知する。
- * fixtureの実体は packages/contract/fixtures/*.json。
+ * Parsing the same fixture in both Flutter (freezed) and TypeScript (zod) lets CI
+ * detect "contract drift" when only one side's schema changed.
+ * The fixtures themselves live in packages/contract/fixtures/*.json.
  */
 export const fixtureSchemas = {
   "create-session-request": createSessionRequestSchema,
   "create-session-response": createSessionResponseSchema,
-  // 部屋の鍵はこちらにだけ載る。写真を読んだ応答(create-session-response)と
-  // 別のfixtureにしてあること自体が、「回数を数えるのは会話の開始」の形。
+  // The room key rides only on this one. Keeping it a separate fixture from the
+  // photo-reading response (create-session-response) is itself the shape of
+  // "uses are counted at conversation start".
   "start-session-response": startSessionResponseSchema,
   "complete-session-request": completeSessionRequestSchema,
   "complete-session-response": completeSessionResponseSchema,
-  // LiveKitトークンに載って agent に届く会話文脈。HTTPのボディではないので
-  // 「主なエンドポイント」の表には出てこないが、backend/api ↔ agent の契約そのもの。
+  // The conversation context that reaches the agent on the LiveKit token. Not an
+  // HTTP body, so it is absent from the endpoint table - yet it is the
+  // backend/api <-> agent contract itself.
   "session-metadata": sessionMetadataSchema,
   karte: karteSchema,
   "review-queue-response": reviewQueueResponseSchema,
   "progress-response": progressResponseSchema,
   "api-error": apiErrorSchema,
-  // 板書。LLMが出す形(board-lesson)と、data channel を流れる形(board-channel-log)は
-  // 責務が違うので別のfixtureにしている(理由は src/board.ts の冒頭)。
+  // The board. What the LLM emits (board-lesson) and what flows on the data
+  // channel (board-channel-log) have different responsibilities, so they are
+  // separate fixtures (reasoning at the top of src/board.ts).
   "board-lesson": boardLessonSchema,
   "board-channel-log": boardChannelLogSchema,
-  // 学習計画。板書と同じく、LLMが出す形(study-plan-turn)と保存後の形を分けている。
-  // 画面と親レポートが読むのは保存後のほう、agentがLLM出力を検証するのは turn のほう
-  // (計画は聞き取りの会話の途中で生まれるので、LLMの単位は「計画」ではなく「1ターン」)。
+  // Study plans. As with the board, what the LLM emits (study-plan-turn) is kept
+  // separate from the stored shape. The screen and parent report read the stored
+  // one; the agent validates LLM output against the turn (a plan is born during
+  // the interview, so the LLM's unit is one turn, not one plan).
   "study-plan": studyPlanSchema,
   "study-plan-turn": planTurnSchema,
   "parent-report": parentReportResponseSchema,
@@ -63,22 +67,23 @@ export const fixtureSchemas = {
 
 export type FixtureName = keyof typeof fixtureSchemas;
 
-/** JSON Schema を起こす単位。スキーマ1つにつき1ファイル。 */
+/** The unit a JSON Schema is generated from. One file per schema. */
 export const fixtureNames = Object.keys(fixtureSchemas) as FixtureName[];
 
 /**
- * fixtureファイル → 満たすべきスキーマ。
+ * Fixture file -> the schema it must satisfy.
  *
- * スキーマ1つに対してファイルは複数ありうる。`*.en.json` は**海外向けの課程**
- * (Algebra 1 / Algebra 2 ...)のかたちで、topic_idの接頭辞も科目名も日本の
- * 課程とは別。同じスキーマで両方が通ることを、TypeScriptとDartの双方で固定する。
+ * One schema can have several files. `*.en.json` is the overseas-curriculum shape
+ * (Algebra 1 / Algebra 2 ...), whose topic_id prefixes and subject names differ
+ * from the Japanese curricula. That both pass the same schema is pinned in
+ * TypeScript and Dart alike.
  */
 export const fixtureFileSchemas: Record<string, FixtureName> = {
   ...Object.fromEntries(fixtureNames.map((name) => [name, name])),
   "create-session-response.en": "create-session-response",
   "karte.en": "karte",
   "board-lesson.en": "board-lesson",
-  // 英語の課程の板書。数学とは使える要素が重ならない(sentence / compare)。
+  // An English-curriculum board. Its usable elements do not overlap maths (sentence / compare).
   "board-lesson.english": "board-lesson",
   "study-plan.en": "study-plan",
   "parent-report.en": "parent-report",
@@ -86,7 +91,7 @@ export const fixtureFileSchemas: Record<string, FixtureName> = {
 
 export const fixtureFileNames = Object.keys(fixtureFileSchemas);
 
-/** fixtureファイルのリポジトリ相対パス。Dart側のテストからも同じ規約で参照する。 */
+/** The fixture file's repo-relative path. Dart tests use the same convention. */
 export function fixturePath(name: string): string {
   return `packages/contract/fixtures/${name}.json`;
 }

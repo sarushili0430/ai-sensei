@@ -2,222 +2,237 @@ import { z } from "zod";
 import { topicIdSchema } from "./karte.ts";
 
 /**
- * 学習計画(計画モード)の契約。
+ * The contract for study plans (plan mode).
  *
- * 入力は**会話の書き起こし**であって、画面の入力欄ではない(ピボット計画 v1 §4-3):
+ * The input is a conversation transcript, not screen form fields (pivot plan v1 §4-3):
  *
- *   先輩「テストいつ?」        → 「9月10日」
- *   先輩「範囲は?」            → 「数IIの三角関数、教科書120〜150ページ」
- *   先輩「使ってる参考書ある?」→ 「4STEPと青チャート」
- *   先輩「じゃあ、こんな感じでどう?」→ 計画が画面に出る
+ *   senpai "When is the test?"          -> "10 September"
+ *   senpai "What's the scope?"          -> "Math II trigonometry, textbook pp.120-150"
+ *   senpai "Any workbooks you use?"     -> "4STEP and Blue Chart"
+ *   senpai "Then how about this?"       -> the plan appears on screen
  *
- * 設計上の約束:
+ * Design promises:
  *
- *   - **フォームを作らない。** §1 で「学習計画をフォーム入力で作る」案は
- *     **却下されている**(価値を体験する前の摩擦が最大 → 初回離脱)。
- *     フィールドを1つ足すことは、先輩の質問を1つ増やすことと同じ。
- *     聞きたいことが増えたら、まず**聞かずに済ませられないか**を考える。
+ *   - No forms. §1 rejected "build the study plan from form input" (maximum
+ *     friction before any value is felt -> first-run drop-off). Adding one field
+ *     equals adding one senpai question. When you want to ask more, first ask
+ *     whether you can avoid asking at all.
  *
- *   - **点数を出さない**(デッキ §0 の約束2)。目標点・正答率・理解度・偏差値・消化率の
- *     フィールドを持たない。`.strict()` なので後から足すとテストが落ちる。
- *     学習計画は**約束2がいちばん破られやすい場所**で、「目標80点」「今週の達成率」は
- *     計画アプリの定番。しかもこの形は §5 の親レポートに載る前提なので、
- *     ここに数字を1つ置くと**そのまま親に届く**(§5-2 の ❌ 側)。
+ *   - No scores (deck §0's promise 2). There are no fields for target scores,
+ *     accuracy, comprehension, deviation values or completion rates. The schema is
+ *     `.strict()`, so adding one later fails the tests. Study plans are where
+ *     promise 2 is easiest to break - "target: 80 points", "this week's completion
+ *     rate" are planning-app staples. And since this shape is meant to appear in
+ *     §5's parent report, one number here goes straight to the parent (the ❌ side
+ *     of §5-2).
  *
- *   - **事実と割り当てを分ける。** {@link planIntakeSchema} が聞き取った事実、
- *     `days` が生成された割り当て。組み直しは**割り当てだけを作り直す**。
- *     風邪をひいてもテスト日は動かない。ここを混ぜると、組み直しのたびに
- *     事実を聞き直すことになり、結局フォームに戻る。
+ *   - Facts and assignments are separate. {@link planIntakeSchema} holds the facts
+ *     heard; `days` holds the generated assignments. A rebuild regenerates only the
+ *     assignments - catching a cold does not move the test date. Conflated, every
+ *     rebuild re-asks the facts, which is a form again.
  *
- *   - **持っていない教材を割り当てられない。** `material` は名前ではなく
- *     `materials` への**添字**({@link planItemDraftSchema})。
+ *   - You cannot assign material the student does not have. `material` is an index
+ *     into `materials`, not a name ({@link planItemDraftSchema}).
  *
- *   - **守れない計画を書けない。** 1日あたりの上限({@link planDayMinutesMax})と、
- *     テスト日を越えないこと。守れない計画は「計画は自分には無理だ」を学習させるので、
- *     上限はプロンプトのお願いではなくスキーマで持つ(`board.ts` の `speech` と同じ)。
+ *   - You cannot write an unkeepable plan. There is a daily cap
+ *     ({@link planDayMinutesMax}) and nothing may pass the test date. An unkept
+ *     plan teaches "plans are not for me", so the cap lives in the schema rather
+ *     than in a prompt request (like `speech` in `board.ts`).
  *
- *   - **縮退できる形にしておく。** §7「遅れたら落とす順」①で、計画の自動生成は
- *     **先輩が定型テンプレを提案するだけ**に落ちる。そのときも形は同じで、
- *     埋める人が変わるだけ({@link planSources})。
+ *   - It must stay degradable. In §7's "what to drop first" ①, plan generation
+ *     falls back to the senpai simply proposing a fixed template. The shape stays
+ *     the same; only who fills it changes ({@link planSources}).
  *
- * **中身の妥当性は照合しない。** topic_id がカリキュラム内か、割り当てた単元が
- * 範囲(またはその前提)に収まっているかは `@ai-sensei/guardrail` の責務。
- * contract は依存を持たない層なので、前提関係を知らない(`karte.ts` の
- * `topicIdSchema` と同じ分担)。ここが見るのは**形と上限**だけ。
+ * Content validity is not checked here. Whether a topic_id is in the curriculum,
+ * and whether an assigned unit falls within the scope (or its prerequisites), is
+ * `@ai-sensei/guardrail`'s job. contract is a dependency-free layer and knows
+ * nothing about prerequisites (the same split as `karte.ts`'s `topicIdSchema`).
+ * This file checks shape and caps only.
  */
 
 /**
- * テスト日と割り当ての日。**ローカル日付**(`YYYY-MM-DD`)で、`datetime` にしない。
+ * The test date and the assignment days. A local date (`YYYY-MM-DD`), never a `datetime`.
  *
- * 「9月10日のテスト」は生徒のカレンダー上の1日であって、時刻を持たない。
- * 瞬間(UTC)で持つと `2026-09-10T00:00:00Z` は日本の朝9時になり、
- * 端末のタイムゾーン次第で**テストが前日に動く**。`karte.ts` の
- * `last_session_date` と同じ扱いにしてある。
+ * "The test on 10 September" is one day on the student's calendar and has no time.
+ * Held as an instant (UTC), `2026-09-10T00:00:00Z` becomes 9am in Japan and the
+ * test moves a day earlier depending on the device timezone. Treated the same as
+ * `karte.ts`'s `last_session_date`.
  *
- * この形なら**文字列の辞書順が日付順と一致する**ので、下の順序検査は素直に書ける。
+ * In this form, lexicographic string order matches date order, so the ordering
+ * checks below are straightforward.
  */
 export const planDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
-/** テストの呼び方(「2学期の中間」)。分類ではなく本人の言い方をそのまま入れる。 */
+/** What the test is called ("second-term midterm"). Their own words, not a classification. */
 export const planExamNameMaxLength = 40;
 
 /**
- * 範囲を**本人がどう言ったか**の上限。
- * 「教科書120〜150ページ」はカリキュラムの単元IDに存在しないが、
- * **生徒が実際に開くのはそのページ**なので落とせない(§5-2「本人の言葉」と同じ理由)。
+ * The cap on how the student described the scope.
+ * "Textbook pp.120-150" has no curriculum unit id, but it is the page they will
+ * actually open, so it cannot be dropped (same reason as §5-2's "their own words").
  */
 export const planScopeSaidMaxLength = 120;
 
 /**
- * 範囲に入る単元数の上限。定期テストの範囲は数単元で、
- * 8を超えるなら「範囲」ではなく学期まるごと = 2週間の計画に落ちない。
+ * The cap on units in scope. A term test covers a few units; beyond 8 it is not a
+ * scope but a whole term, which does not fit a two-week plan.
  */
 export const planScopeTopicsMaxCount = 8;
 
-/** 教材名の上限(「4STEP」「青チャート」「教科書」)。 */
+/** The cap on a material's name ("4STEP", "Blue Chart", "textbook"). */
 export const planMaterialNameMaxLength = 40;
 
 /**
- * 教材の数の上限。高校生がテスト前に実際に手を動かすのは多くて3〜4冊。
- * ここを増やしても、増えるのは「持っているが開かない本」だけ。
+ * The cap on how many materials. A high-schooler actually works through 3-4 books
+ * at most before a test. Raising it only adds books they own but never open.
  */
 export const planMaterialsMaxCount = 4;
 
-/** 1つの割り当てで何をするか(「4STEPの例題42〜50」)。 */
+/** What one assignment involves ("4STEP examples 42-50"). */
 export const planItemWhatMaxLength = 80;
 
 /**
- * 1つの割り当ての所要時間(分)の下限。
- * 10分未満は、取りかかる前に終わる。刻みすぎた計画は項目数だけが増えて、
- * 1日の見た目が実際より重くなる。
+ * The lower bound on one assignment's minutes.
+ * Under 10 minutes is over before it starts. An over-sliced plan only grows the
+ * item count, making a day look heavier than it is.
  */
 export const planItemMinutesMin = 10;
 
-/** 1つの割り当ての所要時間の上限。1項目60分を超えるなら、それは2つの項目。 */
+/** The upper bound on one assignment's minutes. Past 60 minutes it is two items. */
 export const planItemMinutesMax = 60;
 
-/** 1日に置ける割り当ての数。 */
+/** How many assignments a day can hold. */
 export const planItemsPerDayMaxCount = 3;
 
 /**
- * **1日の合計時間の上限(分)。**
+ * The cap on a day's total minutes.
  *
- * 部活から帰ってきた高校生の平日に入るのは2時間まで。それ以上を書いた計画は守られず、
- * **守られなかった計画は「計画は自分には無理だ」だけを教える**。
- * だからこれは目安ではなく上限で、`planItemMinutesMax × planItemsPerDayMaxCount`
- * (180分)より**意図的に小さくしてある** — 上限3項目は「種類を分ける」ためであって、
- * 「3倍やらせる」ためではない。
+ * Two hours is what fits a weekday for a high-schooler home from club activities.
+ * A plan writing more is not kept, and an unkept plan teaches only "plans are not
+ * for me". So this is a cap, not guidance, and it is deliberately smaller than
+ * `planItemMinutesMax x planItemsPerDayMaxCount` (180 minutes) - the three-item cap
+ * exists to vary the kinds of work, not to make them do three times as much.
  */
 export const planDayMinutesMax = 120;
 
 /**
- * 計画に置ける日数の上限。
+ * The cap on how many days a plan can span.
  *
- * 定期テストの範囲が発表されるのは2〜3週間前で、入口の主役も週額プラン(§6-2)。
- * 35日(5週間)を超える先のテストは「今日から毎日」ではなく、
- * **近づいてから組む**もの。上限に当たるのは、たいてい生徒が言った日付を
- * 取り違えている(来年の日付として解釈した)ときなので、安全弁としても効く。
+ * Term-test scopes are announced 2-3 weeks ahead, and the entry product is the
+ * weekly plan (§6-2). A test more than 35 days (5 weeks) out is something to plan
+ * for nearer the time, not "every day from today". Hitting the cap usually means
+ * the student's date was misread (interpreted as next year), so it doubles as a
+ * safety valve.
  */
 export const planDaysMaxCount = 35;
 
-/** 組み直しの履歴の上限。20回組み直した計画は、計画ではなく日記。 */
+/** The cap on rebuild history. A plan rebuilt 20 times is a diary, not a plan. */
 export const planRevisionsMaxCount = 20;
 
 /**
- * 聞き取りの1ターンで喋る長さの上限({@link planTurnSchema})。
+ * The cap on how much is spoken in one interview turn ({@link planTurnSchema}).
  *
- * 値も理由も `board.ts` の `boardSpeechMaxLength` と同じ(日本語TTS 約330字/分から、
- * 1ターン20〜25秒)。同じ数字を別に置いているのは、片方を動かす判断が
- * もう片方に黙って波及しないようにするため — 板書の上限は「数式を喋らせない」ための線、
- * こちらは「聞き取りを長引かせない」ための線で、動かす理由が違う。
+ * The value and the reasoning match `board.ts`'s `boardSpeechMaxLength` (Japanese
+ * TTS at ~330 chars/min, so 20-25 seconds per turn). The same number is kept
+ * separately so a decision to move one does not silently move the other - the
+ * board cap draws the line at "do not speak formulas", this one at "do not drag
+ * out the interview", and the reasons to move them differ.
  */
 export const planSpeechMaxLength = 120;
 
-/** 組み直しの理由として本人が言ったこと。カルテの `desc` と同じ長さに揃えてある。 */
+/** What the student said as the reason for a rebuild. Same length as a karte's `desc`. */
 export const planRevisionSaidMaxLength = 200;
 
 /**
- * 誰がこの計画を組んだか。
+ * Who built this plan.
  *
- * `template` は §7「落とす順」①の**縮退版** — 先輩が聞き取った事実に定型テンプレを
- * あてはめただけで、LLMは日単位の割り当てを作っていない。
+ * `template` is the degraded version from §7's "what to drop first" ① - the senpai
+ * merely fitted a fixed template to the facts heard, with no LLM building daily
+ * assignments.
  *
- * **これを契約に持つのは、縮退したことに気づけるようにするため。**
- * 画面はどちらも同じ計画として出す(生徒に「これは簡易版です」とは言わない)ので、
- * フィールドが無いと**縮退したまま運用に入ったことを誰も知らないまま**になる
- * (§10-7 の「依存だけ入って動いていないSentry」と同じ壊れ方)。
+ * It lives in the contract so the degradation is noticeable. The screen shows both
+ * as the same plan (students are never told "this is the simple version"), so
+ * without the field nobody would know a degraded build had gone into production
+ * (the same failure as §10-7's "Sentry added as a dependency but not running").
  */
 export const planSources = ["senpai", "template"] as const;
 export const planSourceSchema = z.enum(planSources);
 export type PlanSource = (typeof planSources)[number];
 
 /**
- * 割り当ての状態。**本人の自己申告**で、AIは採点しない(§2 の小テストと同じ制約)。
+ * An assignment's status. Self-reported by the student; the AI does not grade it
+ * (the same constraint as §2's quiz).
  *
- * `moved` は組み直しで別の日に動かしたもので、**「できなかった」ではない**。
- * 「やらなかった日」を残す形にすると、計画が責める道具になる(約束4)。
- * 動かした事実は残り、失敗としては残らない。
+ * `moved` means it was shifted to another day in a rebuild - not "could not do
+ * it". A shape that records "days they skipped" makes the plan a tool for blame
+ * (promise 4). The move is recorded; the failure is not.
  *
- * **集計した割合(消化率・達成率)のフィールドは持たない。**
- * 1件ずつの事実は観測できたことだが、割合にした瞬間に点数になる(約束2)。
+ * There is no field for an aggregate ratio (completion or achievement rate).
+ * Individual facts are observations, but the moment they become a ratio they are a
+ * score (promise 2).
  */
 export const planItemStatuses = ["todo", "done", "moved"] as const;
 export const planItemStatusSchema = z.enum(planItemStatuses);
 export type PlanItemStatus = (typeof planItemStatuses)[number];
 
 /**
- * 組み直しの理由。**生徒の評価ではなく、計画の作り直し方の分岐**。
+ * The reason for a rebuild. Not an assessment of the student but a branch in how
+ * the plan is rebuilt.
  *
- *   - `behind` / `ahead` … 事実は変わっていない。**割り当てだけ**を作り直す
- *   - `facts_changed` … テスト日・範囲・教材のどれかが変わった。
- *     {@link planIntakeSchema} から書き換える
+ *   - `behind` / `ahead` ... the facts are unchanged; only the assignments are rebuilt
+ *   - `facts_changed` ... the test date, scope or materials changed, so it is
+ *     rewritten from {@link planIntakeSchema}
  *
- * 混ぜると、遅れただけの組み直しで聞き取りをやり直すことになる(= フォームに戻る)。
+ * Conflated, a rebuild for merely running behind re-runs the interview (= a form again).
  *
- * `behind` が続くのは、生徒が怠けている証拠ではなく**最初の計画が重すぎた**という観測で、
- * 次に組む計画を軽くする材料にする。責める材料にはしない(約束4)。
+ * Repeated `behind` is not evidence of laziness but an observation that the first
+ * plan was too heavy, and it is material for making the next plan lighter - never
+ * material for blame (promise 4).
  */
 export const planRevisionReasons = ["behind", "ahead", "facts_changed"] as const;
 export const planRevisionReasonSchema = z.enum(planRevisionReasons);
 export type PlanRevisionReason = (typeof planRevisionReasons)[number];
 
 /**
- * 範囲。**単元IDと本人の言い方の両方**を持つ。
+ * The scope. It holds both the unit ids and the student's own wording.
  *
- * 片方だけにすると計画が使えなくなる:
- *   - 単元IDだけ → 画面に「三角関数」とだけ出て、生徒はどのページを開くのか分からない
- *   - 本人の言葉だけ → カリキュラムと噛み合わず、穴・復習・親レポートのどれとも繋がらない
+ * Either one alone makes the plan unusable:
+ *   - unit ids only -> the screen says just "trigonometry" and the student does not
+ *     know which page to open
+ *   - their words only -> it does not mesh with the curriculum and connects to
+ *     neither holes, reviews nor the parent report
  */
 export const planScopeSchema = z
   .object({
-    /** 範囲の単元。カリキュラム内かは `@ai-sensei/guardrail` が照合する。 */
+    /** The scope's units. Whether they are in the curriculum is matched by `@ai-sensei/guardrail`. */
     topic_ids: z.array(topicIdSchema).min(1).max(planScopeTopicsMaxCount),
-    /** 本人が言った範囲(「教科書120〜150ページ」)。要約せず、言ったとおりに残す。 */
+    /** The scope as the student said it ("textbook pp.120-150"). Kept verbatim, not summarised. */
     said: z.string().min(1).max(planScopeSaidMaxLength),
   })
   .strict();
 export type PlanScope = z.infer<typeof planScopeSchema>;
 
 /**
- * 聞き取った事実。**組み直しても変わらない側**。
+ * The facts heard. The side that does not change on a rebuild.
  *
- * 聞くのはこの3つだけ(テストの日 / 範囲 / 使っている教材)。
- * ここに項目を足すと、そのぶん先輩の質問が増え、§1 で却下したフォームに近づく。
+ * Only three things are asked (test date / scope / materials in use). Adding a
+ * field here adds a senpai question and moves closer to the form §1 rejected.
  *
- * ロケール(課程)のフィールドは持たない。ADR 0005 のとおり
- * **topic_id の接頭辞から決まる**ので、持つと二重の正になる。
+ * There is no locale (curriculum) field. Per ADR 0005 it follows from the
+ * topic_id prefix, so holding it would create a second source of truth.
  */
 export const planIntakeSchema = z
   .object({
-    /** テストの呼び方。「2学期の中間」。画面の見出しに出す。 */
+    /** What the test is called: "second-term midterm". Shown as the screen's heading. */
     exam_name: z.string().min(1).max(planExamNameMaxLength),
-    /** テストの日。計画の終端。 */
+    /** The test date. The end of the plan. */
     exam_date: planDateSchema,
     scope: planScopeSchema,
     /**
-     * 使っている教材。本人が言った名前をそのまま(訳さない・正式名称に直さない)。
-     * **空でよい** —「特にない」なら教科書だけで組む。
-     * 持っていない本を勧めるくらいなら、教材なしの計画のほうが実行される。
+     * Materials in use, as the student named them (not translated, not corrected
+     * to official titles). It may be empty - "nothing in particular" means planning
+     * with the textbook alone. A plan with no materials gets done more often than
+     * one recommending a book they do not have.
      */
     materials: z.array(z.string().min(1).max(planMaterialNameMaxLength)).max(planMaterialsMaxCount),
   })
@@ -225,43 +240,45 @@ export const planIntakeSchema = z
 export type PlanIntake = z.infer<typeof planIntakeSchema>;
 
 /**
- * 1件の割り当て(生成される側)。
+ * One assignment (the generated side).
  *
- * `material` を**名前ではなく添字**にしてあるのが要点。文字列で持たせると、
- * LLMは「青チャートの例題42」を、青チャートを持っていない生徒に割り当てられる。
- * 添字なら、**聞き取った教材の外を指すことがスキーマとして不可能**になる
- * (`board.ts` の `angleMark.vertex` が頂点を添字で指すのと同じ手)。
- * 上限は `intake.materials` の長さに依るので、検査は {@link studyPlanDraftSchema} 側。
+ * The point is that `material` is an index, not a name. Held as a string, the LLM
+ * could assign "Blue Chart example 42" to a student who does not own Blue Chart.
+ * As an index, pointing outside the materials heard is impossible in the schema
+ * (the same trick as `board.ts`'s `angleMark.vertex` indexing vertices).
+ * The upper bound depends on `intake.materials`'s length, so the check lives in
+ * {@link studyPlanDraftSchema}.
  */
 export const planItemDraftSchema = z
   .object({
-    /** どの単元か。範囲(またはその前提)の中かは `@ai-sensei/guardrail` が照合する。 */
+    /** Which unit. Whether it is within scope (or its prerequisites) is matched by `@ai-sensei/guardrail`. */
     topic_id: topicIdSchema,
-    /** 何をするか、一行。「4STEPの例題42〜50」「加法定理を導出しながらノートに書く」。 */
+    /** What to do, in one line: "4STEP examples 42-50", "derive the addition formula in your notes". */
     what: z.string().min(1).max(planItemWhatMaxLength),
-    /** `intake.materials` の添字。`null` は教材を使わない項目(ノートの見直しなど)。 */
+    /** An index into `intake.materials`. `null` means no material (reviewing notes, etc.). */
     material: z.number().int().min(0).nullable(),
     /**
-     * 目安の時間(分)。**予定であって実績ではない。**
-     * 実際にやった時間のフィールドを持たないのは意図で、持つと「今週◯時間」が
-     * 親レポートに出て、§5-2 の ❌「学習時間ランキング」まで一歩で届く。
+     * Estimated minutes. A plan, not a record.
+     * There is deliberately no field for time actually spent: with one, "X hours
+     * this week" appears in the parent report, one step from §5-2's ❌ "study-time
+     * leaderboard".
      */
     minutes: z.number().int().min(planItemMinutesMin).max(planItemMinutesMax),
   })
   .strict();
 export type PlanItemDraft = z.infer<typeof planItemDraftSchema>;
 
-/** 保存後の割り当て。自己申告の状態が付く({@link planItemStatuses})。 */
+/** A stored assignment. Carries the self-reported status ({@link planItemStatuses}). */
 export const planItemSchema = planItemDraftSchema.extend({ status: planItemStatusSchema }).strict();
 export type PlanItem = z.infer<typeof planItemSchema>;
 
 /**
- * 1日ぶん。
+ * One day's worth.
  *
- * **`items` が空の日を許すのは、休む日を明示的に置くため。**
- * 配列に無い日(= 何も書かれていない日)は計画の対象外だが、
- * 配列にあって空の日は「ここは休もう」と先輩が置いた日で、意味が違う。
- * 休みの入っていない計画は、最初に崩れた日に丸ごと捨てられる。
+ * Empty `items` are allowed so rest days can be stated explicitly.
+ * A day absent from the array (= nothing written) is outside the plan, while a day
+ * present but empty is one the senpai placed as "let's rest here" - different
+ * meanings. A plan with no rest days gets abandoned whole on the first day it slips.
  */
 export const planDayDraftSchema = z
   .object({
@@ -280,19 +297,20 @@ export const planDaySchema = z
 export type PlanDay = z.infer<typeof planDaySchema>;
 
 /**
- * 組み直しの記録。**残すのは「組み直した事実と本人の言葉」だけ**で、
- * 前の割り当ては残さない。両方を持つと「先週の予定」と「今週の予定」が画面に並び、
- * どちらをやればいいのか分からなくなる。
+ * A rebuild record. It keeps only the fact of the rebuild and the student's own
+ * words, never the previous assignments. Keeping both would put "last week's plan"
+ * and "this week's plan" side by side on screen with no way to tell which to do.
  */
 export const planRevisionDraftSchema = z
   .object({
     reason: planRevisionReasonSchema,
     /**
-     * 本人が言ったこと(「風邪ひいて3日できなかった」)。
+     * What the student said ("I was ill and lost three days").
      *
-     * **言っていないなら `null`。でっち上げない。** §5-2 で親レポートに載せてよいものの
-     * 筆頭が「本人の説明の引用」で、ここは**そのまま親に届く**。
-     * 縮退版(`template`)やアプリ側の判断で組み直した場合は、引用が無いのが正しい。
+     * `null` if they did not say it. Never invent. §5-2's top item for the parent
+     * report is "a quote of the student's explanation", and this reaches the parent
+     * verbatim. When the degraded (`template`) path or the app rebuilt it, having
+     * no quote is correct.
      */
     said: z.string().min(1).max(planRevisionSaidMaxLength).nullable(),
   })
@@ -302,11 +320,13 @@ export type PlanRevisionDraft = z.infer<typeof planRevisionDraftSchema>;
 export const planRevisionSchema = planRevisionDraftSchema
   .extend({
     /**
-     * 組み直した瞬間。ここだけ `datetime` なのは、これが暦の1日ではなく
-     * **並べ替えの要る出来事**だから(1日に2回組み直すことがある)。
+     * The moment of the rebuild. Only this is a `datetime`, because it is an event
+     * that needs sorting rather than a calendar day (a plan can be rebuilt twice in
+     * one day).
      *
-     * draft に入っていないのは、**LLMが今が何時かを知らない**から。
-     * 知らないものを出させると幻覚した時刻がそのまま履歴に残る(`id` と同じ理由)。
+     * It is absent from the draft because the LLM does not know the current time.
+     * Asking it for what it does not know leaves a hallucinated timestamp in the
+     * history (the same reason as `id`).
      */
     at: z.string().datetime(),
   })
@@ -314,10 +334,11 @@ export const planRevisionSchema = planRevisionDraftSchema
 export type PlanRevision = z.infer<typeof planRevisionSchema>;
 
 /**
- * 計画そのものの不変条件。draft(LLMが出す形)と保存後で**同じ検査**をかける。
+ * The plan's own invariants. The same checks apply to the draft (what the LLM
+ * emits) and to the stored form.
  *
- * `.superRefine()` は JSON Schema に何も残らないので、Dart側は手で入れることになる。
- * README「JSON Schema に現れない不変条件」に一覧がある。
+ * `.superRefine()` leaves nothing in JSON Schema, so the Dart side adds it by
+ * hand. The README's "invariants absent from JSON Schema" lists them all.
  */
 type PlanShape = {
   intake: { exam_date: string; materials: string[] };
@@ -332,9 +353,9 @@ function checkPlanShape(plan: PlanShape, ctx: z.RefinementCtx): void {
   let previousDate: string | null = null;
 
   plan.days.forEach((day, position) => {
-    // 日付は昇順で、重複しない。同じ日が2回出ると、画面にその日が二重に並び、
-    // どちらが正なのかを決める根拠がどこにもない。
-    // `YYYY-MM-DD` は辞書順 = 日付順(planDateSchema)。
+    // Dates ascend and never repeat. A duplicate day shows twice on screen with
+    // nothing to say which is authoritative.
+    // `YYYY-MM-DD` sorts lexicographically = chronologically (planDateSchema).
     if (previousDate !== null && day.date <= previousDate) {
       issue(`日付は昇順で、同じ日を2回置かないでください(${previousDate} のあとに ${day.date})`, [
         "days",
@@ -344,9 +365,9 @@ function checkPlanShape(plan: PlanShape, ctx: z.RefinementCtx): void {
     }
     previousDate = day.date;
 
-    // テスト当日までが計画。終わったあとの日に課題を置いても、誰もやらない。
-    // (下限は縛れない。組み直した計画は `created_at` より後から始まるので、
-    //  「今日より前の日を置かない」は agent 側の責務。)
+    // The plan runs to the day of the test. Work placed after it is never done.
+    // (The lower bound cannot be constrained: a rebuilt plan starts after
+    //  `created_at`, so "no days before today" is the agent's responsibility.)
     if (day.date > plan.intake.exam_date) {
       issue(`テスト日(${plan.intake.exam_date})より後の日には置けません`, [
         "days",
@@ -361,7 +382,7 @@ function checkPlanShape(plan: PlanShape, ctx: z.RefinementCtx): void {
     }
 
     day.items.forEach((item, index) => {
-      // 聞き取っていない教材は割り当てられない(添字がそもそも存在しない)。
+      // Material that was never mentioned cannot be assigned (the index does not exist).
       if (item.material !== null && item.material >= materialCount) {
         issue("聞き取っていない教材は割り当てられません", [
           "days",
@@ -376,27 +397,29 @@ function checkPlanShape(plan: PlanShape, ctx: z.RefinementCtx): void {
 }
 
 /**
- * LLMが出す形 — **聞き取った事実 + 割り当て**。
+ * What the LLM emits - the facts heard plus the assignments.
  *
- * `id` / `created_at` / `source` / `revisions` を持たないのは意図。識別子と来歴は
- * 保存側が付ける(`board.ts` で封筒と分けたのと同じ理由 — 幻覚したIDが下流に流れ込む)。
+ * The absence of `id` / `created_at` / `source` / `revisions` is deliberate.
+ * Identifiers and provenance are added by the storage side (the same reason
+ * `board.ts` separates the envelope - hallucinated ids flow downstream otherwise).
  *
- * **このスキーマは縮退版でも埋まる。** テスト日・範囲・教材は聞き取りの結果、
- * `what` と `minutes` は定型テンプレでも書ける({@link planSources} の `template`)。
- * LLMにしか埋められないフィールドを作らないことが、§7 の「落とす順」①を
- * 実際に落とせる状態に保つ条件になっている。
+ * This schema is fillable even by the degraded path. Test date, scope and
+ * materials come from the interview, and `what` and `minutes` can be written by a
+ * fixed template ({@link planSources}'s `template`). Creating no field that only
+ * an LLM can fill is what keeps §7's "what to drop first" ① actually droppable.
  */
 export const studyPlanDraftSchema = z
   .object({
     intake: planIntakeSchema,
     days: z.array(planDayDraftSchema).min(1).max(planDaysMaxCount),
     /**
-     * 組み直しなら、その理由と本人の言葉。**初めて組む計画では `null`。**
+     * For a rebuild, the reason and the student's words. `null` for a first build.
      *
-     * ここをLLMに出させるのは、**本人の言葉を聞いているのがLLMしかいない**から。
-     * agent が書き起こしから後付けで分類すると、引用を作文することになる
-     * (それは §5-2 で親に届く一行なので、いちばんやってはいけない)。
-     * 保存側はこれに時刻を押して `revisions` の末尾に足す。
+     * The LLM emits this because the LLM is the only one hearing the student's own
+     * words. Having the agent classify it after the fact from the transcript would
+     * mean composing the quote (and that quote reaches the parent under §5-2, so it
+     * is the worst thing to fabricate). The storage side stamps a time on it and
+     * appends it to `revisions`.
      */
     revision: planRevisionDraftSchema.nullable(),
   })
@@ -405,35 +428,37 @@ export const studyPlanDraftSchema = z
 export type StudyPlanDraft = z.infer<typeof studyPlanDraftSchema>;
 
 /**
- * **計画モードでLLMが出す形。**聞き取りの1ターンぶん。
+ * What the LLM emits in plan mode: one interview turn.
  *
- * 計画は会話の途中で生まれる(§4-3)。「テストいつ?」を喋る回と、
- * 「じゃあ、こんな感じでどう?」と言いながら計画を出す回は、**同じ形の1ターン**で、
- * 違いは `plan` が入っているかどうかだけ。
- * `{speech, board}` で1手順を表す `board.ts` の `boardStepSchema` と同じ組み方にしてある。
+ * A plan is born mid-conversation (§4-3). The turn that says "when is the test?"
+ * and the turn that says "then how about this?" while producing the plan are the
+ * same shape; the only difference is whether `plan` is present. Composed the same
+ * way as `board.ts`'s `boardStepSchema`, which represents a step as `{speech, board}`.
  *
- * こうしておくと、agent は聞き取り中と生成時でLLMの呼び方を変えなくてよく、
- * ユーザーはいつでも割り込める(計画が出るまで黙って待たされる区間がない)。
+ * That way the agent calls the LLM identically during the interview and at
+ * generation time, and the user can interrupt at any point (there is no stretch of
+ * silent waiting for a plan).
  *
- * 板書は持たない。計画モードで画面に出るのは**計画そのもの**で、
- * ここに板書を足すと「計画の説明を板書に書く」ができてしまい、聞き取りが授業になる。
+ * There is no board. What appears on screen in plan mode is the plan itself;
+ * adding a board here would allow "explain the plan on the board", turning the
+ * interview into a lesson.
  */
 export const planTurnSchema = z
   .object({
     /**
-     * 読み上げる文。聞くことは1ターンに1つ({@link planSpeechMaxLength})。
+     * The line to read aloud. One question per turn ({@link planSpeechMaxLength}).
      *
-     * `board.ts` の `speech` と違ってLaTeXの禁止を持たないのは、
-     * 計画モードには**数式の置き場そのものが無い**から。禁止すると
-     * 「じゃあ数式はどこに置くのか」の答えが無い指示になる。
+     * Unlike `board.ts`'s `speech` it carries no LaTeX ban, because plan mode has
+     * nowhere to put a formula. Banning it would be an instruction with no answer
+     * to "then where does the formula go?".
      */
     speech: z.string().min(1).max(planSpeechMaxLength),
     /**
-     * できあがった計画。**まだ聞いている途中なら `null`。**
+     * The finished plan. `null` while still interviewing.
      *
-     * 途中でも毎回「いまのところの計画」を出させることはしない。
-     * 事実が半分しか揃っていない計画を画面に出すと、生徒はそれを見て
-     * 「もう決まったんだ」と受け取る。計画が出る瞬間は1回でいい。
+     * A "plan so far" is not emitted every turn. Putting a plan built from half the
+     * facts on screen makes the student read it as "it's decided now". The plan
+     * should appear exactly once.
      */
     plan: studyPlanDraftSchema.nullable(),
   })
@@ -441,14 +466,14 @@ export const planTurnSchema = z
 export type PlanTurn = z.infer<typeof planTurnSchema>;
 
 /**
- * 保存後の計画。計画画面と(将来の)親レポートが読むかたち。
+ * The stored plan. What the plan screen and (eventually) the parent report read.
  *
- * `session_id` を持たない。カルテは1セッションの出力だが、
- * **計画は何回かのセッションをまたいで生き続ける**(組み直しは別の日の別のセッションで起きる)。
- * どのセッションで生まれたかは、計画の性質ではない。
+ * It has no `session_id`. A karte is one session's output, but a plan lives across
+ * several sessions (a rebuild happens on another day, in another session). Which
+ * session it was born in is not a property of the plan.
  *
- * `days` は**いまの計画**で、組み直すと置き換わる。過去の割り当ては残さない
- * (理由は {@link planRevisionSchema})。
+ * `days` is the current plan and is replaced on a rebuild. Past assignments are
+ * not kept (see {@link planRevisionSchema}).
  */
 export const studyPlanSchema = z
   .object({
@@ -458,8 +483,8 @@ export const studyPlanSchema = z
     intake: planIntakeSchema,
     days: z.array(planDaySchema).min(1).max(planDaysMaxCount),
     /**
-     * 古い順。空 = 一度も組み直していない。
-     * 1回の組み直し({@link studyPlanDraftSchema} の `revision`)が末尾に1件積まれる。
+     * Oldest first. Empty = never rebuilt.
+     * Each rebuild ({@link studyPlanDraftSchema}'s `revision`) appends one entry.
      */
     revisions: z.array(planRevisionSchema).max(planRevisionsMaxCount),
   })

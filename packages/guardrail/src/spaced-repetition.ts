@@ -1,21 +1,21 @@
 import type { CurriculumLocale } from "@ai-sensei/curriculum";
 
 /**
- * 間隔反復スケジューラ(翌日 → 3日後 → 7日後)。
+ * The spaced-repetition scheduler (+1 day -> +3 days -> +7 days).
  *
- * OneSignal賞の中核であり、後付けの機能ではなく製品そのもの。
- * 通知は「リマインダー」ではなく **後輩からのお願い** として書く。
- * 罪悪感で煽る文面(「記録が途切れます」等)は作らない。
+ * The core of the OneSignal award and the product itself, not a bolt-on.
+ * Notifications are written as a request from the agent, never as a "reminder".
+ * Guilt-based wording ("your record is about to break") is never written.
  */
 
-/** 各段の日数。 */
+/** The days at each step. */
 export const reviewStepDays = [1, 3, 7] as const;
 export type ReviewStep = 1 | 2 | 3;
 
 export type ScheduleOptions = {
-  /** ローカルタイムゾーンのUTCオフセット(分)。日本の高校生向けなので既定はJST。 */
+  /** The local timezone's UTC offset in minutes. Aimed at Japanese high-schoolers, so it defaults to JST. */
   timezoneOffsetMinutes?: number;
-  /** 通知するローカル時刻。夜の勉強時間帯に置く。 */
+  /** The local hour to notify at. Placed in the evening study window. */
   hourLocal?: number;
   minuteLocal?: number;
 };
@@ -29,8 +29,9 @@ export type ScheduledReview = {
 };
 
 /**
- * セッション完了時に、その日できた穴の再説明を3段階で予約する。
- * 予約はサーバ側で作り、OneSignalのスケジュール送信に載せる(cronは持たない)。
+ * On session completion, books three re-explanations of that day's holes.
+ * The bookings are made server-side and ride OneSignal's scheduled send (there is
+ * no cron).
  */
 export function scheduleReviews(
   holeIds: readonly string[],
@@ -50,7 +51,7 @@ export function scheduleReviews(
   return entries;
 }
 
-/** completedAt のローカル日付から days 日後の、指定ローカル時刻のUTC時刻。 */
+/** The UTC time at the given local hour, `days` days after completedAt's local date. */
 export function reviewTimeAfterDays(
   completedAt: Date,
   days: number,
@@ -71,37 +72,38 @@ export function reviewTimeAfterDays(
   return new Date(localTargetMs - offsetMinutes * 60_000);
 }
 
-/** 再説明で埋まらなかったときに次の段へ進める。3段目まで行ったら打ち切る。 */
+/** Advances to the next step when re-explaining did not fill it. Stops after step 3. */
 export function nextReviewStep(current: ReviewStep): ReviewStep | null {
   return current < 3 ? ((current + 1) as ReviewStep) : null;
 }
 
 /**
- * 遅延したときに落とす順(ソロ運用ルール)。
- * 3段階 → 翌日のみ、に縮小するためのフラグ。
+ * The order to drop things when running late (the solo-operation rule).
+ * A flag for shrinking three steps down to the next day only.
  */
 export function activeStepDays(reduced = false): readonly number[] {
   return reduced ? [reviewStepDays[0]] : reviewStepDays;
 }
 
 export type ReviewPromptInput = {
-  /** 穴の説明。「判別式を『なぜ』使うのか、で説明が止まった」 */
+  /** The hole's description: "the explanation stalled at *why* the discriminant is used". */
   desc: string;
-  /** 何日前にできた穴か。 */
+  /** How many days ago the hole appeared. */
   daysSince: number;
   /**
-   * 文面の言語。省略時は日本語。
+   * The wording's language. Defaults to Japanese.
    *
-   * 呼び出し側は穴の topic_id から引く(`localeOfTopicId`)。穴の説明文は
-   * その課程の言語で書かれているので、言語を取り違えると
-   * 「きのうの『why the discriminant is used』」のような通知になる。
+   * The caller derives it from the hole's topic_id (`localeOfTopicId`). A hole's
+   * description is written in that curriculum's language, so getting it wrong
+   * produces a notification like "yesterday's 'why the discriminant is used'".
    */
   locale?: CurriculumLocale;
 };
 
 /**
- * 通知文とレビュー画面の一行を作る。
- * 後輩の声・お願いの形。責める語彙と記録を人質に取る表現は使わない。
+ * Builds the notification text and the review screen's one-liner.
+ * The agent's voice, in the form of a request. No blaming vocabulary and nothing
+ * that holds a record hostage.
  */
 export function buildReviewPrompt({ desc, daysSince, locale = "ja" }: ReviewPromptInput): string {
   if (locale === "en") {
@@ -113,7 +115,7 @@ export function buildReviewPrompt({ desc, daysSince, locale = "ja" }: ReviewProm
   return `${when}の「${toSubject(desc, locale)}」、いまなら説明できますか?`;
 }
 
-/** 穴の説明文から、通知に載る短い主題を取り出す。 */
+/** Extracts the short subject that goes into the notification, from the hole's description. */
 function toSubject(desc: string, locale: CurriculumLocale): string {
   const trimmed =
     locale === "en"
@@ -130,7 +132,7 @@ function toSubject(desc: string, locale: CurriculumLocale): string {
           .trim();
 
   const subject = trimmed.length > 0 ? trimmed : desc.trim();
-  // 英語は1文字あたりの情報量が少ないので、同じ見た目の長さに収まるまで長く取る。
+  // English carries less information per character, so take more of it to fill the same apparent length.
   const limit = locale === "en" ? 48 : 24;
   return subject.length <= limit ? subject : `${subject.slice(0, limit - 1)}…`;
 }

@@ -25,7 +25,7 @@ describe("normalizeMathSpeech", () => {
 
   it("演算子と関係記号を直す", () => {
     expect(normalize("エックスプラス3イコール5")).toBe("x+3=5");
-    // 助詞は残す。式として組み直すのは写真文脈を持つLLM側の仕事。
+    // Particles are kept. Reassembling it as a formula is the job of the LLM that has the photo's context.
     expect(normalize("dが大なりr")).toBe("dが>r");
   });
 
@@ -37,7 +37,7 @@ describe("normalizeMathSpeech", () => {
     expect(normalizeMathSpeech("エックスの2乗").applied).toEqual(["power-of", "var-x"]);
   });
 
-  // やりすぎないこと。誤変換を増やすくらいなら素通しする。
+  // Do not overreach. Passing text through beats adding mis-conversions.
   it("普通の日本語は壊さない", () => {
     const sentences = [
       "そこはなんとなくで進めました",
@@ -70,7 +70,7 @@ describe("normalizeUserUtterances", () => {
   });
 });
 
-// レビュー指摘: 「時間をかける」まで演算子にすると、カルテの材料が壊れる
+// From review: making even "時間をかける" an operator would corrupt the karte's raw material
 describe("日常語の「かける」「わる」", () => {
   it("時間をかける、は演算子にしない", () => {
     expect(normalize("この計算には時間をかける必要があります")).toBe(
@@ -88,8 +88,8 @@ describe("日常語の「かける」「わる」", () => {
   });
 });
 
-// 英語STTも読み上げのまま文字にする("x squared")。
-// 日常語と衝突する語(times / over / plus)は、両側が式のときだけ直す。
+// English STT also transcribes readings literally ("x squared").
+// Words that collide with everyday use (times / over / plus) are fixed only when both sides are terms.
 describe("英語の読み替え", () => {
   const en = (input: string) => normalizeMathSpeech(input, "en").text;
 

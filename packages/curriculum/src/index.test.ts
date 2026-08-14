@@ -27,9 +27,10 @@ describe("カリキュラムデータの整合性", () => {
       const data = curriculumFor(track);
       expect(data.version).toMatch(/^\d+\.\d+\.\d+$/);
       expect(data.track).toBe(track);
-      // 課程1本が「1教科ぶんの範囲」として成立する下限。高校数学は52/57件あるが、
-      // 中学数学は3学年 × 4領域で27件が指導要領どおりの粒度なので、全課程に
-      // 同じ下限を課すと、正しいデータのほうを削ることになる。
+      // The floor at which one curriculum stands as "one subject's worth of scope".
+      // High-school maths has 52/57 entries, but middle-school maths has 27 (3 grades x
+      // 4 domains), which is exactly the guidelines' granularity - so imposing the same
+      // floor on every curriculum would mean trimming the correct data instead.
       expect(data.topics.length, track).toBeGreaterThanOrEqual(20);
     }
   });
@@ -57,8 +58,8 @@ describe("カリキュラムデータの整合性", () => {
     }
   });
 
-  // 技能目標(「因数分解できる」)だけのトピックがあると、そこから作れる質問が
-  // 「解けますか?」になってしまう。各トピックに説明を問える目標を最低1つ持たせる。
+  // A topic with only skill goals ("can factorise") yields questions that amount to
+  // "can you solve it?". Every topic carries at least one goal that asks for an explanation.
   it("すべてのトピックに、説明を問える到達目標が最低1つある", () => {
     const explainable: Record<string, RegExp> = {
       ja: /説明できる|使い分け|導ける|判断/,
@@ -75,9 +76,9 @@ describe("カリキュラムデータの整合性", () => {
     }
   });
 
-  // 接頭辞がぶつかると、穴のタグからどの課程か決められなくなる。
-  // 言語・教科・学校段階はすべてこの1文字目から引くので、ここが崩れると
-  // 通知の言語も板書に使える要素も決まらない。
+  // Colliding prefixes make it impossible to decide a curriculum from a hole's tag.
+  // Language, subject and school stage all come from that first component, so breaking
+  // this decides neither the notification's language nor the usable board elements.
   it("topic_idの接頭辞は課程をまたいで重複しない", () => {
     for (const track of trackIds) {
       for (const topic of topicsForTracks([track])) {
@@ -95,7 +96,7 @@ describe("カリキュラムデータの整合性", () => {
   });
 });
 
-// 新課程(2022年度〜)の要注意点。旧課程の知識で書き足すと必ずここで落ちる。
+// Pitfalls of the current guidelines (from 2022). Adding entries from the old guidelines always fails here.
 describe("新課程の配当", () => {
   const jaTopics = topicsForTracks(["hs_math_ja"]);
 
@@ -122,8 +123,8 @@ describe("新課程の配当", () => {
   });
 });
 
-// 海外の課程は日本の課程の翻訳ではない。訳し直したものを足すと、
-// 「Math II」のようなどこの国にも無い科目名が画面に出てしまう。
+// The overseas curricula are not translations of the Japanese ones. Adding a
+// re-translation would put a course name like "Math II" - which exists nowhere - on screen.
 describe("海外向けの課程の配当", () => {
   it("科目名は Algebra / Geometry などで、数学I〜C の訳語ではない", () => {
     const names = new Set(curricula.hs_math_en.courses.map((course) => course.name));
@@ -145,16 +146,17 @@ describe("海外向けの課程の配当", () => {
 });
 
 describe("課程(track)", () => {
-  // 段で切ると、その生徒に見せる課程は**教科ぶんだけ**になる。
-  // 中学生に数学I〜Cが並ばないのも、高校生に中1の単元が並ばないのも、ここが根拠。
+  // Cutting by stage leaves that student exactly as many curricula as subjects.
+  // It is why Math I-C never lists for a middle-schooler and grade-7 units never list
+  // for a high-schooler.
   it("段階と指導言語から課程を引ける", () => {
     expect(tracksForStage("high_school", "ja").sort()).toEqual(["hs_english_ja", "hs_math_ja"]);
     expect(tracksForStage("junior_high", "ja").sort()).toEqual(["jhs_english_ja", "jhs_math_ja"]);
     expect(tracksForStage("high_school", "en")).toEqual(["hs_math_en"]);
   });
 
-  // 海外の課程は Algebra 1 〜 Calculus が一続きで、中学/高校に分かれていない。
-  // 段階で切ると英語の学習者に何も出せなくなる。
+  // The overseas curricula run continuously from Algebra 1 to Calculus, with no
+  // middle/high split. Cutting by stage would leave English learners with nothing.
   it("海外向けの課程は段階で切らない", () => {
     expect(tracksForStage("junior_high", "en")).toEqual(["hs_math_en"]);
   });
@@ -181,8 +183,8 @@ describe("topicLabel", () => {
     expect(topic && topicLabel(topic)).toBe("Algebra 2");
   });
 
-  // 学年の目安を持つのは、学年配当が教科書ごとに違う英語の課程だけ。
-  // 数学は course そのものが学年なので、grade_hint を書くと二重管理になる。
+  // Only English curricula carry a rough grade, because grade allocation differs per
+  // textbook. In maths the course itself is the grade, so a grade_hint would be duplicate bookkeeping.
   it("数学の課程に grade_hint を書くと整合性検査で落ちる", () => {
     const [sample] = curricula.hs_math_ja.topics;
     if (!sample) throw new Error("トピックが空です");
@@ -279,8 +281,8 @@ describe("suggestTopics", () => {
     expect(ids[0]).toBe("A1-QUAD-SOLVE");
   });
 
-  // 空白で区切られた英語の語は、空白を落とすと語境界を失う。
-  // `law of sines` が `usingthelawofsines` の中に埋もれて一致しなくなる。
+  // Space-separated English words lose their word boundaries if spaces are removed:
+  // `law of sines` would hide inside `usingthelawofsines` and never match.
   it("複数語の英語キーワードを拾える", () => {
     const ids = suggestTopics("we used the law of sines to find the missing angle").map(
       (t) => t.id,
@@ -300,8 +302,8 @@ describe("suggestTopics", () => {
     expect(suggestTopics("今日の献立はカレーです")).toEqual([]);
   });
 
-  // `constant` の tan、`since` の sin、`biology` の log を数学の証拠にしない。
-  // ここが緩いと、数学以外の写真が「範囲内」として通ってしまう。
+  // The tan in `constant`, the sin in `since` and the log in `biology` are not evidence
+  // of maths. Loosen this and non-maths photos pass as "in scope".
   it("英単語に埋もれた sin/tan/log を拾わない", () => {
     expect(suggestTopics("constant biology since")).toEqual([]);
   });

@@ -9,7 +9,7 @@ import {
 } from "./plan-guard.ts";
 import { buildAllowedTopics, isAllowedTopic } from "./topic-guard.ts";
 
-/** 2学期の中間 = 数IIの三角関数、という典型的なテスト範囲。 */
+/** A typical test scope: second-term midterm = Math II trigonometry. */
 const trigScope = ["M2-SANKAKU-KAHO", "M2-SANKAKU-HOTEISHIKI"];
 
 function allowedFor(scope: readonly string[] = trigScope) {
@@ -25,7 +25,7 @@ describe("checkPlanScope — 通すべきもの", () => {
     if (!verdict.ok) return;
 
     expect(verdict.allowed.primary.has("M2-SANKAKU-KAHO")).toBe(true);
-    // 三角関数の前提は三角比(数I)。復習日を置くのは家庭教師のふつうの組み方。
+    // Trigonometry's prerequisite is trigonometric ratios (Math I). Scheduling a revision day is ordinary tutoring.
     expect(verdict.allowed.prerequisite.has("M1-KEIRYO-SANKAKUHI")).toBe(true);
   });
 
@@ -37,9 +37,10 @@ describe("checkPlanScope — 通すべきもの", () => {
 
 describe("checkPlanScope — 弾くべきもの", () => {
   /**
-   * **範囲は1つでも壊れていたら全体を落とす。**
-   * 黙って1単元を捨てると、実際より狭いテストに向けた計画ができあがり、
-   * 生徒は範囲の一部を勉強しないまま当日を迎える(しかも気づけない)。
+   * One broken entry fails the whole scope.
+   * Silently dropping one unit produces a plan aimed at a narrower test than the real
+   * one, and the student reaches the day without studying part of the scope (with no
+   * way to notice).
    */
   it("1つでもカリキュラムにないIDがあれば、範囲ごと落とす", () => {
     const verdict = checkPlanScope([...trigScope, "M2-SONZAI-SHINAI"]);
@@ -58,8 +59,8 @@ describe("checkPlanScope — 弾くべきもの", () => {
   });
 
   /**
-   * 課程の混在は計画でだけ見る。混ざっているのは、LLMが両方のカリキュラムの
-   * 記憶から引いたということで、**範囲の残りも信用できない**。
+   * Mixed curricula are checked only for plans. A mix means the LLM drew on both
+   * curricula's memories, so the rest of the scope is untrustworthy too.
    */
   it("日本の課程と海外の課程が混ざった範囲を弾く", () => {
     const verdict = checkPlanScope(["M2-SANKAKU-KAHO", "PC-TRIG-IDENTITY"]);
@@ -77,13 +78,13 @@ describe("filterPlanItems", () => {
     expect(result.accepted).toHaveLength(2);
   });
 
-  // 「まず三角比を思い出す日」。計画の単位は1日なので、前提の復習日は正当。
+  // "A day to recall trigonometric ratios first." A plan's unit is a day, so a prerequisite revision day is legitimate.
   it("範囲の前提にあたる復習日を通す", () => {
     const result = filterPlanItems([{ topic_id: "M1-KEIRYO-SANKAKUHI" }], allowedFor());
     expect(result.rejected).toEqual([]);
   });
 
-  // これが塞ぎたかった穴そのもの。contract は前提関係を知らないので通してしまう。
+  // Exactly the hole this closes. contract knows nothing about prerequisites and lets it through.
   it("範囲外の単元を割り当てた日を落とす", () => {
     const result = filterPlanItems(
       [{ topic_id: "M2-SANKAKU-KAHO" }, { topic_id: "MB-SURETSU-TOSA-TOHI" }],
@@ -94,8 +95,8 @@ describe("filterPlanItems", () => {
   });
 
   /**
-   * **割り当ては1件ずつ落とす**(範囲と扱いが違う)。
-   * 1日が範囲外でも、残りの日は使える生成物なので。
+   * Assignments are dropped one at a time (handled differently from the scope).
+   * They are generated output, so one out-of-scope day still leaves the rest usable.
    */
   it("落ちた日以外は残る", () => {
     const result = filterPlanItems(
@@ -120,25 +121,26 @@ describe("filterPlanItems", () => {
 });
 
 /**
- * 前提をどこまで許すかは設計判断。2段で止めるのは、それ以上広げても増えるトピックが
- * 少なく(2段で飽和する)、「テスト対策」ではなく「課程のやり直し」になるため。
+ * How far prerequisites may reach is a design decision. It stops at two levels
+ * because widening further adds few topics (it saturates at two) and turns "test
+ * preparation" into "redoing the curriculum".
  */
 describe("前提をどこまで許すか", () => {
   /**
-   * **会話側と同じ値だが、追随はしない。**
+   * The same value as the conversation side, but it does not follow it.
    *
-   * 当初は「計画のほうが深いはず」(単位が質問ではなく1日だから)としていたが、
-   * 会話側がプロンプトの約束どおり2段に直った時点で同じ値になった。
-   * それでも定数を分けたままにしてあるのは、**会話側は原価(セッション時間)の都合で
-   * 浅くしたくなることがある**から。そのとき計画まで黙って追随すると、
-   * 正当な復習日が範囲外として落ちはじめる。
+   * The original assumption was that plans should go deeper (their unit is a day, not
+   * a question), but they became equal once the conversation side was fixed to the two
+   * levels its prompt promises. The constants stay separate because the conversation
+   * side may want to go shallower for cost (session time), and having plans silently
+   * follow would start rejecting legitimate revision days as out-of-scope.
    */
   it("会話側の深さが変わっても、計画の深さは動かない", () => {
     const plan = allowedFor(["M2-SANKAKU-HOTEISHIKI"]);
-    // 三角方程式 → 加法定理(1段)→ 三角比(2段)。復習日として置ける。
+    // Trigonometric equations -> addition formulae (level 1) -> trigonometric ratios (level 2). Valid as a revision day.
     expect(isAllowedTopic(plan, "M1-KEIRYO-SANKAKUHI")).toBe(true);
 
-    // 会話側を浅くしても、計画側は planPrerequisiteDepth のまま。
+    // Making the conversation side shallower leaves the plan side at planPrerequisiteDepth.
     const shallowConversation = buildAllowedTopics(["M2-SANKAKU-HOTEISHIKI"], {
       prerequisiteDepth: 1,
     });
@@ -147,8 +149,9 @@ describe("前提をどこまで許すか", () => {
   });
 
   /**
-   * 前提の辺は**科目の系列に沿って伸びる**ので、2段広げても別の系列には届かない。
-   * ここが崩れると、深さを広げた瞬間に「三角関数の計画に数列」が通る。
+   * Prerequisite edges extend along a subject's strand, so widening to two levels never
+   * reaches another strand. Break this and widening the depth immediately admits
+   * "sequences in a trigonometry plan".
    */
   it("深さを広げても、別の系列の単元までは届かない", () => {
     const plan = allowedFor();
@@ -179,9 +182,10 @@ describe("再生成の指示", () => {
   });
 
   /**
-   * 「範囲外です」だけを返すと、LLMは**範囲のほうを書き換えて**辻褄を合わせにいく。
-   * それは聞き取った事実の改竄で、計画が通っても生徒のテスト範囲とは別物になる。
-   * 行き先(「その日の割り当てを差し替える」)まで書いてあることを固定する。
+   * Returning only "out of scope" makes the LLM rewrite the scope to make things add
+   * up. That falsifies the interviewed facts, so the plan passes while describing a
+   * different test. This pins that the destination ("replace that day's assignments")
+   * is spelled out.
    */
   it("範囲外の指示が、範囲を書き換えない方向を向いている", () => {
     expect(planRejectionGuidanceByLocale.ja.topic_out_of_scope).toContain("範囲のほうを書き換えず");
@@ -198,8 +202,8 @@ describe("再生成の指示", () => {
 });
 
 /**
- * 中学生の定期テストは**数学と英語が並ぶ**。教科の混在で落とすと、
- * いちばん多い形の計画が作れなくなる。
+ * A middle-schooler's term test lines up maths and English. Rejecting mixed subjects
+ * would make the most common shape of plan impossible.
  */
 describe("課程の混在(教科は通す・言語と段は落とす)", () => {
   it("数学と英語が混ざった範囲は通す", () => {

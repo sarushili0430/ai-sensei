@@ -1,31 +1,31 @@
 /**
- * `solve.js` の型。
+ * Types for `solve.js`.
  *
- * **中身を JS のまま置いているのは意図的。** この解き手は
- * 「知らない形の JSON を受け取って、駄目なら例外にする」のが仕事で、
- * 安全は実行時の検査({@link ../schema.ts} と `solve()` 自身の throw)が担っている。
- * `noUncheckedIndexedAccess` の下で書き直すと `!` が100個増えるだけで、
- * **実測240回で通っているコードに、型のためだけの変更を入れることになる**。
- * 型は「外から見える形」に付けて、境界で守る。
+ * Keeping the implementation in JS is deliberate. This solver's job is to take
+ * JSON of an unknown shape and throw when it is bad, and safety comes from runtime
+ * checks ({@link ../schema.ts} and `solve()`'s own throws). Rewriting it under
+ * `noUncheckedIndexedAccess` would only add a hundred `!`s - a change made purely
+ * for types to code that passes 240 measured runs. Types go on the shape visible
+ * from outside, and the boundary does the guarding.
  */
 
 export type Pt = { x: number; y: number };
 
-/** モデルが書く1要素。形は `docs/figeval/spec.md`。 */
+/** One item the model writes. Its shape is in `docs/figeval/spec.md`. */
 export type Item = Record<string, unknown>;
 
 /**
- * 解いた結果の描画命令。`t` で種類が分かれる。
+ * A draw instruction from the solved result. `t` distinguishes the kinds.
  *
- * 中身は種類ごとにばらばらなので `unknown` にしてある。
- * 読む側は `t` で絞ってから、必要な形に狭める({@link render} が実際にそうしている)。
+ * The contents vary per kind, so they are `unknown`. Readers narrow by `t` first
+ * and then to the shape they need (which is what {@link render} does).
  */
 export type Draw = { t: string; [key: string]: unknown };
 
 export type Solved = {
-  /** 描く順に並んだ命令。 */
+  /** The instructions, in draw order. */
   draws: Draw[];
-  /** 名前のついた点。作図の結論(交点・重心など)もここに入る。 */
+  /** Named points. A construction's conclusions (intersections, centroids) land here too. */
   pts: Record<string, Pt>;
   circles: Record<string, { c: Pt; r: number }>;
   curves: Record<string, unknown>;
@@ -33,20 +33,21 @@ export type Solved = {
 };
 
 /**
- * 式の文字列 → 1変数の関数。**知らない名前が出たら投げる**(黙って NaN にしない)。
+ * Expression string -> a one-variable function. Throws on an unknown name (never silently NaN).
  */
 export function compile(src: unknown, varName: string): (v: number) => number;
 
-/** 2変数の式。領域の内外判定に使う。 */
+/** A two-variable expression. Used to decide inside/outside a region. */
 export function compile2(src: unknown): (x: number, y: number) => number;
 
 /**
- * 作図の宣言を座標に解く。
+ * Solves a figure declaration into coordinates.
  *
- * **解けないものは投げる。**平行な2直線の交点、定義していない点、
- * 実際の長さと合わないラベル、和が1にならない確率 — どれも
- * 「それらしく見えて中身が違う図」になるので、描かずに落とす。
+ * Anything unsolvable throws: the intersection of two parallel lines, an undefined
+ * point, a label that disagrees with the real length, probabilities that do not sum
+ * to 1 - each would produce a figure that looks plausible but is wrong, so it fails
+ * rather than being drawn.
  *
- * @throws 解けなかった理由(そのまま投げ直しの材料にできる文言)
+ * @throws the reason it could not be solved (wording usable directly as retry material)
  */
 export function solve(items: Item[]): Solved;

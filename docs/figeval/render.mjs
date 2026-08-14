@@ -1,7 +1,8 @@
-// solve() の結果 → SVG。**黒板に描いた見え方**をそのまま出す。
+// solve()'s result -> SVG. Emits exactly how it looks drawn on a blackboard.
 //
-// これは同時に、D-19/D-20 で勧めた「サーバで解いて SVG を送る」経路の実物。
-// Flutter 側は SVG を描くだけになるので、語彙が増えても端末側は1行も増えない。
+// This is also the real implementation of the "solve on the server and send SVG"
+// route recommended in D-19/D-20. The Flutter side only draws the SVG, so growing
+// the vocabulary adds not one line on the device.
 
 const BOARD = "#2f3a35";
 const CHALK = "#edeae0";
@@ -20,38 +21,38 @@ const W = 320;
 const H = 224;
 
 /**
- * 図の文字に使う書体。
+ * The typeface used for text in figures.
  *
- * **`ui-sans-serif` や `system-ui` は Web だけの総称名で、Flutter は解決できない。**
- * 最初これを書いていて、端末では日本語が**全部豆腐(□)になった**
- * (増減表の見出しも「五数要約はデータから計算」も読めない)。
- * アプリが同梱している実在の書体を先頭に置く。ブラウザ(ワイヤーフレームの
- * ギャラリー)では見つからないので、後ろの総称名に落ちる。
- */
-/**
- * **カンマ区切りで並べてはいけない。**`flutter_svg` は
- * `font-family` の値を**まるごと1つの書体名**として扱うので、
- * `"ZenMaruGothic,sans-serif"` は「そういう名前の書体」を探しに行って見つからず、
- * 日本語が豆腐(□)になる。実測で確かめた:
+ * `ui-sans-serif` and `system-ui` are Web-only generic names that Flutter cannot
+ * resolve. Written that way at first, every Japanese character on the device
+ * became tofu (□) - neither the sign table's headings nor "the five-number summary
+ * is computed from the data" were readable. A real typeface bundled with the app
+ * goes first; browsers (the wireframe gallery) do not find it and fall back to the
+ * generic name after it.
  *
- *   ZenMaruGothic,sans-serif → □□□
- *   ZenMaruGothic            → 増減表 abc 123   ← これだけ通る
- *   (指定なし)               → □□□
+ * Never list several names comma-separated. `flutter_svg` treats the whole
+ * `font-family` value as one typeface name, so `"ZenMaruGothic,sans-serif"` goes
+ * looking for a typeface with that name, finds none, and Japanese becomes tofu (□).
+ * Measured:
  *
- * 名前を1つだけ書く。ブラウザ(ワイヤーフレームのギャラリー)は
- * 知らない名前なら既定の書体に落ちるので、こちらでも困らない。
+ *   ZenMaruGothic,sans-serif -> □□□
+ *   ZenMaruGothic            -> 増減表 abc 123   <- only this works
+ *   (unspecified)            -> □□□
+ *
+ * So write exactly one name. A browser (the wireframe gallery) falls back to its
+ * default typeface for a name it does not know, which is fine here.
  */
 const FONT = "ZenMaruGothic";
 
 function frame(inner, w = W, h = H) {
-  // **`<marker>` は使わない。**`flutter_svg` が対応しておらず
-  // (`unhandled element <marker/>`)、端末では**矢印の頭が全部消える**。
-  // 遷移図の矢印から向きが消えると、図として意味を持たなくなる。
-  // 矢じりは `line()` の中で三角形として置く。
+  // Never use `<marker>`. `flutter_svg` does not support it
+  // (`unhandled element <marker/>`), so every arrowhead disappears on the device.
+  // A transition diagram's arrows losing their direction stops being a figure at all.
+  // Arrowheads are placed as triangles inside `line()`.
   return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg" role="img"><rect width="${w}" height="${h}" fill="${BOARD}"/>${inner}</svg>`;
 }
 
-/** 線の先に付ける矢じり。**`<marker>` の代わり**(上の理由)。 */
+/** The arrowhead put on the end of a line. Stands in for `<marker>` (reason above). */
 function arrowHead(x1, y1, x2, y2, color) {
   const dx = x2 - x1;
   const dy = y2 - y1;
@@ -66,16 +67,15 @@ function arrowHead(x1, y1, x2, y2, color) {
   return `<polygon points="${f(x2)},${f(y2)} ${f(bx - uy * half)},${f(by + ux * half)} ${f(bx + uy * half)},${f(by - ux * half)}" fill="${color}"/>`;
 }
 /**
- * SVG の中の文字の下限。
+ * The minimum text size inside the SVG.
  *
- * **SVG は文字も図と一緒に縮む。**端末側では直せないし、
- * 端末の文字サイズ設定も効かない。実測すると 320 幅の viewBox を
- * 340pt で出したときの倍率は 1.06 しかないので、
- * **SVG に書いた px が、ほぼそのまま pt になる**。
- * 8px は 8.5pt で、中高生がスマホで読むには小さい。
+ * SVG text shrinks along with the figure. The device cannot fix that, and the
+ * device's text-size setting does not apply. Measured, a 320-wide viewBox emitted
+ * at 340pt scales by only 1.06, so a px written into the SVG is very nearly a pt.
+ * 8px is 8.5pt, too small for a teenager to read on a phone.
  *
- * ここを上げても足りなくなったら、そのときが
- * 「SVG ではなく描画命令を送る」に切り替える合図(wireframe D-21)。
+ * If raising this stops being enough, that is the signal to switch from SVG to
+ * sending draw commands (wireframe D-21).
  */
 const MIN_FONT = 10;
 
@@ -90,13 +90,13 @@ const line = (x1, y1, x2, y2, o = {}) => {
   return `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${color}" stroke-width="${o.w || 1.6}" stroke-linecap="round"${dash}/>${head}`;
 };
 
-// ---- 幾何(座標を持つもの)は、まとめて枠に収める ----
+// ---- Geometry (things with coordinates) is fitted into one frame ----
 function geometric(draws) {
   const xs = [];
   const ys = [];
-  // **軸が宣言されていれば、それを枠の正とする。**
-  // y=1/(x-2) のように極を持つ曲線は min/max が発散し、
-  // 素直に全点を囲むと図が1本の線に潰れる(実際そうなった)。
+  // If axes are declared, they are authoritative for the frame.
+  // A curve with a pole, such as y=1/(x-2), has diverging min/max, and naively
+  // enclosing every point collapses the figure into a single line (it really did).
   const ax = draws.find((d) => d.t === "axes");
   const clip = ax ? { x0: ax.span[0], x1: ax.span[1], y0: ax.span[2], y1: ax.span[3] } : null;
   const inClip = (p) =>
@@ -112,10 +112,10 @@ function geometric(draws) {
     ys.push(p.y);
   };
 
-  // **重なったラベルは、無いのと同じ。**
-  // 点が近くに集まると `A(1, 0)` と `B(3, 0)` と目盛りが団子になる。
-  // 置いた場所を覚えておいて、ぶつかったら上下にずらす。
-  // ずらす先も全部ふさがっていたら、そこは**描かない**(重ねて出すより読める)。
+  // Overlapping labels are the same as no labels.
+  // Where points cluster, `A(1, 0)`, `B(3, 0)` and the ticks pile up.
+  // Remember where each was placed and shift it vertically on a collision.
+  // If every shifted position is taken too, it is not drawn (more readable than overlapping).
   const placed = [];
   const placeLabel = (cx, cy, text, size, emit) => {
     const w = String(text).length * size * 0.62;
@@ -137,8 +137,8 @@ function geometric(draws) {
     eat(d.b);
     eat(d.o);
     eat(d.c);
-    // **散布図の点は `[x, y]` の配列なので、`{x,y}` だけ見ていると枠に入らない。**
-    // 最初これで点が画面の外に飛び、`r = 0.999` だけが出ている絵になった。
+    // Scatter points are `[x, y]` arrays, so looking only at `{x,y}` leaves them out of
+    // the frame. That first sent points off-screen, leaving a picture with only `r = 0.999`.
     if (d.t === "scatter") d.ps.forEach((p) => eat({ x: p[0], y: p[1] }));
     else (d.ps || []).forEach(eat);
     (d.cells || []).forEach(eat);
@@ -206,7 +206,7 @@ function geometric(draws) {
     const dash = d.dash ? "5 4" : r.dash;
     switch (d.t) {
       case "region":
-        // 塗りは点の集まりで表す(黒板のハッチのように見せる)
+        // Fills are expressed as a cluster of dots (to look like blackboard hatching)
         out.push(
           `<g fill="${role(d.as).c}" opacity="0.5">${d.cells
             .filter((_, i) => i % 3 === 0)
@@ -272,7 +272,7 @@ function geometric(draws) {
         break;
       }
       case "curve": {
-        // 枠の外へ出た点で線を切る。極をまたいで一直線に結ばない。
+        // Cut the line at points outside the frame. Never join straight across a pole.
         const segs = [];
         let cur = [];
         for (const p of d.ps) {
@@ -368,7 +368,7 @@ function geometric(draws) {
         });
         break;
       case "complexPlane":
-        // 実軸・虚軸を引く。**軸が無いと「複素数平面」に見えない。**
+        // Draw the real and imaginary axes. Without them it does not read as a complex plane.
         out.push(line(X(-d.span), Y(0), X(d.span), Y(0), { c: DIM, w: 1.2, marker: "ah" }));
         out.push(line(X(0), Y(-d.span), X(0), Y(d.span), { c: DIM, w: 1.2, marker: "ah" }));
         out.push(txt(X(d.span) - 4, Y(0) + 14, "実軸", { fill: DIM, size: 9 }));
@@ -434,8 +434,8 @@ function geometric(draws) {
         out.push(
           `<circle cx="${f(X(d.p.x))}" cy="${f(Y(d.p.y))}" r="${d.small ? 2.2 : 2.8}" fill="${CHALK}"/>`,
         );
-        // **名前と座標を別々の行に出すと、点が集まったところで必ず重なる。**
-        // 座標を出すときは1つのラベルにまとめ、置き場所も譲り合う。
+        // Emitting the name and the coordinate on separate lines guarantees overlap where
+        // points cluster. When showing a coordinate, put it in one label and let placements yield.
         if (d.coord) {
           const text = `${d.name ?? ""}${d.coord}`;
           out.push(
@@ -462,7 +462,7 @@ const unit = (x, y) => {
   return { x: x / n, y: y / n };
 };
 
-// ---- 図表(座標を持たないもの)は、それぞれ専用に置く ----
+// ---- Diagrams (things without coordinates) each get their own placement ----
 const SPECIAL = {
   numberLine(d) {
     const [s0, s1] = d.span;
@@ -769,7 +769,7 @@ const SPECIAL = {
     return frame(o.join(""));
   },
   signTable(d) {
-    // 増減表は「表」なので、SVG の中に罫線と文字で組む
+    // A sign table is a table, so it is composed inside the SVG from rules and text
     const cols = d.crit.length * 2 + 1;
     const rows = d.concave ? 4 : 3;
     const x0 = 22;
@@ -785,7 +785,7 @@ const SPECIAL = {
     labels.forEach((s, j) =>
       o.push(txt(x0 + cw / 2, y0 + (j + 0.65) * rh, s, { size: 11, weight: 600 })),
     );
-    // x の行:  … c1 … c2 …
+    // The x row:  ... c1 ... c2 ...
     for (let i = 0; i < cols; i++) {
       const cx = x0 + (i + 1.5) * cw;
       if (i % 2 === 1)
@@ -796,10 +796,10 @@ const SPECIAL = {
             weight: 600,
           }),
         );
-      // `⋯`(U+22EF)も同梱の書体に無いので、確実に出る点3つで書く。
+      // `⋯` (U+22EF) is missing from the bundled typeface too, so three plain dots are used.
       else o.push(txt(cx, y0 + 0.65 * rh, "...", { fill: DIM, size: 11 }));
     }
-    // f′ の行
+    // The f' row
     for (let i = 0; i < cols; i++) {
       const cx = x0 + (i + 1.5) * cw;
       const s = i % 2 === 1 ? "0" : d.sign[i / 2];
@@ -824,15 +824,15 @@ const SPECIAL = {
       const cx = x0 + (i + 1.5) * cw;
       const cy = y0 + (row + 0.68) * rh;
       if (i % 2 === 1) {
-        // 極値そのもの。数字なので文字でよい。
+        // The extremum itself. It is a number, so text is fine.
         o.push(
           txt(cx, cy, f(d.values[(i - 1) / 2].y), { fill: ROLE.key.c, size: 12, weight: 600 }),
         );
         continue;
       }
-      // **増減の矢印は「描く」。**`↗` `↘` は同梱の書体(ZenMaruGothic)に無く、
-      // 文字で置くと端末では**何も出ない**(実測で確認)。増減表で矢印が消えると、
-      // 表の意味そのものが消える。
+      // Trend arrows are drawn, not typed. `↗` and `↘` are missing from the bundled
+      // typeface (ZenMaruGothic) and render as nothing on the device (measured). An
+      // arrowless sign table loses the table's entire meaning.
       const dir = d.arrow[i / 2];
       const dy = dir === "↗" ? -7 : dir === "↘" ? 7 : 0;
       o.push(line(cx - 9, cy - 4 - dy, cx + 9, cy - 4 + dy, { c: CHALK, w: 1.6, marker: "ah" }));

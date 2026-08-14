@@ -2,11 +2,12 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 import { type FixtureName, fixtureSchemas } from "./fixtures.ts";
 
 /**
- * zodスキーマからJSON Schemaを起こす。
+ * Generates JSON Schema from the zod schemas.
  *
- * TypeScript側の正はzod。Dart(freezed)側は手書きになるため、
- * 差分を目で追える形として JSON Schema をリポジトリにコミットしておく。
- * 生成物がコミット済みのものとずれていないかは `src/json-schema.test.ts` が見る。
+ * zod is authoritative on the TypeScript side. The Dart (freezed) side is written
+ * by hand, so the JSON Schema is committed to the repo as something whose diffs
+ * can be followed by eye. `src/json-schema.test.ts` checks the output has not
+ * drifted from what is committed.
  */
 export function buildJsonSchema(name: FixtureName): Record<string, unknown> {
   return zodToJsonSchema(fixtureSchemas[name], {

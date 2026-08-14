@@ -1,80 +1,89 @@
 import type { CurriculumLocale } from "@ai-sensei/curriculum";
 
 /**
- * 問題文の妥当性(グラウンディングのガード)。
+ * Problem-text validity (the grounding guard).
  *
- * 解析器が書き起こした `problem_text` は、そのまま先輩の板書LLMに渡り、
- * **その授業で教える内容の起点**になる。ここに解答が混ざると、先輩は
- * 解き方を組み立てずに答えを写す — **板書が「答え合わせの表示器」に劣化する。**
+ * The `problem_text` the analyser transcribed goes straight to the senpai's board
+ * LLM and becomes the starting point of what that lesson teaches. An answer mixed
+ * in makes the senpai copy the answer instead of building the method - the board
+ * degrades into an answer display.
  *
- * 改正後の約束1で「答えを教える」ことは許されているが(デッキ §0)、
- * **板書の価値は解き方の筋道**であって答えではない(§3-1 の「数式・計算・図は板書」の
- * 中身は解法)。問題集の紙面には章末の解答や赤字の解説が併記されていることがあり、
- * ページ全体が写ると、そこまで問題文として流れ込む。
+ * Post-revision promise 1 permits giving the answer (deck §0), but the board's
+ * value is the reasoning, not the answer (§3-1's "formulas, working and figures go
+ * on the board" means the method). Workbook pages sometimes print the chapter's
+ * answers or red commentary alongside, and capturing the whole page lets those flow
+ * in as problem text.
  *
- * ## 方針: **完全な判定は目指さない。迷ったら通す。**
+ * ## Policy: perfection is not the goal. When unsure, let it through.
  *
- * この判定は**過検出のほうが害が大きい**。正当な問題文を落とすと `problem_text` は
- * 空になり、先輩は「(問題の写真なし)」から始める — つまり**問題が写っているのに
- * 見ないまま教える**、いちばん避けたかった状態に自分で戻すことになる。
- * 一方、解答が少し混ざったまま通っても、先輩は問題文として読むだけで、
- * 教え返しフェーズ(§1-1)の保険は生きている。
+ * Over-detection does more harm here. Rejecting a legitimate problem text leaves
+ * `problem_text` empty and the senpai starts from "(no problem photo)" - putting us
+ * back in the very state we wanted to avoid: teaching without looking at a problem
+ * that is right there. Meanwhile a little answer text getting through only means
+ * the senpai reads it as problem text, and the teach-back phase's insurance (§1-1)
+ * still holds.
  *
- * だから、ここに置くのは**それが出てきたら問題文ではありえない印**だけにする:
+ * So only signs that cannot appear in a problem text belong here:
  *
- *   - 解答の**見出し**(`【解答】` `[Solution]` `解説:`)。囲みかコロンを必須にして、
- *     「解答用紙に記入せよ」「答えを四捨五入せよ」のような**設問中の語**を巻き込まない
- *   - `∴`(ゆえに)。設問には出ず、解答の途中にしか出ない記号
- *   - 散文が1語も無い断片(`x^2 - 3x + 2 = 0` だけ)。何を問われているか書かれていない
+ *   - answer headings (`【解答】`, `[Solution]`, `解説:`). A bracket or colon is
+ *     required so wording inside a question ("write on the answer sheet", "round
+ *     your answer") is not caught
+ *   - `∴` (therefore). It never appears in a question, only mid-solution
+ *   - a fragment with no prose at all (just `x^2 - 3x + 2 = 0`). It does not say
+ *     what is being asked
  *
- * **入っていない判定と、その理由**:
- *   - 「よって」「したがって」 … 設問側にも出うる(「よって得られる値を答えよ」)
- *   - 裸の `Answer:` … 問題集の**解答欄の見出し**として空欄の上に印刷されている。
- *     生徒が解く前の紙面にも載っているので、解答が混ざった証拠にならない
- *   - 数値が並んでいる(`(1) 2個 (2) k=±√10`)… 設問の選択肢と区別がつかない
+ * Deliberately absent, and why:
+ *   - "よって" / "したがって" ... they occur in questions too ("answer the value thus obtained")
+ *   - a bare `Answer:` ... printed above a blank as the answer-box heading in
+ *     workbooks. It appears on a page before the student solves anything, so it is
+ *     no evidence of a mixed-in answer
+ *   - a run of numbers (`(1) 2 (2) k=±√10`) ... indistinguishable from multiple-choice options
  *
- * 長さの上限は `@ai-sensei/contract` の `problemTextMaxLength` と `backend/api` の
- * 責務なので、ここでは見ない(`latex-guard.ts` が文字数を見ないのと同じ分担)。
+ * Length caps belong to `problemTextMaxLength` in `@ai-sensei/contract` and to
+ * `backend/api`, so they are not checked here (the same split as `latex-guard.ts`
+ * not checking character counts).
  */
 
 /**
- * 解答の見出し。**囲みかコロンを必ず伴う形だけ**を拾う。
+ * Answer headings. Only forms that carry a bracket or a colon are matched.
  *
- * 裸の「解答」「答」を拾うと、設問そのものに含まれる
- * 「解答用紙」「解答欄」「答えを求めよ」「答えは小数第2位まで」を巻き込む。
- * 見出しは紙面上で必ず区切られているので、この形で十分に取れる。
+ * Matching a bare "解答" or "答" would catch "解答用紙", "解答欄", "答えを求めよ" and
+ * "答えは小数第2位まで" inside the question itself. A heading is always delimited on
+ * the page, so this form suffices.
  */
 const solutionHeadings: readonly RegExp[] = [
-  // 【解答】 [解説] (解) ［略解］ — 囲み記号つきの見出し
+  // 【解答】 [解説] (解) ［略解］ - a heading with bracket markers
   /[【[［(（〔]\s*(?:解答|解説|略解|解|答)\s*[】\]］)）〕]/u,
-  // 行頭・文末の直後に「解答:」「解説:」。設問の途中には現れない位置。
+  // "解答:" / "解説:" right after a line start or a sentence end. Never mid-question.
   /(?:^|[\n。])\s*(?:解答|解説|略解)\s*[:：]/u,
-  // [Solution] / (Answer) — 囲みつき。裸の `Answer:` は解答欄の見出しなので入れない。
+  // [Solution] / (Answer) - bracketed. A bare `Answer:` is an answer-box heading and is excluded.
   /[[［(（]\s*(?:solution|answer|ans\.?)\s*[\]］)）]/iu,
-  // 行頭の "Solution:"。`answer` は入れない(上と同じ理由)。
+  // "Solution:" at line start. `answer` is excluded (same reason as above).
   /(?:^|[\n.])\s*solutions?\s*[:：]/iu,
-  // ゆえに。設問には出ず、解答の途中にしか出ない。
+  // Therefore. Never in a question, only mid-solution.
   /∴|\\therefore\b/u,
 ];
 
 /**
- * 散文が1語でもあるか。**「何を問われているか」が書かれている印**として使う。
+ * Whether there is any prose at all. Used as the sign that "what is being asked" is
+ * written down.
  *
- *   - 日本語: **かな**があること。設問は必ず「〜を求めよ」「次の〜」の形になるので、
- *     かなが1文字も無い書き起こしは、式か見出しの断片
- *   - 英語: **3文字以上の英単語**があること。`Solve` `Find` `Prove` はすべて満たす。
- *     2文字以下に落とすと変数名(`x` `ab`)が散文に見えてしまう
+ *   - Japanese: kana must be present. A question always takes the form "〜を求めよ"
+ *     or "次の〜", so a transcription with no kana is a formula or a heading fragment
+ *   - English: an English word of 3+ letters. `Solve`, `Find` and `Prove` all
+ *     qualify. Going to 2 letters would make variable names (`x`, `ab`) look like prose
  *
- * `sin` `cos` `log` は3文字なので通る。**それでよい** — この関数は
- * 「設問かどうか」ではなく「**明らかに設問でない断片**か」だけを見ている(迷ったら通す)。
+ * `sin`, `cos` and `log` are three letters and pass, and that is fine - this
+ * function does not ask "is this a question" but only "is this obviously not one"
+ * (when unsure, let it through).
  */
 const kanaPattern = /[ぁ-んァ-ヶー]/u;
 const proseWordPattern = /[A-Za-z]{3,}/u;
 
 export const problemRejectionReasons = [
-  /** 解答・解説が問題文に混ざっている。 */
+  /** An answer or worked solution is mixed into the problem text. */
   "solution_included",
-  /** 設問が見当たらない(式だけの断片)。 */
+  /** No question found (a formula-only fragment). */
   "not_a_problem",
 ] as const;
 export type ProblemRejectionReason = (typeof problemRejectionReasons)[number];
@@ -84,11 +93,12 @@ export type ProblemVerdict =
   | { ok: false; reason: ProblemRejectionReason; detail: string };
 
 /**
- * 書き起こされた問題文を検査する。
+ * Checks the transcribed problem text.
  *
- * **ロケールを取らない。** 解答の見出しは日本語と英語で文字種が重ならない
- * (「解答」と `Solution:`)ので、両方を同時に当てても取り違えが起きない。
- * 引数を1つ減らし、「間違ったロケールを渡して素通りする」経路自体を無くしてある。
+ * It takes no locale. Answer headings do not share character sets between Japanese
+ * and English ("解答" vs `Solution:`), so applying both at once cannot confuse them.
+ * One fewer argument removes the "passed the wrong locale and it slipped through"
+ * path entirely.
  */
 export function checkProblemText(text: string): ProblemVerdict {
   const trimmed = text.trim();
@@ -114,18 +124,19 @@ export function checkProblemText(text: string): ProblemVerdict {
 }
 
 /**
- * 再生成プロンプトに添える指示。**会話の言語で書く**
- * (`latex-guard.ts` と同じ理由)。
+ * The instruction attached to the regeneration prompt. Written in the
+ * conversation's language (same reason as `latex-guard.ts`).
  *
- * 宛先は**写真解析のプロンプト**(`prompts/photo_analysis.*.md`)であって、
- * 板書LLMではない。直すのは「紙面のどこを書き写すか」なので、
- * 指示も「取る範囲」を名指しする形にしてある。
+ * Its audience is the photo-analysis prompt (`prompts/photo_analysis.*.md`), not
+ * the board LLM. What needs fixing is which part of the page to transcribe, so the
+ * instruction names the range to capture.
  *
- * **いまはどこからも使われていない。** `backend/api` の `resolveSessionProblem()` は
- * 再解析せずに `problem` を `null` に畳む — 解答が混ざる原因は紙面の写し方なので、
- * 同じ写真を投げ直しても同じものが返るため。再生成の経路を足すときのために、
- * 理由と対で置いてある。**足すかどうかは、ログの `solution_included` の頻度を見て決めること**
- * (頻繁に出るなら、直すべきは再解析ではなく解析プロンプトの側)。
+ * Nothing uses it yet. `backend/api`'s `resolveSessionProblem()` folds `problem` to
+ * `null` without re-analysing - answers get mixed in because of how the page was
+ * captured, so re-sending the same photo returns the same thing. It is kept here,
+ * paired with its reason, for whenever a regeneration path is added. Whether to add
+ * one should be decided from how often `solution_included` appears in the logs (if
+ * it is frequent, what needs fixing is the analysis prompt, not re-analysis).
  */
 export const problemRejectionGuidanceByLocale: Record<
   CurriculumLocale,
@@ -145,6 +156,6 @@ export const problemRejectionGuidanceByLocale: Record<
   },
 };
 
-/** 既定(ロケール未指定)では日本語の説明。 */
+/** The default (no locale given) is the Japanese wording. */
 export const problemRejectionGuidance: Record<ProblemRejectionReason, string> =
   problemRejectionGuidanceByLocale.ja;

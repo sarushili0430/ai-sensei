@@ -1,13 +1,14 @@
-// docs/wireframe_board_v2.html の solve() をそのまま取り出したもの。
-// ちがうのは 2 点だけ:
-//   1. 曲線の式は JSON なので **文字列**。ここで関数に直す(実装では plot_expression.dart)
-//   2. 描画(SVG)は落とし、解けた座標だけを返す
-// 判定を甘くしないために、解けなかったものは例外を投げる。
+// Lifted verbatim from solve() in docs/wireframe_board_v2.html.
+// Only two things differ:
+//   1. curve expressions are strings, because this is JSON. They are compiled into
+//      functions here (plot_expression.dart in the app)
+//   2. rendering (SVG) is dropped; only the solved coordinates are returned
+// To keep the checks strict, anything unsolvable throws.
 
 const ALLOWED = /^[0-9xyt+\-*/^().,\s a-z]*$/;
 const FNS = ["sin", "cos", "tan", "sqrt", "abs", "exp", "log", "pow", "pi", "x", "y", "t", "e"];
 
-// 式の文字列 → 関数。**知らない名前が出たら失敗させる**(黙って NaN にしない)。
+// Expression string -> function. Fail on an unknown name (never silently NaN).
 export function compile(src, varName) {
   if (typeof src === "function") return src;
   if (typeof src !== "string") throw new Error(`式が文字列ではない: ${JSON.stringify(src)}`);
@@ -22,7 +23,7 @@ export function compile(src, varName) {
   return (v) => f(v);
 }
 
-// 解いた座標を人に見せる形にする。-0 や 2.0000000001 を出さない。
+// Makes solved coordinates presentable. No -0, no 2.0000000001.
 const fmt = (v) => {
   const r = Math.abs(v) < 1e-9 ? 0 : v;
   return Math.abs(r - Math.round(r)) < 1e-9
@@ -30,7 +31,7 @@ const fmt = (v) => {
     : r.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
 };
 
-// 2変数の式 f(x,y)。領域の判定に使う。
+// A two-variable expression f(x,y). Used to decide regions.
 export function compile2(src) {
   if (typeof src !== "string") throw new Error(`式が文字列ではない: ${JSON.stringify(src)}`);
   const s = src.replace(/\^/g, "**");
@@ -43,12 +44,12 @@ export function compile2(src) {
   return (x, y) => f(x, y);
 }
 
-// 五数要約。**データから計算する。**モデルに書かせない。
+// The five-number summary. Computed from the data; never written by the model.
 function fiveNumber(data) {
   const a = data.slice().sort((p, q) => p - q);
   const n = a.length;
   const q = (p) => {
-    // 高校の四分位数(中央値で二分し、各半分の中央値)
+    // High-school quartiles (split at the median, then the median of each half)
     const k = (n - 1) * p;
     const lo = Math.floor(k);
     const hi = Math.ceil(k);
@@ -57,7 +58,7 @@ function fiveNumber(data) {
   return { min: a[0], q1: q(0.25), med: q(0.5), q3: q(0.75), max: a[n - 1] };
 }
 
-// 標準正規分布の累積。斜線部の面積を出すのに使う(Abramowitz-Stegun 26.2.17)。
+// The standard normal CDF. Used for the area of a shaded region (Abramowitz-Stegun 26.2.17).
 function normalCdf(z) {
   const t = 1 / (1 + 0.2316419 * Math.abs(z));
   const d = 0.3989422804014327 * Math.exp((-z * z) / 2);
@@ -98,10 +99,10 @@ export function solve(items) {
       return;
     }
     let p;
-    // **「A から距離4、向き-30°」。**これが無いせいで、モデルは点を手で置いて
-    // 辺に "4" と書くしかなくなり、**実際の長さと合わないラベル**が出ていた
-    // (AB=6 と書いた辺より AC=4 と書いた辺のほうが長い図が出た)。
-    // 長さが決まっている図形は、長さで置かせる。
+    // "From A, distance 4, bearing -30°." Without this the model had to place points by
+    // hand and write "4" on the side, producing labels that disagreed with the real
+    // lengths (a figure where the side labelled AC=4 was longer than the one labelled
+    // AB=6). Where the length is fixed, place by length.
     if (it.from && it.dist !== undefined) {
       const o = P(it.from);
       const a = ((it.deg ?? 0) * Math.PI) / 180;
@@ -119,7 +120,7 @@ export function solve(items) {
       const k = it.ratio[0] / (it.ratio[0] + it.ratio[1]);
       p = { x: s.x + (e.x - s.x) * k, y: s.y + (e.y - s.y) * k };
     } else if (it.onCurve !== undefined) {
-      // 曲線上の点。媒介変数(y=f(x) なら x)の値で指す。
+      // A point on a curve, given by the parameter's value (x, for y=f(x)).
       const cv = curves[it.onCurve];
       if (!cv)
         throw new Error(
@@ -131,8 +132,8 @@ export function solve(items) {
     } else if (it.on) {
       const kc = circles[it.on];
       if (!kc) {
-        // **円と曲線で名前空間が同じなので、取り違えるとここへ来る。**
-        // どちらがあるかを出して、書き直せるようにする(黙って落とさない)。
+        // Circles and curves share a namespace, so a mix-up lands here.
+        // Report which one exists so it can be rewritten (never fail silently).
         const hint = curves[it.on]
           ? `— ${it.on} は曲線です。曲線上の点は {"pt":..,"onCurve":"${it.on}","t":..} で指します`
           : `(いまある円: ${Object.keys(circles).join(", ") || "なし"})`;
@@ -158,7 +159,7 @@ export function solve(items) {
     if (!p) throw new Error(`点を決められない: ${JSON.stringify(it)}`);
     if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) throw new Error(`座標が数でない: ${it.pt}`);
     pts[it.pt] = p;
-    // **座標は解いた値をこちらが出す。**書く側に数字を書かせない(食い違いようがなくなる)
+    // We emit the solved coordinates. The writer never writes numbers, so they cannot disagree.
     const coord = it.showCoord ? `(${fmt(p.x)}, ${fmt(p.y)})` : undefined;
     if (!it.hide) draws.push({ t: "pt", p, name: it.pt, coord });
   }
@@ -213,9 +214,9 @@ export function solve(items) {
   for (const it of items) {
     if (it === null || typeof it !== "object" || Array.isArray(it))
       throw new Error(`要素がオブジェクトでない: ${JSON.stringify(it)}`);
-    // **すでに定義した点を、あとから目立たせる。**
-    // これが無いせいで、モデルは `{"pt":"L"}`(位置なし)を書いて落ちていた。
-    // モデルの間違いではなく、語彙の穴だったので塞ぐ。
+    // Highlight a point defined earlier. Without this the model wrote
+    // `{"pt":"L"}` (no position) and failed. That was a gap in the vocabulary, not a
+    // mistake by the model, so it is closed here.
     if (it.mark) {
       const names = Array.isArray(it.mark) ? it.mark : [it.mark];
       names.forEach((n) => draws.push({ t: "mark", p: P(n), name: n, as: it.as }));
@@ -227,13 +228,13 @@ export function solve(items) {
       draws.push({ t: "circle", c, r: it.r, name: it.circle });
     } else if (it.line) {
       if (it.bisect) {
-        // 角の二等分線。頂点は真ん中。**2辺の単位ベクトルの和が向き**(長さに寄らない)
+        // The angle bisector. The vertex is in the middle, and the direction is the sum of the two unit vectors (independent of length).
         const [a, o, b] = it.bisect.map(P);
         const u = norm(a, o);
         const v = norm(b, o);
         lines[it.line] = { a: o, b: { x: o.x + u.x + v.x, y: o.y + u.y + v.y } };
       } else if (it.perpBisect) {
-        // 垂直二等分線。中点を通り、その線分に垂直
+        // The perpendicular bisector. Through the midpoint, perpendicular to that segment.
         const [a, b] = it.perpBisect.map(P);
         const m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
         lines[it.line] = { a: m, b: { x: m.x - (b.y - a.y), y: m.y + (b.x - a.x) } };
@@ -255,13 +256,13 @@ export function solve(items) {
       const sa = P(it.seg[0]);
       const sb = P(it.seg[1]);
       const len = Math.hypot(sa.x - sb.x, sa.y - sb.y);
-      // **数字のラベルは、実際の長さと合っていなければ通さない。**
-      // 合わないと「絵は自然、中身は嘘」になる(AB=6 と書いた辺より
-      // AC=4 と書いた辺のほうが長い図が、実際に出た)。
-      // **長さとみなすのは「数字だけ(単位つき可)」のラベルに限る。**
-      // 最初これを「数字以外を捨てて数にする」で書いたら、`"x+y=4"` を 4、
-      // `"y = 1/2"` を 12 と読んで、**式のラベルを長さ違いとして落としていた。**
-      // 検算は、確実に長さを指しているときだけ効かせる。
+      // A numeric label must agree with the real length, or it does not pass.
+      // Otherwise the picture looks natural while the content lies (a figure where the
+      // side labelled AC=4 was longer than the one labelled AB=6 really did appear).
+      // Only labels that are purely a number (a unit is fine) count as lengths.
+      // Written first as "strip non-digits and read a number", this read `"x+y=4"` as 4
+      // and `"y = 1/2"` as 12, rejecting expression labels as length mismatches.
+      // The cross-check applies only where the label certainly denotes a length.
       const m =
         typeof it.label === "string"
           ? it.label.trim().match(/^(\d+(?:\.\d+)?)\s*(cm|mm|m|km)?$/)
@@ -294,14 +295,14 @@ export function solve(items) {
         as: it.as,
         dash: !!it.dash,
       });
-    // **キーの有無で枝を選ぶと、`{"axes":0}` のような「偽になる正しい値」を取りこぼす。**
-    // 実際 Sonnet は「軸は要らない」を `{"axes":0}` と書いてきて、
-    // こちらは「知らないキー」と言って落ちた。**モデルのせいにしていたが、こちらのバグ。**
-    // 本番の契約(board.ts)が `kind` の discriminated union なのは、まさにこれを避けるため。
+    // Branching on whether a key exists loses correct-but-falsy values like `{"axes":0}`.
+    // Sonnet really did write "no axes needed" as `{"axes":0}`, and this rejected it as
+    // an unknown key - blamed on the model, but our bug. The production contract
+    // (board.ts) uses a discriminated union on `kind` precisely to avoid this.
     else if (it.axes !== undefined) {
       if (it.axes === 0 || it.axes === false) continue; // 「軸は要らない」
-      // 原点を置く。**軸を描いたら O は在る**のが自然で、
-      // 無いせいで「O から線を引く」が両モデルとも落ちていた。
+      // Place the origin. With axes drawn, O naturally exists, and its absence made
+      // "draw a line from O" fail on both models.
       pts.O = pts.O ?? { x: 0, y: 0 };
       draws.push({
         t: "axes",
@@ -309,8 +310,8 @@ export function solve(items) {
         ticks: it.ticks,
       });
     } else if (it.signTable) {
-      // 増減表。**渡ってくるのは極値の x だけ。**
-      // 符号も値も矢印も曲線から出すので、three つが食い違うことがない。
+      // The sign table. Only the extremum's x arrives; signs, values and arrows are all
+      // derived from the curve, so the three can never disagree.
       const cv = curves[it.signTable];
       if (!cv) throw new Error(`未定義の曲線の増減表: ${it.signTable}`);
       if (!cv.f) throw new Error(`y=f(x) の形でない曲線の増減表: ${it.signTable}`);
@@ -329,7 +330,7 @@ export function solve(items) {
         const s = d1(m);
         sign.push(s > 1e-6 ? "+" : s < -1e-6 ? "-" : "0");
       }
-      // 凹凸(数III)。**変曲点の x だけ受け取り、f″ の符号はこちらが出す。**
+      // Concavity (Maths III). Only the inflection point's x is received; the sign of f'' is derived here.
       let concave;
       let inflect;
       if (it.inflect) {
@@ -360,7 +361,7 @@ export function solve(items) {
         concave,
       });
     } else if (it.states) {
-      // 状態は名前だけ受け取り、**並べるのはこちら**(円形に置く)
+      // States arrive as names only; we do the arranging (placed on a circle)
       const n = it.states.length;
       if (n < 2) throw new Error("状態が2つ未満");
       states = it.states.map((nm, i) => {
@@ -382,7 +383,7 @@ export function solve(items) {
       });
       draws.push({ t: "edges", edges: es });
     } else if (it.seats) {
-      // 円順列。**席の位置はこちらが等間隔に置く。**
+      // A circular permutation. We place the seats at equal spacing.
       const n = it.seats;
       const labels = it.labels || [];
       if (labels.length && labels.length !== n)
@@ -402,7 +403,7 @@ export function solve(items) {
       });
       draws.push({ t: "seats", seats, n, fix: it.fix });
     } else if (it.balls) {
-      // 玉。**個数だけ受け取り、並べるのはこちら。**
+      // Balls. Only the counts arrive; we do the arranging.
       const kinds = Object.entries(it.balls);
       if (!kinds.length) throw new Error("玉が0種類");
       const list = [];
@@ -422,7 +423,7 @@ export function solve(items) {
         container: it.container,
       });
     } else if (it.dice) {
-      // サイコロ。**目の数だけ受け取る。点の並びは目で決まっているので、こちらが置く。**
+      // A die. Only the pip count arrives. The pip layout is fixed by the number, so we place it.
       const PIPS = {
         1: [[0, 0]],
         2: [
@@ -462,11 +463,11 @@ export function solve(items) {
       });
       draws.push({ t: "dice", faces });
     } else if (it.unitCircle) {
-      // 単位円。三角方程式・不等式はこれで説明する。
-      // **角度だけ受け取り、(cosθ, sinθ) はこちらが出す。**
-      // **名前で参照できるようにしておく。**内部名 `__unit` にしていたせいで、
-      // モデルが `{"pt":"P","on":"unitCircle","deg":30}` と書いて落ちていた。
-      // 原点 O も置く(半径や動径を引きたくなるのは自然なので)。
+      // The unit circle, used to explain trigonometric equations and inequalities.
+      // Only the angle arrives; (cosθ, sinθ) is derived here.
+      // It is referenceable by name: the internal name `__unit` made the model write
+      // `{"pt":"P","on":"unitCircle","deg":30}` and fail.
+      // The origin O is placed too (wanting to draw a radius or a ray is natural).
       pts.O = pts.O ?? { x: 0, y: 0 };
       circles.unitCircle = { c: { x: 0, y: 0 }, r: 1 };
       const marks = (it.angles || []).map((deg) => {
@@ -481,11 +482,11 @@ export function solve(items) {
         arc: it.arc ? { from: it.arc[0], to: it.arc[1] } : undefined,
       });
     } else if (it.vec) {
-      // ベクトル = 矢印。始点と終点は名前つきの点で指す。
+      // A vector = an arrow. Start and end are given as named points.
       const [a, b] = it.vec;
       draws.push({ t: "vec", a: P(a), b: P(b), names: it.vec, label: it.label, as: it.as });
     } else if (it.numberLine) {
-      // 数直線。**塗る区間と、白丸/黒丸を不等号から決める。**
+      // A number line. The shaded interval and open/closed circles follow from the inequality.
       const span = it.numberLine;
       const ranges = (it.ranges || []).map((r) => {
         if (r.from !== undefined && r.to !== undefined && r.from > r.to)
@@ -500,8 +501,8 @@ export function solve(items) {
       });
       draws.push({ t: "numberLine", span, ticks: it.ticks, ranges, marks: it.marks });
     } else if (it.ranges) {
-      // `ranges` を別の要素として書いてくることがある。**直前の数直線に足す。**
-      // ここを「知らないキー」で落としていたが、書き方として自然なので受ける。
+      // `ranges` sometimes arrives as a separate item. Attach it to the preceding number
+      // line. This used to fail as an unknown key, but it is a natural way to write it.
       const nl = [...draws].reverse().find((d) => d.t === "numberLine");
       if (!nl) throw new Error("ranges の前に numberLine がない");
       it.ranges.forEach((r) =>
@@ -514,8 +515,9 @@ export function solve(items) {
         }),
       );
     } else if (it.region) {
-      // 不等式の表す領域。**式と不等号だけ受け取り、内外の判定はこちらがやる。**
-      // 連立は配列で渡す。半平面も円の内外も、これ1つで入る。
+      // The region an inequality denotes. Only the expression and the sign arrive; we
+      // decide inside versus outside. Systems are passed as an array, and both half-planes
+      // and circle interiors fit in this one item.
       const specs = (Array.isArray(it.region[0]) ? it.region : [it.region]).map(([expr, sign]) => {
         if (!["<", ">", "<=", ">="].includes(sign)) throw new Error(`不等号が違う: ${sign}`);
         return { expr, sign, f: compile2(expr) };
@@ -548,14 +550,14 @@ export function solve(items) {
         as: it.as,
       });
     } else if (it.boxplot) {
-      // 箱ひげ図。**データを受け取り、五数要約はこちらが計算する。**
+      // A box plot. The data arrives; we compute the five-number summary.
       const data = it.boxplot;
       if (!Array.isArray(data) || data.length < 4) throw new Error("データが足りない(4個以上)");
       if (data.some((v) => typeof v !== "number" || !Number.isFinite(v)))
         throw new Error("データに数でないものがある");
       draws.push({ t: "boxplot", data, five: fiveNumber(data), label: it.label });
     } else if (it.histogram) {
-      // ヒストグラム。**度数はこちらが数える。**
+      // A histogram. We do the counting.
       const data = it.histogram;
       const w = it.binWidth;
       if (!Array.isArray(data) || !data.length) throw new Error("データが無い");
@@ -573,7 +575,7 @@ export function solve(items) {
       }
       draws.push({ t: "histogram", data, bins, binWidth: w });
     } else if (it.scatter) {
-      // 散布図。**相関係数はこちらが計算する。**
+      // A scatter plot. We compute the correlation coefficient.
       const ps = it.scatter;
       if (!Array.isArray(ps) || ps.length < 3) throw new Error("点が足りない(3個以上)");
       const xs = ps.map((p) => p[0]);
@@ -586,8 +588,8 @@ export function solve(items) {
       const sy = Math.sqrt(ys.reduce((a, v) => a + (v - my) ** 2, 0) / n);
       draws.push({ t: "scatter", ps, r: sxy / (sx * sy), mean: { x: mx, y: my } });
     } else if (it.tree) {
-      // 樹形図。**枝だけ受け取り、並べるのと葉を数えるのはこちら。**
-      const levels = it.tree; // [["表","裏"],["表","裏"],...]
+      // A tree diagram. Only the branches arrive; arranging and counting leaves is ours.
+      const levels = it.tree; // [["heads","tails"],["heads","tails"],...]
       if (!Array.isArray(levels) || !levels.length) throw new Error("枝が無い");
       let paths = [[]];
       for (const opts of levels) {
@@ -596,14 +598,14 @@ export function solve(items) {
       }
       draws.push({ t: "tree", levels, paths, leaves: paths.length });
     } else if (it.venn) {
-      // ベン図。**各領域の個数を受け取り、合計が全体と合うかはこちらが見る。**
+      // A Venn diagram. The count in each region arrives; we check the total against the whole.
       const sets = it.venn;
       const counts = it.counts || {};
       if (sets.length < 2 || sets.length > 3) throw new Error("集合は2つか3つ");
       const total = Object.values(counts).reduce((a, c) => a + c, 0);
       draws.push({ t: "venn", sets, counts, total, universe: it.universe });
     } else if (it.lattice) {
-      // 格子点。**範囲と条件を受け取り、数えるのはこちら。**
+      // Lattice points. The range and the condition arrive; we do the counting.
       const [x0, x1, y0, y1] = it.lattice;
       const f = it.where ? compile2(it.where) : null;
       const ps = [];
@@ -613,7 +615,7 @@ export function solve(items) {
         }
       draws.push({ t: "lattice", ps, span: it.lattice, where: it.where, count: ps.length });
     } else if (it.normal) {
-      // 正規分布。**斜線部の確率はこちらが積分する。**
+      // A normal distribution. We integrate the shaded probability.
       const { mu = 0, sigma = 1 } = it.normal;
       if (!(sigma > 0)) throw new Error("標準偏差が正でない");
       const sh = it.shade;
@@ -624,7 +626,7 @@ export function solve(items) {
         : undefined;
       draws.push({ t: "normal", mu, sigma, shade: sh, area, label: it.label });
     } else if (it.conic) {
-      // 2次曲線。**a と b だけ受け取り、焦点・漸近線・準線はこちらが出す。**
+      // A conic. Only a and b arrive; foci, asymptotes and directrix are derived here.
       const { conic, a, b } = it;
       if (!(a > 0)) throw new Error("a が正でない");
       const o = { x: 0, y: 0 };
@@ -650,16 +652,16 @@ export function solve(items) {
           asymptotes: [b / a, -b / a],
         });
       } else if (conic === "parabola") {
-        // y^2 = 4ax。焦点 (a,0)、準線 x = -a
+        // y^2 = 4ax. Focus (a,0), directrix x = -a
         pts.F1 = { x: a, y: 0 };
         draws.push({ t: "conic", kind: "parabola", a, foci: [pts.F1], directrix: -a, center: o });
       } else throw new Error(`知らない2次曲線: ${conic}`);
     } else if (it.complexPlane) {
-      // 複素数平面。**回転・実数倍の結果はこちらが計算する。**
-      // 原点は必ず置く(原点との線分を引きたくなるのが普通で、無いと落ちていた)。
+      // The complex plane. Results of rotation and real scaling are computed here.
+      // The origin is always placed (drawing a segment to it is normal, and its absence failed).
       pts.O = pts.O ?? { x: 0, y: 0 };
       const zs = {};
-      // **与えられた点も描く。**登録するだけだと、元の点が図に出ない。
+      // Draw the given points too. Merely registering them leaves them off the figure.
       Object.entries(it.points || {}).forEach(([nm, v]) => {
         zs[nm] = { x: v[0], y: v[1] };
         pts[nm] = zs[nm];
@@ -699,7 +701,7 @@ export function solve(items) {
       });
       draws.push({ t: "complexPlane", points: Object.keys(pts), span: it.span || 4 });
     } else if (it.polar) {
-      // 極方程式 r = f(θ)。**直交座標への変換はこちら。**
+      // A polar equation r = f(θ). The conversion to Cartesian coordinates is ours.
       const f = compile(it.polar, "t");
       const d = it.domain || [0, 2 * Math.PI];
       const ps = [];
@@ -717,13 +719,13 @@ export function solve(items) {
       };
       draws.push({ t: "curve", ps, polar: it.polar, as: it.as });
     } else if (it.asymptote) {
-      // 漸近線。縦 {x:a} か横 {y:b} か、傾きつき {slope,intercept}
+      // Asymptotes. Vertical {x:a}, horizontal {y:b}, or sloped {slope,intercept}
       const a = it.asymptote;
       if (a.x === undefined && a.y === undefined && a.slope === undefined)
         throw new Error("漸近線の指定が無い");
       draws.push({ t: "asymptote", ...a, as: "aux" });
     } else if (it.riemann) {
-      // 区分求積の短冊。**本数だけ受け取り、高さも面積の和もこちらが出す。**
+      // Riemann rectangles. Only the count arrives; heights and the area sum are derived here.
       const cv = curves[it.riemann];
       if (!cv) throw new Error(`未定義の曲線: ${it.riemann}`);
       if (!cv.f) throw new Error(`y=f(x) の形でない: ${it.riemann}`);
@@ -739,7 +741,7 @@ export function solve(items) {
       }
       draws.push({ t: "riemann", bars, n, sum: bars.reduce((a, c) => a + c.h * w, 0), width: w });
     } else if (it.groups) {
-      // 群数列の区切り。**各群の項数だけ受け取り、区切り位置はこちらが積み上げる。**
+      // Group boundaries in a grouped sequence. Only each group's size arrives; we accumulate the positions.
       const sizes = it.groups;
       if (!Array.isArray(sizes) || sizes.some((v) => !Number.isInteger(v) || v < 1))
         throw new Error("群の項数が整数でない");
@@ -859,9 +861,9 @@ export function solve(items) {
     else throw new Error(`知らないキー: ${JSON.stringify(Object.keys(it))}`);
   }
 
-  // **比のラベル(`part`)は、実際の長さの比と合っていなければ通さない。**
-  // 「BD:DC = 3:2」を長さラベルで書くと必ず食い違う(3 は長さではない)ので、
-  // 比は比として書かせ、比として検算する。
+  // A ratio label (`part`) must agree with the real length ratio, or it does not pass.
+  // Writing "BD:DC = 3:2" as a length label always disagrees (3 is not a length), so a
+  // ratio is written as a ratio and cross-checked as a ratio.
   const parts = draws.filter((d) => d.t === "seg" && d.part !== undefined);
   for (let i = 0; i < parts.length; i++) {
     for (let j = i + 1; j < parts.length; j++) {
@@ -904,7 +906,7 @@ function sample(cv, range) {
   return out;
 }
 
-// o から a へ向かう単位ベクトル。角の二等分線の向きを出すのに使う。
+// The unit vector from o towards a. Used to derive the direction of an angle bisector.
 function norm(a, o) {
   const dx = a.x - o.x;
   const dy = a.y - o.y;

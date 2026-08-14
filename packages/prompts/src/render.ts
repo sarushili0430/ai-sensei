@@ -1,15 +1,16 @@
 /**
- * プロンプトの読み込みと穴埋め。
+ * Loading prompts and filling their blanks.
  *
- * Markdown(`prompts/<id>.<locale>.md`)が正で、TypeScript側は生成された文字列
- * 定数を使う。Workers/agentはファイルシステムを前提にできないため、この形にしている。
+ * The Markdown (`prompts/<id>.<locale>.md`) is authoritative, and the TypeScript
+ * side uses generated string constants. Workers and the agent cannot assume a
+ * filesystem, hence this shape.
  */
 
-/** プロンプトを持っている言語。カリキュラムのロケールと同じ集合。 */
+/** The languages that have prompts. The same set as the curriculum locales. */
 export const promptLocales = ["ja", "en"] as const;
 export type PromptLocale = (typeof promptLocales)[number];
 
-/** 未知の値は日本語に丸める(既定の言語)。 */
+/** Unknown values are rounded to Japanese (the default language). */
 export function toPromptLocale(value: string | undefined | null): PromptLocale {
   return promptLocales.find((locale) => locale === value) ?? "ja";
 }
@@ -23,13 +24,13 @@ export type PromptMeta = {
 
 export type PromptTemplate = {
   meta: PromptMeta;
-  /** フロントマターを除いた本文。 */
+  /** The body without the front matter. */
   body: string;
 };
 
 const FRONT_MATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 
-/** ごく限定的なフロントマターのパーサ(YAMLライブラリを持ち込まないため)。 */
+/** A very limited front-matter parser (so no YAML library is pulled in). */
 export function parsePrompt(source: string): PromptTemplate {
   const match = FRONT_MATTER.exec(source);
   if (!match || match[1] === undefined) {
@@ -68,11 +69,11 @@ function parseList(value: string): string[] {
 export class PromptRenderError extends Error {}
 
 /**
- * `{{variable}}` を埋める。
+ * Fills in `{{variable}}`.
  *
- * 宣言されていない変数を渡した場合も、埋め残しがある場合もエラーにする。
- * プロンプトの穴埋め漏れは、そのまま「許可リストが空の状態でLLMを走らせる」に
- * つながり、範囲逸脱の直接の原因になるため、静かに通さない。
+ * Passing an undeclared variable is an error, and so is leaving a blank unfilled.
+ * An unfilled prompt blank leads straight to "run the LLM with an empty allow-list",
+ * a direct cause of going out of scope, so it never passes silently.
  */
 export function renderPrompt(
   template: PromptTemplate,
@@ -95,7 +96,7 @@ export function renderPrompt(
     );
   }
 
-  // 宣言外のプレースホルダは空文字で潰さず、そのまま残して下の検査で落とす。
+  // Undeclared placeholders are not squashed to an empty string; they are left in place and caught by the check below.
   const rendered = template.body.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (match, name: string) =>
     name in variables ? String(variables[name]) : match,
   );
@@ -109,9 +110,9 @@ export function renderPrompt(
 }
 
 /**
- * プロンプトに差し込む定型句。
- * **本文と同じ言語で入れる。** 日本語の「(なし)」が英語のプロンプトに混ざると、
- * モデルはそこだけ日本語で応答しはじめる。
+ * Fixed phrases inserted into prompts.
+ * Written in the same language as the body. A Japanese "(none)" mixed into an
+ * English prompt makes the model start answering in Japanese there.
  */
 const phrases: Record<
   PromptLocale,
@@ -140,13 +141,14 @@ const phrases: Record<
 };
 
 /**
- * 会話のロール名。transcriptを読むLLMに、誰の発話かを言語ごとに伝える。
+ * Conversation role labels. They tell the LLM reading the transcript who spoke, per
+ * language.
  *
- * ピボット(計画 v1 §0 決定3)でAI側の配役が**後輩から先輩に変わった**ので、
- * ここも「後輩 / Kohai」から替えている。ラベルだけ後輩のまま残すと、
- * カルテを書くLLMは**先輩が教えた行を「後輩の発話」として読む** — 誰が誰に
- * 教えていたのかが逆に見える transcript から穴を抽出することになる。
- * `prompts/karte_generation.<locale>.md` の本文と対で直すこと。
+ * The pivot (plan v1 §0 decision 3) changed the AI's role from kouhai to senpai, so
+ * these changed from "後輩 / Kohai" too. Leaving the labels as kouhai would make the
+ * karte LLM read the lines the senpai taught as "the kouhai's speech" - extracting
+ * holes from a transcript where who was teaching whom looks reversed.
+ * Fix this together with the body of `prompts/karte_generation.<locale>.md`.
  */
 const roleLabels: Record<PromptLocale, { assistant: string; user: string }> = {
   ja: { assistant: "先輩", user: "ユーザー" },
@@ -154,15 +156,16 @@ const roleLabels: Record<PromptLocale, { assistant: string; user: string }> = {
 };
 
 /**
- * トピックの**索引**。到達目標を落として1行にする。
+ * A topic *index*. Drops the learning goals to make one line each.
  *
- * 計画の聞き取りでLLMがやるのは「テスト範囲の topic_id を選ぶ」ことだけで、
- * 到達目標は選択の材料にならない(目標が要るのは質問を作る授業側)。
- * 課程1本ぶんを全部貼る場面ではここが効く —
- * **実測で 1トピック 125字 → 48字、日本の高校数学(52件)で 6,516字 → 2,503字**。
+ * In a plan interview the LLM only picks the test scope's topic_ids, and goals do
+ * not inform that choice (goals are needed on the lesson side, which builds
+ * questions). It pays off where a whole curriculum is pasted: measured at
+ * 125 -> 48 characters per topic, and 6,516 -> 2,503 characters for Japanese
+ * high-school maths (52 entries).
  *
- * 情報は落ちていないので、{@link formatAllowedTopics} と使い分けること:
- * 授業(範囲が数件に絞れている)は目標つき、計画(課程を丸ごと貼る)は索引。
+ * No information is lost, so use it alongside {@link formatAllowedTopics}: lessons
+ * (scope narrowed to a few) get goals, plans (a whole curriculum pasted) get the index.
  */
 export function formatTopicIndex(
   topics: readonly { id: string; course: string; unit: string; topic: string }[],
@@ -174,7 +177,7 @@ export function formatTopicIndex(
     .join("\n");
 }
 
-/** 許可トピックの一覧を、プロンプトに貼れる形に整える。 */
+/** Formats the allowed-topic list so it can be pasted into a prompt. */
 export function formatAllowedTopics(
   topics: readonly { id: string; course: string; unit: string; topic: string; goals: string[] }[],
   locale: PromptLocale = "ja",
@@ -190,48 +193,51 @@ export function formatAllowedTopics(
     .join("\n");
 }
 
-/** 箇条書きにする(写真の作業内容・質問の種など)。 */
+/** Formats bullets (work seen in the photo, question seeds, ...). */
 export function formatBullets(items: readonly string[], locale: PromptLocale = "ja"): string {
   if (items.length === 0) return phrases[locale].none;
   return items.map((item) => `- ${item}`).join("\n");
 }
 
 /**
- * 問題文を、プロンプトに貼れる形に整える。
+ * Formats the problem text so it can be pasted into a prompt.
  *
- * `null` = **読み取れなかった**。`prompts/senpai_board.<locale>.md` はこの文字列を
- * 名指しで見ていて(「ここが『(問題の写真なし)』のときは、問題文を推測で
- * 組み立てないこと」)、1文字ずれるとその指示が発火しないまま
- * **先輩が自分で作った問題を教えはじめる**。だから文言はここにしか置かない。
+ * `null` means it was unreadable. `prompts/senpai_board.<locale>.md` matches this
+ * string by name ("when this says '(no problem photo)', do not reconstruct the
+ * problem text by guessing"), and one character of drift stops that instruction
+ * firing - and the senpai starts teaching a problem it invented. So the wording
+ * lives only here.
  *
- * **空文字を `null` に畳まない。**「読めなかった」を `null` に寄せるのは
- * 呼び出し側(`backend/api` の `resolveSessionProblem()`)の責務で、
- * 上限超過も空も向こうで畳んでから渡ってくる。ここで `""` を拾って
- * プレースホルダに化けさせると、**契約違反が無音で通る** —
- * 空のまま素通しすれば、agent 側の `.min(1)` で会話が始まらずに表面化する。
+ * An empty string is not folded into `null`. Folding "unreadable" into `null` is the
+ * caller's job (`resolveSessionProblem()` in `backend/api`), and both the
+ * over-length and the empty cases are folded there before arriving. Catching `""`
+ * here and turning it into the placeholder would let a contract violation pass
+ * silently - passed through empty, the agent's `.min(1)` surfaces it by refusing to
+ * start the conversation.
  */
 export function formatProblemText(text: string | null, locale: PromptLocale = "ja"): string {
   return text === null ? phrases[locale].noProblemPhoto : text;
 }
 
 /**
- * ノートから読み取れた作業を、プロンプトに貼れる形に整える。
+ * Formats the work read from the notes so it can be pasted into a prompt.
  *
- * **区別する状態は3つ。**`formatBullets` を直に使うと下2つが同じ「(なし)」になり、
- * 先輩は**「ノートに何も書いていない生徒」と「ノートを撮らなかった生徒」を同じに扱う**
- * (`contract` の `sessionMetadataSchema.visible_work` が3状態を要求している理由)。
+ * Three states must stay distinct. Using `formatBullets` directly collapses the
+ * bottom two into the same "(none)", and the senpai then treats "a student who wrote
+ * nothing" the same as "a student who took no notes photo" (the reason
+ * `contract`'s `sessionMetadataSchema.visible_work` demands three states).
  *
- * | 引数 | 出る値 | 意味 |
+ * | argument | output | meaning |
  * | --- | --- | --- |
- * | 中身のある配列 | 箇条書き | ノートの写真から読み取れた |
- * | `[]` | `(なし)` | ノートは撮ったが、手をつけた形跡が読み取れなかった |
- * | `null` | `(ノートの写真なし)` | **ノートの写真そのものが無い**(問題だけを持ってきた) |
+ * | a non-empty array | bullets | read from the notes photo |
+ * | `[]` | `(なし)` | notes were photographed, but no sign of work could be read |
+ * | `null` | `(ノートの写真なし)` | there is no notes photo at all (only the problem was brought) |
  *
- * **文言はここにしか無い。**`prompts/senpai_board.<locale>.md` と
- * `prompts/senpai_conversation.<locale>.md` がこの文字列を名指しで見ているので、
- * backend/api も agent も自前で組み立てず、この関数を通すこと。
- * 1文字ずれるとプロンプト側の分岐が発火せず、**先輩が「ノート見せて」と言い出す** —
- * その生徒はノートを持っていない。
+ * The wording exists only here. `prompts/senpai_board.<locale>.md` and
+ * `prompts/senpai_conversation.<locale>.md` match these strings by name, so neither
+ * backend/api nor the agent may assemble them itself - both go through this
+ * function. One character of drift stops the prompt's branch firing, and the senpai
+ * asks to see the notes - from a student who has none.
  */
 export function formatVisibleWork(
   items: readonly string[] | null,
@@ -241,7 +247,7 @@ export function formatVisibleWork(
   return formatBullets(items, locale);
 }
 
-/** transcriptをカルテ生成プロンプトに貼れる形にする。 */
+/** Formats the transcript so it can be pasted into the karte-generation prompt. */
 export function formatTranscript(
   messages: readonly { role: string; text: string }[],
   locale: PromptLocale = "ja",

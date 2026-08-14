@@ -24,13 +24,14 @@ import {
 export * from "./schema.ts";
 
 /**
- * カリキュラムマップ本体。**課程(track)ごとに1本**。
+ * The curriculum map itself. One per curriculum (track).
  *
- * ここが「触れてよい話題」の正。日本の高校生には数学I〜Cを、海外の学習者には
- * Algebra 1 〜 Calculus / Statistics を出す(翻訳ではなく別のマップ)。
+ * This is authoritative for "topics that may be touched". Japanese high-schoolers
+ * get Math I-C, overseas learners get Algebra 1 through Calculus / Statistics
+ * (a separate map, not a translation).
  *
- * `Record<TrackId, Curriculum>` なので、`trackIds` に id を足してデータを
- * 忘れると**型で落ちる**。課程が増えるときの取りこぼしはここで止まる。
+ * Being a `Record<TrackId, Curriculum>`, adding an id to `trackIds` and forgetting
+ * the data fails type checking. Omissions when adding a curriculum stop here.
  */
 export const curricula: Record<TrackId, Curriculum> = {
   hs_math_ja: curriculumSchema.parse(rawJaCurriculum),
@@ -44,26 +45,30 @@ export function curriculumFor(track: TrackId): Curriculum {
   return curricula[track];
 }
 
-/** 既知の指導言語か。未知の値はここで `ja` に丸める(既定は日本語で教える)。 */
+/** Whether the language of instruction is known. Unknown values round to `ja` (teach in Japanese by default). */
 export function toCurriculumLocale(value: string | undefined | null): CurriculumLocale {
   return curriculumLocales.find((locale) => locale === value) ?? "ja";
 }
 
 /**
- * 全課程のトピック。
+ * Topics from every curriculum.
  *
- * topic_id は接頭辞で課程が分かれているので衝突しない。ID照合(ガードレール)は
- * どの課程で始まったセッションでも同じ関数で通せる。
- * **画面やプロンプトに一覧を出すときは {@link topicsForTracks} で課程を絞ること。**
+ * topic_ids are separated by prefix per curriculum, so they never collide. Id
+ * matching (the guardrails) can use the same function whichever curriculum a
+ * session started in.
+ * When listing them on a screen or in a prompt, narrow by curriculum with
+ * {@link topicsForTracks}.
  */
 export const topics: readonly Topic[] = trackIds.flatMap((track) => curricula[track].topics);
 
 /**
- * 指定した課程のトピックだけを返す。
+ * Returns only the topics of the given curricula.
  *
- * **引数は課程の配列**で、指導言語ではない。「中学生に見せる一覧」は
- * *中学数学 + 中学英語* の2課程で、言語で絞ると4課程ぶん(約185件)が
- * 無言でプロンプトに載る。{@link tracksForStage} と組で使うこと。
+ * The argument is an array of curricula, not a language of instruction. The list
+ * shown to a middle-schooler is two curricula - middle-school maths plus
+ * middle-school English - and narrowing by language would silently put four
+ * curricula (about 185 entries) into the prompt. Use it together with
+ * {@link tracksForStage}.
  */
 export function topicsForTracks(trackList: readonly TrackId[]): readonly Topic[] {
   const wanted = new Set(trackList);
@@ -71,10 +76,10 @@ export function topicsForTracks(trackList: readonly TrackId[]): readonly Topic[]
 }
 
 /**
- * その段階の生徒に見せてよい課程。
+ * The curricula that may be shown to a student at that stage.
  *
- * 海外課程は段階で分かれていない(Algebra 1 〜 Calculus が一続き)ので、
- * `locale: "en"` はどちらの段階でも同じ1本を返す。
+ * The overseas curricula are not split by stage (Algebra 1 through Calculus is one
+ * continuum), so `locale: "en"` returns the same single track for either stage.
  */
 export function tracksForStage(stage: SchoolStage, locale: CurriculumLocale): TrackId[] {
   return trackIds.filter((track) => {
@@ -86,24 +91,26 @@ export function tracksForStage(stage: SchoolStage, locale: CurriculumLocale): Tr
 
 const topicById = new Map<string, Topic>(topics.map((topic) => [topic.id, topic]));
 
-/** ガードレール照合用のID集合。 */
+/** The id set used for guardrail matching. */
 export const topicIds: ReadonlySet<string> = new Set(topicById.keys());
 
 export function findTopic(id: string): Topic | undefined {
   return topicById.get(id);
 }
 
-/** LLMが返したtopic_idがカリキュラム内かを判定する(サーバ側ガードの一次判定)。 */
+/** Whether a topic_id returned by the LLM is in the curriculum (the server guard's first check). */
 export function isKnownTopicId(id: string): boolean {
   return topicById.has(id);
 }
 
 /**
- * topic_id が属する課程。
+ * The curriculum a topic_id belongs to.
  *
- * 穴(hole)にはtopic_idが必ず付いていて、そのカルテの文言も同じ課程の言語で
- * 書かれている。**通知や復習画面の言語も、板書に使える要素も、ここから決まる**ので、
- * セッションの課程をDBに持たなくても、あとから取り違えない(ADR 0005 / 0006)。
+ * Every hole carries a topic_id, and its karte's wording is written in the same
+ * curriculum's language. The language of notifications and the review screen, and
+ * which board elements are usable, all follow from here - so the session's
+ * curriculum need not be stored in the DB and can never be confused later
+ * (ADR 0005 / 0006).
  */
 export function trackOfTopicId(id: string): TrackId | undefined {
   const code = id.slice(0, id.indexOf("-"));
@@ -111,23 +118,24 @@ export function trackOfTopicId(id: string): TrackId | undefined {
 }
 
 /**
- * topic_id が属する課程の**指導言語**。
+ * The language of *instruction* for the curriculum a topic_id belongs to.
  *
- * 教える中身の言語ではない。日本の中学生が英語を学ぶ課程は `"ja"` を返す —
- * 先輩は日本語で話し、通知も日本語で届く。
+ * Not the language of what is taught. A curriculum where Japanese
+ * middle-schoolers learn English returns `"ja"` - the senpai speaks Japanese and
+ * notifications arrive in Japanese.
  */
 export function localeOfTopicId(id: string): CurriculumLocale | undefined {
   const track = trackOfTopicId(id);
   return track && tracks[track].locale;
 }
 
-/** topic_id が属する課程の教科。板書に使える要素と音声補正ヒントを決める。 */
+/** The subject of the curriculum a topic_id belongs to. Decides usable board elements and speech hints. */
 export function subjectOfTopicId(id: string): CurriculumSubject | undefined {
   const track = trackOfTopicId(id);
   return track && tracks[track].subject;
 }
 
-/** topic_id が属する課程の学校段階。 */
+/** The school stage of the curriculum a topic_id belongs to. */
 export function stageOfTopicId(id: string): SchoolStage | undefined {
   const track = trackOfTopicId(id);
   return track && tracks[track].stage;
@@ -140,11 +148,12 @@ const shortByCourseName = new Map<string, string>(
 );
 
 /**
- * チップや計画画面に出す短いラベル。「中1」「数学I」「英コミュI」。
+ * The short label shown on chips and the plan screen: "Grade 7", "Math I", "EC I".
  *
- * **`grade_hint` を読むのはここだけ。** 学年で範囲を絞る口はどこにも無く、
- * この関数が表示専用であることが「学年は目安」という約束の実体になっている
- * (詳細は `topicSchema.grade_hint` のコメント)。
+ * This is the only place `grade_hint` is read. There is no entry point anywhere
+ * that narrows scope by grade, and this function being display-only is what makes
+ * the promise "the grade is only a rough guide" real (details in
+ * `topicSchema.grade_hint`'s comment).
  */
 export function topicLabel(topic: Topic): string {
   if (topic.grade_hint !== undefined) return `中${topic.grade_hint}`;
@@ -160,9 +169,9 @@ export function topicsByUnit(course: CourseName, unit: string): Topic[] {
 }
 
 /**
- * 前提トピックを再帰的にたどる。穴の深掘り(「そもそも◯◯とは?」)で、
- * 1つ手前の単元まで質問を落とすのに使う。
- * @param depth たどる段数。1なら直接の前提のみ。
+ * Walks prerequisite topics recursively. Used when digging into a hole ("what is X
+ * in the first place?") to drop the question back one unit.
+ * @param depth how many levels to follow. 1 means direct prerequisites only.
  */
 export function prerequisitesOf(id: string, depth = 1): Topic[] {
   const collected = new Map<string, Topic>();
@@ -189,20 +198,23 @@ export function prerequisitesOf(id: string, depth = 1): Topic[] {
 }
 
 export type SuggestTopicsOptions = {
-  /** 絞り込む課程。省略すると全課程から探す。 */
+  /** Which curricula to narrow to. Omitted, it searches all of them. */
   tracks?: readonly TrackId[];
 };
 
 /**
- * 写真解析で得たテキスト(単元名・用語・式の断片)から候補トピックを引く。
+ * Finds candidate topics from the text obtained by photo analysis (unit names,
+ * terms, formula fragments).
  *
- * スコアの重みは トピック名(5) > 単元名(3) > キーワード(2)。
- * 一致は部分一致だが、`sin` `tan` `log` `law of sines` のようなラテン文字の語は
- * **語境界でのみ**照合する(`constant` の中の `tan` を三角比と見なさないため)。
+ * Score weights are topic name (5) > unit name (3) > keyword (2). Matching is by
+ * substring, but Latin-script words such as `sin`, `tan`, `log` and `law of sines`
+ * match only at word boundaries (so the `tan` inside `constant` is not read as
+ * trigonometry).
  *
- * ここで拾った候補が、後輩AIに渡す「触れてよい話題」の初期集合になる。
- * **学年で絞る引数は無い。** 中学英語の学年配当は教科書ごとに違うので、
- * 学年を条件にすると別の教科書を使っている生徒の単元が消える。
+ * The candidates found here become the initial set of "topics that may be touched"
+ * handed to the AI. There is no parameter for narrowing by grade: middle-school
+ * English grade allocation differs per textbook, so conditioning on grade would
+ * erase units for students using another textbook.
  */
 export function suggestTopics(
   text: string,
@@ -212,7 +224,7 @@ export function suggestTopics(
   const haystack = buildHaystack(text);
   if (haystack.compact.length === 0) return [];
 
-  // 負数や小数を渡されても、slice(0, limit) の妙な挙動に落ちないようにする
+  // Guard against negative or fractional input falling into slice(0, limit)'s odd behaviour
   const take = Math.max(0, Math.floor(limit));
   if (take === 0) return [];
 
@@ -230,23 +242,23 @@ function scoreTopic(topic: Topic, haystack: Haystack): number {
   if (matches(haystack, topic.unit)) score += 3;
   if (matches(haystack, topic.topic)) score += 5;
   for (const keyword of topic.keywords) {
-    // 1文字キーワードは事故のもとなので数えない
+    // Single-character keywords cause accidents, so they are not counted
     if (keyword.length >= 2 && matches(haystack, keyword)) score += 2;
   }
   return score;
 }
 
-/** ラテン文字だけで書かれた語(sin / tan / log / law of sines / b^2-4ac など)。 */
+/** A word written only in Latin script (sin / tan / log / law of sines / b^2-4ac ...). */
 const LATIN_ONLY = /^[a-z0-9^/+*=<>().'’ -]+$/;
 
 /**
- * 照合用に2つの形を持つ。
+ * Two forms are kept for matching.
  *
- * - `compact`: 空白を全部落としたもの。日本語は分かち書きされないので、
- *   OCRが入れた空白(「円 と 直線」)を無視して部分一致できる。
- * - `spaced`: 空白を1つに畳んだもの。英語は**語の区切りが空白**なので、
- *   落としてしまうと `law of sines` が `usingthelawofsines` の中で
- *   語境界を失い、二度と一致しなくなる。
+ * - `compact`: all whitespace removed. Japanese is not word-spaced, so this ignores
+ *   spaces the OCR inserted ("円 と 直線") and still matches by substring.
+ * - `spaced`: whitespace collapsed to one. English separates words with spaces, so
+ *   removing them would lose `law of sines`'s word boundaries inside
+ *   `usingthelawofsines` and it would never match again.
  */
 type Haystack = { compact: string; spaced: string };
 
@@ -259,11 +271,12 @@ function matches(haystack: Haystack, needle: string): boolean {
   const { compact, spaced } = buildHaystack(needle);
   if (compact.length === 0) return false;
 
-  // 日本語の語はそのまま部分一致でよい(「判別式」が別語に埋もれることはない)。
+  // Japanese words are fine as plain substring matches ("判別式" never hides inside another word).
   if (!LATIN_ONLY.test(spaced)) return haystack.compact.includes(compact);
 
-  // ラテン文字の語は前後を語境界に限る。`constant` の `tan`、`since` の `sin`、
-  // `biology` の `log` を数学の証拠と見なすと、数学以外の写真が範囲を通ってしまう。
+  // Latin-script words are bounded on both sides. Reading the `tan` in `constant`,
+  // the `sin` in `since` or the `log` in `biology` as evidence of maths would let
+  // non-maths photos through the scope check.
   const escaped = spaced.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ +/g, "\\s+");
   return new RegExp(`(?<![a-z0-9])${escaped}(?![a-z0-9])`, "u").test(haystack.spaced);
 }
@@ -286,17 +299,19 @@ export type IntegrityIssue = {
 };
 
 /**
- * スキーマでは表せない整合性(参照の妥当性・循環・IDとコースの一致)を検査する。
- * トピックを手で足していくのでCIで毎回回す。
+ * Checks the consistency the schema cannot express (reference validity, cycles,
+ * agreement between id and course). Topics are added by hand, so this runs on every
+ * CI job.
  *
- * 引数なしで呼ぶと**全課程のカリキュラム**をまとめて検査する。
- * IDは課程をまたいで一意でなければならず、前提の参照は
- * **同じ指導言語・同じ教科の中**に閉じている必要がある(Algebra 2 の前提が
- * 数学II になっていると、英語のセッションで日本語のトピックが混ざる)。
+ * Called with no arguments it checks every curriculum together. Ids must be unique
+ * across curricula, and prerequisite references must stay within the same language
+ * of instruction and the same subject (an Algebra 2 prerequisite pointing at Math II
+ * would mix a Japanese topic into an English session).
  *
- * 段(中学 → 高校)はまたいでよい。高校英語の前提は中学英語、高校数学の前提は
- * 中学数学であるのが自然で、「二次方程式で詰まっている高2を中3へ戻す」は
- * 先輩の中核機能そのものだから。
+ * Crossing stages (middle -> high school) is allowed. High-school English naturally
+ * has middle-school English as a prerequisite, and high-school maths middle-school
+ * maths - "take a year-11 student stuck on quadratics back to year 9" is the
+ * senpai's core function.
  */
 export function checkIntegrity(
   data: Curriculum | readonly Curriculum[] = trackIds.map((track) => curricula[track]),
@@ -352,7 +367,7 @@ export function checkIntegrity(
       }
     }
 
-    // 空振りの着地点が、その課程に実在しないと着地できない
+    // A landing point for missed inference cannot land if it does not exist in that curriculum
     if (set.fallback_topic_id && !set.topics.some((t) => t.id === set.fallback_topic_id)) {
       issues.push({
         kind: "unknown-fallback-topic",
@@ -361,7 +376,7 @@ export function checkIntegrity(
       });
     }
 
-    // 宣言だけして中身が無いコースは、一覧に出た瞬間「選べるのに何も無い」になる
+    // A course declared with no content becomes "selectable but empty" the moment it appears in a list
     for (const course of set.courses) {
       if (!usedCourses.has(course.name)) {
         issues.push({
@@ -436,7 +451,7 @@ function findCycles(index: Map<string, Topic>): string[] {
   return cycles;
 }
 
-/** topic_idの形だけを検査する(未知IDかどうかは isKnownTopicId で見る)。 */
+/** Checks only a topic_id's shape (use isKnownTopicId for whether it is known). */
 export function isWellFormedTopicId(id: string): boolean {
   return topicIdPattern.test(id);
 }

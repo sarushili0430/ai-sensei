@@ -55,7 +55,7 @@ describe("作図の結論が、指定していないのに出てくる", () => {
       { line: "L", bisect: ["B", "A", "C"] },
       { pt: "D", meet: ["L", ["B", "C"]] },
     ]);
-    // AB:AC = 6:4 = 1.5 と指定していないのに、BD:DC がそうなる
+    // BD:DC comes out at 1.5 without AB:AC = 6:4 = 1.5 ever being specified
     expect(dist(pts.B!, pts.D!) / dist(pts.D!, pts.C!)).toBeCloseTo(1.5, 6);
   });
 });
@@ -146,7 +146,7 @@ describe("要約した数字は、こちらが出す", () => {
       { curve: "c", f: "x*x*x-3*x", domain: [-2.5, 2.5] },
       { signTable: "c", crit: [-1, 1] },
     ]);
-    // `Draw` の中身は種類ごとにばらばらなので、`t` で絞ってから形を狭める
+    // A `Draw`'s contents vary per kind, so narrow by `t` first, then to the shape
     const table = draws.find((d) => d.t === "signTable") as
       | { sign: string[]; arrow: string[] }
       | undefined;
@@ -174,8 +174,8 @@ describe("要約した数字は、こちらが出す", () => {
       },
     ]);
     expect(ok.ok).toBe(true);
-    // 和が 1 にならない図は、絵としては自然に出てしまうので落とす…のは呼び出し側の判定。
-    // ここでは確率が数として読めることだけ確かめる。
+    // A figure whose probabilities do not sum to 1 still looks natural, so rejecting it
+    // is the caller's call. Here we only confirm the probability reads as a number.
     const bad = drawFigure([{ states: ["A", "B"] }, { edges: [["A", "B", "ほとんど"]] }]);
     expect(bad.ok).toBe(false);
   });

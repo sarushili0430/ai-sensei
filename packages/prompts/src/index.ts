@@ -22,15 +22,16 @@ export const promptIds = [
 export type PromptId = (typeof promptIds)[number];
 
 /**
- * どのプロンプトが、どの言語で用意されているか。**ここが正**。
+ * Which prompts exist in which languages. This is authoritative.
  *
- * ほとんどのプロンプトは日英2本ずつだが、教科に紐づくものはそうならない。
- * `english_speech_hints` は「**日本語話者が英語を話すときの**STTの癖」を書いた
- * ものなので、英語で教える課程には存在しない(英語話者に英語を教える課程を
- * このアプリは持たない)。
+ * Most prompts come in Japanese and English, but subject-bound ones do not.
+ * `english_speech_hints` describes STT quirks of a Japanese speaker speaking
+ * English, so it does not exist for curricula taught in English (this app has no
+ * curriculum teaching English to English speakers).
  *
- * ファイル数の検査もここを基準にする。`promptIds.length * promptLocales.length`
- * で数えると、教科別のプロンプトを足した瞬間に「揃っていない」と誤検知する。
+ * File-count checks use this as their basis. Counting
+ * `promptIds.length * promptLocales.length` would falsely report "incomplete" the
+ * moment a subject-specific prompt is added.
  */
 export const promptCatalog: Record<PromptId, readonly PromptLocale[]> = {
   photo_analysis: promptLocales,
@@ -44,7 +45,7 @@ export const promptCatalog: Record<PromptId, readonly PromptLocale[]> = {
   study_plan: promptLocales,
 };
 
-/** 既定のロケール。未対応の言語で来た場合もここに落ちる。 */
+/** The default locale. Unsupported languages fall back here. */
 export const defaultPromptLocale: PromptLocale = "ja";
 
 const templates = new Map<string, PromptTemplate>();
@@ -58,17 +59,18 @@ function keyOf(id: string, locale: string): string {
 }
 
 /**
- * プロンプトを1本取り出す。
+ * Fetches one prompt.
  *
- * 言語ごとに**別のファイル**を持つ(`prompts/<id>.<locale>.md`)。
- * 日本語のプロンプトの末尾に「英語で答えて」と足す作りにすると、
- * ペルソナも禁止事項も日本語のまま英語で薄く言い直されるだけになる。
+ * Each language has its own file (`prompts/<id>.<locale>.md`). Appending "answer in
+ * English" to a Japanese prompt would only restate the persona and the bans thinly,
+ * in Japanese.
  *
- * **無い組み合わせは既定の言語に落とさず、落とす。** 未知の言語を丸めるのは
- * {@link toPromptLocale} の仕事で、ここに来る `locale` は必ず `promptLocales` の
- * どれか。それでも見つからないなら「その id にその言語版は無い」ということで、
- * 黙って日本語版を返すと**英語のセッションで先輩が日本語を喋り出す**。
- * 言語を1つ増やすときは {@link promptCatalog} に宣言を足す。
+ * A missing combination throws rather than falling back to the default language.
+ * Rounding unknown languages is {@link toPromptLocale}'s job, so the `locale`
+ * arriving here is always one of `promptLocales`. If it is still not found, that id
+ * has no version in that language, and silently returning the Japanese one would
+ * have the senpai speak Japanese in an English session. When adding a language, add
+ * the declaration to {@link promptCatalog}.
  */
 export function getPrompt(
   id: PromptId,
@@ -81,12 +83,12 @@ export function getPrompt(
   );
 }
 
-/** 全ロケールぶん。設計上の約束が書かれているかの検査に使う。 */
+/** All locales. Used to check that the design promises are written down. */
 export function allPrompts(): PromptTemplate[] {
   return [...templates.values()];
 }
 
-/** そのロケールで用意されているプロンプト全部。 */
+/** Every prompt available in that locale. */
 export function promptsFor(locale: PromptLocale): PromptTemplate[] {
   return promptIds
     .filter((id) => promptCatalog[id].includes(locale))
@@ -94,53 +96,57 @@ export function promptsFor(locale: PromptLocale): PromptTemplate[] {
 }
 
 /**
- * 授業の教科。
+ * The lesson's subject.
  *
- * **`@ai-sensei/curriculum` の `CurriculumSubject` と同じ値にすること。**
- * このパッケージは依存を持たない層(`formatAllowedTopics` がトピックを
- * 構造的に受けているのと同じ理由)なので参照できず、二重に書いている。
+ * Keep these values identical to `CurriculumSubject` in `@ai-sensei/curriculum`.
+ * This package is a dependency-free layer (the same reason `formatAllowedTopics`
+ * takes topics structurally), so it cannot reference them and writes them twice.
  */
 export const promptSubjects = ["math", "english"] as const;
 export type PromptSubject = (typeof promptSubjects)[number];
 
 /**
- * 教科ごとの音声補正ヒント。
+ * Per-subject speech-correction hints.
  *
- * **教科で必ず切り替える。** 数学版の「さんぶんのに = 2/3」「にじょう = ^2」を
- * 英語の授業に当てると、生徒の発話を数式として読み直してしまう。逆に英語版の
- * 「冠詞の脱落は言えていない証拠にしない」を数学に当てても効かない。
+ * Always switched by subject. Applying the maths version's "さんぶんのに = 2/3" and
+ * "にじょう = ^2" to an English lesson would re-read the student's speech as
+ * formulas. Conversely the English version's "a dropped article is not evidence
+ * they failed to say it" does nothing for maths.
  */
 function speechHintsId(subject: PromptSubject): PromptId {
   return subject === "math" ? "math_speech_hints" : "english_speech_hints";
 }
 
-/** 教科ごとの板書プロンプト。使える要素も、守らせる規約も重ならない。 */
+/** The per-subject board prompt. Neither the usable elements nor the rules overlap. */
 function boardPromptId(subject: PromptSubject): PromptId {
   return subject === "math" ? "senpai_board" : "senpai_board_english";
 }
 
-/** システムプロンプトを組むときの授業の文脈。 */
+/** The lesson context used when assembling a system prompt. */
 export type PromptContext = {
   locale?: PromptLocale;
-  /** 授業の教科。`subjectOfTopicId(topic_id)` で引ける(ADR 0007)。 */
+  /** The lesson's subject. Derivable with `subjectOfTopicId(topic_id)` (ADR 0007). */
   subject: PromptSubject;
 };
 
 /**
- * 教え返しを聞く先輩のシステムプロンプト(ピボット計画 v1 §2 のコアループ2つ目)。
+ * The system prompt for the senpai listening to teach-back (the second half of
+ * pivot plan v1 §2's core loop).
  *
- * few-shotと音声補正ヒントを常に同梱する。3つを別々に渡すと
- * 「片方だけ更新される」事故が起きるので、1本にまとめて返す。
+ * The few-shot examples and the speech-correction hints are always bundled in.
+ * Passing the three separately invites "only one got updated", so one string is
+ * returned.
  *
- * **`lesson_recap` は必須**(渡し忘れは `renderPrompt` が落とす)。先輩が
- * 「自分が何を板書したか」を知らないと、教え返しを聞いても
- * 「言えた / 詰まった」の判定ができない。板書がまだ無い場面(復習セッション・
- * 授業に入る前)は、その旨を**会話の言語で**書いた定型句を渡すこと。
+ * `lesson_recap` is required (`renderPrompt` fails if it is missing). Without
+ * knowing what it wrote on the board, the senpai cannot judge "said it / got stuck"
+ * while listening to the teach-back. Where there is no board yet (a review session,
+ * before the lesson starts), pass a fixed line saying so in the conversation's
+ * language.
  *
- * **板書の要約はここ(instructions)にだけ渡す。**カルテと小テストの材料は
- * transcript で、そこに教えた内容を混ぜると §2 の設計制約
- * 「出題元はユーザーが説明した内容。AIが教えた内容から作らない」が壊れる。
- * その線引きはプロンプト本文にも二重に書いてある。
+ * The board summary is passed here (instructions) only. The karte and the quiz are
+ * built from the transcript, and mixing what was taught into it breaks §2's design
+ * constraint that "questions come from what the user explained, never from what the
+ * AI taught". That line is written into the prompt body too.
  */
 export function conversationSystemPrompt(
   variables: {
@@ -163,30 +169,36 @@ export function conversationSystemPrompt(
 }
 
 /**
- * 板書つきで教える先輩のシステムプロンプト(ピボット計画 v1 §2 / §3-1)。
+ * The system prompt for the senpai teaching with a board (pivot plan v1 §2 / §3-1).
  *
- * 出力は `@ai-sensei/contract` の `boardLessonSchema` の形で、
- * agent がストリーミングJSONとして受け取る。
+ * The output has the shape of `boardLessonSchema` in `@ai-sensei/contract`, which
+ * the agent receives as streaming JSON.
  *
- * **新規と復習で別のプロンプトを複製しない。**違うのは授業の根拠が
- * 「写真の問題」か「前回観測した1つの穴」かだけで、板書の契約、LaTeXの許可範囲、
- * 「数式は板書・声は接続」、教え返しへの受け渡しは同じ。300行を超える規約を
- * 別本にすると、片方だけ長い式の分割や禁止コマンドが抜けても型では検知できない。
- * `lesson_mode` を本文で明示し、入力の読み分けだけを同じ正本の中に置く。
+ * New lessons and reviews do not get duplicate prompts. The only difference is
+ * whether the lesson is grounded in the photographed problem or in one hole
+ * observed last time; the board contract, the LaTeX allow-list, "formulas on the
+ * board, voice for connection" and the handover to teach-back are identical.
+ * Splitting 300+ lines of rules into two books means a missing long-formula split
+ * or banned command on one side cannot be detected by types. `lesson_mode` is
+ * stated in the body, and only the reading of the input differs inside the same
+ * source of truth.
  *
- * 復習の穴を `problem_text` に偽装する案も採らない。問題の写真が無いのに
- * 問題文として渡すと、「問題を推測しない」という新規授業の保険が形だけになる。
- * `review_context` は別の棚に置き、`problem_text` は写真についての事実のまま保つ。
+ * Disguising a review hole as `problem_text` is also rejected. Passing it as
+ * problem text when there is no problem photo would make the new-lesson insurance
+ * "do not guess the problem" purely nominal. `review_context` sits on its own
+ * shelf, and `problem_text` stays a fact about the photo.
  *
- * **音声補正ヒントを同梱する。** 先輩は喋るだけでなく、生徒の説明を聞いて
- * 「言えたか / 詰まったか」で教える地点を決める(=【申告させず、やらせる】)。
- * その判定材料はSTTを通った生徒の発話そのものなので、
- * 「さんぶんのに = 2/3」を取り違えると、**言えているのに詰まったと判定する**。
+ * The speech-correction hints are bundled in. The senpai not only speaks but
+ * listens to the student's explanation to decide where to teach from ("make them do
+ * it, do not make them report it"). That judgement rests on the student's speech as
+ * it came through STT, so misreading "さんぶんのに = 2/3" judges them stuck when
+ * they said it correctly.
  *
- * few-shot(`question_types_few_shot`)は同梱しない。**先輩版に書き直したあとも同じ。**
- * あれは「教え返しを聞きながら差し込む一言」(相づち・足場・掘り方)の見本で、
- * こちらの出力は板書JSONなので置き場がない。`speech` の文体は
- * `senpai_board.<locale>.md` の見本セクションが直接そろえている。
+ * The few-shot (`question_types_few_shot`) is not bundled, and that stays true even
+ * after it is rewritten for the senpai. Those are examples of "lines to slip in
+ * while listening to teach-back" (acknowledgements, scaffolds, ways to dig), and
+ * this output is board JSON with nowhere to put them. `speech`'s tone is aligned
+ * directly by the examples section in `senpai_board.<locale>.md`.
  */
 export function boardLessonSystemPrompt(
   variables: {
@@ -200,9 +212,10 @@ export function boardLessonSystemPrompt(
   { locale = defaultPromptLocale, subject }: PromptContext,
 ): string {
   return [
-    // **教科ごとに別本。** 数学版は300行超のうち3〜4割が数式の規約(使える
-    // LaTeXコマンド・長い式の割り方)で、英語では丸ごと不要。1本に混ぜて
-    // 分岐を書くより、正本を分けたほうが読める(ADR 0005 決定3と同じ判断)。
+    // A separate book per subject. In the maths version, 30-40% of its 300+ lines are
+    // formula rules (usable LaTeX commands, how to split long formulas), all of it
+    // unnecessary for English. Separate sources read better than one file full of
+    // branches (the same call as ADR 0005 decision 3).
     renderPrompt(getPrompt(boardPromptId(subject), locale), variables),
     "---",
     getPrompt(speechHintsId(subject), locale).body,
@@ -210,22 +223,25 @@ export function boardLessonSystemPrompt(
 }
 
 /**
- * 学習計画を口で聞いて組む先輩のシステムプロンプト(ピボット計画 v1 §4-3)。
+ * The system prompt for the senpai building a study plan by ear (pivot plan v1 §4-3).
  *
- * 出力は `@ai-sensei/contract` の `planTurnSchema`(`{speech, plan}`)の形。
- * 計画は聞き取りの会話の**途中で**生まれるので、LLMの単位は「計画」ではなく「1ターン」。
+ * The output has the shape of `planTurnSchema` (`{speech, plan}`) in
+ * `@ai-sensei/contract`. A plan is born *during* the interview, so the LLM's unit is
+ * one turn, not one plan.
  *
- * **音声補正ヒントは同梱しない。** あれは数式の読み上げ(「さんぶんのに」= 2/3)や
- * 英語の音の脱落を直すためのもので、計画の聞き取りに出てくる数字は
- * **日付・ページ番号・問題集の名前**という別物。同梱しても効かないうえ、
- * 「エヌは数列ならn」のような文脈判断を持ち込むと、聞き取りの邪魔になる。
- * 計画側で要る聞き取りの注意は `prompts/study_plan.<locale>.md` に直接書いてある。
+ * The speech-correction hints are not bundled. Those fix formula readings
+ * ("さんぶんのに" = 2/3) and dropped English sounds, whereas the numbers in a plan
+ * interview are dates, page numbers and workbook names - different things.
+ * Bundling them would not help and would import context judgements like "N means n
+ * in a sequence", getting in the interview's way. The listening notes the plan side
+ * needs are written directly in `prompts/study_plan.<locale>.md`.
  *
- * **教科を取らないのもこのため。** 計画は教科をまたいで1本作る(中学生の定期テストは
- * 数学と英語が並ぶ)ので、ここで教科をひとつに決める意味がない。
+ * This is also why it takes no subject. One plan spans subjects (a middle-schooler's
+ * term test lines up maths and English), so fixing a single subject here is meaningless.
  *
- * `today` は**必ず渡す**。LLMは今日を知らないので、「9月10日」が何日後かも、
- * 今年か来年かも決められない(渡し忘れは `renderPrompt` が落とす)。
+ * `today` must always be passed. The LLM does not know today, so it can decide
+ * neither how many days away "10 September" is nor whether it is this year or next
+ * (`renderPrompt` fails if it is missing).
  */
 export function studyPlanSystemPrompt(
   variables: {
@@ -240,7 +256,7 @@ export function studyPlanSystemPrompt(
   return renderPrompt(getPrompt("study_plan", locale), variables);
 }
 
-/** カルテ生成用のプロンプト。教科に合った音声補正ヒントを同梱する。 */
+/** The prompt for karte generation. Bundles the speech-correction hints for the subject. */
 export function karteSystemPrompt(
   variables: {
     photo_summary: string;

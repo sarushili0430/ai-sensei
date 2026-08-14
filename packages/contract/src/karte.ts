@@ -1,35 +1,38 @@
 import { z } from "zod";
 
 /**
- * カルテ(セッション後のフィードバック)。
+ * The karte (post-session feedback).
  *
- * 設計上の約束:
- *   - 点数・正答率のフィールドは **持たない**。数えるのは連続日数と埋めた穴の数だけ。
- *   - 「穴」は失点ではなく、これから埋まる場所として扱う。
- *   - 解答・解説はここに入らない(答えを教えないため)。
+ * Design promises:
+ *   - no fields for scores or accuracy. Only streak days and filled holes are counted.
+ *   - a "hole" is not lost marks but a place about to be filled.
+ *   - answers and worked solutions do not belong here (so the answer is not given away).
  *
- * 由来: 評価ルーブリック。
+ * Origin: the evaluation rubric.
  */
 
 /**
- * topic_idの形。中身がカリキュラム内かは @ai-sensei/guardrail が照合する。
+ * The shape of a topic_id. Whether the content is in the curriculum is matched by
+ * @ai-sensei/guardrail.
  *
- * 接頭辞は課程ごと。`M1`〜`MC` が日本の高校数学(数学I〜C)、`J1`〜`J3` が
- * 日本の中学数学(第1〜3学年)、`JE` が日本の中学英語(学年で分けない)、`E1`/`E2`/`L1` が日本の高校英語、`A1`(Algebra 1)・`GE`(Geometry)・
- * `A2`(Algebra 2)・`PC`(Precalculus)・`CL`(Calculus)・`ST`(Statistics)が
- * 海外向けの課程。
+ * Prefixes are per curriculum: `M1`-`MC` is Japanese high-school maths (Math I-C),
+ * `J1`-`J3` Japanese middle-school maths (grades 1-3), `JE` Japanese
+ * middle-school English (not split by grade), `E1`/`E2`/`L1` Japanese high-school
+ * English, and `A1` (Algebra 1), `GE` (Geometry), `A2` (Algebra 2), `PC`
+ * (Precalculus), `CL` (Calculus) and `ST` (Statistics) the overseas curricula.
  *
- * **`@ai-sensei/curriculum` の `topicIdPattern` と同じ形にすること。**
- * contract は依存を持たない層なので参照できず、二重に書いている
- * (ずれると `backend/api` の photo-analysis のテストで落ちる)。
+ * Keep this identical to `topicIdPattern` in `@ai-sensei/curriculum`.
+ * contract is a dependency-free layer and cannot reference it, so it is written
+ * twice (drift fails backend/api's photo-analysis tests).
  */
 export const topicIdSchema = z
   .string()
   .regex(/^(M1|MA|M2|MB|M3|MC|A1|GE|A2|PC|CL|ST|J1|J2|J3|JE|E1|E2|L1)-[A-Z0-9]+(?:-[A-Z0-9]+)*$/);
 
 /**
- * 穴の深さ。点数ではなく「次にどれだけ効くか」の目安で、復習の優先順位に使う。
- * UIでは数値化せず、並び順にだけ効かせる。
+ * A hole's depth. Not a score but a sense of "how much this affects what's next",
+ * used to prioritise reviews. Never surfaced as a number in the UI; it only affects
+ * ordering.
  */
 export const holeSeverities = ["low", "medium", "high"] as const;
 export const holeSeveritySchema = z.enum(holeSeverities);
@@ -38,20 +41,22 @@ export type HoleSeverity = (typeof holeSeverities)[number];
 export const holeDraftSchema = z
   .object({
     topic_id: topicIdSchema,
-    /** 何が説明できなかったか。「〜で説明が止まった」の形で書く(責めない文体)。 */
+    /** What could not be explained. Written as "the explanation stalled at ..." (never blaming). */
     desc: z.string().min(1).max(200),
     severity: holeSeveritySchema,
-    /** 根拠になったtranscript上の発話。カルテ画面では出さないが、再説明の文脈に使う。 */
+    /** The transcript utterance behind it. Not shown on the karte screen, but used as context when re-explaining. */
     evidence: z.string().max(500).optional(),
     /**
-     * 1/3/7日後に出す**1問**。10秒で答えられる短さにする。
+     * The one question asked after 1/3/7 days. Short enough to answer in 10 seconds.
      *
-     * 出題元はtranscriptのうち、本人が説明した内容(`ユーザー:` / `Student:`)だけ。
-     * 先輩が教えた内容から作らない。AIの誤読を間隔反復で3回強化してしまうため
-     * (ピボット計画 §2 の却下表)。
+     * It is drawn only from the parts of the transcript the student explained
+     * (`ユーザー:` / `Student:`), never from what the senpai taught - that would
+     * reinforce an AI misreading three times through spaced repetition (the
+     * rejected column of pivot plan §2).
      *
-     * 採点はせず、答えも持たない。本人が「言えた / まだ言えない」を選ぶだけ。
-     * 旧データには無いので省略でき、無いときは `desc` を出題として使う。
+     * There is no grading and no answer stored. The student just picks "said it /
+     * not yet". Old data lacks it, so it is optional, and `desc` is used as the
+     * question when absent.
      */
     quiz: z.string().min(1).max(200).optional(),
   })
@@ -62,28 +67,29 @@ export const holeStatuses = ["open", "filled"] as const;
 export const holeStatusSchema = z.enum(holeStatuses);
 
 /**
- * 穴の復習結果。採点ではなく、言えたかどうかを本人が申告する二択。
+ * A hole's review outcome. Not grading but the student's own yes/no on whether
+ * they could say it.
  *
- * `not_yet` を選んだことを咎める文言はUIに置かない。
- * 約束3「パスを恥にしない」を復習でも守る。
+ * The UI carries no wording that scolds picking `not_yet`. Promise 3, "never shame
+ * a pass", holds in reviews too.
  */
 export const reviewOutcomes = ["said_it", "not_yet"] as const;
 export const reviewOutcomeSchema = z.enum(reviewOutcomes);
 export type ReviewOutcome = z.infer<typeof reviewOutcomeSchema>;
 
 /**
- * 保存後の穴。復習フローの単位。
+ * A stored hole. The unit of the review flow.
  *
- * `status` と `filled_at` は必ず対で動く。片方だけ立っていると、
- * 復習キュー(statusで絞る)と埋めた穴カウンター(filled_atが根拠)が
- * 食い違った数字を出すので、スキーマで組み合わせを縛る。
+ * `status` and `filled_at` always move together. With only one set, the review
+ * queue (filtered by status) and the filled-holes counter (based on filled_at)
+ * would report different numbers, so the schema binds the combination.
  */
 export const holeSchema = holeDraftSchema
   .extend({
     id: z.string().min(1),
     status: holeStatusSchema,
     created_at: z.string().datetime(),
-    /** 再説明で埋まった日時。埋めた穴カウンターの元データ。 */
+    /** When it was filled by re-explaining. The source data for the filled-holes counter. */
     filled_at: z.string().datetime().nullable(),
   })
   .strict()
@@ -93,30 +99,31 @@ export const holeSchema = holeDraftSchema
   });
 export type Hole = z.infer<typeof holeSchema>;
 
-/** agentがtranscript全体から生成する、保存前のカルテ。 */
+/** The pre-save karte the agent generates from the whole transcript. */
 export const karteDraftSchema = z
   .object({
-    /** 言えたこと。カルテ画面では黄色のマーカーで示す。 */
+    /** What they said well. Highlighted in yellow on the karte screen. */
     said_well: z.array(z.string().min(1).max(200)).max(10),
     holes: z.array(holeDraftSchema).max(5),
-    /** 用語の取り違え。「『解の公式』と『判別式』が混同」のような短いメモ。 */
+    /** Confused terminology. A short note such as "mixed up 'quadratic formula' and 'discriminant'". */
     term_notes: z.array(z.string().min(1).max(200)).max(5),
-    /** 後輩のあと追い質問(Premium機能)。無料ユーザーには生成しない。 */
+    /** The agent's follow-up question (a Premium feature). Not generated for free users. */
     followup_question: z.string().min(1).max(200).nullable().optional(),
   })
   .strict();
 export type KarteDraft = z.infer<typeof karteDraftSchema>;
 
-/** 保存後のカルテ。カルテ画面と履歴が読むかたち。 */
+/** The stored karte. What the karte screen and history read. */
 export const karteSchema = z
   .object({
     id: z.string().min(1),
     session_id: z.string().min(1),
     created_at: z.string().datetime(),
-    /** そのセッションで扱った単元。カルテ画面のヘッダに出す。 */
+    /** The units covered in that session. Shown in the karte screen's header. */
     topic_ids: z.array(topicIdSchema).min(1),
-    // 長さの制約はドラフトと揃える。保存後だけ緩いと、fixtureとJSON Schemaで
-    // 許容範囲が食い違う(片側だけ空文字や長文を通してしまう)。
+    // Length constraints match the draft. Looser only after saving would make the
+    // fixture and the JSON Schema disagree on what is allowed (one side letting
+    // through empty strings or long text).
     said_well: z.array(z.string().min(1).max(200)).max(10),
     holes: z.array(holeSchema).max(5),
     term_notes: z.array(z.string().min(1).max(200)).max(5),
@@ -126,18 +133,18 @@ export const karteSchema = z
 export type Karte = z.infer<typeof karteSchema>;
 
 /**
- * ホーム画面のカウンター。
- * XP・レベル・スコアは持たない(数えるのは努力だけ、という原則)。
+ * The home screen's counters.
+ * No XP, levels or scores (the principle: count only effort).
  */
 export const progressSchema = z
   .object({
-    /** 連続日数。 */
+    /** Streak days. */
     streak_days: z.number().int().min(0),
-    /** 埋めた穴の累計。このアプリ固有のスコアで、共有スクショに出す想定。 */
+    /** Lifetime filled holes. This app's own score, meant for shared screenshots. */
     filled_holes: z.number().int().min(0),
-    /** まだ埋まっていない穴の数。 */
+    /** How many holes are still open. */
     open_holes: z.number().int().min(0),
-    /** 最後にセッションを完了した日(ローカル日付 YYYY-MM-DD)。 */
+    /** The last day a session was completed (local date YYYY-MM-DD). */
     last_session_date: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/)

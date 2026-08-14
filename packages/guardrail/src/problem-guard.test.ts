@@ -7,10 +7,11 @@ import {
 } from "./problem-guard.ts";
 
 /**
- * **通すほうが長いのは意図。**
- * 正当な問題文を落とすと `problem_text` が空になり、先輩は「(問題の写真なし)」から
- * 始める = **問題が写っているのに見ないまま教える**、いちばん避けたかった状態に戻る。
- * だから「迷ったら通す」で、ここが実質的な仕様書になる。
+ * That the pass list is longer is deliberate.
+ * Rejecting a legitimate problem text empties `problem_text` and the senpai starts
+ * from "(no problem photo)" = teaching without looking at a problem that is right
+ * there, the very state we wanted to avoid. So the rule is "when unsure, let it
+ * through", and this file is effectively the specification.
  */
 describe("checkProblemText — 通すべきもの", () => {
   it.each([
@@ -25,8 +26,9 @@ describe("checkProblemText — 通すべきもの", () => {
   });
 
   /**
-   * 設問の中の「解答」「答え」を巻き込まない。見出しは囲みかコロンを伴うので、
-   * そこを必須にしてある。ここが緩むと、**ごくふつうの設問**が落ちはじめる。
+   * "解答" and "答え" inside a question are not caught. Headings always carry a bracket
+   * or a colon, so that is required. Loosen it and perfectly ordinary questions start
+   * being rejected.
    */
   it.each([
     "解答用紙に途中式も書くこと。x^2 - 3x + 2 = 0 を解け。",
@@ -39,14 +41,14 @@ describe("checkProblemText — 通すべきもの", () => {
   });
 
   /**
-   * 問題集の紙面には、生徒が解く前から**空欄の解答欄**が印刷されている。
-   * 「Answer:」があるだけでは、解答が混ざった証拠にならない。
+   * Workbook pages print a blank answer box before the student solves anything.
+   * The presence of "Answer:" alone is no evidence of a mixed-in answer.
    */
   it("空欄の解答欄の見出しだけでは落とさない", () => {
     expect(checkProblemText("Solve for x.  x + 3 = 7\nAnswer: ______").ok).toBe(true);
   });
 
-  // sin / cos / log は3文字なので散文として通る。**それでよい**(迷ったら通す)。
+  // sin / cos / log are three letters and pass as prose. That is fine (when unsure, let it through).
   it("関数名しか無くても通す(明らかに設問でない断片だけを落とす)", () => {
     expect(checkProblemText("sin(x) + cos(x) = 1").ok).toBe(true);
   });
@@ -54,8 +56,9 @@ describe("checkProblemText — 通すべきもの", () => {
 
 describe("checkProblemText — 弾くべきもの", () => {
   /**
-   * ここが塞ぎたかった穴。紙面の下半分に章末の解答が写ると、
-   * 解答まで問題文として流れ込み、**先輩が解き方を組み立てずに答えを写す**。
+   * The hole this closes. When the chapter's answers appear in the lower half of the
+   * page, they flow in as problem text and the senpai copies the answer instead of
+   * building the method.
    */
   it.each([
     "x^2 - 3x + 2 = 0 を解け。 【解答】x = 1, 2",
@@ -71,7 +74,7 @@ describe("checkProblemText — 弾くべきもの", () => {
     });
   });
 
-  // ∴ は設問には出ず、解答の途中にしか出ない。
+  // ∴ never appears in a question, only mid-solution.
   it("ゆえに(∴)が入っていれば落とす", () => {
     expect(checkProblemText("D = 9 - 8 = 1 > 0 ∴ 異なる2つの実数解")).toMatchObject({
       ok: false,
@@ -80,8 +83,8 @@ describe("checkProblemText — 弾くべきもの", () => {
   });
 
   /**
-   * 「何を問われているか」が書かれていない断片。
-   * 式だけを渡されても、先輩は何を教えればいいか決められない。
+   * A fragment that does not say what is being asked.
+   * Handed only a formula, the senpai cannot decide what to teach.
    */
   it.each(["x^2 - 3x + 2 = 0", "y = x + k", "(1) (2) (3)", "2x + 3 = 7"])(
     "式だけの断片を落とす: %s",
@@ -109,15 +112,16 @@ describe("再生成の指示", () => {
   });
 
   /**
-   * 宛先は**写真解析のプロンプト**。直すのは「紙面のどこを書き写すか」なので、
-   * 指示も取る範囲を名指しする形でなければ、解析器は同じ書き起こしを出し直す。
+   * The audience is the photo-analysis prompt. What needs fixing is which part of the
+   * page to transcribe, so unless the instruction names the range to capture, the
+   * analyser re-emits the same transcription.
    */
   it("解答混入の指示が、取らない場所を名指ししている", () => {
     expect(problemRejectionGuidanceByLocale.ja.solution_included).toContain("設問だけ");
     expect(problemRejectionGuidanceByLocale.en.solution_included).toContain("only the question");
   });
 
-  // 設問が写っていないなら空文字。ここを推測で埋めると、存在しない問題を教える。
+  // No question in shot means an empty string. Filling it by guesswork teaches a problem that does not exist.
   it("設問なしの指示が、空文字にする逃げ道を示している", () => {
     expect(problemRejectionGuidanceByLocale.ja.not_a_problem).toContain("空文字");
     expect(problemRejectionGuidanceByLocale.en.not_a_problem).toContain("empty string");

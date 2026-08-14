@@ -10,8 +10,8 @@ import {
 import { planDateSchema, planSourceSchema, studyPlanDraftSchema, studyPlanSchema } from "./plan.ts";
 
 /**
- * backend/api ↔ apps/mobile ↔ agent の契約。
- * ここを変えたら fixtures/ も更新する(fixtureはFlutter側のテストからも読まれる)。
+ * The contract between backend/api, apps/mobile and the agent.
+ * Change this and update fixtures/ too (fixtures are read by Flutter tests as well).
  */
 
 export const apiPaths = {
@@ -33,112 +33,119 @@ export const locales = ["ja", "en"] as const;
 export const localeSchema = z.enum(locales);
 export type Locale = (typeof locales)[number];
 
-/** セッションの種類。復習は既存の穴から入るので写真がいらない。 */
+/** Session kinds. A review starts from an existing hole, so it needs no photo. */
 export const sessionKinds = ["new", "review"] as const;
 export const sessionKindSchema = z.enum(sessionKinds);
 
 /* -------------------------------------------------------------------------- */
-/* 問題文(グラウンディング)                                                  */
+/* Problem text (grounding)                                                   */
 /* -------------------------------------------------------------------------- */
 
 /**
- * POST /v1/sessions の multipart のパート名。
+ * The multipart part names for POST /v1/sessions.
  *
- * **2枚の写真は別のものとして扱う。寿命が違うから。**
+ * The two photos are treated as different things, because their lifetimes differ.
  *
- * | パート | 中身 | 保存 |
+ * | part | content | stored |
  * | --- | --- | --- |
- * | `photo` | 生徒のノート(本人の著作物) | R2に保存する |
- * | `problem_photo` | 教科書・問題集の紙面(**他者の著作物**) | **解析後に破棄する。保存しない** |
+ * | `photo` | the student's notes (their own work) | stored in R2 |
+ * | `problem_photo` | a textbook or workbook page (someone else's work) | discarded after analysis; never stored |
  *
- * 計画書 §4-1 が「解析には送るが、R2に保存し続けるかは分けて判断する
- * (解析後破棄なら、将来の出版社交渉でも説明が立つ)」と書き、§10-4 で未決だったもの。
- * **破棄を既定にした**ので、パート名を分けて「どちらの寿命か」を送信側にも見えるようにする。
+ * Plan §4-1 said "send it for analysis, but decide separately whether to keep it
+ * in R2 (discard-after-analysis stays defensible in future publisher talks)", and
+ * §10-4 left it open. Discarding is now the default, so the part names are split
+ * to make the lifetime visible to the sender as well.
  *
- * **`kind: "new"` に要るのは、どちらか1枚。両方が無いときだけ弾く。**
- * どちらも必須ではない:
+ * `kind: "new"` needs only one of the two; reject only when both are missing.
+ * Neither is required on its own:
  *
- *   - `problem_photo` だけ … まだ手をつけていない問題を持ってきた場合。
- *     `visible_work` は空になり、`sessionMetadataSchema.visible_work` には
- *     「ノートの写真なし」を意味するプレースホルダが入る
- *   - `photo` だけ … 1枚に問題とノートの両方が写っている場合(§4-1 が「多い」と書いているほう)。
- *     解析器はノートの写真から問題文を読み取ろうとし、読めなければ問題文なしで進む
+ *   - `problem_photo` only ... a problem not yet attempted. `visible_work` is
+ *     empty and `sessionMetadataSchema.visible_work` gets the placeholder meaning
+ *     "no notes photo"
+ *   - `photo` only ... one image holding both the problem and the notes (the case
+ *     §4-1 calls common). The analyser tries to read the problem from the notes
+ *     photo and proceeds without it if unreadable
  *
- * **ノートを必須にしていた頃、この契約は自分自身の破棄の約束を破っていた。**
- * ノートが無い生徒は、紙面を `photo`(ノート枠)に入れる以外に送る手段が無く、
- * 結果として**他者の著作物がR2に保存されていた**。破棄を保証する道は
- * 「紙面をノート枠に入れる動機を消す」ことしかないので、ノートの必須をやめた。
+ * Back when notes were mandatory, this contract broke its own discard promise: a
+ * student with no notes had no way to send anything but the page in `photo` (the
+ * notes slot), so someone else's copyrighted work ended up stored in R2. The only
+ * way to guarantee discarding was to remove the motive for putting a page in the
+ * notes slot, so notes stopped being required.
  *
- * 「ノートを撮らない生徒を正規の経路として認めることになる」のは**承知のうえ**。
- * 旧方針(答えを教えない・説明させる)ではノート必須が必然だったが、
- * いまは教えるプロダクトで、「手も付けられない」は家庭教師の中心的な用件
- * (デッキ §0 の約束1の改正)。誤読の保険は教え返しフェーズ側にあるので無傷(§1-1)。
+ * That this legitimises students who do not photograph their notes is accepted.
+ * Mandatory notes followed necessarily from the old policy (never give the answer,
+ * make them explain), but this is now a product that teaches, and "I can't even
+ * start" is a central tutoring request (the revision of promise 1, deck §0). The
+ * insurance against misreading lives in the teach-back phase and is untouched (§1-1).
  *
- * **残る穴**: 生徒が問題を `photo` 枠に入れて送れば、それはノートとして保存される。
- * 枠の取り違えまでは防げない。防げるのは**取り違える動機**までで、そこは消した。
+ * The remaining hole: a student who puts the problem in the `photo` slot has it
+ * stored as notes. Slot confusion cannot be prevented - only the motive for it,
+ * and that has been removed.
  *
- * ただし動機が消えたのは契約の上だけで、しばらくのあいだUI側に残っていた。
- * アプリの撮影画面は入った瞬間に**ノートのカメラ**を開いていたので、
- * ノートが無い生徒は問題の枠を一度も見ないままシャッターの前に立ち、
- * 手元にある紙面をノート枠に入れていた。**枠を先に見せて選ばせる**ように
- * 変えて、ここも塞いである(`capture_screen.dart`)。
- * 入口を作り直すときは、**カメラを自動で開かないこと**が破棄の約束の一部だと
- * 思って扱ってください。
+ * That motive was removed in the contract only, and lingered in the UI for a
+ * while. The capture screen opened the notes camera the moment it was entered, so
+ * a student with no notes stood at the shutter without ever seeing the problem
+ * slot and put the page they had into the notes slot. It now shows the slots
+ * first and makes the student choose, closing that too (`capture_screen.dart`).
+ * When rebuilding the entrance, treat "do not open the camera automatically" as
+ * part of the discard promise.
  */
 export const sessionPhotoParts = {
-  /** ノートの写真。R2に保存する。 */
+  /** The notes photo. Stored in R2. */
   notes: "photo",
-  /** 問題の写真。**解析後に破棄する。** */
+  /** The problem photo. Discarded after analysis. */
   problem: "problem_photo",
 } as const;
 
 /**
- * 読み取った問題文の上限。
+ * The cap on the transcribed problem text.
  *
- * 高校数学の設問は小問つきでも300字程度に収まる。600字は
- * **紙面を丸ごと書き起こさせないための安全弁**で、目標値ではない。
- * ページ全体を写すと、章末の解答や解説まで問題文として流れ込み、
- * 先輩が答えを読み上げるところから授業が始まってしまう。
+ * A high-school maths question fits in about 300 characters even with sub-parts.
+ * 600 is a safety valve against transcribing the whole page, not a target.
+ * Capturing a full page lets the chapter's answers and commentary flow in as
+ * problem text, and the lesson starts with the senpai reading out the answer.
  */
 export const problemTextMaxLength = 600;
 
 /**
- * 問題文をどの写真から読んだか。
+ * Which photo the problem text was read from.
  *
- * **ヒントの出しどころは「撮る前」に決めた**(2026-08-10)。当初この欄は
- * 「`null`(読めなかった)のときだけヒントを出す」ために置いたが、それは**解析のあと**になる。
- * 解析後に出すヒントは、撮り直さないと消えない警告として働き、
- * **任意のはずの2枚目が事実上の必須になる**(API側で「2枚目が壊れていても422にしない」と
- * 決めたのと同じ理屈が、UI側から無効化される)。撮る前なら同じ文言が純粋な促しなので、
- * §4-1「2枚必須にしない」を保ったまま「問題も写っていると先輩が迷子になりません」を出せる。
- * よってアプリは撮影の確認画面でヒントを出し、この欄では出しわけない。
+ * Where to put the hint was decided as "before capture" (2026-08-10). This field
+ * was originally added so a hint could be shown only when it is `null`
+ * (unreadable), but that is *after* analysis. A post-analysis hint acts as a
+ * warning that only clears by retaking, making the supposedly optional second
+ * photo effectively required - the UI cancelling out the API's decision not to
+ * return 422 when the second photo is broken. Before capture the same wording is
+ * pure encouragement, so "the senpai gets less lost if the problem is in shot too"
+ * can be shown while keeping §4-1's "do not require two photos".
+ * So the app shows the hint on the capture confirmation screen, and this field
+ * does not gate anything.
  *
- * 画面側では**埋まっている枠**でヒントを選んでいる(まだ1枚も無い人には
- * 「どちらか1枚で始められる」、ノートだけ撮った人には上の促し)。これは
- * **どちらも撮る前に出る言葉**なので、ここで言う「解析後に出すと2枚目が
- * 事実上の必須になる」とは別の軸の話。
+ * The screen picks its hint from which slots are filled (someone with no photos
+ * yet gets "either one is enough to start"; someone with only notes gets the
+ * encouragement above). Both appear before capture, so they are a different axis
+ * from "showing it after analysis makes the second photo required".
  *
- * この欄はいま**観測のため**にある。
+ * This field now exists for observation.
  *
- * どれくらいの生徒が実際に2枚送るかは、この値でしか観測できない。
+ * How many students actually send two photos is observable only from this value.
  */
 export const problemSources = ["problem_photo", "notes_photo"] as const;
 export const problemSourceSchema = z.enum(problemSources);
 export type ProblemSource = (typeof problemSources)[number];
 
 /**
- * セッションが扱う問題。**読み取れたときだけ存在する。**
+ * The problem this session covers. Exists only when it was readable.
  *
- * `text` と `source` を1つのオブジェクトにまとめてあるのは、
- * 「本文はあるが出どころが無い」という状態を表現できなくするため
- * (`karte.ts` の `status` / `filled_at` を対で縛っているのと同じ考え方)。
+ * `text` and `source` are one object so that "text without a source" cannot be
+ * expressed (the same idea as binding `karte.ts`'s `status` / `filled_at` together).
  */
 export const sessionProblemSchema = z
   .object({
     /**
-     * 問題文。**解答・解説は入らない。**
-     * 中身が本当に設問かどうかの照合は contract の仕事ではない
-     * (`topicIdSchema` と同じ分担で、`@ai-sensei/guardrail` 側)。
+     * The problem text. Answers and commentary do not belong here.
+     * Whether the content really is a question is not contract's job (the same
+     * split as `topicIdSchema`; it belongs to `@ai-sensei/guardrail`).
      */
     text: z.string().min(1).max(problemTextMaxLength),
     source: problemSourceSchema,
@@ -146,7 +153,7 @@ export const sessionProblemSchema = z
   .strict();
 export type SessionProblem = z.infer<typeof sessionProblemSchema>;
 
-/** 写真解析で検出した単元。UIではチップで出し、ユーザーが直せる。 */
+/** A unit detected by photo analysis. Shown as chips in the UI and correctable by the user. */
 export const detectedTopicSchema = z
   .object({
     topic_id: topicIdSchema,
@@ -154,46 +161,47 @@ export const detectedTopicSchema = z
     unit: z.string().min(1),
     topic: z.string().min(1),
     /**
-     * チップに出す短い課程名。「中1」「数学I」「Algebra 2」。
+     * The short curriculum name for the chip: "Grade 7", "Math I", "Algebra 2".
      *
-     * **サーバが計算して渡す。** 端末側で topic_id の接頭辞から引く作りにすると、
-     * 接頭辞の対応表が4か所目になる。加えて中学英語は学年ごとに接頭辞が分かれて
-     * いない(学年は表示だけの目安なので、あえて分けていない)ため、
-     * 接頭辞からは「中2」を作れない。
+     * Computed and passed by the server. Deriving it on the device from the
+     * topic_id prefix would make a fourth prefix table. Middle-school English also
+     * has no per-grade prefixes (the grade is display guidance only, deliberately
+     * not split), so "Grade 8" cannot be built from a prefix.
      */
     label: z.string().min(1).max(16),
-    /** 0..1。低いものは選択済みにせず、候補として並べるだけにする。 */
+    /** 0..1. Low ones are listed as candidates rather than pre-selected. */
     confidence: z.number().min(0).max(1),
   })
   .strict();
 export type DetectedTopic = z.infer<typeof detectedTopicSchema>;
 
 /**
- * 学校段階。**写真解析と計画の聞き取りで、見る課程を半分に絞る**ために使う。
+ * The school stage. Used to halve the curricula considered during photo analysis
+ * and plan interviews.
  *
- * 端末が設定から送る。DBには持たない — 再インストールで選び直しになる代わりに、
- * マイグレーションが要らない(ADR 0007)。
+ * Sent by the device from its settings. Not held in the DB - reinstalling means
+ * choosing again, in exchange for needing no migration (ADR 0007).
  *
- * **既定は `high_school`。** これを送らない古いアプリは、今までどおり
- * 高校の課程だけを見る。
+ * Defaults to `high_school`. Older apps that do not send it keep seeing only the
+ * high-school curricula, as before.
  */
 export const schoolStages = ["junior_high", "high_school"] as const;
 export type SchoolStage = (typeof schoolStages)[number];
 export const schoolStageSchema = z.enum(schoolStages);
 
 /**
- * POST /v1/sessions のリクエスト。
- * 写真そのものは multipart/form-data の `photo` パートで送り、
- * 残りのフィールドを `meta` パートにこのJSONで入れる。
+ * The POST /v1/sessions request.
+ * The photos themselves go in the multipart `photo` part; the remaining fields go
+ * in the `meta` part as this JSON.
  */
 export const createSessionRequestSchema = z
   .object({
     kind: sessionKindSchema.default("new"),
     locale: localeSchema.default("ja"),
     school_stage: schoolStageSchema.default("high_school"),
-    /** kind="review" のとき、埋めにいく穴。復習は穴が起点なので必須。 */
+    /** For kind="review", the hole to fill. Required, since a review starts from a hole. */
     hole_id: z.string().min(1).optional(),
-    /** ユーザーがチップUIで単元を直した場合の指定。空なら写真解析に任せる。 */
+    /** Set when the user corrected the unit in the chip UI. Empty leaves it to photo analysis. */
     topic_ids: z.array(topicIdSchema).max(5).optional(),
   })
   .strict()
@@ -203,21 +211,21 @@ export const createSessionRequestSchema = z
   });
 
 /**
- * パース**後**の型。`kind`/`locale` は default が効くので必ず入っている。
- * サーバ側の処理はこちらを使う。
+ * The type *after* parsing. `kind`/`locale` always exist because their defaults
+ * apply. Server-side code uses this one.
  */
 export type CreateSessionRequest = z.infer<typeof createSessionRequestSchema>;
 
 /**
- * パース**前**(ワイヤー上)の型。`kind`/`locale` は省略できる。
- * クライアントがリクエストを組み立てるときはこちらを使う。
+ * The type *before* parsing (on the wire). `kind`/`locale` may be omitted.
+ * Clients building a request use this one.
  */
 export type CreateSessionRequestInput = z.input<typeof createSessionRequestSchema>;
 
 export const liveKitConnectionSchema = z
   .object({
     url: z.string().url(),
-    /** 参加用トークン。短命(セッション長+バッファ)。 */
+    /** The join token. Short-lived (session length plus buffer). */
     token: z.string().min(1),
     room: z.string().min(1),
   })
@@ -225,28 +233,32 @@ export const liveKitConnectionSchema = z
 
 export const sessionLimitsSchema = z
   .object({
-    /** サーバが強制する上限。無料・Premiumとも、15〜20分の授業を完走できる最長20分。 */
+    /** The server-enforced cap. Free and Premium alike get 20 minutes, enough for a 15-20 minute lesson. */
     max_seconds: z.number().int().positive(),
     /**
-     * この応答時点から、今日さらに授業を始められるか。
-     * §6-3「UIに数字は一切出さない」を契約の形で守るため、残数ではなく可否だけを返す。
+     * Whether another lesson can start today, as of this response.
+     * To uphold §6-3 ("never show numbers in the UI") in the contract's shape, it
+     * returns only a yes/no, never a remaining count.
      */
     lesson_allowed_today: z.boolean(),
   })
   .strict();
 
 /**
- * POST /v1/sessions のレスポンス。**写真を読んだ結果だけで、部屋の鍵は入っていない。**
+ * The POST /v1/sessions response. Only the result of reading the photo; it holds
+ * no room key.
  *
- * ここに `livekit` と `limits` が無いのは仕様。**1日の回数を数えるのは
- * 「写真を読んだとき」ではなく「会話が始まったとき」**にしたので
- * (`startSessionResponseSchema`)、解析の応答は枠の判定を通らない。
+ * The absence of `livekit` and `limits` is by design. Daily uses are counted when
+ * the conversation starts, not when the photo is read
+ * (`startSessionResponseSchema`), so the analysis response never goes through the
+ * slot check.
  *
- * トークンを解析の時点で配ると、その分け方は成立しない。**トークンを持っている =
- * いつでも会話を始められる**ので、鍵を先に渡してから「会話の開始で数える」と言っても、
- * 数える口をクライアント側に置いたのと同じことになる。だから枠の確保とトークンの発行を
- * `POST /v1/sessions/{id}/start` の1操作に束ね、この応答は**単元と問題文の読み合わせ**
- * だけを返す。
+ * Handing out a token at analysis time would break that split: holding a token
+ * means being able to start any time, so giving the key first and then saying
+ * "counted at conversation start" puts the counter on the client. So claiming the
+ * slot and issuing the token are bound into the single operation
+ * `POST /v1/sessions/{id}/start`, and this response returns only the unit and a
+ * read-back of the problem text.
  */
 export const createSessionResponseSchema = z
   .object({
@@ -254,13 +266,13 @@ export const createSessionResponseSchema = z
     kind: sessionKindSchema,
     detected_topics: z.array(detectedTopicSchema).min(1),
     /**
-     * 解析が読み取った問題。**読めなければ `null`**(それでもセッションは成立する)。
+     * The problem the analysis read. `null` if unreadable (the session still stands).
      *
-     * アプリに返すのは2つの用途のため:
-     *   1. `null` のときだけ §4-1 のヒント(「問題も写っていると〜」)を出す
-     *   2. **読み取った問題文をそのまま見せる。** 誤読が表面化するのがここで最も早い。
-     *      §1-1 の「AIが理解している建て付けのアプリほど誤読が致命傷になる」への、
-     *      授業が始まる前の手当て。
+     * It goes back to the app for two reasons:
+     *   1. only when `null`, show §4-1's hint ("the senpai gets less lost if...")
+     *   2. show the transcribed problem text verbatim - the earliest point at which
+     *      a misreading surfaces. The pre-lesson countermeasure to §1-1's "the more
+     *      an app is built around AI understanding, the more fatal a misreading is"
      */
     problem: sessionProblemSchema.nullable(),
   })
@@ -268,32 +280,35 @@ export const createSessionResponseSchema = z
 export type CreateSessionResponse = z.infer<typeof createSessionResponseSchema>;
 
 /**
- * POST /v1/sessions/{id}/start のリクエスト。
+ * The POST /v1/sessions/{id}/start request.
  *
- * `locale` は**エラー文言の言語**だけに使う。会話の言語はセッションに残した
- * 単元の課程で決まる(端末を英語にしただけで、日本語で撮った問題に英語で
- * 教えに来ることはない)。
+ * `locale` is used only for the language of error messages. The conversation's
+ * language comes from the curriculum of the unit stored on the session (switching
+ * the device to English never brings an English teacher to a problem photographed
+ * in Japanese).
  */
 export const startSessionRequestSchema = z.object({ locale: localeSchema.default("ja") }).strict();
 export type StartSessionRequest = z.infer<typeof startSessionRequestSchema>;
 export type StartSessionRequestInput = z.input<typeof startSessionRequestSchema>;
 
 /**
- * POST /v1/sessions/{id}/start のレスポンス。**ここが「1回」を数える唯一の場所。**
+ * The POST /v1/sessions/{id}/start response. The only place a use is counted.
  *
- * 以前は写真を読んだ時点(`POST /v1/sessions`)で今日の枠を押さえていた。
- * 原価(Vision LLM)が発生するのがそこだったからだが、そのぶん
- * **撮って単元を確かめただけの人が、会話を1度もしないまま「今日はここまで」**に
- * なっていた。生徒から見れば1回とは「先輩と話した回数」なので、数える場所を
- * ここへ移してある。
+ * Previously the daily slot was claimed when the photo was read
+ * (`POST /v1/sessions`), because that is where the cost (Vision LLM) occurred -
+ * but that left someone who only took a photo and confirmed the unit being told
+ * "that's it for today" without a single conversation. To a student one use means
+ * one conversation with the senpai, so counting moved here.
  *
- * 枠の確保とトークンの発行は**サーバ側の同じ1操作**で、順番も入れ替えられない。
- * 枠を取れなければトークンは出ないし、トークンが出たなら枠は取れている。
- * (解析だけを繰り返して原価を積む道は、`POST /v1/sessions` 側の別の上限で塞ぐ。
- * そちらは1日の授業回数よりずっと緩い、異常利用だけを止める上限。)
+ * Claiming the slot and issuing the token are one server-side operation, in an
+ * order that cannot be swapped: no slot means no token, and a token means the slot
+ * was taken. (Racking up cost by repeating analysis alone is blocked by a separate
+ * cap on the `POST /v1/sessions` side - one far looser than the daily lesson
+ * count, stopping only abuse.)
  *
- * **再送しても二重に数えない。** 同じセッションで2度目を呼ぶと、最初に押さえた
- * 枠のままトークンだけ出し直す(通信が切れて押し直したときのため)。
+ * A resend does not count twice. Calling it a second time for the same session
+ * reissues only the token against the slot already claimed (for retries after a
+ * dropped connection).
  */
 export const startSessionResponseSchema = z
   .object({
@@ -306,16 +321,16 @@ export const startSessionResponseSchema = z
 export type StartSessionResponse = z.infer<typeof startSessionResponseSchema>;
 
 /**
- * PATCH /v1/sessions/{id}/topics のリクエスト。
+ * The PATCH /v1/sessions/{id}/topics request.
  *
- * チップUIで外した単元を、**セッションを作り直さずに**反映する。
- * 作り直すと同じ写真をもう一度Vision LLMに通すことになり(原価が二重にかかり)、
- * 解析の回数だけを見ている上限にも二重に当たる。
+ * Applies units removed in the chip UI without recreating the session.
+ * Recreating would push the same photo through the Vision LLM again (doubling the
+ * cost) and hit the analysis-count cap twice.
  */
 export const updateSessionTopicsRequestSchema = z
   .object({
     locale: localeSchema.default("ja"),
-    /** 残す単元。解析で検出したものの部分集合でなければならない。 */
+    /** The units to keep. Must be a subset of those detected by the analysis. */
     topic_ids: z.array(topicIdSchema).min(1).max(5),
   })
   .strict();
@@ -323,87 +338,96 @@ export type UpdateSessionTopicsRequest = z.infer<typeof updateSessionTopicsReque
 export type UpdateSessionTopicsRequestInput = z.input<typeof updateSessionTopicsRequestSchema>;
 
 /**
- * 返るものは作成時と同じ形(単元と問題文の読み合わせ)。
- * **ここでもトークンは出さない** — 部屋の鍵が出るのは `/start` だけ。
+ * The same shape as at creation (the unit and a read-back of the problem text).
+ * No token here either - the room key comes only from `/start`.
  */
 export type UpdateSessionTopicsResponse = CreateSessionResponse;
 
 /**
- * **LiveKitトークンに載せて agent に渡す会話文脈。**
+ * The conversation context handed to the agent on the LiveKit token.
  *
- * HTTPのボディではなく、トークンの `metadata` クレーム(と、名前つきワーカーのときは
- * ディスパッチのジョブ metadata)に**JSON文字列として**入る。だから「主なエンドポイント」の
- * 表には出てこないが、**backend/api と agent の間の契約としてはいちばん重い**もので、
- * ここが会話プロンプトの穴埋めにそのまま流れ込む。
+ * It rides the token's `metadata` claim (and, for named workers, the dispatch
+ * job's metadata) as a JSON string rather than an HTTP body. So it does not appear
+ * in the endpoint table, yet it is the heaviest contract between backend/api and
+ * the agent: it flows straight into the conversation prompt's blanks.
  *
- * 型が無いまま運用していた結果、agent は `problem_text` に `photo_summary` を
- * 流用していた(= **先輩が問題そのものを見ないまま教えていた**)。§0 の決定4
- * 「問題とノートをセットで送る」が実装されていなかったのは、ここに欄が無かったため。
+ * Running without a type here is why the agent reused `photo_summary` as
+ * `problem_text` (= the senpai taught without seeing the problem itself). §0's
+ * decision 4, "send the problem and the notes together", was unimplemented
+ * because this field did not exist.
  *
- * **文字列の欄は「整形済みでそのままプロンプトに貼る」もの。**
- * 空のときのプレースホルダまで含めて、`locale` の言語で揃えて入れる
- * (日本語の「(なし)」が英語のプロンプトに混ざると、そこだけ日本語で返ってくる)。
+ * The string fields are pre-formatted and pasted straight into the prompt.
+ * Placeholders for empty values included, they are written in `locale`'s language
+ * (a Japanese "(none)" mixed into an English prompt makes that part answer in
+ * Japanese).
  */
 export const sessionMetadataSchema = z
   .object({
     session_id: z.string().min(1),
     /**
-     * **会話の言語。アプリの表示言語ではなく、扱う単元の課程で決まる**(ADR 0005)。
-     * 復習セッションでは、穴に付いた topic_id の接頭辞から決まる。
+     * The conversation's language. Not the app's display language - it follows the
+     * curriculum of the unit covered (ADR 0005). For reviews it comes from the
+     * prefix of the topic_id on the hole.
      */
     locale: localeSchema,
     kind: sessionKindSchema,
     max_seconds: z.number().int().positive(),
-    /** 写真解析の要約。「何が写っているか」であって、問題文ではない。 */
+    /** The photo analysis summary. What is in the picture, not the problem text. */
     photo_summary: z.string(),
     /**
-     * **問題文。空文字は入らない**(`.min(1)`)。
+     * The problem text. Never an empty string (`.min(1)`).
      *
-     * 読み取れなかった場合も、**その言語のプレースホルダが入った状態で届く**
-     * (日本語なら「(問題の写真なし)」)。agent 側で空を埋める必要はない。
-     * 埋める場所が2つあると、プロンプトが期待する文言と実際に届く文言がずれ、
-     * **先輩が問題を推測で組み立てはじめる**(`prompts/senpai_board.*.md` が
-     * このプレースホルダを名指しで見ている)。
+     * When unreadable it still arrives with that language's placeholder filled in
+     * (in Japanese, "(no problem photo)"). The agent need not fill blanks. Two fill
+     * sites would make the wording the prompt expects differ from what arrives, and
+     * the senpai would start reconstructing the problem by guesswork
+     * (`prompts/senpai_board.*.md` matches this placeholder by name).
      */
     problem_text: z.string().min(1),
     /**
-     * ノートに書いてあること(整形済みの箇条書き)。**空にならない**(`.min(1)`)。
+     * What is written in the notes (pre-formatted bullets). Never empty (`.min(1)`).
      *
-     * `problem_text` と同じ扱いで、**3つの状態が区別できる形で届く**:
+     * Handled like `problem_text`, and arrives so three states stay distinguishable:
      *
-     *   - 箇条書き … ノートの写真から読み取れた
-     *   - 「(なし)」相当 … ノートは撮ったが、手をつけた形跡が読み取れなかった
-     *   - 「(ノートの写真なし)」相当 … **ノートの写真そのものが無い**
-     *     (問題だけを持ってきた = まだ手をつけていない。`sessionPhotoParts` を参照)
+     *   - bullets ... read from the notes photo
+     *   - the equivalent of "(none)" ... notes were photographed, but no sign of
+     *     work could be read
+     *   - the equivalent of "(no notes photo)" ... there is no notes photo at all
+     *     (only the problem was brought = not attempted yet; see `sessionPhotoParts`)
      *
-     * 3つ目は `problem_photo` だけを送る経路が正規化されたことで生まれた状態で、
-     * **「読み取れなかった」とは別物**。混ぜると、先輩は
-     * 「ノートに何も書いていない生徒」と「ノートを撮らなかった生徒」を同じに扱う。
+     * The third state appeared once the problem-photo-only path was legitimised,
+     * and it differs from "could not be read". Conflated, the senpai treats "a
+     * student who wrote nothing" the same as "a student who took no notes photo".
      */
     visible_work: z.string().min(1),
-    /** 整形済みの箇条書き。 */
+    /** Pre-formatted bullets. */
     question_seeds: z.string(),
-    /** 整形済みの許可トピック一覧(到達目標つき)。 */
+    /** The pre-formatted list of allowed topics (with learning goals). */
     allowed_topics: z.string(),
-    /** ガードレールの照合に使う生のID。前提トピックまで含む。 */
+    /** The raw ids used for guardrail matching. Includes prerequisite topics. */
     allowed_topic_ids: z.array(topicIdSchema),
     is_premium: z.boolean(),
     /**
-     * 復習で**今回教え直す穴だけ**。新しいAPIは復習で1件、新規授業で `null` を送る。
+     * For a review, only the hole being retaught this time. The new API sends one
+     * for a review and `null` for a new lesson.
      *
-     * `problem_text` に穴の説明を詰める案は採らない。復習には問題の写真が無く、
-     * 問題文を装うと `senpai_board.*.md` の「写っていない問題を作らない」という
-     * 境界が意味を失うため。写真の事実と、前回の説明から得た観測は型でも分ける。
+     * Stuffing the hole's description into `problem_text` is rejected: a review has
+     * no problem photo, and disguising it as problem text would void the boundary
+     * in `senpai_board.*.md` that says "do not invent a problem that is not in the
+     * photo". Photo facts and observations from the previous explanation stay
+     * separate in the type too.
      *
-     * 前回のカルテ全体ではなく `desc` と `evidence` だけを運ぶ。`said_well` や
-     * 別の穴まで渡すと、1回1穴の復習が前回セッション全体の再講義へ広がる。
-     * `topic_id` は主題を示し、実際に触れてよい前提範囲は従来どおり
-     * `allowed_topic_ids` が担う。中身の照合をここへ持ち込まないのは、contract は
-     * 構造と上限、照合は guardrail という依存方向を守るため。
+     * It carries only `desc` and `evidence`, not the whole previous karte. Passing
+     * `said_well` or other holes widens a one-hole review into a re-lecture of the
+     * entire previous session. `topic_id` marks the subject, while the prerequisite
+     * range actually allowed remains `allowed_topic_ids`. Content matching is kept
+     * out of here to preserve the dependency direction: contract owns structure and
+     * caps, guardrail owns matching.
      *
-     * **欄そのものはローリングデプロイのため省略可能。** APIとagentは別々に
-     * デプロイされるので、新しいagentが先に出た窓では古いAPIのmetadataにこの欄が無い。
-     * `undefined` も読めるようにし、agent側で従来の板書なし会話へ縮退させる。
+     * The field itself is optional for rolling deploys. The API and the agent ship
+     * separately, so in the window where a new agent ships first, old-API metadata
+     * lacks this field. `undefined` must be readable, and the agent degrades to the
+     * old board-less conversation.
      */
     review_hole: z
       .object({
@@ -422,46 +446,46 @@ export const sessionMetadataSchema = z
   });
 export type SessionMetadata = z.infer<typeof sessionMetadataSchema>;
 
-/** 会話ログ。assistant=後輩の発話、user=ユーザーの説明。 */
+/** The conversation log. assistant = the agent's speech, user = the student's explanation. */
 export const transcriptMessageSchema = z
   .object({
     role: z.enum(["assistant", "user"]),
     text: z.string(),
-    /** セッション開始からの経過ミリ秒。 */
+    /** Milliseconds elapsed since the session started. */
     at_ms: z.number().int().min(0),
-    /** その発話が扱っていた単元(後輩の質問には必ず付く)。 */
+    /** The unit that utterance covered (always present on the agent's questions). */
     topic_id: topicIdSchema.optional(),
   })
   .strict();
 export type TranscriptMessage = z.infer<typeof transcriptMessageSchema>;
 
 /**
- * POST /v1/sessions/{id}/complete — agentが呼ぶ。
- * 内部呼び出しなので Authorization: Bearer <INTERNAL_API_TOKEN> が要る。
+ * POST /v1/sessions/{id}/complete - called by the agent.
+ * An internal call, so Authorization: Bearer <INTERNAL_API_TOKEN> is required.
  */
 export const completeSessionRequestSchema = z
   .object({
     transcript: z.array(transcriptMessageSchema),
     karte: karteDraftSchema,
     duration_seconds: z.number().int().min(0),
-    /** 会話が最後まで行かずに切れた場合。カルテは作るが穴の重み付けを控えめにする。 */
+    /** Set when the conversation was cut short. A karte is still made, with holes weighted more cautiously. */
     ended_reason: z.enum(["completed", "timeout", "user_left", "error"]),
     /**
-     * `kind: "review"` のセッションでのみ意味を持つ、本人の申告。
-     * 省略が既定で、その場合は「埋めない」。穴が埋まるのは `"said_it"` が明示されたときだけ。
-     * 接続しただけで戻ったセッション(発話ゼロ・`ended_reason: "user_left"`)では
-     * この欄が立たず、穴はopenのまま残る。
+     * The student's self-report, meaningful only for `kind: "review"` sessions.
+     * Omitted by default, which means "do not fill". A hole is filled only when
+     * `"said_it"` is explicit. A session that merely connected (no speech,
+     * `ended_reason: "user_left"`) leaves this unset and the hole stays open.
      */
     review_outcome: reviewOutcomeSchema.optional(),
   })
   .strict();
 export type CompleteSessionRequest = z.infer<typeof completeSessionRequestSchema>;
 
-/** 復習プッシュの予約。間隔反復は 翌日 → 3日後 → 7日後 の3段階。 */
+/** A booked review push. Spaced repetition runs in three steps: +1, +3, +7 days. */
 export const reviewScheduleEntrySchema = z
   .object({
     hole_id: z.string().min(1),
-    /** 1=翌日 / 2=3日後 / 3=7日後 */
+    /** 1 = +1 day / 2 = +3 days / 3 = +7 days */
     step: z.number().int().min(1).max(3),
     scheduled_at: z.string().datetime(),
   })
@@ -473,25 +497,25 @@ export const completeSessionResponseSchema = z
     karte: karteSchema,
     review_schedule: z.array(reviewScheduleEntrySchema),
     progress: progressSchema,
-    /** 初回カルテ直後にペイウォールを出すかどうか(出す位置はサーバが決める)。 */
+    /** Whether to show the paywall right after the first karte (the server decides where). */
     show_paywall: z.boolean(),
   })
   .strict();
 export type CompleteSessionResponse = z.infer<typeof completeSessionResponseSchema>;
 
-/** 復習画面(プッシュ起点)が読むキュー。 */
+/** The queue read by the review screen (entered from a push). */
 export const reviewQueueItemSchema = z
   .object({
     hole: holeSchema,
     topic_id: topicIdSchema,
-    /** 「3日前」の表示に使う。 */
+    /** Used to display "3 days ago". */
     days_since: z.number().int().min(0),
-    /** 通知文と同じ、後輩の声のひとこと。 */
+    /** The same one-liner in the agent's voice as the notification. */
     prompt: z.string().min(1).max(200),
     /**
-     * 10秒で答える1問。レスポンスでは必須にし、旧データの
-     * `hole.quiz ?? hole.desc` はサーバ側で解決する。クライアントに分岐を
-     * 持たせると、画面ごとに別の出題を見せてしまうため。
+     * One question answered in 10 seconds. Required in the response; the server
+     * resolves old data's `hole.quiz ?? hole.desc`. A client-side branch would show
+     * a different question per screen.
      */
     quiz: z.string().min(1).max(200),
   })
@@ -499,39 +523,40 @@ export const reviewQueueItemSchema = z
 export type ReviewQueueItem = z.infer<typeof reviewQueueItemSchema>;
 
 /**
- * 埋まった穴。別画面の履歴は作らず、無料の復習画面の下半分に置く
- * (埋めにいく穴 ↔ 埋めた穴)。小テストで埋めた手応えも同じ場所に積み上げる。
+ * A filled hole. There is no separate history screen; they live in the bottom half
+ * of the free review screen (holes to fill / holes filled). Progress earned in the
+ * quiz stacks up in the same place.
  */
 export const filledHoleSchema = z
   .object({
     hole: holeSchema,
     topic_id: topicIdSchema,
-    /** 「きのう埋めた」の表示に使う。 */
+    /** Used to display "filled yesterday". */
     days_since_filled: z.number().int().min(0),
   })
   .strict();
 export type FilledHole = z.infer<typeof filledHoleSchema>;
 
-/** 復習画面が一度に受け取る、埋めた穴の最大件数。 */
+/** The maximum number of filled holes the review screen receives at once. */
 export const filledHolesLimit = 30;
 
 export const reviewQueueResponseSchema = z
   .object({
     items: z.array(reviewQueueItemSchema),
     /**
-     * 埋めた穴(新しい順)。通算の件数は progress.filled_holes のほうが正で、
-     * ここは直近 {@link filledHolesLimit} 件までしか載らない。
+     * Filled holes, newest first. The lifetime count is authoritative in
+     * progress.filled_holes; this carries at most {@link filledHolesLimit} entries.
      */
     filled: z.array(filledHoleSchema).max(filledHolesLimit),
   })
   .strict();
 export type ReviewQueueResponse = z.infer<typeof reviewQueueResponseSchema>;
 
-/** 小テストの自己申告。サーバは正誤を採点せず、本人の二択だけを受け取る。 */
+/** The quiz self-report. The server does not grade; it just takes the student's yes/no. */
 export const reviewAnswerRequestSchema = z.object({ outcome: reviewOutcomeSchema }).strict();
 export type ReviewAnswerRequest = z.infer<typeof reviewAnswerRequestSchema>;
 
-/** 自己申告の直後に、穴とホームのカウンターを更新するための応答。 */
+/** The response that updates the hole and the home counters right after a self-report. */
 export const reviewAnswerResponseSchema = z
   .object({ hole: holeSchema, progress: progressSchema })
   .strict();
@@ -546,7 +571,7 @@ export const progressResponseSchema = z
   .strict();
 export type ProgressResponse = z.infer<typeof progressResponseSchema>;
 
-/** エラー。クライアントは code で分岐する(messageは表示用で変わりうる)。 */
+/** Errors. Clients branch on code (message is for display and may change). */
 export const apiErrorCodes = [
   "unauthorized",
   "free_limit_reached",
@@ -567,9 +592,9 @@ export const apiErrorSchema = z
     error: z
       .object({
         code: apiErrorCodeSchema,
-        /** ユーザーにそのまま出せる日本語/英語の文言。煽らない文体で書く。 */
+        /** Japanese/English text shown to the user as-is. Written without nagging. */
         message: z.string().min(1),
-        /** 再試行の目安秒数(日次上限 / rate_limited のとき)。 */
+        /** Rough seconds before retrying (for the daily cap / rate_limited). */
         retry_after_seconds: z.number().int().min(0).optional(),
       })
       .strict(),
@@ -578,18 +603,20 @@ export const apiErrorSchema = z
 export type ApiError = z.infer<typeof apiErrorSchema>;
 
 /* -------------------------------------------------------------------------- */
-/* 計画モード                                                                 */
+/* Plan mode                                                                  */
 /* -------------------------------------------------------------------------- */
 
 /**
- * `sessionKinds` に `plan` を足さず、計画は専用セッションとして扱う。
+ * `plan` is not added to `sessionKinds`; plans are a dedicated session type.
  *
- * 授業セッションの `kind` は D1 の CHECK 制約と {@link sessionMetadataSchema} の
- * `problem_text` / `visible_work` / `allowed_topic_ids` に結びついている。そこへ計画を混ぜるには、
- * 稼働中の `sessions` テーブルを作り直すか、授業の必須文脈をすべて任意にする必要がある。
- * 前者はデプロイ中の旧 Worker を壊し、後者は「問題を見ずに教える」を型で再び許してしまう。
- * また計画は何度も組み直して生き続けるので、授業回数・連続日数に数える性質でもない。
- * 同じ LiveKit を使うことより、寿命と集計の境界を守ることを優先して契約を分けた。
+ * A lesson session's `kind` is tied to D1's CHECK constraint and to
+ * {@link sessionMetadataSchema}'s `problem_text` / `visible_work` /
+ * `allowed_topic_ids`. Mixing plans in would mean rebuilding the live `sessions`
+ * table or making every required lesson context optional. The former breaks the
+ * old Worker mid-deploy; the latter re-permits "teach without seeing the problem"
+ * in the type. Plans are also rebuilt repeatedly and live on, so they are not the
+ * kind of thing counted in lesson totals or streaks. Preserving the lifetime and
+ * accounting boundary won over sharing LiveKit, so the contracts are separate.
  */
 export const createPlanSessionRequestSchema = z
   .object({
@@ -600,28 +627,28 @@ export const createPlanSessionRequestSchema = z
 export type CreatePlanSessionRequest = z.infer<typeof createPlanSessionRequestSchema>;
 export type CreatePlanSessionRequestInput = z.input<typeof createPlanSessionRequestSchema>;
 
-/** LiveKitトークンに載せる、計画モード専用の会話文脈。 */
+/** The plan-mode conversation context carried on the LiveKit token. */
 export const planSessionMetadataSchema = z
   .object({
     plan_session_id: z.string().min(1),
-    /** 授業 metadata との取り違えを、agent の入口で即座に検知する判別子。 */
+    /** A discriminator that catches confusion with lesson metadata at the agent's entrance. */
     kind: z.literal("plan"),
     locale: localeSchema,
     /**
-     * 学校段階。**計画に出してよい単元の範囲**。
+     * The school stage: the range of units a plan may cover.
      *
-     * 授業の metadata には無い(あちらは `allowed_topic_ids` の接頭辞から
-     * 課程が引けるので要らない)。計画は写真が無く範囲も決まっていないので、
-     * 課程を丸ごと貼る前にどちらの段かを知る必要がある。
+     * Lesson metadata has no such field (there, the curriculum is derivable from
+     * `allowed_topic_ids`'s prefix). A plan has no photo and no settled scope, so
+     * the stage must be known before pasting a whole curriculum.
      *
-     * **このスキーマは `.strict()`。旧 agent は未知のキーで parse に失敗する**ので、
-     * デプロイは agent → API の順にすること。
+     * This schema is `.strict()`, and old agents fail to parse unknown keys, so
+     * deploy the agent before the API.
      */
     school_stage: schoolStageSchema,
     max_seconds: z.number().int().positive(),
-    /** LLMに相対日付を推測させないため、APIが確定したローカル日付を渡す。 */
+    /** The API-settled local date, so the LLM never guesses relative dates. */
     today: planDateSchema,
-    /** 組み直しでは事実を聞き直さないため、いまの計画を会話開始時に固定して渡す。 */
+    /** The current plan, pinned at conversation start, so a rebuild need not re-ask the facts. */
     current_plan: studyPlanSchema.nullable(),
   })
   .strict();
@@ -631,15 +658,16 @@ export const createPlanSessionResponseSchema = z
   .object({
     plan_session_id: z.string().min(1),
     livekit: liveKitConnectionSchema,
-    /** 画面は接続前から「新規」と「組み直し」を同じ事実で判断できる。 */
+    /** The screen can tell "new" from "rebuild" on the same fact, before connecting. */
     current_plan: studyPlanSchema.nullable(),
   })
   .strict();
 export type CreatePlanSessionResponse = z.infer<typeof createPlanSessionResponseSchema>;
 
 /**
- * POST /v1/plans/{id}/complete — 計画 agent が内部トークンで呼ぶ。
- * LLMが出した形は {@link studyPlanDraftSchema} のまま受け、ID・時刻・状態はAPIだけが付ける。
+ * POST /v1/plans/{id}/complete - called by the plan agent with the internal token.
+ * The LLM's shape is accepted as {@link studyPlanDraftSchema}; ids, timestamps and
+ * status are added by the API alone.
  */
 export const completePlanSessionRequestSchema = z
   .object({
@@ -658,7 +686,7 @@ export const completePlanSessionResponseSchema = z
   .strict();
 export type CompletePlanSessionResponse = z.infer<typeof completePlanSessionResponseSchema>;
 
-/** GET /v1/me/plan。計画がまだ無いことはエラーではなく、最初の聞き取りへの入口。 */
+/** GET /v1/me/plan. Having no plan yet is not an error but the entrance to the first interview. */
 export const planResponseSchema = z
   .object({
     plan: studyPlanSchema.nullable(),

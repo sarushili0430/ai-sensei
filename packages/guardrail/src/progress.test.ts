@@ -29,7 +29,7 @@ describe("computeStreak", () => {
     expect(computeStreak(["2026-08-01", "2026-08-02", "2026-08-03"], "2026-08-03")).toBe(3);
   });
 
-  // 朝いちばんにホームを開いたユーザーを毎日がっかりさせないための挙動
+  // Behaviour that avoids disappointing every user who opens home first thing in the morning
   it("今日まだやっていなくても、きのうまで続いていれば生きている", () => {
     expect(computeStreak(["2026-08-01", "2026-08-02"], "2026-08-03")).toBe(2);
   });
@@ -72,7 +72,7 @@ describe("computeProgress", () => {
     });
   });
 
-  // 点数・正答率は持たない(数えるのは努力だけ)
+  // No scores or accuracy (count only effort)
   it("スコアに類するフィールドを持たない", () => {
     const progress = computeProgress(["2026-08-03"], [], "2026-08-03");
     expect(Object.keys(progress).sort()).toEqual([

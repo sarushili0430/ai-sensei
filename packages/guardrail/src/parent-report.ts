@@ -32,21 +32,24 @@ export type ParentReportSummary = {
 };
 
 /**
- * 「今月」を、作成日までの期間にする。
+ * Makes "this month" the period up to the creation date.
  *
- * 月末を返すと、8月11日に作ったレポートが「8月31日まで」の実績に見える。
- * 未来の学習まで含んだ印象を親へ渡さないため、終端は常に今日にする。
+ * Returning the month's end would make a report created on 11 August look like
+ * results "through 31 August". The end is always today, so parents are never given
+ * the impression of study that has not happened.
  */
 export function currentMonthPeriod(today: LocalDate): ParentReportPeriod {
   return { start_date: `${today.slice(0, 7)}-01`, end_date: today };
 }
 
 /**
- * 親レポートの月次集計。ルートには計算を置かず、入力と上限を渡すだけにする。
+ * The parent report's monthly rollup. No computation lives in the route; it just
+ * passes the inputs and the caps.
  *
- * `limits` は contract の定数を呼び出し側から渡す。guardrail に同じ数をもう一度
- * 書くと、契約だけ変えた日にAPIが上限超過のJSONを返す。依存の向きは増やさず、
- * **数の正は contract、適用する責務はこの純関数**に分ける。
+ * `limits` comes from contract's constants via the caller. Writing the same numbers
+ * again in guardrail would make the API return over-cap JSON on the day only the
+ * contract changed. Rather than adding a dependency, the split is: contract owns
+ * the numbers, this pure function owns applying them.
  */
 export function computeParentReport(input: {
   today: LocalDate;
@@ -76,12 +79,12 @@ export function computeParentReport(input: {
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
 
   /**
-   * 「説明できるようになった」の根拠は2本だけに限定する。
-   *   - 穴が今月 `filled` になった(前は止まり、今は説明できた)
-   *   - `said_well` があるカルテで扱った単元(本人の説明が実際に残った)
+   * "Now able to explain it" rests on exactly two grounds:
+   *   - a hole became `filled` this month (they stalled before, and explained it now)
+   *   - a unit covered in a karte that has `said_well` (their explanation really remains)
    *
-   * セッションに触れただけの単元は後者から外す。話題に出たことを
-   * 「できるようになった」に昇格させないため。
+   * Units merely touched in a session are excluded from the latter, so having come
+   * up in conversation is never promoted to "now able to do it".
    */
   const topicIds = [
     ...filledThisMonth.map((hole) => hole.topic_id),
@@ -92,8 +95,8 @@ export function computeParentReport(input: {
   for (const topicId of topicIds) {
     if (seenTopics.has(topicId)) continue;
     const topic = findTopic(topicId);
-    // 未知IDを親にそのまま見せると「M1-...」という内部記号だけが届く。
-    // 壊れた古い行は黙って単元名へ昇格させず、既知のカリキュラムだけを載せる。
+    // Showing an unknown id to a parent delivers only the internal token "M1-...".
+    // Broken old rows are not silently promoted to a unit name; only known curriculum entries are listed.
     if (!topic) continue;
     seenTopics.add(topicId);
     explainedTopics.push({ topic_id: topic.id, name: topic.topic });
@@ -107,8 +110,9 @@ export function computeParentReport(input: {
       const quote = rawQuote.trim();
       if (quote.length === 0 || seenQuotes.has(quote)) continue;
       /**
-       * 長すぎる古い行を途中で切らない。省略位置で意味が反転しうる文章を
-       * 「本人の引用」と呼ぶほうが危険なので、契約外の行は載せない。
+       * Never truncate an over-long old row. Calling text whose meaning can invert
+       * at the cut point "the student's own quote" is more dangerous, so rows
+       * outside the contract are omitted.
        */
       if (quote.length > normalizedLimit(input.limits.quoteLength)) continue;
       seenQuotes.add(quote);
@@ -142,6 +146,6 @@ function localDateOf(
 }
 
 function isInPeriod(date: LocalDate, period: ParentReportPeriod): boolean {
-  // YYYY-MM-DD は桁を固定しているので、文字列順と日付順が一致する。
+  // YYYY-MM-DD has fixed widths, so string order matches date order.
   return date >= period.start_date && date <= period.end_date;
 }

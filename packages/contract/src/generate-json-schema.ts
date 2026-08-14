@@ -1,9 +1,9 @@
 /**
- * zodスキーマ → packages/contract/schema/*.json を再生成する。
+ * Regenerates packages/contract/schema/*.json from the zod schemas.
  *
  *   pnpm --filter @ai-sensei/contract generate:schema
  *
- * 生成物はコミットする。ずれているとテストが落ちる。
+ * The output is committed; drift fails the tests.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";

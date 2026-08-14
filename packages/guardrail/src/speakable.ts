@@ -1,8 +1,9 @@
 /**
- * 日本語TTSへ渡す前の、数式記号の読み替え。
+ * Rewriting maths symbols before handing text to Japanese TTS.
  *
- * これは表示・字幕には使わない。板書や会話の原文を保ったまま、TTSが無音にしたり
- * 英語読みへ落としたりする記号だけを、日本語で発音できる形にする。
+ * Not used for display or captions. It keeps the board's and conversation's
+ * original text intact and only turns symbols TTS would mute or read in English
+ * into something pronounceable in Japanese.
  */
 
 const digitReadings = [
@@ -22,7 +23,7 @@ function digitReading(value: number): string {
   return digitReadings[value] ?? String(value);
 }
 
-/** 数学で頻出する非負整数だけを、日本語TTSがそのまま読めるかなへ替える。 */
+/** Turns only the non-negative integers common in maths into kana Japanese TTS reads directly. */
 function toJapaneseNumber(value: string): string {
   const number = Number(value);
   if (!Number.isSafeInteger(number) || number < 0 || number >= 10_000) {
@@ -111,7 +112,7 @@ function spellUppercaseLabel(label: string): string {
     .join("");
 }
 
-/** 小文字の数式変数も、対応する大文字と同じアルファベット名で読む。 */
+/** Lower-case maths variables are read with the same letter name as their upper-case form. */
 function spellMathVariable(variable: string): string {
   return spellUppercaseLabel(variable.toUpperCase());
 }
@@ -134,15 +135,16 @@ function superscriptNumber(value: string): string {
 }
 
 /**
- * 数式を日本語TTSが読める文字列へ替える。
+ * Rewrites a formula into a string Japanese TTS can read.
  *
- * まとまりを持つ式を、部品より先に読む形へ替える。後で頂点名を一文字ずつ替えるため、
- * `∠ABC` や `BD:DC` を先に処理しないと、式のまとまりが失われる。
+ * Grouped expressions are rewritten before their parts. Vertex names are replaced
+ * one character at a time later, so `∠ABC` and `BD:DC` must be handled first or the
+ * grouping is lost.
  */
 export function toSpeakableJa(text: string): string {
   let speakable = text;
 
-  // 頂点名を一文字ずつ替える前に、角・三角形・比をそれぞれ一つの数学表現として読む。
+  // Before replacing vertex names character by character, read angles, triangles and ratios each as one maths expression.
   speakable = speakable.replace(
     /∠([A-Z]+)/gu,
     (_match, label: string) => `かく${spellUppercaseLabel(label)}`,
@@ -157,9 +159,10 @@ export function toSpeakableJa(text: string): string {
       `${spellUppercaseLabel(left)} たい ${spellUppercaseLabel(right)}`,
   );
 
-  // 1文字の英字だけを数式変数として読む。直前が英字なら単語の一部なので、`try^2`
-  // の末尾などを変数として拾わない。根号は数字列・英字1文字(直後の累乗を含む)までしか
-  // 読まない。`√(a+b)` のような括弧付きの式は構文解析せず、根号記号を残す。
+  // Only single letters are read as maths variables. A preceding letter means it is
+  // part of a word, so the tail of `try^2` is not taken as a variable. A radical
+  // covers only a run of digits or a single letter (with any following power).
+  // Bracketed expressions like `√(a+b)` are not parsed, and the radical sign is kept.
   speakable = speakable.replace(
     /(?<![A-Za-z])(√?)([A-Za-z])\^([0-9]+)/gu,
     (_match, root: string, variable: string, exponent: string) =>
@@ -204,8 +207,9 @@ export function toSpeakableJa(text: string): string {
     .replaceAll("+", "プラス")
     .replaceAll("-", "マイナス");
 
-  // 上の複合表現を確定してから、残った頂点名を読む。敬称つきの「Aさん」は英字を含む
-  // 普通の日本語なので、数学の単独頂点名として扱わない。
+  // Once the compound expressions above are settled, read the remaining vertex names.
+  // An honorific like "Aさん" is ordinary Japanese containing a letter, so it is not
+  // treated as a standalone maths vertex name.
   speakable = speakable.replace(/(?<![A-Za-z])([A-Z]{2,})(?![A-Za-z])/gu, (_match, label: string) =>
     spellUppercaseLabel(label),
   );

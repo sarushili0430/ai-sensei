@@ -8,25 +8,29 @@ import {
 } from "./latex-guard.ts";
 
 /**
- * 実測スパイク(2026-08-09)でPNGを目視し、**崩れずに描けたことを確認した式**。
+ * Formulas confirmed to render without breaking, by eye on PNGs in the measurement
+ * spike (2026-08-09).
  *
- * このリストが許可リストの**証拠ベース**で、両者はずれてはいけない。
- * ずれ方は2方向あって、どちらも起きた:
+ * This list is the allow-list's evidence base, and the two must not drift.
+ * Drift goes two ways, and both happened:
  *
- *   - 証拠より**広い**: 実測していないコマンドを許可した → 端末で板書が消える
- *   - 証拠より**狭い**: 実測したのに許可し忘れた → 描ける式が再生成で捨てられ、
- *     レイテンシと原価だけ増える(`\ ` `\quad` `\Bigl` `\Bigr` で実際に起きた)
+ *   - wider than the evidence: allowing an unmeasured command -> the board vanishes
+ *     on the device
+ *   - narrower than the evidence: forgetting to allow something measured ->
+ *     renderable formulas are thrown away by regeneration, adding only latency and
+ *     cost (this really happened with `\ `, `\quad`, `\Bigl` and `\Bigr`)
  *
- * **後者は人間のレビューでしか見つからなかった**ので、ここで自動化する。
- * 実測で式を足したら、この配列にも足すこと。
+ * The latter was only ever caught by human review, so it is automated here.
+ * When measurement adds a formula, add it to this array too.
  */
 const measuredFormulas: readonly (readonly [string, string])[] = [
   ["エスケープした空白での列挙", "\\sin\\theta,\\ \\cos\\theta,\\ \\tan\\theta"],
   ["\\quad で横に並べた連立方程式", "x + y = 5,\\quad x - y = 1"],
   ["定積分の計算途中(可変サイズ括弧)", "\\int_0^1 (3x^2+2x)\\,dx = \\Bigl[x^3+x^2\\Bigr]_0^1 = 2"],
   ["二項係数(海外課程の標準記法)", "\\binom{n}{r}"],
-  // 2026-08-12 の実測(`flutter_math_fork` で描画してPNGを目視)。
-  // **図形の記号が1つも無く、図形の単元が板書ごと落ちていた**ので足したもの。
+  // Measured 2026-08-12 (rendered with `flutter_math_fork` and inspected as PNG).
+  // Added because there was not one geometry symbol, and geometry units were losing
+  // their whole board.
   ["接弦定理で書きたい角の等式", "\\angle CAD = \\angle ABC"],
   ["相似", "\\triangle ABC \\sim \\triangle ADE"],
   ["合同", "\\triangle ABC \\equiv \\triangle DEF"],
@@ -41,8 +45,8 @@ const measuredFormulas: readonly (readonly [string, string])[] = [
   ["自然対数", "\\ln x = \\log_{e} x"],
 ];
 
-// 実測スパイク(2026-08-09)でPNGを目視し、崩れずに描けたもの。
-// ここが落ちるようになったら、板書に出せる式が減っている。
+// Measured in the spike (2026-08-09), inspected as PNGs and rendering cleanly.
+// If these start failing, the formulas the board can show have shrunk.
 describe("checkBoardLatex — 実測した式が全部通る", () => {
   it.each(measuredFormulas)("%s", (_name, tex) => {
     expect(checkBoardLatex(tex)).toEqual({ ok: true });
@@ -102,7 +106,7 @@ describe("checkBoardLatex — 弾くべきもの", () => {
     expect(checkBoardLatex(tex)).toMatchObject({ ok: false });
   });
 
-  // 描画とは別の危険。板書に外部リソースを引き込ませない。
+  // A different danger from rendering: never let the board pull in external resources.
   it.each([
     ["\\href", "\\href{https://example.com}{answer}"],
     ["\\includegraphics", "\\includegraphics{answer.png}"],
@@ -111,9 +115,9 @@ describe("checkBoardLatex — 弾くべきもの", () => {
     expect(checkBoardLatex(tex)).toMatchObject({ ok: false, reason: "unknown_command" });
   });
 
-  // 実測(2026-08-09): `\text{よって}` の「よって」が4本の黒い棒(tofu)になった。
-  // KaTeXのフォントが日本語グリフを持たないため。unknown_command に埋もれさせず、
-  // 「置き場所が違う(text要素に送れ)」と教えるための専用の理由。
+  // Measured 2026-08-09: the "よって" in `\text{よって}` became four black bars (tofu),
+  // because KaTeX's font has no Japanese glyphs. Given its own reason rather than
+  // buried in unknown_command, so it can teach "wrong location - send it to a text element".
   describe("数式の中の文章 — text_in_math", () => {
     it.each([
       ["\\text での日本語", "\\text{よって} x = 2"],
@@ -123,7 +127,7 @@ describe("checkBoardLatex — 弾くべきもの", () => {
       expect(checkBoardLatex(tex)).toMatchObject({ ok: false, reason: "text_in_math" });
     });
 
-    // コマンド名の列挙だけでは塞げない。許可コマンドの引数にも、裸でも入れられる。
+    // Listing command names cannot close it. It can go inside an allowed command's argument, or bare.
     it.each([
       ["許可コマンドの引数に入れた日本語", "\\mathrm{よって} x = 2"],
       ["裸の日本語", "判別式 D > 0"],
@@ -136,10 +140,10 @@ describe("checkBoardLatex — 弾くべきもの", () => {
       expect(latexRejectionGuidance.text_in_math).toMatch(/text/);
     });
 
-    // 「表せないものは日本語で書くこと」で終える指示は、LLMを \text{} に戻す。
-    // そこで text_in_math に落ち、次のターンでまた unknown_command に戻る。
-    // **指示どうしが循環すると再生成が空回りする。**
-    // 「数式にできないものをどこへ送るか」を言う2つの理由は、同じ行き先を指すこと。
+    // An instruction ending at "write what cannot be expressed in Japanese" sends the
+    // LLM back to \text{}, where it fails as text_in_math and returns to
+    // unknown_command the next turn. Instructions that cycle make regeneration spin.
+    // The two reasons that say where non-formula content goes must point at the same place.
     it.each(["ja", "en"] as const)("%s の指示が互いに堂々巡りしない", (locale) => {
       for (const reason of ["unknown_command", "text_in_math"] as const) {
         expect(latexRejectionGuidanceByLocale[locale][reason]).toMatch(/text/);
@@ -148,7 +152,7 @@ describe("checkBoardLatex — 弾くべきもの", () => {
   });
 
   it("英字以外の1文字コマンドも見る(\\\\[a-zA-Z]+ だけでは取りこぼす)", () => {
-    // `\;` は未検証。`\,` だけを許可している。
+    // `\;` is unverified. Only `\,` is allowed.
     expect(checkBoardLatex("x \\; y")).toMatchObject({ ok: false, reason: "unknown_command" });
     expect(checkBoardLatex("x \\% y")).toMatchObject({ ok: false, reason: "unknown_command" });
   });
@@ -175,7 +179,7 @@ describe("checkBoardLatex — 弾くべきもの", () => {
     });
   });
 
-  // 板書は1手順=1行。contract は多行環境を禁止しているが、裸の \\ は素通りする。
+  // The board is one step = one line. contract bans multi-line environments, but a bare \\ slips through.
   it("環境の外の \\\\ と & を弾く", () => {
     expect(checkBoardLatex("D = 1 \\\\ x = 2")).toMatchObject({
       ok: false,
@@ -187,7 +191,7 @@ describe("checkBoardLatex — 弾くべきもの", () => {
     });
   });
 
-  // 環境を閉じたあとは、内側の扱いに戻らない。
+  // After an environment closes, we do not return to treating things as inside it.
   it("環境を閉じたあとの \\\\ を弾く", () => {
     const tex = "\\begin{cases} 1 \\\\ 2 \\end{cases} \\\\ x = 3";
     expect(checkBoardLatex(tex)).toMatchObject({
@@ -205,7 +209,7 @@ describe("collectLatexCommands", () => {
 });
 
 describe("再生成の指示", () => {
-  // 理由だけ渡してもLLMは同じ式を出し直す。対の指示が欠けると再生成が空回りする。
+  // Given only a reason the LLM re-emits the same formula. A missing paired instruction makes regeneration spin.
   it.each(["ja", "en"] as const)("%s の指示が理由ぶん揃っている", (locale) => {
     for (const reason of latexRejectionReasons) {
       expect(latexRejectionGuidanceByLocale[locale][reason]).toBeTruthy();

@@ -7,7 +7,7 @@ import { buildJsonSchema, serializeJsonSchema } from "./json-schema.ts";
 const schemaDir = resolve(import.meta.dirname, "..", "schema");
 
 describe("JSON Schemaの生成物", () => {
-  // zodを変えてJSON Schemaの再生成を忘れると、Dart側が古い定義のまま実装される。
+  // Change zod and forget to regenerate the JSON Schema, and the Dart side is implemented against a stale definition.
   it.each(fixtureNames)("schema/%s.json が最新である", (name) => {
     const committed = readFileSync(resolve(schemaDir, `${name}.json`), "utf8");
     expect(committed, "pnpm --filter @ai-sensei/contract generate:schema を実行してください").toBe(
@@ -17,28 +17,29 @@ describe("JSON Schemaの生成物", () => {
 });
 
 /**
- * `schema/*.json` は「Dart実装時の参照用」で、Flutter側を書く人が読む唯一の定義。
- * zodの `.refine()` はJSON Schemaに **何も残さない** ので、意味のあるガードをrefineで書くと
- * 参照から消える。単一の正規表現で書けるものは `.regex()` で書き、
- * 「参照に pattern として残っていること」をここで固定する。
+ * `schema/*.json` is the reference for Dart implementation - the only definition
+ * whoever writes the Flutter side reads. zod's `.refine()` leaves nothing in JSON
+ * Schema, so a meaningful guard written with refine disappears from the reference.
+ * Anything expressible as a single regex is written with `.regex()`, and this pins
+ * that it survives in the reference as a pattern.
  *
- * 正規表現では表現できないもの(連番・min<max など)は
- * README「JSON Schema に現れない不変条件」に一覧がある。
+ * Things a regex cannot express (sequential numbering, min<max, ...) are listed in
+ * the README's "invariants absent from JSON Schema".
  */
 describe("板書のガードがDartの参照に残っている", () => {
-  // biome-ignore lint/suspicious/noExplicitAny: 生成物(JSON Schema)を辿るだけのテスト
+  // biome-ignore lint/suspicious/noExplicitAny: a test that only walks the generated JSON Schema
   const definition = buildJsonSchema("board-lesson")["definitions"] as any;
   const step = definition["board-lesson"].properties.steps.items;
-  // biome-ignore lint/suspicious/noExplicitAny: 同上
+  // biome-ignore lint/suspicious/noExplicitAny: as above
   const elementOf = (kind: string): any =>
-    // biome-ignore lint/suspicious/noExplicitAny: 同上
+    // biome-ignore lint/suspicious/noExplicitAny: as above
     step.properties.board.anyOf[0].anyOf.find((e: any) => e.properties.kind.const === kind);
 
   it.each([
     ["speech(LaTeXを喋らせない)", () => step.properties.speech],
     ["tex(多行環境の禁止)", () => elementOf("latex").properties.tex],
     ["fn(端末で評価する式の文字種)", () => elementOf("plot").properties.fn],
-    // biome-ignore lint/suspicious/noExplicitAny: 同上
+    // biome-ignore lint/suspicious/noExplicitAny: as above
   ])("%s が pattern として出力されている", (_name, pick: () => any) => {
     expect(pick().pattern).toBeTypeOf("string");
   });
@@ -51,19 +52,20 @@ describe("板書のガードがDartの参照に残っている", () => {
 });
 
 /**
- * 学習計画の日付は**暦の1日**であって瞬間ではない(`plan.ts` の `planDateSchema`)。
- * `pattern` が参照から落ちると、Dart側は「日付っぽい文字列」として実装し、
- * ISO8601の瞬間を受け入れる。そこからタイムゾーンぶんテストが前日に動く。
+ * A study plan's date is a calendar day, not an instant (`planDateSchema` in
+ * `plan.ts`). If the `pattern` drops out of the reference, the Dart side
+ * implements it as "a date-ish string" and accepts ISO8601 instants - and from
+ * there the test moves a day earlier by the timezone offset.
  */
 describe("学習計画の日付がDartの参照に残っている", () => {
-  // biome-ignore lint/suspicious/noExplicitAny: 生成物(JSON Schema)を辿るだけのテスト
+  // biome-ignore lint/suspicious/noExplicitAny: a test that only walks the generated JSON Schema
   const plan = buildJsonSchema("study-plan")["definitions"] as any;
   const properties = plan["study-plan"].properties;
 
   it.each([
     ["テスト日", () => properties.intake.properties.exam_date],
     ["割り当ての日", () => properties.days.items.properties.date],
-    // biome-ignore lint/suspicious/noExplicitAny: 同上
+    // biome-ignore lint/suspicious/noExplicitAny: as above
   ])("%s が pattern として出力されている", (_name, pick: () => any) => {
     expect(pick().pattern).toBe("^\\d{4}-\\d{2}-\\d{2}$");
   });

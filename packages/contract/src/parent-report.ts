@@ -2,27 +2,30 @@ import { z } from "zod";
 import { topicIdSchema } from "./karte.ts";
 
 /**
- * 親レポートの契約(ピボット計画 §5-2)。
+ * The parent report's contract (pivot plan §5-2).
  *
- * この境界には、載せてよいものだけを置く。親向けの画面は「分かりやすい数字」を
- * 求められやすく、あとから正答率・理解度スコア・偏差値・順位を足す誘惑が最も強い。
- * `.strict()` で余分な欄を拒否し、数値欄も「埋めた穴」と「連続日数」の2つに閉じる。
- * **禁止欄をコメントで列挙するだけでは、型補完にも実行時検証にも効かない**ため、
- * ロック状態を含めて表現できる状態そのものをここで限定する。
+ * Only what may be shown belongs at this boundary. Parent-facing screens attract
+ * demands for "easy numbers", and the temptation to add accuracy, comprehension
+ * scores, deviation values and rankings later is strongest here. `.strict()`
+ * rejects extra fields, and the numeric fields are closed to two: filled holes and
+ * streak days. Listing banned fields in a comment helps neither type completion
+ * nor runtime validation, so the representable states themselves - the locked
+ * state included - are limited here.
  */
 
-/** `said_well` から親へ見せる、本人の言葉の最大件数。 */
+/** The maximum number of the student's own words shown to parents, from `said_well`. */
 export const parentReportQuoteMaxCount = 3;
 
 /**
- * 引用1件の上限。出どころの `said_well` と同じ200文字に揃える。
- * 共有のために途中で切ると本人が言った意味を変えうるので、表示側で短くしない。
+ * The cap on one quote. Matched to `said_well`'s 200 characters, its source.
+ * Truncating for sharing can change what the student meant, so the display side
+ * never shortens it.
  */
 export const parentReportQuoteMaxLength = 200;
 
 /**
- * 1か月に単元を詰め込みすぎないための上限。
- * 網羅性より「どんなことを説明したか」が一目で伝わることを優先する。
+ * The cap that keeps a month from being crammed with units.
+ * "What kinds of things they explained" at a glance beats exhaustiveness.
  */
 export const parentReportTopicMaxCount = 12;
 export const parentReportTopicNameMaxLength = 100;
@@ -31,9 +34,9 @@ const localDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 export const parentReportPeriodSchema = z
   .object({
-    /** 今月の初日(ユーザーのローカル日付)。 */
+    /** The first day of this month (the user's local date). */
     start_date: localDateSchema,
-    /** 作成日。まだ来ていない月末まで学んだようには見せない。 */
+    /** The creation date. Never look as if they studied to a month-end that has not arrived. */
     end_date: localDateSchema,
   })
   .strict();
@@ -41,9 +44,9 @@ export type ParentReportPeriod = z.infer<typeof parentReportPeriodSchema>;
 
 export const parentReportTopicSchema = z
   .object({
-    /** 中身の妥当性は curriculum / guardrail が照合する。contract は形だけを守る。 */
+    /** Content validity is matched by curriculum / guardrail. contract guards shape only. */
     topic_id: topicIdSchema,
-    /** 親が読む単元名。IDだけでは紙の答案との違いが伝わらない。 */
+    /** The unit name parents read. An id alone does not convey the difference from a paper test. */
     name: z.string().min(1).max(parentReportTopicNameMaxLength),
   })
   .strict();
@@ -52,13 +55,13 @@ export type ParentReportTopic = z.infer<typeof parentReportTopicSchema>;
 export const parentReportSchema = z
   .object({
     period: parentReportPeriodSchema,
-    /** この期間に埋まった穴。通算ではなく、今月増えたものだけ。 */
+    /** Holes filled in this period. Only this month's, not the lifetime total. */
     filled_holes: z.number().int().min(0),
-    /** 作成日時点の連続日数。既存の進捗と同じ数え方を使う。 */
+    /** The streak as of the creation date. The same counting as the existing progress. */
     streak_days: z.number().int().min(0),
-    /** `said_well` または今月埋まった穴を根拠にした単元名。 */
+    /** Unit names grounded in `said_well` or in holes filled this month. */
     explained_topics: z.array(parentReportTopicSchema).max(parentReportTopicMaxCount),
-    /** 本人が実際に口にした説明。出どころはカルテの `said_well` だけ。 */
+    /** The explanations the student actually spoke. Sourced only from the karte's `said_well`. */
     quotes: z
       .array(z.string().min(1).max(parentReportQuoteMaxLength))
       .max(parentReportQuoteMaxCount),
@@ -70,9 +73,9 @@ const lockedParentReportResponseSchema = z
   .object({
     requires_premium: z.literal(true),
     /**
-     * 無料ユーザーにも200で返すが、本文は返さない。
-     * boolean と nullable を独立させると「lockedなのに本文あり」を作れてしまい、
-     * 有料境界がクライアントごとに変わるので、この組み合わせだけを許す。
+     * Free users also get a 200, but no body.
+     * Independent boolean and nullable fields would allow "locked yet has a body",
+     * making the paid boundary vary per client, so only this combination is allowed.
      */
     report: z.null(),
   })
@@ -85,7 +88,7 @@ const openParentReportResponseSchema = z
   })
   .strict();
 
-/** 無料ユーザーをエラーにしない、`/v1/me/reviews` と同じロック表現。 */
+/** The same locked representation as `/v1/me/reviews`, so free users get no error. */
 export const parentReportResponseSchema = z.discriminatedUnion("requires_premium", [
   lockedParentReportResponseSchema,
   openParentReportResponseSchema,

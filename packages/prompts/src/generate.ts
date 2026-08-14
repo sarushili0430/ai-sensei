@@ -1,10 +1,10 @@
 /**
- * prompts/*.md → src/generated.ts
+ * prompts/*.md -> src/generated.ts
  *
  *   pnpm --filter @ai-sensei/prompts generate
  *
- * Workers/agentはファイルシステムを前提にできないので、Markdownを文字列定数に
- * 焼き込む。生成物はコミットし、ずれていればテストが落ちる。
+ * Workers and the agent cannot assume a filesystem, so the Markdown is baked into
+ * string constants. The output is committed, and drift fails the tests.
  */
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";

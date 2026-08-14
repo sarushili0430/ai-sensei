@@ -1,34 +1,36 @@
 import { z } from "zod";
 
 /**
- * 作図の宣言(モデルが書く JSON)の検査。
+ * Validation of the figure declaration (the JSON the model writes).
  *
- * **表面の書き方は `docs/figeval/spec.md` のまま**にしてある。
- * 240回の実測がその書き方で取れているので、ここで表記を変えると測り直しになる。
+ * The surface syntax is kept exactly as in `docs/figeval/spec.md`. The 240
+ * measured runs used that syntax, so changing the notation here would mean
+ * measuring again.
  *
- * ここでやるのは「解く前に、大声で落とす」こと。
- * `solve()` は解けないものを例外にするが、**知らないキーの綴り違いのように
- * 早く分かるものは、解く前に位置つきで返す**ほうが投げ直しやすい。
+ * What happens here is "fail loudly before solving". `solve()` throws on anything
+ * it cannot solve, but things knowable early - a misspelt key, say - are better
+ * returned before solving, with a position, so they are easier to throw back.
  */
 
-/** 座標の上限。板書の契約({@link boardCoordinateLimit})に合わせる。 */
+/** The coordinate limit. Matches the board contract ({@link boardCoordinateLimit}). */
 export const figureCoordinateLimit = 1000;
 
-/** 1枚の図に積める要素の数。これを超える図は、板書としてもう読めない。 */
+/** How many items one figure may hold. Beyond this it is no longer readable as a board. */
 export const figureItemsMaxCount = 80;
 
-/** 式の長さ。`x*x - 3*x + 2` のような式しか来ない前提。 */
+/** Expression length. The assumption is nothing longer than `x*x - 3*x + 2`. */
 export const figureExpressionMaxLength = 120;
 
-/** 式に使える文字。`compile()` と同じものを、解く前にも見る。 */
+/** The characters allowed in an expression. The same set as `compile()`, checked before solving too. */
 const expressionPattern = /^[0-9xyt+\-*/^().,\s a-z]*$/;
 
 /**
- * 式に書ける名前。**文字種だけを見ても足りない。**
+ * The names an expression may use. Character classes alone are not enough.
  *
- * `alert(1)` は英小文字と括弧だけでできているので、文字種の検査は通ってしまう。
- * 式は最後に `new Function` に渡るので、**名前の許可制をこの境界にも置く**
- * (`compile()` にも同じ検査があるが、あちらは解く時点まで分からない)。
+ * `alert(1)` is made only of lower-case letters and parentheses, so it passes a
+ * character-class check. Expressions eventually reach `new Function`, so the
+ * name allow-list is placed at this boundary too (`compile()` has the same check,
+ * but that one only fires at solve time).
  */
 const expressionNames = new Set([
   "x",
@@ -47,13 +49,14 @@ const expressionNames = new Set([
 ]);
 
 /**
- * 語彙。**ここに無いキーは通さない。**
+ * The vocabulary. Keys not listed here do not pass.
  *
- * 綴り違いを黙って無視すると、その要素だけ描かれない図ができる。
- * 描かれないことに気づけないのがいちばん困るので、名前の間違いは落とす。
+ * Silently ignoring a misspelling produces a figure where that one item is simply
+ * not drawn. Not noticing that it was not drawn is the worst outcome, so a wrong
+ * name is rejected.
  */
 export const figureKeys = [
-  // 点
+  // Points
   "pt",
   "pts",
   "at",
@@ -78,7 +81,7 @@ export const figureKeys = [
   "hide",
   "showCoord",
   "mark",
-  // 円・直線
+  // Circles and lines
   "circle",
   "center",
   "r",
@@ -88,7 +91,7 @@ export const figureKeys = [
   "parallel",
   "bisect",
   "perpBisect",
-  // 描くもの
+  // Things to draw
   "seg",
   "poly",
   "fill",
@@ -104,7 +107,7 @@ export const figureKeys = [
   "dash",
   "as",
   "name",
-  // 座標平面・曲線
+  // Coordinate plane and curves
   "axes",
   "ticks",
   "curve",
@@ -126,11 +129,11 @@ export const figureKeys = [
   "side",
   "n",
   "polar",
-  // 立体
+  // Solids
   "box3",
   "size",
   "labels",
-  // 表・図式
+  // Tables and diagrams
   "signTable",
   "crit",
   "inflect",
@@ -170,19 +173,19 @@ export const figureKeys = [
   "groups",
   "terms",
   "map",
-  // 2次曲線の半径。**これを書き忘れていて、`conic` が丸ごと通らなくなっていた**
-  // (`verify-schema.mjs` が実測の出力5件で見つけた)。
+  // The conic's radius. Forgetting to list it made `conic` fail entirely
+  // (found by `verify-schema.mjs` on five measured outputs).
   "a",
   "b",
-  // 複素数平面の操作
+  // Complex-plane operations
   "times",
-  // 数直線の区間の端が閉じているか
+  // Whether a number line's interval endpoint is closed
   "closedFrom",
   "closedTo",
-  // 正規分布
+  // Normal distribution
   "mu",
   "sigma",
-  // 漸近線の傾き
+  // The asymptote's slope
   "slope",
   "intercept",
 ] as const;
@@ -192,7 +195,7 @@ const known = new Set<string>(figureKeys);
 const finite = z.number().finite();
 const coordinate = finite.min(-figureCoordinateLimit).max(figureCoordinateLimit);
 
-/** 数の入りうる場所を、まとめて範囲で縛る。 */
+/** Bounds every place a number can appear, in one range check. */
 const numericKeys = new Set([
   "r",
   "rx",
@@ -222,7 +225,7 @@ const itemSchema = z.record(z.string(), z.unknown()).superRefine((item, ctx) => 
       });
     }
   }
-  // 座標を直に置く `at` は、板書に載る範囲かを見る
+  // `at`, which places a coordinate directly, is checked against the board's range
   const at = item.at;
   if (Array.isArray(at)) {
     if (at.length !== 2) {
@@ -243,7 +246,7 @@ const itemSchema = z.record(z.string(), z.unknown()).superRefine((item, ctx) => 
     if (finite.safeParse(item[key]).success) continue;
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `${key} が有限の数でない` });
   }
-  // 式は、長さと文字を先に見る(`compile()` でも見るが、位置つきで返せるのはここ)
+  // Expressions are checked for length and characters first (`compile()` checks too, but only here can we report a position)
   for (const key of ["f", "px", "py", "polar", "where", "region"]) {
     const value = item[key];
     const exprs =
@@ -288,9 +291,10 @@ export const figureItemsSchema = z.array(itemSchema).min(1).max(figureItemsMaxCo
 export type FigureItems = z.infer<typeof figureItemsSchema>;
 
 /**
- * 解く前の検査。**通らなかった理由を、キーの位置つきで返す。**
+ * The pre-solve check. Returns the reason it failed, with the key's position.
  *
- * 投げ直すときにそのまま渡せる形にしておく(先輩は自分の間違いを読めない)。
+ * Kept in a form that can be thrown straight back (the senpai cannot read its own
+ * mistake otherwise).
  */
 export function parseFigure(
   input: unknown,

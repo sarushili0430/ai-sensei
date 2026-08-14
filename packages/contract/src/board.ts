@@ -3,179 +3,200 @@ import { z } from "zod";
 import { topicIdSchema } from "./karte.ts";
 
 /**
- * 板書(先輩が画面に積んでいく行)の契約。
+ * The contract for the board (the lines the senpai stacks on screen).
  *
- * 設計上の約束(ピボット計画 v1 §3-1 が根拠。破る実装は却下される):
- *   - **数式・計算・図は板書、音声は問いかけと接続だけ。** これは見た目の話ではなく
- *     原価の主柱で、TTS文字数がそのまま請求額になる。だから「短く喋る」を
- *     プロンプトのお願いではなく **スキーマの上限** で守る({@link boardSpeechMaxLength})。
- *   - **自由描画をさせない。** LLMにはパラメータだけ吐かせる。
- *     **LLMが書いたSVGもcanvasコマンドも、どの枝からも入らない。**
- *     `figure` は SVG を運ぶが、それは検証済みの `items`(関係の宣言)から
- *     こちらが解いて描いたもの({@link figureElementSchema})。
- *     `items` の語彙は `@ai-sensei/figure` が閉じていて、座標も長さも比も
- *     **書かせずに計算する**ので、食い違った図は作れない。
- *   - **解答を丸ごと1要素に流し込めない。** 板書は「1手順=1行」であって答案の貼り付け場所ではない。
- *     `tex` / `body` の上限と、**1回の出力あたりの**手順数の上限
- *     ({@link boardLessonStepsMaxCount})の両方で縛る。
- *   - **座標は有限で、盤面に収まる範囲。** `Infinity` や 1e300 が来ると Flutter 側が黙って壊れる。
+ * Design promises (grounded in pivot plan v1 §3-1; implementations that break
+ * them are rejected):
+ *   - Formulas, working and figures go on the board; speech is only questions and
+ *     connective tissue. This is not about looks but a main cost driver: TTS
+ *     characters are the bill. So "speak briefly" is enforced by a schema limit
+ *     ({@link boardSpeechMaxLength}), not by asking the prompt nicely.
+ *   - No freehand drawing. The LLM emits parameters only, and neither LLM-written
+ *     SVG nor canvas commands enter through any branch. `figure` carries SVG, but
+ *     it is what we solved and drew from validated `items` (declared relations,
+ *     {@link figureElementSchema}). `items`'s vocabulary is closed by
+ *     `@ai-sensei/figure`, and coordinates, lengths and ratios are computed rather
+ *     than written, so an inconsistent figure cannot be produced.
+ *   - A whole worked answer cannot be poured into one element. The board is
+ *     "one step = one line", not a place to paste an answer sheet. It is bound both
+ *     by the `tex` / `body` limits and by a per-output step cap
+ *     ({@link boardLessonStepsMaxCount}).
+ *   - Coordinates are finite and fit the surface. `Infinity` or 1e300 silently
+ *     breaks the Flutter side.
  *
- * このファイルは2つの形を持つ。責務が違うので **意図的に分けている**:
+ * This file holds two shapes, deliberately separated because their
+ * responsibilities differ:
  *
- *   1. **LLMが出す形**({@link boardLessonSchema})
- *      agent が構造化出力で受け取る、**1回の説明ぶん**。ストリーミングJSONを
- *      インクリメンタルにパースし、`steps[i]` が閉じた時点で {@link boardStepSchema} で1手順だけ検証する。
- *      LLMは「どの部屋の、何番目のメッセージか」を知らないし、知らせる必要もない。
- *      セッションの識別子をLLMの出力に混ぜると、幻覚したIDが配送層に流れ込む。
- *      **何回目の説明かも知らせない。**通し番号を持たせると、幻覚した番号がワイヤーに出る。
+ *   1. What the LLM emits ({@link boardLessonSchema}) - one explanation's worth,
+ *      received by the agent as structured output. The streaming JSON is parsed
+ *      incrementally and, once `steps[i]` closes, that single step is validated
+ *      with {@link boardStepSchema}. The LLM does not know which room or which
+ *      message number this is, and does not need to: mixing session identifiers
+ *      into LLM output lets hallucinated ids reach the delivery layer. It is not
+ *      told which explanation this is either - give it a running number and
+ *      hallucinated numbers reach the wire.
  *
- *   2. **data channel を流れる形**({@link boardChannelMessageSchema})
- *      LiveKit の data channel で1手順ずつモバイルへ送る封筒。
- *      宛先(session_id)・どの板書か(board_id)・順序(seq / index)を持つ。
- *      配送の都合(順序保証・欠落検知・板書の切り替え)は **全部こちら側の責務**で、
- *      LLMの出力形式には一切漏らさない。
+ *   2. What flows on the data channel ({@link boardChannelMessageSchema}) - the
+ *      envelope that carries one step at a time to mobile over LiveKit's data
+ *      channel. It has a destination (session_id), which board (board_id) and
+ *      ordering (seq / index). Delivery concerns (ordering, gap detection, board
+ *      switching) are entirely this side's responsibility and never leak into the
+ *      LLM's output format.
  *
- * 同期はミリ秒ではなく **手順の粒度** で取る(§3-2)。フロントは受信順に1行ずつ積み、
- * 前の行は消さない。消えるのは {@link boardOpenMessageSchema} が来たとき(= 別の問題に移るとき)だけ。
+ * Synchronization is at step granularity, not milliseconds (§3-2). The front end
+ * stacks lines in receive order and never erases earlier ones. They are erased
+ * only on {@link boardOpenMessageSchema} (= moving to another problem).
  */
 
 /**
- * `speech` の上限。**日本語TTSの発話速度 約330字/分から逆算している。**
+ * The cap on `speech`, derived from Japanese TTS speaking rate (~330 chars/min).
  *
- *   120字 ÷ 330字/分 ≒ 22秒 → 1手順あたり20〜25秒。
+ *   120 chars / 330 chars/min ~= 22s -> 20-25 seconds per step.
  *
- * 「音声は問いかけと接続だけ」(§3-1)を、プロンプトの言葉づかいではなくスキーマで守るための値。
- * ここを緩めるとTTS原価が線形に増え、月5,000円の粗利(§6-2)が消える。
- * 数式を読み上げ始めた瞬間に120字は必ず超えるので、**上限そのものが原則の検査になっている。**
+ * It enforces "speech is only questions and connective tissue" (§3-1) in the
+ * schema rather than in prompt wording. Loosen it and TTS cost grows linearly,
+ * erasing the 5,000 yen/month margin (§6-2). Reading a formula aloud always
+ * exceeds 120 characters, so the cap itself checks the principle.
  */
 export const boardSpeechMaxLength = 120;
 
 /**
- * `latex` の上限。板書の1行として画面幅に収まる長さ。
- * `x^2 - 3x + 2 = 0 \Rightarrow D = 9 - 8 = 1 > 0` で約45字なので、200字は「1行としては長すぎる」
- * ものだけを弾く緩めの線。答案の貼り付けを止めるのは、この上限と
- * {@link boardLessonStepsMaxCount} と多行環境の禁止(下記)の3つで行う。
+ * The cap on `latex`: a length that fits the screen width as one board line.
+ * `x^2 - 3x + 2 = 0 \Rightarrow D = 9 - 8 = 1 > 0` is about 45 characters, so 200
+ * is a loose line that only rejects "too long for one line". Pasting an answer
+ * sheet is stopped by this cap, {@link boardLessonStepsMaxCount} and the ban on
+ * multi-line environments (below).
  */
 export const boardTexMaxLength = 200;
 
-/** `text` の上限。板書に添える見出し・注記の1行(「a = 1, b = -3, c = 2」など)。 */
+/** The cap on `text`: one heading or note beside the board ("a = 1, b = -3, c = 2"). */
 export const boardTextMaxLength = 100;
 
 /**
- * `sentence` の英文と訳の上限。
+ * The cap on `sentence`'s English text and its gloss.
  *
- * `text` の100より広いのは、**英語は1文字あたりの情報量が少ない**から
- * (`spaced-repetition` が復習の一行を ja 24字 / en 48字で切っているのと同じ理屈)。
- * 半角120字は板書2行ぶんで、`I have lived here for ten years, so I know the area well.`
- * のような従属節つきの1文が収まる。ここを超えるのは例文ではなく段落。
+ * Wider than `text`'s 100 because English carries less information per character
+ * (the same reasoning as `spaced-repetition` cutting a review line at ja 24 /
+ * en 48). 120 ASCII characters is two board lines, holding a sentence with a
+ * subordinate clause such as `I have lived here for ten years, so I know the area
+ * well.` Anything longer is a paragraph, not an example.
  */
 export const boardSentenceMaxLength = 120;
 
 /**
- * `sentence.gloss`(訳)の上限。英文より短くてよい —
- * 日本語は同じ内容を半分ほどの文字数で書ける。
+ * The cap on `sentence.gloss`. Shorter than the English is fine - Japanese
+ * writes the same content in about half the characters.
  */
 export const boardGlossMaxLength = 60;
 
 /**
- * `sentence.focus` の上限。**文法の焦点にあたる部分だけ**を指す。
- * `have lived` / `to see` / `whose` — 語か句であって、節ではない。
+ * The cap on `sentence.focus`. It points at the grammatical focus only:
+ * `have lived` / `to see` / `whose` - a word or phrase, not a clause.
  */
 export const boardFocusMaxLength = 40;
 
-/** `compare` の1マスの上限。対比表は一覧であって解説ではない。 */
+/** The cap on one `compare` cell. A comparison table is a list, not an explanation. */
 export const boardCompareCellMaxLength = 60;
 
 /**
- * `compare` の行数の上限。
+ * The cap on `compare` rows.
  *
- * 5行以上は板書ではなく資料になる({@link plotMarkSchema} を4個、
- * 三角形の印を3個で切っているのと同じ判断)。対比で効くのは
- * 「形 / 意味 / 使うとき」の3行前後で、それ以上は読まれない。
+ * Five or more rows is a handout, not a board (the same call as capping
+ * {@link plotMarkSchema} at 4 and triangle marks at 3). Comparisons work at about
+ * three rows - form / meaning / when to use - and beyond that nobody reads them.
  */
 export const boardCompareRowsMaxCount = 4;
 
-/** ラベル(頂点名・目盛の注記・対比表の見出し)の上限。1〜2語で足りる。 */
+/** The cap on labels (vertex names, axis notes, table headings). One or two words is enough. */
 export const boardLabelMaxLength = 24;
 
 /**
- * `figure` の SVG の上限。
+ * The cap on `figure`'s SVG.
  *
- * 実測(`docs/figeval/` の39枚)で中央 3.1KB・90%点 7.3KB・最大 15.6KB。
- * 16KB にすると全部通るが、板書は1問で最大 {@link boardStepsMaxCount} 手順ぶん
- * 生き続けるので、**そこまで大きい図は板書として濃すぎる**とみなして 12KB で切る。
- * 39枚中38枚が収まる線。ここを超えたら、図を分けるか語彙を見直す合図。
+ * Measured over the 39 figures in `docs/figeval/`: median 3.1KB, p90 7.3KB, max
+ * 15.6KB. 16KB would pass them all, but a board lives for up to
+ * {@link boardStepsMaxCount} steps on one problem, so anything that large is
+ * treated as too dense for a board and cut at 12KB - the line where 38 of 39 fit.
+ * Exceeding it is the signal to split the figure or revisit the vocabulary.
  */
 export const boardFigureSvgMaxLength = 12_000;
 
-/** 図の読み上げ文。スクリーンリーダーと、目で見られないときの説明に使う。 */
+/** The figure's spoken description. Used by screen readers and when it cannot be seen. */
 export const boardFigureAltMaxLength = 200;
 
 /**
- * **LLMが1回に出せる手順数の上限**({@link boardLessonSchema} の `steps`)。
+ * The cap on how many steps the LLM may emit at once ({@link boardLessonSchema}'s
+ * `steps`).
  *
- * 判別式のような単元は6〜8手順で終わる。上限がないと、LLMは
- * 「1行ずつだが40行」という形で解答を丸ごと流し込める(1要素の上限をすり抜ける抜け道)。
- * **1回の説明でこれを超えるなら、それは板書ではなく答案。**
+ * A unit like the discriminant finishes in 6-8 steps. Without a cap the LLM can
+ * pour a whole worked answer through as "one line at a time, but 40 lines" - the
+ * loophole around the per-element caps. If one explanation exceeds this, it is an
+ * answer sheet, not a board.
  *
- * これは**板書1枚の上限ではない**({@link boardStepsMaxCount})。
- * 板書は1つの問題ぶん生き続け、何回かの説明が同じ板書に積み上がる。
+ * This is not the per-board cap ({@link boardStepsMaxCount}). A board lives for
+ * one problem, and several explanations stack onto the same board.
  */
 export const boardLessonStepsMaxCount = 12;
 
 /**
- * **板書1枚に積める手順数の上限**。ワイヤーの `index`({@link boardStepSchema})と
- * {@link boardCloseMessageSchema} の `step_count` の上限。
+ * The cap on how many steps one board can hold. It bounds the wire's `index`
+ * ({@link boardStepSchema}) and {@link boardCloseMessageSchema}'s `step_count`.
  *
- * 板書の寿命は「1回の説明」ではなく **「1つの問題」**(§3-2「前の行は消さない。
- * 消えるのは別の問題に移るときだけ」)。1回のLLM呼び出しごとに板書を開き直すと、
- * **会話が1往復するたびに板書が消える** — 板書の価値そのものが失われる。
+ * A board lives for one problem, not one explanation (§3-2: "never erase earlier
+ * lines; only a new problem clears them"). Reopening the board per LLM call
+ * erases it once per exchange - losing the board's whole value.
  *
- * 1つの問題は15〜20分(§4-1)で、その間に説明は何往復かする:
+ * One problem runs 15-20 minutes (§4-1), with several rounds of explanation:
  *
- *   切り分け2〜3手順 + 教える5〜8手順 + 教え返しへの受け渡し1手順 ≒ **1往復 8〜12手順**
- *   教え返しで詰まればもう一度教える(§2 のコアループ)ので **2〜3往復**
- *   → **16〜36手順**
+ *   diagnose 2-3 steps + teach 5-8 steps + hand over to teach-back 1 step
+ *   ~= 8-12 steps per round; getting stuck in teach-back means teaching again
+ *   (the §2 core loop), so 2-3 rounds -> 16-36 steps
  *
- * **40** はその上限側(36)にわずかな余白を足した値。ここに達するのは
- * 「1つの問題に40行書いてまだ終わっていない」ときで、それは板書の不足ではなく
- * 授業の設計の問題(§3-4 のゲートで見る種類の壊れ方)。
- * つまりこの数字は**打ち切りの安全弁**であって、目標値でも推奨値でもない。
+ * 40 adds a little slack above that upper end (36). Reaching it means "40 lines
+ * on one problem and still not done", which is a lesson-design problem rather
+ * than a shortage of board space (the kind of breakage the §3-4 gate catches).
+ * So this number is a cutoff safety valve, not a target or a recommendation.
  */
 export const boardStepsMaxCount = 40;
 
 /**
- * 盤面座標の絶対値の上限。板書は「その場でノートに描く図」なので、
- * 天文学的な座標が要る場面はない。有限性だけでなく大きさも縛る。
+ * The cap on the absolute value of a board coordinate. A board is "a figure drawn
+ * in a notebook on the spot", so astronomical coordinates never apply. Bound the
+ * magnitude, not just finiteness.
  */
 export const boardCoordinateLimit = 1000;
 
-/** 盤面の座標値。有限かつ盤面内。 */
+/** A coordinate on the board. Finite and within the surface. */
 const coordinateSchema = z.number().finite().min(-boardCoordinateLimit).max(boardCoordinateLimit);
 
 /**
- * 盤面上の点。
+ * A point on the board.
  *
- * 計画書の草案では `Pt` をタプルで書いていたが、`{x, y}` のオブジェクトにした。
- * このファイルは **「異種の値の組はオブジェクト、同種の値の固定長列は配列」** で統一している:
+ * The plan's draft wrote `Pt` as a tuple; this uses an `{x, y}` object. The file
+ * is consistent about "objects for heterogeneous values, arrays for fixed-length
+ * sequences of the same kind":
  *
- *   - `{x, y}` / `{min, max}` は中身の意味が違う。位置で区別させると
- *     LLMが入れ違えても検証を素通りしてしまう(`domain: [4, -1]` は形としては正しい)。
- *     **名前を付けた瞬間、取り違えが検出可能になる。**
- *   - `vertices` の3点や `labels` の3つは同種で、順序は「1番目の頂点」以上の意味を持たない。
- *     配列(`z.tuple`)のままにしてある。JSON Schema には `minItems`/`maxItems` として残るので、
- *     Dart側は `List<BoardPoint>` + 長さ3の検査で足り、参照からその条件が読み取れる。
+ *   - `{x, y}` / `{min, max}` hold different meanings. Distinguishing them by
+ *     position lets an LLM swap them and still pass validation (`domain: [4, -1]`
+ *     is well-formed). Naming them makes the swap detectable.
+ *   - `vertices`'s three points and `labels`'s three entries are the same kind,
+ *     and order means nothing beyond "the first vertex". Those stay arrays
+ *     (`z.tuple`). They survive in JSON Schema as `minItems`/`maxItems`, so the
+ *     Dart side needs only `List<BoardPoint>` plus a length-3 check, readable
+ *     from the reference.
  */
 export const boardPointSchema = z.object({ x: coordinateSchema, y: coordinateSchema }).strict();
 export type BoardPoint = z.infer<typeof boardPointSchema>;
 
 /**
- * 板書に積む要素の種類。増やすときは Flutter 側の描画実装とセットで増やす。
+ * The kinds of element that can be stacked on the board. Adding one means adding
+ * the Flutter rendering implementation at the same time.
  *
- * **教科ごとに使える枝は違う。** 数学は `latex` / `plot` / `triangle` / `circle` / `figure`、
- * 英語は `sentence` / `compare`。`text` だけが両方で使える。
- * どちらを許すかはスキーマではなく agent 側(`boardKindsBySubject`)で閉じている —
- * contract は「表現できる形」を定義する層で、「いま許す形」は文脈で決まるため。
+ * Which branches are usable differs by subject: math uses `latex` / `plot` /
+ * `triangle` / `circle` / `figure`, English uses `sentence` / `compare`, and only
+ * `text` works for both. Which are allowed is closed on the agent side
+ * (`boardKindsBySubject`), not in the schema - contract defines what *can* be
+ * expressed, while what is allowed *now* depends on context.
  */
 export const boardElementKinds = [
   "latex",
@@ -190,23 +211,26 @@ export const boardElementKinds = [
 export type BoardElementKind = (typeof boardElementKinds)[number];
 
 /**
- * 多行のLaTeX環境を含まないこと。`\begin{align}` を許すと「1手順=1行」が崩れ、
- * 答案を1要素に流し込む抜け道になるので **スキーマで禁止する**。
+ * Must contain no multi-line LaTeX environment. Allowing `\begin{align}` breaks
+ * "one step = one line" and becomes the loophole for pouring an answer sheet into
+ * one element, so it is banned in the schema.
  *
- * `cases`(場合分け)と `matrix` 系は意図的に禁止リストに入れていない = 使ってよい。
- * 場合分けは高校数学で1行として自然に読める板書だから
- * (計画書 §3-6 の実測ホワイトリストでも `\begin{pmatrix}` `\begin{cases}` は許可されている)。
+ * `cases` and the `matrix` family are deliberately absent from the ban list, i.e.
+ * they are allowed: case analysis reads naturally as one board line in high-school
+ * math (plan §3-6's measured whitelist also permits `\begin{pmatrix}` and
+ * `\begin{cases}`).
  *
- * **ここで見るのは「1行かどうか」という構造だけ。** そのコマンドを
- * `flutter_math_fork` が描けるかどうか(コマンドのホワイトリスト・KaTeXでの実パース)は
- * `packages/guardrail` と agent の責務(計画書 §3-6 の三段構え)。
- * contract は依存を持たない層なので、中身の照合には踏み込まない
- * (`karte.ts` の `topicIdSchema` と同じ分担)。
+ * This only checks the structural question of "is it one line". Whether
+ * `flutter_math_fork` can render a command (the command whitelist, real parsing
+ * with KaTeX) belongs to `packages/guardrail` and the agent (plan §3-6's three
+ * stages). contract is a dependency-free layer and does not check contents (the
+ * same split as `karte.ts`'s `topicIdSchema`).
  *
- * **`.refine()` ではなく `.regex()` で書く。** refineはJSON Schemaに残らず、
- * `schema/*.json` を唯一の参照にするDart実装者からこの制約が見えなくなる
- * (README「JSON Schema に現れない不変条件」を参照)。否定先読み + `[\s\S]` にしてあるのは、
- * `pattern` にはフラグが載らないため。`.` + `s` フラグだと改行入りの `tex` をすり抜ける。
+ * Written with `.regex()` rather than `.refine()`: refine leaves nothing in JSON
+ * Schema, hiding this constraint from Dart implementers who treat `schema/*.json`
+ * as the single reference (see the README's "invariants absent from JSON Schema").
+ * The negative lookahead plus `[\s\S]` is used because `pattern` carries no flags:
+ * `.` with the `s` flag would let a `tex` containing newlines slip through.
  */
 const noMultilineLatexPattern =
   /^(?![\s\S]*\\begin\{(?:align|gather|eqnarray|array|split|multline)\*?\})[\s\S]*$/;
@@ -215,11 +239,12 @@ export const latexElementSchema = z
   .object({
     kind: z.literal("latex"),
     /**
-     * flutter_math_fork が描く数式。1行ぶん。
+     * A formula rendered by flutter_math_fork. One line's worth.
      *
-     * **文字数の上限は表示幅を保証しない**(`\frac` は縦に伸びるだけ、`\sum_{k=1}^{n}` は
-     * 短いのに幅を食う)。実機幅340pt に長い式が収まらない問題は計画書 §3-6b の未解決事項で、
-     * 実測後にここの縛り方が変わる可能性がある。
+     * A character cap does not guarantee display width (`\frac` only grows
+     * vertically; `\sum_{k=1}^{n}` is short but wide). Long formulas not fitting
+     * the real 340pt width is an open issue in plan §3-6b, and how this is bound
+     * may change after measurement.
      */
     tex: z.string().min(1).max(boardTexMaxLength).regex(noMultilineLatexPattern, {
       message: "板書は1手順=1行。多行環境(align/gather/array...)は使えません",
@@ -230,14 +255,14 @@ export const latexElementSchema = z
 export const textElementSchema = z
   .object({
     kind: z.literal("text"),
-    /** 数式にしない一行。見出し・注記・言い換え。解説文の置き場ではない。 */
+    /** A line that is not a formula: heading, note, rephrasing. Not a place for prose. */
     body: z.string().min(1).max(boardTextMaxLength),
   })
   .strict();
 
 /**
- * グラフに打つ印。交点・頂点など「見てほしい一点」だけ。
- * 上限4個。印が5個以上要る図は、板書ではなく資料になっている。
+ * A mark plotted on a graph. Only the one point worth looking at - intersection,
+ * vertex. Capped at 4; a figure needing five or more marks has become a handout.
  */
 export const plotMarkSchema = z
   .object({
@@ -248,33 +273,36 @@ export const plotMarkSchema = z
 export type PlotMark = z.infer<typeof plotMarkSchema>;
 
 /**
- * `fn` に許す形。**端末上で式を評価するので、入力の形をここで閉じる。**
- * 許すのは 変数x / 数字 / 四則 / 累乗 / 括弧 と、列挙した関数名だけ。
- * 「LLMにはパラメータだけ吐かせる」(§3-3)を関数式にも適用したもの。
+ * The shapes allowed in `fn`. The expression is evaluated on the device, so the
+ * input shape is closed here: variable x, digits, the four operations, powers,
+ * parentheses, and the listed function names. "The LLM emits parameters only"
+ * (§3-3), applied to function expressions.
  *
- * 関数名と文字種を **1本の正規表現** にしてあるのは、`.refine()` の2段検査だと
- * JSON Schema に何も残らないため({@link noMultilineLatexPattern} と同じ理由)。
- * 許可文字にアルファベットは `x` しか無く、どの関数名も `x` 以外の文字を含むので、
- * 各位置で選べる枝は高々1つ = **バックトラックしない**。
- * ここに `e`(ネイピア数)を足すと `exp` の解釈が2通りになり、失敗する入力で
- * 指数的なバックトラックが起きる(zodは `.max()` で打ち切らずに正規表現も評価する)。
- * なので `e^x` は書けない。**`exp(x)` と書かせること**(プロンプト側の約束)。
+ * Function names and the character class live in one regex because a two-stage
+ * `.refine()` check leaves nothing in JSON Schema (same reason as
+ * {@link noMultilineLatexPattern}). The only allowed letter is `x`, and every
+ * function name contains a letter other than `x`, so at most one branch applies at
+ * each position - no backtracking. Adding `e` (Euler's number) would make `exp`
+ * ambiguous and cause exponential backtracking on failing input (zod evaluates the
+ * regex without stopping at `.max()`). So `e^x` cannot be written; the prompt
+ * requires `exp(x)`.
  */
 const plotFunctionPattern = /^(?:sin|cos|tan|sqrt|abs|log|ln|exp|pi|[-+*/^().,0-9x\s])+$/;
 
 export const plotElementSchema = z
   .object({
     kind: z.literal("plot"),
-    /** xの式。例 `x^2 - 3*x + 2`。掛け算の `*` は省略させない(パーサ差で崩れるため)。 */
+    /** An expression in x, e.g. `x^2 - 3*x + 2`. `*` is never omitted (parsers differ). */
     fn: z.string().min(1).max(80).regex(plotFunctionPattern, {
       message: "fn には x・数値・四則・^・括弧と、既定の関数名しか使えません",
     }),
     /**
-     * 描画するxの範囲。草案の `[number, number]` から `{min, max}` に変えた
-     * (理由は {@link boardPointSchema})。
+     * The x range to draw. Changed from the draft's `[number, number]` to
+     * `{min, max}` (see {@link boardPointSchema}).
      *
-     * `min < max` は **JSON Schema に書けない**({@link boardChannelLogSchema} の順序規約と同じ)。
-     * Dart側は手で入れる必要がある。README の「JSON Schema に現れない不変条件」に一覧がある。
+     * `min < max` cannot be expressed in JSON Schema (like
+     * {@link boardChannelLogSchema}'s ordering rules), so the Dart side must add it
+     * by hand. The README's "invariants absent from JSON Schema" lists them all.
      */
     domain: z
       .object({ min: coordinateSchema, max: coordinateSchema })
@@ -288,8 +316,8 @@ export const plotElementSchema = z
   .strict();
 
 /**
- * 三角形の角の印。`vertex` は `vertices` のインデックス(0〜2)。
- * 頂点名ではなくインデックスで指すのは、ラベルが無い三角形でも印を打てるようにするため。
+ * An angle mark on a triangle. `vertex` is an index into `vertices` (0-2).
+ * Indices rather than vertex names, so marks work on unlabelled triangles too.
  */
 export const angleMarkSchema = z
   .object({
@@ -304,7 +332,7 @@ export const triangleElementSchema = z
   .object({
     kind: z.literal("triangle"),
     vertices: z.tuple([boardPointSchema, boardPointSchema, boardPointSchema]),
-    /** 頂点名。付けるなら3つ揃える(A・Bだけ付いた三角形は板書として読めない)。 */
+    /** Vertex names. If given, give all three (a triangle labelled only A and B is unreadable). */
     labels: z
       .tuple([
         z.string().min(1).max(boardLabelMaxLength),
@@ -320,66 +348,67 @@ export const circleElementSchema = z
   .object({
     kind: z.literal("circle"),
     center: boardPointSchema,
-    /** 半径。0は円にならないので受け付けない。 */
+    /** The radius. 0 is not a circle, so it is rejected. */
     r: z.number().finite().positive().max(boardCoordinateLimit),
-    /** 中心名・半径の注記など。最大3つ。 */
+    /** Centre name, radius note, etc. Up to three. */
     labels: z.array(z.string().min(1).max(boardLabelMaxLength)).max(3).optional(),
   })
   .strict();
 
 /**
- * 英語の板書の主役。**例文1つと、その訳・焦点**。
+ * The lead element of an English board: one example sentence with its gloss and
+ * focus.
  *
- * `text` で代用できない理由は `focus` にある。英語で教えるのは
- * 「この文のどこが現在完了か」であって、文そのものではない。
- * 平文を並べるだけだと、生徒はどこを見ればいいのか分からないまま
- * 例文を読み流す。
+ * `text` cannot substitute because of `focus`. English teaching is about "which
+ * part of this sentence is the present perfect", not the sentence itself. Plain
+ * lines leave the student skimming the example with no idea where to look.
  *
- * `gloss`(訳)を必須にしないのは、**訳を出さずに推測させるのが正しい場面**が
- * あるため(先に意味を言ってしまうと、文法から意味を導く練習にならない)。
+ * `gloss` is not required because withholding the translation is sometimes the
+ * right teaching move (giving the meaning first removes the practice of deriving
+ * meaning from grammar).
  */
 export const sentenceElementSchema = z
   .object({
     kind: z.literal("sentence"),
-    /** 英文1文。 */
+    /** One English sentence. */
     text: z.string().min(1).max(boardSentenceMaxLength),
-    /** 訳や言い換え。出さない選択も授業として正しいので任意。 */
+    /** Gloss or rephrasing. Optional, since withholding it is a valid teaching choice. */
     gloss: z.string().min(1).max(boardGlossMaxLength).optional(),
     /**
-     * `text` の中の、下線を引く部分。**`text` の部分文字列であること。**
+     * The part of `text` to underline. Must be a substring of `text`.
      *
-     * **この条件はここでは検査しない。** `boardElementSchema` は
-     * `discriminatedUnion` で、その枝は `ZodObject` でなければならず、
-     * `.refine()` を付けると `ZodEffects` になって union に入らない。
+     * That condition is not checked here. `boardElementSchema` is a
+     * `discriminatedUnion`, whose branches must be `ZodObject`; adding `.refine()`
+     * makes it a `ZodEffects`, which cannot join the union.
      *
-     * `plot` の `domain.min < max` と同じ扱いにする —
-     * README の「JSON Schema に現れない不変条件」に載せ、**Dart 側の
-     * `ensureValidSentence` と agent 側の `validateStep` の両方**で見る。
-     * 破れたときの見え方は「下線が引かれないだけ」なので、
-     * 検査が無いと壊れたまま何ヶ月も気づかれない。
+     * Treated like `plot`'s `domain.min < max`: listed in the README's "invariants
+     * absent from JSON Schema" and checked in both Dart's `ensureValidSentence` and
+     * the agent's `validateStep`. When broken it merely shows as "no underline", so
+     * without a check it would stay broken unnoticed for months.
      */
     focus: z.string().min(1).max(boardFocusMaxLength).optional(),
   })
   .strict();
 
 /**
- * 対比表。「現在完了 と 過去形」「to不定詞 と 動名詞」。
+ * A comparison table: "present perfect vs past", "to-infinitive vs gerund".
  *
- * **2列で固定する。** 3列以上はスマホの幅(実効340pt ≒ 半角30字)で読めず、
- * そもそも英語の文法の対比はほとんどが2項の使い分け。
- * 列を可変にすると、LLMは表を資料として使い始める。
+ * Fixed at two columns. Three or more is unreadable at phone width (an effective
+ * 340pt ~= 30 ASCII characters), and English grammar comparisons are nearly always
+ * a two-way distinction. Make the columns variable and the LLM starts using the
+ * table as a handout.
  */
 export const compareElementSchema = z
   .object({
     kind: z.literal("compare"),
-    /** 「to不定詞 と 動名詞」。無くても表は読める。 */
+    /** "to-infinitive vs gerund". The table reads fine without it. */
     title: z.string().min(1).max(boardLabelMaxLength).optional(),
-    /** 2列の見出し。 */
+    /** The two column headings. */
     columns: z.tuple([
       z.string().min(1).max(boardLabelMaxLength),
       z.string().min(1).max(boardLabelMaxLength),
     ]),
-    /** 各行2マス。1〜4行。 */
+    /** Two cells per row. 1-4 rows. */
     rows: z
       .array(
         z.tuple([
@@ -393,42 +422,42 @@ export const compareElementSchema = z
   .strict();
 
 /**
- * 作図。**先輩が書くのは `items`(関係の宣言)だけ。**
+ * A constructed figure. The senpai writes only `items` (declared relations).
  *
- * `svg` と `alt` は **agent が `@ai-sensei/figure` で解いて詰める**。
- * 先輩が `svg` を書いてきても捨てる — そこを通すと自由描画になる。
+ * `svg` and `alt` are solved and filled in by the agent via `@ai-sensei/figure`.
+ * An `svg` written by the senpai is discarded - letting it through would be
+ * freehand drawing.
  *
- * `items` を一緒に載せるのは、
- *   - guardrail が「何を描いたか」を検査できる(SVGは検査できない)
- *   - あとから端末側で描き直せる(D-21 の切り替え。SVGだけだと戻れない)
- *   - 落ちたときに、そのまま先輩へ投げ直せる
- * の3つのため。
+ * `items` rides along for three reasons:
+ *   - the guardrail can check what was drawn (SVG cannot be checked)
+ *   - the device can redraw it later (the D-21 switch; SVG alone is one-way)
+ *   - on failure it can be thrown straight back to the senpai
  *
- * **中身の語彙は `@ai-sensei/figure` が持つ。**ここでは形だけ見て、
- * 「知らないキー」「板書に載らない座標」「式に使えない名前」は
- * {@link figureItemsSchema} が落とす。
+ * The vocabulary belongs to `@ai-sensei/figure`. Only the shape is checked here;
+ * unknown keys, off-board coordinates and names unusable in expressions are
+ * rejected by {@link figureItemsSchema}.
  */
 export const figureElementSchema = z
   .object({
     kind: z.literal("figure"),
-    /** 作図の宣言。語彙と書き方は `docs/figeval/spec.md`。 */
+    /** The figure declaration. Vocabulary and syntax in `docs/figeval/spec.md`. */
     items: figureItemsSchema,
     /**
-     * 解いて描いた SVG。**端末はこれを描くだけ。**
-     * 先輩の出力には無く、配送前に agent が詰める(だから `optional`)。
+     * The solved and drawn SVG. The device only renders this.
+     * Absent from the senpai's output; the agent fills it in before delivery (hence `optional`).
      */
     svg: z.string().min(1).max(boardFigureSvgMaxLength).optional(),
-    /** 図の読み上げ文。これも agent が詰める。 */
+    /** The figure's spoken description. Also filled in by the agent. */
     alt: z.string().min(1).max(boardFigureAltMaxLength).optional(),
   })
   .strict();
 
 /**
- * 板書に積む1要素。`kind` の discriminated union。
+ * One element stacked on the board. A discriminated union on `kind`.
  *
- * **自由描画は どの枝にも存在しない。**`figure` は SVG を運ぶが、
- * その SVG は{@link figureElementSchema | 検証済みの `items` から こちらが生成したもの}で、
- * 先輩が書いた SVG が通る道はどこにも無い。
+ * Freehand drawing exists in no branch. `figure` carries SVG, but that SVG is
+ * {@link figureElementSchema | generated by us from validated `items`}, and there
+ * is no path by which a senpai-written SVG gets through.
  */
 export const boardElementSchema = z.discriminatedUnion("kind", [
   latexElementSchema,
@@ -443,35 +472,39 @@ export const boardElementSchema = z.discriminatedUnion("kind", [
 export type BoardElement = z.infer<typeof boardElementSchema>;
 
 /**
- * LaTeXコマンド(`\` + 英字)を含まないこと。`speech` に使う。
- * 理由と書き方は {@link noMultilineLatexPattern} と同じ(`.refine()` はJSON Schemaに残らない)。
+ * Must contain no LaTeX command (`\` + letters). Used for `speech`.
+ * Same reasoning and style as {@link noMultilineLatexPattern} (`.refine()` leaves nothing in JSON Schema).
  */
 const noLatexCommandPattern = /^(?![\s\S]*\\[a-zA-Z])[\s\S]*$/;
 
 /**
- * 手順1つ = 「先輩がひとこと言いながら、板書を1行足す」単位。同期の粒度でもある。
+ * One step = "the senpai says one thing while adding one board line". Also the
+ * granularity of synchronization.
  *
- * `speech` は必ず1文字以上ある。板書だけが無言で増える手順を許さないのは、
- * (a) ユーザーが割り込む隙が消える (b) フロントが「次に何を待てばいいか」を失う
- * の2点による。無言で書きたい場面は「じゃあ、ここ。」のような短い接続で足りる。
+ * `speech` always has at least one character. Steps where the board grows in
+ * silence are disallowed because (a) the user loses any opening to interrupt and
+ * (b) the front end loses track of what to wait for next. When you want to write
+ * silently, a short connective like "okay, here" suffices.
  */
 export const boardStepSchema = z
   .object({
     /**
-     * 板書内での通し番号。**0始まり**で、1ずつ増える(欠落検知の二重化)。
+     * The running number within the board. Starts at 0 and increases by 1
+     * (redundant gap detection).
      *
-     * このスキーマは2つの文脈で使われ、**`index` が数える範囲が違う**:
+     * This schema is used in two contexts, and `index` counts over different
+     * ranges in each:
      *
-     *   - {@link boardLessonSchema} の中(LLMが出す形)= **その1回の出力の中で0始まり**。
-     *     LLMは自分が何回目の呼び出しかを知らないし、知らせない
-     *     (通し番号を持たせると、幻覚した番号がワイヤーに出る)。
-     *   - {@link boardStepMessageSchema} の中(ワイヤー)= **板書1枚の中で0始まり**。
-     *     板書は1つの問題ぶん生き続けるので、2回目以降の説明は前の続きの番号になる。
-     *     **付け直すのは配送層の責務。**
+     *   - inside {@link boardLessonSchema} (what the LLM emits) = 0-based within
+     *     that single output. The LLM does not know which call this is and is not
+     *     told (a running number would put hallucinated numbers on the wire).
+     *   - inside {@link boardStepMessageSchema} (the wire) = 0-based within one
+     *     board. A board lives for one problem, so later explanations continue the
+     *     previous numbering. Assigning that is the delivery layer's job.
      *
-     * したがって上限は広いほう({@link boardStepsMaxCount})で取る。
-     * LLM出力側がこれより厳しいことは、`steps` の要素数
-     * ({@link boardLessonStepsMaxCount})と `index === position` の検査で担保される。
+     * So the cap is the wider one ({@link boardStepsMaxCount}). That the LLM side
+     * is stricter is guaranteed by the `steps` element count
+     * ({@link boardLessonStepsMaxCount}) and the `index === position` check.
      */
     index: z
       .number()
@@ -479,46 +512,51 @@ export const boardStepSchema = z
       .min(0)
       .max(boardStepsMaxCount - 1),
     /**
-     * 読み上げる文。問いかけと接続だけ(§3-1)。
-     * LaTeXコマンドが混ざっていたら、それは板書に置くべきものを喋らせている。
-     * `$` は英語の文章題で通貨として出るので見ない。見るのは `\` + 英字だけ。
-     * `∠` や `°` などの記号は自然な説明に必要で、TTS側で読み替えるため弾かない。
-     * ここで弾くと手順自体を捨てて生徒へ届かなくなる。
+     * The line to read aloud. Questions and connective tissue only (§3-1).
+     * A LaTeX command mixed in means something that belongs on the board is being
+     * spoken. `$` is not checked because it appears as currency in English word
+     * problems; only `\` + letters is. Symbols like `∠` and `°` are needed for
+     * natural explanation and are re-read on the TTS side, so they are not
+     * rejected - rejecting here would discard the step and it would never reach
+     * the student.
      */
     speech: z.string().min(1).max(boardSpeechMaxLength).regex(noLatexCommandPattern, {
       message: "speech に数式(LaTeX)を入れないでください。数式は board に置きます",
     }),
-    /** 板書に積む要素。**null なら音声のみ**(相づち・確認)。 */
+    /** The element to stack. `null` means audio only (acknowledgement, confirmation). */
     board: boardElementSchema.nullable(),
   })
   .strict();
 export type BoardStep = z.infer<typeof boardStepSchema>;
 
 /**
- * LLMが出す形 — **1回の説明ぶん**。
+ * What the LLM emits - one explanation's worth.
  *
- * agent はこれをストリーミングJSONで受け取り、`steps[i]` が閉じた時点で
- * {@link boardStepSchema} で1手順だけ検証して即座に配送する(全部揃うのを待たない・§3-2 案A)。
- * したがって **このスキーマ全体での検証は「最後の答え合わせ」** であって、配送のゲートではない。
+ * The agent receives this as streaming JSON and, once `steps[i]` closes, validates
+ * that single step with {@link boardStepSchema} and delivers it immediately
+ * (without waiting for the rest; §3-2 option A). So validating this whole schema
+ * is the final reconciliation, not the delivery gate.
  *
- * **「1枚の板書」ではないことに注意。**板書(`board_id`)は1つの問題ぶん生き続け、
- * この形の出力が何回か積み上がってできる。`title` / `topic_ids` を毎回持つのは、
- * LLMが「何回目か」を知らないから — **使われるのは最初の1回だけ**で、
- * 2回目以降は配送層が捨てる(そこで `board_open` を出し直すと板書が消える)。
+ * Note this is not "one board". A board (`board_id`) lives for one problem and is
+ * built from several outputs of this shape. `title` / `topic_ids` appear every
+ * time because the LLM does not know which call this is - only the first is used,
+ * and the delivery layer discards the rest (reissuing `board_open` there would
+ * erase the board).
  *
- * session_id / board_id を持たないのは意図。識別子は配送層(封筒)が付ける。
+ * It deliberately has no session_id / board_id: identifiers are added by the
+ * delivery layer (the envelope).
  */
 export const boardLessonSchema = z
   .object({
-    /** 板書の見出し。画面上部に出す。「この板書は何の問題か」だけ。 */
+    /** The board's heading, shown at the top. Only "which problem is this board". */
     title: z.string().min(1).max(60),
-    /** 扱っている単元。@ai-sensei/guardrail の範囲チェックに渡す。 */
+    /** The units being covered. Passed to @ai-sensei/guardrail's scope check. */
     topic_ids: z.array(topicIdSchema).min(1).max(3),
     steps: z.array(boardStepSchema).min(1).max(boardLessonStepsMaxCount),
   })
   .strict()
   .superRefine((lesson, ctx) => {
-    // index が飛ぶ・重複すると、モバイル側は「まだ来ていない手順」と区別できない。
+    // A skipped or duplicated index is indistinguishable on mobile from "a step that has not arrived yet".
     lesson.steps.forEach((step, position) => {
       if (step.index !== position) {
         ctx.addIssue({
@@ -532,39 +570,43 @@ export const boardLessonSchema = z
 export type BoardLesson = z.infer<typeof boardLessonSchema>;
 
 /* -------------------------------------------------------------------------- */
-/* data channel(封筒)                                                        */
+/* data channel (the envelope)                                                */
 /* -------------------------------------------------------------------------- */
 
 /**
- * LiveKit の topic。モバイルはこのtopicだけを板書として読む。
- * 会話用の他のメッセージと同じ経路に混ぜないための札。
+ * The LiveKit topic. Mobile reads only this topic as the board - a tag that keeps
+ * it off the same path as other conversation messages.
  *
- * 経路は **Text Streams API**(`registerTextStreamHandler` + このtopic)で、
- * 生の `publishData` は使わない — 既定が LOSSY で書き忘れると欠落する(計画書 §3-5)。
- * **封筒1つ = 1ストリーム**とし、受信側は `readAll()` で完成を待つ。
- * だから受信側で部分JSONを組み立てる必要はなく、下のスキーマは常に完成したJSONに当たる。
+ * The path is the Text Streams API (`registerTextStreamHandler` plus this topic),
+ * never raw `publishData` - its default is LOSSY and forgetting that drops content
+ * (plan §3-5). One envelope = one stream, and the receiver waits for completion
+ * with `readAll()`. So the receiver never assembles partial JSON, and the schemas
+ * below always meet complete JSON.
  */
 export const boardChannelTopic = "board";
 
 /**
- * 封筒のバージョン。**上げたら旧クライアントは読めない**ので、
- * 旧アプリが残っている間は agent が両方を送るか、送り分ける必要がある。
- * 番号を封筒に入れておくのは、その判断を後から取れるようにするため。
+ * The envelope version. Raising it makes old clients unable to read, so while old
+ * apps remain the agent must send both or choose per client. The number rides in
+ * the envelope so that decision stays available later.
  */
 export const boardProtocolVersion = 1;
 
 /**
- * すべての封筒が持つ共通部分。
+ * The common part of every envelope.
  *
- * - `session_id`: 宛先の確認。部屋を取り違えた配送を受信側で落とせる。
- * - `board_id`: **1セッション中に複数の問題を扱いうる**ので、手順は必ずどれかの板書に属する。
- * - `seq`: セッション内の通し番号(0始まり・種別をまたいで1ずつ増える)。
- *   **トランスポートの保証を当てにしない検算**。Text Streams は reliable 固定で、
- *   順序・重複排除・再接続時の再送まで面倒を見る(計画書 §3-5)。
- *   それでも `seq` を持つのは、落ちる原因が回線とは限らないから — agent の送信漏れ・
- *   二重送信・ハンドラの取りこぼしは、どれもトランスポートからは正常に見える。
- *   `seq` が飛んだら、モバイルは「板書が抜けている」ことを **描画する前に** 知れる。
- *   手順の `index` だけでは、板書の切り替え信号が落ちたことを検知できない。
+ * - `session_id`: destination check, so a misrouted delivery can be dropped by the
+ *   receiver.
+ * - `board_id`: one session may cover several problems, so every step belongs to
+ *   some board.
+ * - `seq`: the running number within the session (0-based, incrementing by 1
+ *   across message kinds). A cross-check that does not rely on transport
+ *   guarantees. Text Streams is always reliable and handles ordering, dedup and
+ *   resend on reconnect (plan §3-5). `seq` exists anyway because the line is not
+ *   the only thing that can break - a missed send by the agent, a double send, a
+ *   handler dropping a message all look fine to the transport. When `seq` skips,
+ *   mobile knows the board has a gap *before* drawing. A step's `index` alone
+ *   cannot detect a lost board-switch signal.
  */
 const envelopeFields = {
   v: z.literal(boardProtocolVersion),
@@ -574,18 +616,18 @@ const envelopeFields = {
 };
 
 /**
- * 板書を始める(= 前の板書を消す)信号。
+ * The signal that starts a board (= erases the previous one).
  *
- * 「消す」を独立した信号にした理由: 前の行を消さずに積むのが原則(§3-2)なので、
- * **消えてよい瞬間はただ一つ「別の問題に移るとき」** に限る。
- * これを手順のフラグ(`clear: true` のような)にすると、LLMの気まぐれで
- * 板書が消える経路ができてしまう。板書の切り替えは配送層の判断であって、
- * 授業の内容ではない。
+ * "Erase" is a separate signal because the principle is to stack without erasing
+ * (§3-2), so the one moment erasure is allowed is "moving to another problem".
+ * Making it a step flag (something like `clear: true`) would create a path where
+ * the board disappears on the LLM's whim. Switching boards is a delivery-layer
+ * decision, not lesson content.
  *
- * **「別の問題に移るとき」であって「次に説明するとき」ではない。**
- * 1つの問題は何往復かの説明でできている(切り分け → 教える → 教え返させる)。
- * LLMを呼ぶたびにこれを送ると、**会話が1往復するたびに板書が消える**。
- * だから `board_open` は1つの問題につき1回で、以降の説明は同じ `board_id` に積む。
+ * It is "moving to another problem", not "the next explanation". One problem is
+ * made of several rounds (diagnose -> teach -> have them teach back). Sending this
+ * per LLM call erases the board once per exchange. So `board_open` fires once per
+ * problem and later explanations stack on the same `board_id`.
  */
 export const boardOpenMessageSchema = z
   .object({
@@ -596,7 +638,7 @@ export const boardOpenMessageSchema = z
   })
   .strict();
 
-/** 手順を1つ積む。data channel を流れる本体はこれ。 */
+/** Stacks one step. This is the body that flows on the data channel. */
 export const boardStepMessageSchema = z
   .object({
     ...envelopeFields,
@@ -606,31 +648,33 @@ export const boardStepMessageSchema = z
   .strict();
 
 /**
- * 板書を締める信号。
+ * The signal that closes a board.
  *
- * `step_count` を載せるのは **末尾の欠落を検知するため**。`seq` は「途中が抜けた」ことは
- * 教えてくれるが、最後の手順が落ちて配信が止まった場合は「まだ来ていないだけ」と
- * 区別できない。締めの宣言に本数を書いておくと、そこで突き合わせられる。
+ * `step_count` rides along to detect a missing tail. `seq` reveals "something in
+ * the middle is missing", but a lost final step that stopped delivery is
+ * indistinguishable from "it just has not arrived". Writing the count into the
+ * closing declaration gives something to reconcile against.
  */
 export const boardCloseMessageSchema = z
   .object({
     ...envelopeFields,
     type: z.literal("board_close"),
-    /** **板書1枚ぶんの合計**(1回の説明ぶんではない)。 */
+    /** The total for one board (not for one explanation). */
     step_count: z.number().int().min(0).max(boardStepsMaxCount),
     /**
-     * `interrupted` はユーザーが割り込んで途中で止めた場合(§3-2 案Aの利点そのもの)。
-     * 板書は途中まで残す。エラーとは扱いが違うので、理由をenumで分けておく。
+     * `interrupted` is when the user broke in and stopped it (the very benefit of
+     * §3-2 option A). The board keeps what it has. It is handled differently from
+     * an error, so the reason is a separate enum.
      *
-     * **1回の説明が割り込まれただけでは、ここには来ない。**割り込みのあと
-     * 同じ問題の説明が続くなら板書は開いたままで、閉じるのは問題そのものが
-     * 終わったとき(または終われなかったとき)。
+     * One interrupted explanation does not reach here. If the same problem
+     * continues after the interruption, the board stays open; it closes when the
+     * problem itself ends (or fails to).
      */
     reason: z.enum(["completed", "interrupted", "error"]),
   })
   .strict();
 
-/** data channel を1件ずつ流れるメッセージ。ワイヤー上に現れるのはこの形だけ。 */
+/** A message flowing one at a time on the data channel. Only this shape appears on the wire. */
 export const boardChannelMessageSchema = z.discriminatedUnion("type", [
   boardOpenMessageSchema,
   boardStepMessageSchema,
@@ -639,18 +683,20 @@ export const boardChannelMessageSchema = z.discriminatedUnion("type", [
 export type BoardChannelMessage = z.infer<typeof boardChannelMessageSchema>;
 
 /**
- * 1セッションぶんの配送ログ。
+ * One session's delivery log.
  *
- * **ワイヤー上には現れない。**data channel を流れるのは常に1件ずつ
- * ({@link boardChannelMessageSchema})で、これは fixture とゴールデンテストのための入れ物。
- * それでもスキーマとして書くのは、**順序の規約をコメントではなく検査可能な形で残す**ため:
+ * It never appears on the wire: the data channel always carries one message at a
+ * time ({@link boardChannelMessageSchema}), and this is a container for fixtures
+ * and golden tests. It is still written as a schema so the ordering rules stay
+ * checkable rather than living in a comment:
  *
- *   - `seq` は0始まりで1ずつ増える(欠落・重複の検知)
- *   - 手順は必ず `board_open` と `board_close` の間にある
- *   - `index` は板書ごとに0始まりで1ずつ増える
- *   - `board_close.step_count` は実際に送った手順数と一致する
+ *   - `seq` starts at 0 and increases by 1 (gap and duplicate detection)
+ *   - steps always sit between `board_open` and `board_close`
+ *   - `index` starts at 0 per board and increases by 1
+ *   - `board_close.step_count` matches the number of steps actually sent
  *
- * agent の配送実装とモバイルの受信実装は、どちらもこの列を通ることになる。
+ * Both the agent's delivery implementation and mobile's receiver pass through
+ * this sequence.
  */
 export const boardChannelLogSchema = z
   .object({

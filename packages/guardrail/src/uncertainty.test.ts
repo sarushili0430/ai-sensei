@@ -29,7 +29,7 @@ describe("isUncertaintyUtterance", () => {
     expect(isUncertaintyUtterance("No idea")).toBe(true);
   });
 
-  // 言えたことを穴として記録するほうが、取りこぼしよりわるい。
+  // Recording something they explained as a hole is worse than missing one.
   it("説明できているものを穴にしない", () => {
     for (const said of [
       "中心と直線の距離を半径と比べました",
@@ -61,7 +61,7 @@ describe("findUncertaintyUtterances", () => {
     ).toEqual(["そこはわからないです", "接するときは忘れました"]);
   });
 
-  // 後輩は「わからない」が持ち役なので、拾うと毎回ヒットしてしまう。
+  // "I don't get it" is the agent's own role, so including it would match every time.
   it("後輩の発話は拾わない", () => {
     expect(
       findUncertaintyUtterances([

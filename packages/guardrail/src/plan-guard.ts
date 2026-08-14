@@ -9,65 +9,72 @@ import {
 import { type AllowedTopics, buildAllowedTopics, isAllowedTopic } from "./topic-guard.ts";
 
 /**
- * 学習計画の単元照合(二重ガードの2枚目・計画版)。
+ * Unit matching for study plans (the second guard, plan edition).
  *
- * `@ai-sensei/contract` の `plan.ts` は依存を持たない層なので、**前提関係を知らない**。
- * 結果として「テスト範囲は三角関数」と聞き取った計画に「ベクトルを2時間」という日が
- * 入っていても、スキーマは通り、画面にも出る。ここがその穴を塞ぐ
- * (`topic-guard.ts` が板書とカルテにやっていることと同じ構え)。
+ * `plan.ts` in `@ai-sensei/contract` is a dependency-free layer and knows nothing
+ * about prerequisites. So a plan whose interview recorded "the test covers
+ * trigonometry" can contain a day of "two hours of vectors", pass the schema and
+ * reach the screen. This closes that hole (the same stance `topic-guard.ts` takes
+ * for the board and the karte).
  *
- * **範囲と割り当てで、落とし方をわざと変えている。**
+ * Scope and assignments are rejected differently on purpose.
  *
- *   - **範囲({@link checkPlanScope})は1つでも壊れていたら全体を落とす。**
- *     範囲は「テストに何が出るか」という聞き取った事実で、黙って1単元を捨てると
- *     **実際より狭いテストに向けた計画**ができあがる。生徒は範囲の一部を勉強しないまま
- *     当日を迎えることになり、しかもそれに気づく手段がない。
- *   - **割り当て({@link filterPlanItems})は1件ずつ落とす。**
- *     こちらは生成物なので、1日が範囲外でも残りの日は使える。
- *     `filterHoleTopicIds()` がカルテの穴を1件ずつ落とすのと同じ考え方。
+ *   - Scope ({@link checkPlanScope}) fails as a whole if even one entry is broken.
+ *     The scope is the interviewed fact of "what is on the test", and silently
+ *     dropping one unit produces a plan aimed at a narrower test than the real one.
+ *     The student reaches the day without having studied part of the scope, with no
+ *     way to notice.
+ *   - Assignments ({@link filterPlanItems}) are dropped one at a time.
+ *     These are generated output, so one out-of-scope day still leaves the rest
+ *     usable. The same idea as `filterHoleTopicIds()` dropping karte holes one by one.
  */
 
 /**
- * 計画で「範囲の前提」としてどこまで遡ってよいか。
+ * How far back a plan may reach for "the scope's prerequisites".
  *
- * **いまは会話側(`topic-guard.ts` の `conversationPrerequisiteDepth`)と同じ2段。**
- * それでも別の定数にしてあるのは、**同じ値に見えて別の判断だから** —
- * 会話側は原価(セッション時間)の都合で浅くしたくなることがあり、
- * そのときに計画まで黙って追随すると、正当な復習日が範囲外として落ちはじめる。
+ * Currently the same two levels as the conversation side
+ * (`conversationPrerequisiteDepth` in `topic-guard.ts`). It is still a separate
+ * constant because it is the same value from a different judgement: the
+ * conversation side may want to go shallower for cost (session time), and having
+ * plans silently follow would start rejecting legitimate review days as
+ * out-of-scope.
  *
- * **当初は「計画のほうが深いはず」と考えていた**(会話の単位は質問、計画の単位は1日で、
- * 前提の復習に1日使うのは家庭教師のふつうの組み方だから)。実際に測ってみると、
- * **深さを決めているのは仕事の単位ではなくカリキュラムの形のほう**だった:
+ * The original assumption was that plans should go deeper (a conversation's unit is
+ * a question, a plan's is a day, and spending a day revising prerequisites is
+ * ordinary tutoring). Measurement showed the depth is decided by the shape of the
+ * curriculum, not by the unit of work:
  *
- *   | 深さ | 1トピックあたり増えるトピック数(平均 / 最大) |
+ *   | depth | topics added per topic (mean / max) |
  *   | --- | --- |
- *   | 1段 | 0.98 / 4(ja)・1.05 / 3(en) |
- *   | **2段** | **1.85 / 8(ja)・2.07 / 7(en)** |
- *   | 3段 | 2.37 / 11(ja)・2.91 / 10(en) |
+ *   | 1 | 0.98 / 4 (ja), 1.05 / 3 (en) |
+ *   | 2 | 1.85 / 8 (ja), 2.07 / 7 (en) |
+ *   | 3 | 2.37 / 11 (ja), 2.91 / 10 (en) |
  *
- * 前提の連鎖はいちばん長いもので5段しかなく、**2段で飽和する**(3段目以降で増えるのは
- * 平均0.5件ほど)。つまり3段にしても「もう1日ぶんの復習」が増えるわけではなく、
- * 遠い単元がぽつぽつ入るだけになる。
+ * The longest prerequisite chain is only five levels, and it saturates at two
+ * (level three and beyond add about 0.5 on average). So three levels does not buy
+ * another day of revision; it just sprinkles in distant units.
  *
- * 一方で前提の辺は**学習の順序に沿って伸びる**ので、2段広げても別の系列
- * (三角関数の計画にベクトル)には届かない — 広げても安全な側は測って確かめてある。
+ * Meanwhile prerequisite edges extend along the learning order, so two levels never
+ * reach another strand (vectors in a trigonometry plan) - the safe side of widening
+ * has been measured.
  *
- * これより深くすると、計画は「テスト対策」ではなく「課程のやり直し」になる。
- * テストまでに終わらない計画は守られず、守られない計画は
- * 「計画は自分には無理だ」だけを教える(`contract` の `planDayMinutesMax` と同じ理由)。
+ * Deeper than this and the plan stops being test preparation and becomes redoing
+ * the curriculum. A plan that cannot finish before the test is not kept, and an
+ * unkept plan teaches only "plans are not for me" (the same reason as `contract`'s
+ * `planDayMinutesMax`).
  */
 export const planPrerequisiteDepth = 2;
 
 export const planRejectionReasons = [
-  /** topic_idの形が壊れている。 */
+  /** The topic_id's shape is broken. */
   "malformed_topic_id",
-  /** 形は正しいがカリキュラムマップにない(捏造)。 */
+  /** Well-formed but absent from the curriculum map (fabricated). */
   "unknown_topic_id",
-  /** 範囲に日本の課程と海外の課程が混ざっている。 */
+  /** The scope mixes Japanese and overseas curricula. */
   "mixed_curricula",
-  /** 範囲が空になった(照合できるIDが1つもない)。 */
+  /** The scope came out empty (no matchable id at all). */
   "empty_scope",
-  /** カリキュラム内だが、範囲でもその前提でもない単元を割り当てている。 */
+  /** In the curriculum, but assigned a unit that is neither in scope nor a prerequisite. */
   "topic_out_of_scope",
 ] as const;
 export type PlanRejectionReason = (typeof planRejectionReasons)[number];
@@ -77,16 +84,17 @@ export type PlanScopeVerdict =
   | { ok: false; reason: PlanRejectionReason; detail: string };
 
 export type BuildPlanTopicsOptions = {
-  /** 前提を何段たどるか。既定は {@link planPrerequisiteDepth}。 */
+  /** How many prerequisite levels to follow. Defaults to {@link planPrerequisiteDepth}. */
   prerequisiteDepth?: number;
 };
 
 /**
- * 聞き取った範囲を検査し、通れば「計画に置いてよい単元」の集合を返す。
+ * Checks the interviewed scope and, if it passes, returns the set of units a plan
+ * may use.
  *
- * **1つでも通らなければ全体を落とす**(理由はファイル冒頭)。
- * 落ちたら agent は範囲を聞き直すか、許可トピックを添えて作り直させる。
- * 黙って狭い範囲で計画を作らせてはいけない。
+ * One failure fails the whole thing (reasoning at the top of the file). On
+ * rejection the agent re-asks the scope or has it rebuilt with the allowed topics
+ * attached. Never let a plan be built silently on a narrower scope.
  */
 export function checkPlanScope(
   scopeTopicIds: readonly string[],
@@ -114,19 +122,20 @@ export function checkPlanScope(
   }
 
   /**
-   * 課程の混在。**計画でだけ見る。**
+   * Mixed curricula. Checked only for plans.
    *
-   * 見るのは**指導言語と学校段階**で、**教科は見ない**:
+   * It looks at the language of instruction and the school stage, but not the subject:
    *
-   *   - 指導言語が混ざる(日本の課程 + 海外の課程) … LLMが両方のカリキュラムの
-   *     記憶から引いてきたということで、範囲の残りも信用できない
-   *   - 学校段階が混ざる(中学 + 高校) … 中学生の定期テストの範囲に数学IIは
-   *     入りえない。混ざっているのは、上と同じ壊れ方
-   *   - **教科が混ざる(数学 + 英語) … 通す。** 1回のテスト期間に複数教科が
-   *     並ぶのは正常で、中学生の定期テストはむしろこの形になる
+   *   - mixed language of instruction (Japanese + overseas curricula) ... the LLM
+   *     drew on both curricula's memories, so the rest of the scope is untrustworthy
+   *   - mixed school stage (middle + high school) ... Math II cannot be on a
+   *     middle-schooler's term test; a mix is the same breakage as above
+   *   - mixed subject (maths + English) ... allowed. Several subjects in one exam
+   *     period is normal, and a middle-schooler's term test looks exactly like this
    *
-   * かつては指導言語だけを見ていた。日本の数学と日本の英語はどちらも `ja` なので
-   * **偶然通っていた**が、偶然に頼ると段の混在を素通しする。述語を明示的に書く。
+   * This used to look only at the language of instruction. Japanese maths and
+   * Japanese English are both `ja`, so it passed by coincidence - and relying on
+   * coincidence lets mixed stages through. The predicate is written out explicitly.
    */
   const locales = new Set<CurriculumLocale>();
   const stages = new Set<SchoolStage>();
@@ -154,7 +163,7 @@ export function checkPlanScope(
   const allowed = buildAllowedTopics(scopeTopicIds, {
     prerequisiteDepth: options.prerequisiteDepth ?? planPrerequisiteDepth,
   });
-  // 形も存在も確かめた後なので、ここが空になるのは呼び出し方が壊れているとき。
+  // Shape and existence are already confirmed, so an empty set here means the caller is broken.
   if (allowed.primary.size === 0) {
     return { ok: false, reason: "empty_scope", detail: "テスト範囲の単元が1つもありません" };
   }
@@ -174,15 +183,15 @@ export type PlanItemFilterResult<T> = {
 };
 
 /**
- * 日ごとの割り当てを1件ずつ検査する。
+ * Checks each day's assignments one at a time.
  *
- * `allowed` は {@link checkPlanScope} が返したもの。**範囲そのものの検査を
- * 飛ばしてここだけ呼ばないこと** — 範囲が捏造されていると、その前提から作った
- * 許可集合も捏造の上に立つので、「範囲内です」という判定に意味がなくなる。
+ * `allowed` is what {@link checkPlanScope} returned. Never call this alone,
+ * skipping the scope check itself: if the scope is fabricated, the allow-set built
+ * from its prerequisites stands on that fabrication and "in scope" means nothing.
  *
- * 型引数にしてあるのは、`contract` の `PlanItem` をそのまま渡せるようにするため。
- * guardrail は contract に依存しない層なので、`topic_id` を持つことだけを要求する
- * (`filterHoleTopicIds` と同じ書き方)。
+ * It is generic so `contract`'s `PlanItem` can be passed directly. guardrail does
+ * not depend on contract, so it requires only that the value has a `topic_id`
+ * (written the same way as `filterHoleTopicIds`).
  */
 export function filterPlanItems<T extends { topic_id: string }>(
   items: readonly T[],
@@ -218,14 +227,15 @@ export function filterPlanItems<T extends { topic_id: string }>(
 }
 
 /**
- * 再生成プロンプトに添える指示。**会話の言語で書く**
- * (`topic-guard.ts` / `latex-guard.ts` と同じ理由 — 日本語の指示を英語の会話に
- * 混ぜると、次の計画だけ日本語で返ってくる)。
+ * The instruction attached to the regeneration prompt. Written in the
+ * conversation's language (same reason as `topic-guard.ts` / `latex-guard.ts` -
+ * mixing a Japanese instruction into an English conversation makes only the next
+ * plan come back in Japanese).
  *
- * **どの指示も「聞き直す」か「範囲の中で組み直す」に行き先を揃えてある。**
- * 「範囲外です」だけを返すと、LLMは範囲(`intake.scope.topic_ids`)のほうを
- * 書き換えて辻褄を合わせにいく — それは**聞き取った事実の改竄**で、
- * 計画が通っても生徒のテスト範囲とは別物になる。
+ * Every instruction points at either "ask again" or "rebuild within the scope".
+ * Returning only "out of scope" makes the LLM rewrite the scope
+ * (`intake.scope.topic_ids`) to make things add up - which falsifies the
+ * interviewed facts, so the plan passes but describes a different test.
  */
 export const planRejectionGuidanceByLocale: Record<
   CurriculumLocale,
@@ -255,6 +265,6 @@ export const planRejectionGuidanceByLocale: Record<
   },
 };
 
-/** 既定(ロケール未指定)では日本語の説明。 */
+/** The default (no locale given) is the Japanese wording. */
 export const planRejectionGuidance: Record<PlanRejectionReason, string> =
   planRejectionGuidanceByLocale.ja;

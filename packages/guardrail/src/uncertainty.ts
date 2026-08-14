@@ -1,26 +1,27 @@
 /**
- * 「わからない」と口にした場所の検出。
+ * Detecting where the student said "I don't understand".
  *
- * このアプリが探しているのは理解の穴で、**本人が「わからない」と言った箇所は
- * その一番はっきりした証拠**になる。ところが穴を書くのはLLMなので、
- * 会話が短かった・言い淀みが多かった、といった理由で丸ごと落とすことがある。
- * 落とされると画面には「今日は、止まらずに説明できました」と出て、
- * わからないと何度も言った人に「穴は無い」と返してしまう。
+ * This app is looking for gaps in understanding, and a place where the student said
+ * so themselves is the clearest evidence there is. But the holes are written by an
+ * LLM, which sometimes drops them entirely - a short conversation, lots of hedging.
+ * When dropped, the screen says "today you explained without stalling", answering
+ * "no holes" to someone who said they did not understand several times.
  *
- * ここは**機械的に拾えるぶんだけ**を拾う純関数。LLMの代わりではなく、
- * LLMがゼロ件で返したときの受け皿として使う(`backend/agent/src/karte.ts`)。
+ * This is a pure function that picks up only what can be picked up mechanically.
+ * It is not a replacement for the LLM but the catcher for when the LLM returns zero
+ * (`backend/agent/src/karte.ts`).
  *
- * 方針は math-speech と同じで **やりすぎない**。
- * 「わかった」「わかりました」のような肯定を「わからない」と取り違えるほうが、
- * 取りこぼしよりわるい(言えたことを穴として記録してしまう)ので、
- * 否定の形がはっきり出ているものだけを拾う。
+ * The policy is the same as math-speech: do not overreach.
+ * Mistaking an affirmative like "わかった" or "わかりました" for "わからない" is worse
+ * than missing one (it would record something they said well as a hole), so only
+ * clearly negative forms are matched.
  */
 
 /**
- * 本人が理解の不足を口にした形。
+ * Forms in which a student states a gap in understanding.
  *
- * 「わからない」だけでなく、同じ意味で使われる言い方も拾う。
- * 高校生が実際に使うのは「なんとなく」「習ってない」「忘れた」のほうが多い。
+ * Not just "わからない" but other phrasings used with the same meaning. High-school
+ * students actually say "なんとなく", "習ってない" and "忘れた" more often.
  */
 export const uncertaintyPatterns: RegExp[] = [
   // わからない / わかんない / 分からん / わかりません
@@ -35,11 +36,11 @@ export const uncertaintyPatterns: RegExp[] = [
   // 説明できない / 言えない / 説明の仕方がわからない
   /(?:説明|言葉に)(?:が)?でき(?:ない|ません)/,
   /(?:うまく)?言え(?:ない|ません)/,
-  // なんとなく / たぶん / 自信ない — 理由が出てこないときの言い方
+  // なんとなく / たぶん / 自信ない - phrasings used when no reason comes out
   /なんとなく/,
   /自信(?:が)?(?:ない|ありません)/,
   /(?:どう|なんで|なぜ)(?:して)?(?:だ|な)(?:っけ|ろう)/,
-  // 英語(審査員向けロケール)
+  // English (the reviewer-facing locale)
   /\bi\s+(?:don'?t|do not)\s+(?:know|remember|get it)/i,
   /\bno\s+idea\b/i,
   /\bnot\s+sure\b/i,
@@ -47,19 +48,20 @@ export const uncertaintyPatterns: RegExp[] = [
 ];
 
 /**
- * 「わからない」と読み違えてはいけない形。
+ * Forms that must not be read as "I don't understand".
  *
- * 部分一致で拾うと、肯定の中に否定の形が現れる文まで拾ってしまう。
- *   - 「わからないことがわかりました」 — 気づきであって、穴の申告ではない
- *   - 「わからなくなかった」 — 二重否定
- * 数が増えるとかえって取りこぼすので、実際に出た誤検出だけを足すこと。
+ * Substring matching would catch sentences where a negative form appears inside an
+ * affirmative.
+ *   - "わからないことがわかりました" - a realisation, not a report of a gap
+ *   - "わからなくなかった" - a double negative
+ * Adding more starts causing misses, so add only false positives actually observed.
  */
 const NOT_UNCERTAIN: RegExp[] = [
   /わ(?:か|から)らな(?:い|かった)こと(?:が|は)?(?:わ(?:か|から)|分か)/,
   /わ(?:か|から)らなく(?:な)?かった/,
 ];
 
-/** 1つの発話が「わからない」の申告かどうか。 */
+/** Whether one utterance reports "I don't understand". */
 export function isUncertaintyUtterance(text: string): boolean {
   const normalized = text.normalize("NFKC").trim();
   if (normalized.length === 0) return false;
@@ -70,10 +72,10 @@ export function isUncertaintyUtterance(text: string): boolean {
 export type SpeechTurn = { role: "assistant" | "user"; text: string };
 
 /**
- * ユーザーの発話のうち、「わからない」と言っているものを順に返す。
+ * Returns, in order, the user utterances that say "I don't understand".
  *
- * **後輩(assistant)の発話は見ない。** 後輩は「わからないので教えてください」が
- * 持ち役なので、拾うと毎回ヒットしてしまう。
+ * The agent's (assistant's) speech is ignored. "I don't get it, please teach me" is
+ * its role, so including it would match every time.
  */
 export function findUncertaintyUtterances(turns: readonly SpeechTurn[]): string[] {
   return turns

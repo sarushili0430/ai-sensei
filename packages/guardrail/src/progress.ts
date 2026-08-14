@@ -1,15 +1,15 @@
 /**
- * 数えるのは努力だけ(ビジュアル方針)。
+ * Count only effort (the visual policy).
  *
- * 正誤・点数・XPは持たず、**連続日数**と**埋めた穴の数**だけを数える。
- * 祝福画面とホームのカウンターはこの2つで作る。
+ * No right/wrong, scores or XP - only streak days and filled holes are counted.
+ * The celebration screen and the home counters are built from those two.
  */
 
 export type LocalDate = string; // YYYY-MM-DD
 
 const JST_OFFSET_MINUTES = 540;
 
-/** UTCの瞬間を、ユーザーのローカル日付(既定JST)に落とす。 */
+/** Maps a UTC instant to the user's local date (JST by default). */
 export function toLocalDate(at: Date, timezoneOffsetMinutes = JST_OFFSET_MINUTES): LocalDate {
   const local = new Date(at.getTime() + timezoneOffsetMinutes * 60_000);
   const year = local.getUTCFullYear();
@@ -28,11 +28,11 @@ export function daysBetween(from: LocalDate, to: LocalDate): number {
 }
 
 /**
- * 連続日数。
+ * The streak.
  *
- * 「今日まだやっていない」だけで途切れた表示にすると、朝いちばんに
- * ホームを開いたユーザーを毎日がっかりさせる。**きのうまで続いていれば
- * 連続は生きている** 扱いにし、途切れるのは丸1日空いたときだけにする。
+ * Showing it as broken merely because "today is not done yet" would disappoint
+ * every user who opens home first thing in the morning. A streak is alive if it ran
+ * through yesterday, and it breaks only after a full day's gap.
  */
 export function computeStreak(sessionDates: readonly LocalDate[], today: LocalDate): number {
   const unique = [...new Set(sessionDates)].sort();
@@ -82,8 +82,9 @@ export function computeProgress(
 }
 
 /**
- * 祝福画面に出す一言。
- * 数字は「連続日数」と「埋めた穴」だけ。称賛は説明そのものに向ける。
+ * The one line shown on the celebration screen.
+ * The only numbers are streak days and filled holes. Praise is aimed at the
+ * explanation itself.
  */
 export function celebrationHeadline(counters: ProgressCounters, filledThisSession: number): string {
   if (filledThisSession > 0) {

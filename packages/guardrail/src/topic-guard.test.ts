@@ -27,24 +27,24 @@ describe("buildAllowedTopics", () => {
   });
 
   /**
-   * **既定は、プロンプトが先輩に約束している段数と一致していなければならない。**
+   * The default must match the number of levels the prompt promises the senpai.
    *
-   * `prompts/senpai_board.{ja,en}.md` は許可リストについて「前提が2段ぶん入っています」と
-   * 説明している。ここが浅いと2段目の前提が許可リストに入らず、
-   * プロンプトの説明と、先輩へ実際に渡す単元がずれる。
+   * `prompts/senpai_board.{ja,en}.md` says the allow-list contains "two levels of
+   * prerequisites". Shallower here and the second level never enters the allow-list,
+   * so the prompt's description and the units actually handed over disagree.
    *
-   * 呼び出し側でオプションを書き足すのではなく**既定**を見ているのは、
-   * 元の不具合が「呼び出し側が書き忘れた」形そのものだったから。
+   * It checks the *default* rather than adding the option at the call site, because
+   * the original bug was exactly the shape of "the caller forgot to write it".
    */
   it("既定で2段たどる(プロンプトの約束と同じ)", () => {
     expect(conversationPrerequisiteDepth).toBe(2);
 
-    // 円と直線 → 判別式(1段)→ 二次関数のグラフ(2段)
+    // Circle and line -> discriminant (level 1) -> quadratic function graph (level 2)
     const twoLevels = buildAllowedTopics(["M2-ZUKEI-ENCHOKU"]);
     const oneLevel = buildAllowedTopics(["M2-ZUKEI-ENCHOKU"], { prerequisiteDepth: 1 });
     expect(twoLevels.prerequisite.size).toBeGreaterThan(oneLevel.prerequisite.size);
 
-    // オプションを省いた呼び出しが、既定の段数と同じ結果になること
+    // A call that omits the option must give the same result as the default depth
     expect([...twoLevels.prerequisite].sort()).toEqual(
       [
         ...buildAllowedTopics(["M2-ZUKEI-ENCHOKU"], {
@@ -73,7 +73,7 @@ describe("allowedTopicsLocale", () => {
   it("許可リストからロケールを決める", () => {
     expect(allowedTopicsLocale(buildAllowedTopics(["A2-COORD-CIRCLE"]))).toBe("en");
     expect(allowedTopicsLocale(buildAllowedTopics(["M2-ZUKEI-ENCHOKU"]))).toBe("ja");
-    // 空のときは既定(日本の課程)に落とす
+    // When empty, fall back to the default (the Japanese curriculum)
     expect(allowedTopicsLocale(buildAllowedTopics([]))).toBe("ja");
   });
 });

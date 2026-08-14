@@ -25,7 +25,7 @@ import {
 } from "./index.ts";
 
 describe("generated.ts", () => {
-  // .mdを直して再生成を忘れると、実行時のプロンプトだけ古いまま残る
+  // Editing a .md and forgetting to regenerate leaves only the runtime prompt stale
   it("prompts/*.md と一致している", () => {
     const committed = readFileSync(resolve(import.meta.dirname, "generated.ts"), "utf8");
     expect(committed, "pnpm --filter @ai-sensei/prompts generate を実行してください").toBe(
@@ -33,8 +33,9 @@ describe("generated.ts", () => {
     );
   });
 
-  // ファイル数はカタログの宣言と突き合わせる。`id × ロケール` で数えると、
-  // 教科別のプロンプト(英語の課程にしか無いもの)を足した瞬間に誤検知する。
+  // The file count is checked against the catalogue's declaration. Counting
+  // `id x locale` would false-positive the moment a subject-specific prompt (one that
+  // exists only for the English curricula) is added.
   it("すべての.mdが取り込まれている(カタログの宣言と一致する)", () => {
     const declared = promptIds.reduce((sum, id) => sum + promptCatalog[id].length, 0);
     expect(promptFiles().length).toBe(declared);
@@ -42,7 +43,7 @@ describe("generated.ts", () => {
 });
 
 describe("ロケール", () => {
-  // 片方の言語だけプロンプトを足すと、その言語のセッションが日本語に落ちる。
+  // Adding a prompt in only one language drops that language's sessions to Japanese.
   it("カタログが宣言した (id × ロケール) がすべて揃っている", () => {
     for (const id of promptIds) {
       for (const locale of promptCatalog[id]) {
@@ -53,7 +54,7 @@ describe("ロケール", () => {
     }
   });
 
-  // 変数がずれていると、片方の言語だけ renderPrompt が落ちる(会話が始まらない)。
+  // Drifted variables make `renderPrompt` fail in only one language (the conversation never starts).
   it("同じidなら、宣言している変数もロケール間で同じ", () => {
     for (const id of promptIds) {
       if (promptCatalog[id].length < 2) continue;
@@ -69,10 +70,12 @@ describe("ロケール", () => {
   });
 
   /**
-   * **カタログに無い組み合わせは、黙って日本語版に落とさず落とす。**
+   * A combination absent from the catalogue throws rather than silently falling back
+   * to Japanese.
    *
-   * ここでフォールバックすると、英語のセッションに日本語のプロンプトが渡って
-   * 先輩が日本語を喋り出す。「無い」は設定漏れなので、起動時に気づきたい。
+   * Falling back here would hand a Japanese prompt to an English session and have the
+   * senpai start speaking Japanese. "Missing" means a configuration gap, and we want
+   * to notice it at startup.
    */
   it("カタログに無い (id, ロケール) は例外にする", () => {
     expect(() => getPrompt("english_speech_hints", "en")).toThrow(/english_speech_hints/);
@@ -87,9 +90,9 @@ describe("ロケール", () => {
 });
 
 /**
- * 音声補正ヒントは**教科で切り替える**。数学版の「さんぶんのに = 2/3」を
- * 英語の授業に当てると、生徒の発話を数式として読み直してしまう
- * (「言えているのに詰まった」と判定する原因になる)。
+ * The speech-correction hints switch by subject. Applying the maths version's
+ * "さんぶんのに = 2/3" to an English lesson re-reads the student's speech as formulas
+ * (a cause of judging them stuck when they said it correctly).
  */
 describe("教科ごとの音声補正ヒント", () => {
   const variables = {
@@ -150,7 +153,7 @@ describe("renderPrompt", () => {
     expect(renderPrompt(template, { a: "1", b: 2 })).toBe("A=1 B=2");
   });
 
-  // 穴埋め漏れは「許可リストが空のままLLMを走らせる」に直結するので落とす
+  // An unfilled blank leads straight to running the LLM with an empty allow-list, so it fails
   it("変数が足りなければエラー", () => {
     expect(() => renderPrompt(template, { a: "1" })).toThrow(PromptRenderError);
   });
@@ -208,7 +211,7 @@ describe("整形ヘルパ", () => {
     ).toBe("Senpai: Why is that?\nStudent: I compared the distance");
   });
 
-  // 日本語の「(なし)」が英語のプロンプトに混ざると、そこだけ日本語で返ってくる。
+  // A Japanese "(none)" mixed into an English prompt makes that part answer in Japanese.
   it("空リストはロケールに合ったプレースホルダを返す", () => {
     expect(formatBullets([])).toBe("(なし)");
     expect(formatBullets([], "en")).toBe("(none)");
@@ -221,17 +224,18 @@ describe("整形ヘルパ", () => {
   });
 
   /**
-   * **空文字を `null` に畳まない。**「読めなかった」を `null` に寄せるのは
-   * `backend/api` の責務で、ここで拾ってプレースホルダに化けさせると
-   * **契約違反が無音で通る**。素通しすれば agent の `.min(1)` で表面化する。
+   * An empty string is not folded into `null`. Folding "unreadable" into `null` is
+   * `backend/api`'s job, and catching it here to become a placeholder would let a
+   * contract violation pass silently. Passed through, the agent's `.min(1)` surfaces it.
    */
   it("空文字はプレースホルダに化けさせない(契約違反を無音にしない)", () => {
     expect(formatProblemText("")).toBe("");
   });
 
   /**
-   * ノートの3状態。`formatBullets` を直に使うと下2つが同じ「(なし)」になり、
-   * 先輩は**「ノートに何も書いていない生徒」と「ノートを撮らなかった生徒」を同じに扱う**。
+   * The notes' three states. Using `formatBullets` directly collapses the bottom two
+   * into the same "(none)", and the senpai then treats "a student who wrote nothing"
+   * the same as "a student who took no notes photo".
    */
   it("ノートの3状態を区別して書き分ける", () => {
     expect(formatVisibleWork(["因数分解しかけている"])).toBe("- 因数分解しかけている");
@@ -267,10 +271,11 @@ describe("組み立て済みプロンプト", () => {
   });
 
   /**
-   * 板書の要約は **instructions にだけ**入れる(計画書 §2)。
-   * カルテと小テストの材料は transcript なので、そこに教えた内容が混ざると
-   * 「出題元はユーザーが説明した内容」が壊れる。渡した以上、
-   * **「これはユーザーが説明できた内容ではない」の断り書きが必ず一緒に出る**こと。
+   * The board summary goes into instructions only (plan §2).
+   * The karte and the quiz are built from the transcript, so mixing what was taught
+   * into it breaks "questions come from what the user explained". Since it is passed
+   * at all, the disclaimer "this is not what the user was able to explain" must always
+   * come with it.
    */
   it("板書の要約には、ユーザーの説明ではないという断りが必ず付く", () => {
     expect(conversation).toContain("D = b^2 - 4ac");
@@ -291,8 +296,8 @@ describe("組み立て済みプロンプト", () => {
     expect(karte).toContain("先輩: なんでですか?");
   });
 
-  // 英語ロケールでは、日本語の本文に「英語で答えて」を足すのではなく、
-  // 英語のプロンプトそのものを使う(ペルソナと禁止事項ごと差し替える)。
+  // In the English locale the English prompt itself is used, rather than appending
+  // "answer in English" to a Japanese body (persona and bans are swapped too).
   const english = conversationSystemPrompt(
     {
       photo_summary: "A line-and-circle problem",
@@ -329,7 +334,7 @@ describe("組み立て済みプロンプト", () => {
   });
 });
 
-// プロンプトはコードのガードレールと二重に書く。片方だけ消える事故を防ぐ。
+// Prompts are written twice, alongside the code guardrails. This prevents one side vanishing.
 describe("設計上の約束がプロンプトに書かれている", () => {
   const bodies = allPrompts().map((template) => template.body);
   const all = bodies.join("\n");
@@ -338,14 +343,14 @@ describe("設計上の約束がプロンプトに書かれている", () => {
     .join("\n");
 
   /**
-   * 約束1は**改正されている**(ピボット計画 v1 §0)。
+   * Promise 1 has been revised (pivot plan v1 §0).
    *
-   *   ~~答えを教えない~~ → **教える。そのあと教え返させる**
+   *   ~~never give the answer~~ -> teach it, then have them teach it back
    *
-   * 会話プロンプトから「答えを教えない」が消えているのは正しい。ただし
-   * `photo_analysis` だけは**改正前のまま**で、そこは緩めない —
-   * 解析器の出力は「何を教えるか」を決めるための材料で、ここに解答が入ると
-   * **誤読が下流に固定される**(`prompts/README.md` の改正範囲の表)。
+   * "Never give the answer" being gone from the conversation prompts is correct. But
+   * `photo_analysis` alone keeps the pre-revision form and must not be loosened - the
+   * analyser's output decides what gets taught, and an answer here fixes a misreading
+   * downstream (the revision-scope table in `prompts/README.md`).
    */
   it("解析器だけは「解答を書かない」が生きている", () => {
     expect(getPrompt("photo_analysis", "ja").body).toContain("解答・解説を書かない");
@@ -353,8 +358,9 @@ describe("設計上の約束がプロンプトに書かれている", () => {
   });
 
   /**
-   * 改正後の約束1。**教えっぱなしで終わらせない**ところまでが1つの約束で、
-   * 前半だけ残ると「答えを教えるアプリ」になる(ピボットで却下された案そのもの)。
+   * Post-revision promise 1. Not ending at teaching is part of the same promise; with
+   * only the first half left it becomes an app that gives answers (exactly the option
+   * the pivot rejected).
    */
   it("教える → 教え返させる、が両方の会話プロンプトに書かれている", () => {
     expect(getPrompt("senpai_board", "ja").body).toContain("教えっぱなしで終わらせない");
@@ -370,11 +376,13 @@ describe("設計上の約束がプロンプトに書かれている", () => {
   });
 
   /**
-   * **ノートが無い経路(§4-1)。プレースホルダの文言が、プロンプトと1文字でもずれたら落とす。**
+   * The no-notes path (§4-1). One character of drift between the placeholder and the
+   * prompt fails the test.
    *
-   * ここが効かないと、先輩は**ノートを持っていない生徒に「ノート見せて」と言い出す**。
-   * その生徒は問題だけを撮ってきた正規の利用者で、出せるものが無い。
-   * 文言の出どころは `formatVisibleWork()` ただ1つなので、**その戻り値そのもの**で照合する。
+   * Without this, the senpai asks a student with no notes to show their notes. That
+   * student photographed only the problem and is a legitimate user with nothing to
+   * show. The wording has exactly one source, `formatVisibleWork()`, so the check
+   * compares against its return value directly.
    */
   it("ノートが無いときのプレースホルダを、プロンプトが名指しで見ている", () => {
     for (const locale of promptLocales) {
@@ -390,10 +398,11 @@ describe("設計上の約束がプロンプトに書かれている", () => {
   });
 
   /**
-   * **問題が読めなかったときのプレースホルダ。**ここがずれると
-   * 「問題文を推測で組み立てないこと」の指示が発火しないまま、
-   * **先輩が自分で作った問題を教えはじめる** — 生徒はまるごと間違ったことを覚える。
-   * 会話プロンプトは問題文を受け取らないので、見るのは板書側だけ。
+   * The placeholder for an unreadable problem. Drift here stops the instruction "do
+   * not reconstruct the problem text by guessing" from firing, and the senpai starts
+   * teaching a problem it invented - the student learns something entirely wrong.
+   * The conversation prompt does not receive the problem text, so only the board side
+   * is checked.
    */
   it("問題が読めなかったときのプレースホルダを、板書プロンプトが名指しで見ている", () => {
     for (const locale of promptLocales) {
@@ -403,8 +412,8 @@ describe("設計上の約束がプロンプトに書かれている", () => {
     }
   });
 
-  // 「ノートが無いときは口頭で『どこまでやってみた?』と聞く」案は明示的に見送られた。
-  // 口頭のグラウンディング手順を足すと、それは切り分けではなく申告させる聞き方になる。
+  // The idea of "when there are no notes, ask aloud how far they got" was explicitly
+  // dropped. An oral grounding step is not diagnosis but a way of making them report.
   it("ノートが無いときに「ノート見せて」と言わない、が両方の言語に書かれている", () => {
     expect(getPrompt("senpai_board", "ja").body).toContain("「ノート見せて」");
     expect(getPrompt("senpai_board", "ja").body).toContain("口でノートを再現させようとしないこと");
@@ -415,8 +424,8 @@ describe("設計上の約束がプロンプトに書かれている", () => {
     expect(getPrompt("senpai_conversation", "en").body).toContain('Never ask "show me your notes"');
   });
 
-  // 約束2。**「採点しない」まで含める** — 先輩は分かっている側なので、
-  // 「合ってる / 違う」を宣告できてしまう。判定者は本人(§2 の小テストと同じ理屈)。
+  // Promise 2, including "do not grade" - the senpai is the one who knows, so it could
+  // pronounce "right / wrong". The judge is the student (the same logic as §2's quiz).
   it("点数をつけない・採点しない、が明記されている", () => {
     expect(all).toContain("点数をつけない");
     expect(getPrompt("senpai_conversation", "ja").body).toContain("採点もしない");
@@ -429,11 +438,11 @@ describe("設計上の約束がプロンプトに書かれている", () => {
   });
 
   /**
-   * 約束4(改正後・デッキ §0)。「通知もペイウォールも、先輩の判断として書く。
-   * **数字は見せず、命令や催促にもしない**」。
+   * Promise 4 (post-revision, deck §0): "notifications and paywalls are written as the
+   * senpai's judgement: no numbers, no orders, no nagging".
    *
-   * ここは配役を先輩に変えたことで**新しく開いた穴**。後輩は「勉強しろ」と言えないが、
-   * 先輩は言える立場なので、プロンプトが歯止めになっていないと素で言う。
+   * This is a hole newly opened by casting the AI as a senpai. A kouhai cannot say
+   * "go study", but a senpai can, so without the prompt as a brake it will say it.
    */
   it("煽らない・命令しない・数字を見せない、が会話プロンプトに書かれている", () => {
     const ja = getPrompt("senpai_conversation", "ja").body;
@@ -445,8 +454,8 @@ describe("設計上の約束がプロンプトに書かれている", () => {
     expect(en).toContain("never show them numbers");
   });
 
-  // 4つの約束は言語ごとに書き直す。英語側だけ抜けると、
-  // 海外のユーザーにだけ約束が破られる。
+  // The four promises are rewritten per language. Missing on the English side means
+  // they are broken only for overseas users.
   it("英語のプロンプトにも同じ4つの約束が書かれている", () => {
     expect(englishBodies).toMatch(/Never bring up anything that is not in the photo/);
     expect(englishBodies).toMatch(/Never grade/);
@@ -455,11 +464,13 @@ describe("設計上の約束がプロンプトに書かれている", () => {
   });
 
   /**
-   * 「わからない」と言われた箇所は必ず穴にする、も言語ごとに二重で書く。
+   * "Always make what they said they did not understand a hole" is also written twice,
+   * once per language.
    *
-   * これは develop で入った約束(実機で「わからないと何度も言ったのに穴なし」に
-   * なった報告への対応)。日本語側にだけ足すと、英語のセッションでだけ
-   * 「今日は、止まらずに説明できました」が返り続ける。
+   * This promise came in on develop (in response to a report of "said I don't
+   * understand repeatedly, got no holes" on a real device). Adding it only on the
+   * Japanese side would keep returning "today you explained without stalling" in
+   * English sessions alone.
    */
   it("「わからない」を必ず穴にする、が両方の言語に書かれている", () => {
     const ja = getPrompt("karte_generation", "ja").body;
@@ -472,8 +483,9 @@ describe("設計上の約束がプロンプトに書かれている", () => {
   });
 
   /**
-   * transcriptには先輩の問いかけや相づちも入る。単に「transcriptから作る」では、
-   * 先輩が教えた内容を本人の穴として1/3/7日後に繰り返すので、ロール名まで固定する。
+   * The transcript contains the senpai's questions and acknowledgements too. "Build it
+   * from the transcript" alone would repeat what the senpai taught as the student's own
+   * hole after 1/3/7 days, so even the role labels are pinned.
    */
   it("小テストの出題元を本人の発話だけに限定する、が両方の言語に書かれている", () => {
     const ja = getPrompt("karte_generation", "ja").body;
@@ -488,12 +500,12 @@ describe("設計上の約束がプロンプトに書かれている", () => {
   });
 
   /**
-   * 板書プロンプト(先輩)の約束。**contract / guardrail と二重に書いている**ので、
-   * 片方が消えたことを検知できるようにここで見る。
+   * The board prompt's (senpai's) promises. They are written twice, alongside contract
+   * and guardrail, so this detects one side disappearing.
    *
-   * 「長い式は = の前で割る」だけはコード側に相手がいない(計画書 §3-6b)。
-   * 板書がはみ出さないことを守っているのは、いまのところこの1行だけなので、
-   * 消えても誰も気づかない状態にしないためにテストで留める。
+   * Only "split long formulas before the =" has no counterpart in code (plan §3-6b).
+   * That one line is currently all that keeps the board from overflowing, so the test
+   * holds it in place rather than letting it vanish unnoticed.
    */
   it("板書の出力規約が両方の言語に書かれている", () => {
     const ja = getPrompt("senpai_board", "ja").body;
@@ -508,13 +520,13 @@ describe("設計上の約束がプロンプトに書かれている", () => {
   });
 
   /**
-   * **図形の授業が板書ごと落ちていた**(2026-08-12)。許可リストに ∠ も △ も ° も無く、
-   * `\angle CAD = \angle ABC` は必ず弾かれる。落ちた手順は配送層がその回の説明ごと
-   * 打ち切るので、**記号1つで授業が終わる**。
+   * Geometry lessons were losing their whole board (2026-08-12). The allow-list had no
+   * ∠, no △ and no °, so `\angle CAD = \angle ABC` was always rejected. The delivery
+   * layer aborts that whole explanation on a failed step, so one symbol ended the lesson.
    *
-   * 一覧の正は `packages/guardrail` の `allowedLatexCommands`(実測で足すもの)。
-   * ここで見るのは、**プロンプト側の一覧がそこに追いついているか**だけ —
-   * ずれると、描けるのにモデルが使わない(狭い)か、書いて弾かれる(広い)。
+   * The authoritative list is `allowedLatexCommands` in `packages/guardrail` (added by
+   * measurement). This only checks that the prompt's list has caught up: drift makes
+   * the model avoid what it could render (too narrow) or write what gets rejected (too wide).
    */
   it("板書のLaTeX一覧に、図形と論証の記号が両方の言語で載っている", () => {
     const ja = getPrompt("senpai_board", "ja").body;
@@ -525,14 +537,15 @@ describe("設計上の約束がプロンプトに書かれている", () => {
       expect(en, `senpai_board (en) に ${command} が無い`).toContain(command);
     }
 
-    // 実測で描けなかったものは「使えない」側に残っていること。
+    // What failed measurement must stay on the "unusable" side.
     expect(ja).toContain("\\overparen");
     expect(en).toContain("\\overparen");
   });
 
   /**
-   * 外接円と接線。**語彙には無いが、既存のキーの組み合わせで書ける。**
-   * 書き方を教えていなかったので、図形の問題で図が1枚も出ていなかった。
+   * Circumscribed circles and tangents. Not in the vocabulary, but writable by
+   * combining existing keys. Nobody had documented how, so geometry problems produced
+   * no figures at all.
    */
   it("円と接線の書き方が両方の言語に載っている", () => {
     const ja = getPrompt("senpai_board", "ja").body;
@@ -545,9 +558,10 @@ describe("設計上の約束がプロンプトに書かれている", () => {
   });
 
   /**
-   * 1枚の写真に複数の問題が写る経路。**解析が全部並べると600字を超えて丸ごと捨てられ**、
-   * 生徒には「問題が写っていない」と同じ結果になる(`resolveSessionProblem` の `too_long`)。
-   * 収まった場合も、先輩はどれを教えるか分からないまま始める。
+   * The path where one photo contains several problems. Listing them all pushes the
+   * analysis past 600 characters and it is discarded whole, giving the student the same
+   * result as "no problem in the photo" (`resolveSessionProblem`'s `too_long`). Even
+   * when it fits, the senpai starts without knowing which one to teach.
    */
   it("複数の問題が写ったときの決めが、解析と板書の両方に書かれている", () => {
     for (const locale of ["ja", "en"] as const) {
@@ -557,15 +571,16 @@ describe("設計上の約束がプロンプトに書かれている", () => {
       expect(analysis, `photo_analysis (${locale})`).toContain(marker);
       expect(board, `senpai_board (${locale})`).toContain(marker);
     }
-    // 選び方が「最初の1問」まで書かれていること(理由だけだとモデルは並べ続ける)。
+    // The choice is spelled out down to "the very first problem" (given only a reason, the model keeps listing).
     expect(getPrompt("photo_analysis", "ja").body).toContain("いちばん最初の問題");
     expect(getPrompt("photo_analysis", "en").body).toContain("The first problem on the page");
   });
 
   /**
-   * 問題文が読めなかった授業の入口。「問題、読んでもらってもいい?」で**終える**。
-   * ここで `steps` を続けると、読み上げを頼んだ直後に
-   * 「じゃあ今の、説明してみて」が続き、教わっていない説明を求めることになる。
+   * The entrance for a lesson whose problem text was unreadable: end on "could you read
+   * the problem out?". Continuing `steps` here appends "now explain that back to me"
+   * right after asking them to read aloud, demanding an explanation of something not
+   * yet taught.
    */
   it("読み上げを頼んだらそこで終える、が両方の言語に書かれている", () => {
     expect(getPrompt("senpai_board", "ja").body).toContain("そこで `steps` を終えてください");
@@ -573,9 +588,11 @@ describe("設計上の約束がプロンプトに書かれている", () => {
   });
 
   /**
-   * 【申告させず、やらせる】。このアプリの出発点(インセプションデッキ §1
-   * 「わかったと感じた状態と説明できる状態は別物で、前者は本人には区別がつかない」)を
-   * 教え方に落としたもので、**ここが緩むと、本人が分かっていない地点から授業が始まる**。
+   * "Make them do it, do not make them report it." This app's starting point
+   * (inception deck §1: "feeling you understood and being able to explain are
+   * different, and the student cannot tell them apart"), turned into a way of
+   * teaching. Loosen it and the lesson starts from a point the student does not
+   * actually understand.
    */
   it("「申告させず、やらせる」が両方の言語に書かれている", () => {
     const ja = getPrompt("senpai_board", "ja").body;
@@ -619,8 +636,9 @@ describe("設計上の約束がプロンプトに書かれている", () => {
   });
 
   /**
-   * 復習は写真なしが正常。写真用プレースホルダを見た板書LLMが
-   * 「問題を読んで」と戻らず、すでに自己申告した穴から教え始める指示を固定する。
+   * Reviews normally have no photo. This pins the instruction that a board LLM seeing
+   * the photo placeholder does not fall back to "read me the problem" but teaches from
+   * the already self-reported hole.
    */
   it("復習モードは穴を根拠に、聞き直さず板書で教え直す", () => {
     const ja = boardLessonSystemPrompt(
@@ -668,36 +686,37 @@ describe("設計上の約束がプロンプトに書かれている", () => {
   });
 
   /**
-   * 学習計画(計画モード)の約束。
+   * The study-plan (plan mode) promises.
    *
-   * **いちばん守りたいのは「フォームにしない」**で、これは
-   * ピボット計画 v1 §1 で明示的に却下された案(価値を体験する前の摩擦が最大 → 初回離脱)。
-   * ここが緩むと、質問が1つずつ増えていって、気づいたときには音声のフォームになっている。
+   * The one to protect most is "do not make it a form", the option explicitly rejected
+   * in pivot plan v1 §1 (maximum friction before any value is felt -> first-run
+   * drop-off). Loosen it and the questions grow one at a time until it is a form by voice.
    */
   it("計画モードの約束が両方の言語に書かれている", () => {
     const ja = getPrompt("study_plan", "ja").body;
     const en = getPrompt("study_plan", "en").body;
 
-    // フォームにしない(聞くのは3つだけ)
+    // Not a form (only three things are asked)
     expect(ja).toContain("これはフォームではありません");
     expect(ja).toContain("聞くのは次の3つだけです");
     expect(en).toContain("this is not a form");
     expect(en).toContain("There are exactly three things you ask.");
 
-    // 約束2。計画は「目標点」「達成率」がいちばん自然に入り込む場所で、
-    // しかも §5 の親レポートに載る前提なので、置いた数字はそのまま親に届く。
+    // Promise 2. A plan is where "target score" and "completion rate" creep in most
+    // naturally, and it is meant for §5's parent report, so a number placed here
+    // reaches the parent verbatim.
     expect(ja).toContain("目標点・正答率・理解度・偏差値・達成率");
     expect(en).toContain("No target grade, no percentage correct");
 
-    // 持っていない教材を割り当てない(contract 側は material を添字にして塞いでいる)
+    // Never assign material they do not have (contract closes this by making material an index)
     expect(ja).toContain("聞いていない本の番号は書けません");
     expect(en).toContain("a book you were never told about");
 
-    // 組み直しで事実を聞き直さない(聞き直すとフォームに戻る)
+    // A rebuild does not re-ask the facts (re-asking is a form again)
     expect(ja).toContain("`intake` を前回のまま写します");
     expect(en).toContain("copy `intake` across unchanged");
 
-    // 引用は親レポートにそのまま載る(§5-2)
+    // The quote reaches the parent report verbatim (§5-2)
     expect(ja).toContain("でっち上げないでください");
     expect(en).toContain("Never make it up");
   });
@@ -710,13 +729,13 @@ describe("設計上の約束がプロンプトに書かれている", () => {
       current_plan: "(なし)",
       remaining_seconds: 600,
     });
-    // LLMは今日を知らないので、「9月10日」が何日後かも今年かも決められない。
+    // The LLM does not know today, so it can decide neither how many days away "10 September" is nor which year.
     expect(ja).toContain("2026-08-24");
     expect(ja).toContain("M2-SANKAKU-KAHO");
 
-    // **音声補正ヒントは意図的に同梱していない。** あれは数式の読み上げを直すためのもので、
-    // 計画の聞き取りに出るのは日付・ページ番号・問題集の名前という別物
-    // (index.ts の studyPlanSystemPrompt に理由がある)。
+    // The speech-correction hints are deliberately not bundled. Those fix formula
+    // readings, whereas a plan interview produces dates, page numbers and workbook
+    // names - different things (the reasoning is in index.ts's studyPlanSystemPrompt).
     expect(ja).not.toContain("さんぶんのに");
 
     const en = studyPlanSystemPrompt(

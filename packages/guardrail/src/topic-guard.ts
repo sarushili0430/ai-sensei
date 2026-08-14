@@ -9,60 +9,67 @@ import {
 } from "@ai-sensei/curriculum";
 
 /**
- * セッションで扱ってよい単元の集合と、カルテのtopic_idを照合する。
+ * Matches karte topic_ids against the set of units a session may cover.
  *
- * 写真から検出した単元と前提を許可リストにし、先輩のプロンプトへ渡す。
- * カルテ生成後は、穴に付いたtopic_idがその範囲を越えていないか機械的に照合する。
+ * Units detected from the photo, plus their prerequisites, become the allow-list
+ * passed to the senpai's prompt. After the karte is generated, the topic_ids on the
+ * holes are matched mechanically against that range.
  */
 
 export type AllowedTopics = {
-  /** 写真から検出した単元。授業の主題。 */
+  /** Units detected from the photo. The lesson's subject. */
   primary: ReadonlySet<string>;
-  /** 前提トピック。先輩が詰まりの原因まで戻って教えてよい範囲。 */
+  /** Prerequisite topics. How far back the senpai may go to teach the cause of the block. */
   prerequisite: ReadonlySet<string>;
 };
 
 /**
- * 1つのセッションで前提を何段たどるか。**プロンプトが先輩に約束している段数と同じ値。**
+ * How many prerequisite levels one session follows. The same number the prompt
+ * promises the senpai.
  *
- * `prompts/senpai_board.{ja,en}.md` は許可リストについて
- * 「今回の主題と**その前提が2段ぶん**入っています」と書いている。
- * 先輩は「判別式が出てこなかったなら判別式から」教えるために前提へ戻るので、
- * **前提へ戻れることは授業モードの本体**(戻れないと、詰まった生徒を連れて行けない)。
+ * `prompts/senpai_board.{ja,en}.md` says the allow-list contains "today's subject
+ * plus two levels of its prerequisites". The senpai goes back to prerequisites so
+ * it can teach "from the discriminant, if the discriminant did not come out", so
+ * being able to go back is the heart of lesson mode (without it, a stuck student
+ * cannot be taken anywhere).
  *
- * **2026-08-10 まで、ここは既定1段だった。** プロンプトは2段と説明しているのに
- * `backend/api` が既定で呼んでいたため、2段目の前提は許可リストに入らず、
- * 先輩へ「選んでよい単元」として渡っていなかった。
- * 板書配送の `validateStep()` は手順のスキーマとLaTeXを検証する関数で、
- * topic_idを許可集合と照合しない。旧質問ガードに弾かれていたわけではない。
- * 呼び出し側で `{ prerequisiteDepth: 2 }` を書き足すのではなく**既定を直した**のは、
- * ずれの原因が「呼び出し側がオプションを書き忘れた」形そのものだから —
- * 既定が正しくないと、次に増える呼び出し側がまた同じずれを持ち込む。
+ * Until 2026-08-10 the default here was 1. The prompt described two levels, but
+ * `backend/api` called it with the default, so second-level prerequisites never
+ * entered the allow-list and were never offered to the senpai as "units you may
+ * choose". Board delivery's `validateStep()` validates a step's schema and its
+ * LaTeX; it does not match topic_ids against the allow-set. Nothing was being
+ * rejected by the old question guard. The default was fixed rather than adding
+ * `{ prerequisiteDepth: 2 }` at the call site, because the drift was exactly the
+ * shape of "the caller forgot the option" - with a wrong default, the next caller
+ * added would reintroduce the same drift.
  *
- * **2段で止める根拠**(2026-08-10 に実カリキュラムで計測):
- * 検出1〜2件から作る許可集合は 1段=約2.0〜3.4件、**2段=約2.9〜4.8件**、3段=約3.4〜5.8件。
- * 前提の連鎖はいちばん長いもので5段しかなく、3段目以降はほとんど増えない。
- * プロンプトに貼る一覧としても、2段までなら最大10件で収まる。
+ * Why it stops at two (measured on the real curricula, 2026-08-10):
+ * an allow-set built from 1-2 detected units is about 2.0-3.4 entries at depth 1,
+ * about 2.9-4.8 at depth 2 and about 3.4-5.8 at depth 3. The longest prerequisite
+ * chain is only five levels, and depth 3 onward barely adds anything. As a list
+ * pasted into the prompt, two levels also stays within 10 entries.
  *
- * 前提の辺は**学習の順序に沿って伸びる**ので、深くしても無関係な単元には届かない
- * (三角関数の許可リストにベクトルは入らない)。
+ * Prerequisite edges extend along the learning order, so going deeper never reaches
+ * unrelated units (vectors never enter a trigonometry allow-list).
  *
- * カルテ生成・transcript 側が `{ prerequisiteDepth: 0 }` を明示しているのは別の判断で、
- * **そちらは「会話で実際に触れた範囲」を数えたい**ため。ここを変えても影響しない。
+ * Karte generation and the transcript side pass `{ prerequisiteDepth: 0 }`
+ * explicitly for a different reason - they want to count "what the conversation
+ * actually touched". Changing this does not affect them.
  */
 export const conversationPrerequisiteDepth = 2;
 
 export type BuildAllowedTopicsOptions = {
   /**
-   * 前提を何段たどるか。0なら深掘りを許さない。
-   * 既定は {@link conversationPrerequisiteDepth}(プロンプトが約束している段数)。
+   * How many prerequisite levels to follow. 0 forbids going deeper.
+   * Defaults to {@link conversationPrerequisiteDepth} (the number the prompt promises).
    */
   prerequisiteDepth?: number;
 };
 
 /**
- * 写真から検出したtopic_idを起点に、先輩が触れてよい話題の集合を作る。
- * 未知のIDは黙って捨てる(呼び出し側が空集合を見て再解析を判断する)。
+ * Builds the set of topics the senpai may touch, starting from the topic_ids
+ * detected in the photo. Unknown ids are dropped silently (the caller decides on
+ * re-analysis when it sees an empty set).
  */
 export function buildAllowedTopics(
   detectedTopicIds: readonly string[],
@@ -97,10 +104,10 @@ export function allowedTopicList(allowed: AllowedTopics): Topic[] {
 }
 
 /**
- * この許可リストがどちらの課程のものか。
+ * Which curriculum this allow-list belongs to.
  *
- * topic_id の接頭辞で決まるので、セッションのロケールを別途持ち回らなくても
- * 許可単元から会話の言語を一意に決められる。
+ * It follows from the topic_id prefix, so the conversation's language is determined
+ * from the allowed units without carrying the session's locale around separately.
  */
 export function allowedTopicsLocale(allowed: AllowedTopics): CurriculumLocale {
   for (const id of allowed.primary) {
@@ -115,18 +122,19 @@ export function allowedTopicsLocale(allowed: AllowedTopics): CurriculumLocale {
 }
 
 export const rejectionReasons = [
-  /** topic_idの形が壊れている。 */
+  /** The topic_id's shape is broken. */
   "malformed_topic_id",
-  /** 形は正しいがカリキュラムマップにない(大学数学・他教科など)。 */
+  /** Well-formed but absent from the curriculum map (university maths, another subject, ...). */
   "unknown_topic_id",
-  /** カリキュラム内だが、このセッションの許可リストに入っていない。 */
+  /** In the curriculum, but not in this session's allow-list. */
   "topic_not_allowed",
 ] as const;
 export type RejectionReason = (typeof rejectionReasons)[number];
 
 /**
- * カルテの穴に付いたtopic_idを検査する。
- * 会話中に許可された範囲を超えたタグが付くと、復習の通知まで的外れになる。
+ * Checks the topic_ids attached to a karte's holes.
+ * Tags that went outside the range allowed during the conversation make review
+ * notifications off-target too.
  */
 export function filterHoleTopicIds<T extends { topic_id: string }>(
   holes: readonly T[],
