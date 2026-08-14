@@ -1,47 +1,48 @@
-# Google Play — ストアの掲載情報(共通のテキスト要素)
+# Google Play — store listing (common text assets)
 
-Play Console > **ストアの掲載情報 > 共通のテキスト要素**(Common text assets)に
-そのまま貼るための本文。App Store 側のメタデータは
-[`../design_direction_v0.html#store`](../design_direction_v0.html) にある
-(2026-08-09 のピボット後の言い方と、4課程ぶんの対応科目に更新済み)。
-**言い回しを変えるときは両方を直すこと。**
+The text to paste directly into Play Console >
+**Store listing > Common text assets**. The App Store side's metadata is in
+[`../design_direction_v0.html#store`](../design_direction_v0.html)
+(updated to the post-2026-08-09 wording and the four curricula's subjects).
+**When changing the wording, change both.**
 
-Apple 向けの定期購入の定型文(Apple ID・「設定 > Apple ID > サブスクリプション」)は
-**Google では書かない**。解約先が違うので、そのまま流用すると事実と食い違う。
+The Apple subscription boilerplate (Apple ID, "Settings > Apple ID > Subscriptions")
+**is not written for Google**. Cancellation happens elsewhere, so reusing it would state
+something untrue.
 
-| フィールド | 上限 | 現状 |
+| Field | Limit | Current |
 | --- | --- | --- |
-| アプリ名 | 30字 | **カタルテ**(下記の注意) |
-| 短い説明 | 80字 | 下記 JA / EN |
-| 詳しい説明 | 4000字 | 下記 JA / EN |
-| アプリアイコン | 512×512 / 32bit PNG / 1MB以内 | [`icon/play-store-512.png`](icon/play-store-512.png) |
-| フィーチャーグラフィック | 1024×500 | [`feature-graphic/ja-1024x500.png`](feature-graphic/ja-1024x500.png)(日英) |
-| スクリーンショット(スマホ) | 2枚以上・9:16〜16:9 | [`screenshots/{ja,en}/play/`](screenshots) 1080×1920 が5枚 |
-| スクリーンショット(7インチ) | 任意 | [`screenshots/{ja,en}/play-tablet-7/`](screenshots) 1200×1920 が5枚 |
-| スクリーンショット(10インチ) | 任意 | [`screenshots/{ja,en}/play-tablet-10/`](screenshots) 1600×2560 が5枚 |
+| App name | 30 chars | **カタルテ** (see the note below) |
+| Short description | 80 chars | JA / EN below |
+| Full description | 4000 chars | JA / EN below |
+| App icon | 512x512 / 32-bit PNG / under 1MB | [`icon/play-store-512.png`](icon/play-store-512.png) |
+| Feature graphic | 1024x500 | [`feature-graphic/ja-1024x500.png`](feature-graphic/ja-1024x500.png) (ja and en) |
+| Screenshots (phone) | 2+, between 9:16 and 16:9 | [`screenshots/{ja,en}/play/`](screenshots), five at 1080x1920 |
+| Screenshots (7-inch) | Optional | [`screenshots/{ja,en}/play-tablet-7/`](screenshots), five at 1200x1920 |
+| Screenshots (10-inch) | Optional | [`screenshots/{ja,en}/play-tablet-10/`](screenshots), five at 1600x2560 |
 
-## アプリ名の注意
+## A note on the app name
 
-Play Console 側が **`かたるて`(ひらがな)** になっている。リポジトリと
-LP・アプリ内文言はすべて **`カタルテ`(カタカナ)** で、
-`docs/design_direction_v0.html` の基本情報も「カタルテ(語る × カルテ)」。
-**コンソール側をカタカナに寄せること**(既存資産が全部そちら)。
+Play Console currently has **`かたるて` (hiragana)**. The repository, the landing page
+and the in-app wording are all **`カタルテ` (katakana)**, and the basic information in
+`docs/design_direction_v0.html` also says "カタルテ (kataru x karte)".
+**Align the console to katakana** (every existing asset is on that side).
 
-端末に入る表示名は `カタルテ` に修整済み:
+The display name installed on the device is already fixed to `カタルテ`:
 
-- `apps/mobile/android/app/src/main/AndroidManifest.xml` の `android:label`
-- `apps/mobile/ios/Runner/Info.plist` の `CFBundleDisplayName`
+- `android:label` in `apps/mobile/android/app/src/main/AndroidManifest.xml`
+- `CFBundleDisplayName` in `apps/mobile/ios/Runner/Info.plist`
 
-ストア名とランチャー名が違うと、インストール後にアプリを見つけられない。
-日英で別の表示名にしたい場合(英語圏に `Katarute` を出す等)は、iOS は
-`InfoPlist.strings` のロケール別、Android は `values-<locale>/strings.xml` を
-足すことになる —— **いまは両ロケール共通で `カタルテ`**。
+A store name differing from the launcher name means people cannot find the app after
+installing. To use different display names per language (shipping `Katarute` to English
+markets, say), iOS needs per-locale `InfoPlist.strings` and Android needs
+`values-<locale>/strings.xml` — **for now both locales share `カタルテ`**.
 
 ---
 
-## 短い説明(80字)
+## Short description (80 chars)
 
-### JA / 37字
+### JA / 37 chars
 
 ```
 答えを教える。そのあと、あなたに教え返してもらう。中学・高校の数学と英語。
@@ -58,6 +59,13 @@ The AI tutor that teaches you high school math — then asks you to teach it bac
 ## 詳しい説明(4000字)
 
 Play は太字などの装飾を持たないので、見出しは `■` と改行だけで作る。
+```
+
+---
+
+## Full description (4000 chars)
+
+Play has no bold or other decoration, so headings are made with `■` and line breaks alone.
 
 ### JA
 
@@ -186,67 +194,73 @@ https://github.com/sarushili0430/ai-sensei
 ```
 
 ---
+```
 
-## 素材の生成
+---
 
-すべて `apps/mobile/tool/` のスクリプトが実画面とコードから書き出す。
-**画像を直接描き直さないこと**(絵の正はコード側)。
+## Generating the assets
+
+Everything is written out from the real screens and from code by scripts in
+`apps/mobile/tool/`.
+**Never redraw an image by hand** (code is authoritative for visuals).
 
 ```bash
 cd apps/mobile
-fvm flutter test tool/generate_app_icon.dart          # アイコン(512含む)
-fvm flutter test tool/generate_store_screenshots.dart # スクショ + フィーチャーグラフィック
+fvm flutter test tool/generate_app_icon.dart          # the icon (including 512)
+fvm flutter test tool/generate_store_screenshots.dart # screenshots + the feature graphic
 ```
 
-### スクリーンショット
+### Screenshots
 
-| 枠 | 出力 | 描画に使う論理サイズ |
+| Frame | Output | Logical size used for rendering |
 | --- | --- | --- |
-| スマートフォン | `screenshots/{ja,en}/play/` 1080×1920 | 393×852 |
-| 7インチ タブレット | `screenshots/{ja,en}/play-tablet-7/` 1200×1920 | 600×960 |
-| 10インチ タブレット | `screenshots/{ja,en}/play-tablet-10/` 1600×2560 | 800×1280 |
+| Phone | `screenshots/{ja,en}/play/` 1080x1920 | 393x852 |
+| 7-inch tablet | `screenshots/{ja,en}/play-tablet-7/` 1200x1920 | 600x960 |
+| 10-inch tablet | `screenshots/{ja,en}/play-tablet-10/` 1600x2560 | 800x1280 |
 
-- **App Store の `captioned/`(1290×2796)を Play に流用しないこと。** Play は
-  縦横比を 16:9〜9:16 に制限していて、1:2.17 は 9:16 より縦長なので弾かれる
-- タブレットは**タブレット幅で本当に描画**している。端末画像を引き伸ばすと
-  実機と違う絵になる(App Review のガイドライン 2.3.3 と同じ理由で避ける)
-- 見出しが2行になると端末画像に食い込むので、端末の位置は見出しの**実測高さ**から決めている
+- **Do not reuse the App Store's `captioned/` (1290x2796) for Play.** Play restricts the
+  aspect ratio to between 16:9 and 9:16, and 1:2.17 is taller than 9:16, so it is rejected
+- Tablets are **really rendered at tablet width**. Stretching a device image produces a
+  picture that differs from the real device (avoided for the same reason as App Review
+  guideline 2.3.3)
+- A heading that wraps to two lines would overlap the device image, so the device's
+  position is derived from the heading's **measured height**
 
-### フィーチャーグラフィック
+### Feature graphic
 
-`feature-graphic/{ja,en}-1024x500.png`。地はスクショと同じ淡い青の
-グラデーション、絵柄はアイコンと同じマーク。端に寄せた要素は切られるので
-内側72pxは空けている。
+`feature-graphic/{ja,en}-1024x500.png`. The background is the same pale blue gradient as
+the screenshots, and the artwork is the same mark as the icon. Elements near the edges get
+cropped, so the inner 72px is kept clear.
 
-## アイコン(512×512)
+## Icon (512x512)
 
-`apps/mobile/tool/generate_app_icon.dart` が
-`lib/src/brand/app_mark.dart` から書き出す。**画像を直接描き直さないこと。**
+`apps/mobile/tool/generate_app_icon.dart` writes it out from
+`lib/src/brand/app_mark.dart`. **Never redraw the image by hand.**
 
 ```bash
 cd apps/mobile
 fvm flutter test tool/generate_app_icon.dart
 ```
 
-- 出力: `docs/store/icon/play-store-512.png`(512×512 / RGBA / 約15KB)
-- 角丸とドロップシャドウは**Google側が付ける**ので、四角いまま渡す
-- Play はアルファを許すので、iOS の1024のようにアルファを落とす必要はない
+- Output: `docs/store/icon/play-store-512.png` (512x512 / RGBA / about 15KB)
+- Rounded corners and the drop shadow are **added by Google**, so hand it over square
+- Play allows alpha, so there is no need to flatten it as with iOS's 1024
 
-## URL
+## URLs
 
-| 申告先 | URL |
+| Declared as | URL |
 | --- | --- |
-| プライバシーポリシー(必須) | `https://ubiqy.jp/privacy/` |
-| 利用規約 | `https://ubiqy.jp/terms/` |
+| Privacy policy (required) | `https://ubiqy.jp/privacy/` |
+| Terms of service | `https://ubiqy.jp/terms/` |
 
-アプリ側も同じものを `--dart-define`(`PRIVACY_POLICY_URL` / `TERMS_URL`)で受ける。
-`apps/lp/public/{privacy,terms}/` の2ページとの正/副は未決
-([`../ci/store-setup.md`](../ci/store-setup.md) 0-2)。
+The app receives the same values via `--dart-define` (`PRIVACY_POLICY_URL` /
+`TERMS_URL`). Which of these and the two pages in `apps/lp/public/{privacy,terms}/` is
+authoritative is undecided ([`../ci/store-setup.md`](../ci/store-setup.md) 0-2).
 
-## まだ埋まっていないもの
+## Still to fill in
 
-- **Play Console のアプリ名が `かたるて`(ひらがな)** —— コンソール側で
-  `カタルテ` に直す。端末の表示名(`android:label` / `CFBundleDisplayName`)は
-  `カタルテ` に修整済み
-- サポートURL(`SUPPORT_EMAIL` と同じ窓口を指す1枚)
-- 定期購入の価格と期間(`pivot_plan_v1.md` §6-2。原価の実測後)
+- **Play Console's app name is `かたるて` (hiragana)** — fix it to `カタルテ` in the
+  console. The device display name (`android:label` / `CFBundleDisplayName`) is already
+  fixed to `カタルテ`
+- The support URL (one page pointing at the same channel as `SUPPORT_EMAIL`)
+- The subscription's price and period (`pivot_plan_v1.md` §6-2, after measuring costs)
