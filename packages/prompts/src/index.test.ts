@@ -573,6 +573,44 @@ describe("設計上の約束がプロンプトに書かれている", () => {
   });
 
   /**
+   * 授業は往復する(2026-08-14 のドッグフーディング報告への対応)。
+   *
+   * 「問いかけで `steps` を止めて答えを聞き、同じ板書に続きを積んで**教え切る**。
+   * 教え返しへの受け渡しは『自分の言葉で説明してみて』の形だけ」— この形は
+   * agent 側(`asksForTeachBack` / `runLessonLoop`)と二重書きで、プロンプト側だけ
+   * 消えると、**質問を1つしただけで授業が終わる**古い形に静かに戻る。
+   */
+  it("授業の往復・教え切り・確認問題が両方の言語に書かれている", () => {
+    const ja = getPrompt("senpai_board", "ja").body;
+    const en = getPrompt("senpai_board", "en").body;
+
+    // 往復: 問いかけで止まり、続きは同じ板書に積まれる
+    expect(ja).toContain("授業は往復する");
+    expect(ja).toContain("同じ板書の下に");
+    expect(en).toContain("The lesson goes back and forth");
+    expect(en).toContain("under the same board");
+
+    // 教え切ってから、同じ型の確認問題で最初の一手だけを聞く
+    expect(ja).toContain("教え切ってから、たしかめる");
+    expect(ja).toContain("数値を替えただけ");
+    expect(ja).toContain("最初の一手だけ");
+    expect(en).toContain("After you finish teaching, check it landed");
+    expect(en).toContain("only the numbers changed");
+    expect(en).toContain("only for the first move");
+
+    // 受け渡しの文言は往復を終える唯一の合図(`asksForTeachBack` と二重書き)。
+    // 途中の問いかけに同じ言い方を許すと、授業の途中で教え返しへ切り替わる。
+    expect(ja).toContain("自分の言葉で説明してみて");
+    expect(ja).toContain("途中の問いかけには「説明して」を使わない");
+    expect(en).toContain("in your own words");
+    expect(en).toContain("for a mid-lesson checkpoint");
+
+    // 教え返し側も、要約の最後の問いかけから会話を再開する(同じ質問を聞き直さない)
+    expect(getPrompt("senpai_conversation", "ja").body).toContain("その答えを聞くところから");
+    expect(getPrompt("senpai_conversation", "en").body).toContain("hearing their answer to it");
+  });
+
+  /**
    * 【申告させず、やらせる】。このアプリの出発点(インセプションデッキ §1
    * 「わかったと感じた状態と説明できる状態は別物で、前者は本人には区別がつかない」)を
    * 教え方に落としたもので、**ここが緩むと、本人が分かっていない地点から授業が始まる**。

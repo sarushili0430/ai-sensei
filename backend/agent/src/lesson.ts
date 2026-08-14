@@ -293,6 +293,15 @@ export type RunBoardLessonOptions = {
   signal?: AbortSignal;
   log?: Pick<JobLogger, "info" | "warn">;
   maxTokens?: number;
+  /**
+   * LLMへ渡すユーザーメッセージ。省略時は初回の定型指示({@link lessonInstruction})。
+   *
+   * 2回目以降の往復では「ここまでのやりとり + 続きだけを返す」の指示
+   * (`senpai.ts` の `lessonContinuationInstruction`)が入る。systemは毎回同じ正本で、
+   * **何が起きたかはユーザーメッセージ側に載せる** — systemを合成し直す作りにすると、
+   * どの文が正本でどの文が実行時の産物か、パスを重ねるほど分からなくなる。
+   */
+  instruction?: string;
 };
 
 export type BoardLessonResult = BoardAppendResult & {
@@ -319,12 +328,18 @@ export async function runBoardLesson(options: RunBoardLessonOptions): Promise<Bo
     signal,
     log,
     maxTokens = boardLessonMaxTokens,
+    instruction,
   } = options;
 
   const steps: BoardStep[] = [];
 
   const result = await delivery.append({
-    chunks: llm.stream({ system, user: lessonInstruction[locale], maxTokens, signal }),
+    chunks: llm.stream({
+      system,
+      user: instruction ?? lessonInstruction[locale],
+      maxTokens,
+      signal,
+    }),
     signal,
     onStep: async (step) => {
       steps.push(step);

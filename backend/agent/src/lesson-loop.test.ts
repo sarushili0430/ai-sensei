@@ -1,0 +1,367 @@
+import type { BoardChannelMessage } from "@ai-sensei/contract";
+import { describe, expect, it } from "vitest";
+import { BoardChannel, type BoardSink } from "./board.ts";
+import { StudentUtterances, runLessonLoop } from "./lesson-loop.ts";
+import type { LessonLlm } from "./lesson.ts";
+import { studentSilenceMarker } from "./senpai.ts";
+
+/**
+ * 授業の**往復**のテスト。見たいのは4つ:
+ *
+ *   1. 問いかけで止まり、答えを受けて**同じ板書**に続きが積まれること
+ *      (`board_open` は1回だけ・`index` は通しで増える)
+ *   2. 「自分の言葉で説明してみて」で往復が終わること(途中の質問では終わらない)
+ *   3. 説明の途中の発話がパスを中止し、**会話へ落とさず**続きのパスで応えること
+ *   4. 安全弁(回数・セッション終了)で降りるとき、積み残しの発話を
+ *      取り出さないこと(記録も返事も会話モードが引き取る)
+ */
+
+const step = (index: number, speech: string, tex?: string): unknown => ({
+  index,
+  speech,
+  board: tex === undefined ? null : { kind: "latex", tex },
+});
+
+function lessonJson(steps: readonly unknown[]): string {
+  return JSON.stringify({
+    title: "最小公倍数で分母をそろえる",
+    topic_ids: ["M1-NIJI-HANBETSU"],
+    steps,
+  });
+}
+
+/** 出力を呼び出し順に返すLLM。呼ばれた `user`(指示)を記録する。 */
+function stubLlm(...outputs: readonly string[]): LessonLlm & { asked: string[] } {
+  const asked: string[] = [];
+  let call = 0;
+  return {
+    asked,
+    stream({ user }) {
+      asked.push(user);
+      const output = outputs[Math.min(call, outputs.length - 1)] ?? "";
+      call += 1;
+      return (async function* () {
+        for (const part of output.match(/[\s\S]{1,7}/g) ?? []) {
+          await Promise.resolve();
+          yield part;
+        }
+      })();
+    },
+  };
+}
+
+function recordingSink(): BoardSink & { sent: BoardChannelMessage[] } {
+  const sent: BoardChannelMessage[] = [];
+  return {
+    sent,
+    async send(message) {
+      sent.push(message);
+    },
+  };
+}
+
+function boardWith(sink: BoardSink) {
+  return new BoardChannel({
+    sessionId: "ses_1",
+    locale: "ja",
+    sink,
+    newBoardId: () => "brd_1",
+  }).startBoard();
+}
+
+const never = new AbortController();
+
+type LoopOverrides = Partial<Parameters<typeof runLessonLoop>[0]>;
+
+function loopWith(
+  llm: LessonLlm,
+  board: ReturnType<typeof boardWith>,
+  overrides: LoopOverrides = {},
+) {
+  return runLessonLoop({
+    llm,
+    system: () => "先輩の板書プロンプト",
+    locale: "ja",
+    delivery: board,
+    speak: async () => undefined,
+    signal: never.signal,
+    utterances: new StudentUtterances(),
+    record: () => undefined,
+    remainingSeconds: () => 600,
+    ...overrides,
+  });
+}
+
+describe("StudentUtterances", () => {
+  it("待っている取り出しへ、次の発話を渡す", async () => {
+    const utterances = new StudentUtterances();
+    const waiting = utterances.take(1000);
+    utterances.push("12だと思う");
+    await expect(waiting).resolves.toBe("12だと思う");
+    expect(utterances.pending).toBe(false);
+  });
+
+  it("空白だけの発話は積まず、合図も出さない", () => {
+    const utterances = new StudentUtterances();
+    let pushed = 0;
+    utterances.onPush(() => {
+      pushed += 1;
+    });
+    utterances.push("   ");
+    expect(utterances.pending).toBe(false);
+    expect(pushed).toBe(0);
+  });
+
+  it("時間切れは null(積まれた発話はあとから取り出せる)", async () => {
+    const utterances = new StudentUtterances();
+    await expect(utterances.take(1)).resolves.toBeNull();
+    utterances.push("あとから");
+    expect(utterances.tryTake()).toBe("あとから");
+  });
+
+  it("中止の合図でも null で返す", async () => {
+    const utterances = new StudentUtterances();
+    const abort = new AbortController();
+    const waiting = utterances.take(5000, abort.signal);
+    abort.abort();
+    await expect(waiting).resolves.toBeNull();
+  });
+
+  it("発話が積まれた瞬間に合図が鳴り、解除できる", () => {
+    const utterances = new StudentUtterances();
+    let heard = 0;
+    const detach = utterances.onPush(() => {
+      heard += 1;
+    });
+    utterances.push("えっと");
+    detach();
+    utterances.push("もう聞こえない");
+    expect(heard).toBe(1);
+  });
+});
+
+describe("runLessonLoop", () => {
+  it("問いかけで止まり、答えを受けて同じ板書に続きを積む", async () => {
+    const sink = recordingSink();
+    const board = boardWith(sink);
+    const llm = stubLlm(
+      lessonJson([
+        step(0, "まず、式をそのまま書くね。", "x^2 - 3x + 2 = 0"),
+        step(1, "最小公倍数、何になると思う?"),
+        step(2, "ここは読まれない。", "x = 99"),
+      ]),
+      lessonJson([
+        step(0, "そう、12だよね。", "x = 12"),
+        step(1, "じゃあ今の、自分の言葉で説明してみて。"),
+      ]),
+    );
+
+    const utterances = new StudentUtterances();
+    const recorded: string[] = [];
+    const running = loopWith(llm, board, {
+      utterances,
+      record: (text) => recorded.push(text),
+      // 1パス目が問いかけで止まったら、生徒が答える
+      speak: async (delivered) => {
+        if (delivered.speech.includes("何になると思う")) {
+          setTimeout(() => utterances.push("えっと、12?"), 5);
+        }
+      },
+    });
+
+    const result = await running;
+
+    expect(result.reason).toBe("handed_over");
+    expect(result.passes).toBe(2);
+    // 問いかけの先の手順は配送されない(答えを聞く前に自分で埋めない)
+    expect(result.step_count).toBe(4);
+
+    // 板書は1枚のまま(開き直しは板書を消す信号になる)
+    const opens = sink.sent.filter((message) => message.type === "board_open");
+    expect(opens).toHaveLength(1);
+    // ワイヤーの index は往復をまたいで通しで増える
+    const indexes = sink.sent
+      .filter((message) => message.type === "board_step")
+      .map((message) => (message.type === "board_step" ? message.step.index : -1));
+    expect(indexes).toEqual([0, 1, 2, 3]);
+
+    // 答えは transcript(カルテの材料)に写る
+    expect(recorded).toEqual(["えっと、12?"]);
+    // 続きの指示には、ここまでのやりとりと答えが入っている
+    expect(llm.asked[1]).toContain("えっと、12?");
+    expect(llm.asked[1]).toContain("続きだけを書きます");
+    // 起きたことの列: 手順2つ → 生徒の答え → 手順2つ
+    expect(result.turns.map((turn) => turn.kind)).toEqual([
+      "step",
+      "step",
+      "student",
+      "step",
+      "step",
+    ]);
+  });
+
+  it("説明の途中の発話はパスを中止し、続きのパスで応える(会話へ落とさない)", async () => {
+    const sink = recordingSink();
+    const board = boardWith(sink);
+    const llm = stubLlm(
+      lessonJson([
+        step(0, "まず、式をそのまま書くね。", "x^2 - 3x + 2 = 0"),
+        step(1, "次はこう。", "D = 9 - 8"),
+        step(2, "ここまでは読まれない。", "D = 1"),
+      ]),
+      lessonJson([step(0, "じゃあ今の、自分の言葉で説明してみて。")]),
+    );
+
+    const utterances = new StudentUtterances();
+    const recorded: string[] = [];
+    const result = await loopWith(llm, board, {
+      utterances,
+      record: (text) => recorded.push(text),
+      speak: async (delivered) => {
+        // 1手順目の読み上げ中に生徒が口を開く
+        if (delivered.index === 0) utterances.push("ちょっと待って、全然わかんない");
+      },
+    });
+
+    expect(result.reason).toBe("handed_over");
+    expect(result.passes).toBe(2);
+    expect(recorded).toEqual(["ちょっと待って、全然わかんない"]);
+    expect(llm.asked[1]).toContain("ちょっと待って、全然わかんない");
+    // 中止されたパスの残り手順は出ていない
+    expect(result.step_count).toBe(2);
+  });
+
+  it("答えが来なければ沈黙を記録して続ける(transcriptには写さない)", async () => {
+    const sink = recordingSink();
+    const board = boardWith(sink);
+    const llm = stubLlm(
+      lessonJson([step(0, "この式、まず何する?", "x^2 - 3x + 2 = 0")]),
+      lessonJson([
+        step(0, "因数分解からいくね。", "(x-1)(x-2) = 0"),
+        step(1, "じゃあ今の、自分の言葉で説明してみて。"),
+      ]),
+    );
+
+    const recorded: string[] = [];
+    const result = await loopWith(llm, board, {
+      record: (text) => recorded.push(text),
+      answerTimeoutMs: 5,
+    });
+
+    expect(result.reason).toBe("handed_over");
+    expect(recorded).toEqual([]);
+    expect(
+      result.turns.some(
+        (turn) => turn.kind === "student" && turn.text === studentSilenceMarker("ja"),
+      ),
+    ).toBe(true);
+    // 続きの指示に「返事はなかった」が入り、次のパスが軽く自分で答えて進める
+    expect(llm.asked[1]).toContain(studentSilenceMarker("ja"));
+  });
+
+  it("「説明してみて」で終わったら、答えを待たずに教え返しへ渡す", async () => {
+    const board = boardWith(recordingSink());
+    const llm = stubLlm(
+      lessonJson([
+        step(0, "この形だったよね。", "D = b^2 - 4ac"),
+        step(1, "じゃあ今の、自分の言葉で説明してみて。"),
+      ]),
+    );
+
+    const result = await loopWith(llm, board);
+
+    expect(result.reason).toBe("handed_over");
+    expect(result.passes).toBe(1);
+  });
+
+  it("問いかけず言い切って終えたら completed(呼び出し側が定型句で戻す)", async () => {
+    const board = boardWith(recordingSink());
+    const llm = stubLlm(lessonJson([step(0, "この形にすると頂点が見えるよ。", "y = (x-1)^2")]));
+
+    const result = await loopWith(llm, board);
+
+    expect(result.reason).toBe("completed");
+    expect(result.passes).toBe(1);
+  });
+
+  it("往復の上限で降りるとき、積み残しの発話は取り出さない", async () => {
+    const board = boardWith(recordingSink());
+    const llm = stubLlm(
+      lessonJson([
+        step(0, "まず、式をそのまま書くね。", "x^2 - 3x + 2 = 0"),
+        step(1, "最小公倍数、何になると思う?"),
+      ]),
+    );
+
+    const utterances = new StudentUtterances();
+    const recorded: string[] = [];
+    const result = await loopWith(llm, board, {
+      utterances,
+      record: (text) => recorded.push(text),
+      maxPasses: 1,
+      speak: async (delivered) => {
+        if (delivered.index === 1) utterances.push("うーん、6?");
+      },
+    });
+
+    expect(result.reason).toBe("budget");
+    expect(result.passes).toBe(1);
+    // 発話は残したまま。記録も返事も、板書の要約を持つ会話モードが引き取る
+    expect(recorded).toEqual([]);
+    expect(utterances.pending).toBe(true);
+  });
+
+  it("残り時間が少なければ、答えを待たずに教え返しへ譲る", async () => {
+    const board = boardWith(recordingSink());
+    const llm = stubLlm(
+      lessonJson([
+        step(0, "まず、式をそのまま書くね。", "x^2 - 3x + 2 = 0"),
+        step(1, "この式、まず何する?"),
+      ]),
+    );
+
+    const result = await loopWith(llm, board, {
+      remainingSeconds: () => 30,
+    });
+
+    expect(result.reason).toBe("budget");
+    expect(result.passes).toBe(1);
+  });
+
+  it("答えを待っている間にセッションが終わったら、すぐ降りる", async () => {
+    const board = boardWith(recordingSink());
+    const llm = stubLlm(
+      lessonJson([
+        step(0, "まず、式をそのまま書くね。", "x^2 - 3x + 2 = 0"),
+        step(1, "この式、まず何する?"),
+      ]),
+    );
+
+    const ended = new AbortController();
+    const running = loopWith(llm, board, {
+      signal: ended.signal,
+      answerTimeoutMs: 60_000,
+      speak: async (delivered) => {
+        if (delivered.index === 1) setTimeout(() => ended.abort(), 5);
+      },
+    });
+
+    const result = await running;
+    expect(result.reason).toBe("interrupted");
+  });
+
+  it("作り直しが効かないパスで降りる(往復を続けても同じ失敗の族に落ちる)", async () => {
+    const board = boardWith(recordingSink());
+    // 数式に日本語を入れると弾かれる。作り直しもJSONではないので諦める。
+    const llm = stubLlm(
+      lessonJson([step(0, "よって、こう。", "\\text{よって} x = 2")]),
+      "無理でした",
+    );
+
+    const result = await loopWith(llm, board);
+
+    expect(result.reason).toBe("error");
+    expect(result.passes).toBe(1);
+    expect(result.step_count).toBe(0);
+  });
+});
