@@ -1,64 +1,66 @@
-# インセプションデッキ — ai-sensei(カタルテ)
+# Inception deck — ai-sensei (Katarute)
 
-作成日: 2026-08-05 / 対象: 提出締切 2026-09-30 23:45 PDT までの全スプリント
-一次情報: [`design_direction_v0.html`](design_direction_v0.html)・[`adr.md`](adr.md)
-2026-08-09: [`pivot_plan_v1.md`](pivot_plan_v1.md) の決定により §0(4つの約束の1番目)を改正。改正の経緯・設計はそちらが一次情報。
+Written 2026-08-05 / Covers: every sprint up to the 2026-09-30 23:45 PDT deadline
+Primary sources: [`design_direction_v0.html`](design_direction_v0.html), [`adr.md`](adr.md)
+2026-08-09: §0 (the first of the four promises) was revised by the decision in
+[`pivot_plan_v1.md`](pivot_plan_v1.md); that document is the primary source for the
+revision's reasoning and design.
 
-この資料は「作るものの合意」であって、仕様書ではない。
-**迷ったらここに戻る。ここに書いていないことは、やらない理由がある。**
-スプリントの計画・PRのスコープ判断・機能追加の可否は、まず §2 の一言と §4 のやらないことリストに照らす。
+This is an agreement about what is being built, not a specification.
+**When in doubt, come back here. What is not written here has a reason for not being done.**
+Sprint plans, PR scope calls and "should we add this feature" all get checked first
+against §2's one-liner and §4's "won't do" list.
 
 ---
 
-## 0. 一言で言うと(これだけは暗記する)
+## 0. In one line (memorise this, if nothing else)
 
-> **答えを教える。そのあと、あなたに教え返してもらう。**
+> **Give the answer. Then have the student teach it back to you.**
 
-英語(提出資料・ストア・デモ動画で使う正文):
+English (the canonical wording for submissions, the store and the demo video):
 
 > **The AI tutor that teaches you — then asks you to teach it back.**
 
-この一文は、README・ストア説明・デモ動画の冒頭・ピッチの1行目で**同じ言葉のまま**使う。
-言い換えたくなったら、それは機能が一言からはみ出した合図。文を直すのではなく、機能を疑う。
+This sentence appears **in exactly these words** in the README, the store description,
+the opening of the demo video and the first line of the pitch.
+Wanting to reword it is the signal that a feature has outgrown the one-liner. Do not fix
+the sentence; question the feature.
 
-一言に含まれている約束は4つ。**どれか1つでも破る変更は、機能追加ではなく別プロダクト。**
+The one-liner contains four promises. **A change that breaks any one of them is not a
+feature but a different product.**
 
-1. **教える。そのあと教え返させる。** 先輩が板書つきで教え、その場で「説明してみて」と聞き返す。
-2. **点数を出さない。** 数えるのは「連続日数」と「埋めた穴の数」だけ。
-3. **パスを恥にしない。** 説明できなかったことは、そのまま穴として価値化する。
-4. **煽らない。** 通知もペイウォールも、先輩の判断として書く。数字は見せず、命令や催促にもしない。
+1. **Teach, then have them teach it back.** The senpai teaches with a board and asks for
+   an explanation on the spot.
+2. **No scores.** Only streak days and filled holes are counted.
+3. **Never shame a pass.** What could not be explained becomes a hole, which is value.
+4. **Never nag.** Notifications and paywalls are written as the senpai's judgement: no
+   numbers, no orders, no pressure.
 
 ---
 
-## 1. 我々はなぜここにいるのか
+## 1. Why are we here
 
-写真を撮れば答えが出るアプリ(QANDA など)は、もう高校生の手元にある。
-**答えの入手コストはゼロになった。にもかかわらず、模試で解けない。**
-理由ははっきりしていて、解答を読んで「わかった」と感じた状態と、
-自分の言葉で手順と理由を説明できる状態は、別物だからだ。前者は本人には区別がつかない。
+Apps that give you the answer from a photo (QANDA and the like) are already in every
+high-schooler's hand.
+**The cost of obtaining an answer is zero, and they still cannot solve the mock exam.**
+The reason is clear: reading a solution and feeling you understand it is a different
+state from being able to explain the steps and the reasons in your own words. And the
+student cannot tell the two apart.
 
-だから我々は、**穴を見つける側**を作る。答えを配る側は既に飽和している。
+So we build **the side that finds the gaps**. The side that hands out answers is
+saturated.
 
-- 学習科学の裏づけ: 自己説明効果(self-explanation effect)と、
-  教えることで学びが深まるプロテジェ効果(Teachable Agent 研究)。
-  ※ラーニングピラミッドは実証性が弱いので**ピッチに使わない**。
-- AIの立ち位置: 試験官ではなく「わからないから教えてほしい後輩」。
-  「え、なんでここで判別式使うんですか?」という素朴な疑問の文体に統一する。
-- 我々が並んでいる列: RevenueCat Shipaton 2026(Next Gen / Peace Prize /
-  OneSignal "Keep Them Coming Back" / HAMM / #BuildInPublic / Design を併願)。
-  **締切のあるコンテストである**という事実が、以降のすべての判断の重みづけを決めている。
+- Learning-science backing: the self-explanation effect, and the protégé effect, where
+  teaching deepens learning (Teachable Agent research).
+  Note: the learning pyramid has weak evidence and **is not used in the pitch**.
+- The AI's stance: not an examiner but "a kouhai who wants to be taught".
+  Everything is written in the register of a naive question: "wait, why do you use the
+  discriminant here?"
+- The queue we are in: RevenueCat Shipaton 2026 (entering Next Gen / Peace Prize /
+  OneSignal "Keep Them Coming Back" / HAMM / #BuildInPublic / Design).
+  **The fact that this is a contest with a deadline** weights every decision below.
 
-## 2. エレベーターピッチ
-
-> **わかったつもりのまま先へ進んでしまう** という問題を解決したい
-> **日本の高校生** 向けの、
-> **カタルテ(ai-sensei)** というプロダクトは、
-> **数学のノートを撮ると、先輩AIが板書つきで教えてくれて、その場で教え返す学習アプリ** です。
-> これは **教え返しで詰まった箇所を「理解の穴」としてカルテに残し、1日・3日・7日後にもう一度たずねる** ことができ、
-> **写真を撮ると答えを教えて終わりの既存の数学アプリ(QANDA 等)** とは違って、
-> **教えたその場で、あなたに教え返してもらう** 。わかったつもりは、そこで見つかる。
-
-英語版(提出資料の正文):
+## 2. Elevator pitch
 
 > For **Japanese high school students** who **mistake "I read the solution" for "I understand"**,
 > **Kataru-te (ai-sensei)** is a **spoken-explanation study app** in which **a senpai AI teaches you
@@ -69,161 +71,186 @@
 > **teaches you — then makes you teach it back**, catching the illusion of understanding
 > before it settles in.
 
-**言い切りの検算**: この段落から固有名詞を消しても差別化が残るか? 残る(「教えたあと教え返させる」「穴が残る」「間隔をあけて再訪する」)。
-残らない表現になったら、それは技術自慢に寄っている。
+**A check on the claim**: strip the proper nouns from that paragraph and does the
+differentiation survive? Yes ("teaches, then makes you teach it back", "gaps remain",
+"revisited at intervals"). If a phrasing does not survive it, it has drifted into
+showing off technology.
 
-## 3. パッケージデザイン(ストアに並んだときに何と書いてあるか)
+## 3. Package design (what it says on the shelf)
 
-- **アプリ名**: カタルテ(語る × カルテ)。※未決。ここで確定させる場合は本節を正とする
-- **サブタイトル(30字)**: 答えを教える。そのあと、あなたに教え返してもらう。
-- **英語正文**: The AI tutor that teaches you — then asks you to teach it back.
-- **箱の裏の3行**:
-  1. 問題とノートを撮ると、先輩が板書つきで教えてくれる
-  2. そのあと教え返し、説明が止まった場所が「理解の穴」として残る
-  3. 埋まるまで、翌日・3日後・7日後に先輩がもう一度たずねてくる
-- **スクショの並び順**(1179×2556・端末フレームなし): ①先輩が板書つきで教える授業モード →
-  ②教え返せると先輩の顔が輝く祝福画面 → ③黄マーカー(言えた)とピンクマーカー(穴)のカルテ →
-  ④連続日数と「埋めた穴」カウンター → ⑤翌日・3日後・7日後の再訪画面
-- **絶対に書かない言葉**: 「AIが解説」「正答率」「偏差値」「サボると losing streak」
+- **App name**: Katarute (kataru "to tell" x karte). Undecided. If it is settled, this
+  section becomes authoritative
+- **Subtitle (30 chars)**: Give the answer. Then have the student teach it back.
+- **English canonical**: The AI tutor that teaches you — then asks you to teach it back.
+- **Three lines on the back of the box**:
+  1. Photograph the problem and your notes, and the senpai teaches it with a board
+  2. Then teach it back; where the explanation stalls stays as a "gap in understanding"
+  3. Until it is filled, the senpai asks again after 1, 3 and 7 days
+- **Screenshot order** (1179x2556, no device frame): (1) the lesson mode with the senpai
+  teaching on the board -> (2) the celebration screen where a successful teach-back
+  lights up the senpai's face -> (3) the karte with yellow (said it) and pink (a gap)
+  markers -> (4) the streak and "filled holes" counters -> (5) the return screen after
+  1, 3 and 7 days
+- **Words that are never written**: "AI explains it", "accuracy", "deviation score",
+  "losing streak if you skip"
 
-## 4. やらないことリスト
+## 4. The "won't do" list
 
-| やる | やらない | あとで考える |
+| Will do | Won't do | Later |
 | --- | --- | --- |
-| 数学(数I・A・II・B・III・C 新課程) | 数学以外の教科 | — |
-| 撮影→板書つき授業→教え返し→カルテ→復習の1周 | 教えて終わり(その場で教え返させない) | — |
-| 音声で作る学習計画 | 同席型(自習室)・フォーム入力の学習計画 | — |
-| リアルタイム音声会話(LiveKit) | WebRTC の自前実装 | 声を出せない環境向けのテキスト入力(§7の懸念) |
-| 連続日数・埋めた穴カウンター | XP・リーグ・クエスト・正誤スコア | — |
-| 匿名(デバイスID)での利用開始 | アカウント作成の要求 | Sign in with Apple(v1.1) |
-| iOS(TestFlight → App Store) | Android の公開 | 提出後に追従(Flutterなので実装は共通) |
-| 日英2ロケール | 3言語目 | — |
-| RevenueCat 課金 + 初回カルテ直後のペイウォール | ソーシャル機能・ランキング・共有タイムライン | — |
-| 純関数ユニット + golden test | E2E自動テスト(TestFlightの手動確認で代替) | — |
+| Maths (I, A, II, B, III, C under the current guidelines) | Subjects other than maths | — |
+| One turn of photograph -> board lesson -> teach-back -> karte -> review | Teaching and stopping there (no teach-back on the spot) | — |
+| Study plans built by voice | A co-presence (study room) mode, or form-input study plans | — |
+| Real-time voice conversation (LiveKit) | Implementing WebRTC ourselves | Text input for places you cannot speak (§7's concern) |
+| Streak and filled-hole counters | XP, leagues, quests, correctness scores | — |
+| Starting anonymously (device id) | Requiring account creation | Sign in with Apple (v1.1) |
+| iOS (TestFlight -> App Store) | Publishing on Android | Following after submission (Flutter, so the implementation is shared) |
+| Two locales, Japanese and English | A third language | — |
+| RevenueCat billing + a paywall right after the first karte | Social features, leaderboards, a shared timeline | — |
+| Pure-function units + golden tests | Automated E2E (manual checking on TestFlight instead) | — |
 
-**やらないことリストの使い方**: 「やらない」に入っているものを実装するPRは、
-サイズが小さくても却下する。動かすときは**リストを書き換えるPRを先に出す**。
+**How to use this list**: a PR implementing something in the "won't do" column is
+rejected however small. To move an item, **open a PR that rewrites the list first**.
 
-## 5. 「ご近所さん」を探せ(依存している他人)
+## 5. Find the neighbours (who we depend on)
 
-| 相手 | 何を握られているか | こちらの手当て |
+| Party | What they hold over us | Our mitigation |
 | --- | --- | --- |
-| **Apple App Review** | 公開そのもの。AI生成コンテンツの扱い・年齢レーティング | 8月末に初回バイナリを提出してリジェクト分のバッファを取る。ガードレールが不適切出力対策そのもの |
-| **LiveKit(Cloud / Agents)** | 会話の遅延・割り込み品質、agentのホスティング可否 | Node SDK は `^1.6.1` で固定([ADR 0002](adr.md#adr-0002))。ホスティング不可ならコンテナ常駐 |
-| **STT / LLM / TTS**(Deepgram・Claude・ElevenLabs) | 日本語の聞き取り精度・コスト・レイテンシ | 数式は写真文脈を持つLLM側で補正。無料枠を1日1回・最長5分に固定してコスト上限を作る |
-| **RevenueCat** | 参加要件そのもの(SDKでの課金が必須) | [`revenuecat.md`](revenuecat.md)。鍵なしビルドでは課金機能ごと無効化してCIを通す |
-| **OneSignal** | 間隔反復リマインダー = "Keep Them Coming Back" の応募根拠 | `/complete` から1日/3日/7日後を予約。スケジュールはOneSignal側に持たせcron不要 |
-| **Cloudflare(Workers/D1/R2/KV)** | API・写真・カルテ・無料枠メータリング | develop/production の2環境。バインディング名だけ揃えて実体を分ける([`deploy.md`](deploy.md)) |
-| **Codemagic / GitHub Actions** | 配布経路 | mobile→Codemagic、backend→Actions([`ci/`](ci/README.md)) |
-| **Shipaton 審査員** | 賞。英語資料・2分デモ動画・全機能開放のプロモコード | 英語ロケールとプロモコードは機能ではなく**提出物**として扱い、W4で凍結 |
-| **高校生ユーザー本人** | 継続率。声を出す抵抗感 | 勉強垢文化(X/TikTok)への種まきをW5から |
-| **開発者(ソロ)** | 全部 | §8 の「落とす順」を先に決めてある |
+| **Apple App Review** | Publication itself; how AI-generated content and age rating are handled | Submit the first binary at the end of August to leave a buffer for rejections. The guardrails *are* the countermeasure against inappropriate output |
+| **LiveKit (Cloud / Agents)** | Conversation latency, barge-in quality, whether the agent can be hosted | The Node SDK is pinned at `^1.6.1` ([ADR 0002](adr.md#adr-0002)). If hosting is unavailable, a long-lived container |
+| **STT / LLM / TTS** (Deepgram, Claude, ElevenLabs) | Japanese recognition accuracy, cost, latency | Formulas are corrected by the LLM, which has the photo's context. The free tier is fixed at one session a day, five minutes max, capping cost |
+| **RevenueCat** | The entry requirement itself (SDK billing is mandatory) | [`revenuecat.md`](revenuecat.md). A keyless build disables billing entirely so CI passes |
+| **OneSignal** | Spaced-repetition reminders = the basis of the "Keep Them Coming Back" entry | Bookings for +1/+3/+7 days from `/complete`. The schedule lives on OneSignal's side, so no cron |
+| **Cloudflare (Workers/D1/R2/KV)** | The API, photos, kartes and free-tier metering | Two environments, develop and production. Only the binding names are shared ([`deploy.md`](deploy.md)) |
+| **Codemagic / GitHub Actions** | The distribution route | mobile -> Codemagic, backend -> Actions ([`ci/`](ci/README.md)) |
+| **Shipaton judges** | The prizes. English materials, a two-minute demo video, a promo code unlocking everything | The English locale and the promo code are treated as **submission artifacts**, not features, and are frozen in W4 |
+| **The high-school students themselves** | Retention. The reluctance to speak aloud | Seeding into study-account culture (X/TikTok) from W5 |
+| **The developer (solo)** | Everything | §8's "what to drop first" is decided in advance |
 
-## 6. 解決案を描く
+## 6. Sketch the solution
 
 ```
-Flutter app ──HTTPS──▶ backend/api ──▶ LiveKit room 作成 + agent 起動
-     │                    │  写真をVision LLMで解析し、単元判定と質問方針を作る
-     │                    │  ストレージ: R2(写真) / DB: D1 / メータリング: KV
+Flutter app ──HTTPS──▶ backend/api ──▶ create the LiveKit room + start the agent
+     │                    │  Analyses the photo with a Vision LLM, deciding the unit and question policy
+     │                    │  Storage: R2 (photos) / DB: D1 / metering: KV
      └──WebRTC────────▶ agent
-                          VAD → 日本語ストリーミングSTT → LLM(先輩ペルソナ)が
-                          {speech, board} をストリーミング生成。手順が1つ完成するたびに
-                          board を LiveKit Text Streams で送信し、直後に speech を TTS
-                          → 割り込み対応。終了時にtranscriptからカルテを生成し
-                          backend/api の /v1/sessions/{id}/complete へPOST
-                          → OneSignalで翌日/3日後/7日後の再訪プッシュを予約
+                          VAD -> Japanese streaming STT -> the LLM (senpai persona)
+                          streams {speech, board}. Each time a step completes, the board
+                          is sent over LiveKit Text Streams and the speech goes to TTS
+                          right after -> barge-in handled. At the end the karte is
+                          generated from the transcript and POSTed to backend/api's
+                          /v1/sessions/{id}/complete
+                          -> OneSignal books +1 / +3 / +7-day return pushes
 ```
 
-技術選定の理由は書かない(それは [ADR](adr/) の仕事)。この図でデッキとして言いたいのは1点だけ:
+The reasons behind the technology choices are not written here (that is [ADR](adr/)'s
+job). As a deck, this diagram says one thing only:
 
-**「教える範囲」を、プロンプトの言葉づかいではなくアーキテクチャで守っている。**
-質問生成には二重のガードレールがあり、プロンプト側で「写真に写っている内容 ∩ カリキュラムマップの範囲」に限定し、
-サーバ側で `topic_id` をホワイトリスト照合して、外れたものは再生成させる
-(`packages/curriculum` の純JSONを正として、`backend/api` と `backend/agent` の両方が同じ照合を通る)。
+**"What may be taught" is protected by the architecture, not by prompt wording.**
+Question generation has two guardrails: the prompt limits it to "what is in the photo ∩
+the curriculum map's scope", and the server matches the `topic_id` against an allow-list,
+regenerating what falls outside (`packages/curriculum`'s plain JSON is authoritative, and
+both `backend/api` and `backend/agent` go through the same matching).
 
-## 7. 夜も眠れなくなるような問題は何だろう
+## 7. What keeps us up at night
 
-> **2026-08-09のピボットによる更新**: 5・7は解消(下記に注記)。新しい最大リスクは
-> **8**(8/16の板書ゲート)。1〜4・6は本改正では見直していない
-> ([`pivot_plan_v1.md`](pivot_plan_v1.md) §10)。
+> **Update after the 2026-08-09 pivot**: 5 and 7 are resolved (noted below). The new
+> biggest risk is **8** (the 8/16 board gate). 1-4 and 6 were not revisited in this
+> revision ([`pivot_plan_v1.md`](pivot_plan_v1.md) §10).
 
-1. **日本語で数学を話すのが、そもそも難しい。** 「にじょう」「ぶんの」の誤認識と、会話の遅延。
-   → W2末の **Go/No-Go ゲート**で判定し、未達なら録音式の一問一答にフォールバックする
-   (UIとカルテは共通なので切替コストは小さい)。**このゲートを曖昧に通過させることが最大のリスク。**
-2. **審査で落ちて、9/30に間に合わない。** → 8月末に初回提出。9月中旬の初提出は危険。
-3. **agentのホスティング先が未確定。** LiveKit Cloud のエージェントホスティングが使えない場合、
-   常駐コンテナの運用がソロに乗る([ADR 0002](adr.md#adr-0002) の残課題)。
-4. **会話は原価がかかる。** STT+LLM+TTS で1分あたり数円〜十数円。
-   無料枠のメータリングは**サーバ側で数える**(クライアント改竄対策)。ここが破れると赤字が青天井。
-5. **高校生が声を出せない。** 電車・リビング・深夜。常時会話型にしたぶん重要度が上がった未決事項。
-   → **ピボットでほぼ解消。** 復習の入口を「1回1問・10秒のテキストで完結する小テスト」にしたことで、
-   声を出せなくても復習は回る([`pivot_plan_v1.md` §2](pivot_plan_v1.md))。ただし**授業モード本体
-   (板書つきで教わり、その場で教え返す)は今も声が前提**であることは変わらない — 消えたのは
-   復習の入口だけ。
-6. **ソロが倒れたら全部止まる。** → 機能追加はW4で凍結。W5以降はグロースと磨きだけ。
-7. **「答えを教えない」が、ただの不便に見える。** オンボーディングの1画面目で
-   「答えは教えません」と先に宣言して期待値を設計する(実装済み)。
-   → 宣言は言葉を足すほど不便に聞こえるので、3・4枚目で**一度やらせる**ようにした。
-   後輩に聞かれ、説明するか「うまく言えない」を押し、その結果がカルテの1行として残る
-   ところまでを、写真も声も使わずに1往復する([ADR 0004](adr.md#adr-0004))。
-   → **改正で消滅。** 約束1が「教える。そのあと教え返させる」に変わったので、
-   「答えは教えません」と先に宣言して期待値を下げる必要自体がなくなった(§0)。
-8. **【新規・現在の最大リスク】8/16の板書ゲート。** 板書つきで1問教わって「わかる」に到達するか。
-   曖昧に通過させないこと — かつての1番目の懸念と同じ轍を踏まない。未達時のフォールバックは
-   2種類あり、生成の質が出ないなら解法ステップのテンプレ化、描画が壊れるならガードレール側で
-   描画できる範囲に縛る([`pivot_plan_v1.md` §3-4](pivot_plan_v1.md)・§10-1)。
+1. **Talking maths in Japanese is hard in the first place.** Misrecognition of
+   "にじょう" and "ぶんの", plus conversation latency.
+   -> Judged at the **Go/No-Go gate** at the end of W2; if it fails, fall back to a
+   recorded one-question-one-answer format (the UI and the karte are shared, so the
+   switching cost is small). **Waving that gate through is the biggest risk.**
+2. **Rejected in review and missing 9/30.** -> Submit first at the end of August. A first
+   submission in mid-September is dangerous.
+3. **The agent's host is unsettled.** If LiveKit Cloud's agent hosting is unavailable,
+   operating a long-lived container falls on one person (the open issue in
+   [ADR 0002](adr.md#adr-0002)).
+4. **Conversation costs money.** STT+LLM+TTS runs a few to a dozen-odd yen a minute.
+   Free-tier metering is **counted on the server** (against client tampering). Break that
+   and the losses are unbounded.
+5. **High-schoolers cannot speak aloud.** On the train, in the living room, late at night.
+   Always-on conversation raised the weight of this open issue.
+   -> **Largely resolved by the pivot.** Making the review entrance "one question, ten
+   seconds, entirely in text" means reviews work without speaking
+   ([`pivot_plan_v1.md` §2](pivot_plan_v1.md)). But **the lesson mode itself - being
+   taught on a board and teaching it back on the spot - still assumes voice**; only the
+   review entrance changed.
+6. **If the solo developer goes down, everything stops.** -> Features freeze in W4. From
+   W5 it is growth and polish only.
+7. **"We won't give you the answer" just looks like an inconvenience.** The first
+   onboarding screen declared "we do not give answers" to set expectations (implemented).
+   -> Every added word of that declaration sounded more inconvenient, so screens 3 and 4
+   **make them do it once** instead. Being asked by the kouhai, explaining or pressing
+   "I can't put it into words", and seeing the result become a line in the karte - one
+   round trip with no photo and no voice ([ADR 0004](adr.md#adr-0004)).
+   -> **Removed by the revision.** With promise 1 now "teach, then have them teach it
+   back", there is no longer any need to lower expectations by declaring "we do not give
+   answers" (§0).
+8. **[New, currently the biggest risk] The 8/16 board gate.** Does one problem taught with
+   a board reach "I get it"? Do not wave it through - do not repeat the mistake made with
+   concern 1. There are two fallbacks if it fails: templated solution steps if the
+   generation quality is not there, and constraining the guardrails to what can be
+   rendered if the rendering breaks ([`pivot_plan_v1.md` §3-4](pivot_plan_v1.md), §10-1).
 
-## 8. 期間を見極める
+## 8. Size the work
 
-締切は動かない: **2026-09-30 23:45 PDT**。目標は **9/25 早期提出**。
-2026-08-05 時点で、W1相当の骨格はリポジトリに入っている(モノレポ・Workers 2環境デプロイ・
-RevenueCat・Codemagic配布・主要画面・カルテ生成・OneSignal予約・カリキュラムv0・ガードレール)。
+The deadline does not move: **2026-09-30 23:45 PDT**. The target is **early submission on
+9/25**. As of 2026-08-05 the W1-equivalent skeleton is in the repository (monorepo,
+two-environment Workers deploy, RevenueCat, Codemagic distribution, the main screens,
+karte generation, OneSignal bookings, curriculum v0, guardrails).
 
-| 週 | やること |
+| Week | Work |
 | --- | --- |
-| W1 (8/3〜) | Devpost/Ship Kit・Apple Developer / publicモノレポ(MIT) / **LiveKitスパイク** |
-| W2 | 会話パイプライン仕上げ(割り込み・数式補正・カルテ生成)/ **W2末: Go/No-Goゲート** |
-| W3 | RevenueCat + ペイウォール / OneSignal + 復習フロー / TestFlight配布 |
-| W4 (〜8/末) | 磨き込み・英語ロケール・アイコン/スクショ / **App Store審査へ提出・機能凍結** |
-| W5〜6 | 公開・実ユーザー獲得(勉強垢文化への種まき)/ #BuildInPublic 週次投稿 |
-| W7 | 数値集め(DL/継続/転換)/ デモ動画(2分・英語字幕) |
-| W8 (〜9/30) | 提出物一式を英語で / **9/25 早期提出** |
+| W1 (from 8/3) | Devpost/Ship Kit, Apple Developer / the public monorepo (MIT) / **the LiveKit spike** |
+| W2 | Finish the conversation pipeline (barge-in, formula correction, karte generation) / **end of W2: the Go/No-Go gate** |
+| W3 | RevenueCat + paywall / OneSignal + the review flow / TestFlight distribution |
+| W4 (to end of August) | Polish, the English locale, icon and screenshots / **submit to App Review, freeze features** |
+| W5-6 | Launch, acquiring real users (seeding study-account culture) / weekly #BuildInPublic posts |
+| W7 | Gathering numbers (downloads/retention/conversion) / the demo video (two minutes, English subtitles) |
+| W8 (to 9/30) | The full submission set in English / **early submission on 9/25** |
 
-**遅れたら落とす順(先に決めてある)**:
-① 後輩のあと追い質問(Premium訴求は復習機能だけでも立つ)
-→ ② 間隔反復を3段階から翌日のみに縮小
-→ ③ 英語ロケールを主要画面のみに(残りはデモ動画の英語字幕で補う)。
-**TTSとカルテはデモの核なので落とさない。**
+**What to drop first if we fall behind (decided in advance)**:
+(1) the kouhai's follow-up question (the Premium case stands on the review feature alone)
+-> (2) shrink spaced repetition from three steps to the next day only
+-> (3) the English locale on the main screens only (the rest covered by the demo video's
+English subtitles).
+**TTS and the karte are the core of the demo and are never dropped.**
 
-## 9. 何を諦めるのか(トレードオフスライダー)
+## 9. What are we giving up (trade-off sliders)
 
 ```
-締切(9/30)     ■■■■■■■■■■  絶対。動かない
-コンセプトの純度 ■■■■■■■■■□  §0の4つの約束は、締切と引き換えでも守る
-体験の磨き      ■■■■■■■□□□  Design Award を狙える程度には。板書のペン先とカルテのマーカーを同じ筆致で揃えるのが最大の報酬
-スコープ        ■■■■□□□□□□  2026-08-09のピボットで1度だけ組み替えた。以後は§4の新リストを削る方向にしか動かさない
-コード品質      ■■■■■□□□□□  publicリポジトリなので読まれる前提。ただしE2Eは書かない
-機能の量        ■■□□□□□□□□  コアループ1周が回りきることが、機能数より優先
+Deadline (9/30)      ■■■■■■■■■■  Absolute. It does not move
+Purity of concept    ■■■■■■■■■□  §0's four promises hold even against the deadline
+Experience polish    ■■■■■■■□□□  Enough to aim at a Design Award. Matching the board's pen and the karte's marker in one stroke style is the biggest payoff
+Scope                ■■■■□□□□□□  Rearranged once by the 2026-08-09 pivot. From here it only moves in the direction of trimming §4's new list
+Code quality         ■■■■■□□□□□  A public repository, so assume it is read. But no E2E
+Feature count        ■■□□□□□□□□  One complete turn of the core loop matters more than the number of features
 ```
 
-同順位は作らない。**締切 > コンセプトの純度 > 体験 > 品質 > 量。**
-「今週これを足すか」で迷ったら、上位のスライダーを下げずに済むかだけを見る。
+No ties. **Deadline > purity of concept > experience > quality > quantity.**
+When unsure whether to add something this week, ask only whether it can be added without
+lowering a higher slider.
 
-## 10. 何がどれだけ必要か
+## 10. What it will take
 
-- **チーム**: ソロ(学生)。レビュアーは不在なので、CIとADRがレビューの代わり。
-- **お金**: Apple Developer $99/年 / LiveKit・Cloudflare・Codemagic・Sentry は無料枠から /
-  STT・LLM・TTS は従量(スポンサー特典クレジットを充当)。
-  **原価の上限は無料枠設計(1日1セッション・最長5分)そのもの。**
-- **時間**: 8週間。うち機能開発に使えるのは W1〜W4 の4週間だけ。
-- **リポジトリの状態**: `pnpm run verify` と `fvm flutter test` が常に通ること。
-  Claude Code on the web のセッション開始フックで、開いた時点で lint とテストが通る状態を維持する。
+- **Team**: solo (a student). There is no reviewer, so CI and the ADRs stand in for review.
+- **Money**: Apple Developer $99/year / LiveKit, Cloudflare, Codemagic and Sentry on free
+  tiers / STT, LLM and TTS metered (covered by sponsor credits).
+  **The cost ceiling *is* the free-tier design (one session a day, five minutes max).**
+- **Time**: eight weeks, of which only W1-W4 (four weeks) can go to feature development.
+- **Repository state**: `pnpm run verify` and `fvm flutter test` must always pass.
+  The Claude Code on the web session-start hook keeps lint and tests passing from the
+  moment a session opens.
 
 ---
 
-## スプリントの入口チェック(毎スプリント読む)
+## Sprint entry checklist (read every sprint)
 
-1. このスプリントの成果物は、**§0 の一言**のどの語を強くするか?(強くしないなら、なぜやる?)
-2. §4 の「やらない」に触れていないか?
-3. §9 のスライダーで、より上位のものを下げていないか?
-4. §7 の懸念のうち、今週潰れるものはどれか?(潰せないなら、いつ潰すのか)
+1. Which word of **§0's one-liner** does this sprint's output strengthen? (If none, why
+   are we doing it?)
+2. Does it touch §4's "won't do"?
+3. Does it lower a higher slider in §9?
+4. Which of §7's concerns dies this week? (If none can, when will it?)
