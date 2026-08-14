@@ -1,423 +1,478 @@
-# 事業方針メモ v0 — カタルテから「本」への道筋
+# Business direction memo v0 — the route from Katarute to "the book"
 
-作成日: 2026-08-05 / 位置づけ: 事業方針の議論のたたき台(**9/30までの開発スコープは一切変えない**)
-前提資料: [`inception-deck.md`](../inception-deck.md)
+Written 2026-08-05 / Status: a discussion draft on business direction
+(**the development scope up to 9/30 does not change at all**)
+Background: [`inception-deck.md`](../inception-deck.md)
 
-この文書は「教育アプリとしての打ち出し」「PDFに質問できる環境」という2つのピボット案への回答。
-結論から書き、根拠を後ろに置く。インセプションデッキの「やらないことリスト」を動かすものではない —
-動かす判断は Shipaton の数値を見てからやる(§7)。
-
----
-
-## 0. 先に結論
-
-1. **これはピボットではない。** 「ノート」「PDF」「本」は、同じコアループ
-   (コンテンツ → AIが質問 → 説明する → 穴がカルテに残る → 間隔をあけて再訪)の
-   **コンテンツ源が違うだけ**。いま作っているものは北極星(本)の縮小模型で、捨てるものはほぼない。
-2. **案2の方向性は賛成。ただし「PDFに質問できる」アプリにしてはいけない。**
-   それは ChatGPT / NotebookLM が無料でやっているコモディティ。守るべきは方向の逆転 —
-   **質問するのはAIの側**。差別化は今と同じ4つの約束(答えを教えない・点数を出さない・
-   パスを恥にしない・煽らない)にある。
-3. **UIのメタファーは「プロジェクト」より「本棚」。** 仕組みは Claude Projects と同型でいい
-   (コンテンツの器に会話とカルテが紐づく)。ただし北極星が本なら、
-   「アップロード = 本棚に1冊増える」のほうが一貫するし、出版社に見せるデモがそのまま完成する。
-4. **全科目網羅は、今は要らない。** それは「教育アプリとして市場で勝つ」ための要件であって、
-   本ビジョンのPoCの要件ではない。しかも科目追加はカリキュラムマップ整備という
-   コンテンツ制作業で、本ビジョンに必要な技術(構造化データなしで質問品質を出す)と
-   **投資方向が逆**。例外は国語(現代文読解)で、これは本への橋そのもの(§3)。
-5. **PoCは仮説単位で3段に再定義する(§2)。**
-   H1: 説明させる体験は継続するか(現行アプリで検証中)。
-   H2: カリキュラムマップなしの任意テキストから良い質問を作れるか(PDF版で検証)。
-   H3: 出版社はデータを出すか(プロダクトではなく商談で検証)。
-6. **UI/UXのコアは変わらない。変わるのは入口とカルテの単位(§5)。**
-   今の「撮影→会話→カルテ」は数学PoCの目的に対して最適に近く、9/30までは凍結を守る。
-   本/PDF版では入口が「どこまで読んだ?」になり、カルテがセッション単位から
-   「1冊ごとの理解マップ」に育つ。
+This document answers two pivot proposals: "position it as an education app" and "an
+environment where you can ask questions of a PDF". Conclusions first, reasoning after.
+It does not move the inception deck's "won't do" list — that decision waits until the
+Shipaton numbers are in (§7).
 
 ---
 
-## 1. 3つの案の関係 — 同じエンジン、違うコンテンツ源
+## 0. Conclusions first
+
+1. **This is not a pivot.** "Notes", "PDF" and "the book" are the same core loop
+   (content -> the AI asks -> you explain -> the gaps stay in a karte -> revisited at
+   intervals) with **a different content source**. What is being built now is a scale
+   model of the north star (the book), and almost nothing gets thrown away.
+2. **The direction of proposal 2 is right, but it must not become "an app where you can
+   ask questions of a PDF".** That is a commodity ChatGPT and NotebookLM already do for
+   free. What must be protected is the reversal of direction — **the AI is the one
+   asking**. The differentiation is the same four promises as today (never give the
+   answer, no scores, never shame a pass, never nag).
+3. **The UI metaphor is a "bookshelf", not a "project".** The mechanism can be the same
+   as Claude Projects (a container of content with conversations and kartes attached).
+   But if the north star is the book, "uploading = one more book on the shelf" is more
+   consistent, and the demo shown to publishers is then already finished.
+4. **Covering every subject is not needed now.** That is a requirement for "winning the
+   education-app market", not for the north-star PoC. And adding a subject is content
+   production — building curriculum maps — whose **investment direction is opposite** to
+   the technology the book vision needs (getting question quality with no structured
+   data). The exception is Japanese (reading comprehension), which is the bridge to the
+   book itself (§3).
+5. **The PoC is redefined in three stages, by hypothesis (§2).**
+   H1: does the experience of being made to explain retain? (being validated by the
+   current app). H2: can good questions be built from arbitrary text with no curriculum
+   map? (validated by the PDF version). H3: will publishers release their data?
+   (validated in negotiations, not in a product).
+6. **The UI/UX core does not change; the entrance and the karte's unit do (§5).**
+   Today's "photograph -> conversation -> karte" is close to optimal for the maths PoC's
+   purpose, and the freeze holds until 9/30. In the book/PDF version the entrance becomes
+   "how far did you read?" and the karte grows from a per-session record into
+   "an understanding map per book".
+
+---
+
+## 1. How the three proposals relate — one engine, different content sources
 
 ```
-          コンテンツ源              ターゲット
-現行      ノート写真(数学)          高校生          ← H1を検証中(Shipaton)
-案2       持ち込みPDF・文書         高校生〜社会人   ← H2の検証手段
-北極星    出版社ライセンスの本       読者全般         ← H1×H2×H3が揃うと成立
+           Content source              Target
+Current    Notes photos (maths)        High-schoolers      <- validating H1 (Shipaton)
+Proposal 2 PDFs and documents you bring High-schoolers to adults  <- the way to validate H2
+North star Publisher-licensed books    Readers generally   <- stands up once H1 x H2 x H3 hold
 ```
 
-コアエンジンは全案で共通:
+The core engine is shared by all three:
 
-1. コンテンツを取り込み、質問してよい「許可範囲」を作る
-2. 後輩AIが質問し、ユーザーが自分の言葉で説明する
-3. 詰まった箇所が「理解の穴」としてカルテに残る
-4. 翌日・3日後・7日後に再訪する
+1. Ingest content and build the "allowed scope" of what may be asked about
+2. The AI asks and the user explains in their own words
+3. Where they stall stays in a karte as a "gap in understanding"
+4. Revisit after 1, 3 and 7 days
 
-元の動機は「特定のページを読んだ!と言うとAIが適宜質問してくれて理解を深められる」だった。
-現行アプリはこの文の「ページ」を「今日のノート」に置き換えただけで、
-**すでに北極星と同じ構造を持っている**。だからこれから議論すべきは
-「ピボットするか」ではなく「コンテンツ源をどの順で広げるか」。
+The original motivation was "I say I read a certain page and the AI asks the right
+questions to deepen my understanding". The current app just replaces "page" with "today's
+notes", so **it already has the same structure as the north star**. So the question is not
+"should we pivot" but "in what order do we widen the content sources".
 
 ---
 
-## 2. 北極星から逆算する — 証明すべきことは3つだけ
+## 2. Working back from the north star — only three things to prove
 
-| # | 仮説 | 検証手段 | 状態 |
+| # | Hypothesis | How to validate | Status |
 | --- | --- | --- | --- |
-| H1(体験) | 「AIに説明させられる」体験に、継続する価値があるか | 現行アプリの W5〜7 の数値(継続率・会話成立率・穴の再訪率) | 検証中 |
-| H2(技術) | カリキュラムマップという足場なしで、任意のテキストから「答えを教えない良い質問」を作れるか | PDF版の最小実装 | 未着手。**本ビジョンの技術コア** |
-| H3(事業) | 出版社は本のデータを出すか。何との交換なら出すか | 商談(プロダクト不要、提案資料で始める) | 未着手 |
+| H1 (experience) | Does "being made to explain to an AI" have retaining value | The current app's W5-7 numbers (retention, conversation completion, gap revisit rate) | In progress |
+| H2 (technology) | Without a curriculum map as scaffolding, can "good questions that do not give the answer" be built from arbitrary text | A minimal PDF implementation | Not started. **The book vision's technical core** |
+| H3 (business) | Will publishers release book data, and in exchange for what | Negotiations (no product needed; start with a proposal deck) | Not started |
 
-重要なのは、**全科目対応はどの仮説の検証にも要らない**こと。
+The important thing is that **covering every subject is needed by none of these
+hypotheses**.
 
-### なぜH2が技術コアなのか
+### Why H2 is the technical core
 
-現行の質問品質は二重のガードレールで守られている:
-「写真に写っている内容 ∩ カリキュラムマップ」+ `topic_id` のホワイトリスト照合。
-つまり**人手で作った構造化データが品質の土台**にある。
+Today's question quality is protected by two guardrails: "what is in the photo ∩ the
+curriculum map", plus `topic_id` allow-list matching. In other words, **hand-built
+structured data is the foundation of quality**.
 
-本/PDFにはこの土台がない。あるのは目次と本文だけ。ここで質問品質が出せるか —
-出せないなら本ビジョンは成立しないし、出せるなら科目別カリキュラムを整備しなくても
-教科横断が自動で手に入る。だからPoC 2の本質はUIではなく、
-**ガードレールの一般化**(人手のカリキュラムマップ → 文書から自動生成した章・チャンク構造)の検証。
+Books and PDFs have no such foundation - only a contents page and body text. Whether
+question quality survives that is the question. If it does not, the book vision does not
+stand; if it does, cross-subject coverage arrives for free without building per-subject
+curricula. So PoC 2's essence is not the UI but validating **the generalisation of the
+guardrails** (from a hand-built curriculum map to a chapter/chunk structure derived
+automatically from a document).
 
 ---
 
-## 3. 案1(教育アプリ)— 全科目網羅を今やらない理由
+## 3. Proposal 1 (an education app) — why not to cover every subject now
 
-「教育用アプリとして打ち出すなら数学以外も必要では」は、
-**打ち出し方の問題と、作るものの問題を分けて考えたほうがいい**。
+"If we position it as an educational app, don't we need subjects beyond maths?" is best
+answered by **separating the positioning problem from the building problem**.
 
-- **打ち出しは今のままでいい。** 「数学の」と限定した一言はストアで刺さるための設計
-  (インセプションデッキ §0)。全科目サービスと同じ棚に並ぶ必要はない。
-  単科で強いアプリは教育系ではむしろ普通(英単語の mikan、数学の Photomath など)。
-- **作る側で全科目を追うと、投資方向が北極星と逆になる。** 科目追加とは、科目ごとの
-  カリキュラムマップ+質問テンプレ+音声補正辞書の整備であり、
-  「構造化データがないと質問できない」アーキテクチャを強化してしまう。
-  atama+ 型の科目別ナレッジグラフ整備はそれ自体が会社の主業になる規模の仕事で、
-  ソロで追うものではない。
-- **例外は国語(現代文・評論)。** 「文章を読んで、内容を自分の言葉で説明する」は
-  本ビジョンの縮図そのもので、カリキュラムマップではなく**本文の構造**から質問を作ることになる。
-  つまり国語対応は H2 の検証を兼ねる。科目を足すならこれを最初に。ただし着手は10月以降。
+- **The positioning is fine as it is.** A one-liner limited to "maths" is designed to land
+  in the store (inception deck §0). There is no need to sit on the same shelf as
+  all-subject services. A strong single-subject app is normal in education (mikan for
+  English vocabulary, Photomath for maths).
+- **Chasing every subject on the building side points the investment away from the north
+  star.** Adding a subject means building a curriculum map, question templates and a
+  spoken-correction dictionary per subject, which reinforces an architecture that
+  **cannot ask questions without structured data**. Building atama+-style per-subject
+  knowledge graphs is company-sized work, not something one person chases.
+- **The exception is Japanese (modern texts and criticism).** "Read a passage and explain
+  its content in your own words" is a miniature of the book vision itself, and the
+  questions come from **the text's structure** rather than a curriculum map. So Japanese
+  support doubles as H2's validation. If a subject is added, add this one first — but not
+  before October.
 
-判断の分岐を明示しておく:
+The fork, stated explicitly:
 
-| 路線 | 必要になるもの | 競合 | 北極星との関係 |
+| Route | What it needs | Competitors | Relation to the north star |
 | --- | --- | --- | --- |
-| 教育アプリとして勝つ | 全科目・受験文脈・塾/学校向けB2B | スタディサプリ、atama+、Monoxer | 遠回り(教育市場への最適化が進む) |
-| 本ビジョンのPoC | 数学+(次の一手として)国語 | この位置取りは空いている | 一直線 |
+| Winning as an education app | Every subject, exam context, B2B for cram schools and schools | Studysapuri, atama+, Monoxer | A detour (it optimises for the education market) |
+| The book vision's PoC | Maths plus (as the next move) Japanese | This position is open | A straight line |
 
-どちらかを今すぐ選ぶ必要はないが、「全科目やらなきゃ」と感じたときは
-前者の路線に引っ張られている合図、と覚えておく。
+Neither has to be chosen now, but remember: feeling "we have to do every subject" is the
+signal of being pulled towards the former.
 
-### 3-2. 追記(2026-08-06): 「1日1回の勉強の振り返り」というフレーミング
+### 3-2. Addendum (2026-08-06): the framing of "one daily study review"
 
-> **→ この案は同日の議論で棄却(§3-3)。** 回数上限は体験を損なう。
-> 上限ではなく「セッションを軽くして単価を下げ、価格で回収する」路線に変更した。
-> 以下は検討の記録として残す。
+> **-> Rejected the same day (§3-3).** A usage cap damages the experience.
+> The route changed from a cap to "make the session lighter to cut unit cost, and recover
+> it through pricing". Kept below as a record of the discussion.
 
-> 提案: 教育アプリの方向性を「勉強の振り返りを行う」に寄せれば、
-> 利用回数を1日1回(もっと話したい人でも3回程度)に自然に絞れるのでは。
+> Proposal: leaning the education-app direction towards "doing a study review" would
+> naturally limit usage to once a day (about three times for people who want more).
 
-**結論: 賛成。ただしこれは方向転換ではなく「1日1回の意味づけの変更」で、
-機能はほぼ既にそうなっている。変更コストは小さく、効果は3つ。**
+**Conclusion: agreed. But this is not a change of direction so much as a change in what
+"once a day" means, and the features are already almost there. The change is cheap, with
+three benefits.**
 
-#### 何が良いか
+#### What is good about it
 
-1. **Premiumの原価青天井を塞げる(いちばん実利がある)。**
-   会話の原価は従量(STT+LLM+TTS で1分数円〜十数円)なのに、現在の実装は
-   Free=1日1回・5分に対して **Premium=セッション回数無制限**
-   (`backend/api/src/lib/entitlement.ts`。1回の長さ上限はあるが回数上限がない)。
-   ヘビーユーザー1人の月間原価が購読料を超えうる構造リスクが、デッキ§7-4の
-   懸念として残っている。「振り返りは1日の区切りにやるもの」という世界観なら、
-   **Premium=1日3回** を「制限」ではなく「日課の文法」として置ける。
-   定額サブスク×従量原価の商売はどこかに上限が要る —
-   それを**ケチに見せずに置ける**のがこのフレームの最大の価値。
-2. **「1日1回」がネガ(無料の制限)からポジ(日課)に変わる。**
-   いまの1日1回は「無料だから我慢してね」。振り返りフレームでは「そういうアプリだから」。
-   通知もペイウォールも後輩からのお願いとして書く方針(デッキ§0の約束4「煽らない」)や、
-   HAMM(誠実なペイウォール)の審査観点とそのまま噛み合う。Premiumの訴求も
-   「無制限」ではなく「テスト前は1日3回まで+穴の復習し放題」と素直に立つ。
-3. **習慣の文法が手に入り、北極星と同型になる。**
-   トリガーが「ノートを書いた直後」から「1日の終わり」という時刻に固定され、
-   毎晩の通知(「今日の勉強、聞かせてもらえませんか?」)→ 説明 → 連続日数、で
-   habit loop が閉じる。OneSignal賞の物語(復習1/3/7日+毎晩の日課)も強くなる。
-   そして「今日はどこまで読みました?」という本/PDF版(§4-2)の入口と
-   **完全に同じ文法**になる — この変更は北極星に近づく方向を向いている。
+1. **It closes Premium's unbounded cost (the most practical benefit).**
+   Conversation cost is metered (a few to a dozen-odd yen a minute across STT+LLM+TTS),
+   yet the current implementation is Free = once a day for 5 minutes against
+   **Premium = unlimited sessions** (`backend/api/src/lib/entitlement.ts`: there is a cap
+   on a single session's length but none on the count). The structural risk that one heavy
+   user's monthly cost exceeds their subscription remains as deck §7-4's concern.
+   In a worldview where "a review is something you do at the end of the day",
+   **Premium = three a day** can be placed as "the grammar of a daily habit" rather than
+   "a limit". A flat subscription over metered cost needs a ceiling somewhere — and being
+   able to place it **without looking stingy** is this framing's greatest value.
+2. **"Once a day" turns from a negative (a free-tier limit) into a positive (a habit).**
+   Today's once a day reads as "put up with it, it's free". Under the review framing it
+   reads as "that's the kind of app it is". It meshes directly with writing notifications
+   and paywalls as a request from the AI (deck §0's promise 4, "never nag") and with
+   HAMM's honest-paywall criteria. Premium's pitch also stands honestly as "up to three a
+   day before a test, plus unlimited gap review" rather than "unlimited".
+3. **It provides a habit grammar and becomes isomorphic to the north star.**
+   The trigger moves from "just after writing notes" to a fixed time, "the end of the
+   day", closing the habit loop with a nightly notification ("could I hear about today's
+   study?") -> explanation -> streak. The OneSignal award's story (1/3/7-day reviews plus a
+   nightly habit) gets stronger too. And it becomes **exactly the same grammar** as the
+   book/PDF version's entrance, "how far did you read today?" (§4-2) — this change points
+   towards the north star.
 
-#### 気をつけること
+#### What to watch
 
-- **「振り返り=今日のログを話す」に流れると差別化が溶ける。**
-  「今日は何を勉強した?どうだった?」というメタ認知の日記なら Studyplus や
-  ChatGPT で足りる。核はあくまで**内容を説明させる**こと(self-explanation)。
-  振り返りは頻度と入口の文法であって、会話の中身は今のまま
-  「え、なんでここで判別式使うんですか?」でなければならない。
-  ノート撮影も質問ガードレールの土台なので残す(振り返りの入口=撮影、は変えない)。
-- **1回に全部詰め込ませない。** 「今日やったこと全部」ではなく
-  「今日いちばん自信がないところを1つ」を後輩に選ばせる/選ばせてもらう。
-  1セッション5分の枠が守られ、選ぶ行為自体がメタ認知になり、カルテも濃くなる。
+- **If "review" drifts into "talk about today's log", the differentiation dissolves.**
+  A metacognitive diary of "what did you study today, how did it go?" is covered by
+  Studyplus or ChatGPT. The core remains **making them explain the content**
+  (self-explanation). The review is the frequency and the entrance's grammar; the
+  conversation's substance must stay "wait, why do you use the discriminant here?".
+  Photographing notes stays too, since it is the foundation of the question guardrails
+  (the review's entrance = photographing, unchanged).
+- **Do not let them cram everything into one session.** Not "everything you did today"
+  but "the one thing you are least sure about", chosen by them or with the AI's help.
+  The 5-minute session budget holds, the act of choosing is itself metacognition, and the
+  karte gets richer.
 
-#### Shipaton期間中に反映する範囲(提案)
+#### What to change during Shipaton (proposal)
 
-| 変更 | 中身 | コスト |
+| Change | Content | Cost |
 | --- | --- | --- |
-| Premium回数上限 | `entitlement.ts` に premiumSessionsPerDay(=3)を足す | 小。原価保険であり、デッキ§7-4への手当てなので凍結方針と矛盾しない |
-| 文言の語り直し | オンボーディング・ペイウォール・ストア説明を「1日1回の日課」の語り口に寄せる | 小。W4の磨き込みで吸収できる |
-| 毎晩の日課通知 | 「今日の勉強、聞かせてください」を1本追加 | 中。機能追加なのでW3の通知実装と抱き合わせられる場合のみ |
+| A Premium count cap | Add premiumSessionsPerDay (=3) to `entitlement.ts` | Small. It is cost insurance addressing deck §7-4, so it does not conflict with the freeze |
+| Re-telling the wording | Move onboarding, the paywall and the store description towards "a once-a-day habit" | Small. Absorbed by W4's polish |
+| A nightly habit notification | Add one "could I hear about today's study?" | Medium. A feature addition, so only if it can ride along with W3's notification work |
 
-デッキ§0の一言(「数学の『わかったつもり』を〜」)は**変えない**。
-「1日1回の日課」は一言と矛盾せず上に足せる物語なので、憲法改正は不要。
-「振り返りアプリ」として看板ごと掛け替えるかどうかは、10月のH1判定と一緒に決める。
+Deck §0's one-liner is **not changed**. "A once-a-day habit" does not contradict it and
+is a story that can be layered on top, so no constitutional amendment is needed.
+Whether to re-badge the whole thing as a "review app" is decided together with October's
+H1 verdict.
 
-### 3-3. 追記(2026-08-06): 回数上限を棄却 — 「軽いセッション×価格で回収」路線へ
+### 3-3. Addendum (2026-08-06): the count cap rejected — towards "light sessions plus pricing"
 
-> 決定: §3-2の「Premium=1日3回」は体験を損なうので採らない。代わりに
-> (1) セッション自体を軽くして原価を下げ、(2) 価格(週800 / 月2,000 / 年20,000円)で回収する。
-> フローは「理解が怪しいところのノートを撮る → まずユーザーが説明する →
-> 後輩と軽くセッション → カルテ生成」に寄せる。
+> Decision: §3-2's "Premium = three a day" damages the experience and is not adopted.
+> Instead, (1) make the session itself lighter to cut cost, and (2) recover it through
+> pricing (800 yen weekly / 2,000 monthly / 20,000 annually).
+> The flow moves towards "photograph the notes you are least sure about -> the user
+> explains first -> a light session with the AI -> karte generation".
 
-#### 評価: 賛成。「説明が先」フロー自体が最大のコスト削減になっている
+#### Assessment: agreed. The "explanation first" flow *is* the biggest cost reduction
 
-- **会話原価の支配項はTTS(後輩の発話量)。** 「後輩がインタビューする5分」から
-  「ユーザーがまず説明し、後輩は聞き役+追い質問1〜2問の3分」に変えると、
-  分数とTTS文字数の両方が構造的に減る。**体験の変更とコスト削減が同じ一手**であり、
-  §3-2のような外付けの上限が要らなくなる、というのがこの路線の芯。
-- **学習科学的にはむしろ純化する。** self-explanation の効果の核は
-  「まず自分で説明を生成する」ことにあり、質問への応答より先に説明がある方が原理に忠実。
-  「教える側=ユーザー」というプロテジェ効果の役割関係も明確になる。
-- **W2のGo/No-Goゲートにも有利。** ターンテイキングの往復が減るほど、
-  遅延・割り込み・誤認識の露出面が減る。軽いセッションは技術リスクも軽い。
+- **TTS (how much the AI speaks) dominates conversation cost.** Changing "five minutes of
+  the AI interviewing" into "three minutes where the user explains first and the AI
+  listens with one or two follow-ups" structurally reduces both the minutes and the TTS
+  character count. **One move that is both an experience change and a cost reduction**,
+  removing the need for an external cap like §3-2's - that is this route's core.
+- **It is purer in learning-science terms.** The self-explanation effect's core is
+  "generating an explanation yourself first", so putting explanation before answering
+  questions is truer to the principle. The protégé effect's role relation ("the teacher is
+  the user") also gets clearer.
+- **It also helps W2's Go/No-Go gate.** Fewer turn-taking round trips means less exposure
+  to latency, barge-in and misrecognition. A light session is a light technical risk too.
 
-sst/tts周りの実務レバー:
+Practical levers around STT/TTS:
 
-| レバー | 中身 | 効き |
+| Lever | Content | Effect |
 | --- | --- | --- |
-| 相づちのプリレンダ | 「はい」「へえ!」「なるほど…」を事前生成音声アセットにし、TTS呼び出しをゼロにする。聞き役フローでは相づちが発話の大半 | 大(レイテンシも消える) |
-| 定型文のTTSキャッシュ | 冒頭・締め・祝福の定型文はセッションを跨いで再利用 | 中 |
-| TTSモデルの使い分け | 通常発話は低単価のFlash系、感情の乗る祝福だけ高品質モデル | 中 |
-| LLMのprompt caching | システム+few-shotは毎ターン同一なのでキャッシュが効く。「1発話2文まで」のキャラ設計が出力トークンも抑えている | 中 |
-| セッション3分目安 | 「軽く」の明文化。分数が減れば全部が減る | 大 |
+| Pre-rendered backchannels | Pre-generate "mhm", "oh!", "I see..." as audio assets, dropping TTS calls to zero. In a listening flow, backchannels are most of the speech | Large (latency disappears too) |
+| A TTS cache for fixed lines | The opening, the closing and the celebration are reused across sessions | Medium |
+| Choosing TTS models | A cheap Flash-class model for ordinary speech, a high-quality one only for the emotional celebration | Medium |
+| LLM prompt caching | The system prompt and few-shot examples are identical every turn, so caching works. The "at most two sentences per utterance" character design also keeps output tokens down | Medium |
+| A 3-minute session target | "Light", made explicit. Fewer minutes reduces everything | Large |
 
-#### 価格(週800 / 月2,000 / 年20,000)の所見
+#### Notes on the pricing (800 weekly / 2,000 monthly / 20,000 annually)
 
-- 棚として: スタサプ ベーシック(月2,178円)と同じ価格帯。単科でこの価格は強気だが、
-  「毎日の相棒」として使われるなら成立圏。**主役は週額800円**になるはず —
-  高校生の財布は月契約より「テスト前だけ」の単発課金に向いていて、利用のスパイクとも一致する。
-- 年額20,000円は月額比17%オフで、一般的な年額割引(月額×12の50〜70%)より浅い。
-  ただし**原価が従量のプロダクトで年額を深く割り引くのは危険**なので、浅さには合理性がある。
-  表記だけ19,800円を検討。年額の買い手は本人ではなく親(受験学年)想定。
-- 実装コストはゼロ。RevenueCatは既に `$rc_weekly / $rc_monthly / $rc_annual` の3枠で
-  組んであり([`../revenuecat.md`](../revenuecat.md))、価格は App Store Connect+
-  ダッシュボード設定で完結する。
-- 保険は1つだけ置く: **表に出さないフェアユース上限**(例: 1日合計30分。利用規約に書き、
-  UIでは謳わない)。§3-2の「日課としての上限」とは別物で、異常系のバルブ。
-  通常ユーザーが一生当たらない値にする。
-- ユニットエコノミクスの目安: 軽セッション3分×原価5〜15円/分 = 15〜45円/回。
-  月額2,000円の回収ラインは44〜130回/月で、1日1〜2回の実利用なら十分回る。
+- As a shelf position: the same band as Studysapuri Basic (2,178 yen a month). Bold for a
+  single subject, but viable if used as "a daily companion". **The weekly 800 yen should
+  be the lead** - a high-schooler's wallet suits a one-off "just before the test" purchase
+  more than a monthly contract, and that matches the spikes in usage.
+- 20,000 a year is 17% off the monthly rate, shallower than a typical annual discount
+  (50-70% of monthly x 12). But **discounting an annual plan deeply is dangerous for a
+  product with metered cost**, so the shallowness is rational. Consider writing it as
+  19,800. The annual buyer is assumed to be the parent, not the student (exam year).
+- Implementation cost is zero. RevenueCat is already set up with the three slots
+  `$rc_weekly / $rc_monthly / $rc_annual` ([`../revenuecat.md`](../revenuecat.md)), and
+  pricing is done entirely in App Store Connect and the dashboard.
+- One piece of insurance only: **a fair-use cap that is never surfaced** (say 30 minutes a
+  day in total, written into the terms and never mentioned in the UI). It is different
+  from §3-2's "cap as a habit" - it is a valve for anomalies, set where an ordinary user
+  never reaches it.
+- Unit economics, roughly: a light 3-minute session x 5-15 yen a minute = 15-45 yen a
+  session. Recovering 2,000 yen a month needs 44-130 sessions a month, which one or two
+  real sessions a day comfortably covers.
 
-#### フローの設計: 「怪しいところ」起点
+#### Flow design: starting from "what you are least sure about"
 
-撮影 → **「どこが一番怪しい?」を選ぶ** → 後輩「これ、どんな問題だったんですか?」→
-ユーザーが説明(60〜120秒、後輩は相づちで聞く)→ 追い質問1〜2問 → 祝福 → カルテ。
+Photograph -> **choose "what are you least sure about?"** -> the AI asks "so what kind of
+problem was this?" -> the user explains (60-120 seconds while the AI listens with
+backchannels) -> one or two follow-ups -> celebration -> karte.
 
-- 「怪しいところをノートに取る」は、間違いノート・苦手ノート文化(勉強垢の定番)と
-  そのまま接続する。グロースの語彙としても使える。
-- 注意点が1つ: **わかったつもりの穴は、本人が「怪しい」と思っていない場所にある**
-  (それがこのアプリの前提)。ユーザーの自己選択だけに任せると unknown-unknowns を
-  拾い損ねるので、追い質問の1問は後輩側の種(question_seeds)から、
-  選ばれなかった範囲に出す設計を残す。
+- "Taking notes on what you are unsure about" connects directly to the mistake-notebook
+  and weak-points-notebook culture (a staple of study accounts). It works as growth
+  vocabulary too.
+- One caveat: **the gaps in an illusion of understanding are where the person does not
+  think they are unsure** (that is this app's premise). Leaving it entirely to the user's
+  self-selection misses the unknown unknowns, so keep a design where one follow-up comes
+  from the AI's own seeds (question_seeds), aimed at the range they did not choose.
 
-#### 「AIは問題を理解していない」問題への答え
+#### An answer to "the AI does not understand the problem"
 
-不安は正しい。ただしこのプロダクトには、普通のAI家庭教師にはない構造的な逃げ道が
-**既に2つ実装されている**:
+The worry is correct. But this product has two structural escape hatches an ordinary AI
+tutor does not, **both already implemented**:
 
-> **【2026-08-09のピボットで、この節の1番目は失効した】**
-> 配役が後輩から先輩に変わり、`prompts/kohai_conversation.{ja,en}.md` は
-> `senpai_conversation.{ja,en}.md` に置き換わっている(下のリンクは辿れない)。
-> 誤読への手当ては「わかっていない側にキャストする」ではなく
-> 「**教えたあとに教え返させ、ユーザーの説明が破綻することで誤読を表面化させる**」に替わった
-> ([`pivot_plan_v1.md` §1](../pivot_plan_v1.md))。2番目は今も有効。
-> **この節は当時の判断の記録として残してある。**
+> **[Point 1 of this section lapsed with the 2026-08-09 pivot]**
+> The role changed from kouhai to senpai, and `prompts/kohai_conversation.{ja,en}.md` was
+> replaced by `senpai_conversation.{ja,en}.md` (the link below no longer resolves).
+> The countermeasure against misreading changed from "cast the AI as the side that does
+> not understand" to "**teach, then have them teach it back, so the user's explanation
+> falling apart surfaces the misreading**"
+> ([`pivot_plan_v1.md` §1](../pivot_plan_v1.md)). Point 2 still holds.
+> **This section is kept as a record of the decision at the time.**
 
-1. **後輩は「わかっていない側」としてキャストされている。**
-   `prompts/kohai_conversation.ja.md`(現 `senpai_conversation.ja.md`)は
-   「まだよくわかっていない」「間違っていても訂正しない」「評価語を使わない」。
-   AIが問題を誤読しても、後輩がずれた素朴な質問をするのは**キャラの内側**で、
-   先生がずれた質問をするのとは壊れ方が違う。誤読が致命傷になるのは
-   「AIが理解している」建て付けのアプリのほう。
-2. **カルテは数学的正しさを言い切らない設計になっている。**
-   [`prompts/karte_generation.ja.md`](../../prompts/karte_generation.ja.md) は
-   「説明が止まった箇所」だけを本人の発話(evidence)を引いて記録し、
-   「理解していない」と断定せず、計算ミスは穴にしない。カルテの正しさは
-   transcript という観測事実に接地していて、**AIが問題を解けるかに依存しない**。
+1. **The AI is cast as the side that does not understand.**
+   `prompts/kohai_conversation.ja.md` (now `senpai_conversation.ja.md`) says "I don't
+   really understand yet", "do not correct them even if they are wrong", "use no
+   evaluative language". If the AI misreads the problem, a naive off-target question from
+   a kouhai is **inside the character**, and breaks differently from a teacher asking an
+   off-target question. Misreading is fatal in apps built on "the AI understands".
+2. **The karte is designed not to assert mathematical correctness.**
+   [`prompts/karte_generation.ja.md`](../../prompts/karte_generation.ja.md) records only
+   "where the explanation stalled", quoting the student's own words (evidence). It never
+   asserts "they do not understand", and arithmetic slips do not become gaps. The karte's
+   correctness is grounded in the transcript as observed fact and **does not depend on
+   whether the AI can solve the problem**.
 
-残っているギャップは入口のグラウンディング: ノートには問題文が写っていないことが多く、
-photo_analysis の誤読が question_seeds をずらす。手当ては3つ:
+The remaining gap is grounding at the entrance: notes often do not contain the problem
+statement, and a misreading by photo_analysis skews question_seeds. Three countermeasures:
 
-- **セッション冒頭の定番質問を「これ、どんな問題だったんですか?」にする。**
-  ユーザーが問題を自分の言葉で言い直すことで、(a) AIに問題文が渡る(グラウンディング)、
-  (b) 問題を言い直せるか自体が第一の診断になる(問題の要求を言えない生徒は多い)、
-  (c) 後輩キャラとして完全に自然。**弱点がそのまま第一問に変換できる。**
-- 撮影画面のヒントに「問題文も一緒に写すと後輩が迷子になりません」。
-- 単元チップ確認UIの流用で、写真から読み取った問題の要約を確認・修正できるようにする(任意)。
+- **Make the standard opening question "so what kind of problem was this?"**
+  Having the user restate the problem in their own words means (a) the problem statement
+  reaches the AI (grounding), (b) whether they can restate it is itself the first
+  diagnosis (many students cannot state what a problem asks), and (c) it is completely
+  natural for the character. **A weakness converts directly into the first question.**
+- A hint on the capture screen: "capture the problem statement too and the AI won't get lost".
+- Reusing the unit-chip confirmation UI so the summary of the problem read from the photo
+  can be confirmed and corrected (optional).
 
-やってはいけないのは、この不安を「AIを賢くして正誤判定させる」方向で解くこと。
-正誤判定に踏み込んだ瞬間に履き違えは致命傷になり、「点数を出さない」の約束も破れる。
-**理解していないことを認めるキャラと、観測事実だけのカルテ**が、履き違えリスクの保険そのもの。
+What must not be done is solving this worry by "making the AI smarter so it can judge
+correctness". The moment it judges correctness, a misread becomes fatal and the "no
+scores" promise breaks too. **A character that admits it does not understand, plus a
+karte made only of observed fact**, is the insurance against misreading.
 
-なお、この問題と答えは本/PDF版(§4)にそのまま一般化する:
-「AIは本を読み切れていない」に対しても、「どこまで読んだか・何の話だったかを
-ユーザーに言わせる」+「カルテは説明の観測記録」という同じ構えが効く。
-H2の検証設計にこの観点を含めること。
+This problem and its answer generalise directly to the book/PDF version (§4): against
+"the AI has not read the whole book", the same stance works — "have the user say how far
+they read and what it was about", plus "the karte is an observation record of the
+explanation". Include that lens in H2's validation design.
 
-#### まず自分で試す(同日追記)
+#### Try it yourself first (added the same day)
 
-価格もフローも、机上で詰められるのはここまで。方向性は悪くない前提で、
-収益性とユーザー視点の次の判断材料は、どちらも「自分で回す」ことから出す:
+Pricing and flow can only be worked out on paper so far. Assuming the direction is sound,
+the next inputs for both profitability and the user's view come from running it yourself:
 
-- **H0(開発者ダッグフーディング)**: H1(実ユーザーの継続)の前に、自分が毎日1セッション×
-  1〜2週間回す。見るのは3点 — 「説明して気持ちいいか」「質問はずれていないか
-  (履き違えの発生頻度)」「カルテを見て“当たってる”感があるか」。
-  これはW2末のGo/No-Goゲートの入力そのものでもある。
-- **セッション単価のテレメトリ**: セッションごとにSTT秒数・LLMトークン・TTS文字数と
-  概算原価をログに残す。ダッグフーディングの1回1回がそのまま収益性の実測データになる。
-  §3-3の「15〜45円/回」という机上の数字を実測に置き換えてから、価格を最終確定する。
+- **H0 (developer dogfooding)**: before H1 (real-user retention), run one session a day
+  for a week or two yourself. Watch three things — "does explaining feel good", "are the
+  questions off-target (how often does misreading occur)", "does the karte feel accurate".
+  This is also the input to W2's Go/No-Go gate.
+- **Per-session cost telemetry**: log STT seconds, LLM tokens, TTS characters and an
+  estimated cost per session. Every dogfooding session then doubles as real profitability
+  data. Replace §3-3's paper figure of "15-45 yen a session" with measurements before
+  finalising the price.
 
 ---
 
-## 4. 案2(PDF・持ち込み文書)— 賛成。ただし設計原則を3つ
+## 4. Proposal 2 (PDFs and documents you bring) — agreed, with three design principles
 
-### 4-1. 方向の逆転を崩さない(最重要)
+### 4-1. Do not break the reversal of direction (most important)
 
-「PDFをアップして質問できる」は既に無料の日用品:
-ChatGPT / Claude Projects / NotebookLM / Acrobat AI Assistant。
-この方向(ユーザーが質問 → AIが答える)で参入しても勝ち目がない。
+"Upload a PDF and ask questions" is already a free everyday commodity:
+ChatGPT / Claude Projects / NotebookLM / Acrobat AI Assistant.
+Entering in that direction (the user asks, the AI answers) is unwinnable.
 
-守るべきは現行と同じ**逆方向** — アップした文書について**AIがユーザーに質問する**。
-NotebookLM にもクイズ生成はあるが、あれは一問一答の生成物で終わる。こちらは:
+What must be protected is the same **reverse** direction as today — **the AI asks the
+user** about the uploaded document. NotebookLM has quiz generation, but that ends as a
+generated set of question-and-answer pairs. Here:
 
-1. 声(または文)で「説明させる」対話
-2. 穴がカルテとして蓄積する
-3. 間隔をあけて再訪する
-4. 「後輩」というキャラクターがいる
+1. A dialogue that **makes you explain**, by voice or in text
+2. The gaps accumulate as a karte
+3. It revisits at intervals
+4. There is a character
 
-この4点セットは検索型AIツールの設計思想からは出てこない。
-4つの約束はPDF版でもそのまま守る。ここが崩れた瞬間にコモディティになる。
+That set of four does not fall out of a search-style AI tool's design philosophy.
+The four promises hold in the PDF version too. The moment they break, it is a commodity.
 
-### 4-2. メタファーは「本棚」
+### 4-2. The metaphor is a bookshelf
 
-Claude Projects 的な仕組み(コンテンツの器を作り、そこに会話が紐づく)は正しい。
-ただし呼び方と見た目は「プロジェクト」ではなく**本棚**に寄せる:
+A Claude Projects-like mechanism (a content container with conversations attached) is
+right. But the name and the look lean towards a **bookshelf**, not a "project":
 
-- ホーム = 本棚。PDFを入れると1冊の「本」として並ぶ
-- 本を開く → 後輩が「今日はどこまで読みました?」(章・ページ範囲を指定)
-- 会話 → **その本の**カルテが育つ(章ごとに黄マーカー=言えた / ピンクマーカー=穴)
-- 再訪通知は「あの本の3章、もう一回聞いてもいいですか?」
+- Home = a bookshelf. Adding a PDF puts one "book" on it
+- Open a book -> the AI asks "how far did you read today?" (a chapter or page range)
+- Conversation -> **that book's** karte grows (yellow markers = said it / pink = gaps, per chapter)
+- The revisit notification is "could I ask about chapter 3 of that book again?"
 
-理由は3つ。(1) 北極星が本なので、出版社に見せるデモがそのまま完成する。
-(2) 「プロジェクト」は仕事道具の語彙で、学習・読書の文脈から浮く。
-(3) 本ごとにカルテが蓄積する構造は「1冊を理解し切る」という読書の価値をそのまま可視化する。
+Three reasons. (1) The north star is the book, so the demo shown to publishers is already
+finished. (2) "Project" is workplace vocabulary and floats away from the study and reading
+context. (3) A karte accumulating per book makes the value of reading — "understanding one
+book completely" — visible as-is.
 
-### 4-3. 「1冊を読み切る」を進捗の単位にする
+### 4-3. Make "finishing one book" the unit of progress
 
-セッション単発ではなく、**1冊の理解マップが埋まっていく**ことを進捗にする。
-連続日数・埋めた穴カウンターは共通のまま、「理解し切った本」が本棚に増えることが
-長期の報酬になる。冊数を積む読書ログ文化(読書メーター等)とも自然に接続する。
+Progress is **an understanding map for one book filling in**, not one-off sessions.
+Streak days and the filled-gap counter stay shared, and the long-term reward becomes
+"books fully understood" accumulating on the shelf. It also connects naturally to
+book-log culture (Dokushometer and the like), where the count of books adds up.
 
-### 技術面: 再利用マップ
+### The technology: a reuse map
 
-| 資産 | PDF版での扱い |
+| Asset | In the PDF version |
 | --- | --- |
-| 会話パイプライン(LiveKit / VAD / STT / TTS) | そのまま |
-| カルテ生成・間隔反復(OneSignal)・課金(RevenueCat)・無料枠メータリング | そのまま |
-| 後輩ペルソナ・質問4型の few-shot | ほぼそのまま(数式の音声補正は不要になる) |
-| 写真解析(photo_analysis) | **PDF ingestion(目次抽出・章チャンク化)に置換** |
-| カリキュラムマップ + topic_id 照合 | **文書から自動生成した章・チャンク構造+「その章に実際に書いてあるか」照合に一般化** ← 新規開発のコア |
+| The conversation pipeline (LiveKit / VAD / STT / TTS) | Unchanged |
+| Karte generation, spaced repetition (OneSignal), billing (RevenueCat), free-tier metering | Unchanged |
+| The persona and the four-question-type few-shot | Almost unchanged (spoken-maths correction becomes unnecessary) |
+| Photo analysis (photo_analysis) | **Replaced by PDF ingestion (contents extraction, chapter chunking)** |
+| The curriculum map + topic_id matching | **Generalised to an automatically derived chapter/chunk structure plus "is it actually written in that chapter"** <- the core of the new work |
 
-新しく作るのは実質「ingestion と許可範囲の自動生成」だけ。
-逆に言えば、PoC 2 はそこさえ検証できれば最小でいい。
+What is genuinely new is only "ingestion and automatic generation of the allowed scope".
+Put the other way, PoC 2 can be minimal as long as it validates that.
 
-### 論点(未決)
+### Open questions
 
-- **音声かテキストか。** 読書は黙読文化で、「声で説明」の摩擦が現行以上に効く
-  (インセプションデッキ §7-5 の懸念)。PDF版ではテキスト説明モードの優先度が上がる。
-  会話パイプラインは共通なので、入出力の切替として設計できるはず。
-- **モバイルかWebか。** PDFはPC・タブレットに溜まっている。Flutter資産のまま行くなら
-  iPad対応+共有シート(他アプリから「カタルテに送る」)が現実解。
-- **ターゲット。** 持ち込み文書の痛みが一番強いのは実は高校生ではなく、
-  **資格学習者と技術書・ビジネス書を読む社会人**(「読んだのに身につかない」が明確で、
-  支払い意欲も高い)。高校生ブランドのまま行くか、ここで対象を広げるかは大きい分岐(§8)。
+- **Voice or text.** Reading is a silent-reading culture, so the friction of "explain out
+  loud" bites harder than today (inception deck §7-5's concern). A text explanation mode
+  rises in priority for the PDF version. The conversation pipeline is shared, so it should
+  be designable as an input/output switch.
+- **Mobile or web.** PDFs pile up on PCs and tablets. Staying on the Flutter assets, the
+  realistic answer is iPad support plus a share sheet ("send to Katarute" from other apps).
+- **The target.** The strongest pain around documents you bring is actually not
+  high-schoolers but **people studying for qualifications and adults reading technical and
+  business books** ("I read it but it did not stick" is explicit, and willingness to pay is
+  higher). Whether to stay on the high-schooler brand or widen here is a major fork (§8).
 
 ---
 
-## 5. UI/UXはどう変わるか
+## 5. How the UI/UX changes
 
-**コアループの画面(会話・祝福・カルテ・復習)は変わらない。変わるのは入口と蓄積の単位。**
+**The core loop's screens (conversation, celebration, karte, review) do not change. The
+entrance and the unit of accumulation do.**
 
 ```
-現行      ホーム → 撮影 →→→→→→→→→→ 会話 → 祝福 → カルテ(セッション単位)
-本/PDF版  本棚 → 本を開く → どこまで読んだ? → 会話 → 祝福 → その本のカルテが育つ(1冊単位)
+Current      home -> capture ------------------> conversation -> celebration -> karte (per session)
+Book/PDF     shelf -> open a book -> how far did you read? -> conversation -> celebration -> that book's karte grows (per book)
 ```
 
-「今のUIが最適か」への答え: **数学PoC(H1検証)の目的に対しては最適に近い。**
-撮影は「今日勉強したもの」を指定する最短の入口で、これより軽い入口は考えにくい。
-9/30まではデッキ通り凍結し、いじる理由は数値が出てから探す。
+The answer to "is the current UI optimal": **close to optimal for the maths PoC's purpose
+(validating H1)**. Photographing is the shortest possible entrance for naming "what I
+studied today", and it is hard to imagine a lighter one. Freeze it until 9/30 as the deck
+says, and look for reasons to change only once numbers arrive.
 
-変える必要が出るのはコンテンツ源を広げたときで、それは
-**画面の作り直しではなく、既存画面の手前に「本棚」という階層が1枚増える**変更として現れる。
-カルテ画面だけは「セッションの記録」から「1冊の理解マップ」への進化が必要になる
-(章ごとの穴の分布が見える形)。
-
----
-
-## 6. 出版業界への入り方(仮説)
-
-順序が大事。**いきなり「本のデータをください」は通らない**
-(海賊版への警戒・前例のなさ・相手にとっての工数)。
-
-1. **持ち込み(PoC 2)で実績を作る。** ユーザーが自分のPDFや教材を入れる分には
-   出版社の許諾は要らない。ここで「読者が本について説明し、理解が深まり、再訪する」
-   データが貯まる。
-2. **最初の相手は学習参考書・資格テキストの出版社。** 一般文芸より、
-   (a) 「理解を深める」ニーズが明確、(b) 現行アプリの実績(高校数学)がそのまま提案材料、
-   (c) 「チャート式を撮って説明する」使い方は現行仕様でも自然に起きうる、
-   の3点で距離が近い。イメージは数研・旺文社・TAC あたり。
-3. **差し出すものは、出版社が持っていないデータ。** 紙の本は売れた後の読者が見えない。
-   読了率・章ごとのつまずき箇所・再訪率は、改訂や次企画に効く一次データになる。
-   「公式対応で本の読後体験が伸びる+読者データが返る」が交換条件の骨子。
-4. **全文データは要らない設計を最初から見せる。** 質問生成に必要なのは章構成と該当範囲の
-   テキストだけで、全文の複製・再配布はしない(読者は本を持っている前提)。
-   この設計自体が海賊版警戒への回答になる。
-
-一般書に広げるときの参照点: flier(要約)は「読む前」の市場、こちらは「読んだ後」の市場で
-食い合わない。「積読を理解済みに変える」という語り口はここから作れる。
+The need to change appears when content sources widen, and it appears not as rebuilding
+screens but as **one extra layer, the bookshelf, in front of the existing screens**.
+Only the karte screen needs to evolve, from "a record of a session" into "an understanding
+map for one book" (showing the distribution of gaps per chapter).
 
 ---
 
-## 7. 進め方の提案
+## 6. How to enter the publishing industry (hypothesis)
 
-| 時期 | やること | 動かすもの |
+Order matters. **"Give us your book data" does not work as an opening move** (piracy
+concerns, no precedent, effort on their side).
+
+1. **Build a track record with documents users bring (PoC 2).** No publisher permission is
+   needed for users to add their own PDFs and materials. That accumulates data on "readers
+   explain a book, understanding deepens, and they come back".
+2. **The first counterparts are study-guide and qualification-textbook publishers.**
+   Closer than general literature on three counts: (a) the "deepen understanding" need is
+   explicit, (b) the current app's track record (high-school maths) is directly usable as
+   material, and (c) "photograph a Chart-shiki page and explain it" already happens
+   naturally under the current spec. Think Suken, Obunsha, TAC.
+3. **What we offer is data the publisher does not have.** A printed book shows nothing
+   about the reader after the sale. Completion rate, where readers stumble per chapter and
+   revisit rate are primary data that feed revisions and the next title.
+   "An official tie-in extends the post-reading experience, and reader data comes back" is
+   the backbone of the trade.
+4. **Show from the start that full text is not needed.** Question generation needs only
+   the chapter structure and the text of the relevant range; there is no copying or
+   redistribution of the whole (the reader is assumed to own the book). That design is
+   itself the answer to piracy concerns.
+
+A reference point for widening to general books: flier (summaries) is the "before reading"
+market; this is the "after reading" market, so they do not compete. The pitch "turn your
+unread pile into an understood pile" can be built from here.
+
+---
+
+## 7. Proposed sequencing
+
+| When | What | What moves |
 | --- | --- | --- |
-| 〜9/30 | **現行スコープ死守・Shipaton提出。** ピボット検討はこのメモ止まり | 何も動かさない(デッキ§4を維持) |
-| 10月上旬 | H1判定: 継続率・会話成立率・穴の再訪率を見る | 判断材料の収集 |
-| 10月〜 | PoC 2(本棚+持ち込みPDF)を最小構成で: 1冊入れる → 章を選ぶ → 会話 → カルテ。**H2の質問品質だけを検証する** | 新規は ingestion と許可範囲の自動生成のみ |
-| 並行 | 学参・資格系の出版社1〜2社と非公式に対話開始(このメモを提案資料に成形) | プロダクト不要 |
-| 11月〜 | H2の結果+H1の数値を持って正式提案。国語(現代文)対応の要否もここで再判断 | 「やらないことリスト」の改訂PRを出す |
+| To 9/30 | **Hold the current scope; submit to Shipaton.** Pivot thinking stops at this memo | Nothing moves (deck §4 holds) |
+| Early October | H1 verdict: retention, conversation completion, gap revisit rate | Gathering the inputs |
+| From October | PoC 2 (bookshelf + documents you bring) at minimum scope: add a book -> pick a chapter -> converse -> karte. **Validate only H2's question quality** | New work is only ingestion and automatic scope generation |
+| In parallel | Start informal conversations with one or two study-guide / qualification publishers (shape this memo into a proposal deck) | No product needed |
+| From November | Make a formal proposal with H2's result plus H1's numbers. Re-decide whether Japanese (reading comprehension) support is needed | Open a PR revising the "won't do" list |
 
-W5〜のグロース活動(勉強垢文化への種まき)は、そのまま PoC 2 の顧客開発を兼ねられる:
-「ノート以外も入れたい」という声が自然に出るかを観察しておくと、10月の判断が楽になる。
+The growth work from W5 (seeding study-account culture) doubles as PoC 2's customer
+development: watching whether "I want to add things other than notes" comes up naturally
+makes October's decision easier.
 
 ---
 
-## 8. 次に決めたい問い
+## 8. Questions to settle next
 
-1. **どちらの路線か**: 教育アプリとして勝ちに行く(全科目・受験市場)のか、
-   本ビジョンのPoCと割り切る(数学+国語で十分)のか。→ このメモは後者を推している
-2. **PoC 2のターゲット**: 高校生のままか、資格・社会人に広げるか
-   (ブランド・価格・チャネルが全部変わる)
-3. **PoC 2の形**: 現行アプリ内の新階層(本棚タブ)か、別アプリ・Webか
-4. **音声とテキストの主従**: PDF版でもボイス主軸を貫くか、テキスト説明を正式に立てるか
-5. **H1の合格ライン**: 継続率・再訪率が何%なら「体験は成立した」と言うか。
-   **10月に数字を眺めてから決めると必ずブレるので、9月中に先に決めておく**
-6. **価格の確定(§3-3)**: 週800 / 月2,000 / 年20,000で出すか(年額の深さ、19,800表記の是非)。
-   確定の前に、H0ダッグフーディングとセッション単価テレメトリで実測原価を取る
+1. **Which route**: win as an education app (every subject, the exam market), or accept
+   this as the book vision's PoC (maths plus Japanese is enough)? -> This memo argues for
+   the latter
+2. **PoC 2's target**: stay with high-schoolers, or widen to qualifications and adults
+   (brand, price and channel all change)
+3. **PoC 2's form**: a new layer inside the current app (a bookshelf tab), or a separate
+   app or web
+4. **Voice versus text**: does the PDF version keep voice as the main axis, or is text
+   explanation made official
+5. **H1's pass line**: at what retention and revisit rates do we say "the experience
+   works"? **Deciding while staring at the numbers in October will always drift, so decide
+   during September**
+6. **Finalising the price (§3-3)**: ship at 800 weekly / 2,000 monthly / 20,000 annually?
+   (the annual discount's depth, whether to write 19,800). Before finalising, take real
+   cost measurements from H0 dogfooding and per-session telemetry
