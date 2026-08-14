@@ -1,193 +1,207 @@
-# 意思決定の記録(ADR)
+# Architecture decision records (ADR)
 
-決めたことと、その理由だけを1行ずつ置く。経緯の長文は書かない。
-上書きされた決定は消さず、**取り消し線と日付**で残す。
+One line per decision and its reason. No long narratives.
+Superseded decisions are not deleted but **struck through with a date**.
 
 ---
 
 <a id="adr-0001"></a>
 
-## 0001 モノレポ + pnpm workspaces
+## 0001 Monorepo + pnpm workspaces
 
-承認 2026-08-03
+Accepted 2026-08-03
 
-- 単一リポジトリに `apps/mobile` / `backend/*` / `packages/*` を同居させる
-- TypeScript側は pnpm workspaces で束ねる。`apps/mobile` は外
-- pnpm を選んだのはファントム依存を構造的に防げるため
-- パッケージスコープは `@ai-sensei/*`。プロダクト名が未確定なので焼き付けない
-- 言語をまたぐ型共有はしない。`packages/contract` のスキーマと fixture が正
-- 同じ fixture を freezed と zod の両方でパースし、契約ドリフトをCIで落とす
-- カリキュラムは純JSON(`packages/curriculum`)。3処理系から言語中立に読む
-- 直下の並びは**デプロイ単位**。パスから行き先が一意に決まる
+- `apps/mobile` / `backend/*` / `packages/*` live in a single repository
+- The TypeScript side is bundled with pnpm workspaces; `apps/mobile` is outside it
+- pnpm was chosen because it structurally prevents phantom dependencies
+- The package scope is `@ai-sensei/*`. The product name is unsettled, so it is not baked in
+- No cross-language type sharing. `packages/contract`'s schemas and fixtures are authoritative
+- The same fixture is parsed by both freezed and zod, so contract drift fails in CI
+- The curriculum is plain JSON (`packages/curriculum`), read language-neutrally by three runtimes
+- The top-level layout is **deployment units**: a path uniquely determines where it goes
 
-**代償** — スキーマがDartとTSで二重になる。fixture検証で担保する。
+**Cost** — schemas are duplicated in Dart and TS. Fixture validation covers it.
 
 ---
 
 <a id="adr-0002"></a>
 
-## 0002 agent は TypeScript(Node 22)
+## 0002 The agent is TypeScript (Node 22)
 
-承認 2026-08-03
+Accepted 2026-08-03
 
-- ガードレール・プロンプト・契約を api と agent で**1実装**にできる
-- Python にすると二重実装になり、ソロ開発では片方が必ず腐る
-- `.ts` を型ストリップで直接実行する。ビルド手順を持たない
-- LiveKit Agents SDK は事例が少ないので `^1.6.1` で固定して追従する
-- ホスティングは LiveKit Cloud。`prewarm` の疎通は `GET :8081/` が200かで見る
-- **Dockerfile はリポジトリのルートに置く**。`lk` は作業ディレクトリを
-  そのままビルドコンテキストにし、`workspace:*` はルートでないと解けない
+- Guardrails, prompts and the contract can be **one implementation** across api and agent
+- Python would mean two implementations, and in solo development one always rots
+- `.ts` runs directly with type stripping. There is no build step
+- The LiveKit Agents SDK has few precedents, so it is pinned at `^1.6.1` and followed
+- Hosted on LiveKit Cloud. `prewarm` connectivity is read from `GET :8081/` returning 200
+- **The Dockerfile lives at the repository root.** `lk` uses the working directory as
+  the build context, and `workspace:*` only resolves from the root
 
-**却下** — 焼いたイメージを渡す(`--image` は Enterprise 限定)/
-`backend/agent` を別リポジトリに切り出す(1実装にした理由が消える)。
+**Rejected** — handing over a baked image (`--image` is Enterprise-only) /
+splitting `backend/agent` into its own repository (which would erase the reason for one
+implementation).
 
 ---
 
 <a id="adr-0003"></a>
 
-## 0003 `/complete` の内部認証は共有静的トークンのまま
+## 0003 `/complete`'s internal auth stays a shared static token
 
-承認 2026-08-04
+Accepted 2026-08-04
 
-- MVP提出までは据え置く。作り替えは agent の稼働先が決まってから一度で行う
-- この値はクライアントに渡っていない。server↔server 限定
-- `INTERNAL_API_TOKEN` は**環境ごとに別の値**にする。ログに出さない
-- 目標の形はセッションスコープの短命トークン(`sub`/`aud`/`exp` 付き)
-- 署名鍵は Workers だけが持ち、agent は長期鍵を持たない
-- 部品は `lib/livekit.ts` の HS256 実装で足りる。新しい依存は要らない
+- Left as-is until the MVP submission. The rebuild happens once, after the agent's host is settled
+- The value never reaches a client; it is server-to-server only
+- `INTERNAL_API_TOKEN` is **a different value per environment** and is never logged
+- The target shape is a short-lived session-scoped token (with `sub`/`aud`/`exp`)
+- Workers alone holds the signing key; the agent holds no long-lived key
+- The parts are covered by `lib/livekit.ts`'s HS256 implementation. No new dependency
 
-**却下** — LiveKitトークンの `metadata` に載せる。その JWT はアプリに
-そのまま返しており、base64 decode で読める。アプリがカルテを偽造できる。
+**Rejected** — putting it in the LiveKit token's `metadata`. That JWT is returned to the
+app verbatim and readable by base64 decode, so the app could forge a karte.
 
-**見直す条件** — 提出後のW4 / agent の稼働先が決まったとき /
-自分以外が agent の実行環境に触るようになったとき。
+**Revisit when** — after submission in W4 / when the agent's host is settled / when
+someone other than me touches the agent's runtime.
 
-**残るリスク** — agent の実行環境が漏れると全セッションのカルテを偽造できる。
+**Residual risk** — a leak of the agent's runtime allows forging every session's karte.
 
 ---
 
 <a id="adr-0003-voice"></a>
 
-## 0003 声は Deepgram に一本化(STT + TTS)
+## 0003 Voice consolidated on Deepgram (STT + TTS)
 
-承認 2026-08-06
+Accepted 2026-08-06
 
-- Aura-2 が日本語対応したので、2社に分ける技術的な理由が消えた
-- 障害点・鍵・請求先が1つになる。ソロ運用ではこの差が大きい
-- 差し替えは `agent.ts` の1ブロックなので**巻き戻せる**
-- 声はキャラそのもの。`aura-2-izanami-ja` に固定し、環境ごとに変えない
-- 英語は別モデル(`DEEPGRAM_TTS_MODEL_EN`)。Deepgramは言語がモデル名に埋まる
-- 既定値のある設定は**空文字を未設定として扱う**(空だと声だけ出ない壊れ方をする)
+- Aura-2 gained Japanese support, removing the technical reason to split across two vendors
+- One failure point, one key, one bill. That matters a lot in solo operation
+- Swapping it is one block in `agent.ts`, so it is **reversible**
+- The voice is the character. `aura-2-izanami-ja` is fixed and never varies per environment
+- English uses a different model (`DEEPGRAM_TTS_MODEL_EN`); Deepgram bakes the language into the model name
+- Settings with defaults **treat an empty string as unset** (empty breaks in the "only the voice is missing" way)
 
-**代償** — ElevenLabs のスポンサー連携を失う(技術ではなく座組みの判断)。
-SDK の `TTSModels` 型は英語ボイスしか列挙しておらず、ボイス名は型で守られない。
+**Cost** — losing the ElevenLabs sponsorship tie-in (a partnership decision, not a
+technical one). The SDK's `TTSModels` type enumerates only English voices, so voice
+names are not protected by types.
 
 ---
 
 <a id="adr-0004"></a>
 
-## 0004 動きは1経路に集約し、オンボーディングで1往復させる
+## 0004 Motion goes through one path, with one round trip in onboarding
 
-承認 2026-08-06
+Accepted 2026-08-06
 
-- 装飾のモーションは必ず `AppMotion` を通す。減らす設定では**出さない**
-- 出さないときは**終わった状態**を描く。0で止めると壊れて見える
-- 例外は操作の時間(`AppDurations.hold`)。長押しの長さは説明の比喩なので縮めない
-- 読み上げ中(`prefersTapOverHold`)は長押しをタップに切り替える
-- テストは常に `disableAnimations` で回す。通し忘れたループはテストが返らず露見する
-- 蛍光マーカーは**行ごと**に、上の行から順に引く
-- オンボーディングは4枚。3枚目でリハーサル(写真も声も使わない・権限も要らない)
-- 説明してもパスしても先へ進める。3枚目から「とばす」を出し、行き止まりを作らない
+- Decorative motion always goes through `AppMotion`. With reduce-motion on, it **is not shown**
+- When not shown, draw the **finished** state. Stopping at 0 looks broken
+- The exception is interaction time (`AppDurations.hold`); a long press's length is a metaphor for the explanation, so it is not shortened
+- While reading aloud (`prefersTapOverHold`), long press switches to tap
+- Tests always run with `disableAnimations`. A loop that forgot the path makes the test never return, which exposes it
+- The highlighter marker is drawn **per line**, from the top down
+- Onboarding is four screens. The third is a rehearsal (no photo, no voice, no permissions)
+- Explaining and passing both move forward. "Skip" appears from the third screen, so there is no dead end
 
-**却下** — Rive への載せ替え(v1.1)/ 効果音 / オンボーディングでマイクを試させる /
-リハーサルを必須にする。
+**Rejected** — moving to Rive (v1.1) / sound effects / making them test the microphone
+during onboarding / making the rehearsal mandatory.
 
-**追記 2026-08-11** — ピボットで約束1が「教える。そのあと教え返させる」に改正され、
-3枚目は「先輩の板書で教わったあと教え返す」に置き換わった。上の1・2・4行目の判断は有効。
+**Addendum 2026-08-11** — the pivot revised promise 1 to "teach, then have them teach it
+back", and the third screen was replaced with "be taught on the senpai's board, then
+teach it back". Lines 1, 2 and 4 above still hold.
 
 ---
 
 <a id="adr-0005"></a>
 
-## 0005 英語対応は訳さない。課程ごとに別で持つ
+## 0005 English support is not translation; each curriculum is separate
 
-承認 2026-08-07
+Accepted 2026-08-07
 
-- カリキュラムはロケールごとに別ファイル。`ja` は数学I〜C、`en` は Algebra 1 〜 Statistics
-- 対応表は作らない。ずれた場所は**どちらの課程でもない単元**になる
-- ロケールは topic_id の接頭辞で判る(`M1`〜`MC` / `A1`・`GE`・`A2`・`PC`・`CL`・`ST`)
-- 穴の言語が topic_id から決まるので、セッションのロケールをDBに持たなくてよい
-- プロンプトは `prompts/<id>.<locale>.md` の**別本**。日本語に「英語で答えて」を足さない
-- 定型句とロール名も本文と同じ言語に揃える。1行混ざるとそこだけ言語が戻る
-- ガードレールも言語ごと。範囲外の語は課程で違う(ロピタルは日本で範囲外・APでは扱う)
-- 端末の言語は「日本語を望んだ人にだけ日本語」。それ以外は英語へ倒す
+- One curriculum file per locale. `ja` is Math I-C, `en` is Algebra 1 through Statistics
+- No mapping table. Where they diverge you get **a unit belonging to neither curriculum**
+- The locale follows from the topic_id prefix (`M1`-`MC` / `A1`, `GE`, `A2`, `PC`, `CL`, `ST`)
+- Because a hole's language follows from its topic_id, the session's locale need not be stored in the DB
+- Prompts are **separate books**, `prompts/<id>.<locale>.md`. Never append "answer in English" to a Japanese body
+- Fixed phrases and role labels match the body's language too. One mixed line makes that part revert
+- Guardrails are per language. Out-of-scope words differ by curriculum (L'Hôpital is out of scope in Japan and covered in AP)
+- Device language means "Japanese only for those who asked for Japanese"; everything else falls to English
 
-**却下** — 日本の課程を英訳する / ロケールをDBのセッション行に持つ /
-1本のカリキュラムに両課程を入れる。
+**Rejected** — translating the Japanese curriculum / storing the locale on the DB's
+session row / putting both curricula in one file.
 
 ---
 
 <a id="adr-0006"></a>
 
-## 0006 自習室を畳み、コアループの内側をコアと定義する
+## 0006 Fold away the study room; the core is the inside of the core loop
 
-承認 2026-08-11
+Accepted 2026-08-11
 
-- **自習室モードを削除する。**原価ではなく注意を使っていた
-- 先へ進む道が撮影だけで、ホームと同じ行き先だった
-- 滞在時間は約束2により生徒へ返せず、画面に一度も出ない数字だった
-- そのために常設タブとD1の表を1つずつ持っていた
-- コアは1周 = 撮る → 板書つきで教わる → 教え返す → カルテ → 小テスト → 1/3/7日後の復習
-- 学習計画・親レポート・課金・オンボーディングは残す。矢印が刺さっているため
-- **板書はカルテへ移す。**授業の寿命を超えて読み返せる唯一の場所にする
-- カルテの読む順は 結論(言えたこと・穴)→ 根拠(板書)→ 操作
-- 板書を**カードに入れない**。実効幅345ptが311ptへ落ち、式が横スクロールになる
-- ホームの主操作は常に1つ。並べず**入れ替える**
-- 授業できる日は「先輩に教わる」/ 締めた日は「埋めにいく穴」(復習・無料)
-- 締めた日は挨拶も労いへ。撮らせない画面で撮影を促さない
-- 常設タブは ホーム / 計画 / 設定 の3つ。カルテはタブにしない
-- `study_room_daily` は `0007` で落とす。`0006` のファイルは適用済みDBのため残す
-- ストア掲載スクショは**シェル経由**で撮る。下部タブが写らないと実機と違う絵になる
+- **The study-room mode is removed.** It spent attention rather than money
+- Its only way forward was taking a photo, the same destination as home
+- Time spent could not be returned to the student under promise 2, and was a number that never appeared on screen
+- It nonetheless cost one permanent tab and one D1 table
+- One turn of the core = photograph -> be taught with a board -> teach it back -> karte -> quiz -> review after 1/3/7 days
+- Study plans, the parent report, billing and onboarding stay, because arrows point at them
+- **The board moves into the karte**, making it the only place it can be re-read beyond the lesson's lifetime
+- The karte reads conclusion (what was said, the holes) -> evidence (the board) -> actions
+- **The board is not put in a card.** The effective width drops from 345pt to 311pt and formulas scroll horizontally
+- Home always has exactly one primary action. They are **swapped**, never listed together
+- On a day with a lesson available: "be taught by the senpai". On a day already closed: "holes to fill" (review, free)
+- On a closed day the greeting turns to appreciation. A screen that will not let you photograph must not prompt for a photo
+- Three permanent tabs: home / plan / settings. The karte is not a tab
+- `study_room_daily` is dropped in `0007`; `0006`'s file stays for already-migrated DBs
+- Store screenshots are taken **through the shell**; without the bottom tabs they differ from the real device
 
-**却下** — タブから外して寄り道にする(置き場所の問題ではない)/
-滞在時間を進捗に出す(約束2を破る)/ 自習室に演習を持たせる(原価ゼロが崩れる)。
+**Rejected** — moving it off the tabs as a detour (the problem was not its location) /
+showing time spent in progress (breaks promise 2) / giving the study room exercises
+(breaks zero marginal cost).
 
 ---
 
 <a id="adr-0007"></a>
 
-## 0007 課程(track)を指導言語から切り離す
+## 0007 Separate the curriculum (track) from the language of instruction
 
-承認 2026-08-12
+Accepted 2026-08-12
 
-- [0005](#adr-0005) の「ロケール」は3つを兼ねていた: どの課程か / 先輩が話す言語 /
-  ガードレールの語彙
-- 「日本の中学生が英語を学ぶ」= **課程は英語・指導言語は日本語**で、1つの値では表せない
-- `CurriculumLocale`(`ja`/`en`)は**指導言語のまま据え置く**。課程は `TrackId` に切り出す
-- `Record<CurriculumLocale, …>` も `plan_sessions.locale` の CHECK も無傷。
-  保存済み topic_id も変えないので**マイグレーションはゼロ**
-- 接頭辞から引くものが2段になった: 接頭辞 → 課程 →(言語, 教科, 学校段階)。
-  [0005](#adr-0005) の「IDひとつから言語が決まる」は強化されて残る
-- 1 track = 1 JSONファイル。`Record<TrackId, Curriculum>` なので登録漏れは型で落ちる
-- **`topicsFor(locale)` は消した。** 残すと課程が増えた日に無言でプロンプトが倍になる
-- 学年は表示専用の `grade_hint` に隔離。`suggestTopics` / `resolveDetectedTopics` に
-  **学年を渡す引数を作らない**のが「学年で絞らない」の実体
-- 指導要領は中学英語の文法事項を学年配当していない(付録7は「中学校」一括)。
-  中学英語の courseCode を学年別にしないのも同じ理由
-- 前提の参照は「同じ課程」から「**同じ言語・同じ教科**」に緩めた。
-  高2を中3へ戻すのは先輩の中核機能なので、段はまたいでよい
-- `school_stage` はリクエストごとに受け取り、DBには持たない。既定は `high_school`
-- 板書に使える要素は教科で閉じる(数学=数式系 / 英語=`sentence`・`compare`)。
-  英語の課程では LaTeX の検査に到達しない
-- 高校英語の文法は付録9の8項目。中学に無いのは関係副詞だけなので、
-  残り7つは複製せず `prerequisites` で中学英語を指す
+- [0005](#adr-0005)'s "locale" served three roles at once: which curriculum, the language
+  the senpai speaks, and the guardrails' vocabulary
+- "A Japanese middle-schooler learning English" = **an English curriculum with Japanese
+  instruction**, which one value cannot express
+- `CurriculumLocale` (`ja`/`en`) **stays the language of instruction**; the curriculum is
+  split out into `TrackId`
+- `Record<CurriculumLocale, …>` and `plan_sessions.locale`'s CHECK are untouched, and
+  stored topic_ids are unchanged, so **there is no migration**
+- What a prefix yields is now two steps: prefix -> curriculum -> (language, subject,
+  school stage). [0005](#adr-0005)'s "one id determines the language" survives, stronger
+- One track = one JSON file. `Record<TrackId, Curriculum>` makes a missing registration
+  fail type checking
+- **`topicsFor(locale)` was deleted.** Kept, the prompt would silently double the day a
+  curriculum was added
+- The year is isolated in the display-only `grade_hint`. That `suggestTopics` /
+  `resolveDetectedTopics` have **no parameter for a year** is what makes "never narrow by
+  year" real
+- The guidelines do not allocate middle-school English grammar by year (appendix 7 covers
+  "middle school" as a whole). Middle-school English course codes are not per-year for
+  the same reason
+- Prerequisite references were loosened from "the same curriculum" to **"the same
+  language and the same subject"**. Taking a year-11 student back to year 9 is the
+  senpai's core function, so stages may be crossed
+- `school_stage` arrives per request and is not stored in the DB. The default is
+  `high_school`
+- Usable board elements are closed by subject (maths = formula types / English =
+  `sentence`, `compare`). English curricula never reach the LaTeX checks
+- High-school English grammar is appendix 9's eight items. Only relative adverbs are
+  absent from middle school, so the other seven are not duplicated and point at
+  middle-school English via `prerequisites`
 
-**代償** — 接頭辞は3か所で二重管理のまま(`curriculum/schema.ts` /
-`contract/karte.ts` の正規表現 / モバイルの `planSubject`)。contract が依存を
-持たない層である以上ほどけないので、**全コースコードで既定に落ちないテスト**で縛る。
-`school_stage` は再インストールで選び直しになる。
+**Cost** — prefixes remain duplicated in three places (`curriculum/schema.ts`,
+`contract/karte.ts`'s regex, mobile's `planSubject`). It cannot be untangled while
+contract stays a dependency-free layer, so it is bound by **a test that no course code
+falls back to the default**. `school_stage` must be chosen again after a reinstall.
 
-**却下** — `CurriculumLocale` に `"ja-english"` を足す(`Record` の意味が
-「言語ごと」から「課程ごと」に化け、CHECK 制約も書き換えになる)/
-topic_id を `{教科}-{課程}-{単元}` に作り直す(保存済みIDを全部書き換えることになる)/
-学年を courseCode に入れる(指導要領が定めていない配当を仕様に格上げしてしまう)。
+**Rejected** — adding `"ja-english"` to `CurriculumLocale` (the `Record`'s meaning would
+shift from "per language" to "per curriculum", and the CHECK constraint would need
+rewriting) / rebuilding topic_id as `{subject}-{curriculum}-{unit}` (every stored id
+would have to be rewritten) / putting the year into the course code (it would promote an
+allocation the guidelines never set into a specification).
