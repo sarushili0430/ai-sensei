@@ -1,11 +1,12 @@
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 
-/// 画面の識別子。パスを散らかさないためだけの列挙。
+/// Screen identifiers — an enum purely to keep paths from scattering.
 ///
-/// - ここは平らだが、ルータでは復習・カルテ等をホーム枝の子に組む
-/// - 子にすると通知の `go('/review')` でもホームが下に積まれ、戻るが効く
-/// - 常設タブはホーム / 計画 / 設定の3つ(ADR 0006)
+/// - Flat here, but the router nests review and karte under the home branch
+/// - Nesting keeps home stacked underneath even for `go('/review')` from a
+///   notification, so back works
+/// - The permanent tabs are home / plan / settings (ADR 0006)
 enum AppRoute {
   onboarding('/onboarding'),
   home('/'),
@@ -18,24 +19,23 @@ enum AppRoute {
   thanks('/thanks'),
   settings('/settings'),
 
-  /// 親レポート(計画書§5-1)。内容を確認してから共有する、戻れる寄り道。
+  /// Parent report: a detour you can back out of, reviewed before sharing.
   parentReport('/parent-report'),
 
-  /// 学習計画(計画書§4-3)。作成途中の状態を保つ常設タブ。
+  /// Study plan: a permanent tab that keeps work-in-progress state.
   plan('/plan');
 
   const AppRoute(this.path);
 
   final String path;
 
-  /// `/` の子ルートに書くときの相対パス。
+  /// Relative path for use as a child route of `/`.
   String get segment => path == '/' ? path : path.substring(1);
 }
 
-/// 画面の閉じ方。
-///
-/// 寄り道(push)で来ていれば元の画面に戻し、そうでなければホームへ逃がす。
-/// 通知から復習画面に直接着地した場合など、来かたが1つに決まらない画面で使う。
+/// How screens close: pop back if we arrived by push, otherwise fall back
+/// to home. For screens reachable more than one way, such as landing on
+/// review straight from a notification.
 extension AppNavigation on BuildContext {
   void closeOrGoHome() {
     if (canPop()) {
@@ -45,22 +45,21 @@ extension AppNavigation on BuildContext {
     }
   }
 
-  /// ペイウォールを、購入のお礼に**差し替える**。
+  /// Replaces the paywall with the thank-you screen.
   ///
-  /// push ではなく差し替えなのは、買ったあとに戻れても、戻る先が
-  /// 「もう一度買う画面」しか無いから。差し替えておくと、お礼を閉じたときに
-  /// ペイウォールを開く前の画面(ホーム・カルテ・復習)へそのまま戻る。
+  /// Replace rather than push: after buying, the only thing to go back to
+  /// would be the buy screen. Replacing means closing the thank-you returns
+  /// to wherever the paywall was opened from.
   void replaceWithThanks({bool restored = false}) =>
       pushReplacement(thanksLocation(restored: restored));
 
-  /// お礼を重ねて出す。設定から復元したときのように、
-  /// **元の画面を残したい**ところから使う。
+  /// Pushes the thank-you on top, for callers that must keep the screen
+  /// underneath — restoring from settings, for instance.
   void pushThanks({bool restored = false}) => push(thanksLocation(restored: restored));
 }
 
-/// お礼画面の行き先。
-///
-/// 復元だけクエリで渡す。無料トライアルかどうかは entitlement が知っているので
-/// 渡さない(渡すと、画面とSDKで別々の事実を持つことになる)。
+/// Destination for the thank-you screen. Only "restored" travels in the
+/// query; whether it is a free trial is the entitlement's to know, and
+/// passing it would give the screen and the SDK separate truths.
 String thanksLocation({bool restored = false}) =>
     restored ? '${AppRoute.thanks.path}?restored=1' : AppRoute.thanks.path;

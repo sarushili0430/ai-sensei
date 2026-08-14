@@ -17,26 +17,27 @@ export '../domain/purchase_outcome.dart';
 
 part 'entitlement_controller.g.dart';
 
-/// RevenueCat の entitlement。
+/// RevenueCat entitlement.
 ///
-/// 参加の絶対条件(RevenueCat SDKで最低1つのアプリ内課金)を満たす箇所。
-/// **サーバ側の判定が正**で、ここはUIの出し分けにだけ使う。
-/// クライアントの申告でセッション上限を緩めることはしない。
+/// This is where the hard requirement (at least one in-app purchase through the
+/// RevenueCat SDK) is met. The server's verdict is authoritative; this drives UI
+/// only and never relaxes session limits on the client's say-so.
 ///
-/// SDKの初期化は `main()` の [PurchasesRepository.configure] で済ませてある。
-/// この Controller は「今の状態を読む」ことと「購入・復元を投げる」ことだけ持つ。
+/// SDK init already happened in `main()` via [PurchasesRepository.configure].
+/// This controller only reads current state and issues purchases and restores.
 @Riverpod(keepAlive: true)
 class EntitlementController extends _$EntitlementController {
   @override
   Future<Entitlement> build() async {
-    // 鍵の無いビルドでは課金機能ごと無効。エラーにはしない
-    // (課金と関係ない画面のテストを巻き添えにしないため)。
+    // Builds without keys disable billing entirely rather than erroring, so
+    // unrelated screen tests are not dragged down.
     if (!RevenueCatConfig.isConfigured) return Entitlement.free;
 
     final PurchasesRepository repository = ref.watch(purchasesRepositoryProvider);
 
-    // 更新・失効・ペイウォール内での購入・Customer Center での解約を
-    // SDK が push してくる。画面を開き直さなくても状態が追いつく。
+    // The SDK pushes renewals, expiries, purchases made inside the paywall and
+    // cancellations from Customer Center, so state catches up without reopening
+    // the screen.
     final StreamSubscription<CustomerInfo> subscription = repository
         .customerInfoChanges()
         .listen(_onCustomerInfo, onError: (Object _) {});
@@ -46,9 +47,9 @@ class EntitlementController extends _$EntitlementController {
   }
 
   Future<Entitlement> _read(PurchasesRepository repository) async {
-    // Offering の取得はネットワーク越しで、落ちることがある。
-    // ペイウォールは出せなくても entitlement の判定は生かしたいので、
-    // ここだけは失敗を握りつぶして null にする。
+    // Fetching the Offering goes over the network and can fail. The entitlement
+    // verdict should survive even when the paywall cannot be shown, so this one
+    // failure is swallowed into null.
     final (CustomerInfo info, Offering? offering) = await (
       repository.customerInfo(),
       repository.currentOffering().onError((Object error, StackTrace _) {
@@ -70,16 +71,16 @@ class EntitlementController extends _$EntitlementController {
       Entitlement.from(
         info: info,
         entitlementId: RevenueCatConfig.entitlementId,
-        // Offering は CustomerInfo の更新では変わらない。直前のものを保つ。
+        // The Offering does not change on a CustomerInfo update; keep the last.
         offering: state.value?.offering,
       ),
     );
   }
 
-  /// ダッシュボードとアプリの設定ずれを、開発中に気づけるようにする。
+  /// Surfaces dashboard/app configuration drift during development.
   ///
-  /// この2つは「課金は通るのに何も起きない」というもっとも気づきにくい
-  /// 壊れ方をするので、releaseビルドでもログには残す。
+  /// These two fail in the hardest way to notice — purchases succeed and
+  /// nothing happens — so they are logged even in release builds.
   void _warnIfMisconfigured(CustomerInfo info, Offering? offering) {
     if (offering == null || offering.availablePackages.isEmpty) {
       debugPrint(
@@ -97,17 +98,17 @@ class EntitlementController extends _$EntitlementController {
     }
   }
 
-  /// 購入する。
+  /// Purchases.
   ///
-  /// キャンセルは失敗として扱わない。SDKは利用者が閉じた場合も例外を
-  /// 投げてくるので、[PurchaseOutcome] に畳んでから返している。
+  /// Cancellation is not a failure. The SDK throws even when the user simply
+  /// closed the sheet, so results are folded into [PurchaseOutcome] first.
   Future<PurchaseOutcome> purchase(Package package) async {
     final PurchasesRepository repository = ref.read(purchasesRepositoryProvider);
     final Entitlement previous = state.value ?? Entitlement.free;
 
-    // Riverpod 3 の AsyncNotifier は loading にしても直前の値を保つので、
-    // 購入中もペイウォールの価格表示は消えない
-    // (`state.value` は previous のまま読める)。
+    // Riverpod 3's AsyncNotifier keeps the previous value while loading, so
+    // paywall prices stay on screen during a purchase (`state.value` still reads
+    // the previous one).
     state = const AsyncValue<Entitlement>.loading();
     try {
       final CustomerInfo info = await repository.purchase(package);
@@ -118,8 +119,8 @@ class EntitlementController extends _$EntitlementController {
       );
       state = AsyncValue<Entitlement>.data(next);
 
-      // 決済は通ったのに entitlement が付いていない = ダッシュボードで
-      // 商品が Entitlement に紐づいていない。成功として閉じてはいけない。
+      // Payment succeeded without an entitlement means the product is not
+      // attached to the Entitlement in the dashboard. Never close as success.
       return next.isPremium ? const PurchaseSucceeded() : const PurchaseNotEntitled();
     } on PlatformException catch (error) {
       state = AsyncValue<Entitlement>.data(previous);
@@ -127,7 +128,7 @@ class EntitlementController extends _$EntitlementController {
     }
   }
 
-  /// 復元。App Review の必須要件。
+  /// Restore. Required by App Review.
   Future<RestoreOutcome> restore() async {
     final PurchasesRepository repository = ref.read(purchasesRepositoryProvider);
     final Entitlement previous = state.value ?? Entitlement.free;
@@ -141,8 +142,8 @@ class EntitlementController extends _$EntitlementController {
         offering: previous.offering,
       );
       state = AsyncValue<Entitlement>.data(next);
-      // 通信は成功したが購入が無かった場合と、復元できた場合を分ける。
-      // どちらも成功なので、区別せずに「失敗しました」とは出さない。
+      // Separate "succeeded with nothing to restore" from "restored". Both are
+      // successes, so neither is reported as a failure.
       return next.isPremium ? const RestoreSucceeded() : const RestoreFoundNothing();
     } on PlatformException catch (error) {
       state = AsyncValue<Entitlement>.data(previous);
@@ -150,11 +151,11 @@ class EntitlementController extends _$EntitlementController {
     }
   }
 
-  /// Offering が確定するまで待つ。
+  /// Waits for the Offering to settle.
   ///
-  /// ペイウォールを出す直前に呼ぶ。`REVENUECAT_OFFERING_ID` を指定していても
-  /// 取りこぼさないため。取れなくても RevenueCat 側が current で出すので、
-  /// 失敗はここで握りつぶす。
+  /// Called just before showing the paywall so a configured
+  /// `REVENUECAT_OFFERING_ID` is not missed. Failure is swallowed, since
+  /// RevenueCat falls back to current anyway.
   Future<Offering?> _resolvedOffering() async {
     try {
       return (await future).offering;
@@ -163,11 +164,10 @@ class EntitlementController extends _$EntitlementController {
     }
   }
 
-  /// RevenueCat のペイウォールを出す。
+  /// Shows RevenueCat's paywall.
   ///
-  /// 返り値が [PaywallResult.error] のときは、ダッシュボードに
-  /// ペイウォールが無いか、OSのバージョンが足りていない。
-  /// 呼び出し側は自前のペイウォールに切り替えること。
+  /// [PaywallResult.error] means the dashboard has no paywall or the OS version
+  /// is too old; callers should fall back to our own paywall.
   Future<PaywallResult> presentPaywall() async {
     if (!RevenueCatConfig.isConfigured) return PaywallResult.error;
     final PurchasesRepository repository = ref.read(purchasesRepositoryProvider);
@@ -185,7 +185,8 @@ class EntitlementController extends _$EntitlementController {
     }
   }
 
-  /// 未契約のときだけペイウォールを出す。機能を触った瞬間の出し分けに使う。
+  /// Shows the paywall only when not subscribed; used the moment a gated
+  /// feature is touched.
   Future<PaywallResult> presentPaywallIfNeeded() async {
     if (!RevenueCatConfig.isConfigured) return PaywallResult.error;
     final PurchasesRepository repository = ref.read(purchasesRepositoryProvider);
@@ -203,17 +204,17 @@ class EntitlementController extends _$EntitlementController {
     }
   }
 
-  /// Customer Center を出す。解約・返金申請・プラン変更・復元がここに入っている。
+  /// Shows Customer Center: cancel, refund request, plan change and restore.
   ///
-  /// 出せたら true。SDK未設定やOSが古い場合は false を返すので、
-  /// 呼び出し側はストアの解約URLへ逃がすこと。
+  /// True when shown. False when the SDK is unconfigured or the OS is too old,
+  /// in which case callers should fall back to the store's cancellation URL.
   Future<bool> presentCustomerCenter() async {
     if (!RevenueCatConfig.isConfigured) return false;
     final PurchasesRepository repository = ref.read(purchasesRepositoryProvider);
     try {
       await repository.presentCustomerCenter(onRestoreCompleted: _onCustomerInfo);
-      // 解約は CustomerInfo の push で拾えないことがある(期限まで有効なので
-      // entitlement 自体は変わらない)。閉じたあとに読み直す。
+      // A cancellation may not arrive via CustomerInfo push, since the
+      // entitlement itself is unchanged until expiry. Re-read after closing.
       await refresh();
       return true;
     } on PlatformException catch (error) {
@@ -222,7 +223,7 @@ class EntitlementController extends _$EntitlementController {
     }
   }
 
-  /// 最新の状態を読み直す。
+  /// Re-reads the latest state.
   Future<void> refresh() async {
     if (!RevenueCatConfig.isConfigured) return;
     final PurchasesRepository repository = ref.read(purchasesRepositoryProvider);
@@ -230,10 +231,10 @@ class EntitlementController extends _$EntitlementController {
   }
 }
 
-/// entitlement を持っているか。画面から使うのはたいていこちら。
+/// Whether an entitlement is held; usually what screens read.
 ///
-/// 読み込み中とエラーは「まだ持っていない」に倒す。
-/// 判定が付かないあいだにPremium扱いすると、無料のまま使えてしまう。
+/// Loading and error both resolve to "not yet". Treating an undecided state as
+/// Premium would hand out paid access for free.
 @Riverpod(keepAlive: true)
 bool isPremium(Ref ref) =>
     ref.watch(entitlementControllerProvider).value?.isPremium ?? false;

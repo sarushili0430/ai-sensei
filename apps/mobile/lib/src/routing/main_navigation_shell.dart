@@ -4,13 +4,13 @@ import 'package:go_router/go_router.dart';
 import '../l10n/strings.dart';
 import '../theme/tokens.dart';
 
-/// 常設の3か所を行き来する下部ナビゲーション。
+/// Bottom navigation across the three permanent places.
 ///
-/// - ホーム / 計画 / 設定。どれも途中の状態を保ったまま戻る場所
-/// - 枝を [StatefulNavigationShell] に預けるので、往復しても破棄されない
-/// - カルテはタブにしない。授業前には中身のない場所が常に見えてしまう
-/// - 自習室は畳んだ(ADR 0006)
-/// - ガラス表現や透過は使わない。地は紙で、白い面と罫線だけで境界を作る
+/// - Home / plan / settings, each returning to its in-progress state
+/// - Branches live in [StatefulNavigationShell], so they survive round trips
+/// - Karte is not a tab: before a lesson it would always sit empty
+/// - The study room was dropped (ADR 0006)
+/// - No glass or transparency; paper ground, white surfaces and rules only
 class MainNavigationShell extends StatelessWidget {
   const MainNavigationShell({required this.navigationShell, super.key});
 
@@ -21,8 +21,8 @@ class MainNavigationShell extends StatelessWidget {
     final AppStrings strings = AppStrings.of(context);
     final TextStyle? labelStyle = Theme.of(context).textTheme.bodySmall;
 
-    // 枝の並びは `app_router.dart` の `branches` と同じ順。行き先を足すときに
-    // 2か所を別々に並べ替えてずれないよう、ここも1つの表として持つ。
+    // Same order as `branches` in `app_router.dart`, kept as one table so
+    // adding a destination cannot desync the two lists.
     final List<_NavigationDestination> destinations = <_NavigationDestination>[
       _NavigationDestination(
         id: 'home',
@@ -73,9 +73,9 @@ class MainNavigationShell extends StatelessWidget {
               ),
           ],
           onTap: (int index) {
-            // 枝を `go` で作り直さず、indexedStack が持つ履歴へ戻る。
-            // 選択中のタブをもう一度押したときだけ根へ戻すのは、復習などの
-            // 子画面から「ホーム」を明示的に選ぶ操作には出口が必要だから。
+            // Return to the history indexedStack holds instead of rebuilding
+            // the branch with `go`. Re-tapping the current tab pops to its
+            // root, since child screens like review need an explicit way out.
             navigationShell.goBranch(
               index,
               initialLocation: index == navigationShell.currentIndex,
@@ -87,7 +87,7 @@ class MainNavigationShell extends StatelessWidget {
   }
 }
 
-/// タブ1つぶん。アイコンとラベルを別々の配列で持たないための入れ物。
+/// One tab. Keeps icon and label together instead of in parallel arrays.
 @immutable
 class _NavigationDestination {
   const _NavigationDestination({
@@ -97,7 +97,8 @@ class _NavigationDestination {
     required this.label,
   });
 
-  /// widget test が押す先を指すキー。文言に依らないので日英で同じ。
+  /// Key widget tests tap. Independent of wording, so it is the same in
+  /// both locales.
   final String id;
   final IconData icon;
   final IconData activeIcon;

@@ -2,12 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../theme/tokens.dart';
 
-/// 収まるときは中央に置き、収まらないときだけスクロールさせる。
-///
-/// 中央寄せだけにすると、文字を大きくしている人の画面でははみ出す。
-/// スクロールだけにすると、余白のある端末で内容が上に貼りついて、
-/// 下半分が空いたまま見える。読み物の枚(オンボーディング)は
-/// どちらの見え方も避けたいので、両方を satisfy する形にしておく。
+/// Centers content when it fits, scrolls only when it does not.
+/// Centering alone overflows at large text sizes; scrolling alone
+/// pins content to the top on roomy screens.
 class CenteredScroll extends StatelessWidget {
   const CenteredScroll({
     required this.children,

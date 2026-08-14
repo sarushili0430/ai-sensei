@@ -9,10 +9,11 @@ part 'push_controller.g.dart';
 @Riverpod(keepAlive: true)
 PushRepository pushRepository(Ref ref) => const PushRepository();
 
-/// 通知まわりの配線。`AiSenseiApp` が一度だけ watch して起動する。
+/// Notification wiring, started by a single watch from `AiSenseiApp`.
 ///
-/// やるのは SDK の初期化と、宛先になる external id(= 匿名デバイスID)の登録、
-/// それに通知タップの受け口。**許可はここでは求めない**(文脈内で聞く)。
+/// It initializes the SDK, registers the external id (the anonymous device ID)
+/// used for addressing, and hooks up tap handling. No permission prompt here —
+/// that happens in context.
 @Riverpod(keepAlive: true)
 class PushSetup extends _$PushSetup {
   @override
@@ -20,22 +21,21 @@ class PushSetup extends _$PushSetup {
     final PushRepository repository = ref.read(pushRepositoryProvider);
     await repository.configure(deviceId: ref.read(deviceIdProvider));
     repository.onOpened((String? holeId) {
-      // 穴の指定までは見ない。復習画面に同じ穴がカードで出ている。
+      // The specific gap is ignored; review shows the same gap as a card.
       ref.read(pendingDeepLinkProvider.notifier).set(AppRoute.review.path);
     });
   }
 }
 
-/// 通知の許可状態。
+/// Notification permission state.
 ///
-/// 許可を求める場所はカルテ画面のトグル1箇所だけ。初回起動では聞かない。
-/// 「穴が見つかった直後に、先輩がもう一度きいてもいいかを尋ねる」ほうが
-/// 文脈が立っているし、約束4「煽らない」とも噛み合う。
+/// Permission is requested from exactly one place: the karte toggle. Never on
+/// first launch. Asking right after a gap is found has real context and fits
+/// the promise not to nag.
 ///
-/// **配役が先輩に変わって、ここは前より効くようになった。**
-/// 後輩の「お願い」は断りにくさが無い代わりに軽い。先輩が
-/// 「もう一度きいてもいい?」と**頼む**のは、言い切れる立場の人が
-/// あえて頼んでいるぶん、許可を求めていることがはっきりする。
+/// The senpai framing makes this land better than the junior one did: a request
+/// from someone who could simply assert makes it unmistakable that permission
+/// is being asked for, not assumed.
 @Riverpod(keepAlive: true)
 class PushPermissionController extends _$PushPermissionController {
   @override
@@ -47,7 +47,7 @@ class PushPermissionController extends _$PushPermissionController {
     );
   }
 
-  /// 許可を求める。断られたら状態はそのまま(トグルは戻る)。
+  /// Requests permission. On refusal the state is unchanged (toggle reverts).
   Future<bool> request() async {
     final bool granted = await ref.read(pushRepositoryProvider).requestPermission();
     state = PushPermission(granted: granted, available: PushConfig.isConfigured);
@@ -55,10 +55,11 @@ class PushPermissionController extends _$PushPermissionController {
   }
 }
 
-/// 通知タップの着地先。
+/// Landing target for a notification tap.
 ///
-/// クリックは**アプリの起動より先**に届きうる(コールドスタート)ので、
-/// その場で画面遷移せずここに置いておき、ウィジェットツリーが立ってから運ぶ。
+/// On a cold start the click can arrive before the app is up, so it is parked
+/// here instead of navigating immediately, then carried once the widget tree
+/// exists.
 @Riverpod(keepAlive: true)
 class PendingDeepLink extends _$PendingDeepLink {
   @override
@@ -66,7 +67,7 @@ class PendingDeepLink extends _$PendingDeepLink {
 
   void set(String path) => state = path;
 
-  /// 一度運んだら消す。画面を戻るたびに引きずり込まれないように。
+  /// Cleared once delivered, so going back does not drag you in again.
   String? take() {
     final String? path = state;
     state = null;

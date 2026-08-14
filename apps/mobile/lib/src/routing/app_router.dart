@@ -22,18 +22,22 @@ import 'routes.dart';
 
 part 'app_router.g.dart';
 
-/// 画面遷移。「常設の場所」と「授業の線」を混ぜない。
-/// 混ぜると行き止まりか、授業中の抜け道ができる。
+/// Navigation. Permanent places and the lesson line never mix — mixing them
+/// creates either a dead end or an escape hatch mid-lesson.
 ///
-/// - **常設** ホーム / 計画 / 設定。枝ごとの履歴を `indexedStack` で保つ
-/// - カルテは授業直後だけの画面なのでタブにせず、ホーム枝の子に置く
-/// - **寄り道(push)** 復習・カルテ・ペイウォール・お礼・親レポート
-/// - 寄り道を `/` の子にすると、通知着地でもホームが下に入り戻れる
-/// - **授業の線** 撮影 → 会話 → 祝福。シェルの外でタブから抜けられない
-/// - 撮影だけ `push`。会話以降は `go` で置き換え、引き返せなくする
+/// - Permanent: home / plan / settings, per-branch history via `indexedStack`
+/// - Karte belongs to just after a lesson, so it is a child of the home
+///   branch rather than a tab
+/// - Detours (push): review, karte, paywall, thank-you, parent report
+/// - Making detours children of `/` keeps home underneath on notification
+///   landings, so back works
+/// - Lesson line: capture -> conversation -> celebration, outside the shell
+///   so tabs cannot be used to leave
+/// - Only capture uses `push`; from the conversation on, `go` replaces so
+///   there is no turning back
 @Riverpod(keepAlive: true)
 GoRouter appRouter(Ref ref) {
-  // 初回起動はオンボーディングから。約束を先に伝えたい。
+  // First launch starts at onboarding: state the promise first.
   final bool onboarded = ref.watch(onboardedProvider);
 
   return GoRouter(
@@ -56,8 +60,8 @@ GoRouter appRouter(Ref ref) {
                   GoRoute(
                     path: AppRoute.karte.segment,
                     builder: (_, _) => const KarteScreen(),
-                    // 直近のカルテが無いのにこの画面に来ても、出せるものが無い。
-                    // 「うまくいきませんでした」を理由なく見せるより、ホームへ戻す。
+                    // Nothing to show without a recent karte. Send them home
+                    // rather than an unexplained failure message.
                     redirect: (_, _) => ref.read(latestKarteControllerProvider) == null
                         ? AppRoute.home.path
                         : null,
@@ -74,9 +78,9 @@ GoRouter appRouter(Ref ref) {
                     path: AppRoute.thanks.segment,
                     builder: (_, GoRouterState state) =>
                         ThanksScreen(restored: state.uri.queryParameters['restored'] == '1'),
-                    // 契約が無いのに祝わない。決済は通ったが entitlement が付いて
-                    // いない場合(ダッシュボードの設定漏れ)がここに来る。紙吹雪を
-                    // 見せてから使えないのが、いちばん落差が大きい。
+                    // No entitlement, no celebration. Payment can succeed while
+                    // entitlement is missing (dashboard misconfiguration), and
+                    // confetti followed by a locked app is the worst drop.
                     redirect: (_, _) =>
                         ref.read(isPremiumProvider) ? null : AppRoute.home.path,
                   ),
@@ -106,10 +110,10 @@ GoRouter appRouter(Ref ref) {
           ),
         ],
       ),
-      // 撮影は戻れるが、タブは見せない。push した元の枝は下に残るので、
-      // 撮るのをやめても来た場所を失わない。
+      // Capture can be backed out of but shows no tabs; the branch it was
+      // pushed from stays underneath, so cancelling keeps your place.
       GoRoute(path: AppRoute.capture.path, builder: (_, _) => const CaptureScreen()),
-      // 会話中とその直後。戻る先もタブも持たせない。
+      // During the conversation and just after: no back target, no tabs.
       GoRoute(path: AppRoute.session.path, builder: (_, _) => const SessionScreen()),
       GoRoute(
         path: AppRoute.celebration.path,

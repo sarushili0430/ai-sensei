@@ -1,11 +1,11 @@
 import '../../../l10n/strings.dart';
 import '../domain/parent_report.dart';
 
-/// 画面に見せ、そのままメール本文へ渡すテキスト。
+/// The text shown on screen and handed to the mail body unchanged.
 ///
-/// UI用と共有用を別々に組み立てると、画面には無い引用がメールにだけ混ざる余地ができる。
-/// **この返り値を画面にも全文表示する**ことで、本人が送る内容を確認してから
-/// メールアプリへ進める形を保つ。
+/// Building the UI and share text separately would let a quote reach the
+/// email without ever appearing on screen. Rendering this exact return value
+/// keeps the student reviewing what they send before the mail app opens.
 String buildParentReportText(
   ParentReport report,
   AppStrings strings, {
@@ -41,11 +41,12 @@ String buildParentReportText(
   return lines.join('\n');
 }
 
-/// 宛先を空にしたメール下書き。
+/// A mail draft with no recipient.
 ///
-/// 親のメールアドレスをサーバにも端末にも保存しない。ボタンを押しても送信はされず、
-/// 本人がメールアプリで宛先を選び、最後の送信操作をする。公開URLを作るよりも
-/// 子どもの理解の記録が広がる範囲を本人の操作に閉じられる。
+/// The parent's address is stored neither on the server nor on the device.
+/// Tapping never sends: the student picks the recipient in the mail app and
+/// takes the final send action, keeping the spread of their learning record
+/// in their own hands — unlike a public URL.
 Uri buildParentReportMail({required String subject, required String body}) {
   return Uri(
     scheme: 'mailto',

@@ -3,10 +3,8 @@ import 'package:flutter/services.dart';
 
 import '../theme/tokens.dart';
 
-/// 厚みのあるボタン。
-///
-/// Duolingoから借りるのは「文法」であって「語彙」ではない。
-/// 押すと沈み込む触感だけを借り、色と言葉はこのアプリのものにする。
+/// Button with depth. Borrows only Duolingo's press-to-sink feel;
+/// the colors and wording stay our own.
 class ChunkyButton extends StatefulWidget {
   const ChunkyButton({
     required this.label,
@@ -86,8 +84,8 @@ class _ChunkyButtonState extends State<ChunkyButton> {
   }
 }
 
-/// 「無料のまま続ける」「今日はここまで」など、選んでも損しない選択肢。
-/// 目立たせないが、隠さない(HAMMは誠実さを見る)。
+/// Low-stakes options ("stay on free", "done for today").
+/// De-emphasized, but never hidden.
 class GhostButton extends StatelessWidget {
   const GhostButton({required this.label, required this.onPressed, super.key});
 

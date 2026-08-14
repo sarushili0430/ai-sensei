@@ -2,8 +2,8 @@ import '../../../l10n/strings.dart';
 import '../domain/entitlement.dart';
 import '../domain/purchase_outcome.dart';
 
-/// プランの期間名。ペイウォールのカードと、祝福画面の一行が
-/// **同じ言い方**をするように1か所に置く。
+/// Plan period names, kept in one place so the paywall card and the line on
+/// the celebration screen word it identically.
 extension PlanPeriodLabel on PlanPeriod {
   String label(AppStrings strings) => switch (this) {
     PlanPeriod.weekly => strings.planWeekly,
@@ -12,10 +12,10 @@ extension PlanPeriodLabel on PlanPeriod {
   };
 }
 
-/// 失敗の分類を文言にする。
+/// Turns a failure category into wording.
 ///
-/// 「エラーが発生しました」で済ませない。何が起きていて、次に何をすれば
-/// いいかを書く。ここも先輩の口調(煽らない・責めない)に合わせる。
+/// Never just "an error occurred": say what happened and what to do next, in
+/// senpai's voice — no nagging, no blame.
 extension PurchaseFailureMessage on PurchaseFailure {
   String message(AppStrings strings) => switch (this) {
     PurchaseFailure.network => strings.purchaseErrorNetwork,

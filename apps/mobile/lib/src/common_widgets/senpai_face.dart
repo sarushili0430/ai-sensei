@@ -6,49 +6,31 @@ import '../l10n/strings.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
 
-/// 先輩の表情(「最大の報酬はキャラの表情」)。
+/// Senpai's face — the app's biggest reward: it lights up the moment a
+/// teach-back lands.
 ///
-/// **報酬の位置はピボットで動いていない。** 後輩に説明が伝わって顔が輝く、が
-/// 先輩に教え返せて「そう、それ」に変わっただけで、
-/// いちばん嬉しい瞬間に顔が輝くという構造は同じ(ピボット計画§2のコアループ)。
-///
-/// v0はCustomPaintの簡素な自作。表情差分3〜5枚から始め、
-/// v1.1でRiveのステートマシンに載せ替える(そのとき差し替えるのはこのWidgetだけ)。
-///
-/// 動きは2系統ある。**いつも動いているもの**(呼吸・まばたき・うなずき)は
-/// [AppDurations.breath] を周期にした1本のコントローラから作り、
-/// **表情が変わった瞬間だけのもの**(納得したときのはずみ・きらり)は
-/// 別のコントローラで一度だけ再生する。
-/// 生きている感じは前者が、ご褒美は後者が担当する。
+/// v0 is hand-rolled CustomPaint; v1.1 swaps in a Rive state machine
+/// (only this widget changes). Two motion tracks: always-on idle
+/// (breathing, blinking, nodding) from a single [AppDurations.breath]
+/// controller, and one-shot mood changes from a second one.
 enum SenpaiMood {
-  /// 待機。まだ始まっていない、または**ただ受け取った**。
-  ///
-  /// 「うまく言えない」を押したあともここに留まる。詳しくは [puzzled] を参照。
+  /// Idle: not started yet, or simply received. Stays here after
+  /// "I can't explain it" too — see [puzzled].
   neutral,
 
-  /// 聞いている。教え返しを受け取っている最中。うなずきの微アニメーション。
+  /// Listening to the teach-back; subtle nodding.
   listening,
 
-  /// 「そう、それ」。**教え返しが伝わった瞬間**の最大の報酬。
-  ///
-  /// 配役が変わっても、ここが体験の頂点であることは変わらない。
-  /// 後輩版では「わかった!」だったものが、先輩の承認に置き換わっただけ。
+  /// "Yes, that's it" — the peak of the experience, the moment the
+  /// teach-back lands.
   delighted,
 
-  /// **困っているのは先輩のほう。** 生徒に向ける顔ではない。
+  /// Senpai is the one struggling — never aimed at the student.
   ///
-  /// ここが後輩版といちばん意味が違う。後輩の困り顔は
-  /// 「聞いても分からなかった」= 教わる側の困惑で、相手(生徒)の説明が
-  /// 足りないことを指していた。先輩は分かっている側なので、同じ絵を
-  /// 同じ意味では使えない。**逆に、うまくいかなかった責任をこちらが引き取る顔**
-  /// として定義し直す:
-  ///
-  ///   - 先輩が来られなかった・つながらなかった(こちら側の不首尾)
-  ///
-  /// 汗のしずくが乗っているのは、そのため。**生徒が詰まったときには使わない。**
-  /// 詰まったのは織り込み済みの出来事(それを見つけに来ている)なので、
-  /// そこで顔が困ると、パスが失敗として演出されてしまう(§0 の約束3)。
-  /// 詰まったときは [neutral] のまま受け取り、言葉とマーカーだけで応える。
+  /// Used only when we failed on our side (senpai could not join or
+  /// connect); hence the sweat drop. Never used when the student gets
+  /// stuck: that is expected, and staging it as failure would break the
+  /// promise. Stay [neutral] there and answer with words and marker.
   puzzled,
 }
 
@@ -63,13 +45,13 @@ class SenpaiFace extends StatefulWidget {
 }
 
 class _SenpaiFaceState extends State<SenpaiFace> with TickerProviderStateMixin {
-  /// 呼吸・まばたき・うなずきの元になる位相。0→1を延々と繰り返す。
+  /// Phase behind breathing, blinking and nodding; loops 0 -> 1 forever.
   late final AnimationController _ambient = AnimationController(
     vsync: this,
     duration: AppDurations.breath,
   );
 
-  /// 表情が切り替わった瞬間だけ動く。初期値1(=切り替え済み)で置く。
+  /// Runs only on a mood change. Starts at 1 (already settled).
   late final AnimationController _mood = AnimationController(
     vsync: this,
     duration: AppDurations.celebrate,
@@ -84,8 +66,7 @@ class _SenpaiFaceState extends State<SenpaiFace> with TickerProviderStateMixin {
     if (_configured) return;
     _configured = true;
 
-    // 動かさない設定のときは、位相を0に固定したまま回さない。
-    // 0 は sin が 0 の点なので、そのまま「息を吸う前」の静止画になる。
+    // Reduced motion: hold the phase at 0 — sin(0) is the pre-inhale still.
     if (!AppMotion.isReduced(context)) _ambient.repeat();
   }
 
@@ -97,7 +78,7 @@ class _SenpaiFaceState extends State<SenpaiFace> with TickerProviderStateMixin {
     _mood
       ..duration = AppMotion.decorative(
         context,
-        // 納得した瞬間だけは、ゆっくり見せる。ここが報酬なので。
+        // Linger on the delighted beat: that one is the reward.
         widget.mood == SenpaiMood.delighted ? AppDurations.celebrate : AppDurations.reaction,
       )
       ..forward(from: 0);
@@ -112,7 +93,7 @@ class _SenpaiFaceState extends State<SenpaiFace> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    // 読み上げのラベルは毎フレーム作り直さない(builderの外で1回だけ引く)。
+    // Resolve the a11y label once, outside the builder.
     final AppStrings strings = AppStrings.of(context);
 
     return AnimatedBuilder(
@@ -122,32 +103,29 @@ class _SenpaiFaceState extends State<SenpaiFace> with TickerProviderStateMixin {
         final double wave = math.sin(phase * 2 * math.pi);
         final double moodT = _mood.value;
 
-        // 呼吸。ふくらむ量はごく小さくていい。大きくすると、
-        // 待っているだけの画面が落ち着かなくなる。
+        // Breathing. Keep the swell tiny, or an idle screen feels restless.
         double scale = 1 + 0.022 * wave;
 
-        // 納得した瞬間のはずみ。行き過ぎて戻る。
+        // Delighted bounce: overshoot, then settle.
         if (widget.mood == SenpaiMood.delighted) {
           scale += 0.13 * math.sin(moodT * math.pi);
         }
 
-        // うなずき。呼吸の3倍の速さで、下に沈んで戻る。
+        // Nod: three times the breathing rate, dips and returns.
         double dy = 0;
         if (widget.mood == SenpaiMood.listening) {
           final double nod = (phase * 3) % 1;
           dy = widget.size * 0.022 * (1 - math.cos(nod * 2 * math.pi)) / 2;
         }
 
-        // うれしさは、最初のはずみで終わらない。
-        //
-        // 祝福画面は**何かを待たせることがある**画面で、はずみが一度きりだと
-        // そのあと動きが消えて止まって見える。跳ねは呼吸の位相から作るので
-        // タイマーは増えず、動かすのも Transform だけ(顔の描き直しは増えない)。
+        // Joy outlasts the first bounce: the celebration screen can keep
+        // you waiting, and a one-shot bounce then looks frozen. Driven off
+        // the breathing phase, so no extra timer and no extra repaint.
         if (widget.mood == SenpaiMood.delighted) {
           dy -= widget.size * 0.018 * math.max(0, math.sin(phase * 4 * math.pi));
         }
 
-        // 首をかしげる。困っているのはこちらで、相手を責めてはいない。
+        // Head tilt: we are the ones struggling, not blaming the student.
         final double tilt = widget.mood == SenpaiMood.puzzled ? 0.05 + 0.015 * wave : 0;
 
         return AnimatedContainer(
@@ -173,7 +151,7 @@ class _SenpaiFaceState extends State<SenpaiFace> with TickerProviderStateMixin {
                 angle: tilt,
                 child: Transform.scale(
                   scale: scale,
-                  // 顔は常に動いている。まわりを巻き込んで塗り直さないよう囲う。
+                  // The face always moves; isolate it from sibling repaints.
                   child: RepaintBoundary(
                     child: CustomPaint(
                       painter: _FacePainter(
@@ -193,8 +171,8 @@ class _SenpaiFaceState extends State<SenpaiFace> with TickerProviderStateMixin {
     );
   }
 
-  /// まばたき。周期の終わりぎわに一度だけ閉じる。
-  /// 呼吸と同じ位相から作っているので、タイマーを増やさずに済む。
+  /// Blink: closes once near the end of the cycle. Built from the
+  /// breathing phase, so it needs no extra timer.
   double _eyeOpenness(double phase) {
     const double start = 0.90;
     const double end = 0.96;
@@ -229,7 +207,7 @@ class _FacePainter extends CustomPainter {
     final double eyeRadius = size.width * 0.045;
 
     if (mood == SenpaiMood.delighted) {
-      // ^ ^ の目。輝きは色(背景)と目の形の両方で出す。
+      // ^ ^ eyes. Delight shows in both the color and the eye shape.
       for (final double sign in <double>[-1, 1]) {
         final Path path = Path()
           ..moveTo(size.width / 2 + sign * eyeDx - eyeRadius * 1.6, eyeY + eyeRadius)
@@ -245,7 +223,7 @@ class _FacePainter extends CustomPainter {
       for (final double sign in <double>[-1, 1]) {
         final Offset center = Offset(size.width / 2 + sign * eyeDx, eyeY);
         if (eyeOpenness > 0.15) {
-          // まぶたは上から降りてくる。円を縦につぶすと目を閉じた形になる。
+          // Lids drop from above; squashing the circle reads as closed.
           canvas.drawOval(
             Rect.fromCenter(center: center, width: radius * 2, height: radius * 2 * eyeOpenness),
             fill,
@@ -260,10 +238,9 @@ class _FacePainter extends CustomPainter {
       }
     }
 
-    // 口。困り顔でも口角は下げない(責める顔にしないため)。
-    //
-    // うれしいときだけ、笑い方が少し揺れる。**同じ絵のまま置いておかない**
-    // ための揺れなので、幅はごく小さくていい(呼吸と同じ位相から作る)。
+    // Mouth. Corners never turn down, even when puzzled — no blame.
+    // Only delight adds a slight wobble, off the breathing phase, so the
+    // frame never sits perfectly still.
     final double mouthY = size.height * 0.63;
     final double smile = mood == SenpaiMood.delighted
         ? 0.16 * (1 + 0.10 * math.sin(phase * 2 * math.pi))
@@ -278,11 +255,8 @@ class _FacePainter extends CustomPainter {
     if (mood == SenpaiMood.puzzled) _paintSweat(canvas, size);
   }
 
-  /// 「?」ではなく、小さな汗。疑問符は問い詰める印象になる。
-  /// ゆっくり伝って、消えて、また出る。
-  ///
-  /// **汗は「こちらの不首尾」の印。** 分かっている側が汗をかいているので、
-  /// 生徒に向けた表情として使うと意味が反転する([SenpaiMood.puzzled])。
+  /// A bead of sweat, not a "?" — a question mark reads as interrogation.
+  /// It marks our failure, not the student's; see [SenpaiMood.puzzled].
   void _paintSweat(Canvas canvas, Size size) {
     final double drip = (phase * 2) % 1;
     final Offset center = Offset(size.width * 0.78, size.height * (0.30 + 0.12 * drip));
@@ -293,10 +267,8 @@ class _FacePainter extends CustomPainter {
     );
   }
 
-  /// 納得したときの「きらり」。
-  ///
-  /// 位置は固定(乱数を使わない)。撮るたびに違う絵になると
-  /// golden で差分が出るし、そもそも毎回違う必要がない。
+  /// Sparkles on delight. Positions are fixed rather than random, so
+  /// goldens stay stable.
   void _paintSparkles(Canvas canvas, Size size) {
     const List<Offset> spots = <Offset>[
       Offset(0.12, 0.20),
@@ -306,7 +278,7 @@ class _FacePainter extends CustomPainter {
     ];
 
     final Paint paint = Paint()..color = AppColors.streak.withValues(alpha: 0.9 * moodT);
-    // 出るのは一瞬ではなく、そのまま光っていてほしい。大きさだけ呼吸させる。
+    // They stay lit rather than flashing; only the size breathes.
     final double twinkle = 1 + 0.15 * math.sin(phase * 2 * math.pi);
 
     for (int i = 0; i < spots.length; i++) {
@@ -314,7 +286,7 @@ class _FacePainter extends CustomPainter {
       final double radius = size.width * (i.isEven ? 0.045 : 0.033) * moodT * twinkle;
       final Offset center = Offset(spot.dx * size.width, spot.dy * size.height);
 
-      // 4つの角がとがった星。円より「きらり」に見える。
+      // Four-pointed star — reads more like a sparkle than a circle.
       final Path path = Path()
         ..moveTo(center.dx, center.dy - radius)
         ..quadraticBezierTo(center.dx, center.dy, center.dx + radius, center.dy)

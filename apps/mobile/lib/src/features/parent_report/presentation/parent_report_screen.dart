@@ -13,18 +13,18 @@ import '../application/parent_report_controller.dart';
 import '../data/parent_report_mail.dart';
 import '../domain/parent_report.dart';
 
-/// 今月の親レポート(ピボット計画 §5-1)。
+/// This month's parent report.
 ///
-/// 共有前に、メールへ入る本文を省略せず同じ画面へ出す。とくに本人の引用は
-/// センシティブなので、「共有」ボタンのあとで初めて見える形にはしない。
-/// 公開URLは作らず、端末のメール下書きへテキストだけを渡す。
+/// The full mail body is shown here before sharing, unabridged. The student's
+/// own quotes are sensitive, so nothing appears for the first time only after
+/// the share button. No public URL — just text handed to a local mail draft.
 class ParentReportScreen extends ConsumerWidget {
   const ParentReportScreen({super.key});
 
   void _refreshLockedReport(WidgetRef ref) {
-    // RevenueCatは**再取得のきっかけ**にだけ使う。ここでロック済みの本文を
-    // クライアント判断で開くと、webhookが届いていないサーバとの有料境界がずれる。
-    // Premiumになっても、最後に本文を返してよいと決めるのは再取得先のAPI。
+    // RevenueCat is only a trigger to refetch. Unlocking a locked body from
+    // the client would drift from a server that has not seen the webhook yet;
+    // the API still decides whether the body may be returned.
     if (!ref.read(isPremiumProvider)) return;
 
     final AsyncValue<ParentReportResponse> current = ref.read(
@@ -32,10 +32,11 @@ class ParentReportScreen extends ConsumerWidget {
     );
     if (current.value?.requiresPremium == false) return;
 
-    // `refresh()`を古いNotifierへ投げるのではなく、応答を持つproviderごと捨てる。
-    // StatefulShellRouteをまたぐpushでは画面が組み直される場合があり、古い
-    // Notifierの完了を待つと、新しい画面が読んでいるロック応答には届かないため。
-    // invalidateなら、いまwatchしている画面のbuildが必ず新しいGETを始める。
+    // Discard the provider holding the response rather than calling `refresh()`
+    // on a stale Notifier: a push across StatefulShellRoute can rebuild the
+    // screen, and awaiting the old Notifier never reaches the locked response
+    // the new screen reads. invalidate guarantees the currently watching build
+    // starts a fresh GET.
     ref.invalidate(parentReportControllerProvider);
   }
 
@@ -43,8 +44,9 @@ class ParentReportScreen extends ConsumerWidget {
     await context.push<void>(AppRoute.paywall.path);
     if (!context.mounted) return;
 
-    // SDKの通知を取りこぼしても、「この画面から課金へ行って戻った」という
-    // 確実な境界でもう一度見る。キャンセル時はPremiumでないので通信を増やさない。
+    // Even if the SDK notification is missed, returning from the paywall is a
+    // reliable boundary to re-check. Cancelling leaves you non-Premium, so it
+    // adds no request.
     _refreshLockedReport(ref);
   }
 
@@ -57,8 +59,9 @@ class ParentReportScreen extends ConsumerWidget {
     final List<SubscriptionPlan> plans =
         ref.watch(entitlementControllerProvider).value?.plans ??
         const <SubscriptionPlan>[];
-    // ペイウォールの既定選択と同じ関数を使う。月額が無いOfferingでは先頭へ
-    // 縮退するので、親へ見せた価格と実際に選ばれる商品が食い違わない。
+    // Same function as the paywall's default selection. It falls back to the
+    // first entry when an Offering has no monthly plan, so the price shown to
+    // the parent matches the product actually selected.
     final SubscriptionPlan? pricePlan = planForPeriod(
       plans,
       PlanPeriod.monthly,
@@ -67,9 +70,10 @@ class ParentReportScreen extends ConsumerWidget {
     ref.listen<bool>(isPremiumProvider, (bool? previous, bool next) {
       if (!next || previous == true) return;
 
-      // RevenueCatのペイウォールはこの画面の上に載るので、購入中もロック済みの
-      // providerは生きている。Premiumへ変わった瞬間に読み直さないと、お礼を
-      // 閉じても古い200応答(`requires_premium: true`)がそのまま残る。
+      // RevenueCat's paywall sits on top of this screen, so the locked provider
+      // stays alive during purchase. Without re-reading the moment Premium
+      // flips, closing the thank-you leaves the stale 200 response
+      // (`requires_premium: true`) in place.
       _refreshLockedReport(ref);
     });
 
@@ -144,7 +148,8 @@ class _ReportBody extends StatelessWidget {
             borderRadius: BorderRadius.circular(AppRadius.card),
             border: Border.all(color: AppColors.border),
           ),
-          // この文字列とメールの `body` は同じ変数。画面に無い内容は送られない。
+          // This string and the mail `body` are the same variable: nothing off
+          // screen can be sent.
           child: SelectableText(
             text,
             style: Theme.of(context).textTheme.bodyLarge,

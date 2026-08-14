@@ -4,49 +4,50 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../karte/application/karte_controllers.dart';
 import '../../parent_report/application/parent_report_controller.dart';
-// Entitlement は entitlement_controller が domain ごと re-export している。
+// Entitlement is re-exported from the domain by entitlement_controller.
 import 'entitlement_controller.dart';
 
 part 'premium_sync.g.dart';
 
-/// 課金が通ったあと、**サーバ側のPremium判定を読み直す**配線。
-/// `AiSenseiApp` が一度だけ watch して起動する(`PushSetup` と同じ位置づけ)。
+/// Wiring that re-reads the server's Premium verdict after a purchase.
+/// `AiSenseiApp` watches it once at startup, like `PushSetup`.
 ///
-/// Premiumの状態は2つの経路で別々に更新される:
+/// Premium state is updated along two separate paths:
 ///
-///   - アプリ側の entitlement — SDKが購入直後に push してくる(即時)
-///   - サーバ側の `users.is_premium` — RevenueCatのwebhookが書く(数秒遅れ)
+///   - the app's entitlement, pushed by the SDK right after purchase (instant)
+///   - the server's `users.is_premium`, written by RevenueCat's webhook
+///     (a few seconds later)
 ///
-/// そして画面が出し分けに使っているのは**サーバ側**のほう(ホームと
-/// 復習画面の授業可否・セッション開始の可否、親レポートのロック)。
-/// ProgressController は keepAlive で、起動時に一度読んだきり誰も読み直さない。
-/// 親レポートも、ペイウォールが上に載っている間はロック済みの応答を保持する。
+/// Screens gate on the server's value (whether a lesson can start on home and
+/// review, and the parent report lock). ProgressController is keepAlive and
+/// nobody re-reads it after startup, and the parent report holds its locked
+/// response while the paywall sits on top.
 ///
-/// つまりここが無いと、**買った直後はアプリを再起動するまで無料のまま**になる。
-/// webhookが200で届いていてもD1がPremiumになっていても、アプリの手元にある
-/// のは起動時に読んだ `is_premium: false` だから。
+/// Without this, buying leaves you free until the app restarts: even with the
+/// webhook delivered and D1 marked Premium, the app still holds the
+/// `is_premium: false` it read at launch.
 @Riverpod(keepAlive: true)
 class PremiumSync extends _$PremiumSync {
-  /// 最後に見えた entitlement。
+  /// The last entitlement seen.
   ///
-  /// `ref.listen` の `previous` を使わないのは、購入中に挟まる
-  /// `AsyncLoading` が直前の値を保つかどうかに judgment を預けたくないため。
-  /// 保たない実装だと `previous` が null になり、**購入の瞬間だけ取りこぼす**。
+  /// We avoid `ref.listen`'s `previous` so the logic does not hinge on whether
+  /// the `AsyncLoading` during a purchase keeps the prior value. If it does not,
+  /// `previous` is null and the purchase moment is exactly what gets missed.
   bool? _lastSeen;
 
   Future<void>? _inFlight;
 
-  /// 走っている同期が終わるまで待つ。走っていなければすぐ返る。
+  /// Waits for an in-flight sync; returns immediately when none is running.
   ///
-  /// 画面は provider を watch していれば勝手に追いつくので、通常は要らない。
-  /// 「反映されたか」を確かめたい側(テスト)のために出している。
+  /// Screens catch up on their own by watching the provider, so this exists for
+  /// callers that need to confirm it landed — mainly tests.
   Future<void> get settled => _inFlight ?? Future<void>.value();
 
   @override
   void build() {
-    // 購入・復元・Customer Centerでの解約・期限切れが、すべてここを通る。
-    // SDKの `addCustomerInfoUpdateListener` も EntitlementController 経由で
-    // ここに流れてくるので、ペイウォールの中で完結した購入も拾える。
+    // Purchases, restores, Customer Center cancellations and expiries all pass
+    // through here. The SDK's `addCustomerInfoUpdateListener` also arrives via
+    // EntitlementController, so purchases finished inside the paywall land too.
     ref.listen<AsyncValue<Entitlement>>(entitlementControllerProvider, (
       AsyncValue<Entitlement>? _,
       AsyncValue<Entitlement> next,
@@ -57,8 +58,8 @@ class PremiumSync extends _$PremiumSync {
       final bool? previous = _lastSeen;
       _lastSeen = seen;
 
-      // 起動直後の1回目は動かさない。各 Controller の build() がこれから
-      // 読むので、追いかけても同じものを二度取りに行くだけになる。
+      // Skip the first tick at startup: each controller's build() is about to
+      // read anyway, so following it would just fetch the same thing twice.
       if (previous == null || previous == seen) return;
 
       _inFlight = sync(expectPremium: seen);
@@ -66,13 +67,13 @@ class PremiumSync extends _$PremiumSync {
     });
   }
 
-  /// サーバ側の判定が [expectPremium] に追いつくまで読み直す。
+  /// Re-reads until the server's verdict catches up with [expectPremium].
   ///
-  /// webhookは購入の数秒後に届く。一度読んで違っていたら、間隔を空けて
-  /// 数回だけ読み直す。追いつかないまま試行を使い切ったら、そこで終わりにして
-  /// **サーバの言うとおりに**しておく。クライアントの申告で解放はしない
-  /// (webhookが恒久的に壊れている場合はサーバ側で直すべきもので、
-  /// ここで上書きすると誰も壊れていることに気づけなくなる)。
+  /// The webhook lands a few seconds after purchase. If the first read
+  /// disagrees, retry a few times with a gap. When the attempts run out we stop
+  /// and take the server at its word rather than unlocking on the client's
+  /// claim: a permanently broken webhook is a server-side fix, and overriding
+  /// here would hide the breakage from everyone.
   Future<void> sync({
     required bool expectPremium,
     List<Duration> backoff = webhookBackoff,
@@ -86,17 +87,18 @@ class PremiumSync extends _$PremiumSync {
       await Future<void>.delayed(backoff[attempt]);
     }
 
-    // 親レポートも同じサーバ側のPremium判定を読む。entitlementが変わった直後に
-    // 取り直すだけでは、webhook前のロック応答をもう一度つかむことがあるため、
-    // 上の待ち合わせが終わった時点でもキャッシュを捨てる。autoDisposeなので、
-    // 画面を一度も開いていない人のために新しい通信を始めることはない。
+    // The parent report reads the same server verdict. Refetching immediately
+    // after the entitlement changes can grab the pre-webhook locked response
+    // again, so the cache is dropped once the wait above completes too. It is
+    // autoDispose, so this starts no request for someone who never opened it.
     ref.invalidate(parentReportControllerProvider);
   }
 
-  /// webhookを待つ間隔。合計でおよそ15秒ぶん。
+  /// Gaps between webhook polls, about 15 seconds in total.
   ///
-  /// 届くのはたいてい数秒以内なので1回目か2回目で抜ける。長くしすぎないのは、
-  /// 届かないときにいつまでも「反映されるかもしれない」状態を続けないため。
+  /// It usually arrives within seconds, so the first or second attempt wins.
+  /// Kept short so a missing webhook does not leave "it might still land"
+  /// hanging indefinitely.
   static const List<Duration> webhookBackoff = <Duration>[
     Duration(seconds: 1),
     Duration(seconds: 2),

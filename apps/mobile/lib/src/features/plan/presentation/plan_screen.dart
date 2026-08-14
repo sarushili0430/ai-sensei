@@ -13,11 +13,12 @@ import '../../../theme/tokens.dart';
 import '../application/plan_controller.dart';
 import '../domain/study_plan.dart';
 
-/// 音声で作る学習計画(計画書§4-3)。
+/// Study plan built by voice.
 ///
-/// 入力欄は1つも置かない。「日付・範囲・教材」を画面で編集できる形にすると、
-/// 結局は却下したフォームへ戻るため、作成も組み直しも同じマイクの入口から始める。
-/// 計画ができたあとに出すのは日ごとの事実だけで、達成率・進捗率は集計しない。
+/// No input fields at all: making dates, scope and materials editable on
+/// screen would recreate the form we rejected, so both creating and reworking
+/// start at the same mic. Once a plan exists we show only per-day facts — no
+/// completion or progress percentages.
 class PlanScreen extends ConsumerStatefulWidget {
   const PlanScreen({super.key});
 

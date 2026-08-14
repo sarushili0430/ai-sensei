@@ -5,11 +5,10 @@ import 'package:flutter/material.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
 
-/// 少し下から浮き上がりながら現れる。画面に入ってくるときの既定の動き。
+/// Default entrance: floats up from slightly below.
 ///
-/// [delay] を要素ごとにずらして「段差」を作る。同時に全部が現れると
-/// どこから読むのかが消えるので、**読んでほしい順**にずらす。
-/// 順序が意味を持たない並び(カードのグリッドなど)には使わない。
+/// Stagger [delay] per element in reading order — everything appearing at
+/// once erases where to start. Skip it for unordered layouts like grids.
 class FadeSlideIn extends StatefulWidget {
   const FadeSlideIn({
     required this.child,
@@ -19,7 +18,7 @@ class FadeSlideIn extends StatefulWidget {
     super.key,
   }) : index = 0;
 
-  /// 上から数えて [index] 番目として、段差ぶんだけ遅らせる。
+  /// Delays by one step per [index], counting from the top.
   const FadeSlideIn.staggered({
     required this.child,
     required this.index,
@@ -32,11 +31,11 @@ class FadeSlideIn extends StatefulWidget {
   final Duration delay;
   final Duration duration;
 
-  /// 上から何番目か。段差はここから計算する
-  /// (`Duration * int` は const にできないので、値ではなく番号で持つ)。
+  /// Position from the top; the stagger is derived from it
+  /// (`Duration * int` cannot be const, so hold the index, not the value).
   final int index;
 
-  /// 何ピクセル下から上がってくるか。大きくすると落ち着かなくなる。
+  /// How far below it starts, in pixels. Larger values feel restless.
   final double offset;
 
   Duration get _delay => delay + AppDurations.stagger * index;
@@ -53,15 +52,15 @@ class _FadeSlideInState extends State<FadeSlideIn> with SingleTickerProviderStat
   Timer? _timer;
   bool _started = false;
 
-  // MediaQuery は initState では読めないので、開始はここでする。
+  // MediaQuery is unavailable in initState, so start here.
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_started) return;
     _started = true;
 
-    // 動かさない設定なら、終わった状態で置く。タイマーも作らない
-    // (残ったタイマーは widget test が「保留中」で落とす)。
+    // Reduced motion: land in the finished state and create no timer
+    // (a leftover timer fails widget tests as "pending").
     if (AppMotion.isReduced(context)) {
       _controller.value = 1;
       return;
@@ -101,10 +100,9 @@ class _FadeSlideInState extends State<FadeSlideIn> with SingleTickerProviderStat
   }
 }
 
-/// 少し小さいところから、跳ねて出てくる。
-///
-/// 行き過ぎて戻る動き([AppCurves.pop])を使うのは**にぎやかな画面だけ**。
-/// 内省する画面(カルテ・復習)に持ち込むと、記録が軽く見える。
+/// Pops in from slightly smaller. The overshoot ([AppCurves.pop]) belongs
+/// on lively screens only — on karte and review it makes the record look
+/// flippant.
 class PopIn extends StatelessWidget {
   const PopIn({required this.child, this.duration = AppDurations.celebrate, super.key});
 
@@ -124,11 +122,9 @@ class PopIn extends StatelessWidget {
   }
 }
 
-/// 数を 0 から数え上げる。
-///
-/// 数えているのが「連続日数」と「埋めた穴」だけだからこそ、
-/// その2つは増えたことが見えたほうがいい。
-/// 正誤や点数には使わない — そもそも出さない。
+/// Counts up from 0. Only streak days and filled gaps are counted, so
+/// those two are worth animating. Never used for scores or correctness —
+/// we do not show those at all.
 class CountUpText extends StatelessWidget {
   const CountUpText(this.value, {this.style, this.duration = AppDurations.celebrate, super.key});
 
@@ -142,8 +138,8 @@ class CountUpText extends StatelessWidget {
       tween: Tween<double>(begin: 0, end: value.toDouble()),
       duration: AppMotion.decorative(context, duration),
       curve: AppCurves.enter,
-      // 途中の数を読み上げても意味がない。読み上げは呼び出し側の
-      // Semantics(label:) に任せる。
+      // Reading out intermediate numbers is noise; leave a11y to the
+      // caller's Semantics(label:).
       builder: (BuildContext context, double current, Widget? child) =>
           ExcludeSemantics(child: Text('${current.round()}', style: style)),
     );

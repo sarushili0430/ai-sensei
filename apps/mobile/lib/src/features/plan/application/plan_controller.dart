@@ -40,10 +40,10 @@ class PlanState {
   final PlanFailure? failure;
   final Object? error;
 
-  /// APIだけがPremium境界の正。画面はtrueになった瞬間にペイウォールを重ねる。
+  /// The API alone owns the Premium boundary; true means show the paywall.
   final bool premiumRequired;
 
-  /// agentは退出してから保存するので、短い待ち時間では計画がまだ読めないことがある。
+  /// The agent saves after leaving, so a short wait may not see the plan yet.
   final bool resultPending;
 
   PlanState copyWith({
@@ -69,11 +69,12 @@ class PlanState {
   }
 }
 
-/// 計画モードのLiveKit接続。
+/// LiveKit connection for plan mode.
 ///
-/// 授業コントローラを流用しない。あちらは板書・カルテ・日次授業枠を寿命に持ち、
-/// 計画はどれも持たない。WebRTCの手順だけを同じにし、退出後は `/v1/me/plan` の
-/// 変更を待つことで「計画が保存された」を画面へ反映する。
+/// Not reused from the lesson controller: that one's lifetime covers board,
+/// karte and the daily lesson slot, none of which planning has. Only the
+/// WebRTC steps are shared; after leaving, we wait on a change to
+/// `/v1/me/plan` to show that the plan was saved.
 @riverpod
 class PlanController extends _$PlanController {
   Room? _room;
@@ -118,7 +119,7 @@ class PlanController extends _$PlanController {
     }
   }
 
-  /// フォームは作らず、ロケールだけを渡してすぐマイクへ進む。
+  /// No form: pass the locale and go straight to the mic.
   Future<void> start(String locale) async {
     await _teardown();
     _finishing = false;
@@ -275,7 +276,7 @@ class PlanController extends _$PlanController {
     );
   }
 
-  /// 同じトークンでつなぎ直す。新しい有料セッションを勝手に作らない。
+  /// Reconnects with the same token; never silently starts a paid session.
   Future<void> retryConnection() async {
     final PlanSessionStart? session = _activeSession;
     if (session == null) {
@@ -321,7 +322,8 @@ class PlanController extends _$PlanController {
       );
     } catch (error) {
       if (!ref.mounted) return;
-      // 保存結果が取れなくても、前の計画を消さない。通信が戻れば再読み込みできる。
+      // A failed read never clears the previous plan; it reloads once the
+      // network returns.
       state = PlanState(
         phase: PlanPhase.ready,
         plan: latest,

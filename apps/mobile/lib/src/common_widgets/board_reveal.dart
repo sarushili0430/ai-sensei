@@ -5,24 +5,23 @@ import 'package:flutter/material.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
 
-/// 板書の1行が「書かれる」動き。
+/// A board line being "written".
 ///
-/// [MarkerText]([marker_text.dart])の「進捗値でペン先を走らせる`CustomPainter`」と
-/// 同じ設計を、文字の下線だけでなく任意のウィジェット(数式・図形)に一般化した。
-/// 左から右へクリップ境界が動くことで、ペン先が通り過ぎた分だけ見えるようになる。
-/// アニメーションのライフサイクル(`AnimationController` → `Timer`での遅延開始 →
-/// `AppMotion.isReduced`での即終了 → `dispose`)は `MarkerText` と同じ形にしてある。
+/// Generalizes [MarkerText]'s progress-driven `CustomPainter` from text
+/// underlines to any widget (formulas, figures): a clip edge sweeps left
+/// to right, revealing whatever the nib has passed. The lifecycle
+/// (`AnimationController` -> delayed start via `Timer` ->
+/// `AppMotion.isReduced` shortcut -> `dispose`) mirrors `MarkerText`.
 ///
-/// 板書は**前の行を消さない**(計画書§3-2)。だから同じ`AppDurations.draw`
-/// (=420ms。マーカーを引く速さと同じ)を使うことで、板書とカルテのマーカーが
-/// 同じモーション言語で揃う(現地調査 §4「板書とカルテが同じ筆致になる」)。
+/// The board never erases earlier lines, so sharing `AppDurations.draw`
+/// (420ms, the marker speed) keeps board and karte in one motion language.
 class BoardReveal extends StatefulWidget {
   const BoardReveal({required this.child, this.delay = Duration.zero, super.key});
 
   final Widget child;
 
-  /// 引き始めるまでの待ち。複数行を意図的にずらして見せたいときに使う
-  /// (通常の受信では、行が1つずつ届いた時点で描けばよいのでゼロのままでよい)。
+  /// Delay before drawing, for deliberately staggering multiple lines.
+  /// Normal streaming draws each line on arrival, so zero is fine.
   final Duration delay;
 
   @override
@@ -79,7 +78,7 @@ class _BoardRevealState extends State<BoardReveal> with SingleTickerProviderStat
 class _LeftToRightClipper extends CustomClipper<Rect> {
   const _LeftToRightClipper(this.progress);
 
-  /// 0 = まだ何も見えていない、1 = 全部見えている。
+  /// 0 = nothing visible, 1 = fully visible.
   final double progress;
 
   @override

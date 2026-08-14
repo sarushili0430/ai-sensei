@@ -1,24 +1,22 @@
 import 'package:flutter/material.dart';
 
-/// デザイントークン(ビジュアル方針)。
-///
-/// Duolingoの「文法」は借りるが「語彙」は借りない。
-/// ストリーク・厚みのあるボタン・キャラの感情リアクションは採用し、
-/// XP/リーグ/正誤スコア/緑フクロウ的なトレードドレスは採用しない。
+/// Design tokens. We borrow Duolingo's grammar, not its vocabulary:
+/// streaks, chunky buttons and character reactions yes; XP, leagues,
+/// correctness scores and green-owl trade dress no.
 abstract final class AppColors {
-  /// 主役・行動・先輩。
+  /// Primary, actions, senpai.
   static const Color blue = Color(0xFF0EA5E9);
 
-  /// 言えたこと(蛍光マーカー・黄)。
+  /// Said it (yellow highlighter).
   static const Color said = Color(0xFFFFD93B);
 
-  /// 穴(蛍光マーカー・ピンク)。失点ではなく「これから埋まる場所」。
+  /// A gap (pink highlighter) — not lost points, but a place to fill.
   static const Color hole = Color(0xFFFF7AA8);
 
-  /// 連続日数・祝福。
+  /// Streaks and celebration.
   static const Color streak = Color(0xFFFF9F1C);
 
-  /// 本文。真っ黒にしない。
+  /// Body text. Never pure black.
   static const Color ink = Color(0xFF33323D);
   static const Color inkMuted = Color(0xFF7A7887);
 
@@ -26,14 +24,14 @@ abstract final class AppColors {
   static const Color background = Color(0xFFFBFAF7);
   static const Color border = Color(0xFFE6E3DC);
 
-  /// 祝福画面の地。連続日数の色をほんのり敷いた、暖かい地。
+  /// Celebration background: a warm ground tinted with the streak color.
   ///
-  /// **画面の地は必ず不透明にする。** `streak.withValues(alpha: 0.08)` を
-  /// そのまま `Scaffold` に渡すと、地が92%透ける。遷移中は下のルートが
-  /// 透けて見えるので正しく見えるが、遷移が終わって下のルートがツリーから
-  /// 外れた瞬間、透けた先には**何も無くなる**(端末の地の色 = 黒)。
-  /// 本文は [ink](ほぼ黒)なので黒に沈み、画面全体が真っ黒で固まったように見える。
-  /// 敷きたいのは色であって透明度ではないので、先に混ぜて不透明の色にする。
+  /// Screen backgrounds must be opaque. Passing
+  /// `streak.withValues(alpha: 0.08)` straight to `Scaffold` leaves it 92%
+  /// transparent: fine mid-transition while the old route shows through, but
+  /// once that route leaves the tree there is nothing behind it (the device
+  /// background, i.e. black) and [ink] body text sinks into it. We want the
+  /// tint, not the transparency, so blend to an opaque color first.
   static final Color celebration = Color.alphaBlend(
     streak.withValues(alpha: 0.08),
     background,
@@ -54,7 +52,7 @@ abstract final class AppRadius {
   static const double chip = 999;
 }
 
-/// 厚みのあるボタンの「沈み込み」量。触感の主役。
+/// How far chunky buttons sink when pressed. The core of the feel.
 abstract final class AppElevation {
   static const double chunkyDepth = 4;
 }
@@ -64,34 +62,32 @@ abstract final class AppDurations {
   static const Duration reaction = Duration(milliseconds: 220);
   static const Duration celebrate = Duration(milliseconds: 600);
 
-  /// 画面に入ってくるとき(要素1つぶん)。
+  /// Entrance, per element.
   static const Duration enter = Duration(milliseconds: 320);
 
-  /// 段差。次の要素が現れるまでの待ち。
-  /// 全部が同時に現れると、読む順序が消える。
+  /// Stagger before the next element appears. Simultaneous entrances
+  /// erase the reading order.
   static const Duration stagger = Duration(milliseconds: 70);
 
-  /// 蛍光マーカーを引く速さ。ペン先が走る時間そのもの。
+  /// Highlighter speed — the time the nib takes to travel.
   static const Duration draw = Duration(milliseconds: 420);
 
-  /// 先輩の呼吸。まばたきもこの周期から作る。
+  /// Senpai's breathing; blinking is derived from the same cycle.
   static const Duration breath = Duration(milliseconds: 3400);
 
-  /// 1文字ぶんのタイプ速度(先輩のせりふ)。
+  /// Per-character typing speed for senpai's lines.
   static const Duration typeChar = Duration(milliseconds: 45);
 
-  /// 「長押しして説明する」を、説明したことにする長さ。
+  /// How long "hold to explain" must be held to count as explaining.
   ///
-  /// これは装飾ではなく**操作の時間**なので、
-  /// アニメーションを減らす設定でも短くしない。
+  /// This is interaction time, not decoration, so reduced motion must not
+  /// shorten it.
   static const Duration hold = Duration(milliseconds: 1300);
 }
 
-/// 動きの気持ち。
-///
-/// にぎやかな画面(会話・祝福・オンボーディング)だけが [pop] を使える。
-/// カルテと復習は内省する画面なので、行き過ぎて戻る動きを持ち込まない
-/// (「騒がしい/静かの分離」)。
+/// Motion feel. Only lively screens (conversation, celebration,
+/// onboarding) may use [pop]; karte and review are reflective, so the
+/// overshoot stays out.
 abstract final class AppCurves {
   static const Curve enter = Curves.easeOutCubic;
   static const Curve exit = Curves.easeInCubic;

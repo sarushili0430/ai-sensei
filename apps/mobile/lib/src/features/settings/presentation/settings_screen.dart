@@ -15,14 +15,12 @@ import '../../notifications/data/push_repository.dart';
 import '../application/school_stage_controller.dart';
 import '../data/support_links.dart';
 
-/// 設定。
-///
-/// 新しい機能は何も足していない。**置き場所が無かったものを集めた画面**:
-///   - 契約の管理と購入の復元(ホームから移した)
-///   - 通知のオン/オフ
-///   - プライバシーポリシー・利用規約(サブスクを載せる以上、審査で見られる)
-///   - 不適切な質問の報告(AI生成物を含むアプリの導線)
-///   - 問い合わせのときに聞かれる端末IDとバージョン
+/// Settings. Adds no new features — it collects what had nowhere else to go:
+///   - Manage subscription and restore purchases (moved off home)
+///   - Notifications on/off
+///   - Privacy policy and terms (review checks these for subscriptions)
+///   - Reporting inappropriate questions (required for AI output)
+///   - Device ID and version, which support will ask for
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
@@ -36,7 +34,7 @@ class SettingsScreen extends ConsumerWidget {
         child: ListView(
           padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
           children: <Widget>[
-            // 鍵の無いビルドでは中身が全部消えるので、見出しごと出さない。
+            // Builds without keys show nothing here, so drop the heading too.
             if (RevenueCatConfig.isConfigured) ...<Widget>[
               _Section(title: strings.settingsSectionAccount),
               const Padding(
@@ -68,14 +66,15 @@ class SettingsScreen extends ConsumerWidget {
   }
 }
 
-/// 中学生 / 高校生。
+/// Junior high / senior high.
 ///
-/// **学習の制限ではなく、写真から単元を探す範囲**。中学生を選んでも高校の単元が
-/// 禁止になるわけではない。ここを持たないと、中学生の写真にも数学I〜Cの52件が
-/// 候補として並び、解析器が高校の単元を選べてしまう。
+/// This bounds the topic search for a photo, it does not restrict learning:
+/// choosing junior high does not forbid senior-high topics. Without it, a
+/// junior-high photo also offers all 52 senior-high math topics and the
+/// analyzer can pick one.
 ///
-/// スイッチではなく2行にしてあるのは、オン/オフではなく**どちらかを選ぶ**もの
-/// だから。「中学生オフ = 高校生」は読めない。
+/// Two rows rather than a switch, because this is a choice between two, not
+/// an on/off — "junior high off = senior high" does not read.
 class _SchoolStageRows extends ConsumerWidget {
   const _SchoolStageRows();
 
@@ -97,8 +96,9 @@ class _SchoolStageRows extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        // **ヒントは行ではなく、選択肢の手前に置く。** 片方の行に付けると
-        // 「選ばれているほうの説明」に読め、選び直すたびに説明が動いて見える。
+        // The hint sits before the options, not on a row: attached to one row
+        // it reads as describing the selected one and appears to move on every
+        // change.
         Padding(
           padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.sm),
           child: Text(
@@ -113,10 +113,11 @@ class _SchoolStageRows extends ConsumerWidget {
   }
 }
 
-/// 通知のオン/オフ。
+/// Notifications on/off.
 ///
-/// アプリ側にスイッチを持たない。OSの許可がそのまま状態で、切るのも戻すのも
-/// 設定アプリでやってもらう。二重に持つと「アプリではオンなのに届かない」が生まれる。
+/// No in-app switch: the OS permission is the state, and turning it off or
+/// back on happens in system settings. Holding it in two places creates
+/// "on in the app but nothing arrives".
 class _NotificationRow extends ConsumerWidget {
   const _NotificationRow();
 
@@ -137,7 +138,7 @@ class _NotificationRow extends ConsumerWidget {
   }
 }
 
-/// 先輩の説明・板書・質問がおかしかったときの報告先。
+/// Where to report a bad explanation, board or question from senpai.
 class _ReportRow extends ConsumerWidget {
   const _ReportRow();
 
@@ -201,7 +202,7 @@ class _VersionRow extends StatelessWidget {
   }
 }
 
-/// 問い合わせでこれを聞く。アカウントが無いので、これが唯一の手がかりになる。
+/// Support asks for this. With no accounts, it is the only handle we have.
 class _DeviceIdRow extends ConsumerWidget {
   const _DeviceIdRow();
 

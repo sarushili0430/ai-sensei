@@ -5,11 +5,12 @@ import '../domain/parent_report.dart';
 
 part 'parent_report_controller.g.dart';
 
-/// 今月の親レポート。
+/// This month's parent report.
 ///
-/// Premium判定はサーバが正で、無料なら例外ではなくロック状態が返る。
-/// クライアントのRevenueCat状態だけで本文を開くと、webhook反映前後でAPIとの
-/// 有料境界がずれるので、画面はこの応答だけを見る。
+/// The server owns the Premium verdict and returns a locked state, not an
+/// error, for free users. Unlocking from the client's RevenueCat state alone
+/// would drift from the API's boundary around webhook delivery, so the screen
+/// trusts only this response.
 @riverpod
 class ParentReportController extends _$ParentReportController {
   @override

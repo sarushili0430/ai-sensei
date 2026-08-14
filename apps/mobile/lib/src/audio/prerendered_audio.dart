@@ -5,13 +5,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart' as just_audio;
 
-/// 通信せずに鳴らす、先輩の短い一言。
+/// Short senpai lines played without any network call.
 ///
-/// **何を、いつ鳴らすかの正はこの列挙。** パスを画面側へ散らすと、日英の片方だけを
-/// 足し忘れたり、同じ一言を別のタイミングで使い回したりしてもレビューで追えない。
-/// ここでは用途ごとに別 cue とし、各 cue が必ず ja / en の2本を持つ形にする。
+/// This enum is the source of truth for what plays and when. Scattering paths
+/// across screens would hide a missing ja or en variant, or the same line
+/// reused at a different moment. One cue per purpose, each holding both locales.
 enum PrerenderedAudioCue {
-  /// 授業用の LiveKit 接続が済んだ直後から、最初の板書手順または先輩の発話まで。
+  /// From the lesson's LiveKit connection until the first board step or
+  /// senpai utterance.
   lessonOpening(
     jaTranscript: 'なるほど、じゃあ一緒に見てみようか。',
     enTranscript: "Okay, let's take a look at this together.",
@@ -31,19 +32,19 @@ enum PrerenderedAudioCue {
   final String jaAsset;
   final String enAsset;
 
-  /// アプリが対応するロケールは ja / en だけ。未知の言語を日本語へ倒すと、
-  /// `AppStrings.resolve` の「日本語を明示した端末以外は英語」と食い違うので英語へ倒す。
+  /// Only ja / en are supported. Unknown languages fall back to English to
+  /// match `AppStrings.resolve`, which sends all but explicit Japanese to en.
   String assetFor(String languageCode) =>
       languageCode == 'ja' ? jaAsset : enAsset;
 }
 
-/// アセットを実際に鳴らす境界。
+/// The boundary that actually plays an asset.
 ///
-/// widget test が `just_audio` の MethodChannel を起動しないよう、画面はこの型だけを
-/// 知る。本番実装もテスト用 fake も、同じ「cue とロケール」を受け取るので、テストが
-/// ファイルパスの組み立てを再実装して本番とずれることがない。
+/// Screens know only this type, so widget tests never start `just_audio`'s
+/// MethodChannel. Both the real implementation and the fake take the same cue
+/// and locale, so tests cannot re-implement path building and drift.
 abstract interface class PrerenderedAudioPlayer {
-  /// 再生を開始したら返る。音声の終端までは待たない。
+  /// Returns once playback starts; does not wait for the audio to finish.
   Future<void> play(PrerenderedAudioCue cue, {required String languageCode});
 
   Future<void> stop();
@@ -51,11 +52,12 @@ abstract interface class PrerenderedAudioPlayer {
   Future<void> dispose();
 }
 
-/// テスト・プレビューの既定値。
+/// Default for tests and previews.
 ///
-/// 本番は `main.dart` で [JustAudioPrerenderedAudioPlayer] に差し替える。既定を無音に
-/// しているのは、Widget を1個組むだけのテストがプラットフォーム音声を起動しないため。
-/// 差し替えを忘れても失われるのは装飾音だけで、吹き出しと操作は残る。
+/// `main.dart` swaps in [JustAudioPrerenderedAudioPlayer] for release. Silence
+/// is the default so building a single widget in a test never starts platform
+/// audio; forgetting the swap loses only decorative sound, never the captions
+/// or controls.
 class SilentPrerenderedAudioPlayer implements PrerenderedAudioPlayer {
   const SilentPrerenderedAudioPlayer();
 
@@ -72,17 +74,18 @@ class SilentPrerenderedAudioPlayer implements PrerenderedAudioPlayer {
   Future<void> dispose() async {}
 }
 
-/// OS の消音状態を確認し、装飾音に適した出力へ整える境界。
+/// Boundary that checks the OS mute state and prepares suitable output.
 abstract interface class DecorativeAudioPolicy {
-  /// 鳴らしてよければ true。判断できない・準備に失敗した場合は false へ倒す。
+  /// True if sound is allowed; falls back to false when unknown or on failure.
   Future<bool> prepare();
 }
 
-/// iOS / Android の消音設定を読むための、小さなネイティブ境界。
+/// Small native boundary for reading the iOS / Android mute setting.
 ///
-/// iOS は消音スイッチを公開 API で直接読めないため、`AVAudioSession` を
-/// `.ambient` にして OS 自身に消音してもらう。Android は ringer mode とメディア音量を
-/// 読むだけで、**どちらもこちらから音量を変更しない**。実装は AppDelegate / MainActivity。
+/// iOS exposes no public API for the mute switch, so `AVAudioSession` is set to
+/// `.ambient` and the OS mutes for us. Android only reads ringer mode and media
+/// volume. Neither ever changes the volume. Implemented in AppDelegate /
+/// MainActivity.
 class PlatformDecorativeAudioPolicy implements DecorativeAudioPolicy {
   const PlatformDecorativeAudioPolicy();
 
@@ -95,23 +98,24 @@ class PlatformDecorativeAudioPolicy implements DecorativeAudioPolicy {
     try {
       return await _channel.invokeMethod<bool>('prepare') ?? false;
     } on MissingPluginException {
-      // iOS / Android で登録漏れを「鳴らしてよい」と解釈すると、消音スイッチを
-      // 迂回する事故になる。開発用の desktop / web だけ既定へ任せ、本番2ターゲットは
-      // 音を失う側へ倒す。文字が正本なので、安全側へ倒しても導線は失われない。
+      // Treating a missing registration as "allowed" on iOS / Android would
+      // bypass the mute switch. Only the desktop / web dev targets take the
+      // default; the two shipping targets fail towards silence. Text is the
+      // source of truth, so the safe choice loses nothing.
       final bool isMobile =
           !kIsWeb &&
           (defaultTargetPlatform == TargetPlatform.iOS ||
               defaultTargetPlatform == TargetPlatform.android);
       return !isMobile;
     } on PlatformException catch (error) {
-      // 音は装飾なので、ポリシーを確認できないときに推測で鳴らさない。
+      // Sound is decorative; never guess when the policy cannot be read.
       debugPrint('端末の消音設定を確認できなかったため、装飾音を鳴らしません: $error');
       return false;
     }
   }
 }
 
-/// `just_audio` を使う本番の再生器。
+/// Production player backed by `just_audio`.
 class JustAudioPrerenderedAudioPlayer implements PrerenderedAudioPlayer {
   factory JustAudioPrerenderedAudioPlayer({
     just_audio.AudioPlayer? player,
@@ -119,9 +123,9 @@ class JustAudioPrerenderedAudioPlayer implements PrerenderedAudioPlayer {
   }) => JustAudioPrerenderedAudioPlayer._(
     player ??
         just_audio.AudioPlayer(
-          // just_audio の既定は「音楽プレイヤー」用の audio session を有効にし、
-          // iOS の消音スイッチを迂回する。上の policy が ambient を選ぶので、
-          // ここでは再度 activate して上書きさせない。
+          // just_audio defaults to activating a music-player audio session,
+          // which bypasses the iOS mute switch. The policy above already chose
+          // ambient, so do not let it re-activate and override that.
           handleAudioSessionActivation: false,
         ),
     policy,
@@ -132,7 +136,8 @@ class JustAudioPrerenderedAudioPlayer implements PrerenderedAudioPlayer {
   final just_audio.AudioPlayer _player;
   final DecorativeAudioPolicy _policy;
 
-  /// `setAsset` の途中で stop / 次の cue が来ても、古い読み込み完了後に鳴らさないための世代。
+  /// Generation counter, so a load finishing after a stop or a newer cue does
+  /// not start playing.
   int _operation = 0;
 
   @override
@@ -146,9 +151,9 @@ class JustAudioPrerenderedAudioPlayer implements PrerenderedAudioPlayer {
     await _player.setAsset(cue.assetFor(languageCode));
     if (operation != _operation) return;
 
-    // `AudioPlayer.play()` は終端まで返らない。ここで await すると、呼び出し側が
-    // 「再生を始めてから LiveKit のマイクを開く」順序を作れないので、開始だけ行い、
-    // 終端側の失敗はこの層で回収する。
+    // `AudioPlayer.play()` only returns at the end of the audio. Awaiting here
+    // would stop callers ordering "start playback, then open the LiveKit mic",
+    // so we start it and absorb end-of-playback failures in this layer.
     unawaited(_finishQuietly(_player.play()));
   }
 
@@ -156,7 +161,8 @@ class JustAudioPrerenderedAudioPlayer implements PrerenderedAudioPlayer {
     try {
       await playback;
     } on Object catch (error) {
-      // 再生中のデコード失敗も導線を止めない。吹き出しが情報の正本。
+      // A decode failure mid-playback never blocks the flow; the caption is
+      // the source of truth.
       debugPrint('プリレンダ音声の再生中に失敗しました(画面は続けます): $error');
     }
   }
@@ -174,25 +180,28 @@ class JustAudioPrerenderedAudioPlayer implements PrerenderedAudioPlayer {
   }
 }
 
-/// アプリ内の「音を鳴らす / 鳴らさない」の1か所。
+/// The single place deciding whether sound plays.
 ///
-/// `AppMotion.isReduced` と同じく、各 Widget が独自判断を持たないための設定。
-/// ユーザー向けには端末の消音・マナーモードをそのまま設定として使い、アプリ設定画面に
-/// 二重のスイッチは置かない。二重にすると「アプリではオンだが端末では無音」という
-/// 読めない状態が増える一方、声の内容は常に吹き出しにも残るためである。
-/// Provider にしてあるのは、widget test では明示的に false にでき、将来 OS に
-/// アプリ単位の音声設定が増えても画面を触らず差し替えられるようにするため。
+/// Like `AppMotion.isReduced`, it stops each widget forming its own opinion.
+/// For users the device's mute / silent mode is the setting; there is no second
+/// switch in app settings, since two would create the unreadable "on in the app
+/// but silent on the device" state — and the spoken content always remains in
+/// the caption anyway.
+///
+/// It is a Provider so widget tests can force false, and so a future per-app OS
+/// audio setting can be swapped in without touching screens.
 final Provider<bool> decorativeAudioEnabledProvider = Provider<bool>(
   (Ref ref) => true,
 );
 
-/// 実機だけ `main.dart` から本物へ差し替える。テストで本物を起動しない防波堤。
+/// Replaced with the real player from `main.dart` on device only; a guard so
+/// tests never start it.
 final Provider<PrerenderedAudioPlayer> prerenderedAudioPlayerProvider =
     Provider<PrerenderedAudioPlayer>(
       (Ref ref) => const SilentPrerenderedAudioPlayer(),
     );
 
-/// cue の競合・失敗を画面から追い出す薄い再生サービス。
+/// Thin playback service keeping cue conflicts and failures out of screens.
 final Provider<PrerenderedAudio> prerenderedAudioProvider =
     Provider<PrerenderedAudio>(
       (Ref ref) => PrerenderedAudio(
@@ -215,10 +224,11 @@ class PrerenderedAudio {
   int _nextPlaybackId = 0;
   int? _currentPlaybackId;
 
-  /// 新しい cue は古い cue を置き換える。戻り値は、その呼び出しだけを止めるための札。
+  /// A new cue replaces the current one. The return value is a token that stops
+  /// only that call.
   ///
-  /// 画面Aの dispose が遅れて来たあと画面Bが別の cue を鳴らし始めても、Aの停止で
-  /// Bまで止めないため、グローバルな `stop()` を画面へ直接渡さない。
+  /// Screens never get a global `stop()`: if screen A disposes late while screen
+  /// B has started another cue, A's stop must not silence B.
   Future<int?> play(
     PrerenderedAudioCue cue, {
     required String languageCode,
@@ -231,23 +241,24 @@ class PrerenderedAudio {
       await _player.play(cue, languageCode: languageCode);
     } on Object catch (error) {
       if (_currentPlaybackId == playbackId) _currentPlaybackId = null;
-      // アセット欠落・デコード失敗・ネイティブ実装の失敗のどれでも画面を壊さない。
+      // A missing asset, decode failure or native failure never breaks the UI.
       debugPrint('プリレンダ音声を再生できませんでした(画面は続けます): $error');
       return null;
     }
 
-    // 読み込み中に別の cue または停止が来た。古い画面へ停止札を返さない。
+    // Another cue or a stop arrived mid-load; do not hand a stop token back.
     return _currentPlaybackId == playbackId ? playbackId : null;
   }
 
-  /// [playbackId] がいまの音に一致するときだけ止める。
+  /// Stops only when [playbackId] matches the sound currently playing.
   Future<void> stop(int? playbackId) async {
     if (playbackId == null || _currentPlaybackId != playbackId) return;
     _currentPlaybackId = null;
     try {
       await _player.stop();
     } on Object catch (error) {
-      // 停止に失敗しても画面遷移を待たせない。再生器の次の play が世代を進める。
+      // A failed stop never delays navigation; the next play bumps the
+      // generation anyway.
       debugPrint('プリレンダ音声を停止できませんでした(画面は続けます): $error');
     }
   }

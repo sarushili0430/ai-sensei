@@ -6,19 +6,19 @@ import 'package:onesignal_flutter/onesignal_flutter.dart';
 import '../application/push_controller.dart';
 import '../data/push_repository.dart';
 
-/// OneSignal への端末登録を見張って、確認ダイアログを一度だけ出す。
+/// Watches device registration with OneSignal and shows a confirmation dialog
+/// once.
 ///
-/// OneSignal の統合手順が要求している「登録できたことを確かめる」ダイアログ。
-/// **デバッグビルドでのみ出す。** 本番で出さないのは、初回起動でいきなり
-/// 通知の許可を求めるのが、このアプリの設計(§6「煽らない」/ 許可を聞くのは
-/// カルテのトグル1箇所だけ)と噛み合わないため。文面も手順書指定の英語のままで、
-/// 日本語のユーザーに見せるものではない。
+/// Required by OneSignal's integration guide. Debug builds only: prompting for
+/// notification permission on first launch clashes with this app's design
+/// (never nag; permission is asked from the karte toggle alone). The wording
+/// stays the guide's English and is not meant for Japanese users.
 ///
-/// 本番でも出したくなったら [_enabled] を `true` に変える。
+/// Flip [_enabled] to `true` to show it in release too.
 ///
-/// アプリ全体を包むだけで画面は足さない([child] をそのまま返す)。
-/// 監視ハンドルは **State に持たせる** —— ローカル変数に入れただけだと
-/// 参照が消えて通知が来なくなる。
+/// It wraps the whole app without adding a route (it returns [child] as is).
+/// The observer handle lives in State — a local variable would be collected and
+/// the callbacks would stop firing.
 class PushRegistrationGate extends ConsumerStatefulWidget {
   const PushRegistrationGate({
     required this.navigatorKey,
@@ -26,8 +26,8 @@ class PushRegistrationGate extends ConsumerStatefulWidget {
     super.key,
   });
 
-  /// ダイアログを出すための Navigator。どの画面にも属さないダイアログなので、
-  /// `MaterialApp.router` の外側からでも辿れるようにキーを受け取る。
+  /// Navigator used to show the dialog. It belongs to no screen, so the key is
+  /// passed in to reach it from outside `MaterialApp.router`.
   final GlobalKey<NavigatorState> navigatorKey;
 
   final Widget child;
@@ -56,9 +56,9 @@ class _PushRegistrationGateState extends ConsumerState<PushRegistrationGate> {
     _observer = observer;
     repository.addPushSubscriptionObserver(observer);
 
-    // 監視を付けるより前にIDが確定していることがある。変化だけを待つと
-    // その取りこぼしで永久に出ないので、いまの値も一度見る。
-    // Navigator が建つのは最初のフレームの後なので post-frame で。
+    // The ID can settle before the observer is attached, so waiting only for
+    // changes would miss it forever; read the current value once too. Navigator
+    // exists only after the first frame, hence post-frame.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeShowDialog(repository.pushSubscriptionId);
     });
@@ -84,8 +84,8 @@ class _PushRegistrationGateState extends ConsumerState<PushRegistrationGate> {
     _showIntegrationCompleteDialog(navigatorContext);
   }
 
-  /// 文面は OneSignal の統合手順で指定されているものをそのまま使う
-  /// (ダッシュボード側の確認手順と突き合わせるため、翻訳しない)。
+  /// Wording is taken verbatim from OneSignal's integration guide, left
+  /// untranslated so it matches the dashboard's verification steps.
   void _showIntegrationCompleteDialog(BuildContext context) {
     showDialog<void>(
       context: context,

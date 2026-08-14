@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
-// 行ごとの高さを測るのに使う。material 経由では出てこない型。
+// Needed to measure per-line height; not re-exported via material.
 import 'dart:ui' show BoxHeightStyle;
 
 import 'package:flutter/material.dart';
@@ -8,15 +8,12 @@ import 'package:flutter/material.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
 
-/// 蛍光マーカー(視覚言語)。
+/// Highlighter pen — the app's visual language, rooted in student
+/// notebook culture. Yellow = said it, pink = a gap.
 ///
-/// 高校生のノート文化に接地したオリジナル要素で、Duolingoクローンに見せないための要。
-/// 言えたこと = 黄、穴 = ピンク。
-///
-/// 線は**左から右へ引かれる**。カルテは会話のあとに「書かれる」ものなので、
-/// 出来上がった状態でいきなり置くより、引かれるところを見せたほうが
-/// 自分の説明の記録だと分かる。複数行あるときは [delay] をずらして、
-/// 上の行から順に引く。
+/// The stroke is drawn left to right: the karte is written after the
+/// conversation, so watching it drawn reads as a record of your own
+/// explanation. Stagger [delay] to draw multi-line text top down.
 enum MarkerColor {
   said(AppColors.said),
   hole(AppColors.hole);
@@ -31,7 +28,7 @@ class MarkerText extends StatefulWidget {
   final String text;
   final MarkerColor marker;
 
-  /// 引き始めるまでの待ち。行ごとにずらして順番に引く。
+  /// Delay before the stroke starts; stagger it to draw lines in order.
   final Duration delay;
 
   @override
@@ -52,7 +49,7 @@ class _MarkerTextState extends State<MarkerText> with SingleTickerProviderStateM
     if (_started) return;
     _started = true;
 
-    // 動かさない設定なら、引き終わった状態で置く。
+    // Reduced motion: place it fully drawn.
     if (AppMotion.isReduced(context)) {
       _controller.value = 1;
       return;
@@ -80,7 +77,7 @@ class _MarkerTextState extends State<MarkerText> with SingleTickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
-    // ペンを走らせる速さ。等速だと機械的なので、終わりで少しだけ緩める。
+    // Pen speed. Constant velocity feels mechanical, so ease out at the end.
     final Animation<double> progress = CurvedAnimation(parent: _controller, curve: AppCurves.enter);
     final TextStyle? style = Theme.of(context).textTheme.bodyLarge;
 
@@ -106,15 +103,15 @@ class _MarkerTextState extends State<MarkerText> with SingleTickerProviderStateM
   }
 }
 
-/// 文字の下半分だけを塗る。線をまっすぐ引かず、端を少しずらして手引き感を出す。
+/// Paints the lower half of the text, with slightly offset ends so it
+/// reads as hand-drawn.
 ///
-/// **行ごとに引く。** 折り返した文の全体を1枚の帯で塗ると、
-/// 1行目が素通しのまま最終行だけ塗られた形になり、
-/// 蛍光ペンではなく下線に見える。ペンも行の終わりで一度上がるので、
-/// 引かれる順番は 1行目 → 2行目 になる。
+/// Drawn line by line: one band across wrapped text would leave the first
+/// line bare and look like an underline rather than a highlighter. The pen
+/// lifts at each line end, so lines fill top down.
 ///
-/// 行の位置は、描く側で同じ文字列をもう一度レイアウトして測る。
-/// [Text] と同じ style・textScaler・幅を渡しているので、結果は一致する。
+/// Line positions come from re-laying out the same string with the same
+/// style, textScaler and width as [Text], so the metrics match.
 class _MarkerPainter extends CustomPainter {
   const _MarkerPainter({
     required this.text,
@@ -133,7 +130,7 @@ class _MarkerPainter extends CustomPainter {
   final EdgeInsets padding;
   final Color color;
 
-  /// 0 = まだ引いていない、1 = 引き終わり。
+  /// 0 = not drawn yet, 1 = fully drawn.
   final double progress;
 
   @override
@@ -143,7 +140,7 @@ class _MarkerPainter extends CustomPainter {
     final List<Rect> lines = _lineRects(size);
     if (lines.isEmpty) return;
 
-    // ペン先は行をまたいで走る。総距離のうち、いまどこまで来たか。
+    // The nib runs across lines; how far along the total distance we are.
     final double total = lines.fold<double>(0, (double sum, Rect it) => sum + it.width);
     double travelled = progress * total;
     final Paint paint = Paint()..color = color.withValues(alpha: 0.55);
@@ -165,7 +162,7 @@ class _MarkerPainter extends CustomPainter {
     }
   }
 
-  /// 行ごとの矩形。同じ上端のボックスは1行としてまとめる。
+  /// Per-line rects; boxes sharing a top edge are merged into one line.
   List<Rect> _lineRects(Size size) {
     final TextPainter painter = TextPainter(
       text: TextSpan(text: text, style: style),

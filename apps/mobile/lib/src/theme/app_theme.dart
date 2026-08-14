@@ -2,11 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'tokens.dart';
 
-/// アプリのテーマ。
-///
-/// 「騒がしい/静かの分離」を守るため、
-/// 色そのものはトークンで持ち、にぎやかさは画面側で足す。
-/// テーマ自体は静かな状態を既定にする。
+/// App theme. Colors live in tokens and screens add the liveliness,
+/// so the theme itself defaults to the quiet state.
 abstract final class AppTheme {
   static const String fontFamily = 'ZenMaruGothic';
 
@@ -37,7 +34,7 @@ abstract final class AppTheme {
   }
 
   static const TextTheme _textTheme = TextTheme(
-    // 祝福画面の見出し。数字ではなく言葉を主役にする。
+    // Celebration screen heading: words lead, not numbers.
     displaySmall: TextStyle(fontSize: 28, fontWeight: FontWeight.w700, color: AppColors.ink),
     titleLarge: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.ink),
     titleMedium: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.ink),

@@ -5,24 +5,22 @@ import '../features/settings/data/support_links.dart';
 import '../l10n/strings.dart';
 import '../theme/tokens.dart';
 
-/// 外部リンクを開く。開けなかったことを黙って飲み込まない。
+/// Opens an external link, surfacing failures instead of swallowing them.
 Future<void> openExternalLink(BuildContext context, Uri url) async {
   final bool opened = await launchUrl(url, mode: LaunchMode.externalApplication);
   if (opened || !context.mounted) return;
-  // 黙って何も起きないのが一番わるいので伝える。
+  // Silently doing nothing is the worst outcome, so say so.
   ScaffoldMessenger.of(context)
       .showSnackBar(SnackBar(content: Text(AppStrings.of(context).settingsOpenFailed)));
 }
 
-/// 利用規約(EULA)とプライバシーポリシーへのリンク。
+/// EULA and privacy policy links.
 ///
-/// 設定画面だけでなく**購入画面にも**必要。App Review は
-/// Guideline 3.1.2 で、サブスクの購入画面に
-/// 「名称・期間・価格・規約とプライバシーポリシーへの動くリンク」が
-/// 揃っていることを求めていて、ここが欠けているのは定番のリジェクト理由。
-///
-/// URLは `--dart-define` から入るので、空のビルドでは行ごと出さない
-/// (押しても開かないリンクは、無いより悪い)。
+/// Required on the paywall, not just settings: App Review guideline 3.1.2
+/// wants name, duration, price and working legal links on the subscription
+/// screen, and missing them is a classic rejection. URLs arrive via
+/// `--dart-define`; when empty the row is dropped, since a dead link is
+/// worse than none.
 class LegalLinks extends StatelessWidget {
   const LegalLinks({super.key});
 

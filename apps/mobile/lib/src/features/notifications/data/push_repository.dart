@@ -1,66 +1,67 @@
 import 'package:flutter/foundation.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 
-/// OneSignal の設定値。`--dart-define` から読む。
+/// OneSignal configuration, read from `--dart-define`.
 ///
-/// App ID は公開値(受信端末を特定するだけの識別子)。
-/// REST API Key は backend/api 側にあり、ここには置かない。
+/// The App ID is public (it only identifies receiving devices). The REST API
+/// key lives in backend/api and never here.
 abstract final class PushConfig {
-  /// OneSignal ダッシュボードの App ID(`47044c5e-…`)。
+  /// App ID from the OneSignal dashboard (`47044c5e-…`).
   ///
-  /// **ここに既定値を持たせてはいけない。** 値が入ると `isConfigured` が
-  /// テストでも true になり、カルテ画面の通知トグルが出て golden が動く。
-  /// 実ビルドに値を届けるのは呼び出し側の役目:
-  ///   - 手元 … `dart_defines.env`(`dart_defines.example.env` に記載)
-  ///   - CI  … `codemagic.yaml` の `--dart-define=ONESIGNAL_APP_ID=...`
+  /// Must have no default: a value makes `isConfigured` true in tests too,
+  /// which shows the karte notification toggle and shifts goldens. Delivering
+  /// it to real builds is the caller's job:
+  ///   - local … `dart_defines.env` (documented in `dart_defines.example.env`)
+  ///   - CI    … `--dart-define=ONESIGNAL_APP_ID=...` in `codemagic.yaml`
   static const String appId = String.fromEnvironment('ONESIGNAL_APP_ID');
 
-  /// App ID の無いビルド(`flutter test` / CI / 渡し忘れ)では通知ごと無効にする。
-  /// ここで落とすと、通知と関係ない画面のテストまで巻き添えになる。
+  /// Builds without an App ID (`flutter test`, CI, a forgotten flag) disable
+  /// notifications entirely; failing here would take unrelated screen tests
+  /// down with it.
   static bool get isConfigured => appId.isNotEmpty;
 }
 
-/// プッシュ通知(OneSignal)。
+/// Push notifications (OneSignal).
 ///
-/// このアプリの再訪はぜんぶ通知が起点なので、ここが繋がっていないと
-/// 「翌日・3日後・7日後に先輩がもう一度たずねてくる」が実機で成立しない。
+/// Every return visit starts from a notification, so without this wired up
+/// "senpai asks again tomorrow, in 3 days, in 7 days" never happens on device.
 ///
-/// サーバは `include_aliases.external_id = [deviceId]` で宛先を指定している
-/// (`backend/api/src/lib/notifications.ts`)。なので **login(deviceId) は必須**。
-/// これを呼ばないと予約は通るのに1通も届かない。
+/// The server addresses by `include_aliases.external_id = [deviceId]`
+/// (`backend/api/src/lib/notifications.ts`), so `login(deviceId)` is
+/// mandatory — skip it and scheduling succeeds while nothing is delivered.
 class PushRepository {
   const PushRepository();
 
-  /// 起動時に一度だけ。**許可はここでは求めない**(文脈内で聞く)。
+  /// Once at startup. Does not request permission — that happens in context.
   Future<void> configure({required String deviceId}) async {
     if (!PushConfig.isConfigured) return;
     OneSignal.initialize(PushConfig.appId);
 
-    // **位置情報を渡さない。** このアプリは地理での出し分けを一切しないので、
-    // 位置は要らない。SDK側の既定に頼らず明示するのは、既定が変わったときに
-    // 誰も気づけないため(Sentry の `enablePrintBreadcrumbs` で踏んだ形)。
+    // No location data: nothing here varies by geography. Set explicitly
+    // rather than trusting the SDK default, since a changed default would go
+    // unnoticed (as happened with Sentry's `enablePrintBreadcrumbs`).
     //
-    // ユーザーは未成年で、通知に要るのは「いつ送るか」だけ。
-    // `requestPermission()` は**呼ばない**(呼ぶと位置情報の許可を聞きにいく)。
+    // Users are minors and notifications only need timing. Do not call
+    // `requestPermission()` — it prompts for location.
     await OneSignal.Location.setShared(false);
 
     await OneSignal.login(deviceId);
   }
 
-  /// いま通知を受け取れるか。許可を求めずに状態だけ見る。
+  /// Whether notifications can be received; reads state without prompting.
   bool get hasPermission => PushConfig.isConfigured && OneSignal.Notifications.permission;
 
-  /// 許可を求める。カルテで穴が見えた直後にだけ呼ぶ。
+  /// Requests permission; called only just after a gap appears in the karte.
   ///
-  /// iOS はシステムダイアログを一度しか出せない。一度断られたあとは
-  /// `fallbackToSettings: true` で設定アプリに案内する
-  /// (アプリ内で何度もダイアログを出そうとしても、二度と出ない)。
+  /// iOS shows the system dialog once. After a refusal,
+  /// `fallbackToSettings: true` routes to the Settings app — retrying in-app
+  /// never shows the dialog again.
   Future<bool> requestPermission() async {
     if (!PushConfig.isConfigured) return false;
     return OneSignal.Notifications.requestPermission(true);
   }
 
-  /// いま端末に割り当たっている購読ID。まだなら null。
+  /// The subscription ID currently assigned to this device; null if none yet.
   String? get pushSubscriptionId =>
       PushConfig.isConfigured ? OneSignal.User.pushSubscription.id : null;
 
@@ -74,19 +75,19 @@ class PushRepository {
     OneSignal.User.pushSubscription.removeObserver(observer);
   }
 
-  /// サーバから本物の購読IDが降りてきたか。
+  /// Whether a real subscription ID has arrived from the server.
   ///
-  /// SDKは初期化直後に `local-...` という仮のIDを入れる。これは
-  /// 「まだ登録できていない」状態なので、登録済みと数えてはいけない。
+  /// Right after init the SDK stores a placeholder `local-...` ID, which means
+  /// "not registered yet" and must not count as registered.
   static bool isRegistered(String? subscriptionId) =>
       subscriptionId != null &&
       subscriptionId.isNotEmpty &&
       !subscriptionId.startsWith('local-');
 
-  /// 通知タップの着地先を受け取る。
+  /// Receives the landing target for a notification tap.
   ///
-  /// サーバは `data: { hole_id, step }` を積んでいる。いまは穴の指定までは見ず、
-  /// 復習画面まで運ぶ(そこに同じ穴がカードで出ている)。
+  /// The server attaches `data: { hole_id, step }`. We ignore the specific gap
+  /// for now and route to review, where the same gap appears as a card.
   void onOpened(void Function(String? holeId) handler) {
     if (!PushConfig.isConfigured) return;
     OneSignal.Notifications.addClickListener((OSNotificationClickEvent event) {
@@ -96,15 +97,15 @@ class PushRepository {
   }
 }
 
-/// 通知の許可状態。画面に出すのはトグルの on/off だけ。
+/// Notification permission state; the UI shows only the toggle's on/off.
 @immutable
 class PushPermission {
   const PushPermission({required this.granted, required this.available});
 
-  /// 許可されている。
+  /// Permission granted.
   final bool granted;
 
-  /// そもそも通知を扱えるビルドか(App ID が渡っているか)。
+  /// Whether this build can handle notifications at all (App ID present).
   final bool available;
 
   static const PushPermission unavailable =

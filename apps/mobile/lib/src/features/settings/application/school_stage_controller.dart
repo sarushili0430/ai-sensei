@@ -5,26 +5,28 @@ import '../../../api/device_id.dart';
 
 part 'school_stage_controller.g.dart';
 
-/// 学校段階。**写真から単元を探す範囲を半分に切るために、セッション作成時に送る。**
+/// School stage, sent at session creation to halve the search space when
+/// matching a photo to a topic.
 ///
-/// これを送らないと、中学生の写真にも数学I〜Cが候補として並ぶ。
-/// サーバ側の既定は「高校生」で、送らない古いアプリはこれまでどおり動く。
+/// Without it, a junior-high photo also lists senior-high math topics. The
+/// server defaults to senior high, so older clients keep working.
 ///
-/// **端末にしか持たない。** サーバのDBに列を足さない代わりに、再インストールで
-/// 選び直しになる(ADR 0007)。学年そのものではなく段階だけを持つのは、
-/// 学年で単元を絞らないと決めたため — 中学英語の学年配当は教科書ごとに違う。
+/// Device-local only: rather than add a server DB column, a reinstall means
+/// picking again (ADR 0007). We hold the stage, not the school year, because
+/// we decided not to filter topics by year — junior-high English is assigned
+/// differently by each textbook.
 enum SchoolStage {
   juniorHigh('junior_high'),
   highSchool('high_school');
 
   const SchoolStage(this.wireValue);
 
-  /// `packages/contract` の `schoolStages` と同じ値。
+  /// Same values as `schoolStages` in `packages/contract`.
   final String wireValue;
 
   static SchoolStage fromWire(String? value) => SchoolStage.values.firstWhere(
         (SchoolStage stage) => stage.wireValue == value,
-        // 未知の値・未設定は高校生。契約側の既定と揃えてある。
+        // Unknown or unset means senior high, matching the contract default.
         orElse: () => SchoolStage.highSchool,
       );
 }

@@ -4,10 +4,9 @@ import 'package:uuid/uuid.dart';
 
 part 'device_id.g.dart';
 
-/// 匿名デバイスID。
-///
-/// アカウント作成を要求しないので、初回起動時にUUIDを作って保存するだけ。
-/// これでApp Reviewの「アカウント削除」要件も回避できる。
+/// Anonymous device ID. No account is required, so first launch just mints
+/// and stores a UUID — which also sidesteps App Review's account-deletion
+/// requirement.
 const String _deviceIdKey = 'ai_sensei.device_id';
 
 Future<String> loadOrCreateDeviceId(SharedPreferences preferences) async {
@@ -19,7 +18,7 @@ Future<String> loadOrCreateDeviceId(SharedPreferences preferences) async {
   return created;
 }
 
-/// main() でoverrideする。起動時に確定しているので同期で読める。
+/// Overridden in main(); resolved at startup, so it reads synchronously.
 @Riverpod(keepAlive: true)
 String deviceId(Ref ref) {
   throw UnimplementedError('deviceIdProvider は main() で override してください');
@@ -33,15 +32,15 @@ Future<bool> hasSeenOnboarding(SharedPreferences preferences) async =>
 Future<void> markOnboardingSeen(SharedPreferences preferences) =>
     preferences.setBool(_onboardedKey, true);
 
-/// 初回起動かどうか。main() でoverrideする。
+/// Whether this is the first launch. Overridden in main().
 ///
-/// 既定値を `true`(= 通過済み)にしない。override が外れたときに
-/// **黙ってオンボーディングを飛ばす**方向へ倒れると、
-/// 「答えは教えません」という約束を一度も見せないまま本編に入ってしまう。
+/// The default is deliberately not `true` (already onboarded): if the
+/// override is ever lost, failing that way would silently skip onboarding
+/// and start the app without ever showing the promise.
 @Riverpod(keepAlive: true)
 bool onboarded(Ref ref) => false;
 
-/// オンボーディングの既読を書き込むために持つ。main() でoverrideする。
+/// Held so onboarding completion can be persisted. Overridden in main().
 @Riverpod(keepAlive: true)
 SharedPreferences preferences(Ref ref) {
   throw UnimplementedError('preferencesProvider は main() で override してください');

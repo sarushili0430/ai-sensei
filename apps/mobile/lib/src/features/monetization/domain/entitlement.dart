@@ -1,23 +1,23 @@
 import 'package:flutter/foundation.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 
-/// 課金まわりのドメイン。SDKの型を、この画面が必要とする形に落とすだけの層。
+/// Billing domain: a layer that reduces SDK types to what these screens need.
 ///
-/// ここに書いたものはすべて純関数か不変クラスにしてある。テスト方針の
-/// 「①純関数ユニット」で押さえられる範囲を最大にするため。
+/// Everything here is a pure function or an immutable class, to maximise what
+/// the pure-unit tier of the test strategy can cover.
 ///
-/// **サーバ側の判定が正**。ここはUIの出し分けにだけ使い、
-/// クライアントの申告でセッション上限を緩めることはしない。
+/// The server's verdict is authoritative. This drives UI only and never relaxes
+/// session limits on the client's say-so.
 
-/// 売る期間。RevenueCat の [PackageType] のうち、このアプリが
-/// ダッシュボードに用意した3つ(weekly / monthly / yearly)だけ扱う。
+/// Billing periods. Of RevenueCat's [PackageType]s, only the three set up in
+/// the dashboard (weekly / monthly / yearly) are handled.
 enum PlanPeriod {
   weekly,
   monthly,
   yearly;
 
-  /// 対応するものが無ければ null。lifetime や独自パッケージを足しても
-  /// 黙って落ちるだけで、画面が壊れないようにしておく。
+  /// Null when there is no match, so adding lifetime or a custom package just
+  /// drops it silently instead of breaking the screen.
   static PlanPeriod? fromPackageType(PackageType type) => switch (type) {
     PackageType.weekly => PlanPeriod.weekly,
     PackageType.monthly => PlanPeriod.monthly,
@@ -26,8 +26,8 @@ enum PlanPeriod {
   };
 }
 
-/// ペイウォールに出す1プラン。価格の文字列はストアが返したものを
-/// **そのまま**使う(通貨記号と桁区切りを自前で組み立てない)。
+/// One plan on the paywall. Price strings are used exactly as the store
+/// returns them — we never assemble currency symbols or separators ourselves.
 @immutable
 class SubscriptionPlan {
   const SubscriptionPlan({
@@ -39,23 +39,23 @@ class SubscriptionPlan {
   final Package package;
   final PlanPeriod period;
 
-  /// 月あたりが最も安いプラン。**計算できたときだけ**立てる。
-  /// 「おすすめ」ではなく事実として出すためのフラグ。
+  /// The cheapest plan per month, set only when it can actually be computed.
+  /// Presented as a fact, not a recommendation.
   final bool isBestValue;
 
   StoreProduct get product => package.storeProduct;
 
   String get priceString => product.priceString;
 
-  /// 「月あたり◯円」。年額の割安さを、煽らずに数字で見せるために使う。
+  /// "X per month": shows the yearly plan's value as a number, without a push.
   String? get pricePerMonthString => product.pricePerMonthString;
 
   double? get pricePerMonth => product.pricePerMonth;
 
-  /// 無料トライアルの日数。0 ならトライアル無し。
+  /// Free trial length in days; 0 means no trial.
   ///
-  /// introductoryPrice は「割引価格」も表すので、**0円のときだけ**
-  /// 無料と呼ぶ。有料の入会キャンペーンを「無料」と書かないための分岐。
+  /// introductoryPrice also covers discounted prices, so only a zero price
+  /// counts as free — a paid intro offer must never be called "free".
   int get freeTrialDays {
     final IntroductoryPrice? intro = product.introductoryPrice;
     if (intro == null || intro.price > 0) return 0;
@@ -67,7 +67,8 @@ class SubscriptionPlan {
       PeriodUnit.year => 365,
       PeriodUnit.unknown => 0,
     };
-    // cycles は「その価格が適用される回数」。0 が返る実装もあるので 1 に寄せる。
+    // cycles is how many periods the price applies to; some implementations
+    // return 0, so clamp to 1.
     final int cycles = intro.cycles <= 0 ? 1 : intro.cycles;
     return daysPerUnit * intro.periodNumberOfUnits * cycles;
   }
@@ -75,11 +76,11 @@ class SubscriptionPlan {
   bool get hasFreeTrial => freeTrialDays > 0;
 }
 
-/// Offering から売り物を取り出す。
+/// Extracts the sellable plans from an Offering.
 ///
-/// 並びは **週 → 月 → 年** の期間順で固定する。高い順に並べて年額へ
-/// 誘導するようなことはしない(§6 煽らない)。ダッシュボードの
-/// パッケージ順に依存しないので、Offering をいじっても画面はぶれない。
+/// Order is fixed by period: weekly, monthly, yearly. We do not sort by price to
+/// steer people towards the annual plan. Being independent of the dashboard's
+/// package order also keeps the screen stable when the Offering changes.
 List<SubscriptionPlan> plansOf(Offering? offering) {
   if (offering == null) return const <SubscriptionPlan>[];
 
@@ -94,8 +95,8 @@ List<SubscriptionPlan> plansOf(Offering? offering) {
     }
   }
 
-  // 月あたり単価が全プランで取れたときだけ「いちばんお得」を出す。
-  // ストアが pricePerMonth を返さないことがあるので、欠けたら黙って出さない。
+  // Show "best value" only when a per-month price exists for every plan; the
+  // store sometimes omits pricePerMonth, and a gap means we say nothing.
   final Iterable<double?> perMonth = found.map(
     (({Package package, PlanPeriod period}) it) => it.package.storeProduct.pricePerMonth,
   );
@@ -114,10 +115,11 @@ List<SubscriptionPlan> plansOf(Offering? offering) {
   ];
 }
 
-/// プラン一覧から期間で1つ選ぶ。同じ期間が無ければ先頭(空なら null)。
+/// Picks one plan by period, falling back to the first (null when empty).
 ///
-/// ペイウォールの既定選択と、祝福画面に出す一行が**同じプランを指す**ように
-/// 1か所に置く。別々に選ぶと、見せた価格と実際に買う価格がずれる。
+/// Kept in one place so the paywall's default selection and the line on the
+/// celebration screen point at the same plan; choosing separately would let the
+/// displayed price differ from the one actually bought.
 SubscriptionPlan? planForPeriod(List<SubscriptionPlan> plans, PlanPeriod period) {
   if (plans.isEmpty) return null;
   for (final SubscriptionPlan plan in plans) {
@@ -126,7 +128,7 @@ SubscriptionPlan? planForPeriod(List<SubscriptionPlan> plans, PlanPeriod period)
   return plans.first;
 }
 
-/// 課金状態のスナップショット。
+/// Snapshot of billing state.
 @immutable
 class Entitlement {
   const Entitlement({
@@ -140,12 +142,12 @@ class Entitlement {
     this.managementUrl,
   });
 
-  /// SDKを設定していないビルドの既定値。
-  /// テスト・CI・鍵を渡し忘れたビルドはこれで無料のまま動く。
+  /// Default for builds with the SDK unconfigured, so tests, CI and key-less
+  /// builds keep running as free.
   static const Entitlement free = Entitlement(isPremium: false);
 
-  /// CustomerInfo から組み立てる。[entitlementId] がダッシュボードと
-  /// ずれていると、課金は成立するのに何も解放されない状態になる。
+  /// Builds from CustomerInfo. If [entitlementId] does not match the
+  /// dashboard, purchases succeed while nothing is unlocked.
   factory Entitlement.from({
     required CustomerInfo info,
     required String entitlementId,
@@ -157,30 +159,31 @@ class Entitlement {
       offering: offering,
       expiresAt: _parseDate(active?.expirationDate),
       willRenew: active?.willRenew ?? false,
-      // 無料期間は「まだ1円も払っていない」。お礼の言い方を変える分岐に使う。
-      // intro(有料の入会キャンペーン)を混ぜないこと — あれは払っている。
+      // A trial means nothing has been paid yet; it changes how we say thanks.
+      // Do not fold in intro (a paid intro offer) — that one is paid.
       isTrial: active?.periodType == PeriodType.trial,
       isSandbox: active?.isSandbox ?? false,
       store: active?.store,
-      // ストアの解約画面へのURL。Customer Center が使えないときの逃げ道。
+      // URL to the store's cancellation screen; the escape hatch for when
+      // Customer Center is unavailable.
       managementUrl: info.managementURL,
     );
   }
 
   final bool isPremium;
 
-  /// 現在の Offering。ペイウォールを自前で描くときだけ使う。
+  /// The current Offering; used only when we draw the paywall ourselves.
   final Offering? offering;
 
-  /// 有効期限。解約済みでもここまでは使える。
+  /// Expiry. Access lasts until this point even after cancelling.
   final DateTime? expiresAt;
 
   final bool willRenew;
 
-  /// 無料トライアル中。**まだ請求は発生していない。**
+  /// In a free trial: nothing has been billed yet.
   ///
-  /// ここを見ずに「ご購入ありがとうございます」と出すと、1円も払っていない
-  /// 人にお礼を言うことになる(誠実さ)。
+  /// Ignoring this and saying "thank you for your purchase" would thank someone
+  /// who has not paid anything.
   final bool isTrial;
 
   final bool isSandbox;
@@ -189,17 +192,17 @@ class Entitlement {
 
   List<SubscriptionPlan> get plans => plansOf(offering);
 
-  /// 解約予約済み(期限まで有効)。払ったぶんは最後まで使える。
-  /// backend 側の CANCELLATION の扱いと合わせてある。
+  /// Cancelled but valid until expiry: what was paid for stays usable.
+  /// Matches how the backend treats CANCELLATION.
   bool get isCancelled => isPremium && !willRenew;
 
-  /// 期限までの残り日数。**切り上げる。**
+  /// Days left until expiry, rounded up.
   ///
-  /// 無料期間の見出し(「7日間、ぜんぶ使えます」)に使う。切り捨てると、
-  /// 買った直後に「あと6日」と出ることがある(7日ちょうどに数分足りない)。
-  /// 残っていない・期限が分からないときは 0。
+  /// Used for the trial heading ("all of it, for 7 days"). Rounding down can
+  /// show "6 days left" right after purchase, when it is minutes short of 7.
+  /// Returns 0 when nothing is left or the expiry is unknown.
   ///
-  /// [now] を引数で受けるのは、テストから時計を固定するため。
+  /// [now] is a parameter so tests can pin the clock.
   int daysLeft(DateTime now) {
     final DateTime? end = expiresAt;
     if (end == null) return 0;
@@ -208,7 +211,8 @@ class Entitlement {
     return (left.inMinutes / Duration.minutesPerDay).ceil();
   }
 
-  /// 契約の管理導線を出すか。契約中か、ストアに解約URLがあるとき。
+  /// Whether to show the manage-subscription entry: while subscribed, or when
+  /// the store provides a cancellation URL.
   bool get canManageSubscription => isPremium || managementUrl != null;
 
   static DateTime? _parseDate(String? value) =>

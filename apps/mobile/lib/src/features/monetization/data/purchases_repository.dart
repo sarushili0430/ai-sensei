@@ -9,66 +9,68 @@ import 'revenuecat_config.dart';
 
 part 'purchases_repository.g.dart';
 
-/// RevenueCat SDK の唯一の出入口(Repository = SSOT)。
+/// The single entry point to the RevenueCat SDK (repository = SSOT).
 ///
-/// SDKは static メソッドの集まりなので、Controller から直接呼ぶと
-/// テストで差し替えられない。ここに閉じ込めて、テストでは
-/// [purchasesRepositoryProvider] ごと override する。
+/// The SDK is a bundle of static methods, so calling it from a controller
+/// cannot be faked in tests. Confining it here lets tests override
+/// [purchasesRepositoryProvider] wholesale.
 class PurchasesRepository {
   const PurchasesRepository();
 
-  /// 起動時に一度だけ呼ぶ(`main()`)。
+  /// Called exactly once at startup, from `main()`.
   ///
-  /// 以前は Controller の `build()` の中で configure していたが、
-  /// provider が再構築されるたびに configure が走るのは想定外の使い方。
-  /// SDK の初期化はアプリの寿命に紐づくので、起動時に一度だけにする。
+  /// This used to run inside a controller's `build()`, which reconfigured on
+  /// every provider rebuild — not how the SDK is meant to be used. Init belongs
+  /// to the app's lifetime, so it happens once.
   Future<void> configure({required String appUserId}) async {
     if (!RevenueCatConfig.isConfigured) return;
     if (await Purchases.isConfigured) return;
 
-    // 課金の不具合はログが無いと追えない。リリースでも info は残す。
+    // Billing bugs are untraceable without logs; keep info even in release.
     await Purchases.setLogLevel(kDebugMode ? LogLevel.debug : LogLevel.info);
 
     await Purchases.configure(configurationFor(appUserId));
   }
 
-  /// 設定値そのもの。**テストから読めるように切り出してある。**
+  /// The configuration object, split out so tests can read it.
   ///
-  /// `Purchases.configure` はプラットフォームチャンネルを叩くのでテストから
-  /// 呼べない。値の組み立てだけを分けておけば、「送信の既定を明示して切った」
-  /// という約束は回帰で固定できる(`Telemetry` の `DegradationEvent` と同じ考え方)。
+  /// `Purchases.configure` hits a platform channel and cannot run in tests.
+  /// Separating the value assembly pins the promise that data-collection
+  /// defaults are explicitly turned off (same approach as `Telemetry`'s
+  /// `DegradationEvent`).
   @visibleForTesting
   static PurchasesConfiguration configurationFor(String appUserId) {
     return PurchasesConfiguration(RevenueCatConfig.apiKey)
-        // アカウント作成を要求しないので、匿名デバイスIDをそのまま appUserID にする。
-        // webhook の app_user_id にこの値が乗ってくる
-        // (backend/api/src/routes/webhooks.ts)。
+        // No accounts, so the anonymous device ID becomes the appUserID. This
+        // value arrives as the webhook's app_user_id
+        // (backend/api/src/routes/webhooks.ts).
         ..appUserID = appUserId
-        // ストア側の障害メッセージ(支払い方法の期限切れなど)は
-        // OSに任せて自動で出す。自前で気づけない類のものなので。
+        // Let the OS surface store-side messages (an expired payment method,
+        // say) automatically — we could not detect those ourselves.
         ..shouldShowInAppMessagesAutomatically = true
-        // **SDKの既定は true。** アトリビューションIDを設定したときに
-        // 広告識別子(iOS: `$idfa` / `$idfv` / `$ip`、Android: `$gpsAdId` /
-        // `$androidId` / `$ip`)を RevenueCat へ送る設定。
+        // The SDK default is true: it sends ad identifiers (iOS `$idfa` /
+        // `$idfv` / `$ip`, Android `$gpsAdId` / `$androidId` / `$ip`) to
+        // RevenueCat once an attribution ID is set.
         //
-        // このアプリはアトリビューションを1つも使っていないので、いまは
-        // 実際には送られない。**それでも明示して切る**理由が2つある:
-        //   1. 将来 `setAdjustID` などを1行足した瞬間に、**未成年の端末の
-        //      広告識別子が黙って流れ始める**。1行の追加で起きる変化としては重すぎる
-        //   2. 既定に頼ると、SDKの更新で既定が変わったときに誰も気づけない
-        //      (Sentry の `enablePrintBreadcrumbs` で踏んだのと同じ形)
+        // We use no attribution, so nothing is sent today. It is still turned
+        // off explicitly, for two reasons:
+        //   1. Adding one line like `setAdjustID` later would silently start
+        //      streaming minors' ad identifiers — far too much for one line
+        //   2. Relying on the default means nobody notices if an SDK update
+        //      changes it (as happened with Sentry's `enablePrintBreadcrumbs`)
         ..automaticDeviceIdentifierCollectionEnabled = false
-        // 既定でも false。**既定で安全なものも明示する**(同上の理由)。
-        // 応答時間やエラーコードを RevenueCat に送る設定で、購入の成否には関わらない。
+        // Already false by default; stated anyway, for the same reason. It sends
+        // response times and error codes to RevenueCat and has no bearing on
+        // whether a purchase succeeds.
         ..diagnosticsEnabled = false;
   }
 
   Future<CustomerInfo> customerInfo() => Purchases.getCustomerInfo();
 
-  /// 購入・更新・失効・復元を SDK 側から push してもらう。
+  /// Has the SDK push purchases, renewals, expiries and restores.
   ///
-  /// これがあるので、ペイウォールや Customer Center の中で起きた変化も
-  /// 画面を開き直さずに拾える。ポーリングは要らない。
+  /// This is what lets changes made inside the paywall or Customer Center land
+  /// without reopening the screen. No polling needed.
   Stream<CustomerInfo> customerInfoChanges() {
     late final StreamController<CustomerInfo> controller;
     void listener(CustomerInfo info) => controller.add(info);
@@ -80,7 +82,7 @@ class PurchasesRepository {
     return controller.stream;
   }
 
-  /// 出す Offering。`REVENUECAT_OFFERING_ID` があればそれ、無ければ current。
+  /// Offering to show: `REVENUECAT_OFFERING_ID` when set, otherwise current.
   Future<Offering?> currentOffering() async {
     final Offerings offerings = await Purchases.getOfferings();
     if (RevenueCatConfig.offeringId.isNotEmpty) {
@@ -89,23 +91,24 @@ class PurchasesRepository {
     return offerings.current;
   }
 
-  /// 購入する。失敗は [PlatformException] で飛ぶので、呼び出し側で
-  /// `PurchaseOutcome.fromException` に通してから扱う。
+  /// Purchases. Failures arrive as [PlatformException], so callers should run
+  /// them through `PurchaseOutcome.fromException` first.
   Future<CustomerInfo> purchase(Package package) async {
-    // purchasePackage は非推奨。10系では PurchaseParams に統一されている。
+    // purchasePackage is deprecated; v10 unifies on PurchaseParams.
     final PurchaseResult result = await Purchases.purchase(PurchaseParams.package(package));
     return result.customerInfo;
   }
 
-  /// 復元。App Review の必須要件で、機種変更とアンインストール後の復帰にも要る。
+  /// Restore. Required by App Review, and needed after a device change or a
+  /// reinstall.
   Future<CustomerInfo> restore() => Purchases.restorePurchases();
 
-  /// RevenueCat のダッシュボードで作ったペイウォールを出す。
+  /// Shows the paywall built in the RevenueCat dashboard.
   Future<PaywallResult> presentPaywall({Offering? offering}) =>
       RevenueCatUI.presentPaywall(offering: offering, displayCloseButton: true);
 
-  /// entitlement を持っていなければペイウォールを出す。
-  /// 持っていれば [PaywallResult.notPresented] が返るだけで何も起きない。
+  /// Shows the paywall only without an entitlement; with one it simply returns
+  /// [PaywallResult.notPresented] and does nothing.
   Future<PaywallResult> presentPaywallIfNeeded({Offering? offering}) =>
       RevenueCatUI.presentPaywallIfNeeded(
         RevenueCatConfig.entitlementId,
@@ -113,10 +116,10 @@ class PurchasesRepository {
         displayCloseButton: true,
       );
 
-  /// Customer Center(解約・返金申請・プラン変更・復元の窓口)を出す。
+  /// Shows Customer Center: cancel, refund request, plan change and restore.
   ///
-  /// 自前で作ると App Review のたびに指摘される類の画面なので、
-  /// RevenueCat のものをそのまま使う。
+  /// Building our own is the kind of screen App Review flags every time, so we
+  /// use RevenueCat's as is.
   Future<void> presentCustomerCenter({
     void Function(CustomerInfo info)? onRestoreCompleted,
     void Function()? onShowingManageSubscriptions,

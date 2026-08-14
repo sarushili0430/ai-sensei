@@ -3,11 +3,13 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 part 'parent_report.freezed.dart';
 part 'parent_report.g.dart';
 
-/// 親レポートのモデル。
+/// Parent report model; `packages/contract/src/parent-report.ts` is the
+/// source of truth.
 ///
-/// 正は `packages/contract/src/parent-report.ts`。この型には正答率・理解度スコア・
-/// 順位・学習時間を置く欄を作らない。表示で隠すだけでは、共有本文を組み立てる層が
-/// いつか使えてしまうため、モバイル側にも「受け取れない形」を写しておく。
+/// No fields for accuracy, comprehension scores, ranking or study time.
+/// Hiding them at render time is not enough — the layer building the share
+/// text could still reach them — so the shape that cannot carry them is
+/// mirrored here too.
 @freezed
 abstract class ParentReportPeriod with _$ParentReportPeriod {
   const factory ParentReportPeriod({
@@ -39,7 +41,8 @@ abstract class ParentReport with _$ParentReport {
     @JsonKey(name: 'explained_topics')
     required List<ParentReportTopic> explainedTopics,
 
-    /// カルテの `said_well` を出どころにした本人の言葉。画面で全件を見せてから共有する。
+    /// The student's own words, sourced from the karte's `said_well`. All of
+    /// them are shown on screen before sharing.
     required List<String> quotes,
   }) = _ParentReport;
 
@@ -54,7 +57,7 @@ abstract class ParentReportResponse with _$ParentReportResponse {
   const factory ParentReportResponse({
     @JsonKey(name: 'requires_premium') required bool requiresPremium,
 
-    /// 無料ユーザーには null。本文を先に取得してクライアントだけで隠す形にしない。
+    /// Null for free users. We never fetch the body and hide it client-side.
     required ParentReport? report,
   }) = _ParentReportResponse;
 

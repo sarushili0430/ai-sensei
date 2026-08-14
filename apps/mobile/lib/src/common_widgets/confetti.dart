@@ -5,21 +5,20 @@ import 'package:flutter/material.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
 
-/// 祝福の紙吹雪。祝福画面の背景に一度だけ降る。
+/// Celebration confetti, falling once behind the celebration screen.
 ///
-/// にぎやかさは色と紙で出す。**点数・星・XPでは出さない**(§0 の約束2)。
-/// 紙の色もアプリの語彙から取る — 黄(言えた)・ピンク(穴)・オレンジ(連続日数)。
-/// 埋めた穴が祝われているのだと、色だけで分かるように。
+/// Delight comes from color and paper, never from points, stars or XP.
+/// The colors reuse the app's vocabulary — yellow (said it), pink (gap),
+/// orange (streak) — so the color alone says a gap was filled.
 class ConfettiBurst extends StatefulWidget {
   const ConfettiBurst({this.pieces = 26, this.looping = false, super.key});
 
   final int pieces;
 
-  /// 降り続けるかどうか。
+  /// Whether to keep falling.
   ///
-  /// 一度きりの紙吹雪は2秒ほどで終わる。**そのあと何かを待たせる画面では、
-  /// 止まった紙吹雪が「固まった」に見える。** 待っているあいだは降り続け、
-  /// 待ちが終わったところで最後にもう一降りして止まる。
+  /// A one-shot burst ends in ~2s, which looks frozen if the screen then
+  /// keeps you waiting. Loop while waiting, then finish with a last burst.
   final bool looping;
 
   @override
@@ -27,10 +26,10 @@ class ConfettiBurst extends StatefulWidget {
 }
 
 class _ConfettiBurstState extends State<ConfettiBurst> with SingleTickerProviderStateMixin {
-  /// 一度きりの紙吹雪。
+  /// One-shot burst.
   static const Duration _burst = Duration(milliseconds: 2200);
 
-  /// 降り続けるときの一周。急かさない速さにする(待たせている画面なので)。
+  /// One loop while waiting — unhurried, since the screen is stalling.
   static const Duration _loop = Duration(milliseconds: 4200);
 
   late final AnimationController _controller = AnimationController(
@@ -40,10 +39,8 @@ class _ConfettiBurstState extends State<ConfettiBurst> with SingleTickerProvider
   late final List<_Piece> _confetti = _buildPieces(widget.pieces);
   bool _started = false;
 
-  /// 動かさない設定のときに描く時刻。
-  ///
-  /// 何も描かないのではなく、紙が散らばりきった瞬間で止める。
-  /// 動きが苦手なだけで、祝われたい気持ちは同じなので。
+  /// Frame drawn under reduced motion: not blank, but the moment the paper
+  /// has spread out. Motion sensitivity does not mean skipping the party.
   static const double _stillFrame = 0.35;
 
   @override
@@ -69,13 +66,13 @@ class _ConfettiBurstState extends State<ConfettiBurst> with SingleTickerProvider
     if (oldWidget.looping == widget.looping) return;
     if (AppMotion.isReduced(context)) return;
 
-    // `repeat()` は今の duration で回るので、先に入れ替える。
+    // `repeat()` runs at the current duration, so swap it in first.
     if (widget.looping) {
       _controller
         ..duration = _loop
         ..repeat();
     } else {
-      // 待っていたものが届いた。降り続けるのをやめて、最後にもう一降りする。
+      // What we waited for arrived: stop looping and play one last burst.
       _controller
         ..duration = _burst
         ..forward(from: 0);
@@ -92,7 +89,7 @@ class _ConfettiBurstState extends State<ConfettiBurst> with SingleTickerProvider
   Widget build(BuildContext context) {
     return ExcludeSemantics(
       child: IgnorePointer(
-        // 背面で降り続ける。前に載っている文字まで塗り直させない。
+        // Falls behind the content; do not repaint the text on top.
         child: RepaintBoundary(
           child: AnimatedBuilder(
             animation: _controller,
@@ -111,8 +108,8 @@ class _ConfettiBurstState extends State<ConfettiBurst> with SingleTickerProvider
   }
 }
 
-/// 紙1枚ぶん。位置も回転も**固定の種**から作る。
-/// 毎回違う絵にすると golden が撮れないし、違う必要もない。
+/// One piece of paper. Position and spin come from a fixed seed, so
+/// goldens stay stable.
 List<_Piece> _buildPieces(int count) {
   final math.Random random = math.Random(20260930);
   const List<Color> palette = <Color>[
@@ -173,17 +170,16 @@ class _ConfettiPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     for (final _Piece piece in pieces) {
-      // 一度きりのときは、紙ごとの速さの差がそのまま散らばりになる。
+      // One-shot: per-piece speed differences produce the scatter.
       //
-      // 降り続けるときは**同じ速さで位相だけずらす**。速さを紙ごとに変えると
-      // 一周するたびに位相が寄っていき、「どっと降って、しばらく空」の
-      // 繰り返しになる。位相をずらして回せば、継ぎ目のないひとつづきに見える。
+      // Looping: same speed, staggered phase. Varying speed makes phases
+      // converge each cycle into bursts separated by empty gaps.
       final double local = looping
           ? (progress + piece.delay + piece.x) % 1.0
           : (progress - piece.delay) * piece.speed;
       if (local <= 0) continue;
 
-      // 落ちきったら消す。溜まった紙を床に描くと、画面の下が重くなる。
+      // Remove once fallen; piling paper up weighs down the bottom.
       final double fall = local * 1.25;
       if (fall > 1.2) continue;
 
@@ -199,7 +195,7 @@ class _ConfettiPainter extends CustomPainter {
           Rect.fromCenter(
             center: Offset.zero,
             width: piece.width,
-            // ひらひらさせる。厚みが無いものが回っている感じ。
+            // Flutter: a flat sheet turning over.
             height: piece.height * math.cos(local * piece.spin).abs().clamp(0.25, 1.0),
           ),
           const Radius.circular(2),

@@ -5,12 +5,11 @@ import 'package:flutter/material.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
 
-/// 「聞いています」を表す波形。
+/// "I'm listening" waveform.
 ///
-/// **本物の音量には連動させない。** マイクの値を取りに行かないので、
-/// まだ録音していないオンボーディングのリハーサルでも同じ部品が使える。
-/// ここで示したいのは声の大きさではなく「先輩が聞いている状態」なので、
-/// 実測値である必要がない。
+/// Deliberately not wired to real mic levels, so the same widget works in
+/// the onboarding rehearsal where nothing is recorded yet. It conveys that
+/// senpai is listening, not how loud you are.
 class SpeakingWave extends StatefulWidget {
   const SpeakingWave({
     required this.active,
@@ -69,7 +68,7 @@ class _SpeakingWaveState extends State<SpeakingWave> with SingleTickerProviderSt
   @override
   Widget build(BuildContext context) {
     return ExcludeSemantics(
-      // 会話中はずっと動く。字幕やボタンを巻き込んで塗り直さない。
+      // Animates throughout the conversation; keep captions and buttons out.
       child: RepaintBoundary(
         child: AnimatedBuilder(
           animation: _controller,
@@ -97,11 +96,11 @@ class _SpeakingWaveState extends State<SpeakingWave> with SingleTickerProviderSt
   }
 
   double _barHeight(int index) {
-    // 聞いていないときは、低いまま静かに並ぶ。消さないのは
-    // 「マイクはここ」という置き場所を保つため。
+    // Idle bars stay low rather than vanishing, holding the spot that
+    // says "the mic is here".
     if (!widget.active) return widget.height * 0.22;
 
-    // 隣とずらして波にする。中央を高くして、口元のように見せる。
+    // Offset neighbours into a wave, tallest at the centre, like a mouth.
     final double phase = _controller.value * 2 * math.pi + index * 1.1;
     final double center = 1 - (index - (widget.bars - 1) / 2).abs() / widget.bars;
     return widget.height * (0.25 + 0.75 * center * (0.5 + 0.5 * math.sin(phase)));

@@ -5,11 +5,11 @@ import '../../session/domain/session.dart';
 part 'study_plan.freezed.dart';
 part 'study_plan.g.dart';
 
-/// 学習計画のモデル。正は `packages/contract/src/plan.ts`。
+/// Study plan model; `packages/contract/src/plan.ts` is the source of truth.
 ///
-/// 日付を [DateTime] にしないのは、契約の `YYYY-MM-DD` が「端末の暦の日」であって
-/// UTC上の瞬間ではないため。JSON変換のタイムゾーンで前日に動かす余地を作らず、
-/// 表示するときだけローカル日付として解釈する。
+/// Dates stay strings rather than [DateTime]: the contract's `YYYY-MM-DD` is
+/// a calendar day on the device, not a UTC instant. That leaves no room for a
+/// timezone to shift it a day; it is read as a local date only on display.
 
 enum PlanSource {
   @JsonValue('senpai')

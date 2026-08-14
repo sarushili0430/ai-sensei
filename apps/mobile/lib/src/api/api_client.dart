@@ -13,9 +13,9 @@ import 'device_id.dart';
 
 part 'api_client.g.dart';
 
-/// backend/api との通信。
+/// Talks to backend/api.
 ///
-/// 認証は匿名デバイスID(`X-Device-Id`)だけ。アカウント作成を要求しない。
+/// Auth is the anonymous device ID (`X-Device-Id`) alone; no account needed.
 class ApiClient {
   ApiClient({
     required this.baseUrl,
@@ -27,41 +27,42 @@ class ApiClient {
   final String deviceId;
   final http.Client _client;
 
-  /// 1リクエストの上限。
+  /// Per-request ceiling.
   ///
-  /// `http` は既定で待ち続ける。電波が切れかけている場所では接続が張られたまま
-  /// 返ってこないことがあり、そのまま待つと**画面が固まる**。
-  /// 失敗として返せば、上の層が「もう一度」を出せる。
+  /// `http` waits forever by default. On a failing signal a connection can stay
+  /// open and never return, freezing the screen; failing instead lets the layer
+  /// above offer a retry.
   static const Duration _timeout = Duration(seconds: 15);
 
-  /// 写真のアップロードは本文が大きいぶん長い。ここだけ別に持つ。
+  /// Photo uploads have a large body, so they get their own longer timeout.
   static const Duration _uploadTimeout = Duration(seconds: 45);
 
   Map<String, String> get _headers => <String, String>{'x-device-id': deviceId};
 
-  /// 写真を送ってセッションを作る。復習(kind=review)では写真を送らない。
+  /// Creates a session from a photo. Review (kind=review) sends no photo.
   ///
-  /// **返るのは解析の結果だけで、部屋の鍵は入っていない。**
-  /// 今日の1回を使うのは [startSession](= 会話が始まったとき)なので、
-  /// ここまでは何度でも撮り直せる。
+  /// The response carries only the analysis, never the room key: the daily
+  /// allowance is spent by [startSession] when the conversation begins, so the
+  /// photo can be retaken freely up to that point.
   ///
-  /// **2枚の写真は別のパートで送る。寿命が違うから**(`api.ts` の `sessionPhotoParts`):
+  /// The two photos travel in separate parts because their lifetimes differ
+  /// (`sessionPhotoParts` in `api.ts`):
   ///
-  /// | パート | 中身 | 保存 |
+  /// | Part | Content | Storage |
   /// | --- | --- | --- |
-  /// | `photo` | 生徒のノート(本人の著作物) | R2に保存する |
-  /// | `problem_photo` | 教科書・問題集の紙面(**他者の著作物**) | **解析後に破棄する** |
+  /// | `photo` | the student's notes (their own work) | kept in R2 |
+  /// | `problem_photo` | textbook or workbook page (someone else's work) | discarded after analysis |
   ///
-  /// **どちらの枠に入れたかでしか区別できない。** 問題の紙面をノート枠で送ると、
-  /// サーバはそれをノートとして保存する。だから枠の選択はUIの責務で、
-  /// ここは渡されたものをそのまま対応するパートに載せるだけにしてある。
+  /// The part is the only thing telling them apart: send a problem page in the
+  /// notes part and the server stores it as notes. Choosing the part is the
+  /// UI's responsibility; this method just forwards what it is given.
   Future<SessionAnalysis> createSession({
     File? photo,
     File? problemPhoto,
     String kind = 'new',
     String locale = 'ja',
-    /// 学校段階。単元を探す範囲を絞るために送る(`packages/contract` の
-    /// `schoolStages`)。省略するとサーバ側の既定「高校生」になる。
+    /// School stage, sent to narrow the topic search (`schoolStages` in
+    /// `packages/contract`). Omitted, the server defaults to senior high.
     String schoolStage = 'high_school',
     String? holeId,
     List<String>? topicIds,
@@ -73,14 +74,14 @@ class ApiClient {
             'kind': kind,
             'locale': locale,
             'school_stage': schoolStage,
-            // 値が null なら要素ごと落ちる(Dart 3.12 の null-aware element)
+            // A null value drops the whole element (Dart 3.12 null-aware element)
             'hole_id': ?holeId,
             if (topicIds != null && topicIds.isNotEmpty) 'topic_ids': topicIds,
           });
 
-    // Content-Type を渡さないと application/octet-stream で送られる。
-    // 撮った写真は image_picker が imageQuality を掛けた時点でJPEGなので、
-    // そう伝える(サーバ側は最終的に中身を見て判断する)。
+    // Without a Content-Type this is sent as application/octet-stream. Once
+    // image_picker has applied imageQuality the photo is JPEG, so say so (the
+    // server still decides from the bytes).
     if (photo != null) {
       request.files.add(
         await http.MultipartFile.fromPath(
@@ -106,10 +107,10 @@ class ApiClient {
     return SessionAnalysis.fromJson(_decode(response));
   }
 
-  /// チップUIで外した単元をサーバへ反映する。
+  /// Pushes topics deselected in the chip UI to the server.
   ///
-  /// セッションは作り直さない。作り直すと同じ写真をもう一度Vision LLMに通すことになり、
-  /// 解析の回数だけを見ている上限にも二重に当たる。
+  /// The session is not recreated: that would re-run the same photo through the
+  /// vision LLM and double-count against the analysis limit.
   Future<SessionAnalysis> updateSessionTopics({
     required String sessionId,
     required List<String> topicIds,
@@ -131,14 +132,15 @@ class ApiClient {
     return SessionAnalysis.fromJson(_decode(response));
   }
 
-  /// 会話を始める。**ここで今日の1回を使う。**
+  /// Starts the conversation. This is where the day's single use is spent.
   ///
-  /// 部屋の鍵はこの応答にしか無い。枠の確保とトークンの発行はサーバ側の
-  /// 同じ1操作なので、鍵が返ってきたなら枠は取れているし、取れなければ
-  /// `free_limit_reached` / `fair_use_limit_reached` が返る。
+  /// The room key exists only in this response. Reserving the slot and issuing
+  /// the token are one server-side operation, so a key means the slot is held;
+  /// otherwise `free_limit_reached` / `fair_use_limit_reached` comes back.
   ///
-  /// **同じセッションで押し直しても二重には数えない**(サーバが最初に押さえた
-  /// 枠のままトークンだけ出し直す)ので、通信が切れたときはそのまま再送してよい。
+  /// Retrying within the same session is not double-counted (the server keeps
+  /// the slot it first reserved and reissues only the token), so it is safe to
+  /// resend after a dropped connection.
   Future<SessionStart> startSession({
     required String sessionId,
     String locale = 'ja',
@@ -150,15 +152,16 @@ class ApiClient {
             ..._headers,
             'content-type': 'application/json; charset=utf-8',
           },
-          // locale はエラー文言の言語だけ。会話の言語は単元の課程で決まる。
+          // locale only sets the error-message language; the conversation's
+          // language comes from the topic's curriculum.
           body: jsonEncode(<String, dynamic>{'locale': locale}),
         )
         .timeout(_timeout);
     return SessionStart.fromJson(_decode(response));
   }
 
-  /// 会話後の結果を取りに行く。カルテ生成が終わるまでサーバは202を返すので、
-  /// 生成中は null を返して呼び出し側に待たせる。
+  /// Fetches the post-conversation result. The server returns 202 until the
+  /// karte is generated, so this returns null and lets the caller wait.
   Future<SessionResult?> fetchSessionResult(String sessionId) async {
     final http.Response response = await _client
         .get(
@@ -170,15 +173,16 @@ class ApiClient {
     return SessionResult.fromJson(_decode(response));
   }
 
-  /// カルテができるまで待つ。
+  /// Waits for the karte to be ready.
   ///
-  /// 会話が終わってから、エージェントがLLMでカルテを書いて `/complete` に送るまで
-  /// 数秒〜十数秒かかる。**呼ぶ側は短く区切って待つこと**(会話画面で待ちきると、
-  /// 終わってから画面が変わるまで押しても何も起きない時間になる)。
-  /// 待ちきれなかったぶんは、祝福画面が受け取りに行く。
+  /// After the conversation ends, the agent takes seconds to tens of seconds to
+  /// write the karte with an LLM and post it to `/complete`. Callers should wait
+  /// in short slices: waiting it out on the conversation screen creates a
+  /// stretch where taps do nothing. Whatever is left over is picked up by the
+  /// celebration screen.
   ///
-  /// 最後の1回のあとには待たない。待つと、諦めると決めたあとに
-  /// `interval` ぶんだけ余計に画面が止まる。
+  /// No wait after the final attempt — that would freeze the screen for one
+  /// extra `interval` after we have already decided to give up.
   Future<SessionResult?> awaitSessionResult(
     String sessionId, {
     Duration interval = const Duration(seconds: 2),
@@ -213,7 +217,7 @@ class ApiClient {
     return ParentReportResponse.fromJson(_decode(response));
   }
 
-  /// 小テストの自己申告。**声も接続も使わない**(原価ゼロ)。
+  /// Self-reported quiz result. No voice, no connection, zero cost.
   Future<ReviewAnswer> answerReview(
     String holeId,
     ReviewOutcome outcome,
@@ -236,7 +240,8 @@ class ApiClient {
     return ReviewAnswer.fromJson(_decode(response));
   }
 
-  /// 計画を作る音声ルームを開く。授業セッションとは別なので写真もkindも送らない。
+  /// Opens the voice room for planning. Separate from a lesson session, so it
+  /// sends neither photo nor kind.
   Future<PlanSessionStart> createPlanSession({
     String locale = 'ja',
     String schoolStage = 'high_school',
@@ -250,7 +255,7 @@ class ApiClient {
           },
           body: jsonEncode(<String, dynamic>{
             'locale': locale,
-            // 計画は写真が無いので、段でしか範囲を絞れない。
+            // Planning has no photo, so the stage is the only way to narrow.
             'school_stage': schoolStage,
           }),
         )
@@ -258,7 +263,8 @@ class ApiClient {
     return PlanSessionStart.fromJson(_decode(response));
   }
 
-  /// 現行計画。未作成は404ではなく `plan: null` なので、そのまま作成導線へ移れる。
+  /// The current plan. Not created yet means `plan: null`, not 404, so the
+  /// caller can go straight into the creation flow.
   Future<StudyPlan?> fetchPlan() async {
     final http.Response response = await _client
         .get(Uri.parse('$baseUrl/v1/me/plan'), headers: _headers)
@@ -276,7 +282,7 @@ class ApiClient {
           body['error'] as Map<String, dynamic>? ?? const {};
       throw ApiException(
         code: error['code'] as String? ?? 'internal_error',
-        // サーバの文言をそのまま出す。煽らない文体で書かれている。
+        // Show the server's wording as is; it is written not to nag.
         message: error['message'] as String? ?? '',
         retryAfterSeconds: error['retry_after_seconds'] as int?,
       );
@@ -303,20 +309,22 @@ class ApiException implements Exception {
       code == 'photo_unreadable' || code == 'out_of_scope';
   bool get isHoleNotFound => code == 'hole_not_found';
 
-  /// セッションが消えている(他人のもの・完了済み・上限時間を過ぎた押し直し)。
-  /// **同じIDで押し直しても同じ404が返る**ので、握っているIDは捨てて作り直す。
+  /// The session is gone (someone else's, already completed, or retried past
+  /// the time limit). Retrying the same ID returns the same 404, so discard the
+  /// held ID and create a new session.
   bool get isSessionNotFound => code == 'session_not_found';
 
   @override
   String toString() => 'ApiException($code): $message';
 }
 
-/// API例外の型をファイル外へ漏らさず、課金導線に必要なcode判定だけを公開する。
-/// 文字列の `toString()` を上位で解析すると、文言を直しただけで分岐が壊れるため。
+/// Exposes just the code check the billing flow needs, without leaking the API
+/// exception type. Parsing `toString()` upstream would break the branch as soon
+/// as the wording changed.
 bool isPremiumRequiredApiError(Object error) =>
     error is ApiException && error.isPremiumRequired;
 
-/// `--dart-define=API_BASE_URL=...` で差し替える。
+/// Overridden with `--dart-define=API_BASE_URL=...`.
 const String apiBaseUrl = String.fromEnvironment(
   'API_BASE_URL',
   defaultValue: 'http://localhost:8787',

@@ -1,31 +1,32 @@
 import 'package:flutter/services.dart';
 import 'package:purchases_flutter/errors.dart';
 
-/// 購入・復元の結果。
+/// Result of a purchase or restore.
 ///
-/// SDKは失敗を [PlatformException] で投げてくる。そのまま画面に流すと
-/// 「ユーザーが自分でやめた」ことまでエラーとして出てしまうので、
-/// ここで **キャンセル / 失敗 / 成功** の3つに分けてから返す。
+/// The SDK throws [PlatformException] on failure. Passing that straight to the
+/// UI would report a user's own cancellation as an error, so this splits it
+/// into cancelled / failed / succeeded first.
 
-/// 画面に出す文言の分類。SDKの40種類のエラーコードを、
-/// 「利用者が次に取れる行動」でまとめたもの。
+/// Message categories for the UI: the SDK's ~40 error codes grouped by what
+/// the user can do next.
 enum PurchaseFailure {
-  /// 通信が届いていない。時間をおけば直る。
+  /// No connectivity. Retrying later works.
   network,
 
-  /// ストア側の問題。こちらでは直せない。
+  /// A store-side problem we cannot fix.
   storeProblem,
 
-  /// 端末の設定やペアレンタルコントロールで購入できない。
+  /// Blocked by device settings or parental controls.
   notAllowed,
 
-  /// すでに持っている。復元すれば解放される。
+  /// Already owned; restoring unlocks it.
   alreadyOwned,
 
-  /// 決済が保留中(コンビニ払いなど)。承認されると entitlement が付く。
+  /// Payment pending (convenience-store payment and the like); the entitlement
+  /// follows on approval.
   pending,
 
-  /// ダッシュボードとアプリの設定がずれている。**開発時に気づくべき**もの。
+  /// Dashboard and app configuration disagree — should be caught in dev.
   configuration,
 
   unknown;
@@ -53,8 +54,8 @@ enum PurchaseFailure {
 
     PurchasesErrorCode.paymentPendingError => PurchaseFailure.pending,
 
-    // 商品IDやEntitlementの取り違え、鍵の入れ違い。
-    // 出たら実装ミスなので、利用者向けの文言も「設定の問題」と正直に書く。
+    // Wrong product ID, wrong entitlement or swapped keys. This means a bug, so
+    // the user-facing wording says "configuration problem" honestly.
     PurchasesErrorCode.configurationError ||
     PurchasesErrorCode.invalidCredentialsError ||
     PurchasesErrorCode.invalidAppleSubscriptionKeyError ||
@@ -68,10 +69,10 @@ enum PurchaseFailure {
 sealed class PurchaseOutcome {
   const PurchaseOutcome();
 
-  /// 例外を結果に変換する。キャンセルはここで失敗から外れる。
+  /// Converts an exception to a result; cancellation stops being a failure here.
   factory PurchaseOutcome.fromException(PlatformException error) {
     final PurchasesErrorCode code = PurchasesErrorHelper.getErrorCode(error);
-    // 利用者が自分で閉じただけ。エラー表示も分析上の失敗も出さない。
+    // The user simply closed it: no error UI, no failure in analytics.
     if (code == PurchasesErrorCode.purchaseCancelledError) {
       return const PurchaseCancelled();
     }
@@ -79,15 +80,16 @@ sealed class PurchaseOutcome {
   }
 }
 
-/// 購入が通り、entitlement も付いた。
+/// The purchase went through and the entitlement was granted.
 final class PurchaseSucceeded extends PurchaseOutcome {
   const PurchaseSucceeded();
 }
 
-/// 購入は通ったが entitlement が付いていない。
+/// The purchase went through but no entitlement was granted.
 ///
-/// ほぼ確実に **ダッシュボードで商品が Entitlement に紐づいていない**。
-/// 成功として画面を閉じると「課金したのに使えない」になるので分けている。
+/// Almost always the product is not attached to the Entitlement in the
+/// dashboard. Closing as success would mean "paid but unusable", so it is a
+/// separate case.
 final class PurchaseNotEntitled extends PurchaseOutcome {
   const PurchaseNotEntitled();
 }
@@ -102,7 +104,7 @@ final class PurchaseFailed extends PurchaseOutcome {
   final PurchaseFailure failure;
 }
 
-/// 復元の結果。「復元するものが無かった」は失敗ではないので分ける。
+/// Restore result. "Nothing to restore" is not a failure, so it is separate.
 sealed class RestoreOutcome {
   const RestoreOutcome();
 
@@ -114,7 +116,7 @@ final class RestoreSucceeded extends RestoreOutcome {
   const RestoreSucceeded();
 }
 
-/// 通信は成功したが、この Apple ID / Google アカウントに購入が無かった。
+/// The request succeeded but this Apple ID / Google account had no purchases.
 final class RestoreFoundNothing extends RestoreOutcome {
   const RestoreFoundNothing();
 }

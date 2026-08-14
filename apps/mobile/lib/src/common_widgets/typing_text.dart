@@ -3,14 +3,14 @@ import 'package:flutter/material.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
 
-/// 先輩のせりふを1文字ずつ出す。
+/// Types senpai's line out one character at a time.
 ///
-/// 一気に出すと「表示された文章」に見えるが、打たれていくと
-/// **いま聞かれている**ように見える。先輩は試験官ではないので、
-/// 質問が降ってくるのではなく、間をもって出てくるほうがいい。
+/// Shown all at once it reads as displayed text; typed out it reads as
+/// being asked right now. Senpai is not an examiner, so the question
+/// should arrive with a beat rather than drop in.
 ///
-/// 高さは最初から最後の1文字ぶんを確保する。行が増えるたびに
-/// 下のボタンが動くと、読んでいる最中に画面が揺れる。
+/// Height is reserved for the full string up front, so buttons below do
+/// not shift while you read.
 class TypingText extends StatefulWidget {
   const TypingText(
     this.text, {
@@ -24,7 +24,7 @@ class TypingText extends StatefulWidget {
   final TextStyle? style;
   final TextAlign textAlign;
 
-  /// 打ち終わったとき。次の操作を出す合図に使う。
+  /// Fired when typing finishes; cue for revealing the next action.
   final VoidCallback? onDone;
 
   @override
@@ -46,8 +46,8 @@ class _TypingTextState extends State<TypingText> with SingleTickerProviderStateM
     _started = true;
 
     if (AppMotion.isReduced(context)) {
-      // 打ち終わった状態から始める。合図は次のフレームで送る
-      // (値を入れた瞬間に呼ぶと、build の最中に親を setState させてしまう)。
+      // Start finished. Signal on the next frame — signalling immediately
+      // would setState the parent mid-build.
       _controller.value = 1;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) widget.onDone?.call();
@@ -74,9 +74,8 @@ class _TypingTextState extends State<TypingText> with SingleTickerProviderStateM
       builder: (BuildContext context, Widget? child) {
         final int shown = (_runes.length * _controller.value).round();
 
-        // まだ出ていないぶんは、透明にして**置いたまま**にする。
-        // 消してしまうと文字が増えるたびに折り返しが変わり、
-        // 読んでいる最中に下のボタンが動く。
+        // Keep untyped text in place but transparent: removing it would
+        // reflow on every character and shift the buttons below.
         return Text.rich(
           TextSpan(
             children: <InlineSpan>[
@@ -89,7 +88,7 @@ class _TypingTextState extends State<TypingText> with SingleTickerProviderStateM
           ),
           style: widget.style,
           textAlign: widget.textAlign,
-          // 読み上げは打っている途中を追いかけない。全文を一度で渡す。
+          // a11y does not follow the typing; hand over the full string.
           semanticsLabel: widget.text,
         );
       },
