@@ -22,18 +22,20 @@ import {
   postComplete,
   withUncertaintyHole,
 } from "./karte.ts";
-import { StudentUtterances, runLessonLoop } from "./lesson-loop.ts";
+import { type LessonLoopResult, StudentUtterances, runLessonLoop } from "./lesson-loop.ts";
 import { boardCloseReasonFor, createAnthropicLessonClient } from "./lesson.ts";
 import { JobLogger } from "./log.ts";
 import { runPlanSession } from "./plan-session.ts";
 import {
-  handsTurnToStudent,
+  type LessonTurn,
+  asksForBoard,
   lessonFailedPrompt,
   lessonSteps,
   reviewOpening,
   senpaiBoardLessonPrompt,
   senpaiConversationPrompt,
   startsWithBoardLesson,
+  stepAwaitsStudent,
   teachBackFallback,
 } from "./senpai.ts";
 import { TranscriptCollector } from "./transcript.ts";
@@ -163,6 +165,12 @@ export default defineAgent({
     // 授業ループが答え・割り込みとして読んで、同じ板書の続きで応える。
     const utterances = new StudentUtterances();
 
+    // 教え返しの最中の「板書して」の置き場。授業が終わったあとに開く
+    // (`serveBoardRequests`)。開くまでは `boardRequestSink` が無いので、
+    // 引っかかった発話もふつうの会話として応えられる。
+    const boardRequests = new StudentUtterances();
+    let boardRequestSink: ((text: string) => boolean) | undefined;
+
     // プロンプトは言語ごとに別本(`prompts/<id>.<locale>.md`)。
     // 日本語の本文に「英語で答えて」を足す作りだと、ペルソナも禁止事項も
     // 日本語のまま薄く言い直されるだけで、範囲外に滑りやすくなる。
@@ -173,6 +181,7 @@ export default defineAgent({
       instructions: senpaiConversationPrompt({ context, remainingSeconds: context.max_seconds }),
       lessonRunning: lessonMode,
       onLessonUtterance: (text) => utterances.push(text),
+      onBoardRequest: (text) => boardRequestSink?.(text) ?? false,
     });
 
     await session.start({ agent, room: ctx.room });
@@ -202,7 +211,7 @@ export default defineAgent({
 
     let board: BoardDelivery | undefined;
     if (lessonMode) {
-      board = await teachWithBoard({
+      const taught = await teachWithBoard({
         ctx,
         config,
         context,
@@ -214,6 +223,36 @@ export default defineAgent({
         record: (text) => collector.add({ role: "user", text }),
         log,
       });
+      board = taught?.board;
+
+      if (taught !== undefined && !interrupt.signal.aborted) {
+        // **教え返しに入っても、板書の窓口は閉じない。**板書は開いたままで、
+        // 続きを積む配管も生きている。「板書して」と頼まれたのに会話LLMが
+        // 「ここからは言葉だけでいくね」と取り繕う、が実際に起きた壊れ方
+        // (会話LLMは板書に書く手段を持たないので、頼まれると嘘をつくしかない)。
+        // 板書と名指しされた発話はここで拾い、同じ板書の続きで応える。
+        boardRequestSink = (text) => {
+          if (interrupt.signal.aborted || taught.board.isClosed) return false;
+          if (!asksForBoard(text, context.locale)) return false;
+          boardRequests.push(text);
+          return true;
+        };
+        // 窓口が落ちても会話は続ける(板書の再入が失われるだけで、致命ではない)。
+        serveBoardRequests({
+          taught,
+          agent,
+          session,
+          context,
+          startedAt,
+          signal: interrupt.signal,
+          requests: boardRequests,
+          utterances,
+          record: (text) => collector.add({ role: "user", text }),
+          log,
+        }).catch((error) => {
+          log.error("board_request_loop_failed", error);
+        });
+      }
     } else {
       // 新しいagentを先に出した窓では、古いAPIの復習metadataに review_hole が無い。
       // 根拠なしの板書を作らず従来の聞き直し会話へ落とし、窓が閉じないまま運用が
@@ -334,15 +373,25 @@ export default defineAgent({
 class LessonAwareAgent extends voice.Agent {
   private lessonRunning: boolean;
   private readonly onLessonUtterance: (text: string) => void;
+  /**
+   * 授業の外で確定した発話を、板書の続きとして引き受けるか。
+   *
+   * true を返した発話は会話LLMに渡さない(`StopResponse`)。返事は授業ループへの
+   * 再入(`serveBoardRequests`)が板書つきで作る。**引き受け手が居ないときは
+   * 必ず false**(発話を握り潰して誰も応えない、が最悪の壊れ方)。
+   */
+  private readonly onBoardRequest: (text: string) => boolean;
 
   constructor(options: {
     instructions: string;
     lessonRunning: boolean;
     onLessonUtterance: (text: string) => void;
+    onBoardRequest?: (text: string) => boolean;
   }) {
     super({ instructions: options.instructions });
     this.lessonRunning = options.lessonRunning;
     this.onLessonUtterance = options.onLessonUtterance;
+    this.onBoardRequest = options.onBoardRequest ?? (() => false);
   }
 
   /** 授業を終える。以降はふつうの会話(発話には会話LLMが返事を作る)。 */
@@ -350,15 +399,26 @@ class LessonAwareAgent extends voice.Agent {
     this.lessonRunning = false;
   }
 
+  /** 授業へ戻る(教え返し中の「板書して」への再入)。発話は再び授業ループが読む。 */
+  startLesson(): void {
+    this.lessonRunning = true;
+  }
+
   override async onUserTurnCompleted(
     _chatCtx: llm.ChatContext,
     newMessage: llm.ChatMessage,
   ): Promise<void> {
-    if (!this.lessonRunning) return;
-    // 空白だけの確定は積まない。パスを中止する価値のある情報が無い。
     const text = textOf(newMessage);
-    if (text.trim().length > 0) this.onLessonUtterance(text);
-    throw new voice.StopResponse();
+    if (this.lessonRunning) {
+      // 空白だけの確定は積まない。パスを中止する価値のある情報が無い。
+      if (text.trim().length > 0) this.onLessonUtterance(text);
+      throw new voice.StopResponse();
+    }
+    if (text.trim().length > 0 && this.onBoardRequest(text)) {
+      // 板書を頼まれた。会話LLMに渡すと「書けないこと」を取り繕う返事になるので、
+      // 返事ごと授業ループ(板書の続き)へ譲る。
+      throw new voice.StopResponse();
+    }
   }
 }
 
@@ -378,6 +438,62 @@ type TeachOptions = {
   log: JobLogger;
 };
 
+/** 授業の結果と、同じ板書で続きを回すための口。 */
+type TaughtLesson = {
+  /** 開いた板書。締めるのは `agent.ts` のセッションの終わりだけ。 */
+  board: BoardDelivery;
+  /** 授業で起きたこと(配送済みの手順と合間の発話)。再入の文脈になる。 */
+  turns: LessonTurn[];
+  /**
+   * 同じ配線(LLM・読み上げ・残り時間)で追加の往復を回す。
+   * 教え返し中の「板書して」(`serveBoardRequests`)がこれを呼ぶ。
+   */
+  runLesson: (extra: {
+    priorTurns: readonly LessonTurn[];
+    maxPasses?: number;
+  }) => Promise<LessonLoopResult>;
+};
+
+/**
+ * 授業ループ1回ぶんの共通配線。初回の授業も、教え返し中の再入も同じものを使う
+ * (別々に組むと、読み上げの同期や残り時間の織り込みが片方だけ古いまま残る)。
+ */
+function lessonRunner(options: TeachOptions, board: BoardDelivery) {
+  const { config, context, session, startedAt, signal, utterances, record, log } = options;
+
+  const llm = createAnthropicLessonClient({
+    apiKey: config.ANTHROPIC_API_KEY,
+    model: config.LLM_MODEL_BOARD,
+  });
+  const remaining = () => remainingSeconds(context, startedAt, new Date());
+
+  return (extra: { priorTurns?: readonly LessonTurn[]; maxPasses?: number }) =>
+    runLessonLoop({
+      llm,
+      // 新規は写真の問題、復習は review_hole を根拠にする。どちらも同じ板書規約を
+      // 通すが、穴を problem_text に偽装しない(`senpai.ts` の設計判断)。
+      // 残り時間はパスごとに織り込み直す — 往復は数分続くので、開始時の値のままだと
+      // 締めの判断が古いまま止まる。
+      system: () => senpaiBoardLessonPrompt({ context, remainingSeconds: remaining() }),
+      locale: context.locale,
+      delivery: board,
+      signal,
+      utterances,
+      record,
+      // 答え待ちのタイムアウトの瞬間に生徒がまだ話していたら、言い終わりを待つ。
+      isStudentSpeaking: () => session.userState === "speaking",
+      remainingSeconds: remaining,
+      log,
+      // **板書を出してから喋る**(§3-2)。読み上げ終わりまで待つのは、
+      // 待たないと板書だけが何行も先に進んで、音声が指す行と画面がずれるから。
+      // 代償は、作り直し(`defaultMaxRepairAttempts`)の待ちが音声の空白として
+      // そのまま出ること。どちらを採るかはW1のドッグフーディングで決める値。
+      speak: (step: BoardStep) => sayAndWait(session, step.speech, log, { addToChatCtx: false }),
+      priorTurns: extra.priorTurns,
+      maxPasses: extra.maxPasses,
+    });
+}
+
 /**
  * フェーズ1「授業」を往復で回し、そのまま フェーズ2「教え返し」へ渡す。
  *
@@ -385,13 +501,12 @@ type TeachOptions = {
  * `lesson-loop.ts`。ここが持つのは LiveKit との接続(読み上げ・発話の状態)と、
  * 終わり方ごとの縮退の言い方だけ。
  *
- * 戻り値は開いた板書(締めるのは呼び出し側 = セッションの終わり)。
+ * 戻り値は開いた板書と授業の記録(締めるのは呼び出し側 = セッションの終わり)。
  * 板書チャネルが作れなかったときは `undefined` を返し、**会話だけで続ける** —
  * 板書が出ないのは大きな劣化だが、黙って部屋を閉じるよりはるかにまし。
  */
-async function teachWithBoard(options: TeachOptions): Promise<BoardDelivery | undefined> {
-  const { ctx, config, context, session, agent, startedAt, signal, utterances, record, log } =
-    options;
+async function teachWithBoard(options: TeachOptions): Promise<TaughtLesson | undefined> {
+  const { ctx, context, session, agent, startedAt, signal, utterances, log } = options;
 
   const publisher = ctx.room.localParticipant as TextStreamPublisher | undefined;
   if (publisher === undefined) {
@@ -413,41 +528,16 @@ async function teachWithBoard(options: TeachOptions): Promise<BoardDelivery | un
     log,
   });
   const board = channel.startBoard();
+  const runLesson = lessonRunner(options, board);
+  const taught: TaughtLesson = { board, turns: [], runLesson };
 
   // 冒頭の一言はモバイルが同梱アセットから鳴らす(§3-2)。ここでも同じ文を
   // `session.say()` すると、固定文に毎回 Deepgram の従量原価が戻るだけでなく、
   // ローカル音声と重なって「先輩が2人いる」ように聞こえる。agent はすぐ板書生成へ
   // 入り、最初の手順または発話が届いた時点でモバイル側がアセットを止める。
 
-  const lesson = await runLessonLoop({
-    llm: createAnthropicLessonClient({
-      apiKey: config.ANTHROPIC_API_KEY,
-      model: config.LLM_MODEL_BOARD,
-    }),
-    // 新規は写真の問題、復習は review_hole を根拠にする。どちらも同じ板書規約を
-    // 通すが、穴を problem_text に偽装しない(`senpai.ts` の設計判断)。
-    // 残り時間はパスごとに織り込み直す — 往復は数分続くので、開始時の値のままだと
-    // 締めの判断が古いまま止まる。
-    system: () =>
-      senpaiBoardLessonPrompt({
-        context,
-        remainingSeconds: remainingSeconds(context, startedAt, new Date()),
-      }),
-    locale: context.locale,
-    delivery: board,
-    signal,
-    utterances,
-    record,
-    // 答え待ちのタイムアウトの瞬間に生徒がまだ話していたら、言い終わりを待つ。
-    isStudentSpeaking: () => session.userState === "speaking",
-    remainingSeconds: () => remainingSeconds(context, startedAt, new Date()),
-    log,
-    // **板書を出してから喋る**(§3-2)。読み上げ終わりまで待つのは、
-    // 待たないと板書だけが何行も先に進んで、音声が指す行と画面がずれるから。
-    // 代償は、作り直し(`defaultMaxRepairAttempts`)の待ちが音声の空白として
-    // そのまま出ること。どちらを採るかはW1のドッグフーディングで決める値。
-    speak: (step: BoardStep) => sayAndWait(session, step.speech, log, { addToChatCtx: false }),
-  });
+  const lesson = await runLesson({});
+  taught.turns = lesson.turns;
 
   const steps = lessonSteps(lesson.turns);
   // **手順数ではなく「板書に何行載ったか」を見る。**手順数だけを記録していたので、
@@ -489,14 +579,14 @@ async function teachWithBoard(options: TeachOptions): Promise<BoardDelivery | un
 
   if (signal.aborted) {
     // セッションはもう終わっている。ここで何か言っても誰も聞かない。
-    return board;
+    return taught;
   }
 
   if (lesson.step_count === 0) {
     // 1行も出せなかった。教わっていないことの説明は求められない。
     log.warn("lesson_empty", { board_id: lesson.board_id, reason: lesson.reason });
     session.say(lessonFailedPrompt(context.locale, context.kind));
-    return board;
+    return taught;
   }
 
   if (leftover !== null) {
@@ -511,7 +601,7 @@ async function teachWithBoard(options: TeachOptions): Promise<BoardDelivery | un
         message: error instanceof Error ? error.message : String(error),
       });
     }
-    return board;
+    return taught;
   }
 
   // **手順は出たのに、板書には1行も載らなかった。**
@@ -523,7 +613,8 @@ async function teachWithBoard(options: TeachOptions): Promise<BoardDelivery | un
   // ただし**問いかけで終わった回は正常**(切り分けの質問は `board: null` が正しい形)。
   // 番を渡していれば黙って待つ — ここで立て直しの一言を足すと、答えようとしている
   // 生徒に「板書が出せなかった」と被せることになる。
-  if (written === 0 && !handsTurnToStudent(steps.at(-1)?.speech ?? "", context.locale)) {
+  const lastStep = steps.at(-1);
+  if (written === 0 && (lastStep === undefined || !stepAwaitsStudent(lastStep, context.locale))) {
     log.warn("lesson_wrote_nothing", {
       board_id: lesson.board_id,
       steps: lesson.step_count,
@@ -531,7 +622,7 @@ async function teachWithBoard(options: TeachOptions): Promise<BoardDelivery | un
       rejections: lesson.rejections.length,
     });
     session.say(lessonFailedPrompt(context.locale, context.kind));
-    return board;
+    return taught;
   }
 
   // プロンプトが番を渡し忘れても「教えて終わり」にしない。一方、もう渡して
@@ -539,7 +630,129 @@ async function teachWithBoard(options: TeachOptions): Promise<BoardDelivery | un
   const fallback = teachBackFallback(context, steps);
   if (fallback !== null) session.say(fallback);
 
-  return board;
+  return taught;
+}
+
+/**
+ * 教え返しの最中の「板書して」を、**同じ板書の続き**で応え続ける。
+ *
+ * 授業ループを抜けても板書は開いたまま(`board_close` はセッションの終わりだけ)で、
+ * 続きを積む配管も生きている。それなのに以前は、授業の外で板書を頼まれると
+ * 会話LLMが「最初にしたから、ここからは言葉だけでいくね」と**書けない事実を
+ * 取り繕っていた**(会話LLMは板書に書く手段を持たない)。
+ *
+ * ここは `LessonAwareAgent.onBoardRequest` が引き受けた発話を順に取り出し、
+ * これまでの授業のやりとり + その発話を文脈にして授業ループへ**再入**する。
+ * 再入中は `startLesson()` で発話の宛先も授業ループに戻す(答え・割り込みが
+ * 同じ板書の続きに乗る)。終わったら板書の要約を足した instructions に更新して、
+ * ふつうの教え返しへ返す。
+ *
+ * セッションの終わり(`signal`)か、板書が上限で閉じたら店じまいする。
+ */
+async function serveBoardRequests(options: {
+  taught: TaughtLesson;
+  agent: LessonAwareAgent;
+  session: voice.AgentSession;
+  context: SessionContext;
+  startedAt: Date;
+  signal: AbortSignal;
+  /** `onBoardRequest` が引き受けた「板書して」の列。 */
+  requests: StudentUtterances;
+  /** 授業モード中の生徒の発話(再入したパスの答え・割り込み)。 */
+  utterances: StudentUtterances;
+  /** 消費した発話をtranscriptへ写す口。 */
+  record: (text: string) => void;
+  log: JobLogger;
+}): Promise<void> {
+  const { taught, agent, session, context, startedAt, signal, requests, utterances, record, log } =
+    options;
+
+  // 1回の依頼に使う往復の上限。頼まれごとへの返答なので、初回の授業(6)より短い。
+  // 書いて、せいぜい1問いかけぶんで教え返しへ戻る。
+  const maxPasses = 2;
+
+  let turns: readonly LessonTurn[] = taught.turns;
+
+  while (!signal.aborted && !taught.board.isClosed) {
+    // 待ち時間はセッション上限より長ければ何でもよい(終わりは signal が伝える)。
+    const request = await requests.take(3_600_000, signal);
+    if (request === null) continue;
+
+    const before = lessonSteps(turns).length;
+
+    agent.startLesson();
+    let lesson: LessonLoopResult;
+    try {
+      lesson = await taught.runLesson({
+        priorTurns: [...turns, { kind: "student", text: request }],
+        maxPasses,
+      });
+    } finally {
+      // ここから先に確定した発話は、ふつうの会話として応える(`teachWithBoard` と同じ)。
+      agent.endLesson();
+    }
+    const appended = lessonSteps(lesson.turns).length - before;
+
+    if (appended === 0) {
+      // 板書では応えられなかった(生成が丸ごと落ちた)。**黙って終わらせない** —
+      // 会話LLMに返事を譲る。依頼の transcript 記録は `generateReply` の
+      // `ConversationItemAdded` 経由で入るので、ここでは record しない。
+      // 落ちたパスの最中に確定していた発話だけは、消える前にカルテの材料へ写す。
+      const spokenMeanwhile = utterances.tryTake();
+      if (spokenMeanwhile !== null) record(spokenMeanwhile);
+      log.warn("board_request_unserved", { board_id: lesson.board_id, reason: lesson.reason });
+      if (!signal.aborted) {
+        try {
+          session.generateReply({ userInput: request });
+        } catch (error) {
+          log.warn("board_request_reply_failed", {
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      continue;
+    }
+
+    // `StopResponse` は発話を chatCtx からも消すので、記録はこちらの責務
+    // (授業ループが消費した答えの扱いと同じ)。
+    record(request);
+    turns = lesson.turns;
+    taught.turns = lesson.turns;
+    const leftover = utterances.tryTake();
+
+    log.info("board_request_served", {
+      board_id: lesson.board_id,
+      appended,
+      reason: lesson.reason,
+    });
+
+    // 積んだ続きも教え返しの文脈に入れる。ここを怠ると、先輩は
+    // 「いま自分が書いたもの」を知らないまま説明の続きを聞くことになる。
+    await agent
+      .updateInstructions(
+        senpaiConversationPrompt({
+          context,
+          remainingSeconds: remainingSeconds(context, startedAt, new Date()),
+          lesson: lesson.turns,
+        }),
+      )
+      .catch((error) => {
+        log.error("instructions_update_failed", error);
+      });
+
+    if (signal.aborted) return;
+
+    if (leftover !== null) {
+      log.info("lesson_leftover_replied");
+      try {
+        session.generateReply({ userInput: leftover });
+      } catch (error) {
+        log.warn("lesson_leftover_reply_failed", {
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
 }
 
 /**

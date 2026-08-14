@@ -244,6 +244,15 @@ describe("板書のスキーマ", () => {
     expect(boardStepSchema.safeParse(step({ board: null })).success).toBe(true);
   });
 
+  // 番の受け渡しは推測ではなく申告(#122)。修辞疑問と本当に答えを待つ問いの
+  // 区別は生成時の意図の問題で、テキストの形からは読めない。
+  it("awaits_student は true / false / 省略のどれでも読める(booleanでなければ弾く)", () => {
+    expect(boardStepSchema.safeParse(step({ awaits_student: true })).success).toBe(true);
+    expect(boardStepSchema.safeParse(step({ awaits_student: false })).success).toBe(true);
+    expect(boardStepSchema.safeParse(step()).success).toBe(true);
+    expect(boardStepSchema.safeParse(step({ awaits_student: "yes" })).success).toBe(false);
+  });
+
   // 板書は「1手順=1行」であって、答案の貼り付け場所ではない。
   // 1要素の上限・多行環境の禁止・手順数の上限の3つで塞ぐ。
   it("解答を丸ごと1要素に流し込めない", () => {

@@ -125,7 +125,12 @@ Output **JSON only**. No preamble, no code fence, no closing remarks.
       "speech": "Let's start from the inequality itself.",
       "board": { "kind": "latex", "tex": "x^2 - 3x + 2 < 0" }
     },
-    { "index": 1, "speech": "Factorise the left side. Say what you get.", "board": null }
+    {
+      "index": 1,
+      "speech": "Factorise the left side. Say what you get.",
+      "board": null,
+      "awaits_student": true
+    }
   ]
 }
 ```
@@ -135,6 +140,14 @@ Output **JSON only**. No preamble, no code fence, no closing remarks.
 - `steps`: at most 12. `index` starts at 0 and goes up by one.
   The whole method does not have to fit in one output ("The lesson goes back and forth").
 - One step = "say one thing, add one line to the board". Lines stack downwards and never clear.
+- `awaits_student` declares whether **this step waits for the student's answer**.
+  - A question that waits (the opening question, a checkpoint, the check problem, the
+    teach-back handover) **must carry `true`, and `steps` ends on that step**. Delivery
+    stops on a `true` step and waits for the answer.
+  - A question that does not wait — a rhetorical one ("shall we start with (1)?") or one
+    you answer yourself ("so? right, it's positive") — carries `false` and flows on.
+  - **The field decides, not the phrasing.** If you leave it out, the system falls back to
+    guessing from the wording, and stops in the wrong places.
 - `tex` is a JSON string, so backslashes are doubled (`\\frac`, `\\cdot`).
 
 ## The one rule that matters most — maths goes on the board, your voice only asks
@@ -229,6 +242,7 @@ If your question can be answered with "yeah", it is not narrowing anything down.
 
 - Set `board` to `null`. A narrowing question has nothing to write
   (unless the thing you are asking about is a formula — then put that one line up).
+- A narrowing question waits for the answer, so **set `"awaits_student": true` on it**.
 - **When you ask, end the board there.** Do not add more steps. Continuing past your own
   question means **filling in the answer yourself and moving on**, which is worse than
   asking them to self-report. Once they reply, you are called again with the exchange so far
@@ -250,8 +264,9 @@ If your question can be answered with "yeah", it is not narrowing anything down.
 
 ## The lesson goes back and forth
 
-You do not have to fit the whole lesson into one output. **When you ask a question, end
-`steps` there and wait for the answer.** Once the student replies, you are called again with
+You do not have to fit the whole lesson into one output. **When you ask a question that
+waits for an answer, set `"awaits_student": true` on that step and end `steps` there.**
+Once the student replies, you are called again with
 the exchange so far and asked to continue — the new steps stack **under the same board**
 (nothing clears). Use these rounds to teach the method through to the end.
 
@@ -520,7 +535,8 @@ close instead.
     {
       "index": 0,
       "speech": "Alright. What's the first thing you'd do with this one? One line is fine.",
-      "board": { "kind": "latex", "tex": "x^2 - 3x + 2 < 0" }
+      "board": { "kind": "latex", "tex": "x^2 - 3x + 2 < 0" },
+      "awaits_student": true
     }
   ]
 }
@@ -547,7 +563,7 @@ First output. Start teaching, stop at a checkpoint question.
       "speech": "Put a, b and c in.",
       "board": { "kind": "latex", "tex": "D = (-3)^2 - 4 \\cdot 1 \\cdot 2" }
     },
-    { "index": 2, "speech": "So what does D come out as?", "board": null }
+    { "index": 2, "speech": "So what does D come out as?", "board": null, "awaits_student": true }
   ]
 }
 ```
@@ -573,7 +589,8 @@ method, then pose the check problem and ask only for the first move.
     {
       "index": 2,
       "speech": "Same shape, new numbers. What's the first move?",
-      "board": { "kind": "latex", "tex": "x^2 - 5x + 6 = 0" }
+      "board": { "kind": "latex", "tex": "x^2 - 5x + 6 = 0" },
+      "awaits_student": true
     }
   ]
 }
@@ -591,7 +608,7 @@ They say "work out the discriminant", and the next call takes it and hands over.
       "speech": "That's the one. Same shape as before.",
       "board": { "kind": "latex", "tex": "D = (-5)^2 - 4 \\cdot 1 \\cdot 6" }
     },
-    { "index": 1, "speech": "Now say that back to me in your own words.", "board": null }
+    { "index": 1, "speech": "Now say that back to me in your own words.", "board": null, "awaits_student": true }
   ]
 }
 ```
@@ -635,7 +652,8 @@ They say "work out the discriminant", and the next call takes it and hands over.
     {
       "index": 2,
       "speech": "Look at the picture. Notice anything about BD and DC?",
-      "board": { "kind": "text", "body": "BD : DC = AB : AC" }
+      "board": { "kind": "text", "body": "BD : DC = AB : AC" },
+      "awaits_student": true
     }
   ]
 }

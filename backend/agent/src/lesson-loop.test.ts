@@ -22,6 +22,14 @@ const step = (index: number, speech: string, tex?: string): unknown => ({
   board: tex === undefined ? null : { kind: "latex", tex },
 });
 
+/** `awaits_student` を明示した手順。番の受け渡しの申告(#122)のテスト用。 */
+const stepAwaiting = (index: number, speech: string, awaits: boolean, tex?: string): unknown => ({
+  index,
+  speech,
+  board: tex === undefined ? null : { kind: "latex", tex },
+  awaits_student: awaits,
+});
+
 function lessonJson(steps: readonly unknown[]): string {
   return JSON.stringify({
     title: "最小公倍数で分母をそろえる",
@@ -282,6 +290,125 @@ describe("runLessonLoop", () => {
 
     expect(result.reason).toBe("completed");
     expect(result.passes).toBe(1);
+  });
+
+  /**
+   * **「板書がイニシャルのステートで止まる」の回帰テスト。**
+   *
+   * 「まず何する? 一言でいいよ。」は板書プロンプトの見本そのものだが、`?` が
+   * 文中に沈むので言い回しの推測(`handsTurnToStudent`)では拾えない。推測だけ
+   * だった頃はここで「渡し忘れ(completed)」と誤読して授業ループごと終わり、
+   * 以降のセッションは音声だけ・板書は最初の数行のまま凍っていた。
+   * `awaits_student: true` の申告があれば、言い回しに関わらず答えを待って続く。
+   */
+  it("言い回しが推測に掛からない問いかけでも、awaits_student の申告で答えを待って続く", async () => {
+    const sink = recordingSink();
+    const board = boardWith(sink);
+    const llm = stubLlm(
+      lessonJson([
+        step(0, "まず、式をそのまま書くね。", "x^2 - 3x + 2 < 0"),
+        stepAwaiting(1, "オッケー。じゃあこの式、まず何する? 一言でいいよ。", true),
+      ]),
+      lessonJson([
+        step(0, "そう、因数分解からいこう。", "(x-1)(x-2) < 0"),
+        stepAwaiting(1, "じゃあ今の、自分の言葉で説明してみて。", true),
+      ]),
+    );
+
+    const utterances = new StudentUtterances();
+    const result = await loopWith(llm, board, {
+      utterances,
+      speak: async (delivered) => {
+        if (delivered.speech.includes("まず何する")) {
+          setTimeout(() => utterances.push("因数分解…?"), 5);
+        }
+      },
+    });
+
+    expect(result.reason).toBe("handed_over");
+    expect(result.passes).toBe(2);
+    // 同じ板書に積まれ続けている(completed で途切れていない)
+    expect(sink.sent.filter((message) => message.type === "board_open")).toHaveLength(1);
+    expect(result.step_count).toBe(4);
+  });
+
+  it("修辞疑問(awaits_student: false)では止まらず、そのまま教え続ける", async () => {
+    const board = boardWith(recordingSink());
+    const llm = stubLlm(
+      lessonJson([
+        // 末尾が ? なので推測なら止まる形。false の申告が勝つ(#105 の症状A)。
+        stepAwaiting(0, "まず(1)からやろっか?", false, "x^2 - 3x + 2 = 0"),
+        step(1, "判別式はこの形だったよね。", "D = b^2 - 4ac"),
+        stepAwaiting(2, "じゃあ今の、自分の言葉で説明してみて。", true),
+      ]),
+    );
+
+    const result = await loopWith(llm, board);
+
+    // 1手順目で止まらず、1パスで教え返しまで届いている
+    expect(result.reason).toBe("handed_over");
+    expect(result.passes).toBe(1);
+    expect(result.step_count).toBe(3);
+  });
+
+  /**
+   * 途中の手順が直せずに落ちても、**そこまで積めた板書を道連れにしない。**
+   * 積めた手順は有効で板書も開いたまま — 次のパスは recap を持って続きを書ける。
+   * 以前はここで授業ごと降りていて、1回の検証落ちが残りの授業を丸ごと潰していた。
+   */
+  it("失敗したパスでも手順が積めていれば、同じ板書で続きのパスに入る", async () => {
+    const sink = recordingSink();
+    const board = boardWith(sink);
+    const llm = stubLlm(
+      lessonJson([
+        step(0, "まず、式をそのまま書くね。", "x^2 - 3x + 2 = 0"),
+        // 2手順目は日本語入りのLaTeXで検証に落ちる(作り直しもJSONではない)
+        step(1, "よって、こう。", "\\text{よって} x = 2"),
+      ]),
+      lessonJson([
+        step(0, "続きね。判別式はこの形。", "D = b^2 - 4ac"),
+        stepAwaiting(1, "じゃあ今の、自分の言葉で説明してみて。", true),
+      ]),
+    );
+
+    const result = await loopWith(llm, board);
+
+    expect(result.reason).toBe("handed_over");
+    expect(result.passes).toBe(2);
+    // 1パス目の1手順 + 2パス目の2手順が同じ板書に載っている
+    expect(sink.sent.filter((message) => message.type === "board_open")).toHaveLength(1);
+    expect(result.step_count).toBe(3);
+    // 続きの指示は「切れたところから」の形(生徒は何も言っていない)。
+    // asked[1] は落ちた手順の作り直し依頼なので、最後の呼び出しを見る。
+    expect(llm.asked.at(-1)).toContain("説明は途中で切れています");
+  });
+
+  it("再入(priorTurns)では最初のパスから継続の指示になる(授業を最初から書き直させない)", async () => {
+    const sink = recordingSink();
+    const board = boardWith(sink);
+    const llm = stubLlm(
+      lessonJson([
+        step(0, "ここが聞かれてたとこ。もう一回書くね。", "D = b^2 - 4ac"),
+        stepAwaiting(1, "じゃあ今の、自分の言葉で説明してみて。", true),
+      ]),
+    );
+
+    const result = await loopWith(llm, board, {
+      priorTurns: [
+        {
+          kind: "step",
+          step: { index: 0, speech: "まず、式をそのまま書くね。", board: null },
+        },
+        { kind: "student", text: "板書して!" },
+      ],
+    });
+
+    expect(result.reason).toBe("handed_over");
+    // 初回の定型指示ではなく、これまでのやりとり入りの継続指示で呼ばれている
+    expect(llm.asked[0]).toContain("板書して!");
+    expect(llm.asked[0]).toContain("続きだけを書きます");
+    // 戻りの列には、渡した文脈と新しい手順の両方が入っている
+    expect(result.turns.map((turn) => turn.kind)).toEqual(["step", "student", "step", "step"]);
   });
 
   it("往復の上限で降りるとき、積み残しの発話は取り出さない", async () => {
