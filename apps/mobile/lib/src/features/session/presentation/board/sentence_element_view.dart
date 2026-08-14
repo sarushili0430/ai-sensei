@@ -3,15 +3,17 @@ import 'package:flutter/material.dart';
 import '../../../../theme/tokens.dart';
 import 'board_style.dart';
 
-/// 英語の例文1つ(`BoardElement.sentence`)。
+/// One English example sentence (`BoardElement.sentence`).
 ///
-/// **`focus` に下線を引くのが、この要素が [TextElementView] で代用できない理由。**
-/// 英語で教えているのは「この文のどこが現在完了か」であって文そのものではない。
-/// 平文を並べるだけだと、生徒はどこを見ればいいか分からないまま読み流す。
+/// Underlining `focus` is why [TextElementView] cannot stand in for this. What
+/// is being taught is which part of the sentence is the present perfect, not the
+/// sentence itself; plain text leaves students skimming with no idea where to
+/// look.
 ///
-/// `focus` が `text` に含まれていない場合は **下線を引かずに文だけ描く**。
-/// 契約違反ではあるが(`ensureValidSentence` が受信時に落とす)、描画側で
-/// 例外にすると**例文そのものが消える** — 板書から1行消えるほうが授業には痛い。
+/// When `focus` is not found in `text`, the sentence is drawn without an
+/// underline. That is a contract violation (`ensureValidSentence` rejects it on
+/// receipt), but throwing at render time would erase the example entirely, and
+/// losing a board line costs the lesson more.
 class SentenceElementView extends StatelessWidget {
   const SentenceElementView({
     required this.text,
@@ -27,7 +29,7 @@ class SentenceElementView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final TextTheme textTheme = Theme.of(context).textTheme;
-    // 例文もチョークで書く(テーマの既定色は板の上では読めない)。
+    // Examples are chalk too; the theme default is unreadable on the board.
     final TextStyle base =
         textTheme.bodyLarge?.copyWith(
               fontSize: BoardStyle.sentenceFontSize,
@@ -47,7 +49,8 @@ class SentenceElementView extends StatelessWidget {
     );
   }
 
-  /// `focus` の前・`focus`・後ろの3片に割る。`focus` が無い(または見つからない)なら1片。
+  /// Splits into three spans around `focus`; one span when `focus` is absent or
+  /// not found.
   List<TextSpan> _spans(TextStyle base) {
     final String? needle = focus;
     if (needle == null) return <TextSpan>[TextSpan(text: text, style: base)];

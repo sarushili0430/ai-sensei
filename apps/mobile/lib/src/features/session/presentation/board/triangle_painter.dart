@@ -5,12 +5,12 @@ import 'board_coordinate_space.dart';
 import 'board_style.dart';
 import 'dart:math' as math;
 
-/// 三角形(`BoardElement.triangle`)を描く。
+/// Draws a triangle (`BoardElement.triangle`).
 ///
-/// `vertices` がちょうど3点であることは `ensureValidTriangle`
-/// (`BoardChannelReceiver.accept()` の中で検査済み)が前提。ここでも防御的に
-/// もう一度長さを見るが、それは「二重に検査する」というより「このpainterは
-/// 受信経路を経ない手元テストからも呼ばれうる」ため。
+/// It assumes `ensureValidTriangle` (inside `BoardChannelReceiver.accept()`) has
+/// already confirmed exactly 3 `vertices`. The length is re-checked defensively
+/// here, not to double-validate but because this painter can be called from
+/// local tests that skip the receiving path.
 class TrianglePainter extends CustomPainter {
   TrianglePainter({required this.vertices, this.labels, this.marks});
 
@@ -31,7 +31,7 @@ class TrianglePainter extends CustomPainter {
     final double maxY = vertices.map((BoardPoint p) => p.y).reduce(math.max);
 
     final BoardCoordinateSpace space = BoardCoordinateSpace(
-      // ラベルが外側にはみ出す分の余白を、データ座標側に少し足しておく。
+      // A little padding in data coordinates for labels that stick out.
       dataMinX: minX,
       dataMaxX: maxX,
       dataMinY: minY,
@@ -74,8 +74,8 @@ class TrianglePainter extends CustomPainter {
     }
   }
 
-  /// [from] を中心から見て外向きに[distance]だけ押し出した位置。
-  /// ラベルを辺の外側(三角形の中)ではなく外側に置くための計算。
+  /// [from] pushed [distance] outwards from the centroid, so labels sit outside
+  /// the triangle rather than inside it.
   Offset _outward(Offset from, Offset centroid, double distance) {
     final Offset direction = from - centroid;
     final double length = direction.distance;

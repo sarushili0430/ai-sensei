@@ -1,10 +1,10 @@
 import 'package:flutter/widgets.dart';
 
-/// 日英2ロケール(審査員対応)。
+/// Two locales, Japanese and English.
 ///
-/// arb + codegen を使わず手書きにしているのは、`flutter test` を
-/// codegenなしで通せるようにするため(リポジトリ単体で動くことがNext Genの要件)。
-/// 文言が増えて手に負えなくなったら flutter_localizations の gen へ移す。
+/// Hand-written rather than arb + codegen so `flutter test` passes without a
+/// codegen step (the repo has to work standalone). If the copy outgrows this,
+/// move to flutter_localizations' generator.
 @immutable
 class AppStrings {
   const AppStrings(this.locale);
@@ -16,11 +16,11 @@ class AppStrings {
     Locale('en')
   ];
 
-  /// 端末の言語 → このアプリの言語。
+  /// Device language -> app language.
   ///
-  /// Flutter の既定は「一致しなければ supportedLocales の先頭」なので、
-  /// 何もしないとスペイン語の端末に**日本語**が出る。日本語を望んだ人にだけ
-  /// 日本語を出し、それ以外は英語に寄せる。
+  /// Flutter defaults to the first entry in supportedLocales on no match, so
+  /// doing nothing shows Japanese on a Spanish device. Japanese goes only to
+  /// people who asked for it; everyone else gets English.
   static Locale resolve(List<Locale>? preferred) {
     for (final Locale locale in preferred ?? const <Locale>[]) {
       if (locale.languageCode == 'ja') return const Locale('ja');
@@ -35,8 +35,8 @@ class AppStrings {
       Localizations.of<AppStrings>(context, AppStrings) ??
       const AppStrings(Locale('ja'));
 
-  /// BuildContext を持たない層(コントローラ)から引くための入口。
-  /// APIに送るのと同じ言語コードを渡す。未対応の言語は日本語に落ちる。
+  /// Entry point for layers without a BuildContext (controllers). Pass the same
+  /// language code sent to the API; unsupported languages fall back to Japanese.
   static AppStrings forLanguage(String languageCode) =>
       AppStrings(Locale(languageCode));
 
@@ -44,13 +44,13 @@ class AppStrings {
 
   String _pick(String ja, String en) => _ja ? ja : en;
 
-  // --- オンボーディング ---
+  // --- Onboarding ---
 
-  /// 1枚目 — 約束(ピボット計画 §0 の憲法改正後の一言)。
+  /// Page 1 — the promise.
   ///
-  /// 改行位置は成り行きに任せず、**2拍の切れ目で必ず折る**。
-  /// 「教える」だけを読むと手元の無料AIと同じものに見えるので、
-  /// 前半と後半が同じ重みで目に入る必要がある。
+  /// The line break is placed deliberately, always at the beat between the two
+  /// halves. "We teach you" alone reads like any free AI, so both halves need
+  /// equal visual weight.
   String get onboardingTitle => _pick(
         '答えを教える。\nそのあと、あなたに教え返してもらう。',
         'The AI tutor that teaches you —\nthen asks you to teach it back.',
@@ -64,13 +64,13 @@ class AppStrings {
   String get onboardingCta => _pick('はじめる', 'Get started');
   String get onboardingNext => _pick('つぎへ', 'Next');
 
-  /// 2枚目。何をする時間なのかを、先に絵で見せる。
-  /// 4行はピボット計画 §2 のコアループそのもの(撮る → 教わる → 教え返す → 穴が残る)。
+  /// Page 2, showing what the time is for before anything else. The four lines
+  /// are the core loop: shoot, get taught, teach back, a gap remains.
   String get onboardingHowTitle => _pick('やることは、これだけ。', 'This is all you do.');
-  /// **ノートを条件にしない。** 「問題とノートを撮る」と書くと、解けなくて
-  /// ノートが無い生徒は初回の説明の時点で「自分向けではない」と読む
-  /// (手も付けられないは家庭教師の中心的な用件。`api.ts` の `sessionPhotoParts`)。
-  /// ノートがあるほうが良いことは変わらないので、括弧で残す。
+  /// Notes are never a condition. "Photograph the problem and your notes" tells
+  /// a student stuck with nothing written that this is not for them, right in the
+  /// first explanation — and being stuck is a tutor's core business. Notes are
+  /// still better to have, so they stay in parentheses.
   String get onboardingStepCapture => _pick('わからない問題を撮る(ノートがあれば一緒に)',
       "Photograph the problem you are stuck on (with your notes, if you have them)");
   String get onboardingStepTaught => _pick(
@@ -80,47 +80,51 @@ class AppStrings {
   String get onboardingStepKarte => _pick('詰まったところが、穴としてカルテに残る',
       'Wherever you stalled becomes a gap in your karte');
 
-  /// 権限は使う直前に聞く。ここでは予告だけして、初回離脱を作らない。
+  /// Permissions are asked just before use. This only forewarns, so nothing
+  /// drives people away on first run.
   String get onboardingPermissionNote => _pick(
         'カメラ・マイク・通知の許可は、使う直前にお願いします',
         'We ask for camera, microphone and notification access only when they are needed',
       );
 
-  /// 3枚目 — リハーサル。読むだけの説明を、**一度やってみる**に変える。
+  /// Page 3 — the rehearsal, turning an explanation you only read into one you
+  /// do once.
   ///
-  /// 板書も質問も固定の台本。写真も撮らないし声も録らない
-  /// (だから権限もまだ要らない)。
+  /// Board and question are a fixed script; no photos and no recording, so no
+  /// permissions are needed yet.
   String get onboardingTryTitle => _pick('ためしに、1問だけ。', 'Try it once.');
   String get onboardingTryNotebookLabel =>
       _pick('撮った問題', 'The problem you photographed');
   String get onboardingTryNotebook => _pick('x² − 4x + k = 0 が異なる2つの実数解をもつ',
       'x² − 4x + k = 0 has two distinct real roots');
 
-  /// 板書の見出し。ここから下は、先輩が書いたもの。
+  /// The board heading; everything below it is what senpai wrote.
   String get onboardingTryBoardLabel => _pick('先輩の板書', "Your senpai's board");
 
-  /// 板書の1手順目。**日本語なので `text` 要素として置く**
-  /// (LaTeXの中に日本語を入れると文字化けする・計画書§3-6d)。
-  /// 2手順目は数式なので、ロケールを持たず Dart 側の定数にしてある。
+  /// The board's first step. It is prose, so it goes in a `text` element —
+  /// Japanese inside LaTeX renders as mojibake. Step two is a formula, so it
+  /// carries no locale and lives as a Dart constant.
   String get onboardingTryBoardText =>
       _pick('解が2つ ⇔ D > 0', 'Two roots ⇔ D > 0');
 
-  /// 教え返してもらう番。**答えはもう上の板書に出ている。**
-  /// それでも説明できるとは限らない、というのがこの1枚の主張。
+  /// Their turn to teach it back. The answer is already on the board above, and
+  /// this page's claim is that having it does not mean you can explain it.
   String get onboardingTryQuestion => _pick('じゃあ、いまの説明してみて。なんで D を見るんだっけ?',
       'Now explain it back — why do we look at D?');
 
-  /// 長押しの案内。読み上げを使っている人にはタップに切り替える。
+  /// The press-and-hold prompt; screen reader users get tap instead.
   String get onboardingTryHold => _pick('長押しして教え返す', 'Hold to teach it back');
   String get onboardingTryTap => _pick('タップして教え返す', 'Tap to teach it back');
   String get onboardingTryHolding => _pick('聞いています', 'Listening');
   String get onboardingTryHint => _pick('押したままにしてください', 'Keep holding');
 
-  /// 本番と取り違えられると信頼を落とす。まだ録っていないことを先に言う。
+  /// Being mistaken for the real thing costs trust, so say up front that nothing
+  /// is being recorded yet.
   String get onboardingTryNotRecording =>
       _pick('ここではまだ録音しません', 'Nothing is recorded here yet');
 
-  /// 反応は先輩の口調(ため口)。UIの案内文だけは敬体のまま分けてある。
+  /// Reactions use senpai's casual register; UI guidance stays formal and is
+  /// kept separate.
   String get onboardingTrySaidReaction =>
       _pick('いいね。それが言えれば大丈夫。', 'Nice — if you can say that, you have it.');
   String get onboardingTrySaid => _pick(
@@ -128,15 +132,15 @@ class AppStrings {
         'You explained why we look at the discriminant, in your own words',
       );
 
-  /// パスは失敗ではない(§0 の約束3。ここは改正されていない)。
-  /// 教える側に配役が変わっても、責めないことは変えない。
+  /// Passing is not failure, and that has not changed with senpai teaching: no
+  /// blame either way.
   String get onboardingTryHoleReaction =>
       _pick('大丈夫。ここが最初の穴だね。', "That's fine — this is your first gap.");
   String get onboardingTryHole => _pick('判別式を「なぜ」見るのかで、説明が止まった',
       'You stalled on why we look at the discriminant');
   String get onboardingTryAgain => _pick('もう一度ためす', 'Try that again');
 
-  /// 4枚目 — リハーサルの結果が、そのままカルテの見本になる。
+  /// Page 4 — the rehearsal's outcome becomes the sample karte.
   String get onboardingKarteTitle => _pick('これが、カルテです。', 'This is your karte.');
   String get onboardingKarteBody => _pick(
         '教え返せたところは黄色、詰まったところはピンク。点数はつきません。',
@@ -148,213 +152,218 @@ class AppStrings {
   String get onboardingReviewDay3 => _pick('3日後', 'In 3 days');
   String get onboardingReviewDay7 => _pick('7日後', 'In 7 days');
 
-  /// 約束(1枚目)とやること(2枚目)は飛ばさせない。
-  /// 出すのは、あとから足した2枚だけ。
+  /// The promise (page 1) and the loop (page 2) cannot be skipped; the control
+  /// appears only on the two pages added later.
   String get onboardingSkip => _pick('とばす', 'Skip');
 
-  // --- ホーム ---
+  // --- Home ---
   //
-  // ピボット(計画書§2)でコアループが「後輩に説明する」から
-  // 「先輩に教わる → 教え返す」に変わった。あいさつも入口の名前も先輩のものにする。
+  // The core loop changed from "explain to a junior" to "get taught by senpai,
+  // then teach it back", so greetings and entry labels are senpai's.
   String get homeGreeting =>
       _pick('今日は、どこでつまずいた?', 'Where did you get stuck today?');
 
-  /// 先輩が今日を締めた日のあいさつ。
+  /// Greeting on a day senpai has closed out.
   ///
-  /// 問いかけのまま置くと、「どこでつまずいた?」と聞いておいて撮らせない
-  /// 画面になる。呼びかけと、その下で押せる操作を食い違わせない。
+  /// Left as a question it would ask "where did you get stuck?" and then refuse
+  /// the photo. The greeting must not contradict the action below it.
   String get homeGreetingDone =>
       _pick('今日はよくがんばったね', 'You put in good work today');
 
-  /// 今日の入口。撮る → 授業モード(§4-1。従量原価が発生する側)。
+  /// Today's entrance: shoot, then lesson mode (the metered-cost side).
   ///
-  /// **「ノートを撮る」とは書かない。** 撮るのは手段で、
-  /// ここでユーザーが選んでいるのは「教わる」こと。
+  /// It does not say "photograph your notes". Shooting is the means; what is
+  /// being chosen here is being taught.
   String get homeLesson => _pick('先輩に教わる', 'Get taught by your senpai');
 
   String streakDays(int days) => _pick('$days日つづけて説明中', '$days-day streak');
   String filledHoles(int count) => _pick('埋めた穴 $count', '$count gaps filled');
 
-  /// ホームの復習カード。再訪の起点で、通知の着地先でもある。
-  /// 詳細がまだ手元に無い短い間も、件数に逃げず内容のカードとして見せる。
+  /// Home's review card: the start of a return visit and the notification's
+  /// landing spot. Even while details are still loading it shows content rather
+  /// than falling back to a count.
   String get homeOpenHoleLabel => _pick('前に見つけた単元', 'A topic you found before');
 
-  /// 今日はもう授業をしない、という**先輩の判断**(§6-3)。
+  /// Senpai's decision that there are no more lessons today.
   ///
-  /// 「本日の残り回数 0/3」とは書かない。数字を見せた瞬間に不満になるし、
-  /// 見えていれば残りの使い道を計算し始める。上限は制限ではなく
-  /// 「詰め込みすぎても入らない」という先生の判断として出す。
+  /// Never "0/3 left today". A number turns into a grievance on sight, and a
+  /// visible remainder gets budgeted. The limit is presented as a teacher's
+  /// judgement that cramming more in will not stick, not as a restriction.
   String get lessonEnoughForToday => _pick(
         '今日はここまでにしよっか。詰め込みすぎても入らないから。明日また続きやろう。',
         "Let's call it a day. Cramming more won't stick — we'll pick this up tomorrow.",
       );
 
-  /// 上の判断の隣に置く、契約への道。
-  /// **「無制限にする」とは書かない**(§6-3 でフェアユース上限が入ったので、嘘になる)。
+  /// The path to subscribing, beside the decision above. It never says
+  /// "unlimited" — a fair-use cap exists, so that would be a lie.
   String get homeUnlock => _pick('もっと教わる', 'Get more lessons');
   String get homeFirstRun => _pick('まだ穴はありません。最初の1問から始まります。',
       'No gaps yet. It starts with your first question.');
 
-  // --- 撮影確認 ---
+  // --- Capture confirmation ---
   String get captureConfirmTitle =>
       _pick('この単元で合っていますか?', 'Is this the right topic?');
   String get captureConfirmHint =>
       _pick('ちがっていたらタップして外せます', 'Tap to remove anything that is wrong');
 
-  /// **「説明をはじめる」ではない。** ピボット前はここから生徒が説明していたが、
-  /// いま始まるのは授業(先輩が板書つきで教える・§4-1)。
+  /// Not "start explaining". Before the pivot the student explained from here;
+  /// now what starts is a lesson, with senpai teaching on the board.
   String get captureStart => _pick('授業をはじめる', 'Start the lesson');
 
-  // --- 撮ったものの確認(解析の前) ---
+  // --- Reviewing what was shot (before analysis) ---
 
-  /// まだ1枚も撮っていないときの見出し。**カメラより先に出る。**
+  /// Heading when nothing has been shot yet; it appears before the camera.
   ///
-  /// 「ノートを撮ってください」ではなく**手元にあるものを聞く**。ノートが無いのは
-  /// 不足ではなく、そういう状態だという建て付けにするため。以前は画面に入った瞬間に
-  /// ノートのカメラが開いていて、解けなかった生徒は問題の枠を見ないまま
-  /// シャッターの前に立っていた(`capture_screen.dart` のコメント)。
+  /// It asks what you have rather than telling you to photograph your notes, so
+  /// having none reads as a state rather than a shortfall. The notes camera used
+  /// to open on entry, leaving a stuck student at the shutter without ever seeing
+  /// the problem slot (see `capture_screen.dart`).
   String get captureChooseTitle => _pick('何が手元にある?', 'What do you have?');
 
-  /// 解析はセッションを作る = 今日の1回を使う操作なので、その前に一度だけ挟む。
+  /// Analysis creates a session — the operation that spends today's use — so one
+  /// confirmation step is inserted before it.
   String get captureReviewTitle => _pick('撮れました', 'Got it');
 
-  /// 1枚も撮っていないときのヒント。**ノートが無いことを、先に許しておく。**
+  /// Hint when nothing has been shot: it grants permission to have no notes.
   ///
-  /// ここで黙っていると、解けなかった生徒には紙面をノート枠に入れる以外の道が
-  /// 見えない(`api.ts` の `sessionPhotoParts` が「残る穴」と書いたもの)。
-  /// **咎めない・理由を聞かない。**「まだ手をつけていないなら」とだけ置いて、
-  /// 当てはまる人が自分で拾えるようにする。
+  /// Silence here leaves a stuck student no path but putting the page in the
+  /// notes slot (the "remaining hole" `sessionPhotoParts` in `api.ts` names). No
+  /// blame and no questions — just "if you haven't started yet", so whoever it
+  /// applies to can pick it up themselves.
   String get captureEitherIsFine => _pick(
         'どちらか1枚で始められます。まだ手をつけていないなら、問題だけで大丈夫。',
         "Either one is enough to start. If you haven't tried it yet, just the problem is fine.",
       );
 
-  /// 枠の見出し。**ノートを「任意」に見せ替えない。**
+  /// Slot heading. Notes are never relabelled "optional".
   ///
-  /// ノートが無くても始められるようにはなったが(手も付けていない問題を
-  /// 持ってきた生徒のため)、**あるほうが良いことは変わっていない** —
-  /// どこで手が止まったかが、先輩の切り分けの出発点になる。
-  /// 「任意」と書くと、撮れる人まで撮らなくなる。
+  /// You can now start without notes (for a student who brought a problem they
+  /// have not touched), but having them is still better: where your hand stopped
+  /// is senpai's starting point for narrowing things down. Labelling it optional
+  /// stops even people who could shoot notes from doing so.
   ///
-  /// 問題の側からも「(任意)」を外した。**片方にだけ付いていると、
-  /// もう片方が必須に読める。** ノートが無い生徒にとっては、唯一出せるものが
-  /// 「任意」と書かれ、出せないものが必須に見える — 逆さまになる。
-  /// どちらか1枚でよいことは [captureEitherIsFine] が言うので、
-  /// 枠は名前だけにしておく。
+  /// "(optional)" was dropped from the problem side too: on only one of them, the
+  /// other reads as required. For a student without notes that inverts it — the
+  /// one thing they can offer is marked optional and the one they cannot looks
+  /// mandatory. [captureEitherIsFine] already says one is enough, so the slots
+  /// carry names only.
   String get capturePhotoNotes => _pick('ノート', 'Your notes');
   String get capturePhotoProblem => _pick('問題', 'The problem');
 
-  /// まだ撮っていない枠の操作名。
-  /// **「問題も撮る」とは書かない** — ノートを撮らない人には「も」が合わない。
+  /// Action label for an empty slot. It avoids "photograph the problem too" —
+  /// the "too" does not fit someone who is not shooting notes.
   String get captureTakeNotes => _pick('ノートを撮る', 'Take your notes');
   String get captureAddProblem => _pick('問題を撮る', 'Take the problem');
   String get captureRetake => _pick('撮り直す', 'Retake');
 
-  /// §4-1 の言い回しそのまま。**ヒントであって要求ではない。**
-  /// 1枚に問題とノートの両方が写ることが多いので、2枚必須にすると
-  /// 撮影の摩擦だけが増える。
+  /// A hint, not a requirement. One shot often captures both problem and notes,
+  /// so requiring two would only add friction.
   ///
-  /// **ノートを撮った人にだけ出す。** 問題を先に撮った人(= ノートが無い人)に
-  /// 「問題も写っていると」と言うと、もう撮ったものを催促することになる。
+  /// Shown only to people who shot notes. Telling someone who shot the problem
+  /// first (i.e. has no notes) that "including the problem helps" would nag them
+  /// about something they already did.
   String get captureProblemHint => _pick(
         '問題も写っていると、先輩が迷子になりません',
         "If the problem is in the shot too, your senpai won't get lost",
       );
 
-  /// 枠を分けている理由を、そのまま利点として書く。
-  /// 教科書・問題集の紙面は他者の著作物なので、解析後に破棄される(§4-1)。
+  /// States the reason for separate slots as a benefit: a textbook or workbook
+  /// page is someone else's work, so it is discarded after analysis.
   String get captureProblemDiscarded => _pick(
         '問題の写真は、読み取ったあとに消えます',
         'The photo of the problem is deleted once it has been read',
       );
 
-  /// 読み取った問題文の見出し。**誤読がいちばん早く表面化する場所。**
+  /// Heading for the problem text that was read — the earliest place a
+  /// misreading surfaces.
   ///
-  /// 「合っていますか?」と聞かない。ここで直す手段が無い(セッションは
-  /// もう作られている)のに問いかけると、答えようのない問いになる。
-  /// 事実として置いておけば、ちがっていれば会話の最初に本人が言う —
-  /// それが計画書 §1-1 の「誤読の保険」そのもの。
+  /// It does not ask "is this right?". There is no way to fix it here (the
+  /// session already exists), so asking would be unanswerable. Stated as fact,
+  /// anyone who sees it is wrong says so at the start of the conversation, which
+  /// is the insurance itself.
   String get captureProblemTitle =>
       _pick('先輩は、この問題だと思っています', 'This is the problem your senpai sees');
 
-  /// カメラを断られたとき。黙ってホームに戻さない。
+  /// When the camera is denied. Never silently drop back to home.
   ///
-  /// **どちらの枠から来たかを書かない。** ノートが無くて問題を撮ろうとした人に
-  /// 「ノートを撮れます」と返すと、断られた話の上に的外れが重なる。
+  /// It does not name which slot they came from: replying "you can photograph
+  /// your notes" to someone shooting the problem because they have none piles
+  /// irrelevance on top of a refusal.
   String get captureCameraDenied => _pick(
         'カメラを使えませんでした。設定アプリから許可すると、撮れるようになります。',
         "We couldn't use the camera. Allow it in Settings and you'll be able to take the photo.",
       );
   String get captureOpenSettings => _pick('設定をひらく', 'Open Settings');
 
-  /// カメラを開けなかったとき(許可はあるが端末側の理由)。許可の話と混ぜない。
+  /// When the camera would not open despite permission (a device-side reason).
+  /// Kept separate from the permission message.
   String get captureCameraFailed => _pick('カメラを開けませんでした。もう一度おためしください。',
       "We couldn't open the camera. Please try again.");
 
-  // --- 会話 ---
+  // --- Conversation ---
   String get sessionListening => _pick('聞いています', 'Listening');
   String get sessionThinking => _pick('考えています', 'Thinking');
 
-  /// 会話が終わって、カルテを書いているあいだ。
+  /// While the conversation is over and the karte is being written.
   ///
-  /// **何が起きているかを書く。** 「考えています」のままだと会話が続いて
-  /// いるように見えて、もう一度「今日はここまで」を押させてしまう。
+  /// It says what is happening. "Thinking" would look like the conversation is
+  /// still going and invite another tap on "done for today".
   String get sessionSummarizing => _pick('カルテを書いています…', 'Writing your karte…');
 
-  /// つないでから先輩が入ってくるまで。無言の数秒を「止まっている」に見せない。
+  /// Between connecting and senpai joining, so the silent seconds do not look
+  /// like a stall.
   String get sessionConnecting => _pick('先輩を呼んでいます…', 'Getting your senpai…');
 
-  /// 授業モード(計画書§4-1)。先輩が板書を書き始めたが、まだ何も喋っていないとき。
+  /// Lesson mode: senpai has started writing but has not spoken yet.
   ///
-  /// **「聞いています」を出さない。**聞いているのはこちらではなく生徒のほうで、
-  /// いま起きているのは説明。字幕の初期値をここで取り違えると、
-  /// 板書が出ているのに「話しかけないと進まない画面」に見える。
+  /// It never says "listening". The listener is the student, and what is
+  /// happening is an explanation. Getting the caption's initial value wrong here
+  /// makes a screen with a board look like it needs to be spoken to.
   String get sessionSenpaiTeaching =>
       _pick('先輩が説明しています', 'Your senpai is explaining');
 
-  /// 教え返し。板書は残したまま、こちらが喋る番になったとき
-  /// (コアループ §2「じゃあ今の、説明してみて」)。
+  /// Teaching back: our turn to speak, with the board still up.
   String get sessionExplainBack => _pick('説明してみて', 'Now you explain it');
 
-  /// 授業中に出す問題文の見出し(ワイヤー v2 の1つ目)。
+  /// Heading for the problem shown during a lesson.
   ///
-  /// **撮影画面の `captureProblemTitle` とは別の文言にする。**あちらは
-  /// 「先輩はこの問題だと思っています」= 授業を始める前の**答え合わせ**で、
-  /// こちらは授業中に**いま何を解いているか**を出す札。同じ文を使うと、
-  /// 板書の上に確認の問いかけが常駐することになる。
+  /// Deliberately different wording from capture's `captureProblemTitle`: that
+  /// one is a pre-lesson check that senpai has the right problem, this one is a
+  /// label saying what is being solved right now. Reusing the same sentence would
+  /// park a confirmation question permanently above the board.
   String get sessionProblemTitle => _pick('問題', 'The problem');
 
-  /// 3行で畳んだ問題文を開く。**板書を押し出さないため**に畳んである
-  /// (契約の上限は600字で、全文を出すと板書が画面外へ出る)。
+  /// Expands the problem collapsed to three lines. It is collapsed so it cannot
+  /// push the board off screen (the contract allows 600 characters).
   String get sessionProblemExpand => _pick('続きを読む', 'Read more');
   String get sessionProblemCollapse => _pick('畳む', 'Show less');
 
-  /// 板書がとぎれたとき(封筒の欠落・順序違反を検知した)。
+  /// When the board is truncated (a missing envelope or ordering violation).
   ///
-  /// **黙って虫食いのまま出さない。**抜けたことに気づけないと、
-  /// 抜けたやり方のまま覚えてしまう。落としたのはこちら側なので、
-  /// 生徒のせいに読める言い方にはしない。
+  /// A hole-riddled board is never shown silently: not noticing the gap means
+  /// learning the method with the gap in it. We dropped it, so the wording must
+  /// never read as the student's fault.
   String get sessionBoardGap => _pick(
         '板書はここまでしか届きませんでした。続きは先輩に聞いてください。',
         'The board only came through this far. Ask your senpai for the rest.',
       );
   String get sessionPass => _pick('うまく言えない', "I can't explain this yet");
 
-  /// パスは画面だけで完結させず、先輩にも伝える(教え方を変えてもらう)。
+  /// A pass is not kept to the screen; senpai is told, so the teaching can change.
   String get sessionPassMessage => _pick(
         'うまく言えません。ちがう聞き方をしてもらえますか?',
         "I can't explain this yet. Could you ask it a different way?",
       );
   String get sessionEnd => _pick('今日はここまで', "That's it for today");
 
-  /// つながらなかったとき。**「聞いています」のまま黙らせない。**
+  /// When the connection failed. Never leave it silently on "listening".
   String get sessionConnectionFailed => _pick(
         'つながりませんでした。電波のいいところで、もう一度おためしください。',
         "We couldn't connect. Try again where the signal is better.",
       );
 
-  /// ルームには入れたが、先輩が来なかった(エージェント側の問題)。
-  /// ユーザーのせいではないので、そう読める言い方にする。
+  /// Joined the room but senpai never came (an agent-side problem). It is not the
+  /// user's fault, and the wording says so.
   String get sessionSenpaiUnavailable => _pick(
         '先輩が来られませんでした。少し時間をおいて、もう一度呼んでみてください。',
         "Your senpai couldn't make it. Give it a moment and try again.",
@@ -367,13 +376,13 @@ class AppStrings {
     return _pick('のこり $minutes:$rest', '$minutes:$rest left');
   }
 
-  // --- 祝福 ---
+  // --- Celebration ---
   String get celebrationThanks =>
       _pick('説明、ありがとうございました', 'Thanks for explaining');
   String celebrationFilled(int count) =>
       _pick('穴が$count つ、埋まりました', '$count gaps filled');
 
-  // --- カルテ ---
+  // --- Karte ---
   String get karteTitle => _pick('今日のカルテ', "Today's karte");
   String get karteSaidWell => _pick('言えたこと', 'What you explained');
   String karteHoles(int count) => _pick('穴 — $count つ', 'Gaps — $count');
@@ -383,11 +392,12 @@ class AppStrings {
   String get karteReviewToggle =>
       _pick('あしたの夜、先輩がもう一度きいてきます', 'Your senpai will ask again tomorrow night');
 
-  /// 通知の許可を求める場所はここだけ。穴が見えた直後に、先輩からのお願いとして聞く。
+  /// The only place notification permission is requested, asked as a favour from
+  /// senpai just after a gap appears.
   ///
-  /// **疑問符を落とさないこと。** ここを「あしたの夜、もう一度きくね」と
-  /// 言い切りに直すと、許可を求める文が予告に変わる。先輩は言い切れる立場なので、
-  /// 頼む形にしてあること自体が約束4の歯止めになっている。
+  /// Keep the question mark. Turning it into a statement would change a request
+  /// for permission into an announcement. Senpai is in a position to simply
+  /// assert, so phrasing it as a request is itself the safeguard.
   String get karteReviewAsk =>
       _pick('あしたの夜、もう一度きいてもいい?', 'Mind if I ask you again tomorrow night?');
   String get karteReviewDenied => _pick(
@@ -395,20 +405,22 @@ class AppStrings {
         'Notifications are off. You can turn them back on in Settings.',
       );
 
-  /// カルテの生成が会話直後に間に合わなかったとき。作り直しではなく取りに行く。
+  /// When karte generation did not finish right after the conversation. It
+  /// fetches rather than regenerates.
   String get karteRetrieve => _pick('カルテを取りに行く', 'Fetch my karte');
   String get karteRetrieving => _pick('取りに行っています…', 'Fetching…');
 
-  /// 待っているあいだ、押せないボタンの上に置く説明。
+  /// Explanation above the disabled button while waiting.
   ///
-  /// ボタンの文言だけだと、**押せないボタンが出ているだけ**にしか見えない。
-  /// 何を待っているのか(と、待てば届くこと)をここで言う。
+  /// The button label alone just looks like a disabled button. This says what is
+  /// being waited for, and that waiting will deliver it.
   String get karteWriting => _pick(
         '先輩がカルテを書いています。届いたら、ここに出ます。',
         'Your senpai is writing your karte. It will appear here when it is ready.',
       );
 
-  /// 待つと決めた時間ぶん待っても届かなかった。行き止まりにしないための言い方。
+  /// It did not arrive within the time we chose to wait. Worded so it is not a
+  /// dead end.
   String get karteTakingLong => _pick(
         '思ったより時間がかかっています。もう一度取りに行けます。',
         "It's taking longer than expected. You can try fetching it again.",
@@ -420,29 +432,31 @@ class AppStrings {
   String get karteRetry => _pick('言い直してみる', 'Explain it again');
   String get karteDone => _pick('今日はここまで', "That's it for today");
 
-  /// カルテに残る板書。
+  /// The board kept in the karte.
   ///
-  /// 授業中の板書は会話画面と一緒に消えるので、**授業の寿命を超えて読み返せる
-  /// 場所はカルテだけ**。「言えたこと」と「穴」が会話の結果なら、これは
-  /// 会話の途中で先輩が書いたものそのもので、穴の話をしている最中に
-  /// 「どこの話か」を指し直せる。板書が1枚も無い会話では節ごと出さない。
+  /// The in-lesson board dies with the conversation screen, so the karte is the
+  /// only place it can be read back afterwards. If "said well" and "gaps" are the
+  /// conversation's outcome, this is what senpai actually wrote during it, so a
+  /// gap can be pointed back at while discussing it. With no board, the whole
+  /// section is omitted.
   String get karteBoardTitle => _pick('先輩が書いたもの', 'What your senpai wrote');
 
-  /// 板書が途中で切れていることの印(配送の欠落)。
+  /// The marker that the board is cut off (a delivery gap).
   ///
-  /// **失敗を報告する文にしない。** ユーザーには直せないし、カルテは
-  /// 配送の失敗を蒸し返す場所ではない。それでも黙ってはいけないのは、
-  /// 黙ると計画書§3-6b が横スクロールを却下した理由 —「これで全部だ」と
-  /// 誤読させる — をそのまま再現するから。事実を一行だけ置く。
+  /// Not phrased as a failure report: the user cannot fix it, and the karte is
+  /// not the place to relitigate delivery. Silence is still wrong, because it
+  /// reproduces exactly the problem that got horizontal scrolling rejected —
+  /// being misread as "that's all". One line of fact.
   String get karteBoardTruncated =>
       _pick('ここから先は残っていません', "The rest of this board wasn't saved");
 
-  // --- 復習 ---
+  // --- Review ---
   String get reviewTitle => _pick('埋めにいく穴', 'Gaps to fill');
   String get reviewSaidIt => _pick('言えた', 'I could explain it');
   String get reviewNotYet => _pick('まだ言えない', 'Not yet');
 
-  /// 「まだ」は失点ではない。先輩が引き取る言い方にして、選んだ人を咎めない。
+  /// "Not yet" is not a lost point. Worded so senpai takes it on and nobody is
+  /// blamed for choosing it.
   String get reviewNotYetLead => _pick(
         'じゃあ、先輩ともう一回見てみよっか',
         "Let's go through it together, then",
@@ -454,7 +468,7 @@ class AppStrings {
         'Calling your senpai back by voice uses Premium lesson mode. Quick quizzes stay free.',
       );
 
-  /// 埋めた穴のセクション。ペイウォールが謳う「履歴」はここで果たす。
+  /// The filled-gaps section; this is the "history" the paywall advertises.
   String reviewFilledTitle(int count) =>
       _pick('埋めた穴 — $count つ', 'Gaps filled — $count');
   String get reviewFilledEmpty =>
@@ -465,35 +479,36 @@ class AppStrings {
         _ => _pick('$days日前に埋めた', 'Filled $days days ago'),
       };
 
-  /// 穴がひとつも無いとき。「何もない」ではなく「今は無い」として見せる。
+  /// When there are no gaps. Presented as "none right now", not "nothing here".
   String get reviewEmpty =>
       _pick('いまは、埋めにいく穴がありません', 'There are no gaps waiting right now');
   String get reviewBackHome => _pick('ホームにもどる', 'Back to home');
 
-  // --- 設定 ---
+  // --- Settings ---
   String get settingsTitle => _pick('設定', 'Settings');
   String get settingsSectionAccount => _pick('契約', 'Subscription');
   String get settingsSectionNotifications => _pick('通知', 'Notifications');
   String get settingsSectionAbout => _pick('このアプリについて', 'About');
 
-  // 学年。**単元を絞るためのもので、学習の制限ではない。**
-  // 中学生を選んでも高校の単元が「禁止」になるわけではなく、
-  // 写真から単元を探すときにどちらの範囲を先に見るかが変わる。
+  // School stage. It narrows the topic search and does not restrict learning:
+  // choosing junior high forbids no senior-high topic, it only changes which
+  // range is searched first when matching a photo.
   String get settingsSectionSchoolStage => _pick('学年', 'School');
   String get settingsSchoolStageJuniorHigh => _pick('中学生', 'Junior high');
   String get settingsSchoolStageHighSchool => _pick('高校生', 'High school');
   String get settingsSchoolStageHint =>
       _pick('撮った写真から単元を探す範囲が変わります', 'Changes which topics we look for in your photo');
 
-  /// 1/3/7日の再訪のトグル。**ここが約束4のいちばん危ないところ。**
+  /// The toggle for the 1/3/7-day revisits — the riskiest spot for the promise
+  /// not to nag.
   ///
-  /// 後輩の「再説明のお願い」は、構造的に煽れなかった —
-  /// 教わる側からの**お願い**なので、断れるし、催促に読みようがない。
-  /// 先輩は「勉強しろ」と言える立場なので、同じ枠に
-  /// 「リマインド」「忘れていませんか」を入れると、その瞬間に催促になる。
+  /// A junior asking to have something re-explained structurally could not nag:
+  /// it was a request from the learner, refusable and unreadable as pressure.
+  /// Senpai is in a position to say "go study", so putting "reminders" or "have
+  /// you forgotten?" in the same slot becomes nagging on the spot.
   ///
-  /// なので**届くものの中身**で名づける(誰が命じるか、ではなく)。
-  /// 英語も `Reminders`(=催促の語)を避ける。
+  /// So it is named for what arrives, not for who is telling you. The English
+  /// avoids `Reminders` for the same reason.
   String get settingsNotifications =>
       _pick('先輩からのおさらい', 'Check-backs from your senpai');
   String get settingsNotificationsOn => _pick('届きます', 'On');
@@ -503,13 +518,13 @@ class AppStrings {
   String get settingsPrivacy => _pick('プライバシーポリシー', 'Privacy policy');
   String get settingsTerms => _pick('利用規約', 'Terms of use');
 
-  /// AI生成物の報告導線。App Review で見られる。
+  /// The reporting path for AI-generated content; App Review looks for it.
   ///
-  /// **報告してほしい中身が、憲法改正で変わった。** 旧版は
-  /// 「答えを教えてしまっている」を報告理由に挙げていたが、いまは答えを教えるのが
-  /// 約束1(§0)なので、それは不具合ではなく仕様。代わりに、教えるようになったことで
-  /// 初めて危険になったもの —**間違ったことを教える**— を先頭に置く。
-  /// 報告の対象も質問だけでなく板書と説明を含むので、そう書く。
+  /// What we want reported changed with the pivot. The old version listed "it
+  /// gave away the answer", but giving the answer is now the promise, so that is
+  /// the spec rather than a bug. In its place comes what only became dangerous
+  /// once we started teaching: teaching something wrong. The scope covers the
+  /// board and the explanation as well as the question, and says so.
   String get settingsReport =>
       _pick('気になった内容を報告する', 'Report something that felt wrong');
   String get settingsReportBody => _pick(
@@ -524,43 +539,45 @@ class AppStrings {
   String get settingsOpenFailed => _pick('ひらけませんでした。あとで試してみてください。',
       "We couldn't open that. Please try again later.");
 
-  // --- ペイウォール ---
+  // --- Paywall ---
   String get paywallTitle => _pick('穴を、埋めきる。', 'Fill every gap.');
 
-  /// Premium の一行紹介。**数字は Offering が返した文字列だけ**を置く。
+  /// One-line Premium blurb. The only number is the string the Offering returned.
   ///
-  /// 期間を「/月」と自前で書かないのは、週額の商品に付けると嘘になるから。
-  /// プラン名([planMonthly] など)をそのまま並べる。
-  /// 日英で語順が同じなので `_pick` しない([premiumBadge] と同じ)。
+  /// We never append "/month" ourselves, since that would be false on a weekly
+  /// product; the plan name ([planMonthly] and friends) goes through as is. Word
+  /// order matches in both locales, so it skips `_pick` (as [premiumBadge] does).
   String paywallPriceLine(String plan, String price) => 'Premium $plan $price';
 
-  /// 価格がまだ読めていないとき(祝福画面)。**代わりの数字を書かない。**
+  /// When the price has not loaded yet (celebration screen). No stand-in number.
   ///
-  /// 据え置きの「¥580/月」を出すと、ダッシュボードで値段を変えた瞬間に、
-  /// この行と次に出るストアの決済画面が食い違ったまま購入を決めさせることになる。
-  /// 比較表の Premium 欄([paywallEverydayQuestions])と同じことだけを言う。
+  /// A hard-coded price would disagree with the store's checkout the moment the
+  /// dashboard changed, leaving people deciding on mismatched information. It
+  /// says only what the comparison's Premium column ([paywallEverydayQuestions])
+  /// says.
   String get paywallPricePending => _pick('Premium なら、毎日つづけて何問も聞けます',
       'With Premium you can ask several questions a day');
 
-  /// 自前ペイウォールで Offering が取れなかったとき。
+  /// When our own paywall could not load the Offering.
   ///
-  /// 購入ボタンが押せない状態なので、**押せない理由まで言う**。
-  /// ここも数字は出さない。トライアルの有無も Offering が持っているので、
-  /// 「はじめの7日間は無料」も同じく書けない。
+  /// The buy button is disabled, so the reason is stated too. Still no numbers:
+  /// the Offering also owns whether a trial exists, so "free for 7 days" cannot
+  /// be claimed either.
   String get paywallPriceUnavailable => _pick(
       'いまは金額を読み込めていません。少しあとで、もう一度ひらいてみてください。',
       "We can't load the price right now. Please try opening this again in a moment.");
 
-  /// ペイウォールを**開く**ボタン(復習画面など)。ここで無料日数を約束しない。
-  /// ストアの商品にトライアルが付いているかは、Offering を読むまで分からない。
+  /// The button that opens the paywall (from review and elsewhere). It promises
+  /// no trial days: whether the store product has a trial is unknown until the
+  /// Offering is read.
   String get paywallCta => _pick('Premiumをみる', 'See Premium');
 
-  /// 購入ボタン。トライアルがあるときは [planFreeTrial] に差し替わる。
+  /// The buy button; replaced by [planFreeTrial] when a trial exists.
   String get paywallSubscribe => _pick('このプランではじめる', 'Start with this plan');
   String get paywallDismiss => _pick('無料のまま続ける', 'Keep using the free version');
 
-  /// 自動更新であることは購入画面に書く義務がある(Guideline 3.1.2)。
-  /// 「解約できます」だけでは、更新されることを伝えたことにならない。
+  /// Stating auto-renewal on the purchase screen is required (guideline 3.1.2).
+  /// "You can cancel" alone does not convey that it renews.
   String get paywallCancelNote => _pick('登録は自動更新されます。いつでも解約できます',
       'Your subscription renews automatically. Cancel anytime');
   String get paywallFree => _pick('無料', 'Free');
@@ -570,62 +587,64 @@ class AppStrings {
   String get paywallRowFollowup => _pick('先輩のあと追い質問', 'Follow-up questions');
   String get paywallEverydayOne => _pick('毎日1問', 'One question every day');
 
-  /// Premium のセッション枠。
+  /// Premium's session allowance.
   ///
-  /// **「何問でも」と書いてはいけない。**`PREMIUM_SESSIONS_PER_DAY` の
-  /// フェアユース上限があるので、無制限を約束すると**買ったあとにAPIが断る**。
-  /// §6-3 が数字を隠せと言っているのは**利用中の残数表示**の話であって、
-  /// 買うかどうかを決める場所で嘘をついてよいという意味ではない
-  /// (HAMM の「誠実なペイウォール」に正面から反する)。
-  /// 通常利用では一度も当たらない上限なので、**当たらないことを言う**。
+  /// It must never say "as many as you like". `PREMIUM_SESSIONS_PER_DAY` is a
+  /// fair-use cap, so promising unlimited means the API refuses after purchase.
+  /// Hiding numbers applies to the remaining-count display during use, not to
+  /// lying where someone decides whether to buy — that would contradict an honest
+  /// paywall head on. The cap is never hit in normal use, so that is what it
+  /// says.
   String get paywallEverydayQuestions => _pick('毎日、続けて何問も', 'Several questions a day');
   String get paywallTodayOnly => _pick('当日のみ', 'Today only');
   String get paywallHistory => _pick('穴の復習と履歴', 'Review and history');
 
-  /// 比較表の「あり」。`✓`(U+2713)は ZenMaruGothic に字形が無く、
-  /// golden で空欄に見えていた。フォントが持っている字だけで書く。
+  /// "Included" in the comparison. `✓` (U+2713) has no glyph in ZenMaruGothic
+  /// and rendered blank in goldens, so only characters the font has are used.
   String get paywallIncluded => _pick('○', 'Yes');
 
-  // --- プラン(RevenueCatのpackageから作る) ---
+  // --- Plans (built from RevenueCat packages) ---
   String get planWeekly => _pick('1週間', 'Weekly');
   String get planMonthly => _pick('1か月', 'Monthly');
   String get planYearly => _pick('1年', 'Yearly');
   String planPerMonth(String price) => _pick('月あたり $price', '$price / month');
 
-  /// 「おすすめ」ではなく計算した事実として出す(煽らない)。
+  /// Presented as a computed fact, not a recommendation.
   String get planBestValue => _pick('月あたりがいちばん安い', 'Lowest monthly price');
   String planFreeTrial(int days) =>
       _pick('はじめの$days日間は無料', 'First $days days free');
 
-  // --- 購入のお礼 ---
+  // --- Thank-you ---
   //
-  // 「ご購入ありがとうございます」と書けない場合が3つある。
-  // 無料トライアル(まだ1円も払っていない)・復元(買い直していない)・
-  // 決済は通ったが未反映(祝ってはいけない)。見出しを分けているのはそのため。
+  // Three cases where "thank you for your purchase" cannot be written: a free
+  // trial (nothing paid yet), a restore (nothing re-bought), and payment that
+  // went through without an entitlement (nothing to celebrate). Hence the
+  // separate headings.
 
-  /// 買った。素直にお礼を言っていい唯一のケース。
+  /// Bought. The one case where a plain thank-you is honest.
   String get thanksTitle => _pick('ありがとうございます', 'Thank you');
   String get thanksBody =>
       _pick('これから、いくらでも聞きます。', 'From now on, ask me as much as you like.');
 
-  /// 無料トライアルが始まった。**お礼ではなく、事実から書く。**
+  /// A free trial started. Lead with the fact, not with thanks.
   String thanksTrialTitle(int days) =>
       _pick('$days日間、ぜんぶ使えます', 'Everything is open for $days days');
 
-  /// 期限が読めなかったとき。日数を騙るくらいなら、日数を言わない。
-  /// ここでお礼に落とすと、払っていない人にお礼を言うことになる。
+  /// When the expiry could not be read. Better to say no number than a made-up
+  /// one; falling back to thanks would thank someone who has not paid.
   String get thanksTrialTitlePlain => _pick('ぜんぶ、使えます', 'Everything is open');
 
-  /// 課金がいつ始まるかを、先に、はっきり言う(§6)。
+  /// States plainly and up front when billing begins.
   String thanksTrialBody(String date) => _pick('$date までは無料です。その日から請求が始まります。',
       "It's free until $date. Billing starts that day.");
 
-  /// 機種変更などで戻ってきた人。買い直していないので、お礼は言わない。
+  /// Someone back after a device change. Nothing was re-bought, so no thanks.
   String get thanksRestoredTitle => _pick('おかえりなさい', 'Welcome back');
   String thanksRestoredBody(String date) =>
       _pick('契約は $date まで有効です。', 'Your subscription is active until $date.');
 
-  /// 解放されたもの。ペイウォールの比較表と同じ3つを、同じ順で出す。
+  /// What was unlocked: the same three items as the paywall comparison, in the
+  /// same order.
   String get thanksUnlockedSessions =>
       _pick('1日1回の上限がなくなりました', 'The once-a-day limit is gone');
   String get thanksUnlockedHistory =>
@@ -635,15 +654,15 @@ class AppStrings {
 
   String get thanksStart => _pick('はじめる', 'Get started');
 
-  /// 自動更新であることは、祝っている画面でも省かない(Guideline 3.1.2)。
+  /// Auto-renewal is stated even on a celebratory screen (guideline 3.1.2).
   String thanksRenewsOn(String date) =>
       _pick('$date に更新されます・いつでも解約できます', 'Renews on $date · Cancel anytime');
   String get thanksCancelAnytime => _pick('いつでも解約できます', 'Cancel anytime');
 
-  // --- 購入の復元・契約の管理 ---
+  // --- Restore and subscription management ---
   String get paywallRestore => _pick('購入を復元する', 'Restore purchases');
-  // 復元できたときの文言はここに無い。SnackBar ではなく、
-  // お礼の画面([ThanksScreen])が「おかえりなさい」を出す。
+  // There is no wording here for a successful restore: [ThanksScreen] says
+  // "welcome back" instead of a SnackBar.
   String get paywallRestoredNothing => _pick('このアカウントに、復元できる購入は見つかりませんでした',
       'No previous purchases were found for this account');
   String get manageSubscription => _pick('契約の管理', 'Manage subscription');
@@ -654,21 +673,23 @@ class AppStrings {
   String premiumBillingStarts(String date) =>
       _pick('$date から請求が始まります', 'Billing starts on $date');
 
-  /// 契約している印。ホーム右上と設定に出す。
+  /// The subscribed marker, shown top right on home and in settings.
   ///
-  /// **ランクや称号ではない。** 数えるのは連続日数と埋めた穴だけなので、
-  /// ここは「今どっちの状態か」の表示に留める。
-  /// 商品名なので日英で変えない。
+  /// Not a rank or a title: we count only streak days and filled gaps, so this
+  /// stays a plain statement of which state you are in. It is a product name, so
+  /// it is identical in both locales.
   String get premiumBadge => 'Premium';
   String get premiumActive => _pick('有効', 'Active');
   String get premiumTrialBadge => _pick('無料おためし中', 'Free trial');
 
-  /// Test Store で動いているビルドの表示。実売と取り違えないための注記。
+  /// Shown on builds running against the Test Store, so it is not mistaken for a
+  /// real sale.
   String get testStoreNotice =>
       _pick('テストストアです(実際の請求は発生しません)', 'Test Store — you will not be charged');
 
-  // --- エラー ---
-  /// 購入が通ったのに entitlement が付かなかった。ダッシュボードの設定漏れ。
+  // --- Errors ---
+  /// The purchase went through without an entitlement — a dashboard
+  /// misconfiguration.
   String get purchaseErrorNotEntitled => _pick(
     '購入は完了しましたが、まだ反映されていません。'
     '少し時間をおいて「購入を復元する」を試してみてください。',
@@ -698,7 +719,8 @@ class AppStrings {
     'Purchases are unavailable right now. We are looking into it.',
   );
 
-  /// 「◯年◯月◯日」。intl を直接の依存に足さずに済ませるための最小の整形。
+  /// A formatted date. Minimal formatting, to avoid adding intl as a direct
+  /// dependency.
   String date(DateTime value) => _pick(
     '${value.year}年${value.month}月${value.day}日',
     '${_monthNames[value.month - 1]} ${value.day}, ${value.year}',
@@ -712,38 +734,38 @@ class AppStrings {
   String get errorGeneric => _pick('うまくいきませんでした。少し時間をおいて試してみてください。',
           'Something went wrong. Please try again shortly.');
 
-  /// 圏外・タイムアウトなど、送信そのものが届かなかったとき。
-  /// サーバの文言が返ってこない経路なので、アプリ側で持つ。
+  /// When the request never arrived (no signal, a timeout). No server wording
+  /// comes back on this path, so the app carries its own.
   String get errorNetwork => _pick(
         'うまく送れませんでした。電波の届くところで、もう一度お願いします。',
         "We couldn't send that. Please try again where the signal is better.",
       );
   String get errorRetry => _pick('もう一度', 'Try again');
 
-  // --- 先輩の表情(読み上げ用のラベル。`senpai_face.dart` の `SenpaiMood` と対応)---
+  // --- Senpai's expressions (a11y labels matching `SenpaiMood`) ---
   String get senpaiWaiting => _pick('先輩が待っています', 'Your senpai is waiting');
   String get senpaiListening => _pick('先輩が聞いています', 'Your senpai is listening');
 
-  /// **教え返しが伝わった側の顔。** `just got it` のままだと
-  /// 「先輩がいま単元を理解した」と読めてしまうので、納得の向きを変える。
+  /// The face of a teach-back landing. `just got it` would read as senpai having
+  /// just understood the topic, so the direction is reversed.
   String get senpaiDelighted => _pick('先輩が納得しています', 'Your senpai is convinced');
 
-  /// 困っているのは**先輩のほう**(`SenpaiMood.puzzled` の定義)。
-  /// 生徒が詰まったときには出ないので、「考えています」ではなく困り顔として読む。
+  /// Senpai is the one struggling (see `SenpaiMood.puzzled`). It never appears
+  /// when a student is stuck, so it reads as troubled, not "thinking".
   String get senpaiPuzzled =>
       _pick('先輩が困っています', 'Your senpai is having trouble');
 
-  // --- 板書の読み上げ(`board_speech.dart`)---
+  // --- Board narration (`board_speech.dart`) ---
   //
-  // 板書は `Math.tex` と `CustomPaint` で描かれていて、そのままでは
-  // **VoiceOver から完全に不可視**。板書はプロダクトの中心なので、
-  // ここが欠けると目が見えない生徒には授業が存在しないのと同じになる。
+  // The board is drawn with `Math.tex` and `CustomPaint`, leaving it entirely
+  // invisible to VoiceOver. It is the heart of the product, so missing it means
+  // a blind student has no lesson at all.
   //
-  // **英字はそのまま残す。** 1文字の英字はスクリーンリーダーがロケールなりに
-  // 読むので、「エックス」と書くと二重に読まれたり英語音声で崩れたりする。
-  // 言葉にするのは**構造と記号**だけ。
+  // Latin letters stay as they are: a screen reader reads a single letter per
+  // its locale, and spelling it out would double it up or break under an English
+  // voice. Only structure and symbols become words.
 
-  /// 分数。**日本語は「B分のA」で順序が逆になる。**
+  /// Fractions. Japanese states the denominator first, reversing the order.
   String boardSpeechFraction(String numerator, String denominator) =>
       _pick('$denominator 分の $numerator', '$numerator over $denominator');
   String boardSpeechSquareRoot(String body) => _pick('ルート $body', 'square root of $body');
@@ -753,11 +775,12 @@ class AppStrings {
   String boardSpeechSubscript(String index) => _pick('の 添字 $index', 'sub $index');
   String boardSpeechVector(String body) => _pick('ベクトル $body', 'vector $body');
 
-  /// 上線(`\overline{AB}` / `\bar{x}`)。線分・共役複素数・平均で使う。
-  /// **何を意味するかは文脈で変わる**ので、読み上げは「線が引いてある」までに留める。
+  /// Overlines (`\overline{AB}` / `\bar{x}`): segments, conjugates and means.
+  /// The meaning depends on context, so narration goes only as far as "there is
+  /// a bar".
   String boardSpeechOverline(String body) => _pick('$body の上に線', '$body with a bar');
 
-  /// 図形は「厳密な読み上げ」より「**何が描かれているか**」で足りる。
+  /// For figures, "what is drawn" is enough; exact narration is not required.
   String boardSpeechTriangle(String vertices, String marks) => _pick(
         '三角形 $vertices。$marks',
         'Triangle $vertices. $marks',
@@ -765,7 +788,8 @@ class AppStrings {
   String boardSpeechRightAngle(String vertex) => _pick('頂点 $vertex は直角', 'a right angle at $vertex');
   String boardSpeechAngle(String vertex, String label) =>
       _pick('頂点 $vertex の角は $label', 'the angle at $vertex is $label');
-  /// 英語の例文の読み上げ。**下線は音にならない**ので、focus を言葉にする。
+  /// Narration for an English example. An underline makes no sound, so focus is
+  /// put into words.
   String boardSpeechSentence(String text, String gloss, String focus) {
     final StringBuffer buffer = StringBuffer(text);
     if (gloss.isNotEmpty) buffer.write(_pick('。訳は $gloss', '. Meaning: $gloss'));
@@ -773,13 +797,14 @@ class AppStrings {
     return buffer.toString();
   }
 
-  /// 対比表の読み上げ。列と行を1文に畳む(表として読ませる手段が無いため)。
+  /// Narration for a comparison table: columns and rows folded into one sentence,
+  /// since there is no way to have it read as a table.
   String boardSpeechCompare(String title, String columns, String rows) {
     final String heading = title.isEmpty ? _pick('対比表', 'A comparison') : title;
     return _pick('$heading。$columns の順に、$rows', '$heading. Columns: $columns. Rows: $rows');
   }
 
-  /// 対比表を1文に畳むときの区切り。読み上げでの間になる。
+  /// Separator when folding a comparison into one sentence; it becomes a pause.
   String get boardSpeechCompareSeparator => _pick(' と ', ' vs ');
 
   String boardSpeechCircle(String radius, String labels) =>
@@ -789,21 +814,22 @@ class AppStrings {
         'A graph of $fn for x from $min to $max. $marks',
       );
 
-  /// 作図の読み上げ。**SVGは読み上げられない**ので、サーバが一緒に送ってくる
-  /// `alt` をそのまま使う(作図の宣言はサーバが持っているので、文言も向こうで書ける)。
-  /// `alt` が無いときだけ、この定型に落ちる。
+  /// Narration for a construction. SVG cannot be read out, so the `alt` the
+  /// server sends alongside is used as is (the server owns the declaration, so it
+  /// can write the wording). This boilerplate applies only when `alt` is missing.
   String get boardSpeechFigure => _pick('図', 'A figure');
 
-  /// 記号を言葉にする。**スクリーンリーダーごとの読み方の揺れを消す**ため、
-  /// 記号のまま渡さずにこちらで言葉にしておく。
+  /// Turns symbols into words, so readings do not vary between screen readers.
   ///
-  /// **順序に意味がある。** `board_speech.dart` は上から順に `replaceAll` するので、
-  /// **長いものを先に置く**(`\cdots` より先に `\cdot` を当てると「かける s」に化ける)。
-  /// 同じ理由で `\infty` は `\in` より先、`\leq` は `\le` より先に並べてある。
-  /// ここに足すときは、その語を接頭辞に持つ語が上にあるかを必ず確かめること。
+  /// Order matters: `board_speech.dart` runs `replaceAll` top to bottom, so
+  /// longer entries come first (matching `\cdot` before `\cdots` would turn it
+  /// into "times s"). For the same reason `\infty` precedes `\in` and `\leq`
+  /// precedes `\le`. When adding an entry, check that nothing above it is a
+  /// prefix of it.
   Map<String, String> get boardSpeechSymbols => _ja
       ? const <String, String>{
-          // 度。`^` ごと畳まないと「90 の 度 乗」に読める(指数の畳みが `\` に当たらない)。
+          // Degrees. Without folding the `^` too it narrates as "90 to the
+          // degree power", since exponent folding does not match `\`.
           r'^\circ': ' 度 ',
           r'\cdots': ' 以下同様に ', r'\ldots': ' 以下同様に ', r'\dots': ' 以下同様に ',
           r'\cdot': ' かける ', r'\pm': ' プラスマイナス ', r'\mp': ' マイナスプラス ',
@@ -814,11 +840,11 @@ class AppStrings {
           r'\lt': ' 小なり ', r'\gt': ' 大なり ', r'\approx': ' およそ等しい ',
           r'\therefore': ' よって ', r'\because': ' なぜならば ',
           r'\Leftrightarrow': ' 同値 ', r'\Rightarrow': ' ならば ',
-          // 図形
+          // Shapes
           r'\angle': ' 角 ', r'\triangle': ' 三角形 ', r'\perp': ' に垂直 ',
           r'\parallel': ' に平行 ', r'\sim': ' 相似 ', r'\cong': ' 合同 ',
           r'\equiv': ' 合同 ', r'\circ': ' 度 ',
-          // 集合
+          // Sets
           r'\emptyset': ' 空集合 ', r'\varnothing': ' 空集合 ',
           r'\infty': ' 無限大 ', r'\notin': ' に属さない ', r'\in': ' に属する ',
           r'\subset': ' は部分集合 ', r'\supset': ' を含む ',
@@ -828,8 +854,8 @@ class AppStrings {
           r'\log': ' ログ ', r'\ln': ' 自然対数 ', r'\theta': ' シータ ',
           r'\alpha': ' アルファ ',
           r'\beta': ' ベータ ', r'\pi': ' パイ ',
-          // 集合の波括弧。構造の `{}` を落とす前に言葉にしないと、
-          // バックスラッシュだけが読み上げに残る。
+          // Set braces. Without wording them before the structural `{}` are
+          // dropped, only the backslashes remain in the narration.
           r'\{': ' 集合 かっこ ', r'\}': ' 集合 かっことじ ',
           '=': ' イコール ', '+': ' プラス ', '-': ' マイナス ',
           '<': ' 小なり ', '>': ' 大なり ', '(': ' かっこ ', ')': ' かっことじ ',
@@ -864,10 +890,11 @@ class AppStrings {
           ')': ' close bracket ',
         };
 
-  // --- 親レポート(§5-1・§5-2)---
+  // --- Parent report ---
   //
-  // 親へ届く文章なので、アプリ内だけの短いラベルよりも意味を省略しない。
-  // 数字は「埋めた穴」と「連続日数」だけ。正答率・点数・順位に読める語を置かない。
+  // This text reaches a parent, so it abbreviates less than in-app labels do.
+  // The only numbers are filled gaps and streak days; nothing readable as
+  // accuracy, score or ranking appears.
   String get parentReportTitle => _pick('今月のレポート', 'This month\'s report');
   String get parentReportOpen =>
       _pick('今月の親レポートをひらく', 'Open this month\'s parent report');
@@ -885,10 +912,12 @@ class AppStrings {
       _pick('今月は、ここに載る説明がまだありません', 'No explanation to quote here yet this month');
   String parentReportQuote(String quote) => _pick('「$quote」', '“$quote”');
 
-  /// 親へ渡す料金。**数字は Offering から取れたときだけ**書く。
+  /// The price shown to a parent. Numbers appear only when the Offering provided
+  /// them.
   ///
-  /// 据え置き価格を持つと、RevenueCat側の商品を変えた日にメールだけ古い額になる。
-  /// 取れないときは推測せず、ストアの購入画面が正だと伝える。
+  /// A hard-coded price would leave the email showing the old amount the day the
+  /// RevenueCat product changed. Without one, it guesses nothing and says the
+  /// store's purchase screen is authoritative.
   String parentReportPriceNote({String? plan, String? price}) {
     if (plan == null || price == null) {
       return _pick(
@@ -919,10 +948,11 @@ class AppStrings {
         'The parent report is not open yet. Premium lets you review this month\'s record before emailing it.',
       );
 
-  // --- 穴の自己申告(計画書§2) ---
+  // --- Self-reported gaps ---
   //
-  // **採点者は本人だけ。**「まだ」を失敗・減点・連続記録の喪失に結びつけず、
-  // 何も変わらない選択肢として同じ場所に置く。残数や達成率も出さない。
+  // The student is the only grader. "Not yet" is tied to no failure, deduction
+  // or lost streak; it sits in the same place as an option that changes nothing.
+  // No remaining counts and no completion rates.
   String get holeSelfReportQuestion =>
       _pick('これ、言えるようになった?', 'Can you explain this now?');
   String get holeSelfReportNoPressure => _pick(
@@ -936,10 +966,11 @@ class AppStrings {
   String get holeSelfReportFilling =>
       _pick('カルテに反映しています…', 'Updating your karte…');
 
-  // --- 学習計画(§4-3。有料・音声で作る)---
+  // --- Study plan (paid, built by voice) ---
   //
-  // 入力欄のラベルは置かない。日付・範囲・教材は先輩が順に口で聞き、
-  // 画面の文言は「話し始める」と、できた計画を読むための見出しだけにする。
+  // No input field labels. Senpai asks for dates, scope and materials aloud in
+  // turn, and the screen carries only "start talking" plus headings for reading
+  // the finished plan.
   String get planTitle => _pick('学習計画', 'Study plan');
   String get planIntroTitle =>
       _pick('テストまで、一緒に組もっか。', "Let's map out the test.");
@@ -984,14 +1015,16 @@ class AppStrings {
     _ => _pick('これから', 'Up next'),
   };
 
-  /// topic_id の接頭辞は課程を表す(ADR 0005 / 0006)。
-  /// 割合や理解度を作らず、科目名(中学は学年)だけを出す。
+  /// The topic_id prefix identifies the curriculum (ADR 0005 / 0006). It yields
+  /// only a subject name (a school year for junior high), never a percentage or
+  /// comprehension score.
   ///
-  /// **接頭辞を足したらここも足すこと。** 対応表は
-  /// `packages/curriculum/src/schema.ts` と `packages/contract/src/karte.ts` にも
-  /// あり、ここが3か所目になる(contract が依存を持たない層なので解けない)。
-  /// 忘れると既定の「数学」に落ちて、英語の単元に「数学」と出る —
-  /// `test/curriculum_label_test.dart` が全コースコードで検出する。
+  /// Adding a prefix means adding it here too. The mapping also lives in
+  /// `packages/curriculum/src/schema.ts` and `packages/contract/src/karte.ts`,
+  /// making this the third copy (contract is a dependency-free layer, so it
+  /// cannot be shared). Forgetting falls back to the default "math" and labels
+  /// English topics as math — `test/curriculum_label_test.dart` catches it across
+  /// every course code.
   String planSubject(String topicId) {
     final String code = topicId.split('-').first;
     return switch (code) {
@@ -1018,10 +1051,11 @@ class AppStrings {
     };
   }
 
-  // --- 下部ナビゲーション ---
+  // --- Bottom navigation ---
   //
-  // 機能名とは別に持つ。画面タイトルを短くしたくなったとき、タブの読み上げまで
-  // 意図せず変わると、3つの大域的な行き先が端末や言語によって揺れるため。
+  // Held separately from feature names: shortening a screen title should not
+  // silently change a tab's announcement, or the three global destinations would
+  // drift between devices and languages.
   String get navigationHome => _pick('ホーム', 'Home');
   String get navigationPlan => _pick('計画', 'Plan');
   String get navigationSettings => _pick('設定', 'Settings');

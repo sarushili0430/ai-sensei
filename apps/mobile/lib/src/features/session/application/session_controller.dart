@@ -16,43 +16,43 @@ import 'lesson_opening_audio.dart';
 
 part 'session_controller.g.dart';
 
-/// 会話セッションの進行状態。
+/// Progress state of a conversation session.
 ///
-/// 会話そのものはエージェント側が回すので、アプリが持つのは
-/// 「つながっているか」「先輩が喋っているか」「残り時間」だけ。
+/// The agent drives the conversation itself, so the app holds only whether it is
+/// connected, whether senpai is speaking, and the time left.
 ///
-/// **授業モード(計画書§4-1)は「誰が喋っているか」が同じでも意味が違う。**
-/// 板書が出ているあいだは、先輩の発話は「質問」ではなく「説明」で、
-/// こちらの発話は「説明」ではなく「教え返し」になる。信号(`AgentState`)は
-/// 同じものを読むが、画面に出すものが変わるのでフェーズを分けてある。
-/// **既存の復習の会話は板書を受け取らないので、そちらの経路は何も変わらない。**
+/// Lesson mode changes what "who is speaking" means. While a board is up,
+/// senpai's speech is an explanation rather than a question, and ours is
+/// teaching back rather than explaining. The signal (`AgentState`) is the same,
+/// but the screen differs, so the phases are separate. Existing review
+/// conversations receive no board, so that path is unchanged.
 enum SessionPhase {
-  /// ルームにつないで、先輩が入ってくるのを待っている。
+  /// Connected to the room, waiting for senpai to join.
   connecting,
   listening,
   senpaiSpeaking,
 
-  /// 先輩が板書つきで教えている(授業モード)。
+  /// Senpai is teaching with the board (lesson mode).
   senpaiTeaching,
 
-  /// 「じゃあ今の、説明してみて」。**板書は残したまま**こちらが喋る番。
+  /// "Now explain that back to me": our turn, with the board still up.
   explainBack,
 
-  /// 会話は終わり、カルテを待っている。生成に数秒かかる。
+  /// The conversation is over and the karte is pending; generation takes seconds.
   summarizing,
   finished,
   failed,
 }
 
-/// 会話が始まらなかった理由。
+/// Why the conversation never started.
 ///
-/// **失敗を「聞いています」のまま見せない。** どちらの理由かで打つ手が違う
-/// (電波を確かめる / 時間をおく)ので、画面の文言も分ける。
+/// A failure must never keep showing "listening". The remedies differ (check the
+/// signal vs wait a while), so the wording differs too.
 enum SessionFailure {
-  /// ルームにつなげなかった。通信・トークン・マイクのどれか。
+  /// Could not connect to the room: network, token or mic.
   connection,
 
-  /// つながったが、先輩が入ってこなかった。エージェント側の問題。
+  /// Connected, but senpai never joined. An agent-side problem.
   senpaiUnavailable,
 }
 
@@ -72,21 +72,23 @@ class SessionState {
   final SessionPhase phase;
   final int remainingSeconds;
 
-  /// 直近の先輩の発話(字幕表示用)。声を聞き取れない場所でも進められるように出す。
+  /// Senpai's latest utterance, for captions, so it works where audio cannot be
+  /// heard.
   final String? lastSenpaiText;
 
-  /// いま黒板に書いてあるもの。**1つの問題ぶん生き続ける**(計画書§3-2)。
-  /// 板書を受け取らない会話(既存の復習)では空のまま。
+  /// What is currently on the board; it lives for one problem. Conversations
+  /// that receive no board (existing review) leave it empty.
   final BoardSnapshot board;
 
-  /// `phase == failed` のときだけ入る。
+  /// Set only when `phase == failed`.
   final SessionFailure? failure;
   final Object? error;
 
-  /// サーバが「ここで出す」と判断したときだけ true(初回カルテで穴が見えた直後)。
+  /// True only when the server decides to show it — just after a gap appears in
+  /// the first karte.
   final bool showPaywall;
 
-  /// カルテを待ちきれなかった。祝福だけ見せて、カルテは後で取りに行く。
+  /// We could not wait for the karte; show the celebration and fetch it later.
   final bool resultMissing;
 
   SessionState copyWith({
@@ -112,11 +114,12 @@ class SessionState {
   }
 }
 
-/// LiveKitルームへの接続を持つ。
+/// Holds the connection to the LiveKit room.
 ///
-/// WebRTCは書かない(livekit_clientに任せる)。ここでやるのは
-/// 接続・マイク公開・**先輩の出入りと発話の受け取り**・残り時間・切断だけ。
-/// 会話の寿命に合わせて破棄する(画面を離れたら接続も状態も残さない)。
+/// No WebRTC here (livekit_client handles that). This does only connecting,
+/// publishing the mic, receiving senpai joining, leaving and speaking, the time
+/// left, and disconnecting. It is disposed with the conversation, so leaving the
+/// screen leaves neither connection nor state behind.
 @riverpod
 class SessionController extends _$SessionController {
   Room? _room;
@@ -128,65 +131,69 @@ class SessionController extends _$SessionController {
   String? _sessionId;
   String? _sessionKind;
 
-  /// 板書の受信。接続のたびに作り直す(板書はセッションをまたがない)。
+  /// Board receiver, rebuilt on each connection — boards never span sessions.
   BoardInbox? _boardInbox;
 
-  /// 授業の最初の板書までを埋める、ローカル音声の寿命。
+  /// Lifetime of the local audio filling the gap before the first board step.
   ///
-  /// agent の TTS へ同じ文を渡すと、固定文なのに毎回従量原価が発生する。
-  /// モバイルのアセットだけを鳴らし、板書か本物の先輩の声が先着したら止める。
+  /// Sending the same fixed line through the agent's TTS would incur metered
+  /// cost every time. We play a mobile asset instead and stop it as soon as the
+  /// board or the real senpai arrives.
   LessonOpeningAudio? _lessonOpeningAudio;
 
-  /// 封筒の処理を**到着順に直列化する**ための鎖。
+  /// Chain that serializes envelope handling in arrival order.
   ///
-  /// ハンドラは封筒の到着順に呼ばれるが、`readAll()` の完了順まで同じとは限らない
-  /// (チャンク数が違えば後の封筒が先に読み終わる)。順番が入れ替わると、
-  /// 受信側の `seq` の検算はそれを**欠落として扱う** — 実際には全部届いているのに
-  /// 板書がとぎれる。だから読み出しそのものを1本の鎖につないで、
-  /// 到着順のまま処理する。
+  /// Handlers fire in arrival order, but `readAll()` does not necessarily
+  /// complete in that order (a later envelope with fewer chunks can finish
+  /// first). Reordering makes the receiver's `seq` check treat it as a gap, so
+  /// the board truncates even though everything arrived. Chaining the reads
+  /// themselves keeps processing in arrival order.
   ///
-  /// **ここを外すと、再現しにくい壊れ方になる。**追い越しが起きるかどうかは
-  /// 封筒ごとのチャンク数(= `tex` や `speech` の長さ)と回線次第なので、
-  /// 同じ問題を教わっても起きたり起きなかったりする。しかも症状は
-  /// 「板書がとぎれました」— **配送は正常なのに、欠落検知のほうが誤報する。**
+  /// Removing this produces a failure that is hard to reproduce: whether
+  /// overtaking happens depends on chunk counts (the length of `tex` or
+  /// `speech`) and the connection, so the same problem breaks only sometimes.
+  /// And the symptom is "the board was truncated" — delivery is fine and the gap
+  /// detector is the thing raising a false alarm.
   Future<void> _boardQueue = Future<void>.value();
 
-  /// 先輩の状態(`lk.agent.state`)の読み取りはSDKに任せる。
+  /// Reading senpai's state (`lk.agent.state`) is left to the SDK.
   final Agent _senpai = Agent();
   String? _senpaiIdentity;
   bool _finishing = false;
 
-  /// 先輩が部屋に来るのを待つ時間。
+  /// How long to wait for senpai to join.
   ///
-  /// エージェントのワーカーが動いていない・ディスパッチされていないときは、
-  /// 部屋は開いたまま誰も来ない。**待ち続けさせない**(上限時間まで
-  /// 「聞いています」を見せるのが、いちばん不親切な壊れ方)。
+  /// If the agent worker is down or never dispatched, the room stays open and
+  /// nobody arrives. Do not let people wait it out: showing "listening" until the
+  /// time limit is the unkindest way to fail.
   static const Duration senpaiJoinTimeout = Duration(seconds: 25);
 
-  /// 切断の完了を待つ上限。
+  /// Cap on waiting for disconnection to complete.
   ///
-  /// SDKの `Room.disconnect()` は完了イベントを10秒待ってから例外を投げる。
-  /// 会話が終わったあとの10秒は、カルテを待つ画面がただ固まる時間でしかない。
-  /// 待つのはここまでにして、あとは `dispose()` に任せる。
+  /// The SDK's `Room.disconnect()` waits 10 seconds for the completion event
+  /// before throwing. After a conversation, those 10 seconds are just a frozen
+  /// screen waiting on the karte. We wait this long and leave the rest to
+  /// `dispose()`.
   static const Duration _disconnectTimeout = Duration(seconds: 3);
 
-  /// 会話画面でカルテを待つ上限。
+  /// Cap on waiting for the karte on the conversation screen.
   ///
-  /// カルテはエージェントがLLMで書くので、会話が終わってから数秒〜十数秒かかる。
-  /// **その全部をこの画面で待たない。** 待ちきると、終わってから画面が変わるまで
-  /// 最長1分「考えています」のまま止まり、押しても何も起きない画面を見せ続ける
-  /// ことになる。ここまで待って来なければ先に祝福へ進み、カルテは祝福画面が
-  /// 受け取りに行く([SessionOutcomeController.retrieveKarte])。
+  /// The agent writes the karte with an LLM, taking seconds to tens of seconds
+  /// after the conversation ends. We do not wait all of it here: waiting it out
+  /// leaves up to a minute of "thinking" where taps do nothing. Past this we move
+  /// on to the celebration, which fetches the karte itself
+  /// ([SessionOutcomeController.retrieveKarte]).
   static const Duration _karteGrace = Duration(seconds: 8);
   static const Duration _kartePollInterval = Duration(seconds: 1);
 
-  /// 封筒1通を読み切るまでの上限。
+  /// Cap on reading one envelope to completion.
   ///
-  /// 封筒は手順1つぶん(数百バイト)で、reliableな経路で届く。5秒待っても
-  /// 揃わないなら、それは遅いのではなく**来ない**。上限が無いと、
-  /// 閉じないストリームを1本掴んだだけで [_boardQueue] が止まり、
-  /// **後続の板書が全部止まる**(そして「まだ来ていない」の顔で待ち続ける)。
-  /// 諦めた封筒は次の `seq` のずれとして検知される(それが `seq` を持つ理由)。
+  /// An envelope is one step (a few hundred bytes) delivered over a reliable
+  /// path. If it is not complete after five seconds it is not slow, it is not
+  /// coming. Without a cap, one stream that never closes stalls [_boardQueue] and
+  /// every later board line with it, while the screen waits with a "not yet"
+  /// face. An abandoned envelope surfaces as the next `seq` mismatch — which is
+  /// what `seq` is for.
   static const Duration _boardStreamTimeout = Duration(seconds: 5);
 
   @override
@@ -205,28 +212,32 @@ class SessionController extends _$SessionController {
       ref.read(prerenderedAudioProvider),
     );
     _lessonOpeningAudio = openingAudio;
-    // **接続前に arm する。**接続イベントのほうが `Room.connect()` の Future より
-    // 先に届くことがあり、その中で先輩が喋ったら「もう鳴らさない」を記録するため。
+    // Arm before connecting: connection events can arrive ahead of the
+    // `Room.connect()` future, and if senpai speaks in one we need to record
+    // "do not play".
     //
-    // **復習も対象にする。**復習は前回の穴を板書つきで教え直すセッションなので
-    // (agent 側の `startsWithBoardLesson`)、新規授業と同じだけ最初の手順までの
-    // 無音がある。agent 側は冒頭の一言をTTSで喋らなくなった(§3-2。固定文に
-    // 毎回従量原価を払わないため)ので、ここで鳴らさないと**復習の冒頭だけが
-    // 完全な無音**になる。板書が出ない縮退経路では先輩がすぐ喋りはじめるが、
-    // その発話が `senpaiStartedSpeaking()` で cue を止めるのでかぶらない。
+    // Review is included. A review re-teaches the previous gap with a board
+    // (`startsWithBoardLesson` on the agent), so it has the same silence before
+    // the first step as a new lesson. The agent no longer speaks the opening
+    // line through TTS (no metered cost for a fixed line), so without this the
+    // start of a review would be completely silent. On the degraded path with no
+    // board, senpai starts speaking immediately and `senpaiStartedSpeaking()`
+    // stops the cue, so they never overlap.
     openingAudio.arm(
       lessonMode: session.kind == 'new' || session.kind == 'review',
       languageCode: locale,
     );
 
-    // セッション作成後に、今日さらに授業を始められるかはサーバが確定している。
-    // ホームへ戻ったときに古い可否を見せないよう、その真偽値をそのまま引き継ぐ。
+    // The server settled whether another lesson can start today when the session
+    // was created. Carry that boolean over so returning home does not show a
+    // stale allowance.
     ref
         .read(progressControllerProvider.notifier)
         .applyLessonAllowance(session.limits.lessonAllowedToday);
 
-    // 前の会話の結果を持ち越さない。持ち越したまま今回のカルテが作れないと、
-    // 祝福もカルテ画面も**前回のカルテ**を「今日のカルテ」として出してしまう。
+    // Do not carry the previous conversation's result over: if this karte fails
+    // to generate, both celebration and karte would show the previous one as
+    // today's.
     ref.read(sessionOutcomeControllerProvider.notifier).clear();
     ref.read(latestKarteControllerProvider.notifier).clear();
 
@@ -242,29 +253,31 @@ class SessionController extends _$SessionController {
       _watch(events);
       _events = events;
 
-      // **つなぐ前に登録する。** 先輩は入室してすぐ板書を送り始めるので、
-      // 接続の完了を待ってから登録すると、最初の数手順を取りこぼす。
+      // Register before connecting: senpai starts sending board steps on join,
+      // so registering after the connection completes drops the first few.
       _boardInbox = BoardInbox(sessionId: session.sessionId);
       _boardQueue = Future<void>.value();
       room.registerTextStreamHandler(boardChannelTopic, _onBoardStream);
 
       await room.connect(session.livekit.url, session.livekit.token);
 
-      // 接続後なら agent の板書生成と同時に走る。マイク公開より先に開始するのは、
-      // iOS の消音スイッチを尊重する ambient session を準備したあと、LiveKit に
-      // 会話用 session を確実に取り戻させるため。逆順だと録音設定を上書きしうる。
+      // After connecting, it runs alongside the agent generating the board.
+      // Starting before publishing the mic lets LiveKit reliably reclaim the
+      // conversation session after the ambient one (which respects the iOS mute
+      // switch) is prepared; reversed, it could overwrite the recording setup.
       await openingAudio.start();
       await room.localParticipant?.setMicrophoneEnabled(true);
 
-      // 先輩の発話と、自分の声の認識結果は `lk.transcription` で流れてくる。
-      // 字幕はここから来る(聞き取れない場所でも会話を追えるようにするため)。
+      // Senpai's speech and our own recognition results arrive on
+      // `lk.transcription`; the captions come from here, so the conversation can
+      // be followed where audio cannot be heard.
       final TranscriptionStreamReceiver transcripts = TranscriptionStreamReceiver(room: room);
       _transcriptSubscription = transcripts.messages().listen(_onTranscript);
       _transcripts = transcripts;
 
       _startTicker();
 
-      // 先にディスパッチされていれば、もう部屋にいる。
+      // If dispatched earlier, senpai is already in the room.
       if (room.agentParticipant != null) {
         _onSenpaiJoined();
       } else {
@@ -280,8 +293,8 @@ class SessionController extends _$SessionController {
     }
   }
 
-  /// つなぎ直す。**セッションは作り直さない**(同じトークンで入り直すので、
-  /// 無料枠を二重に消費しない)。
+  /// Reconnects. The session is not recreated — rejoining with the same token
+  /// never double-spends the free allowance.
   Future<void> retry(SessionStart session, {required String locale}) async {
     await _teardown();
     _finishing = false;
@@ -289,13 +302,13 @@ class SessionController extends _$SessionController {
     await connect(session, locale: locale);
   }
 
-  /// 上限時間はサーバが決める。クライアントは表示と自動終了だけを担当する。
+  /// The server sets the time limit; the client only displays it and auto-ends.
   void _startTicker() {
     _ticker?.cancel();
     _ticker = Timer.periodic(const Duration(seconds: 1), (Timer timer) {
       final int remaining = state.remainingSeconds - 1;
-      // **0を飛ばさない。** 先に打ち切ると、時間切れで終わった会話が
-      // 「のこり 0:01」のまま止まり、まだ1秒あるのに動かない画面になる。
+      // Never skip 0. Cutting off early freezes a timed-out conversation at
+      // "0:01 left", a still screen with a second apparently remaining.
       state = state.copyWith(remainingSeconds: remaining < 0 ? 0 : remaining);
       if (remaining <= 0) {
         timer.cancel();
@@ -304,8 +317,8 @@ class SessionController extends _$SessionController {
     });
   }
 
-  /// ルームの出来事を状態に落とす。ここが無いと、先輩が喋っても
-  /// 部屋を出ても画面は「聞いています」のまま止まる。
+  /// Maps room events into state. Without it, the screen stays on "listening"
+  /// whether senpai speaks or leaves.
   void _watch(EventsListener<RoomEvent> events) {
     events
       ..on<ParticipantConnectedEvent>((ParticipantConnectedEvent event) {
@@ -314,7 +327,7 @@ class SessionController extends _$SessionController {
       ..on<ParticipantDisconnectedEvent>((ParticipantDisconnectedEvent event) {
         if (event.participant.identity == _senpaiIdentity) _onSenpaiLeft();
       })
-      // 先輩の「聞いている / 考えている / 喋っている」は属性で来る
+      // Senpai's listening / thinking / speaking arrives as attributes.
       ..on<ParticipantAttributesChanged>((_) => _syncSenpaiState())
       ..on<RoomDisconnectedEvent>((_) => _onRoomClosed());
   }
@@ -329,11 +342,11 @@ class SessionController extends _$SessionController {
     _syncSenpaiState();
   }
 
-  /// 先輩が退室した = 会話は終わり。
+  /// Senpai left, so the conversation is over.
   ///
-  /// 締めの言葉で終わっても上限時間で終わっても、エージェントは部屋を出てから
-  /// カルテを作りに行く。**ここで結果を取りに行かないと、会話が自然に終わった
-  /// あとも画面は上限時間まで「聞いています」のまま残る。**
+  /// Whether it ended with a closing line or on the time limit, the agent leaves
+  /// the room and then writes the karte. Without fetching the result here, a
+  /// naturally ended conversation would sit on "listening" until the time limit.
   void _onSenpaiLeft() {
     if (_senpaiIdentity == null) return;
     unawaited(finish());
@@ -344,7 +357,7 @@ class SessionController extends _$SessionController {
       return;
     }
     if (_senpaiIdentity == null) {
-      // 先輩が来ないまま部屋が閉じた。会話は成立していないのでカルテも無い。
+      // The room closed without senpai. No conversation happened, so no karte.
       unawaited(_teardown());
       state = state.copyWith(
         phase: SessionPhase.failed,
@@ -370,13 +383,14 @@ class SessionController extends _$SessionController {
     _senpai.connected(senpai);
     switch (_senpai.agentState) {
       case AgentState.speaking:
-        // AgentState は字幕より先に届く。本物の声の頭へローカル音声をかぶせない。
+        // AgentState arrives before the captions; do not let local audio overlap
+        // the start of the real voice.
         unawaited(_lessonOpeningAudio?.senpaiStartedSpeaking() ?? Future<void>.value());
         state = state.copyWith(phase: _speakingPhase);
       case AgentState.listening:
       case AgentState.thinking:
-        // 喋り終わったら、こちらの番に戻す。**授業中は「教え返し」になる** —
-        // 板書はそのまま残し、下に「説明してみて」を出すのはこの遷移。
+        // Once speaking ends, hand the turn back. In lesson mode that is teaching
+        // back: this transition keeps the board and shows "explain it" below.
         if (state.phase == SessionPhase.connecting ||
             state.phase == SessionPhase.senpaiSpeaking ||
             state.phase == SessionPhase.senpaiTeaching) {
@@ -395,18 +409,18 @@ class SessionController extends _$SessionController {
         if (text.trim().isEmpty) return;
         onSenpaiSpeaking(text);
       case UserTranscript():
-        // 自分の声が届いている印。字幕は先輩の発話だけ残す。
+        // A sign our voice is getting through; captions keep senpai's speech only.
         onUserTurn();
       default:
         break;
     }
   }
 
-  /// 板書の封筒が1通届いた(Text Streams。topic は `boardChannelTopic`)。
+  /// One board envelope arrived (Text Streams, topic `boardChannelTopic`).
   ///
-  /// **1封筒 = 1ストリーム**(計画書§3-5)なので、`readAll()` が返った時点で
-  /// 封筒は完成している。部分JSONを自前で組み立てる必要はない。
-  /// 読み出しは [_boardQueue] に積んで到着順に直列化する(理由は同フィールド)。
+  /// One envelope is one stream, so it is complete when `readAll()` returns and
+  /// there is no partial JSON to reassemble. Reads are queued on [_boardQueue] to
+  /// stay in arrival order (see that field).
   void _onBoardStream(TextStreamReader reader, String participantIdentity) {
     _boardQueue = _boardQueue.then((_) => _readBoardEnvelope(reader));
   }
@@ -419,46 +433,53 @@ class SessionController extends _$SessionController {
     try {
       payload = await reader.readAll().timeout(_boardStreamTimeout);
     } catch (error) {
-      // 読み切れなかった封筒は諦める。**握りつぶしてはいない** —
-      // 次の封筒で `seq` がずれるので、板書は「とぎれた」として画面に出る。
+      // Give up on an envelope we could not read. Not swallowed: the next
+      // envelope's `seq` will mismatch and the board shows as truncated.
       debugPrint('板書の封筒を読めませんでした(この1通は諦めます): $error');
       return;
     }
 
-    // 読んでいるあいだに畳まれた・つなぎ直された。**同じ部屋の封筒ではない**ので、
-    // 新しい板書に混ぜない(`retry()` は同じ session_id で入り直すため、
-    // 封筒の宛先チェックでは弾けない)。
+    // Torn down or reconnected mid-read. This envelope is not from the same
+    // room, so keep it out of the new board — `retry()` rejoins with the same
+    // session_id, so the envelope's destination check cannot catch it.
     if (!identical(_boardInbox, inbox)) return;
 
     if (!inbox.acceptPayload(payload)) return;
-    // 読んでいるあいだに画面を離れられた。書き戻す先がもう無い。
+    // The screen was left mid-read; there is nowhere to write back to.
     if (!ref.mounted) return;
     _applyBoard(inbox.snapshot);
   }
 
-  /// 板書が動いたので画面に反映する。
+  /// Reflects a board change on screen.
   ///
-  /// **フェーズも一緒に動かす。**板書が届いた = 先輩が書いている最中なので、
-  /// 授業モードに入っていないなら、ここで入る(会話が締めに入っていれば触らない)。
+  /// The phase moves too: a board step arriving means senpai is writing, so if
+  /// lesson mode has not started it starts here (unless the conversation is
+  /// already closing).
   ///
-  /// ## 授業の外から板書を読むときの約束(カルテの「先輩が書いたもの」)
+  /// ## Contract for reading the board outside the lesson (the karte's board)
   ///
-  /// この会話画面はAutoDisposeなので、離れた瞬間に [SessionState.board] ごと消える。
-  /// 授業の寿命を超えて残すぶんは `lastBoardControllerProvider`
-  /// (`features/karte/application/last_board_controller.dart`)に書き出す。
-  /// **書き込むのはここだけ。**読む側([LastBoardController] を watch する側)への約束:
+  /// This screen is AutoDispose, so [SessionState.board] dies the moment it is
+  /// left. What must outlive the lesson is written to
+  /// `lastBoardControllerProvider`
+  /// (`features/karte/application/last_board_controller.dart`). This is the only
+  /// writer. The promise to readers watching [LastBoardController]:
   ///
-  ///   - 型は `List<BoardStep>`。**板書が1枚も無ければ空リスト**(nullにはならない)
-  ///   - 中身は「いま黒板に書いてあるもの」全部。積み足しではなく**丸ごと置き換え**
-  ///   - `board_open`(= 別の問題に移る)で丸ごと入れ替わる。それが板書の寿命の全部で、
-  ///     `board_close` では消えない(§3-2。1つの板書は1つの問題ぶん生き続ける)
-  ///   - 音声だけの手順(`step.board == null`)も列には含まれる。描画側で落とすこと
-  ///     ([BoardView] がやっている)
-  ///   - **とぎれた板書も渡る**(欠落を検知した時点までの行は残す方針)。健全な板書と
-  ///     区別できるよう、`truncated` に [BoardSnapshot.hasGap] を添えて渡している
+  ///   - the type is `List<BoardStep>`; with no board it is an empty list, never
+  ///     null
+  ///   - it holds everything currently on the board — a wholesale replacement,
+  ///     not an append
+  ///   - `board_open` (moving to another problem) replaces it entirely, and that
+  ///     is the whole lifetime; `board_close` does not clear it, since one board
+  ///     lives for one problem
+  ///   - voice-only steps (`step.board == null`) are included in the list;
+  ///     rendering drops them (as [BoardView] does)
+  ///   - truncated boards are passed on too (lines up to the detected gap are
+  ///     kept), with `truncated` carrying [BoardSnapshot.hasGap] so they can be
+  ///     told apart from healthy ones
   void _applyBoard(BoardSnapshot board) {
-    // `board_open` は見出しだけなので止めない。最初の BoardStep が届くまでの無音を
-    // 埋めるのが cue の仕事で、見出し到着で切るとその穴がそのまま残る。
+    // `board_open` is only a heading, so it does not stop the cue. The cue's job
+    // is to fill the silence until the first BoardStep; cutting it at the heading
+    // would leave that gap.
     if (board.steps.isNotEmpty) {
       unawaited(_lessonOpeningAudio?.firstBoardStepArrived() ?? Future<void>.value());
     }
@@ -467,19 +488,20 @@ class SessionController extends _$SessionController {
       phase: _isTalking(state.phase) ? SessionPhase.senpaiTeaching : state.phase,
     );
 
-    // **`board_close` のときだけではなく、変わるたびに渡す。** 締めが来るのは
-    // 問題が終わったときだけなので、途中で会話を終えた板書はそれでは届かない。
-    // `truncated` を渡さないと、とぎれた板書が健全な板書としてカルテに残る。
+    // Written on every change, not only on `board_close`: the close arrives only
+    // when a problem finishes, so a board from a conversation ended early would
+    // never be stored. Without `truncated`, a truncated board is kept in the
+    // karte as a healthy one.
     ref.read(lastBoardControllerProvider.notifier).set(
           board.steps,
           truncated: board.hasGap,
         );
   }
 
-  /// 会話がまだ続いているフェーズか。
+  /// Whether the conversation is still going.
   ///
-  /// `switch` で書いてあるのは、フェーズを増やしたときに
-  /// **「これは会話中か」を必ず決めさせる**ため(既定値で素通りさせない)。
+  /// Written as a `switch` so adding a phase forces a decision about it, rather
+  /// than slipping through a default.
   static bool _isTalking(SessionPhase phase) => switch (phase) {
     SessionPhase.connecting ||
     SessionPhase.listening ||
@@ -489,16 +511,17 @@ class SessionController extends _$SessionController {
     SessionPhase.summarizing || SessionPhase.finished || SessionPhase.failed => false,
   };
 
-  /// 相手が喋っているときのフェーズ。板書が出ていれば「先輩の説明」。
+  /// Phase while they are speaking; with a board up, that is senpai explaining.
   SessionPhase get _speakingPhase =>
       state.board.hasBoard ? SessionPhase.senpaiTeaching : SessionPhase.senpaiSpeaking;
 
-  /// こちらが喋る番のフェーズ。板書が出ていれば「教え返し」。
+  /// Phase while it is our turn; with a board up, that is teaching back.
   SessionPhase get _listeningPhase =>
       state.board.hasBoard ? SessionPhase.explainBack : SessionPhase.listening;
 
   void onSenpaiSpeaking(String text) {
-    // AgentState を取りこぼした場合も、字幕を受けた時点で止める二本目の経路。
+    // A second path that stops the cue on the first caption, in case AgentState
+    // was missed.
     unawaited(_lessonOpeningAudio?.senpaiStartedSpeaking() ?? Future<void>.value());
     state = state.copyWith(phase: _speakingPhase, lastSenpaiText: text);
   }
@@ -508,10 +531,10 @@ class SessionController extends _$SessionController {
     state = state.copyWith(phase: _listeningPhase);
   }
 
-  /// 「うまく言えない」。
+  /// "I can't explain it."
   ///
-  /// パスは恥ではなく穴の記録なので、**先輩にも伝える**。伝えないと、
-  /// こちらの画面だけが切り替わって、先輩は同じ問いかけを待ち続ける。
+  /// Passing is a recorded gap, not a shame, so senpai is told too. Without that,
+  /// only our screen changes while senpai keeps waiting on the same question.
   Future<void> pass(String message) async {
     onUserTurn();
     try {
@@ -520,51 +543,52 @@ class SessionController extends _$SessionController {
         options: SendTextOptions(topic: 'lk.chat'),
       );
     } catch (error) {
-      // 伝わらなくても会話は続けられる。ここで画面を止めない。
+      // The conversation continues even if this does not land, so do not stall
+      // the screen.
       //
-      // ただし**黙って終わらせない。** 約束3(パスを恥にしない)は
-      // パスが**残る**ことで成立していて、送れないと穴として価値化されない。
-      // その生徒にとっては「言えなかったのに、何も起きなかった」だけになり、
-      // しかも画面は何事もなく進むので、本人にもこちらにも見えない
-      // (計画書 §10-7)。
+      // But never end silently. The promise that passing is not shameful holds
+      // only because a pass is recorded; undelivered, it never becomes a gap.
+      // For that student it is just "I couldn't say it and nothing happened",
+      // and the screen carries on as if fine, so neither they nor we can see it.
       //
-      // **`message` は送らない。** パスの文言は生徒に向けた発話で、
-      // 監視に流してよいものではない。失敗した事実と session_id で足りる。
+      // `message` is not sent: the pass wording is speech aimed at the student
+      // and does not belong in monitoring. The failure and the session_id are
+      // enough.
       Telemetry.report(
         DegradationEvent.passNotSent(
           sessionId: _sessionId,
           phase: state.phase.name,
-          // 型だけ渡す。生成子が `Type` しか受け取らないので、
-          // 例外の `toString()`(接続先URLを含みうる)は渡しようがない。
+          // Type only. The factory accepts a `Type`, so the exception's
+          // `toString()` (which can include endpoint URLs) cannot be passed.
           error: error.runtimeType,
         ),
       );
     }
   }
 
-  /// 会話を終える。
+  /// Ends the conversation.
   ///
-  /// カルテはエージェントが作ってサーバへ送るので、アプリは
-  /// `/v1/sessions/{id}/result` を見に行って結果を受け取る。
-  /// ここで受け取らないと、祝福もカルテも空のまま表示されてしまう。
+  /// The agent writes the karte and posts it to the server, so the app fetches
+  /// `/v1/sessions/{id}/result`. Without that, both celebration and karte render
+  /// empty.
   Future<void> finish() async {
     if (_finishing) return;
     _finishing = true;
 
-    // 会話はもう終わっている。片付け(数秒かかる)のあいだも数字が減り続けると、
-    // 終わったはずの会話がまだ動いているように見える。
+    // The conversation is over. Letting the countdown run through teardown (a
+    // few seconds) would make a finished conversation look still live.
     _ticker?.cancel();
     _ticker = null;
 
     final bool talked = _senpaiIdentity != null;
 
-    // **画面を先に動かす。** 片付け(切断の完了待ち)には数秒かかるので、
-    // ここを `_teardown()` の後ろに置くと、「今日はここまで」を押してから
-    // 数秒間、画面が押す前とまったく同じまま止まる。反応が無いので連打される。
+    // Move the screen first. Teardown waits seconds for the disconnect, so
+    // placing this after `_teardown()` leaves the screen identical for seconds
+    // after tapping "done for today" — no feedback, so people tap repeatedly.
     if (talked) {
       state = state.copyWith(phase: SessionPhase.summarizing);
     } else {
-      // 先輩が来ていないので、カルテは作られない。待たせずに理由を出す。
+      // Senpai never arrived, so no karte is written. Give the reason at once.
       state = state.copyWith(
         phase: SessionPhase.failed,
         failure: SessionFailure.senpaiUnavailable,
@@ -588,11 +612,12 @@ class SessionController extends _$SessionController {
             interval: _kartePollInterval,
             attempts: _karteGrace.inSeconds ~/ _kartePollInterval.inSeconds,
           );
-      // 待っているあいだに画面を離れられた。書き戻す先がもう無い。
+      // The screen was left while waiting; there is nowhere to write back to.
       if (!ref.mounted) return;
 
       if (result == null) {
-        // 生成が間に合わなかった。祝福は見せて、カルテは祝福画面が取りに行く。
+        // Generation did not finish in time; show the celebration and let it
+        // fetch the karte.
         _publish(
           SessionOutcome(resultMissing: true, sessionId: sessionId, kind: _sessionKind),
         );
@@ -602,8 +627,8 @@ class SessionController extends _$SessionController {
 
       ref.read(latestKarteControllerProvider.notifier).set(result.karte);
       ref.read(progressControllerProvider.notifier).applyFromSession(result.progress);
-      // 復習キューはkeepAlive。前回のopen状態から候補を選ばないよう、
-      // 次にカルテ/復習画面が読むときは完了後の状態を取り直させる。
+      // The review queue is keepAlive, so force a refetch before karte or review
+      // reads it again; otherwise candidates come from the stale open state.
       ref.invalidate(reviewControllerProvider);
       _publish(
         SessionOutcome(
@@ -629,16 +654,17 @@ class SessionController extends _$SessionController {
     }
   }
 
-  /// 会話画面(AutoDispose)の寿命を超えて持ち回る結果を置く。
+  /// Stores the result that outlives the AutoDispose conversation screen.
   void _publish(SessionOutcome outcome) {
     ref.read(sessionOutcomeControllerProvider.notifier).set(outcome);
   }
 
-  /// 後片付けは**絶対に投げない**。
+  /// Teardown must never throw.
   ///
-  /// `_teardown()` は失敗処理の途中(`connect` の catch)からも呼ばれる。
-  /// ここで例外が飛ぶと、失敗を画面に出す前に `connect` を抜けてしまい、
-  /// 「聞いています」のまま止まる。片付けの失敗で会話の結末を潰さない。
+  /// `_teardown()` is also called from failure handling (`connect`'s catch). An
+  /// exception here would exit `connect` before the failure reaches the screen,
+  /// leaving it on "listening". A cleanup failure must not destroy the
+  /// conversation's outcome.
   Future<void> _teardown() async {
     _ticker?.cancel();
     _ticker = null;
@@ -646,12 +672,12 @@ class SessionController extends _$SessionController {
     _senpaiWatchdog = null;
 
     final Room? room = _room;
-    // 先に参照を捨てる。片付けの途中で来たイベントに、
-    // 畳んでいる最中の部屋を触らせない。
+    // Drop the reference first, so events arriving mid-teardown cannot touch a
+    // room that is being closed.
     _room = null;
 
-    // 板書も同じ理由で先に外す。読み出しの途中で来た封筒を、
-    // もう画面の無いところへ流し込ませない。
+    // Detach the board first for the same reason: envelopes arriving mid-read
+    // must not flow into a screen that no longer exists.
     _boardInbox = null;
     await _quietly(
       '板書の購読解除',
@@ -662,7 +688,7 @@ class SessionController extends _$SessionController {
     _lessonOpeningAudio = null;
     await _quietly('授業冒頭のローカル音声停止', () => openingAudio?.stop());
 
-    // 先に購読を切る。切断そのものがイベントになって戻ってくるのを避ける。
+    // Cancel subscriptions first, so the disconnect does not return as an event.
     await _quietly('字幕の購読解除', () => _transcriptSubscription?.cancel());
     _transcriptSubscription = null;
     await _quietly('字幕の破棄', () => _transcripts?.dispose());
@@ -670,17 +696,19 @@ class SessionController extends _$SessionController {
     await _quietly('イベント購読の破棄', () => _events?.dispose());
     _events = null;
 
-    // 接続に失敗した部屋は切断の完了イベントを返さないことがあり、
-    // SDK側は10秒待ってから TimeoutException を投げる。待たずに畳む。
+    // A room that failed to connect may never emit the disconnect completion
+    // event, and the SDK throws TimeoutException after 10 seconds. Tear down
+    // without waiting.
     await _quietly(
       'ルームの切断',
       () => room?.disconnect().timeout(_disconnectTimeout),
     );
-    // 切断が間に合わなくても dispose は必ず通す(SDKの後始末はこちらに入る)。
+    // Always run dispose even if the disconnect did not finish; the SDK's own
+    // cleanup happens there.
     await _quietly('ルームの破棄', () => room?.dispose());
   }
 
-  /// 片付けの一手。失敗しても次の一手に進む。
+  /// One teardown step; a failure moves on to the next.
   Future<void> _quietly(String what, FutureOr<void> Function() step) async {
     try {
       await step();

@@ -3,14 +3,16 @@ import 'package:flutter/material.dart';
 import '../../../../theme/tokens.dart';
 import 'board_style.dart';
 
-/// 2列の対比表(`BoardElement.compare`)。「現在完了 と 過去形」。
+/// A two-column comparison (`BoardElement.compare`), e.g. present perfect vs
+/// past simple.
 ///
-/// **2列で固定。** 実効幅340pt(`BoardStyle.measuredWidthAssumption`)に3列は
-/// 入らず、英語の文法の対比はほとんどが2項の使い分けなので、列を可変にする
-/// 意味がない。列数の検査は `ensureValidCompare` が受信時に持つ。
+/// Fixed at two columns: three do not fit an effective width of 340pt
+/// (`BoardStyle.measuredWidthAssumption`), and English grammar comparisons are
+/// almost always between two options, so a variable column count buys nothing.
+/// `ensureValidCompare` checks the count on receipt.
 ///
-/// `Table` を使うのは、2列の幅を中身に合わせて**同じ比率で**割るため。
-/// `Row` + `Expanded` だと行ごとに幅が変わり、縦に読めない表になる。
+/// `Table` is used so both columns split at the same ratio. `Row` + `Expanded`
+/// would vary the width per row, leaving a table that cannot be read down.
 class CompareElementView extends StatelessWidget {
   const CompareElementView({
     required this.columns,
@@ -25,8 +27,8 @@ class CompareElementView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // **セルの文字もチョークで書く。**テーマの既定色(インク)のままだと、
-    // 板の上では黒に黒で、表の枠だけが見えて中身が読めない。
+    // Cell text is chalk too. Left at the theme default (ink) it would be black
+    // on black, leaving only the table's rules visible.
     final TextTheme textTheme = Theme.of(context).textTheme.apply(
           bodyColor: BoardStyle.chalk,
           displayColor: BoardStyle.chalk,
@@ -45,8 +47,8 @@ class CompareElementView extends StatelessWidget {
             borderRadius: BorderRadius.circular(AppRadius.card),
           ),
           child: Table(
-            // 2列を等分する。見出しの長さで幅が決まると、行によって
-            // 境界の位置がずれて対比として読めなくなる。
+            // Split the two columns evenly. Sizing by heading length would move
+            // the boundary per row and destroy the comparison.
             columnWidths: const <int, TableColumnWidth>{
               0: FlexColumnWidth(),
               1: FlexColumnWidth(),

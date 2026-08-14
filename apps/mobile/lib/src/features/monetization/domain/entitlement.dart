@@ -90,7 +90,7 @@ List<SubscriptionPlan> plansOf(Offering? offering) {
     for (final Package package in offering.availablePackages) {
       if (PlanPeriod.fromPackageType(package.packageType) == period) {
         found.add((package: package, period: period));
-        break; // 同じ期間が複数あっても最初の1つだけ出す
+        break; // Only the first match per period, even if there are several.
       }
     }
   }

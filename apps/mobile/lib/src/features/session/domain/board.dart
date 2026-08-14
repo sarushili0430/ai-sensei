@@ -3,24 +3,25 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 part 'board.freezed.dart';
 part 'board.g.dart';
 
-/// 板書(先輩が画面に積んでいく行)のモデル。
+/// Model for the board — the lines senpai stacks on screen.
 ///
-/// 正は `packages/contract`(zod + JSON Schema、`src/board.ts`)。Dart側はfreezedで書き、
-/// `test/contract_fixture_test.dart` が同じfixtureをパースして契約ドリフトを検知する
-/// (`karte.dart` と同じ方針)。
+/// `packages/contract` (zod + JSON Schema, `src/board.ts`) is the source of
+/// truth. The Dart side uses freezed, and `test/contract_fixture_test.dart`
+/// parses the same fixtures to catch contract drift, as in `karte.dart`.
 ///
-/// **描画の実装はここには無い。** ここにあるのは受信した契約をパースし、
-/// JSON Schemaに現れない不変条件(`packages/contract/README.md` 「JSON Schema に
-/// 現れない不変条件」を参照)を検査するところまで。描画(`CustomPaint`・`flutter_math_fork`)は
-/// 別のタスク。
+/// No rendering lives here. This file parses the received contract and checks
+/// the invariants JSON Schema cannot express (see "invariants not in JSON
+/// Schema" in `packages/contract/README.md`); drawing (`CustomPaint`,
+/// `flutter_math_fork`) is a separate concern.
 ///
-/// このファイルも2つの形を持つ(理由は `board.ts` の冒頭コメントと同じ):
-///   1. **LLMが出す形**(`BoardLesson`)— 板書1枚まるごと
-///   2. **data channel を流れる形**(`BoardChannelMessage`)— 1手順ずつの封筒
+/// It carries two shapes, for the same reasons as `board.ts`:
+///   1. what the LLM emits (`BoardLesson`) — a whole board at once
+///   2. what flows over the data channel (`BoardChannelMessage`) — one step per
+///      envelope
 
-/// 盤面上の点。座標は `board.ts` 側で有限・盤面内(絶対値1000以内)に縛られているが、
-/// その検査はJSON Schemaの `minimum`/`maximum` に残るので、freezedの型だけで足りる
-/// (Dart側で追加のrefineは不要)。
+/// A point on the board. `board.ts` bounds coordinates to finite values within
+/// the board (|v| <= 1000), and that check survives as JSON Schema
+/// `minimum`/`maximum`, so the freezed type alone is enough here.
 @freezed
 abstract class BoardPoint with _$BoardPoint {
   const factory BoardPoint({required double x, required double y}) = _BoardPoint;
@@ -28,7 +29,8 @@ abstract class BoardPoint with _$BoardPoint {
   factory BoardPoint.fromJson(Map<String, dynamic> json) => _$BoardPointFromJson(json);
 }
 
-/// グラフに打つ印。交点・頂点など「見てほしい一点」だけ。
+/// A mark on a graph — only the single point worth looking at, such as an
+/// intersection or a vertex.
 @freezed
 abstract class PlotMark with _$PlotMark {
   const factory PlotMark({required BoardPoint at, String? label}) = _PlotMark;
@@ -36,9 +38,8 @@ abstract class PlotMark with _$PlotMark {
   factory PlotMark.fromJson(Map<String, dynamic> json) => _$PlotMarkFromJson(json);
 }
 
-/// `plot.domain`。**`min < max` はJSON Schemaに残らない不変条件**
-/// (`packages/contract/README.md`)。パースはここでは失敗しない(型だけの検査)ので、
-/// 使う前に必ず [ensureValidDomain] を呼ぶこと。
+/// `plot.domain`. `min < max` is an invariant JSON Schema cannot carry, and
+/// parsing here only checks types, so always call [ensureValidDomain] before use.
 @freezed
 abstract class BoardDomain with _$BoardDomain {
   const factory BoardDomain({required double min, required double max}) = _BoardDomain;
@@ -53,7 +54,7 @@ enum AngleMarkKind {
   rightAngle,
 }
 
-/// 三角形の角の印。`vertex` は `vertices` のインデックス(0〜2)。
+/// An angle mark on a triangle; `vertex` indexes `vertices` (0-2).
 @freezed
 abstract class AngleMark with _$AngleMark {
   const factory AngleMark({required int vertex, required AngleMarkKind kind, String? label}) =
@@ -62,28 +63,29 @@ abstract class AngleMark with _$AngleMark {
   factory AngleMark.fromJson(Map<String, dynamic> json) => _$AngleMarkFromJson(json);
 }
 
-/// 板書に積む1要素。`kind` の discriminated union(`board.ts` の `boardElementSchema` と対応)。
+/// One element on the board: a discriminated union on `kind`, mirroring
+/// `boardElementSchema` in `board.ts`.
 ///
-/// **自由描画は無い。** 増やせる枝は無く、ここに無いプリミティブは表現できない
-/// (`board.ts` 冒頭コメント「自由描画をさせない」と同じ理由)。
+/// There is no freehand drawing. No branch can be added ad hoc, and anything not
+/// listed here cannot be expressed.
 @Freezed(unionKey: 'kind')
 abstract class BoardElement with _$BoardElement {
-  /// flutter_math_fork が描く数式。1行ぶん。
+  /// A formula drawn by flutter_math_fork; one line.
   const factory BoardElement.latex({required String tex}) = LatexElement;
 
-  /// 数式にしない一行。見出し・注記・言い換え。
+  /// A non-formula line: heading, note or paraphrase.
   const factory BoardElement.text({required String body}) = TextElement;
 
-  /// 関数グラフ。`domain.min < domain.max` は [ensureValidDomain] で検査する。
+  /// A function plot; `domain.min < domain.max` is checked by [ensureValidDomain].
   const factory BoardElement.plot({
     required String fn,
     required BoardDomain domain,
     List<PlotMark>? marks,
   }) = PlotElement;
 
-  /// 三角形。`vertices` は必ず3点(`board.ts` は `z.tuple` で縛っているが、
-  /// freezed/json_serializableに固定長タプルは無いので、Dart側は長さの検査を別に持つ
-  /// = [ensureValidTriangle])。
+  /// A triangle. `vertices` is always 3 points: `board.ts` uses `z.tuple`, but
+  /// freezed/json_serializable has no fixed-length tuple, so the Dart side
+  /// checks the length separately in [ensureValidTriangle].
   const factory BoardElement.triangle({
     required List<BoardPoint> vertices,
     List<String>? labels,
@@ -96,36 +98,40 @@ abstract class BoardElement with _$BoardElement {
     List<String>? labels,
   }) = CircleElement;
 
-  /// 英語の例文。`focus` は `text` の部分文字列([ensureValidSentence] で検査)。
+  /// An English example sentence; `focus` is a substring of `text` (checked by
+  /// [ensureValidSentence]).
   const factory BoardElement.sentence({
     required String text,
     String? gloss,
     String? focus,
   }) = SentenceElement;
 
-  /// 2列の対比表。`columns` はちょうど2つ、`rows` の各行も2マス
-  /// (`board.ts` は `z.tuple` で縛るが、freezed に固定長タプルは無いので
-  /// [ensureValidCompare] が持つ — `triangle.vertices` と同じ扱い)。
+  /// A two-column comparison. Exactly two `columns`, and two cells per row;
+  /// `board.ts` uses `z.tuple`, so [ensureValidCompare] carries the check here,
+  /// as with `triangle.vertices`.
   const factory BoardElement.compare({
     required List<String> columns,
     required List<List<String>> rows,
     String? title,
   }) = CompareElement;
 
-  /// 作図。**端末は [svg] を描くだけ。**
+  /// A construction. The device only draws [svg].
   ///
-  /// [items] は作図の宣言(「Aから距離6、向き-20°にB」「2直線の交点にD」)で、
-  /// **座標を解いてSVGにするのはサーバ**(`@ai-sensei/figure`)。
-  /// ここに届くSVGは検証済みの [items] から生成されたものだけで、
-  /// **先輩が書いたSVGが入る経路はどこにも無い**(`board.ts` 冒頭「自由描画をさせない」)。
+  /// [items] declares the construction ("B at distance 6 from A, bearing -20°",
+  /// "D at the intersection of two lines"); solving the coordinates into SVG is
+  /// the server's job (`@ai-sensei/figure`). The SVG arriving here is always
+  /// generated from validated [items] — there is no path by which senpai's own
+  /// SVG could enter.
   ///
-  /// [items] を端末まで運んでいるのは、
-  ///   - 読み上げ・検査で「何を描いたか」が要る(SVGからは読めない)
-  ///   - あとから端末側で描き直す選択肢を残す(D-21。SVGだけだと戻れない)
-  /// の2つのため。**いまは描画に使っていない。**
+  /// [items] is carried to the device for two reasons:
+  ///   - accessibility and validation need to know what was drawn (SVG cannot
+  ///     say)
+  ///   - it keeps the option of redrawing on device later (SVG alone is one-way)
+  /// It is not used for rendering today.
   ///
-  /// [svg] / [alt] が `null` なのは、LLMが出した直後(サーバが詰める前)の形。
-  /// ワイヤーから届くものには必ず入っている([ensureValidFigure] で検査する)。
+  /// [svg] / [alt] are `null` only in the shape the LLM emits, before the server
+  /// fills them in; anything off the wire always has them (see
+  /// [ensureValidFigure]).
   const factory BoardElement.figure({
     required List<Map<String, dynamic>> items,
     String? svg,
@@ -135,12 +141,14 @@ abstract class BoardElement with _$BoardElement {
   factory BoardElement.fromJson(Map<String, dynamic> json) => _$BoardElementFromJson(json);
 }
 
-/// `plot.domain` は `min < max`。README「JSON Schema に現れない不変条件」の1行目。
+/// `plot.domain` must satisfy `min < max` — the first invariant JSON Schema
+/// cannot carry.
 ///
-/// **単体では呼び忘れられる。** 実際の呼び出し口は [BoardChannelReceiver.accept] の
-/// 内部(`_ensureValidElement`)で、ワイヤーから届く `BoardElement` は必ずここを通る。
-/// この関数を公開したままにしているのは、テスト(壊れたdomainを直接作って検査する)と、
-/// `accept()` を経由しない経路(fixtureの直接検証など)のためだけ。
+/// Easy to forget when called directly. The real call site is inside
+/// [BoardChannelReceiver.accept] (`_ensureValidElement`), which every wire
+/// `BoardElement` passes through. It stays public only for tests (building a
+/// broken domain directly) and paths that skip `accept()`, such as validating
+/// fixtures.
 void ensureValidDomain(BoardDomain domain) {
   if (!(domain.min < domain.max)) {
     throw BoardContractViolation(
@@ -149,14 +157,14 @@ void ensureValidDomain(BoardDomain domain) {
   }
 }
 
-/// `triangle.vertices` はちょうど3点、`labels` を付けるなら3つ揃っていること。
-/// `board.ts` の `z.tuple([_, _, _])` に対応するDart側の検査
-/// (READMEには表として明記されていないが、`z.tuple` はJSON Schemaでは
-/// `minItems`/`maxItems` にしか残らず、`z.tuple` が持つ「ちょうど3」という保証を
-/// freezedの `List<BoardPoint>` は型では表現できないため、他の不変条件と同じ扱いにする)。
+/// `triangle.vertices` must be exactly 3 points, and `labels`, if present, must
+/// have 3 entries — the Dart counterpart of `z.tuple([_, _, _])` in `board.ts`.
+/// It is not in the README table, but `z.tuple` survives only as
+/// `minItems`/`maxItems` in JSON Schema and freezed's `List<BoardPoint>` cannot
+/// express "exactly 3", so it is treated like the other invariants.
 ///
-/// [ensureValidDomain] と同じ理由で、単体では呼び忘れられる。
-/// 実際の呼び出し口は [BoardChannelReceiver.accept] の内部。
+/// As with [ensureValidDomain], the real call site is inside
+/// [BoardChannelReceiver.accept].
 void ensureValidTriangle(List<BoardPoint> vertices, List<String>? labels) {
   if (vertices.length != 3) {
     throw BoardContractViolation('triangle.vertices は3点である必要があります(実際は${vertices.length}点)');
@@ -166,25 +174,27 @@ void ensureValidTriangle(List<BoardPoint> vertices, List<String>? labels) {
   }
 }
 
-/// `sentence.focus` は `text` の部分文字列。README「JSON Schema に現れない不変条件」。
+/// `sentence.focus` must be a substring of `text` — another invariant JSON
+/// Schema cannot carry.
 ///
-/// **`.refine()` では書けなかった。** `boardElementSchema` は
-/// `discriminatedUnion` で、枝は `ZodObject` でなければならない
-/// (`.refine()` を付けると union に入らない)。だから contract 側は形だけを見て、
-/// この条件は Dart と agent の両方が持っている。
+/// It could not be written with `.refine()`: `boardElementSchema` is a
+/// `discriminatedUnion` whose branches must be `ZodObject`, and `.refine()`
+/// disqualifies them. So the contract checks shape only, and both Dart and the
+/// agent carry this condition.
 ///
-/// [ensureValidDomain] と同じ理由で、単体では呼び忘れられる。
-/// 実際の呼び出し口は [BoardChannelReceiver.accept] の内部。
+/// As with [ensureValidDomain], the real call site is inside
+/// [BoardChannelReceiver.accept].
 void ensureValidSentence(String text, String? focus) {
   if (focus != null && !text.contains(focus)) {
     throw BoardContractViolation('sentence.focus は text の一部である必要があります(focus=$focus)');
   }
 }
 
-/// `compare.columns` はちょうど2つ、`rows` は1〜4行で各行2マス。
+/// `compare.columns` must be exactly 2, with 1-4 rows of 2 cells each.
 ///
-/// 2列に固定しているのは、実効幅340ptに3列が入らないため(`board.ts` の
-/// `compareElementSchema` のコメント)。ここが崩れた表は描いても読めない。
+/// Two columns is fixed because three do not fit an effective width of 340pt
+/// (see `compareElementSchema` in `board.ts`); a broken table is unreadable even
+/// when drawn.
 void ensureValidCompare(List<String> columns, List<List<String>> rows) {
   if (columns.length != 2) {
     throw BoardContractViolation('compare.columns は2つである必要があります(実際は${columns.length}個)');
@@ -199,18 +209,19 @@ void ensureValidCompare(List<String> columns, List<List<String>> rows) {
   }
 }
 
-/// ワイヤーから届いた `BoardElement` を検査する。**唯一の呼び出し口は
-/// [BoardChannelReceiver.accept]。** ここを通さずに描画へ渡す経路を作らないこと
-/// (作った瞬間、[ensureValidDomain] / [ensureValidTriangle] は「存在するが効かない
-/// 検査関数」に戻ってしまう)。
-/// `figure` はワイヤーに出る時点で `svg` が入っていること。
+/// Validates a `BoardElement` off the wire. [BoardChannelReceiver.accept] is the
+/// only call site; never add a path that reaches rendering without it, or
+/// [ensureValidDomain] / [ensureValidTriangle] become checks that exist but do
+/// nothing.
 ///
-/// 契約では `optional`(LLMが出す形には無いから)だが、**端末に届く形には必ずある**。
-/// 無いまま描画へ渡すと、図の場所が黙って空白になる — 授業の途中で1行消えるのは、
-/// 遅いより悪い(`board.ts` のLaTeX三段構えと同じ判断)。
+/// A `figure` must carry `svg` by the time it reaches the wire. The contract
+/// marks it `optional` (the LLM's shape has none), but anything reaching the
+/// device always has it. Passing one through without it leaves the figure's
+/// place silently blank, and a line vanishing mid-lesson is worse than a slow
+/// one.
 ///
-/// [ensureValidDomain] と同じ理由で、単体では呼び忘れられる。
-/// 実際の呼び出し口は [BoardChannelReceiver.accept] の内部。
+/// As with [ensureValidDomain], the real call site is inside
+/// [BoardChannelReceiver.accept].
 void ensureValidFigure(String? svg) {
   if (svg == null || svg.isEmpty) {
     throw const BoardContractViolation('figure に svg がありません(サーバが解いて詰めるはずのもの)');
@@ -232,22 +243,24 @@ void _ensureValidElement(BoardElement? element) {
   );
 }
 
-/// 手順1つ = 「先輩がひとこと言いながら、板書を1行足す」単位。
+/// One step: senpai says a line while adding one line to the board.
 @freezed
 abstract class BoardStep with _$BoardStep {
   const factory BoardStep({
-    /// 板書内での通し番号。0始まりで1ずつ増える(`ensureSequentialStepIndices` で検査)。
+    /// Position within the board, from 0 in steps of 1 (checked by
+    /// `ensureSequentialStepIndices`).
     required int index,
     required String speech,
 
-    /// null なら音声のみ(相づち・確認)。
+    /// Null means voice only (an acknowledgement or a check).
     required BoardElement? board,
   }) = _BoardStep;
 
   factory BoardStep.fromJson(Map<String, dynamic> json) => _$BoardStepFromJson(json);
 }
 
-/// LLMが出す形 — 板書1枚まるごと。session_id / board_id は持たない(意図的。`board.ts` 参照)。
+/// The shape the LLM emits: a whole board. It deliberately carries no
+/// session_id or board_id (see `board.ts`).
 @freezed
 abstract class BoardLesson with _$BoardLesson {
   const factory BoardLesson({
@@ -259,15 +272,14 @@ abstract class BoardLesson with _$BoardLesson {
   factory BoardLesson.fromJson(Map<String, dynamic> json) => _$BoardLessonFromJson(json);
 }
 
-/// `steps[i].index` が0始まりで1ずつ増えているか検査する
-/// (`board.ts` の `boardLessonSchema.superRefine` と対応)。
+/// Checks that `steps[i].index` runs from 0 in steps of 1 (mirroring
+/// `boardLessonSchema.superRefine` in `board.ts`).
 ///
-/// **モバイルの本番経路(data channel)では呼ばれない。** `BoardLesson` はLLMがagentに
-/// 出す形で、ワイヤーを流れるのは封筒(`BoardChannelMessage`)だけ(`board.ts` 冒頭コメント)。
-/// モバイルが受け取るのは常に1手順ずつの `BoardStepMessage` で、`BoardLesson` を
-/// 直接受け取ることはない。**この関数は `board-lesson*.json` fixture の検証専用**
-/// ([BoardChannelReceiver.accept] のような「唯一の呼び出し口」を持たないのは、
-/// そもそも本番コードから呼ばれる経路が無いため)。
+/// Never called on mobile's production path. `BoardLesson` is what the LLM emits
+/// to the agent; only envelopes (`BoardChannelMessage`) travel the wire, and
+/// mobile always receives one `BoardStepMessage` at a time. This function exists
+/// solely to validate `board-lesson*.json` fixtures, which is why it has no
+/// single call site like [BoardChannelReceiver.accept].
 void ensureSequentialStepIndices(BoardLesson lesson) {
   for (int position = 0; position < lesson.steps.length; position++) {
     final int index = lesson.steps[position].index;
@@ -280,16 +292,16 @@ void ensureSequentialStepIndices(BoardLesson lesson) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* data channel(封筒)                                                        */
+/* data channel (envelopes)                                                   */
 /* -------------------------------------------------------------------------- */
 
-/// LiveKit の topic。モバイルはこのtopicだけを板書として読む
-/// (`board.ts` の `boardChannelTopic`。**値がずれたら板書は1行も届かない**ので、
-/// 契約のミラーとしてここに置く)。
+/// The LiveKit topic; mobile reads only this topic as board content. Mirrored
+/// from `boardChannelTopic` in `board.ts`, because a mismatch delivers not one
+/// line.
 ///
-/// 受信は **Text Streams API**(`registerTextStreamHandler` + このtopic)で、
-/// 生の `publishData` は使わない — 既定が LOSSY で、書き忘れると板書が黙って欠ける
-/// (計画書§3-5)。
+/// Received through the Text Streams API (`registerTextStreamHandler` plus this
+/// topic), never raw `publishData`, whose LOSSY default silently drops board
+/// lines if forgotten.
 const String boardChannelTopic = 'board';
 
 enum BoardCloseReason {
@@ -301,11 +313,11 @@ enum BoardCloseReason {
   error,
 }
 
-/// data channel を1件ずつ流れるメッセージ。`type` の discriminated union
-/// (`board.ts` の `boardChannelMessageSchema` と対応)。
+/// Messages flowing one at a time over the data channel: a discriminated union
+/// on `type`, mirroring `boardChannelMessageSchema` in `board.ts`.
 ///
-/// `unionValueCase: FreezedUnionCase.snake` で、Dartのコンストラクタ名(camelCase)を
-/// ワイヤー上の `type` 値(snake_case: `board_open` 等)に自動変換する。
+/// `unionValueCase: FreezedUnionCase.snake` maps Dart's camelCase constructor
+/// names to the wire's snake_case `type` values (`board_open` and friends).
 @Freezed(unionKey: 'type', unionValueCase: FreezedUnionCase.snake)
 abstract class BoardChannelMessage with _$BoardChannelMessage {
   const factory BoardChannelMessage.boardOpen({
@@ -338,8 +350,8 @@ abstract class BoardChannelMessage with _$BoardChannelMessage {
       _$BoardChannelMessageFromJson(json);
 }
 
-/// 共通envelopeフィールドの取り出し。3つのunion枝それぞれに同名フィールドがあるが、
-/// freezedのunionは共通基底を持たないので、`.when` でまとめて取り出す小さなヘルパー。
+/// Reads the shared envelope fields. All three union branches have them, but a
+/// freezed union has no common base, so this helper pulls them out via `.when`.
 extension BoardChannelMessageEnvelope on BoardChannelMessage {
   int get seq => when(
     boardOpen: (v, sessionId, boardId, seq, title, topicIds) => seq,
@@ -360,8 +372,8 @@ extension BoardChannelMessageEnvelope on BoardChannelMessage {
   );
 }
 
-/// 1セッションぶんの配送ログ。**ワイヤー上には現れない**(fixtureとgolden testのための入れ物)。
-/// `board.ts` の `boardChannelLogSchema` と対応。
+/// A delivery log for one session. It never appears on the wire — it is a
+/// container for fixtures and golden tests, mirroring `boardChannelLogSchema`.
 @freezed
 abstract class BoardChannelLog with _$BoardChannelLog {
   const factory BoardChannelLog({required List<BoardChannelMessage> messages}) = _BoardChannelLog;
@@ -369,12 +381,12 @@ abstract class BoardChannelLog with _$BoardChannelLog {
   factory BoardChannelLog.fromJson(Map<String, dynamic> json) => _$BoardChannelLogFromJson(json);
 }
 
-/// 板書の契約が破られたときに投げる例外。
+/// Thrown when the board contract is violated.
 ///
-/// **「板書が虫食いのまま黙って表示される」を防ぐためのシグナル。**
-/// JSON Schemaでは表現できない不変条件(README「JSON Schema に現れない不変条件」)は
-/// 全てこれを投げる。呼び出し側(将来の描画層)は、これを捕まえて
-/// エラー状態を出す責務を持つ(黙って無視してはいけない)。
+/// The signal that prevents a hole-riddled board from being displayed silently.
+/// Every invariant JSON Schema cannot express throws this, and callers (the
+/// rendering layer) are responsible for catching it and surfacing an error state
+/// — never for ignoring it.
 class BoardContractViolation implements Exception {
   const BoardContractViolation(this.message);
 
@@ -384,49 +396,54 @@ class BoardContractViolation implements Exception {
   String toString() => 'BoardContractViolation: $message';
 }
 
-/// data channel(封筒)の順序規約を検査する、ステートフルな受信側。
+/// Stateful receiver validating the data channel's ordering rules.
 ///
-/// `board.ts` の `boardChannelLogSchema.superRefine` は「配送ログ全体」を一括で検査するが、
-/// 実機では LiveKit の Text Streams から**1件ずつ**届く(計画書 §3-5)。
-/// このクラスはその受信の形に合わせて、[accept] を1件ずつ呼ぶ設計にしてある。
+/// `boardChannelLogSchema.superRefine` in `board.ts` checks a whole delivery log
+/// at once, but on device the LiveKit Text Streams arrive one at a time, so this
+/// class is built around calling [accept] per message.
 ///
-/// 検査する不変条件(README表と対応):
-///   - `seq` は0始まりで1ずつ増える(種別をまたいで)
-///   - 手順は `board_open` と `board_close` の間にしか来ない
-///   - `board_id` が一致しないメッセージは(未開封として)拒否する
-///   - `index` は板書ごとに0始まりで1ずつ増える
-///   - `board_close.step_count` が実際に届いた手順数と一致する(末尾の欠落の検知)
-///   - `board_open` は前の板書を消す([currentSteps] が空になる。それ以外では消えない)
+/// Invariants checked (matching the README table):
+///   - `seq` runs from 0 in steps of 1, across all message kinds
+///   - steps only arrive between `board_open` and `board_close`
+///   - messages with a mismatched `board_id` are rejected as unopened
+///   - `index` runs from 0 in steps of 1 within each board
+///   - `board_close.step_count` matches the number of steps received (catching a
+///     truncated tail)
+///   - `board_open` clears the previous board ([currentSteps] empties; nothing
+///     else clears it)
 ///
-/// **README表には無いが追加した検査が1つある**: `session_id` の一貫性。
-/// `board.ts` の `boardChannelLogSchema.superRefine` には実装されている
-/// (「1つのログに複数のセッションを混ぜないでください」)が、README表の6行には
-/// 載っていない。`session_id` のコメント(`board.ts:341`)が「宛先の確認。
-/// 部屋を取り違えた配送を受信側で落とせる」と明記しているので、
-/// **モバイル側の取り違え検知として持たせる方が安全**と判断し、追加した。
+/// One check is not in the README table: `session_id` consistency. It is
+/// implemented in `boardChannelLogSchema.superRefine` ("do not mix sessions in
+/// one log") but missing from the table's six rows. Since the `session_id`
+/// comment in `board.ts` states it exists so the receiver can drop deliveries
+/// for the wrong room, carrying that check on mobile is the safer choice.
 class BoardChannelReceiver {
   BoardChannelReceiver({required this.sessionId});
 
-  /// **欠落から復帰するための入口。**途中の `seq` から数え直す。
+  /// The entry point for recovering from a gap: restart counting from a given
+  /// `seq`.
   ///
-  /// `seq` はセッション内の通し番号なので、1通落ちるとそれ以降の全メッセージが
-  /// 順序違反になり、そのReceiverは二度と何も受け付けられなくなる。
-  /// 「別の問題に移る」= `board_open` のところを復帰点にして、その封筒の `seq` から
-  /// 数え直せば、**復帰後に起きた欠落もひきつづき検知できる**。
+  /// `seq` is a running number within the session, so one lost message makes
+  /// every later one an ordering violation and the receiver never accepts
+  /// anything again. Using `board_open` (moving to another problem) as the
+  /// recovery point and recounting from that envelope's `seq` keeps later gaps
+  /// detectable.
   ///
-  /// 壊れたReceiverを直すのではなく**作り直す**形にしてあるのは、
-  /// 途中まで積まれた手順を復帰後の板書に持ち越さないため
-  /// (`board_open` は板書を消す信号でもある)。
+  /// A broken receiver is rebuilt rather than repaired, so partially stacked
+  /// steps do not carry into the recovered board (`board_open` is also the
+  /// signal to clear it).
   ///
-  /// [sessionId] を `board_open` の中身から取らずに呼び出し側から受け取るのは、
-  /// **宛先の確認を封筒自身に任せないため**。取り違えた部屋からの `board_open` で
-  /// 復帰できてしまうと、`session_id` の検査が素通りする。
+  /// [sessionId] comes from the caller rather than the `board_open` contents, so
+  /// an envelope cannot vouch for its own destination: recovering from a
+  /// misaddressed `board_open` would let the `session_id` check pass unnoticed.
   ///
-  /// **いつ復帰してよいかの判断はここには無い**(それは受信経路 = application層の責務)。
+  /// When it is safe to recover is not decided here — that belongs to the
+  /// receiving path in the application layer.
   factory BoardChannelReceiver.resumingAt({required String sessionId, required int seq}) =>
       BoardChannelReceiver(sessionId: sessionId).._expectedSeq = seq;
 
-  /// 受信側が期待するセッション。接続時に決まる(LiveKitのRoomは1セッション1部屋)。
+  /// The session this receiver expects, fixed at connect time (one LiveKit Room
+  /// per session).
   final String sessionId;
 
   int _expectedSeq = 0;
@@ -434,23 +451,23 @@ class BoardChannelReceiver {
   int _receivedSteps = 0;
   final List<BoardStep> _currentSteps = <BoardStep>[];
 
-  /// いま開いている板書に、これまで積まれた手順。
-  /// `board_open` を受けるとここが空にリセットされる(それ以外では消えない)。
+  /// Steps stacked so far on the open board. Receiving `board_open` clears this;
+  /// nothing else does.
   List<BoardStep> get currentSteps => List<BoardStep>.unmodifiable(_currentSteps);
 
-  /// いま板書が開いているか(= `board_open` は来たが `board_close` がまだ)。
+  /// Whether a board is open (`board_open` seen, `board_close` not yet).
   bool get isOpen => _openBoardId != null;
 
-  /// いま開いている板書のID。
+  /// The ID of the open board.
   ///
-  /// 縮退の記録を**板書1枚につき1件**に間引くために要る(計画書 §10-7)。
-  /// 1回の授業で何十手順も流れるので、これが無いと同じ板書の欠落が連発する。
+  /// Needed to throttle degradation reports to one per board: a lesson streams
+  /// dozens of steps, and without it one board's gap reports over and over.
   String? get openBoardId => _openBoardId;
 
-  /// 1件処理する。契約違反があれば [BoardContractViolation] を投げる。
+  /// Handles one message, throwing [BoardContractViolation] on any violation.
   ///
-  /// **例外を握りつぶさないこと。** ここで検出できなかった欠落は、
-  /// 板書が虫食いのまま画面に出る(README冒頭の警告そのもの)。
+  /// Never swallow that exception: a gap missed here reaches the screen as a
+  /// hole-riddled board.
   void accept(BoardChannelMessage message) {
     if (message.sessionId != sessionId) {
       throw BoardContractViolation(
@@ -482,8 +499,8 @@ class BoardChannelReceiver {
             'index は板書ごとに0始まりで1ずつ増やしてください($_receivedSteps を期待して ${step.index})',
           );
         }
-        // 要素レベルの不変条件(domainのmin<max・triangleの頂点数)。
-        // ここを通さない限り、壊れた要素は描画層まで無検査で届いてしまう。
+        // Element-level invariants (domain min < max, triangle vertex count).
+        // Without this, broken elements reach rendering unchecked.
         _ensureValidElement(step.board);
         _receivedSteps += 1;
         _currentSteps.add(step);

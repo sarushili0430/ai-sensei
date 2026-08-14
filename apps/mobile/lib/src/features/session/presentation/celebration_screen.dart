@@ -16,14 +16,13 @@ import '../../karte/domain/karte.dart';
 import '../../monetization/application/entitlement_controller.dart';
 import '../../monetization/presentation/purchase_messages.dart';
 
-/// 祝福画面(説明中とカルテの間)。
+/// Celebration screen, between the explanation and the karte.
 ///
-/// **にぎやかな画面**。ただし数えるのは連続日数と「埋めた穴」だけで、
-/// 点数・正誤・XPは出さない。
+/// The loud screen — but it still counts only streak days and filled gaps, never
+/// scores, correctness or XP.
 ///
-/// にぎやかさの出しかたは、紙吹雪と先輩のはずみだけ。
-/// 数字を大きく動かして盛り上げると、点数を出していないのに
-/// 点数の画面に見えてしまう。
+/// The noise comes from confetti and senpai's bounce alone. Animating big
+/// numbers would make it look like a score screen even without scores.
 class CelebrationScreen extends ConsumerStatefulWidget {
   const CelebrationScreen({super.key});
 
@@ -32,15 +31,17 @@ class CelebrationScreen extends ConsumerStatefulWidget {
 }
 
 class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
-  /// 祝福を見ているあいだ、カルテを受け取りに行く間隔と回数。
+  /// Interval and attempt count for fetching the karte while the celebration
+  /// plays.
   ///
-  /// 会話画面では待たない(待つと、終わってから画面が変わるまで固まる)。
-  /// 代わりに**紙吹雪を見ているあいだ**に届く。押させないのは、
-  /// 押すのがユーザーの仕事ではないから。
+  /// The conversation screen does not wait (waiting freezes it between the end
+  /// and the next screen); the karte arrives while the confetti falls instead.
+  /// Nothing is tapped, because fetching is not the user's job.
   ///
-  /// カルテは会話が終わってからLLMが書くので、長い会話ほど遅い。40秒で
-  /// 諦めていたころは、**書き上がる直前で待つのをやめて**「取りに行って
-  /// います…」のまま止まったように見えていた。生成が普通に終わるより長く待つ。
+  /// The LLM writes the karte after the conversation, so longer conversations
+  /// take longer. At a 40-second cap we gave up just before it finished and
+  /// appeared stuck on "fetching…", so we now wait longer than generation
+  /// normally takes.
   static const Duration _pollInterval = Duration(seconds: 2);
   static const int _pollAttempts = 45;
 
@@ -67,8 +68,8 @@ class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
     _poll = null;
   }
 
-  /// 自動で取りに行く1回ぶん。届けば build がボタンを差し替える。
-  /// **ここでは画面を動かさない** — 紙吹雪の途中でカルテへ飛ばさない。
+  /// One automatic fetch. On arrival, build swaps the button. It never navigates
+  /// — no jumping to the karte mid-confetti.
   Future<void> _tick() async {
     if (_retrieving) return;
     if (_attempts >= _pollAttempts) {
@@ -84,8 +85,9 @@ class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
     if (found) setState(_stopPolling);
   }
 
-  /// 取りに行く。生成中(202)も通信の失敗も、ここでは同じ「まだ」に畳む。
-  /// 自動で回している最中にエラーを出すと、押していないのに叱られる。
+  /// Fetches. Both "still generating" (202) and network failures fold into the
+  /// same "not yet": an error during an automatic poll would scold someone who
+  /// pressed nothing.
   Future<bool> _fetchQuietly() async {
     try {
       return await ref.read(sessionOutcomeControllerProvider.notifier).retrieveKarte();
@@ -95,7 +97,7 @@ class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
     }
   }
 
-  /// 自動で届かなかったぶんを、手で取りに行く。
+  /// Manual fetch for whatever the automatic polling did not get.
   Future<void> _retrieveKarte() async {
     setState(() => _retrieving = true);
     final bool found = await _fetchQuietly();
@@ -117,13 +119,14 @@ class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
         (ref.watch(progressControllerProvider).value ?? ProgressSummary.empty).progress;
     final Karte? karte = ref.watch(latestKarteControllerProvider);
     final SessionOutcome outcome = ref.watch(sessionOutcomeControllerProvider);
-    // ペイウォールを出す位置はサーバが決める(初回カルテで穴が見えた直後の1回だけ)
+    // The server decides where the paywall appears: once, just after a gap shows
+    // in the first karte.
     final bool showPaywall = outcome.showPaywall;
     final int filledThisSession = karte == null
         ? 0
         : karte.holes.where((Hole it) => it.status == HoleStatus.filled).length;
 
-    // まだカルテが手元に無い。自分で取りに行っている最中は押させない。
+    // No karte yet; the button stays disabled while a fetch is in flight.
     final bool waiting = karte == null && outcome.resultMissing;
     final bool fetching = _retrieving || _poll != null;
 
@@ -131,11 +134,11 @@ class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
       backgroundColor: AppColors.celebration,
       body: Stack(
         children: <Widget>[
-          // 紙吹雪は本文の下に敷く。読むものの前に紙を落とさない。
+          // Confetti sits behind the text; never drop paper in front of reading.
           //
-          // カルテを待たせているあいだは降り続ける。一度きりだと2秒で止まり、
-          // そのあと**画面から動きが消える**。待っているだけなのに、
-          // 止まってしまったように見えてしまう。
+          // It keeps falling while the karte is awaited. A one-shot burst ends
+          // after two seconds, and the motionless screen that follows reads as
+          // frozen rather than waiting.
           Positioned.fill(child: ConfettiBurst(looping: fetching)),
           SafeArea(
             child: Padding(
@@ -168,16 +171,16 @@ class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
                     ),
                   ),
                   const SizedBox(height: AppSpacing.xl),
-                  // カルテがまだ来ていないときに「今日のカルテ」を押させると、
-                  // 出すものが無くてホームへ弾かれる。取りに行くボタンに変える。
+                  // Tapping "today's karte" before it arrives bounces you home
+                  // with nothing to show, so it becomes a fetch button instead.
                   FadeSlideIn.staggered(
                     index: 6,
                     child: waiting
                         ? Column(
                             children: <Widget>[
-                              // 押せないボタンだけを置かない。文言の変わらない
-                              // 無効なボタンが出ていると、待っているのか
-                              // 壊れたのかが読めない。何を待っているのかを言う。
+                              // Never just a disabled button: with unchanging
+                              // wording there is no telling waiting from broken.
+                              // Say what is being waited for.
                               Text(
                                 fetching ? strings.karteWriting : strings.karteTakingLong,
                                 textAlign: TextAlign.center,
@@ -200,8 +203,8 @@ class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
                       padding: EdgeInsets.only(top: AppSpacing.sm),
                       child: _PremiumLine(),
                     ),
-                  // カルテを待っているあいだの逃げ道。この画面は戻る先を持たない
-                  // ので、待つ以外にできることが無いと行き止まりになる。
+                  // An exit while waiting. This screen has no back target, so
+                  // without one it would be a dead end.
                   if (waiting)
                     GhostButton(
                       label: strings.sessionBackHome,
@@ -217,16 +220,16 @@ class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
   }
 }
 
-/// ペイウォールに進む人へ出す、Premium の一行。
+/// The Premium line shown to anyone heading for the paywall.
 ///
-/// **価格もトライアルも Offering から引く。** 据え置きの数字を書くと、
-/// ダッシュボードで値段やトライアルを変えた瞬間に、この行と次に出るストアの
-/// 決済画面が食い違う。ユーザーは食い違ったまま買うかどうかを決めることになる。
+/// Price and trial both come from the Offering. Hard-coded numbers would
+/// disagree with the store's checkout the moment the dashboard changed, leaving
+/// people deciding whether to buy on mismatched information.
 ///
-/// この画面に来た時点で Offering の取得が終わっていないことがある
-/// (ホームを踏まずにセッションへ入った場合や、通信が遅い場合)。
-/// **間に合っていないあいだは数字を出さない。** あとから正しい数字に
-/// 差し替わるほうが、間違った数字を見せるよりよい。
+/// The Offering fetch may not have finished by the time this screen appears
+/// (entering a session without passing home, or a slow network). While it has
+/// not, no number is shown: swapping in the correct one later beats showing a
+/// wrong one.
 class _PremiumLine extends ConsumerWidget {
   const _PremiumLine();
 

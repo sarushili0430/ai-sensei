@@ -1,21 +1,20 @@
 import 'dart:math' as math;
 
-/// `plot.fn` の評価器。
+/// Evaluator for `plot.fn`.
 ///
-/// 対応する文法は `packages/contract/src/board.ts` の `plotFunctionPattern` と
-/// **同じ範囲**(変数x・数値・四則・累乗・括弧・`sin`/`cos`/`tan`/`sqrt`/`abs`/
-/// `log`/`ln`/`exp`/`pi`)。契約側が既にこの範囲へ絞り込んでいるので
-/// (「LLMにはパラメータだけ吐かせる」§3-3の関数式版)、ここは自由な数式パーサを
-/// 書く必要はなく、その文法だけを相手にすればよい。
+/// It supports exactly the grammar of `plotFunctionPattern` in
+/// `packages/contract/src/board.ts`: the variable x, numbers, the four
+/// operations, powers, parentheses, and
+/// `sin`/`cos`/`tan`/`sqrt`/`abs`/`log`/`ln`/`exp`/`pi`. The contract already
+/// narrows the input to that range, so no general expression parser is needed.
 ///
-/// `log` は常用対数(底10)、`ln` は自然対数として扱う(契約のコメントには
-/// 明記が無いが、両方を別コマンドとして許可している以上、同じ意味では
-/// 使い分ける理由が無いための解釈。高校数学では `log` は底を明示するのが
-/// 通例だが、この関数式では底を渡す構文が無いので底10として扱う)。
+/// `log` is base 10 and `ln` is natural. The contract does not say so, but
+/// allowing both as separate commands leaves no reason for them to mean the same
+/// thing, and this grammar has no syntax for passing a base.
 ///
-/// 契約・guardrailをすり抜けた入力(手元テストや将来の変更など)は
-/// [FormatException] を投げる。呼び出し側([PlotPainter])はここで
-/// **アプリを落とさない**責務を持ち、描画をあきらめて代わりの表示にする。
+/// Input that slipped past the contract and guardrail (local tests, future
+/// changes) throws [FormatException]. Callers ([PlotPainter]) are responsible
+/// for not crashing the app and showing a fallback instead.
 class PlotExpression {
   PlotExpression._(this._root);
 
@@ -29,9 +28,10 @@ class PlotExpression {
 
   final _Node _root;
 
-  /// `x` にこの値を入れて評価する。定義域外・0除算等は `double.nan`/`Infinity`
-  /// になる(Dartの浮動小数演算はそのまま返すため、ここで特別扱いはしない)。
-  /// 呼び出し側は `isFinite` で弾く。
+  /// Evaluates with this value substituted for `x`. Out-of-domain values and
+  /// division by zero yield `double.nan` / `Infinity`, since Dart's floating
+  /// point returns those directly and nothing special-cases them here. Callers
+  /// filter with `isFinite`.
   double evaluate(double x) => _root.evaluate(x);
 }
 
@@ -170,7 +170,8 @@ class _Parser {
     final _Node base = _parsePrimary();
     if (_current.type == _TokenType.caret) {
       _pos++;
-      // 累乗は右結合(2^3^2 のような入力は稀だが、右から評価する)。
+      // Powers are right-associative; input like 2^3^2 is rare but evaluates
+      // from the right.
       final _Node exponent = _parseUnary();
       return _BinaryNode((a, b) => math.pow(a, b).toDouble(), base, exponent);
     }

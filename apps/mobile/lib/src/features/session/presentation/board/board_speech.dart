@@ -1,43 +1,42 @@
 import '../../../../l10n/strings.dart';
 import '../../domain/board.dart';
 
-/// 板書を**読み上げ用の一文**に直す。
+/// Turns the board into a sentence for screen readers.
 ///
-/// ## なぜ要るか
+/// ## Why it is needed
 ///
-/// 板書は `Math.tex` と `CustomPaint` で描かれていて、そのままでは
-/// **VoiceOver から完全に不可視**だった。板書はこのプロダクトの中心
-/// (計画書 §3-1「数式・計算・図は板書」)なので、そこが読み上げから
-/// 欠けると、目が見えない生徒には**授業が存在しないのと同じ**になる。
+/// The board is drawn with `Math.tex` and `CustomPaint`, which left it entirely
+/// invisible to VoiceOver. The board is the heart of this product (formulas,
+/// working and figures all live there), so missing it means a blind student has
+/// no lesson at all.
 ///
-/// ## §3-1 と衝突しない
+/// ## It does not conflict with "do not read formulas aloud"
 ///
-/// §3-1 は「**数式を音声で読み上げない**」と定めている。ただしあれが減らしたのは
-/// **TTSの原価**で、スクリーンリーダーは端末側で読むので**こちらの原価はゼロ**。
-/// つまり「読み上げない」はTTSの話であって、セマンティクスの話ではない。
-/// 目が見えない生徒にとっては**音声が唯一の経路**なので、板書に追い出した情報が
-/// まるごと届かなくなる —— そちらのほうが §3-1 の目的(理解しやすさ)に反する。
+/// That rule was about TTS cost. A screen reader speaks on device, so the cost
+/// here is zero: "do not read aloud" is about TTS, not semantics. For a blind
+/// student audio is the only channel, so losing everything we moved onto the
+/// board would work against the very goal (comprehensibility) that rule serves.
 ///
-/// ## `packages/guardrail` の `math-speech.ts` は使えない
+/// ## `math-speech.ts` in `packages/guardrail` cannot be reused
 ///
-/// あれは **発話 → 数式**(STTの正規化。「エックスのにじょう」→ `x^2`)で、
-/// ここで要るのは**逆方向**。同じ名前だが別物なので、移植しても意味がない。
+/// That one goes speech -> formula (STT normalisation); this needs the reverse.
+/// Same name, different thing.
 ///
-/// ## どこまでやるか
+/// ## How far it goes
 ///
-/// **完璧な読み上げは狙わない。** `tex` は許可コマンドのホワイトリスト
-/// (計画書 §3-6 ②)で縛られているので入力の幅は狭い。構造(分数・根号・
-/// 指数・添字)と記号だけを言葉にして、**英字はそのまま残す** ——
-/// 1文字の英字はスクリーンリーダーがロケールなりに読んでくれるので、
-/// こちらで「エックス」と書くと二重に読まれたり、英語音声で崩れたりする。
+/// Perfect narration is not the aim. `tex` is constrained by a command
+/// whitelist, so the input space is narrow. Only structure (fractions, roots,
+/// exponents, subscripts) and symbols become words; Latin letters stay as they
+/// are, since a screen reader reads a single letter per its locale and spelling
+/// it out here would double it up or break under an English voice.
 ///
-/// 図形は「厳密な読み上げ」より「**何が描かれているか**」で足りる。
+/// For figures, "what is drawn" is enough — exact narration is not required.
 
-/// 読み上げに使う語。ロケールで変わるので [AppStrings] から引く。
+/// Narration vocabulary; it varies by locale, so it comes from [AppStrings].
 String describeElement(BoardElement element, AppStrings strings) {
   return element.when(
     latex: (String tex) => describeTex(tex, strings),
-    // 日本語の一行なので、そのまま読める。
+    // Prose already, so it reads as is.
     text: (String body) => body,
     plot: (String fn, BoardDomain domain, List<PlotMark>? marks) => strings.boardSpeechPlot(
       describeTex(fn, strings),
@@ -62,13 +61,14 @@ String describeElement(BoardElement element, AppStrings strings) {
         ),
     circle: (BoardPoint center, double r, List<String>? labels) =>
         strings.boardSpeechCircle(_number(r), (labels ?? const <String>[]).join('、')),
-    // 作図の宣言はサーバが持っているので、読み上げ文も向こうで書いてある。
-    // ここで items から組み立て直すと、サーバの文言と二重管理になる。
+    // The server owns the construction declaration and writes the narration too.
+    // Rebuilding it from items here would mean maintaining that wording twice.
     figure: (List<Map<String, dynamic>> items, String? svg, String? alt) =>
         (alt == null || alt.isEmpty) ? strings.boardSpeechFigure : alt,
-    // 英文はそのまま読ませる(TTSではなく画面読み上げなので、英語の音声で読まれる)。
-    // 訳と焦点は付いていれば足す — **下線は音にならない**ので、
-    // 「どこを見てほしいか」は言葉にしないと目の見えない生徒には届かない。
+    // English sentences are read as they are (this is a screen reader, not TTS,
+    // so an English voice handles them). Gloss and focus are appended when
+    // present: an underline makes no sound, so "look here" has to be said in
+    // words to reach a blind student.
     sentence: (String text, String? gloss, String? focus) =>
         strings.boardSpeechSentence(text, gloss ?? '', focus ?? ''),
     compare: (List<String> columns, List<List<String>> rows, String? title) =>
@@ -83,51 +83,52 @@ String describeElement(BoardElement element, AppStrings strings) {
 String _vertexName(List<String>? labels, int index) =>
     labels != null && index < labels.length ? labels[index] : '${index + 1}';
 
-/// `5.0` を「5」と読ませる。小数のときだけ小数のまま。
+/// Reads `5.0` as "5", keeping decimals only when they are meaningful.
 String _number(double value) =>
     value == value.roundToDouble() ? value.round().toString() : value.toString();
 
-/// LaTeX を読み上げ用の文に直す。
+/// Turns LaTeX into a sentence for narration.
 ///
-/// 内側から外へ、構造を言葉に置き換えていく。**入れ子は繰り返しで畳む**
-/// (`\frac{\frac{a}{b}}{c}` のように、中に同じ構造が入りうるため)。
+/// Structure is replaced with words from the inside out; nesting is folded by
+/// repetition, since the same structure can appear inside itself (as in
+/// `\frac{\frac{a}{b}}{c}`).
 String describeTex(String tex, AppStrings strings) {
   String out = tex;
 
-  // 中身に `{}` を含まない、いちばん内側から畳む。
-  // 回数を切ってあるのは、想定外の入力で回り続けないため
-  // (`tex` は1行・200字までなので、この深さで足りる)。
+  // Fold from the innermost group, the one with no `{}` inside. The iteration
+  // count is capped so unexpected input cannot loop forever (`tex` is one line
+  // of up to 200 characters, so this depth suffices).
   for (int i = 0; i < 12; i++) {
     final String before = out;
     out = _foldOnce(out, strings);
     if (out == before) break;
   }
 
-  // 残った記号とコマンドを言葉にする。
+  // Turn the remaining symbols and commands into words.
   strings.boardSpeechSymbols.forEach((String from, String to) {
     out = out.replaceAll(from, to);
   });
 
-  // 中括弧は構造の印でしかないので、読み上げからは落とす。
+  // Braces only mark structure, so drop them from the narration.
   out = out.replaceAll(RegExp(r'[{}]'), ' ');
-  // `\,`(細い空白)などの残りかす。
+  // Leftovers such as `\,` (thin space).
   out = out.replaceAll(RegExp(r'\\[a-zA-Z]+'), ' ');
   return out.replaceAll(RegExp(r'\s+'), ' ').trim();
 }
 
-/// 構造をひと皮むく。**中身に `{}` を持たないものだけを対象にする**ので、
-/// 繰り返すと内側から順に畳まれる。
+/// Peels one layer of structure. It only targets groups with no `{}` inside, so
+/// repeating it folds from the innermost outwards.
 String _foldOnce(String tex, AppStrings strings) {
   String out = tex;
   const String inner = r'([^{}]*)';
 
-  // 分数。日本語は「B分のA」で**順序が逆**になる。
+  // Fractions. Japanese says the denominator first, reversing the order.
   out = out.replaceAllMapped(
     RegExp(r'\\c?frac\{' '$inner' r'\}\{' '$inner' r'\}'),
     (Match m) => ' ${strings.boardSpeechFraction(m[1]!, m[2]!)} ',
   );
 
-  // n乗根 → 平方根の順に見る(`\sqrt[3]{}` は `\sqrt{}` にも当たるため)。
+  // nth roots before square roots, since `\sqrt[3]{}` also matches `\sqrt{}`.
   out = out.replaceAllMapped(
     RegExp(r'\\sqrt\[' '$inner' r'\]\{' '$inner' r'\}'),
     (Match m) => ' ${strings.boardSpeechNthRoot(m[1]!, m[2]!)} ',
@@ -137,7 +138,7 @@ String _foldOnce(String tex, AppStrings strings) {
     (Match m) => ' ${strings.boardSpeechSquareRoot(m[1]!)} ',
   );
 
-  // 指数・添字。`^{12}` と `^2` の両方に当てる。
+  // Exponents and subscripts, matching both `^{12}` and `^2`.
   out = out.replaceAllMapped(
     RegExp(r'\^\{' '$inner' r'\}|\^(\w)'),
     (Match m) => ' ${strings.boardSpeechPower(m[1] ?? m[2]!)} ',
@@ -147,20 +148,21 @@ String _foldOnce(String tex, AppStrings strings) {
     (Match m) => ' ${strings.boardSpeechSubscript(m[1] ?? m[2]!)} ',
   );
 
-  // 書体の指定は読み上げに関係ない(`\mathrm{P}` は「P」)。
+  // Font selection is irrelevant to narration (`\mathrm{P}` is just "P").
   out = out.replaceAllMapped(
     RegExp(r'\\(?:mathrm|mathbf|text)\{' '$inner' r'\}'),
     (Match m) => ' ${m[1]!} ',
   );
 
-  // ベクトル。
+  // Vectors.
   out = out.replaceAllMapped(
     RegExp(r'\\(?:vec|overrightarrow)\{' '$inner' r'\}'),
     (Match m) => ' ${strings.boardSpeechVector(m[1]!)} ',
   );
 
-  // 上線(線分・共役複素数・平均)。畳まないと `\overline` は最後の掃除で
-  // 空白に消え、`\overline{AB}` と `AB` が**同じ読み上げになる**。
+  // Overlines (segments, conjugates, means). Unfolded, `\overline` vanishes into
+  // whitespace in the final cleanup and `\overline{AB}` narrates the same as
+  // `AB`.
   out = out.replaceAllMapped(
     RegExp(r'\\(?:overline|bar)\{' '$inner' r'\}'),
     (Match m) => ' ${strings.boardSpeechOverline(m[1]!)} ',

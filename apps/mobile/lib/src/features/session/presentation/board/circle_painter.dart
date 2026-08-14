@@ -4,7 +4,7 @@ import '../../domain/board.dart';
 import 'board_coordinate_space.dart';
 import 'board_style.dart';
 
-/// 円(`BoardElement.circle`)を描く。
+/// Draws a circle (`BoardElement.circle`).
 class CirclePainter extends CustomPainter {
   CirclePainter({required this.center, required this.r, this.labels});
 
@@ -19,7 +19,7 @@ class CirclePainter extends CustomPainter {
       return;
     }
 
-    // ラベルが円の外に出る分の余白として半径の25%を足す。
+    // Add 25% of the radius as padding for labels outside the circle.
     final double margin = r * 1.25;
     final BoardCoordinateSpace space = BoardCoordinateSpace(
       dataMinX: center.x - margin,
@@ -45,11 +45,11 @@ class CirclePainter extends CustomPainter {
     final List<String>? labelList = labels;
     if (labelList == null || labelList.isEmpty) return;
 
-    // 1つ目: 中心の名前(中心のすぐ下)。
+    // First: the centre's name, just below the centre.
     paintBoardLabel(canvas, labelList[0], canvasCenter + const Offset(0, 16));
 
-    // 2つ目: 半径の注記など。右上45度の縁のあたりに置く(「r = 5」のような
-    // 半径の説明は、慣習的に斜めの半径線の近くに書かれることが多いため)。
+    // Second: a radius annotation or similar, near the edge at 45 degrees up and
+    // right — "r = 5" is conventionally written beside a diagonal radius.
     if (labelList.length > 1) {
       final Offset onEdge =
           canvasCenter + Offset(radiusPx * 0.7071, -radiusPx * 0.7071);
@@ -63,7 +63,7 @@ class CirclePainter extends CustomPainter {
       paintBoardLabel(canvas, labelList[1], onEdge + const Offset(18, -10));
     }
 
-    // 3つ目以降: 中心の下に縦に並べる。仕様上3つが上限。
+    // Third onwards: stacked below the centre. The spec caps it at three.
     for (int i = 2; i < labelList.length; i++) {
       paintBoardLabel(
         canvas,

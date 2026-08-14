@@ -13,11 +13,11 @@ import 'sentence_element_view.dart';
 import 'text_element_view.dart';
 import 'triangle_painter.dart';
 
-/// `BoardElement` の8枝を、対応する見た目に振り分ける。
+/// Dispatches the eight `BoardElement` branches to their views.
 ///
-/// 自由描画が無い(計画書§3-3)のと同じく、ここも8枝の`switch`(`.when`)で
-/// 閉じている。新しいプリミティブを増やすときはここに枝を足すことになる
-/// (契約側の `boardElementKinds` を増やすときと必ずセットで)。
+/// Like the absence of freehand drawing, this is closed over eight branches
+/// (`.when`). A new primitive means adding a branch here, always together with
+/// `boardElementKinds` on the contract side.
 class BoardElementView extends StatelessWidget {
   const BoardElementView({required this.element, super.key});
 
@@ -41,34 +41,36 @@ class BoardElementView extends StatelessWidget {
           SentenceElementView(text: text, gloss: gloss, focus: focus),
       compare: (List<String> columns, List<List<String>> rows, String? title) =>
           CompareElementView(columns: columns, rows: rows, title: title),
-      // **ここだけ painter を持たない。**中身はサーバが解いて描いたSVGで、
-      // 図の語彙が増えてもこの枝は変わらない(D-21)。
-      // `svg` はワイヤーに出る時点で必ず入っている(`ensureValidFigure`)。
-      // 検査を通っていない経路から来た場合だけ null になるので、そのときは何も描かない。
+      // The only branch with no painter: the content is SVG the server solved
+      // and drew, so this branch does not change as the figure vocabulary grows.
+      // `svg` is always present by the time it reaches the wire
+      // (`ensureValidFigure`); it is null only on paths that skipped validation,
+      // and then nothing is drawn.
       figure: (List<Map<String, dynamic>> items, String? svg, String? alt) =>
           svg == null ? const SizedBox.shrink() : FigureElementView(svg: svg),
     );
 
-    // **読み上げは1行につき1つ。**
+    // One announcement per line.
     //
-    // `Math.tex` は記号ごとにウィジェットを積むので、包まないと
-    // 「エックス」「ハット」「2」…と**バラバラに読まれる**(そもそも
-    // `CustomPaint` の図形は1文字も読まれない)。中の断片を
-    // [ExcludeSemantics] で消して、代わりに1つの文を置く。
+    // `Math.tex` stacks a widget per symbol, so unwrapped it is read out in
+    // fragments — "x", "hat", "2" — and `CustomPaint` figures are not read at
+    // all. The fragments are removed with [ExcludeSemantics] and replaced by one
+    // sentence.
     //
-    // 板書はこのプロダクトの中心(計画書 §3-1)なので、ここが欠けると
-    // 目が見えない生徒には**授業が存在しないのと同じ**になる。
-    // 読み上げは端末側なので、§3-1 が抑えたかったTTSの原価には影響しない。
+    // The board is the heart of this product, so without this a blind student
+    // has no lesson at all. Announcement happens on device, so it does not affect
+    // the TTS cost this design was keeping down.
     return Semantics(
       label: describeElement(element, AppStrings.of(context)),
-      // 数式も図形も、指で触って操作するものではない。
+      // Neither formulas nor figures are interactive.
       readOnly: true,
       child: ExcludeSemantics(child: drawn),
     );
   }
 }
 
-/// plot/triangle/circle に共通の器。板書の1手順として自然な高さに収める。
+/// Shared container for plot / triangle / circle, at a natural height for one
+/// board step.
 class _GraphicBox extends StatelessWidget {
   const _GraphicBox({required this.painter});
 

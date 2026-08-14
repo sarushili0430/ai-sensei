@@ -53,7 +53,7 @@ class PremiumSync extends _$PremiumSync {
       AsyncValue<Entitlement> next,
     ) {
       final bool? seen = next.value?.isPremium;
-      if (seen == null) return; // まだ読めていない(loading / error)
+      if (seen == null) return; // Not readable yet (loading / error).
 
       final bool? previous = _lastSeen;
       _lastSeen = seen;

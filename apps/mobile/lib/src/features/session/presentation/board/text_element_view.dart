@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 
 import 'board_style.dart';
 
-/// 数式にしない一行(`BoardElement.text`)。見出し・注記・言い換え。
+/// A non-formula line (`BoardElement.text`): heading, note or paraphrase.
 ///
-/// **LaTeXの中に日本語を混ぜない**(計画書§3-6d)の受け皿がこれ。
-/// `\text{よって}` が `flutter_math_fork` のKaTeXフォント(欧文専用)で
-/// 文字化けする実測を受けて、日本語の一言はLaTeXの外、この要素で出す設計にした。
+/// This is where the rule against mixing Japanese into LaTeX lands. After
+/// measuring `\text{...}` rendering as mojibake in `flutter_math_fork`'s KaTeX
+/// fonts (Latin only), Japanese prose is emitted outside LaTeX, as this element.
 class TextElementView extends StatelessWidget {
   const TextElementView({required this.body, super.key});
 

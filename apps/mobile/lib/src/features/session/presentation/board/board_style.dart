@@ -1,101 +1,102 @@
 import 'package:flutter/material.dart';
 
-/// 板書レイヤー専用の追加値。
+/// Extra values used only by the board layer.
 ///
-/// **`AppColors` は変更・追加しない。**アプリ全体の地と本文の色はそのままで、
-/// ここに置くのは**板の上でしか使わない色**だけ(下記)。時間は既存トークン
-/// (`AppDurations.draw`)をそのまま使う。
+/// `AppColors` is never changed or extended: the app's ground and body colors
+/// stay as they are, and only colors used on the board live here. Durations
+/// reuse the existing token (`AppDurations.draw`).
 ///
-/// ─────────────────────────────────────────────────────────────────────────
-/// 【板は黒板】`docs/wireframe_board_v2.html` の決定2
-/// ─────────────────────────────────────────────────────────────────────────
+/// ## The board is a blackboard
 ///
-/// もともと板書は地(`AppColors.background`)に文字が直接乗っているだけで、
-/// **どこからどこまでが板書なのか境目が無かった**。問題文・式・図が同じ紙の上に
-/// 平らに並ぶので、主役が板書だと見た目から分からない。
+/// The board used to be text sitting straight on the ground
+/// (`AppColors.background`), with no edge saying where it began or ended.
+/// Problem, formula and figure lay flat on the same paper, so nothing showed the
+/// board was the lead.
 ///
-/// 素材を2つに分ける: **問題 = 紙(白いカード)/ 板書 = 黒板(面)**。
-/// ラベルを読まなくても役割が分かるのは、文字ではなく素材が違うから。
+/// Two materials instead: the problem is paper (a white card), the board is a
+/// surface. The roles read without labels because the materials differ.
 ///
-/// **色は作図(`@ai-sensei/figure` の `render.js`)が既に使っている値と同じにする。**
-/// 図のSVGは背景 `#2f3a35`・線 `#edeae0` で描かれてくるので、板をこの色にすると
-/// **図が板に溶けて、1枚の黒板として繋がる**(別の色にすると、図だけ切手のように浮く)。
-/// 緑にするか紺にするかはワイヤー v2 の時点で「実機で決める」保留のままなので、
-/// ここを触るときは図の側(`render.js` / `docs/figeval/render.mjs`)と**必ず一緒に**変えること。
+/// The colors match what the figure renderer (`render.js` in
+/// `@ai-sensei/figure`) already uses: figure SVGs are drawn with background
+/// `#2f3a35` and strokes `#edeae0`, so matching them makes the figure dissolve
+/// into one continuous blackboard rather than float like a stamp. Green vs navy
+/// was left "to decide on device" in wireframe v2, so change this only together
+/// with the figure side (`render.js` / `docs/figeval/render.mjs`).
 abstract final class BoardStyle {
-  /// 板の地。作図SVGの背景と同じ値。
+  /// The board's ground; the same value as the figure SVG background.
   static const Color surface = Color(0xFF2F3A35);
 
-  /// 板の上の文字(チョーク)。作図SVGの線と同じ値。
+  /// Text on the board (chalk); the same value as the figure SVG strokes.
   static const Color chalk = Color(0xFFEDEAE0);
 
-  /// 板の上の控えめな文字(訳・注記・目盛)。チョークを落としたもの。
+  /// Muted text on the board (translations, notes, ticks): chalk dimmed.
   static const Color chalkMuted = Color(0xFF9FA8A2);
 
-  /// 板の上で「いま見てほしいところ」。作図SVGの `as: "key"` と同じ黄色。
+  /// "Look here" on the board; the same yellow as `as: "key"` in figure SVGs.
   ///
-  /// **板の上では青やピンクは沈む**(ワイヤー v2 の決定3)。強調は色ではなく
-  /// 下線・囲みでやるのが黒板の作法だが、線だけでは足りない場所
-  /// (グラフの曲線・角の印)にはこのチョークの黄を使う。
+  /// Blue and pink sink into the board. Blackboard practice emphasises with
+  /// underlines and boxes rather than color, but where lines are not enough
+  /// (plot curves, angle marks) this chalk yellow is used.
   static const Color chalkKey = Color(0xFFF2D675);
 
-  /// LaTeXの基準フォントサイズ。
+  /// Base font size for LaTeX.
   ///
-  /// **新しく決めた数字ではない。** 板書の実効幅スパイク(計画書§3-6b・
-  /// team-leadへの実測報告)で最初から最後まで使い続けた値をそのまま引き継いでいる。
-  /// 「340pt上での溢れ判定」「FittedBoxの縮小限界(54%/32%/24%)」の実測値は
-  /// すべてこのフォントサイズを基準にしているので、ここだけ別の値にすると
-  /// 実測結果が板書の実装に対応しなくなる。
+  /// Not a newly chosen number: it is the value used throughout the board's
+  /// effective-width spike. The overflow measurements at 340pt and the FittedBox
+  /// scale limits (54% / 32% / 24%) are all relative to this size, so changing it
+  /// here alone would decouple those measurements from the implementation.
   static const double latexFontSize = 24;
 
-  /// FittedBoxで縮小してよい下限(縮小率)。計画書§3-6bの決定。
+  /// Lower bound on FittedBox scaling.
   ///
-  /// 実測(意図的に長い式・自然幅624pt)では、340pt箱に縮小した54%は
-  /// 「ぎりぎり読める」、200pt箱の32%は「厳しい」だった。70%を下限にしておけば、
-  /// 実測で溢れが確認された式(縮小率76〜97%)は全部この範囲に収まる。
+  /// Measured with deliberately long formulas (intrinsic width 624pt): 54% in a
+  /// 340pt box was "just readable", 32% in a 200pt box was "hard". A 70% floor
+  /// keeps every formula that measurably overflowed (76-97%) inside the range.
   ///
-  /// これを下回る式は、本来はagent側が2手順に分割して送るべきもの(§3-6bの案C)が
-  /// 分割されないまま届いた状態で、**契約違反に近い**。[LatexElementView] は
-  /// これ以上縮めず、70%で固定して横スクロールに逃がす(安全弁。理由は同ファイル参照)。
+  /// Anything below that is a formula the agent should have split across two
+  /// steps and did not — close to a contract violation. [LatexElementView] stops
+  /// shrinking, pins 70% and falls back to horizontal scrolling as a safety valve
+  /// (see that file).
   static const double latexMinScale = 0.70;
 
-  /// 図形プリミティブ(plot / triangle / circle)を描く `CustomPaint` の高さ。
-  /// 板書の1手順として単独の行に収まる大きさ。
+  /// Height of the `CustomPaint` drawing graphic primitives (plot / triangle /
+  /// circle), sized to sit on one line as a single board step.
   static const double graphicHeight = 180;
 
-  /// 英語の例文の文字サイズ。
+  /// Font size for English example sentences.
   ///
-  /// 数式(24)より小さいのは、**1文がそのぶん長い**から。120字の英文を24ptで
-  /// 出すと実効幅340ptで4行以上になり、板書の1手順が画面を埋める。
-  /// 本文(bodyLarge)より少し大きい程度にして、注記との差だけを付ける。
+  /// Smaller than formulas (24) because a sentence is that much longer: 120
+  /// characters at 24pt runs to four or more lines at an effective width of
+  /// 340pt, and one board step fills the screen. Slightly larger than body text,
+  /// enough to separate it from notes.
   static const double sentenceFontSize = 18;
 
-  /// `focus` に引く下線の太さ。**文字の一部を指す線**なので、
-  /// 罫線より太く、囲みより細い。
+  /// Thickness of the `focus` underline. It points at part of a word, so it is
+  /// thicker than a rule and thinner than a box.
   static const double focusUnderlineThickness = 2;
 
-  /// 実測の前提にした板書の実効幅(pt)。iPhone 15 の393ptから余白を引いた値。
+  /// The effective board width (pt) the measurements assumed: iPhone 15's 393pt
+  /// minus padding.
   ///
-  /// **[latexMinScale] はこの幅を基準に決めた値**なので、実際の幅がこれを下回ると
-  /// 「縮小して収まる」と確認した式まで横スクロールに落ちる。
-  /// 見た目では気づけないので、下回ったら記録する
-  /// (`Degradation.boardTooNarrow`。計画書 §10-7)。
+  /// [latexMinScale] was chosen against this width, so a narrower actual width
+  /// pushes formulas verified to fit into horizontal scrolling. That is invisible
+  /// by eye, so falling below it is recorded (`Degradation.boardTooNarrow`).
   static const double measuredWidthAssumption = 340;
 
-  /// 板書の左右の余白の合計。どの画面も `AppSpacing.lg` × 2 で揃えてある。
+  /// Total horizontal board padding; every screen uses `AppSpacing.lg` x 2.
   static const double horizontalPadding = 48;
 
-  /// この端末で板書が使えるはずの幅。
+  /// The width the board should have on this device.
   ///
-  /// **[measuredWidthAssumption] をそのまま閾値にすると、狭い端末では
-  /// 当たり前に下回る。** 340pt は iPhone 15(393pt)基準の値で、
-  /// iPhone SE(375pt)なら 375 − 48 = **327pt** にしかならない。
-  /// 端末が狭いという事実を縮退として送ると、**SEの利用者ぶんが全部飛んで**、
-  /// 本当に見たい「こちらの版組が幅を食った」(授業の外で板書をカードに入れて
-  /// 311ptまで落ちていた件)が件数に埋もれる。
+  /// Using [measuredWidthAssumption] as the threshold would trip on narrow
+  /// devices by default: 340pt assumes iPhone 15 (393pt), while an iPhone SE
+  /// (375pt) yields only 375 - 48 = 327pt. Reporting "the device is narrow" as a
+  /// degradation would flood the data with every SE user and bury what we
+  /// actually want to see — our own layout eating the width (a board wrapped in a
+  /// card outside a lesson, down to 311pt).
   ///
-  /// なので比べる相手は「この端末で取れるはずの幅」にする。
-  /// 下回るのは**版組が食ったときだけ**になる。
+  /// So the comparison is against the width this device should afford, and only
+  /// layout eating into it falls below.
   static double expectedWidth(double screenWidth) {
     final double available = screenWidth - horizontalPadding;
     return available < measuredWidthAssumption ? available : measuredWidthAssumption;

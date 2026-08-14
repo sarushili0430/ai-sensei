@@ -211,7 +211,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
       return await Permission.camera.status;
     } on Object catch (error) {
       debugPrint('カメラの許可を確認できませんでした: $error');
-      return PermissionStatus.granted; // 許可の問題と決めつけず、ホームへ戻す
+      return PermissionStatus.granted; // Do not assume permission; go home.
     }
   }
 

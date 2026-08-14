@@ -17,18 +17,21 @@ import '../domain/session.dart';
 import 'board/board_style.dart';
 import 'board/board_view.dart';
 
-/// 会話画面(ワイヤーフレームの03/04を1枚に統合)。
+/// The conversation screen (wireframes 03 and 04 merged into one).
 ///
-/// **にぎやかな画面**にする。ただし試験官UIにはしない。
+/// A lively screen, but never an examiner's UI.
 ///
-/// 画面には2つの姿がある。分かれ目は**板書が届いているか**だけ:
+/// It has two forms, split only by whether a board has arrived:
 ///
-///   - **板書なし**(既存の復習の会話)= 主役は先輩の表情。テキストは字幕として控えめに。
-///   - **板書あり**(授業モード・計画書§4-1)= **主役は板書**。顔と字幕は下の帯に小さく置く。
-///     教え返し(`explainBack`)でも**板書は残したまま**、下に「説明してみて」を出す。
+///   - no board (existing review conversations): senpai's expression leads, and
+///     text is a modest caption
+///   - board (lesson mode): the board leads, with face and captions small in a
+///     bottom bar. Even during teach-back (`explainBack`) the board stays and
+///     "explain it" appears below
 ///
-/// 板書は1行ずつ積まれ、**前の行は消えない**(§3-2)。消えるのは別の問題に
-/// 移るとき(`board_open`)だけで、その判断は受信側([BoardInbox])が持っている。
+/// The board stacks line by line and never erases. It clears only when moving to
+/// another problem (`board_open`), and that decision belongs to the receiver
+/// ([BoardInbox]).
 class SessionScreen extends ConsumerStatefulWidget {
   const SessionScreen({super.key});
 
@@ -64,8 +67,8 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
       }
     });
 
-    // 会話が始まらなかったときは、顔と字幕のまま黙らない。
-    // 何が起きたのかと、次にできることを出す。
+    // When the conversation never started, do not sit silently on face and
+    // captions: say what happened and what can be done next.
     if (state.phase == SessionPhase.failed) {
       return _SessionFailed(failure: state.failure);
     }
@@ -73,29 +76,30 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
     final String subtitle = switch (state.phase) {
       SessionPhase.connecting => strings.sessionConnecting,
       SessionPhase.summarizing || SessionPhase.finished => strings.sessionSummarizing,
-      // 授業中の字幕は先輩の発話。まだ何も喋っていないうちは、
-      // 「聞いています」ではなく**いま何が起きているか**を出す。
+      // In a lesson the caption is senpai's speech. Before anything is said,
+      // show what is happening rather than "listening".
       SessionPhase.senpaiTeaching => state.lastSenpaiText ?? strings.sessionSenpaiTeaching,
       _ => state.lastSenpaiText ?? strings.sessionListening,
     };
 
-    // 会話は終わっていて、あとはカルテを待つだけ。
-    // ここでボタンを押せるままにしておくと、押しても何も起きないので連打される。
+    // The conversation is over and only the karte is pending. Leaving the button
+    // enabled here invites repeated taps that do nothing.
     final bool wrappingUp =
         state.phase == SessionPhase.summarizing || state.phase == SessionPhase.finished;
 
     final BoardSnapshot board = state.board;
-    // 解析が読み取れた問題。読めなければ `null` で、そのときは何も出さない
-    // (「問題が読めませんでした」と書くと、先輩が読み上げを頼む前に
-    // 生徒が撮り直しに行ってしまう)。
+    // The problem the analysis could read; `null` when it could not, and then
+    // nothing is shown — "could not read the problem" would send students off to
+    // retake before senpai even asks them to read it out.
     final SessionProblem? problem = ref.watch(captureControllerProvider).analysis?.problem;
 
     return Scaffold(
       body: SafeArea(
-        // **横の余白は子ごとに付ける。**板書だけは画面の左右いっぱいまで伸ばしたい
-        // (板は面であってカードではない。`board_view.dart`)。全体を包んで
-        // しまうと板が中央に浮いた掲示物になり、内側に余白を足せば実効幅が
-        // 340ptを割って式が横スクロールに落ちる。
+        // Horizontal padding is applied per child: only the board runs edge to
+        // edge, because it is a surface rather than a card (`board_view.dart`).
+        // Wrapping everything would leave the board floating like a notice, and
+        // inner padding would drop the effective width below 340pt and push
+        // formulas into horizontal scrolling.
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
           child: Column(
@@ -106,33 +110,35 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
                   remaining: strings.remaining(state.remainingSeconds),
                 ),
               ),
-              // **問題文は板書より上に、常に出す。**見出し(`board.title`)は
-              // 先輩が付けた要約で、問題そのものではない。何を解いているかが
-              // 画面のどこにも無いと、板書から逆算するしかなくなる
-              // (`docs/wireframe_board_v2.html` の1つ目)。
+              // The problem text always sits above the board. The heading
+              // (`board.title`) is senpai's summary, not the problem itself, and
+              // without the problem on screen the only way to know what is being
+              // solved is to reverse-engineer the board.
               if (problem != null) ...<Widget>[
                 const SizedBox(height: AppSpacing.sm),
                 _Inset(child: _ProblemBlock(text: problem.text)),
               ],
               if (board.hasBoard) ...<Widget>[
                 const SizedBox(height: AppSpacing.md),
-                // **板書が主役。**残りの高さを全部渡す。
+                // The board leads; give it all the remaining height.
                 Expanded(child: _BoardStage(board: board)),
                 const SizedBox(height: AppSpacing.md),
                 _Inset(child: _LessonFooter(phase: state.phase, wrappingUp: wrappingUp)),
               ] else
-                // **板書が無いときだけ、字幕を出す。**
+                // Captions only when there is no board.
                 //
-                // 字幕の根拠は「声を聞き取れない場所でも追えるように」だったが、
-                // このアプリは**教え返し**が本体で、そもそも声を出せない場所では
-                // 成立しない。板書が出ているなら、読むべきものは板書のほうにある。
+                // Their rationale was following the conversation where audio
+                // cannot be heard, but this app is built on teaching back, which
+                // does not work anywhere you cannot speak. With a board up, what
+                // to read is on the board.
                 //
-                // 板書が無い経路(板書に失敗した立て直し・古いAPIの復習)では、
-                // 先輩の言葉が**画面上の唯一の手がかり**なので、ここだけ残す。
+                // On board-less paths (a recovery after board failure, review on
+                // an older API) senpai's words are the only cue on screen, so
+                // captions stay there.
                 //
-                // 高さは1つの箱として渡し、中でスクロールさせる。`Spacer` で挟んで
-                // いたころは、長い返事がそのまま**下の操作を画面の外へ押し出していた**
-                // (実機で「今日はここまで」に BOTTOM OVERFLOWED が重なった)。
+                // The height is one box that scrolls inside. Sandwiched between
+                // `Spacer`s, a long reply pushed the controls off screen (BOTTOM
+                // OVERFLOWED landed on "done for today" on device).
                 Expanded(
                   child: CenteredScroll(
                     padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
@@ -146,8 +152,8 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
                           SessionPhase.senpaiTeaching => SenpaiMood.neutral,
                           SessionPhase.summarizing => SenpaiMood.neutral,
                           SessionPhase.finished => SenpaiMood.delighted,
-                          // 困り顔が出るのは**こちら側の不首尾**のときだけ
-                          // (`SenpaiMood.puzzled` の定義)。生徒が詰まったときには出さない。
+                          // The puzzled face appears only when we failed (see
+                          // `SenpaiMood.puzzled`), never when a student is stuck.
                           SessionPhase.failed => SenpaiMood.puzzled,
                         },
                         size: 160,
@@ -155,12 +161,12 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
                       const SizedBox(height: AppSpacing.md),
                       _StatusIndicator(phase: state.phase, wrappingUp: wrappingUp),
                       const SizedBox(height: AppSpacing.md),
-                      // 差し替わるときに入れ替わりが見えるよう、文ごとに切り替える。
+                      // Switch per sentence so the swap is visible.
                       _Subtitle(text: subtitle, align: TextAlign.center),
                     ],
                   ),
                 ),
-              // パスは恥ではない。穴の記録として価値がある。
+              // Passing is not shameful; it is a valuable record of a gap.
               _Inset(
                 child: GhostButton(
                   label: strings.sessionPass,
@@ -176,8 +182,8 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
                   label: wrappingUp ? strings.sessionSummarizing : strings.sessionEnd,
                   color: AppColors.border,
                   foregroundColor: AppColors.ink,
-                  // 押した瞬間に押せなくなる。もう受け取ってあることが、
-                  // 文言と色の両方で分かるようにする。
+                  // Disabled the moment it is tapped, with wording and color
+                  // both showing it was received.
                   onPressed: wrappingUp
                       ? null
                       : () => ref.read(sessionControllerProvider.notifier).finish(),
@@ -191,7 +197,7 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
   }
 }
 
-/// 上段。残り時間と、板書があればその見出し(「この板書は何の問題か」)。
+/// Top bar: the time left and, with a board, its heading (which problem it is).
 class _SessionHeader extends StatelessWidget {
   const _SessionHeader({required this.title, required this.remaining});
 
@@ -219,16 +225,17 @@ class _SessionHeader extends StatelessWidget {
   }
 }
 
-/// いま解いている問題。**板書の上に、授業のあいだずっと出しておく。**
+/// The problem being solved, pinned above the board for the whole lesson.
 ///
-/// 板書は積み上がるので、問題文をスクロールの中に置くとすぐ画面外へ出る。
-/// けれど**教え返しの最中にいちばん見返したいのが問題文**なので、流さずに
-/// ここへ固定する(`docs/wireframe_board_v2.html`)。
+/// The board grows, so a problem inside the scroll would leave the screen at
+/// once — yet the problem is exactly what people most want to re-read while
+/// teaching back, so it is fixed here instead of scrolling.
 ///
-/// **3行で頭打ちにする。** 契約の上限は600字(`problemTextMaxLength`)で、
-/// 全文を出すと板書が画面の外へ押し出される。撮影画面は全文表示のまま外側を
-/// スクロールさせているが、こちらは同じ手が使えない(押し出す先が板書になる)。
-/// 開いたときも、板書が見える高さが残るよう最大8行で止める。
+/// Capped at three lines. The contract allows 600 characters
+/// (`problemTextMaxLength`), and showing all of it would push the board off
+/// screen. Capture shows the full text and scrolls around it, but the same trick
+/// does not work here, where what gets pushed out is the board. Expanded, it
+/// stops at eight lines so the board stays visible.
 class _ProblemBlock extends StatefulWidget {
   const _ProblemBlock({required this.text});
 
@@ -251,8 +258,9 @@ class _ProblemBlockState extends State<_ProblemBlock> {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        // **板書と素材を変える。** 問題は紙(白)、板書は地に直接。
-        // ラベルを読まなくても役割が分かるのは、文字ではなく面が違うから。
+        // A different material from the board: the problem is paper (white), the
+        // board sits directly on the ground. The roles read without labels
+        // because the surfaces differ, not the words.
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: AppColors.border),
@@ -274,8 +282,8 @@ class _ProblemBlockState extends State<_ProblemBlock> {
               maxLines: _expanded ? _expandedLines : _collapsedLines,
               overflow: TextOverflow.ellipsis,
             ),
-            // **畳めることが分かる形にする。**省略記号だけだと、続きがあることに
-            // 気づいても開き方が分からない。短い問題文では出さない。
+            // Make the expand affordance visible: an ellipsis alone shows there
+            // is more but not how to reach it. Hidden for short problems.
             if (_isTruncated(context, body))
               GestureDetector(
                 onTap: () => setState(() => _expanded = !_expanded),
@@ -293,8 +301,8 @@ class _ProblemBlockState extends State<_ProblemBlock> {
     );
   }
 
-  /// 畳んだ状態で本文が入り切らないか。**実際に組んで測る** —
-  /// 文字数で判定すると、改行の多い問題文で「続きを読む」が出なくなる。
+  /// Whether the body overflows when collapsed. Measured by actually laying it
+  /// out: a character count would hide "read more" on newline-heavy problems.
   bool _isTruncated(BuildContext context, TextStyle? style) {
     final double width = MediaQuery.sizeOf(context).width - AppSpacing.lg * 2 - AppSpacing.md * 2;
     if (width <= 0) return false;
@@ -310,22 +318,23 @@ class _ProblemBlockState extends State<_ProblemBlock> {
   }
 }
 
-/// 授業中の板書。**画面の主役**で、1行ずつ積み上がる。
+/// The board during a lesson: the screen's lead, stacking line by line.
 ///
-/// 幅について(計画書§3-6b): `board_style.dart` の縮小率の下限70%は
-/// **実効幅340pt**(iPhone 15 の393pt − 板書の余白)での実測から決めた値。
-/// この画面の左右の余白は `AppSpacing.lg` × 2 = 48pt なので実効345pt で、
-/// 実測の前提とほぼ同じ。**ここにカードや内側パディングを足すと実効幅が
-/// 想定を割り込み、実測では収まっていた式まで横スクロールに落ちる**ので足さない。
-/// `latex_element_view.dart` の右端フェードも、板書が
-/// `AppColors.background`(Scaffoldの地)に直接乗る前提の色で描かれている。
+/// On width: the 70% minimum scale in `board_style.dart` was measured against an
+/// effective width of 340pt (iPhone 15's 393pt minus board padding). This
+/// screen's horizontal padding is `AppSpacing.lg` x 2 = 48pt, giving 345pt —
+/// near enough. Adding a card or inner padding would drop the effective width
+/// below that premise and push formulas that measured as fitting into horizontal
+/// scrolling. The right-edge fade in `latex_element_view.dart` also assumes the
+/// board sits directly on `AppColors.background` (the Scaffold's ground).
 ///
-/// **[build] の `CrossAxisAlignment.stretch` は見た目ではなく実効幅の指定。**
-/// `start` にすると板書の `Column` はいちばん長い行の自然幅まで痩せ、
-/// [LatexElementView] は**その痩せた幅**を基準に縮小率を判定する。授業の外で
-/// 板書を出す画面で実際に起きた(345pt のつもりが実測198pt。カードの余白より
-/// 効いていた)ので、揃えるための `start` に見えても戻さないこと。見張りは
-/// `test/session_board_test.dart` の「板書の実効幅は…340pt を下回らない」。
+/// The `CrossAxisAlignment.stretch` in [build] specifies effective width, not
+/// appearance. With `start`, the board's `Column` shrinks to the intrinsic width
+/// of its longest line and [LatexElementView] judges the scale against that
+/// shrunken width. It happened for real on a screen showing the board outside a
+/// lesson (345pt intended, 198pt measured — a bigger factor than card padding),
+/// so do not "tidy" it back to `start`. The guard is the effective-width test in
+/// `test/session_board_test.dart`.
 class _BoardStage extends StatefulWidget {
   const _BoardStage({required this.board});
 
@@ -338,8 +347,8 @@ class _BoardStage extends StatefulWidget {
 class _BoardStageState extends State<_BoardStage> {
   final ScrollController _controller = ScrollController();
 
-  /// 「いちばん下を見ている」と見なす余裕。ぴったり一致は求めない
-  /// (数式の計測が1フレーム遅れて入るので、数pt のずれは普通に起きる)。
+  /// Slack for counting as "at the bottom". An exact match is not required:
+  /// formula measurement lands a frame late, so a few pt of drift is normal.
   static const double _followSlack = 48;
 
   @override
@@ -347,9 +356,9 @@ class _BoardStageState extends State<_BoardStage> {
     super.didUpdateWidget(oldWidget);
     if (widget.board.steps.length == oldWidget.board.steps.length) return;
 
-    // **上に戻って読んでいる最中は連れ戻さない。**板書の価値は
-    // 「聞いていない瞬間でも後で見返せる」ことなので、見返しを
-    // 新しい行が奪うと、その価値を自分で壊すことになる。
+    // Never yank someone back while they are scrolled up reading. The board's
+    // value is being able to look back at a moment you missed, and letting new
+    // lines steal that look-back destroys the value.
     if (!_isAtBottom) return;
     WidgetsBinding.instance.addPostFrameCallback((_) => _followNewLine());
   }
@@ -378,12 +387,13 @@ class _BoardStageState extends State<_BoardStage> {
 
   @override
   Widget build(BuildContext context) {
-    // **板は動かない。動くのはチョークのほう。**
+    // The board does not move; the chalk does.
     //
-    // 面を [BoardView] の中(= スクロールする側)だけに置くと、板が中身の高さに
-    // 縮んで、1〜2行しか書いていない授業では**画面の途中で板が終わる**。
-    // スクロールすると板の上下の縁も一緒に動くので、黒板ではなく黒い紙に見える。
-    // ここで授業の高さいっぱいに敷いておけば、書いた量に関わらず板は板のまま。
+    // Putting the surface only inside [BoardView] (the scrolling side) shrinks
+    // it to the content height, so a lesson with one or two lines ends the board
+    // partway down the screen, and its edges scroll with the content — black
+    // paper rather than a blackboard. Laying it across the lesson's full height
+    // here keeps it a board whatever has been written.
     return ColoredBox(
       color: BoardStyle.surface,
       child: SingleChildScrollView(
@@ -400,21 +410,21 @@ class _BoardStageState extends State<_BoardStage> {
   }
 }
 
-/// 板書がとぎれたことを出す一行。
+/// The line announcing a truncated board.
 ///
-/// **黙って虫食いのまま見せない**(`domain/board.dart` の `BoardContractViolation`)。
-/// 生徒は抜けていることに気づけないまま、間違ったやり方を覚えてしまう。
-/// ただし**責める見た目にはしない** — 落としたのはこちら側で、生徒は何も悪くない。
-/// 穴の色(`AppColors.hole`)も使わない。あれは「これから埋まる学習の穴」であって、
-/// 配送の失敗ではない。
+/// A hole-riddled board is never shown silently (see `BoardContractViolation` in
+/// `domain/board.dart`): a student cannot tell something is missing and would
+/// learn it wrong. It must not look accusatory, though — we dropped it, and the
+/// student did nothing wrong. It also avoids the gap color (`AppColors.hole`),
+/// which means a learning gap still to fill, not a delivery failure.
 class _BoardGapNotice extends StatelessWidget {
   const _BoardGapNotice();
 
   @override
   Widget build(BuildContext context) {
-    // **板の上に書く一行なので、チョークの色で書く。**インクのままだと
-    // 黒に黒で、とぎれたことを伝える文だけが読めないまま残る。
-    // 左右の余白は [BoardView] の中ではないので、ここで同じ値を付ける。
+    // Written on the board, so it uses chalk. Left as ink it would be black on
+    // black, leaving the one line about the truncation unreadable. This is
+    // outside [BoardView], so the same horizontal padding is applied here.
     return Padding(
       padding: const EdgeInsets.fromLTRB(BoardView.padding, 0, BoardView.padding, AppSpacing.md),
       child: Column(
@@ -433,12 +443,12 @@ class _BoardGapNotice extends StatelessWidget {
   }
 }
 
-/// 授業中の下の帯。**板書を消さずに**、先輩と自分の番を出す場所。
+/// The bottom bar during a lesson: whose turn it is, without erasing the board.
 ///
-/// **字幕は置かない。**板書が出ているあいだ、読むべきものは板書のほうにある。
-/// ここに先輩の発話をそのまま流すと、板書に追い出したはずの説明が
-/// 文字で戻ってきて、**画面の主役が二重になる**(実機で、図と式が出ている下に
-/// 4段落の文字起こしが乗った)。ここが持つのは「いま誰の番か」だけ。
+/// No captions. While a board is up, what to read is the board. Streaming
+/// senpai's speech here would bring back in text the explanation we moved to the
+/// board, giving the screen two leads (on device, four paragraphs of transcript
+/// sat under the figure and formula). This holds only whose turn it is.
 class _LessonFooter extends StatelessWidget {
   const _LessonFooter({required this.phase, required this.wrappingUp});
 
@@ -452,8 +462,8 @@ class _LessonFooter extends StatelessWidget {
 
     return Row(
       children: <Widget>[
-        // 顔は消さない(隣にいることが授業モードの体験そのもの)が、
-        // 主役は板書なので小さく置く。
+        // The face stays — having senpai beside you is the lesson experience —
+        // but small, since the board leads.
         SenpaiFace(
           mood: yourTurn ? SenpaiMood.listening : SenpaiMood.neutral,
           size: 64,
@@ -461,7 +471,7 @@ class _LessonFooter extends StatelessWidget {
         const SizedBox(width: AppSpacing.md),
         Expanded(
           child: Text(
-            // 番がどちらにあるかだけを、1行で。
+            // One line, saying only whose turn it is.
             yourTurn && !wrappingUp
                 ? strings.sessionExplainBack
                 : wrappingUp
@@ -477,7 +487,7 @@ class _LessonFooter extends StatelessWidget {
   }
 }
 
-/// 画面の左右の余白。**板書だけがこれを付けない**(板は画面幅いっぱいに敷く)。
+/// The screen's horizontal padding. Only the board skips it and runs full width.
 class _Inset extends StatelessWidget {
   const _Inset({required this.child});
 
@@ -492,11 +502,11 @@ class _Inset extends StatelessWidget {
   }
 }
 
-/// 聞いていること(またはカルテを書いていること)を、字幕より先に出す部分。
+/// Shows that we are listening (or writing the karte) ahead of the captions.
 ///
-/// 話している最中は文字を読んでいないので、目の端で分かる必要がある。
-/// カルテを書いているあいだは、待たせている場所をここに出す
-/// (波のままだと、まだ聞いていると思わせてしまう)。
+/// Nobody reads text while speaking, so it has to register peripherally. While
+/// the karte is being written, this is where the wait is shown — leaving the
+/// waveform up would suggest we are still listening.
 class _StatusIndicator extends StatelessWidget {
   const _StatusIndicator({required this.phase, required this.wrappingUp});
 
@@ -514,8 +524,8 @@ class _StatusIndicator extends StatelessWidget {
             height: 20,
             child: CircularProgressIndicator(
               strokeWidth: 2.5,
-              // 動かさない設定では回さない。書いている途中だと分かる
-              // 円弧として置く(SpeakingWave と同じ扱い)。
+              // No spinning under reduced motion; an arc that still reads as
+              // work in progress (same treatment as SpeakingWave).
               value: AppMotion.isReduced(context) ? 0.25 : null,
             ),
           ),
@@ -528,7 +538,7 @@ class _StatusIndicator extends StatelessWidget {
   }
 }
 
-/// 字幕。声を聞き取れない場所でも会話の流れを追えるようにする。
+/// Captions, so the conversation can be followed where audio cannot be heard.
 class _Subtitle extends StatelessWidget {
   const _Subtitle({required this.text, required this.align});
 
@@ -549,10 +559,10 @@ class _Subtitle extends StatelessWidget {
   }
 }
 
-/// 会話が始まらなかった画面。
+/// The screen for a conversation that never started.
 ///
-/// **理由を出して、出口を用意する。** 「聞いています」のまま止めておくと、
-/// ユーザーは自分の説明が悪いのだと思ってしまう。
+/// Give the reason and an exit. Left on "listening", people conclude their own
+/// explanation was at fault.
 class _SessionFailed extends ConsumerWidget {
   const _SessionFailed({required this.failure});
 

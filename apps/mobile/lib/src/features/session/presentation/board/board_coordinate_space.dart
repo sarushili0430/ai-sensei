@@ -5,11 +5,11 @@ import '../../domain/board.dart';
 import 'board_style.dart';
 import 'dart:math' as math;
 
-/// 「数学の座標」を「Canvasのピクセル座標」に変換する。
+/// Converts mathematical coordinates into Canvas pixel coordinates.
 ///
-/// [plot]/[triangle]/[circle] の3つのpainterが同じ変換ロジックを必要とする
-/// (板書の座標は数学座標・y上向き、Canvasはピクセル座標・y下向き)ので、
-/// ここに1つだけ置く。
+/// The plot, triangle and circle painters all need the same conversion (board
+/// coordinates are mathematical with y up, Canvas is pixels with y down), so it
+/// lives here once.
 class BoardCoordinateSpace {
   BoardCoordinateSpace({
     required double dataMinX,
@@ -28,7 +28,8 @@ class BoardCoordinateSpace {
     double scaleX = availableWidth / dataWidth;
     double scaleY = availableHeight / dataHeight;
     if (preserveAspectRatio) {
-      // 円・三角形は縦横で縮尺が違うと歪む(円が楕円に、直角が直角に見えなくなる)。
+      // Different x and y scales distort circles into ellipses and stop right
+      // angles looking right.
       final double uniform = math.min(scaleX, scaleY);
       scaleX = uniform;
       scaleY = uniform;
@@ -51,8 +52,8 @@ class BoardCoordinateSpace {
   late final double _originX;
   late final double _originY;
 
-  /// [preserveAspectRatio] のときだけ意味を持つ、縦横共通の縮尺。
-  /// 半径のような「長さ」をピクセルに変換するのに使う(円のrなど)。
+  /// The shared scale, meaningful only under [preserveAspectRatio]. Used to
+  /// convert lengths such as a circle's radius into pixels.
   double get uniformScale => _scaleX;
 
   Offset toCanvas(double x, double y) => Offset(_originX + x * _scaleX, _originY - y * _scaleY);
@@ -60,8 +61,8 @@ class BoardCoordinateSpace {
   Offset toCanvasPoint(BoardPoint p) => toCanvas(p.x, p.y);
 }
 
-/// 板書の図形に添えるラベル(頂点名・目盛の注記)を描く。
-/// 3つのpainterで同じ見た目にするための共通処理。
+/// Draws labels beside board graphics (vertex names, tick annotations), shared
+/// so all three painters look the same.
 void paintBoardLabel(Canvas canvas, String text, Offset anchor, {Color color = BoardStyle.chalk}) {
   final TextPainter painter = TextPainter(
     text: TextSpan(
@@ -73,8 +74,8 @@ void paintBoardLabel(Canvas canvas, String text, Offset anchor, {Color color = B
   painter.paint(canvas, anchor - Offset(painter.width / 2, painter.height / 2));
 }
 
-/// 描けなかったとき(壊れた `fn` 等)の代わりの表示。
-/// 沈黙して消えるより、何かが壊れていることを示す(黙ってクラッシュさせない)。
+/// Fallback for when drawing fails (a malformed `fn`, say). Showing that
+/// something broke beats vanishing silently.
 void paintBoardElementError(Canvas canvas, Size size) {
   final Rect rect = Offset.zero & size;
   final Paint border = Paint()
