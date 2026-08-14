@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { readSessionContext } from "./context.ts";
 import {
   type LessonTurn,
+  asksForBoard,
   asksForTeachBack,
   handsTurnToStudent,
   lessonContinuationInstruction,
@@ -11,6 +12,7 @@ import {
   renderLessonRecap,
   reviewOpening,
   senpaiConversationPrompt,
+  stepAwaitsStudent,
   studentSilenceMarker,
   teachBackPrompt,
 } from "./senpai.ts";
@@ -131,6 +133,57 @@ describe("handsTurnToStudent", () => {
 
   it("文の途中の疑問符では止めない(終わりだけを見る)", () => {
     expect(handsTurnToStudent("「なんで?」って思うよね。ここを見てほしい。", "ja")).toBe(false);
+  });
+});
+
+describe("stepAwaitsStudent", () => {
+  const withField = (speech: string, awaits: boolean | undefined) => ({
+    speech,
+    ...(awaits === undefined ? {} : { awaits_student: awaits }),
+  });
+
+  /**
+   * 言い回しの推測が取りこぼす問いかけこそ、申告で止まらないといけない。
+   * 「まず何する? 一言でいいよ。」は**板書プロンプトの見本そのもの**で、
+   * `?` が文中に沈むので `handsTurnToStudent` は false — 推測のままだと
+   * ここで授業ループが「渡し忘れ」と誤読して1パス目で終わり、
+   * 板書が最初の数行のまま二度と増えなくなる(実際に起きた壊れ方)。
+   */
+  it("申告があれば言い回しに関わらず従う", () => {
+    const missedByRegex = "オッケー。じゃあこの式、まず何する? 一言でいいよ。";
+    expect(handsTurnToStudent(missedByRegex, "ja")).toBe(false);
+    expect(stepAwaitsStudent(withField(missedByRegex, true), "ja")).toBe(true);
+
+    // 逆向き: 修辞疑問は末尾が ? でも false の申告で流す(#105 の症状A)。
+    const rhetorical = "まず(1)からやろっか?";
+    expect(handsTurnToStudent(rhetorical, "ja")).toBe(true);
+    expect(stepAwaitsStudent(withField(rhetorical, false), "ja")).toBe(false);
+  });
+
+  it("欄が無い手順は従来の言い回し判定に落ちる(修復経路・古い出力)", () => {
+    expect(stepAwaitsStudent(withField("この式、まず何する?", undefined), "ja")).toBe(true);
+    expect(stepAwaitsStudent(withField("この形だったよね。", undefined), "ja")).toBe(false);
+  });
+});
+
+describe("asksForBoard", () => {
+  it("板書・黒板と名指しした発話だけを拾う", () => {
+    expect(asksForBoard("板書して!", "ja")).toBe(true);
+    expect(asksForBoard("それ、黒板に書いてみて", "ja")).toBe(true);
+    expect(asksForBoard("板書のここの部分がわからない", "ja")).toBe(true);
+    expect(asksForBoard("Can you write it on the board?", "en")).toBe(true);
+    expect(asksForBoard("Put that on the whiteboard please", "en")).toBe(true);
+  });
+
+  /**
+   * 「書いて」だけでは拾わない。教え返しの説明そのもの
+   * (「ここで式を書いて解く」)が授業へ吸い込まれると、
+   * 生徒の説明の途中に先輩の板書パスが割り込む。
+   */
+  it("板書と名指ししない発話は拾わない(説明の誤爆を避ける)", () => {
+    expect(asksForBoard("ここで式を書いて解くんだよね", "ja")).toBe(false);
+    expect(asksForBoard("次はどうするんだっけ", "ja")).toBe(false);
+    expect(asksForBoard("I'm a bit bored of this", "en")).toBe(false);
   });
 });
 

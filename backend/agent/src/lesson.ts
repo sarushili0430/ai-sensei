@@ -9,7 +9,7 @@ import type {
 } from "./board.ts";
 import { extractJson } from "./karte.ts";
 import type { JobLogger } from "./log.ts";
-import { handsTurnToStudent } from "./senpai.ts";
+import { stepAwaitsStudent } from "./senpai.ts";
 
 /**
  * フェーズ1「授業」— 板書レッスンの生成と、手順単位の配送・読み上げ。
@@ -351,7 +351,20 @@ export async function runBoardLesson(options: RunBoardLessonOptions): Promise<Bo
     // **問いかけたら、そこで止めて答えを待つ。**プロンプト側の「質問を出したら
     // その板書はそこで終える」を、生成のぶれに任せずここで守る
     // (`board.ts` の `stopAfter` にその判断を置かない理由も同じコメントにある)。
-    stopAfter: (step) => handsTurnToStudent(step.speech, locale),
+    //
+    // 判定は手順の `awaits_student`(LLM自身の申告)が一次で、欄が無いときだけ
+    // 言い回しの推測に落ちる(`stepAwaitsStudent`)。どちらで止まったかはログに残す —
+    // フォールバックで止まる授業が多いなら、プロンプトが欄を書けていない。
+    stopAfter: (step) => {
+      const stops = stepAwaitsStudent(step, locale);
+      if (stops) {
+        log?.info("board_turn_awaited", {
+          index: step.index,
+          basis: step.awaits_student === undefined ? "fallback" : "field",
+        });
+      }
+      return stops;
+    },
     repair: (rejection) => repairStep({ llm, system, locale, rejection, signal, log }),
     repairHead: (rejection) =>
       askForJson({

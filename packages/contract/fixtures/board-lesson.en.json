@@ -10,7 +10,8 @@
     {
       "index": 1,
       "speech": "Factorise the left side for me. What do you get?",
-      "board": { "kind": "latex", "tex": "(x - 1)(x - 2) < 0" }
+      "board": { "kind": "latex", "tex": "(x - 1)(x - 2) < 0" },
+      "awaits_student": false
     },
     {
       "index": 2,
@@ -38,7 +39,8 @@
     {
       "index": 5,
       "speech": "Now say it back to me. Why is it between and not outside?",
-      "board": null
+      "board": null,
+      "awaits_student": true
     }
   ]
 }

@@ -11,9 +11,9 @@ import type { JobLogger } from "./log.ts";
 import {
   type LessonTurn,
   asksForTeachBack,
-  handsTurnToStudent,
   lessonContinuationInstruction,
   lessonSteps,
+  stepAwaitsStudent,
   studentSilenceMarker,
 } from "./senpai.ts";
 
@@ -37,12 +37,17 @@ import {
  * ─────────────────────────────────────────────────────────────────────────
  *
  * 授業がどこまで続くかは板書LLMが決める(教え切ったかどうかは中身の話なので、
- * コードには判定できない)。合図は最後の手順の言い方:
+ * コードには判定できない)。合図は最後の手順:
  *
  *   - 「自分の言葉で説明してみて」(`asksForTeachBack`) → 授業は完了。教え返しへ
- *   - それ以外の問いかけ(`handsTurnToStudent`)        → 答えを待って、続きを積む
- *   - 問いかけず言い切った                              → 渡し忘れ。呼び出し側の
+ *   - 答えを待つ手順(`stepAwaitsStudent` — 一次は `awaits_student` の申告、
+ *     欄が無ければ言い回しの推測)                       → 答えを待って、続きを積む
+ *   - 答えを待たず言い切った                            → 渡し忘れ。呼び出し側の
  *     `teachBackFallback` が定型句で教え返しへ戻す(1往復だった頃と同じ保険)
+ *
+ * 言い回しの推測だけだった頃は、見本どおりの「まず何する? 一言でいいよ。」を
+ * 渡し忘れと誤読して**1パス目で授業を終えていた**(以降の板書が二度と増えない)。
+ * 申告を一次にした理由はそれ(`stepAwaitsStudent` のコメントと #122)。
  *
  * 言い方だけに任せると、生成が1回ぶれただけで永遠に教え続ける。だから
  * **回数(`maxPasses`)と残り時間(`minContinueSeconds`)の安全弁**を重ねる。
@@ -215,6 +220,15 @@ export type RunLessonLoopOptions = {
   maxPasses?: number;
   answerTimeoutMs?: number;
   minContinueSeconds?: number;
+  /**
+   * この往復が始まる前に、同じ板書で既に起きていたこと。
+   *
+   * 教え返しの最中の「板書して」で授業へ**再入**するときに使う(`agent.ts` の
+   * `serveBoardRequests`)。ここが空でなければ、最初のパスから継続の指示
+   * (`lessonContinuationInstruction`)になる — 素の初回指示で呼ぶと、LLMは
+   * 授業を最初から書き直して、出済みの手順を同じ板書へ二重に積んでしまう。
+   */
+  priorTurns?: readonly LessonTurn[];
 };
 
 /**
@@ -239,9 +253,10 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
     maxPasses = defaultMaxLessonPasses,
     answerTimeoutMs = defaultAnswerTimeoutMs,
     minContinueSeconds = defaultMinContinueSeconds,
+    priorTurns = [],
   } = options;
 
-  const turns: LessonTurn[] = [];
+  const turns: LessonTurn[] = [...priorTurns];
   const rejections: BoardStepRejection[] = [];
   let boardId = "";
   let opened = false;
@@ -280,7 +295,9 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
         locale,
         delivery,
         speak,
-        instruction: passes === 1 ? undefined : lessonContinuationInstruction(turns, locale),
+        // 文脈が1つでもあれば継続の指示。初回の定型指示に戻るのは、
+        // この板書でまだ何も起きていないときだけ。
+        instruction: turns.length === 0 ? undefined : lessonContinuationInstruction(turns, locale),
         signal: passAbort.signal,
         log,
       });
@@ -297,7 +314,8 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
 
     if (signal.aborted) return summary("interrupted");
 
-    const lastSpeech = lessonSteps(turns).at(-1)?.speech ?? "";
+    const lastStep = lessonSteps(turns).at(-1);
+    const lastSpeech = lastStep?.speech ?? "";
 
     // 「自分の言葉で説明してみて」まで来たら授業は完了。教え返しへ渡す。
     if (asksForTeachBack(lastSpeech, locale)) return summary("handed_over");
@@ -323,9 +341,18 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
     }
 
     if (result.reason === "error" || result.closed) {
-      // 作り直し不能・途中で切れた出力・板書の上限。同じ入力で続けても
-      // 同じ失敗の族に落ちる。縮退の言い方は呼び出し側が決める。
-      return summary("error");
+      if (result.closed || result.appended === 0) {
+        // 板書の上限で閉じた、または1手順も進まないまま落ちた(作り直し不能・
+        // 最初の手順から壊れた出力)。**進めないものを続けても同じ失敗の族に落ちる。**
+        // 縮退の言い方は呼び出し側が決める。
+        return summary("error");
+      }
+      // 手順は積めている(途中で切れた出力・詰め込みすぎ・途中の手順の作り直し不能)。
+      // 積めた手順は有効で、板書も開いたまま — ここで授業ごと降りると、
+      // **1回の失敗が残りの授業を丸ごと道連れにして、板書が途中のまま凍る**。
+      // 続きの指示(recap入り)を持って次のパスへ。上限は canContinue が持つ。
+      log?.info("lesson_error_continued", { pass: passes, appended: result.appended });
+      continue;
     }
 
     if (result.reason === "interrupted") {
@@ -334,8 +361,8 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
       return summary("interrupted");
     }
 
-    if (!handsTurnToStudent(lastSpeech, locale)) {
-      // 問いかけずに言い切って終えた(番の渡し忘れ)。呼び出し側の
+    if (lastStep === undefined || !stepAwaitsStudent(lastStep, locale)) {
+      // 答えを待たずに言い切って終えた(番の渡し忘れ)。呼び出し側の
       // `teachBackFallback` が定型句で教え返しへ戻す。
       return summary("completed");
     }

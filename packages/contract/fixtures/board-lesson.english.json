@@ -42,7 +42,8 @@
       "board": {
         "kind": "text",
         "body": "現在完了 × yesterday — 「今」と「終わった過去」がぶつかる"
-      }
+      },
+      "awaits_student": true
     }
   ]
 }

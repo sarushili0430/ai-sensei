@@ -171,6 +171,57 @@ export function handsTurnToStudent(speech: string, locale: CurriculumLocale): bo
 }
 
 /**
+ * この手順で先輩が**生徒の答えを待つ**か。番の受け渡しの判定は全部ここを通す。
+ *
+ * 一次情報は手順の `awaits_student`(**LLM自身の申告**。contract の
+ * `boardStepSchema` を参照)。{@link handsTurnToStudent} は**欄が無い手順の
+ * フォールバック**に格下げした。理由は実際の壊れ方そのもの:
+ *
+ *   末尾 `?` と言い回しの列挙では、板書プロンプトの見本どおりの
+ *   「まず何する? **一言でいいよ。**」すら取りこぼす(`?` が文中に沈む)。
+ *   取りこぼした瞬間、授業ループは「番を渡さず言い切った」= 渡し忘れと誤読して
+ *   **1パス目で授業を終え、教え返しへ落とす**。以降のセッションは音声だけになり、
+ *   板書は最初の数行のまま二度と増えない —
+ *   「板書がイニシャルのステートで止まっている」報告の正体。
+ *
+ * 逆向きの誤りも同じ欄で直る: 修辞疑問(「まず(1)からやろっか?」)は末尾が `?` でも
+ * `awaits_student: false` と申告されるので、1手順目で止まらない(#105 の症状A)。
+ *
+ * 申告が誤っていたときの倒れ方は従来と同じ側に寄せる — 欄の値を優先し、
+ * 渡し忘れは `teachBackFallback` の定型句が受け止める(保険は変えない)。
+ */
+export function stepAwaitsStudent(
+  step: Pick<BoardStep, "speech" | "awaits_student">,
+  locale: CurriculumLocale,
+): boolean {
+  return step.awaits_student ?? handsTurnToStudent(step.speech, locale);
+}
+
+/**
+ * 教え返しの最中に、生徒が**板書に書くこと**を求めているか。
+ *
+ * 授業ループを抜けたあとの会話LLMは板書に書く手段を持たない。以前はそこで
+ * 「板書して」と頼まれると、**書けない事実を取り繕う返事**(「最初にしたから、
+ * ここからは言葉だけでいくね」)が返っていた — 板書は開いたまま残っていて、
+ * 続きを積む配管(`BoardDelivery.append`)も生きているのに、である。
+ *
+ * この判定に引っかかった発話は会話LLMに渡さず、授業ループへ**再入**して
+ * 同じ板書の続きで応える(`agent.ts` の `serveBoardRequests`)。
+ *
+ * **語彙は狭く保つ。**「書いて」だけで拾うと、教え返しの説明そのもの
+ * (「ここで式を書いて解く」)が誤って授業へ吸い込まれる。板書・黒板と
+ * 名指しされたときだけ拾う(取りこぼした言い回しは従来どおり会話が受ける)。
+ */
+const BOARD_REQUEST_PATTERNS: Record<CurriculumLocale, RegExp> = {
+  ja: /板書|黒板/,
+  en: /\b(?:black|white)?board\b/i,
+};
+
+export function asksForBoard(text: string, locale: CurriculumLocale): boolean {
+  return BOARD_REQUEST_PATTERNS[locale].test(text);
+}
+
+/**
  * 「じゃあ今の、自分の言葉で説明してみて」の形か。**授業の往復を終える唯一の合図。**
  *
  * {@link handsTurnToStudent} は「番を渡したか」を見る広い判定で、切り分けの質問も
@@ -285,7 +336,7 @@ export function teachBackFallback(
   steps: readonly BoardStep[],
 ): string | null {
   const last = steps.at(-1);
-  if (last === undefined || handsTurnToStudent(last.speech, context.locale)) return null;
+  if (last === undefined || stepAwaitsStudent(last, context.locale)) return null;
   if (!wroteOnBoard(steps)) return null;
   return teachBackPrompt(context.locale);
 }
@@ -426,8 +477,11 @@ export const lessonContinuationRecapMaxLength = 4000;
  * 「授業は往復する」)の責務。ここは形式(同じ板書に続く・indexは0から・
  * 繰り返さない)だけを縛る。
  */
-const CONTINUATION_INSTRUCTION: Record<CurriculumLocale, (recap: string) => string> = {
-  ja: (recap) =>
+const CONTINUATION_INSTRUCTION: Record<
+  CurriculumLocale,
+  (recap: string, lastIsStudent: boolean) => string
+> = {
+  ja: (recap, lastIsStudent) =>
     [
       "ここまでの授業のやりとりです。番号つきの行はあなたが板書に積んだ手順、「生徒:」の行はそのときの生徒の発話です。",
       "",
@@ -437,9 +491,14 @@ const CONTINUATION_INSTRUCTION: Record<CurriculumLocale, (recap: string) => stri
       "- `title` と `topic_ids` は前回と同じものを書きます(板書は開き直されず、手順は同じ板書の下に積まれます)。",
       "- `steps` の `index` はまた 0 から数えます。",
       "- すでに板書に出した手順を繰り返さない・書き直さないこと。続きだけを書きます。",
-      "- 最初の手順の `speech` は、直前の生徒の言葉への短い応えから始めてください。",
+      // 続きを頼む理由は2つある。答えを受けての続きと、途中で切れた説明の続き。
+      // 生徒が何も言っていないのに「直前の生徒の言葉に応えろ」と書くと、
+      // 言われていない言葉への返事を作り始める。
+      lastIsStudent
+        ? "- 最初の手順の `speech` は、直前の生徒の言葉への短い応えから始めてください。"
+        : "- 説明は途中で切れています。最後の手順のすぐ続きから教えてください。",
     ].join("\n"),
-  en: (recap) =>
+  en: (recap, lastIsStudent) =>
     [
       'This is the lesson so far. Numbered lines are the steps you have already put on the board; "Student:" lines are what the student said in between.',
       "",
@@ -449,7 +508,9 @@ const CONTINUATION_INSTRUCTION: Record<CurriculumLocale, (recap: string) => stri
       "- Write the same `title` and `topic_ids` as before (the board is not reopened; new steps stack under the same board).",
       "- Number `steps` from `index` 0 again.",
       "- Never repeat or rewrite steps that are already on the board — write only what comes next.",
-      "- Start the first step's `speech` with a short response to what the student just said.",
+      lastIsStudent
+        ? "- Start the first step's `speech` with a short response to what the student just said."
+        : "- The explanation broke off. Pick it up right after the last step.",
     ].join("\n"),
 };
 
@@ -459,7 +520,7 @@ export function lessonContinuationInstruction(
 ): string {
   const label = locale === "en" ? "Student" : "生徒";
   const lines = renderTurnLines(turns, locale, label, lessonContinuationRecapMaxLength, "tail");
-  return CONTINUATION_INSTRUCTION[locale](lines.join("\n"));
+  return CONTINUATION_INSTRUCTION[locale](lines.join("\n"), turns.at(-1)?.kind === "student");
 }
 
 export type SenpaiConversationInput = {

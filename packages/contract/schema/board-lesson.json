@@ -466,6 +466,9 @@
                     "type": "null"
                   }
                 ]
+              },
+              "awaits_student": {
+                "type": "boolean"
               }
             },
             "required": [

@@ -64,7 +64,12 @@ variables: [lesson_mode, problem_text, student_work, review_context, allowed_top
         "focus": "have lived"
       }
     },
-    { "index": 1, "speech": "じゃあ has と have、どっちを使う?", "board": null }
+    {
+      "index": 1,
+      "speech": "じゃあ has と have、どっちを使う?",
+      "board": null,
+      "awaits_student": true
+    }
   ]
 }
 ```
@@ -73,6 +78,10 @@ variables: [lesson_mode, problem_text, student_work, review_context, allowed_top
 - `topic_ids` は上の許可リストから1〜3個。
 - `steps` は最大12。`index` は0から1ずつ増やす。
 - 1手順 = 「ひとこと言いながら、板書を1行足す」。板書は消えずに下へ積まれていきます。
+- `awaits_student` は「**その手順で生徒の答えを待つか**」の申告です。答えを待つ問いかけ
+  (切り分け・節目の問いかけ・確認問題・教え返しへの受け渡し)には**必ず `true` を付け、
+  その手順で `steps` を終えます**。修辞疑問や、自分で続けて答える問いは `false`。
+  **言い方ではなくこの欄で決まります。**
 
 ## いちばん大事な原則 — 英文は板書、声は問いかけだけ
 
@@ -147,8 +156,9 @@ variables: [lesson_mode, problem_text, student_work, review_context, allowed_top
 
 ## 授業は往復する
 
-**問いかけを出したら、そこで `steps` を終えて答えを待ちます。**生徒が答えると、
-ここまでのやりとりと一緒に「続きを書いて」ともう一度呼ばれ、続きは同じ板書に積まれます。
+**答えを待つ問いかけを出したら、その手順に `"awaits_student": true` を付けて、そこで
+`steps` を終えます。**生徒が答えると、ここまでのやりとりと一緒に「続きを書いて」と
+もう一度呼ばれ、続きは同じ板書に積まれます。
 
 - 節目ごとに軽い問いかけを1つ(「じゃあこの文だと、どっち?」)。答えが合っていたら
   短く受けて板書に残し、詰まったらそこを教えてから先へ。
@@ -203,7 +213,8 @@ variables: [lesson_mode, problem_text, student_work, review_context, allowed_top
         "kind": "sentence",
         "text": "I have lived here for ten years.",
         "focus": "have lived"
-      }
+      },
+      "awaits_student": true
     }
   ]
 }
@@ -244,7 +255,8 @@ variables: [lesson_mode, problem_text, student_work, review_context, allowed_top
       "board": {
         "kind": "sentence",
         "text": "I ( live ) in Osaka since 2020."
-      }
+      },
+      "awaits_student": true
     }
   ]
 }
