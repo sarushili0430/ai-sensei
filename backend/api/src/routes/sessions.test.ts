@@ -58,7 +58,8 @@ function patchTopics(sessionId: string, body: unknown, headers: Record<string, s
 }
 
 /**
- * 会話を始める。**今日の1回を数えるのはここだけ**なので、枠の話は全部この入口に集まる。
+ * Starts a conversation. This is the only place today's single use is counted,
+ * so every slot concern converges on this entrance.
  */
 function startSession(
   sessionId: string,
@@ -81,7 +82,7 @@ function startSession(
   );
 }
 
-/** 写真を読ませて、そのまま会話を始める。トークンと文脈を見るテストはここを通る。 */
+/** Read the photo and start the conversation. Token and context tests go through here. */
 async function analyzeThenStart(
   form: FormData = createSessionForm(),
   env = bindings,
@@ -99,7 +100,7 @@ async function analyzeThenStart(
   return (await started.json()) as StartSessionResponse;
 }
 
-/** トークンに載って agent へ届く会話文脈。 */
+/** The conversation context that rides the token to the agent. */
 async function metadataOf<T = Record<string, unknown>>(
   started: StartSessionResponse,
   env = bindings,
@@ -129,11 +130,11 @@ describe("POST /v1/sessions", () => {
   });
 
   /**
-   * **写真を読んだだけでは部屋の鍵を渡さない。**
+   * Reading a photo alone does not hand over the room key.
    *
-   * 鍵を持っている = いつでも会話を始められるので、ここでトークンを配ったまま
-   * 「会話の開始で数える」と言っても、数える口をクライアント側に置いたのと同じになる。
-   * `strict()` のスキーマなので、うっかり足し戻したらこのテストが落ちる。
+   * Holding the key means being able to start any time, so handing out a token
+   * here while saying "counted at conversation start" puts the counter on the
+   * client. The schema is `strict()`, so accidentally adding it back fails this.
    */
   it("この時点ではLiveKitトークンを渡さない(数えるのは会話の開始)", async () => {
     const body = (await (await post(createSessionForm())).json()) as Record<string, unknown>;
@@ -146,7 +147,7 @@ describe("POST /v1/sessions", () => {
   it("写真を読んだだけでは、今日の1回を使わない", async () => {
     expect((await post(createSessionForm())).status).toBe(201);
 
-    // 撮り直して単元を確かめ直しても、まだ1回も話していないのだから通る
+    // Retaking and re-confirming the unit still passes - not a single conversation yet
     expect((await post(createSessionForm())).status).toBe(201);
     expect(await services.repository.countStartedSessionsOnDate(testDeviceId, "2026-08-03")).toBe(
       0,
@@ -163,8 +164,8 @@ describe("POST /v1/sessions", () => {
   });
 
   /**
-   * 今日の授業を使い切った人は、**写真を読む前に**止める。
-   * 解析まで走らせてから断ると、Vision LLMの原価だけが積み上がる。
+   * Anyone who used up today's lessons is stopped *before* the photo is read.
+   * Refusing after running the analysis only piles up Vision LLM cost.
    */
   it("今日の授業を使い切っていれば、解析まで進まない", async () => {
     await analyzeThenStart();
@@ -178,14 +179,14 @@ describe("POST /v1/sessions", () => {
       error: { code: string; retry_after_seconds: number };
     };
     expect(body.error.code).toBe("free_limit_reached");
-    // 「また明日」と言えるように、翌日までの秒数を返す
+    // Return the seconds until tomorrow so we can say "see you tomorrow"
     expect(body.error.retry_after_seconds).toBeGreaterThan(0);
     expect(analyzer.calls.length).toBe(callsBefore);
   });
 
   /**
-   * 解析だけを延々と繰り返す使い方は止める。**通常の撮り直しでは当たらない**
-   * 高さに置いてあり(`analysesPerSessionSlot`)、当たっても文言は日次上限と同じ。
+   * Endless analysis-only usage is stopped. The bar (`analysesPerSessionSlot`) is
+   * set where ordinary retakes never hit it, and the wording matches the daily cap.
    */
   it("会話を始めないまま解析を繰り返すと、解析側の上限で止まる", async () => {
     for (let count = 0; count < 5; count += 1) {
@@ -269,12 +270,12 @@ describe("POST /v1/sessions", () => {
   });
 
   /**
-   * Flutterの MultipartFile は contentType を渡さないと
-   * application/octet-stream を送ってくる。申告をそのまま media_type にすると
-   * Vision APIが400を返し、アプリからの写真つきセッションが全部500になっていた。
+   * Flutter's MultipartFile sends application/octet-stream unless contentType is
+   * given. Passing that claim straight into media_type made the Vision API return
+   * 400, so every photo session from the app became a 500.
    */
   it("申告が application/octet-stream でも、中身を見てJPEGとして解析にかける", async () => {
-    // 申告をそのまま渡していないことを見たいので、解析器が受け取った値を捕まえる
+    // We want to see the claim is not passed through, so capture what the analyser got
     let received: string | undefined;
     services = {
       ...testServices(),
@@ -320,18 +321,18 @@ describe("POST /v1/sessions", () => {
     form.set("meta", JSON.stringify({ kind: "new", locale: "ja" }));
     expect((await post(form)).status).toBe(422);
 
-    // 押さえた枠が返っていれば、撮り直した1枚はちゃんと通る
+    // If the claimed slot was released, the retaken photo goes through
     expect((await post(createSessionForm())).status).toBe(201);
     expect(services.repository.sessions.size).toBe(1);
   });
 });
 
 /**
- * **回数を数えるのはここ。**
+ * This is where uses are counted.
  *
- * 不具合報告: 写真を撮って単元を確かめただけで「今日はここまで」になった。
- * 生徒にとっての1回は「先輩と話した回数」なので、枠を押さえる位置を
- * 解析(POST /v1/sessions)から会話の開始へ移した。
+ * Bug report: taking a photo and confirming the unit alone produced "that's it
+ * for today". To a student one use means one conversation with the senpai, so
+ * claiming the slot moved from analysis (POST /v1/sessions) to conversation start.
  */
 describe("POST /v1/sessions/{id}/start", () => {
   async function analyze(form: FormData = createSessionForm()): Promise<CreateSessionResponse> {
@@ -360,12 +361,12 @@ describe("POST /v1/sessions/{id}/start", () => {
       started,
     );
     expect(metadata.allowed_topic_ids).toContain("M2-ZUKEI-ENCHOKU");
-    // 前提トピックまで深掘りを許す
+    // Digging down to prerequisite topics is allowed
     expect(metadata.allowed_topic_ids).toContain("M1-NIJI-HANBETSU");
     expect(metadata.max_seconds).toBe(1200);
   });
 
-  // 名前つきワーカーのときは、トークンでディスパッチしないと部屋に誰も来ない
+  // With a named worker, nobody joins the room unless the token dispatches
   it("LIVEKIT_AGENT_NAMEがあれば、トークンで先輩を呼ぶ", async () => {
     const named = testBindings({ LIVEKIT_AGENT_NAME: "ai-sensei-senpai" });
     const started = await analyzeThenStart(createSessionForm(), named);
@@ -373,7 +374,7 @@ describe("POST /v1/sessions/{id}/start", () => {
     const claims = await verifyJwt(started.livekit.token, named.LIVEKIT_API_SECRET);
     const roomConfig = claims?.["roomConfig"] as { agents: { agent_name: string }[] } | undefined;
     expect(roomConfig?.agents[0]?.agent_name).toBe("ai-sensei-senpai");
-    // 文脈はジョブ側にも載せる(エージェントが参加者を待たずに読めるように)
+    // The context rides the job too (so the agent can read it without waiting for the participant)
     const dispatched = JSON.parse(
       String((roomConfig?.agents[0] as { metadata?: string } | undefined)?.metadata),
     ) as { allowed_topic_ids: string[] };
@@ -386,14 +387,14 @@ describe("POST /v1/sessions/{id}/start", () => {
     expect(claims?.["roomConfig"]).toBeUndefined();
   });
 
-  // 無料枠はサーバ側で数える(クライアント改竄対策)
+  // The free tier is counted server-side (against client tampering)
   it("無料ユーザーは1日1回しか会話を始められない", async () => {
     const first = await analyze();
     const second = await analyze();
 
     expect((await startSession(first.session_id)).status).toBe(200);
 
-    // 2本目は解析まで済んでいても、会話は始められない
+    // The second one cannot start a conversation even though analysis finished
     const response = await startSession(second.session_id);
     expect(response.status).toBe(402);
     const body = (await response.json()) as {
@@ -404,8 +405,8 @@ describe("POST /v1/sessions/{id}/start", () => {
   });
 
   /**
-   * つなぎ直し・押し直しで枠が減らないこと。
-   * ここが緩むと、電波の悪い場所で1回押し直しただけで今日の授業が終わる。
+   * Reconnecting or pressing again must not consume a slot.
+   * Loosen this and one retry in bad reception ends today's lesson.
    */
   it("同じセッションを始め直しても、二重に数えない", async () => {
     const session = await analyze();
@@ -433,8 +434,8 @@ describe("POST /v1/sessions/{id}/start", () => {
   it("Premiumは3回を使ったあとの4回目をフェアユースとして止める", async () => {
     await makePremium();
 
-    // 4本とも先に解析まで済ませてから始める。あとから撮ると、始める前に
-    // 解析側の事前判定で止まってしまい、**この入口の上限**を見たことにならない。
+    // All four finish analysis before starting. Photographing later would stop at the
+    // analysis-side pre-check and would not exercise this entrance's cap.
     const ids: string[] = [];
     for (let count = 0; count < 4; count += 1) ids.push((await analyze()).session_id);
     for (const id of ids.slice(0, 3)) {
@@ -473,8 +474,8 @@ describe("POST /v1/sessions/{id}/start", () => {
     expect((await startSession(session.session_id)).status).toBe(404);
   });
 
-  // 契約は作成時にも見ているが、そこから期限が切れることがある。
-  // 従量原価が動くのはこの入口なので、ここでもう一度見る。
+  // The entitlement is checked at creation too, but it can expire in between.
+  // Metered cost starts at this entrance, so check again.
   it("復習は、始めるときにもPremiumを確かめる", async () => {
     await makePremium();
     await services.repository.insertKarte(
@@ -528,18 +529,18 @@ describe("POST /v1/sessions/{id}/start", () => {
   });
 
   /**
-   * **押し直しの窓は、最初の鍵の寿命まで。**
+   * The reissue window lasts only as long as the first key.
    *
-   * ここが開いていると、部屋に入らないまま開いたセッションが期限のない
-   * 鍵の引換券になる。その1本は最初の日に数えられているので、翌日そのIDで
-   * 押せば、今日の枠を減らさずに授業が1回増えてしまう
-   * (会話が成立しなければ `/complete` も来ないので、行は open のまま残る)。
+   * Leave it open and a session opened without ever entering the room becomes a
+   * voucher for a key with no expiry. That session was counted on day one, so
+   * pressing that id tomorrow adds a lesson without spending today's slot
+   * (without a conversation `/complete` never arrives, so the row stays open).
    */
   it("上限時間を過ぎたセッションは、始め直せない", async () => {
     const session = await analyze();
     expect((await startSession(session.session_id)).status).toBe(200);
 
-    // 会話の上限(20分)+ 余白(2分)を越えたところで、もう一度押す
+    // Press again past the conversation cap (20 min) plus grace (2 min)
     services.now = () => new Date("2026-08-03T13:50:07.000Z");
 
     const response = await startSession(session.session_id);
@@ -553,7 +554,7 @@ describe("POST /v1/sessions/{id}/start", () => {
     const session = await analyze();
     expect((await startSession(session.session_id)).status).toBe(200);
 
-    // 16分後。まだ同じ会話の途中なので、鍵は出し直せて枠も増えない。
+    // 16 minutes in. Still the same conversation, so the key reissues and no slot is added.
     services.now = () => new Date("2026-08-03T13:40:07.000Z");
 
     expect((await startSession(session.session_id)).status).toBe(200);
@@ -563,7 +564,7 @@ describe("POST /v1/sessions/{id}/start", () => {
   });
 });
 
-// レビュー指摘: 音声の復習セッションはPremiumなのに、hole_idを直接渡せば無料でも通っていた
+// From review: voice review sessions are Premium, yet passing hole_id directly let free users through
 describe("復習セッション", () => {
   async function seedHole(deviceId = testDeviceId): Promise<string> {
     await services.repository.insertKarte(
@@ -620,12 +621,12 @@ describe("復習セッション", () => {
 
     const body = (await response.json()) as CreateSessionResponse;
     expect(body.kind).toBe("review");
-    // 写真がなくても、穴から単元を引く
+    // Even with no photo, the unit comes from the hole
     expect(body.detected_topics.map((topic) => topic.topic_id)).toEqual(["M1-NIJI-GURAFU"]);
 
     const started = await analyzeThenStart(reviewForm(holeId));
     const metadata = await metadataOf<{ problem_text: string; review_hole: unknown }>(started);
-    // 穴を問題文に偽装しない。写真なしの事実と、教え直す根拠は別の欄で運ぶ。
+    // The hole is not disguised as problem text. "No photo" and the basis for reteaching ride separate fields.
     expect(metadata.problem_text).toBe("(問題の写真なし)");
     expect(metadata.review_hole).toEqual({
       topic_id: "M1-NIJI-GURAFU",
@@ -643,9 +644,10 @@ describe("復習セッション", () => {
   });
 
   /**
-   * 端末を英語に切り替えたあとで、日本語で残した穴を復習する場合。
-   * 穴の説明文も単元名も日本語なので、**会話は穴の課程の言語で始める**。
-   * 表示言語(エラー文言)はアプリ側のままにする。
+   * Reviewing a hole recorded in Japanese after switching the device to English.
+   * The hole description and unit name are Japanese, so the conversation starts in
+   * the hole's curriculum language. The display language (error text) stays the
+   * app's.
    */
   it("会話の言語は端末の設定ではなく、穴の課程で決まる", async () => {
     await makePremium();
@@ -675,20 +677,22 @@ describe("復習セッション", () => {
 });
 
 /**
- * 問題文のグラウンディング(計画書 §0 の決定4「問題とノートをセットで送る」)。
+ * Grounding the problem text (plan §0 decision 4, "send the problem and the notes
+ * together").
  *
- * ここが空のまま授業が始まると、**先輩は問題そのものを見ないまま教える**。
- * §1-1「AIが理解している建て付けのアプリほど誤読が致命傷になる」の急所。
+ * If this is empty when the lesson starts, the senpai teaches without seeing the
+ * problem itself - the sore spot of §1-1, "the more an app is built around AI
+ * understanding, the more fatal a misreading is".
  */
 describe("問題文", () => {
-  /** 解析だけ。問題文を「アプリに返すか」を見るテストはこちら。 */
+  /** Analysis only. Tests for whether the problem text is returned to the app go here. */
   async function start(options: { problemPhoto?: File } = {}) {
     const response = await post(createSessionForm({}, options));
     expect(response.status).toBe(201);
     return (await response.json()) as CreateSessionResponse;
   }
 
-  /** 会話まで進める。問題文が「先輩に届くか」を見るテストはこちら。 */
+  /** Continues to the conversation. Tests for whether the problem text reaches the senpai go here. */
   function problemTextOf(form: FormData = createSessionForm()) {
     return analyzeThenStart(form).then((started) => metadataOf<{ problem_text: string }>(started));
   }
@@ -696,7 +700,7 @@ describe("問題文", () => {
   it("解析が読み取った問題文を、エージェントに渡す文脈に載せる", async () => {
     const metadata = await problemTextOf();
     expect(metadata.problem_text).toBe(analysisFixture.problem_text);
-    // 要約(何が写っているか)を問題文として流用しない。これが元の不具合そのもの。
+    // The summary (what is in the picture) is not reused as the problem text. This was the original bug.
     expect(metadata.problem_text).not.toBe(analysisFixture.summary);
   });
 
@@ -708,7 +712,7 @@ describe("問題文", () => {
     });
   });
 
-  // §4-1「写真2枚を必須にしない」。1枚に両方写るケースが多い。
+  // §4-1 "do not require two photos". Often both fit in one.
   it("問題の写真が無くてもセッションは成立する", async () => {
     const body = await start();
     expect(body.session_id).toBeTruthy();
@@ -719,7 +723,7 @@ describe("問題文", () => {
 
   it("問題の写真を送ると、1回の解析に2枚まとめて渡す", async () => {
     const body = await start({ problemPhoto: problemPhotoFile() });
-    // 2回叩くとVisionの課金が倍になり、しかも解析器が2枚を突き合わせられない
+    // Two calls double the Vision bill and stop the analyser cross-referencing the pair
     expect((services.analyzer as RecordingAnalyzer).calls).toEqual([
       { locale: "ja", hadNotes: true, hadProblem: true },
     ]);
@@ -727,8 +731,9 @@ describe("問題文", () => {
   });
 
   /**
-   * **著作物の扱い**(§4-1 / §10-4 を「解析後破棄」で決着させたもの)。
-   * 教科書・問題集の紙面はR2に残さない。残っていないことを数で見る。
+   * Handling of copyrighted work (settling §4-1 / §10-4 as "discard after
+   * analysis"). Textbook and workbook pages are not kept in R2. Their absence is
+   * checked by count.
    */
   it("問題の写真はR2に保存しない(ノートだけが残る)", async () => {
     const body = await start({ problemPhoto: problemPhotoFile() });
@@ -736,16 +741,17 @@ describe("問題文", () => {
       ...(bindings.PHOTOS as unknown as { objects: Map<string, unknown> }).objects.keys(),
     ];
 
-    // このセッションについてR2にあるのは、ノートの1件だけ。
-    // 紙面が別キーで残っていれば、ここが2件になる。
+    // For this session, R2 holds exactly one object: the notes.
+    // A page kept under another key would make this two.
     expect(stored.filter((key) => key.endsWith(body.session_id))).toEqual([
       `photos/${testDeviceId}/${body.session_id}`,
     ]);
   });
 
   /**
-   * 2枚目が読めないだけでセッションを落とすと、**任意のはずの写真が事実上の必須**になり、
-   * 「2枚必須にしない」がAPIの側から破れる。
+   * Failing the session because only the second photo is unreadable would make a
+   * supposedly optional photo effectively required, breaking "do not require two
+   * photos" from the API side.
    */
   it("問題の写真が壊れていても、ノートだけで進む", async () => {
     const form = createSessionForm();
@@ -761,7 +767,7 @@ describe("問題文", () => {
     ]);
   });
 
-  // 問題が読めなくても授業は始まる。ただし先輩には「無い」と伝わっていないといけない。
+  // The lesson starts even if the problem is unreadable - but the senpai must be told there is none.
   it("読み取れなければ null を返し、先輩には写真なしと伝える", async () => {
     services = testServices({ analysis: { ...analysisFixture, problem_text: "" } });
     const body = await start();
@@ -771,13 +777,14 @@ describe("問題文", () => {
   });
 
   /**
-   * このプレースホルダは `prompts/senpai_board.*.md` が名指しで見ている。
-   * **ずれると「問題文を推測で組み立てないこと」という指示が発火しない** —
-   * 発火しなければ、先輩は自分で作った問題を教えはじめる。
+   * This placeholder is named explicitly by `prompts/senpai_board.*.md`.
+   * Drift and the instruction "do not reconstruct the problem text by guessing"
+   * never fires - and then the senpai starts teaching a problem it invented.
    *
-   * 文言の正本は `@ai-sensei/prompts` の `formatProblemText()` に移した。
-   * `packages/prompts` 側にも同じ照合があるが、こちらは別の壊れ方を見ている —
-   * **API が正本を通さずに文言を組み立て直したら**、あちらは緑のままここが落ちる。
+   * The wording's source of truth moved to `formatProblemText()` in
+   * `@ai-sensei/prompts`. `packages/prompts` has the same check, but this one
+   * watches a different failure: if the API rebuilds the wording without going
+   * through the source, that side stays green and this one fails.
    */
   it("プレースホルダが、先輩のプロンプトが見ている文言と一致する", () => {
     expect(getPrompt("senpai_board", "ja").body).toContain(formatProblemText(null, "ja"));
@@ -795,8 +802,8 @@ describe("問題文", () => {
   });
 
   /**
-   * 上限を超えるのは「紙面を丸ごと書き起こした」とき。先頭で切ると設問の途中で
-   * 切れた問題を教えることになり、章末の解答まで混ざっている可能性も高い。
+   * Exceeding the cap means the whole page was transcribed. Truncating would teach
+   * a problem cut mid-question, and the chapter's answers are likely mixed in.
    */
   it("紙面を丸ごと書き起こした問題文は、切らずに捨てる", async () => {
     services = testServices({
@@ -809,11 +816,13 @@ describe("問題文", () => {
   });
 
   /**
-   * `@ai-sensei/guardrail` の `checkProblemText()` が**ルートから届く位置に繋がっている**
-   * ことの確認。解答が混ざったまま渡すと、先輩は解き方を組み立てずに答えを写し、
-   * 板書が「答え合わせの表示器」に劣化する。
+   * Confirms `checkProblemText()` from `@ai-sensei/guardrail` is wired where it
+   * reaches from the route. Passing text with the answer mixed in makes the senpai
+   * copy the answer instead of building the method, degrading the board into an
+   * answer display.
    *
-   * 落としてもセッションは止めない。先輩は「問題、読んでもらってもいい?」から始まる。
+   * A rejection does not stop the session: the senpai opens with "could you read
+   * the problem out?".
    */
   it("解答が混ざった問題文は先輩に渡さない(セッションは止めない)", async () => {
     services = testServices({
@@ -828,7 +837,7 @@ describe("問題文", () => {
     expect((await problemTextOf()).problem_text).toBe(formatProblemText(null, "ja"));
   });
 
-  // 単元を絞り込むだけで問題文が消えると、先輩が問題を見ないまま教える状態に戻る。
+  // If narrowing the unit erased the problem text, we would be back to a senpai teaching without seeing it.
   it("単元を絞り込んでも問題文は残る", async () => {
     const session = await start({ problemPhoto: problemPhotoFile() });
 
@@ -854,12 +863,13 @@ describe("問題文", () => {
 });
 
 /**
- * **ノートを持っていない生徒の経路。**
+ * The path for a student with no notes.
  *
- * ノートを必須にしていた頃、この生徒には紙面を `photo`(ノート枠)に入れる以外の
- * 道が無く、結果として**他者の著作物がR2に保存されていた**。
- * 破棄の約束を守る唯一の道が「紙面をノート枠に入れる動機を消す」ことだったので、
- * ノートの必須をやめた(§4-1 / §10-4)。
+ * Back when notes were mandatory, such a student had no route but to put the
+ * printed page in the `photo` (notes) slot, so someone else's copyrighted work
+ * ended up stored in R2. The only way to keep the discard promise was to remove
+ * the motive for putting a page in the notes slot, so notes stopped being
+ * required (§4-1 / §10-4).
  */
 describe("問題だけのセッション", () => {
   function problemOnlyForm(meta: Record<string, unknown> = {}): FormData {
@@ -869,7 +879,7 @@ describe("問題だけのセッション", () => {
     return form;
   }
 
-  /** 会話まで進めて、先輩に届く文脈を読む。 */
+  /** Continues to the conversation and reads the context that reaches the senpai. */
   function contextOf(form: FormData) {
     return analyzeThenStart(form).then((started) =>
       metadataOf<{ problem_text: string; visible_work: string }>(started),
@@ -885,10 +895,10 @@ describe("問題だけのセッション", () => {
     expect(body.problem?.source).toBe("problem_photo");
   });
 
-  // 破棄の約束そのもの。ノートが無いのだから、R2には**何も**増えない。
+  // The discard promise itself. With no notes, nothing at all is added to R2.
   it("紙面はR2に保存されない(バケツが空のまま)", async () => {
-    // モジュール共有の bindings は他のテストが保存した写真を持っている
-    // (session_id も ses_1 から振り直される)ので、ここだけ空のバケツで見る。
+    // The module-shared bindings hold photos other tests stored (and session_id
+    // restarts from ses_1), so check with an isolated empty bucket here.
     const isolated = testBindings();
     const response = await app.request(
       "/v1/sessions",
@@ -913,8 +923,9 @@ describe("問題だけのセッション", () => {
   });
 
   /**
-   * 「ノートを撮ったが白紙」と「ノートを撮っていない」は別物。
-   * 混ぜると先輩は、まだ手をつけていない生徒から「手が止まった場所」を探しはじめる。
+   * "Took notes but they are blank" and "took no notes" are different things.
+   * Conflated, the senpai starts hunting for "where they got stuck" in a student
+   * who has not started.
    */
   it("student_work は「(なし)」ではなく「ノートの写真なし」になる", async () => {
     services = testServices({ analysis: { ...analysisFixture, visible_work: [] } });
@@ -931,13 +942,13 @@ describe("問題だけのセッション", () => {
     };
     const metadata = await contextOf(problemOnlyForm({ locale: "en" }));
 
-    // 文言の正本は `@ai-sensei/prompts` の formatVisibleWork(プロンプトが名指ししている)。
-    // API側で組み立て直していないことを、正本と突き合わせて固定する。
+    // The wording's source is formatVisibleWork in `@ai-sensei/prompts` (named by the
+    // prompt). Pin that the API does not rebuild it, by comparing against the source.
     expect(metadata.visible_work).toBe(formatVisibleWork(null, "en"));
     expect(metadata.visible_work).not.toMatch(/[ぁ-んァ-ン一-龯]/);
   });
 
-  // 単元を絞り込んだだけで「ノートがある」ことにならない(写真は解析し直さない)。
+  // Narrowing the unit does not make notes exist (photos are not re-analysed).
   it("単元を絞り込んでも、ノート無しの文言のまま", async () => {
     services = testServices({ analysis: { ...analysisFixture, visible_work: [] } });
     const created = await post(problemOnlyForm());
@@ -953,10 +964,10 @@ describe("問題だけのセッション", () => {
   });
 
   /**
-   * `problem_text` のプレースホルダと同じ手当て。プロンプト側には
-   * 「ここが『(ノートの写真なし)』のときは手がかりが無い」という分岐があるので、
-   * **1文字ずれるとその分岐が発火せず、先輩がノートを持っていない生徒に
-   * 「ノート見せて」と言い出す。**
+   * The same treatment as `problem_text`'s placeholder. The prompt branches on
+   * "if this says '(no notes photo)' there are no clues", so one character of
+   * drift stops that branch firing and the senpai asks a student with no notes to
+   * show their notes.
    */
   it("ノート無しの文言が、先輩のプロンプトが見ている文言と一致する", () => {
     for (const id of ["senpai_board", "senpai_conversation"] as const) {
@@ -970,7 +981,7 @@ describe("問題だけのセッション", () => {
     expect(metadata.visible_work).toContain(analysisFixture.visible_work[0]);
   });
 
-  // ここを緩めると「写真ゼロで始まるセッション」ができ、解析器が想像で単元を答える。
+  // Loosen this and a session can start with zero photos, so the analyser invents a unit.
   it("どちらの写真も無ければ、従来どおり弾く", async () => {
     const form = new FormData();
     form.set("meta", JSON.stringify({ kind: "new", locale: "ja" }));
@@ -989,13 +1000,13 @@ describe("問題だけのセッション", () => {
     form.set("meta", JSON.stringify({ kind: "new", locale: "ja" }));
 
     expect((await post(form)).status).toBe(422);
-    // 読めない写真で解析の枠を失わせない(従来の約束)
+    // An unreadable photo must not cost an analysis slot (the existing promise)
     expect((await post(createSessionForm())).status).toBe(201);
   });
 
   /**
-   * 復習は写真を使わず、文脈は前回の穴。ここに「ノートの写真なし」と書くと
-   * **存在しない欠落**を報告することになる。
+   * Reviews use no photo and take the previous hole as context, so writing "no
+   * notes photo" here would report an absence that does not exist.
    */
   it("復習セッションの student_work は変わらない", async () => {
     await services.repository.ensureUser(testDeviceId, new Date());
@@ -1051,7 +1062,7 @@ describe("検出単元の確信度", () => {
   });
 });
 
-// レビュー指摘: 上限の判定と行の作成が離れていると、同時投稿で二重に通る
+// From review: with the cap check separated from row creation, concurrent posts both pass
 describe("解析枠の押さえ方", () => {
   it("解析に失敗したら、その日の解析の枠を消費しない", async () => {
     services = testServices({
@@ -1068,7 +1079,7 @@ describe("解析枠の押さえ方", () => {
     expect((await post(createSessionForm())).status).toBe(422);
     expect(services.repository.sessions.size).toBe(0);
 
-    // 撮り直せば、その日のうちにまだ始められる
+    // Retaking still allows a start later the same day
     services.analyzer = testServices().analyzer;
     expect((await post(createSessionForm())).status).toBe(201);
   });
@@ -1083,17 +1094,18 @@ describe("解析枠の押さえ方", () => {
     };
 
     await post(createSessionForm());
-    // 解析中にはもう行がある = 同時に来た解析も同じ枠を数える
+    // A row already exists during analysis = concurrent analyses count the same slot
     expect(sessionsDuringAnalysis).toBe(1);
   });
 });
 
 /**
- * 授業枠の原子性。**枠を押さえるのは会話の開始**になったので、
- * 同時実行の穴もそちらへ移っている。
+ * Atomicity of the lesson slot. Claiming moved to conversation start, so the
+ * concurrency hole moved there too.
  *
- * 解析まで済ませたセッションを人数分そろえてから、いっせいに始める。
- * 「数えてから書く」実装に戻すと、全員が同じ「まだ空いている」を見て通る。
+ * Line up as many analysed sessions as there are people, then start them all at
+ * once. Revert to a "count, then write" implementation and everyone sees the same
+ * "still room" and passes.
  */
 describe("同時実行の授業枠", () => {
   async function analyzed(count: number): Promise<string[]> {
@@ -1106,7 +1118,7 @@ describe("同時実行の授業枠", () => {
     return ids;
   }
 
-  /** `/start` が `ensureUser` を通ったところで全員をそろえる関門。 */
+  /** A barrier that lines everyone up where `/start` has passed `ensureUser`. */
   function lineUpAt(count: number): void {
     const wait = concurrencyBarrier(count);
     const repository = services.repository;
@@ -1165,8 +1177,8 @@ describe("同時実行の授業枠", () => {
 });
 
 /**
- * 不具合報告: 写真 → 分野選択 → 会話開始 で「今日のセッションは終わり」と出た。
- * 単元を確認しただけでセッションを作り直していたため、無料枠を2回消費していた。
+ * Bug report: photo -> pick subject -> start conversation gave "that's it for
+ * today". Confirming the unit recreated the session, consuming the free tier twice.
  */
 describe("PATCH /v1/sessions/{id}/topics", () => {
   async function analyze(): Promise<CreateSessionResponse> {
@@ -1186,12 +1198,12 @@ describe("PATCH /v1/sessions/{id}/topics", () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as CreateSessionResponse;
     expect(createSessionResponseSchema.safeParse(body).success).toBe(true);
-    // 同じセッションのまま。行が増えていなければ、解析も枠も二重にならない
+    // Still the same session. No extra row means neither analysis nor slot is doubled
     expect(body.session_id).toBe(session.session_id);
     expect(services.repository.sessions.size).toBe(1);
   });
 
-  // 単元を確かめただけの人は、まだ1回も話していない。
+  // Someone who only confirmed the unit has not had a conversation yet.
   it("単元を確かめただけでは、今日の1回を使わない", async () => {
     const session = await analyze();
     await patchTopics(session.session_id, { topic_ids: ["M2-ZUKEI-ENCHOKU"] });
@@ -1222,7 +1234,7 @@ describe("PATCH /v1/sessions/{id}/topics", () => {
       started,
     );
     expect(metadata.allowed_topic_ids).not.toContain("M2-ZUKEI-ENCHOKU");
-    // 写真をもう一度解析しなくても、会話の文脈は残っている
+    // The conversation context survives without re-analysing the photo
     expect(metadata.photo_summary).toBe(analysisFixture.summary);
   });
 
@@ -1288,11 +1300,11 @@ describe("PATCH /v1/sessions/{id}/topics", () => {
 });
 
 /**
- * 海外向けの課程で始めるセッション。
+ * A session started on an overseas curriculum.
  *
- * 見ているのは「英語で返るか」ではなく、**会話に渡す文脈が最後まで
- * 英語の課程で揃っているか**。ここが混ざると、後輩が英語で話しながら
- * 日本語の単元名でガードレールを引くことになる。
+ * What matters is not "does it answer in English" but whether the context handed
+ * to the conversation stays on the English curriculum end to end. Mixed, the
+ * agent would speak English while drawing guardrails from Japanese unit names.
  */
 describe("locale=en のセッション", () => {
   let analyzer: RecordingAnalyzer;

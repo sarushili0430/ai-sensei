@@ -43,7 +43,7 @@ describe("RequestLogger", () => {
     ]);
   });
 
-  // 原因はログにしか残らない。スタックを落とすと調べようがなくなる。
+  // The cause exists only in the logs. Dropping the stack leaves nothing to investigate.
   it("エラーは名前・メッセージ・スタックまで残す", () => {
     const sink = capture();
     const log = new RequestLogger("trace-2", {}, "info", sink.sink);
@@ -111,7 +111,7 @@ describe("describeError", () => {
 });
 
 describe("deviceTag", () => {
-  // 匿名IDでも端末をまたいで追える識別子なので、相関に足るぶんだけにする
+  // Anonymous ids still track across devices, so keep only enough to correlate
   it("先頭8文字だけにする", () => {
     expect(deviceTag("0123456789abcdef")).toBe("01234567");
     expect(deviceTag(undefined)).toBeUndefined();

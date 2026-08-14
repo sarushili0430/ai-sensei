@@ -19,14 +19,14 @@ describe("loadConfig", () => {
     expect(config.LLM_MODEL_BOARD).toBe("claude-sonnet-5");
   });
 
-  // 8/16のゲートで測られるのは会話の速さではなく板書の質(計画書 §3-4)。
-  // 会話と同じ軽いモデルに落ちると、そのゲートを試す前に負ける。
+  // The 8/16 gate measures board quality, not conversation speed (plan §3-4).
+  // Falling back to the same light model as conversation loses before the gate is tried.
   it("板書は会話より重いモデルを既定にする", () => {
     const config = loadConfig(complete);
     expect(config.LLM_MODEL_BOARD).not.toBe(config.LLM_MODEL_CONVERSATION);
   });
 
-  // 先輩の声は環境ごとに変わってはいけないので、鍵と違って設定必須にしない
+  // The senpai's voice must not vary by environment, so unlike keys it is not required
   it("先輩の声は設定が無くても固定される", () => {
     const config = loadConfig(complete);
     expect(config.DEEPGRAM_TTS_MODEL_JA).toBe("aura-2-izanami-ja");
@@ -38,8 +38,8 @@ describe("loadConfig", () => {
     expect(config.DEEPGRAM_TTS_MODEL_JA).toBe("aura-2-other-ja");
   });
 
-  // `.env` に `KEY=` と書くと値は undefined ではなく空文字になる。
-  // 素通しすると空のモデル名がAPIまで流れて、起動は通るのに声だけ出ない。
+  // Writing `KEY=` in `.env` gives an empty string, not undefined. Passing it through
+  // sends an empty model name to the API: startup succeeds but no voice comes out.
   it("空文字は未設定として扱い、既定値に倒す", () => {
     const config = loadConfig({
       ...complete,
@@ -53,7 +53,7 @@ describe("loadConfig", () => {
     expect(config.LLM_MODEL_KARTE).toBe("claude-sonnet-5");
   });
 
-  // 会話の途中で鍵が無いことに気づくのが最悪なので、起動時に落とす
+  // Discovering a missing key mid-conversation is the worst case, so fail at startup
   it("鍵が足りなければ起動時に落とす", () => {
     const { DEEPGRAM_API_KEY, ...missing } = complete;
     expect(() => loadConfig(missing)).toThrow(/DEEPGRAM_API_KEY/);
@@ -63,15 +63,15 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ ...complete, API_BASE_URL: "localhost" })).toThrow();
   });
 
-  // スキームの落ちたURLはフレームワーク側の new URL() が投げるが、その例外は
-  // 握り潰されて「closing worker due to error.」としか出ない。手前で名前を出す。
+  // A URL with the scheme dropped makes the framework's new URL() throw, but that
+  // exception is swallowed into "closing worker due to error." Name it earlier.
   it("LIVEKIT_URLがURLとして読めなければ、名前を出して落とす", () => {
     expect(() => loadConfig({ ...complete, LIVEKIT_URL: "example.livekit.cloud" })).toThrow(
       /LIVEKIT_URL/,
     );
   });
 
-  // 「足りない」と「形が違う」は直し方が違うので、理由まで出す
+  // "Missing" and "malformed" need different fixes, so print the reason too
   it("落ちる理由がメッセージに出る", () => {
     expect(() => loadConfig({ ...complete, LIVEKIT_URL: "example.livekit.cloud" })).toThrow(
       /URLとして読めません/,

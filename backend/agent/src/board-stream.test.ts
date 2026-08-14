@@ -7,8 +7,8 @@ import {
 } from "./board-stream.ts";
 
 /**
- * 逐次パースのテスト。見たいのは「読めること」ではなく、
- * **手順が閉じた瞬間に1つだけ出ること**と、**壊れたときに壊れたと分かること**。
+ * Tests for incremental parsing. Not "can it read" but "does exactly one step
+ * come out the moment it closes" and "is a break visible when it breaks".
  */
 
 const lesson = {
@@ -31,14 +31,14 @@ const lesson = {
 
 const lessonJson = JSON.stringify(lesson);
 
-/** チャンクの切れ目を機械的に作る(切れ目の位置に意味を持たせない)。 */
+/** Cut chunks mechanically (boundary positions must carry no meaning). */
 function slice(text: string, size: number): string[] {
   const parts: string[] = [];
   for (let at = 0; at < text.length; at += size) parts.push(text.slice(at, at + size));
   return parts;
 }
 
-/** 1チャンクずつ食べさせて、各チャンクで何が出たかを並べて返す。 */
+/** Feed one chunk at a time and return what came out on each. */
 function feedAll(parts: readonly string[]): {
   parser: BoardLessonStreamParser;
   perChunk: BoardStreamEvent[][];
@@ -60,18 +60,19 @@ describe("BoardLessonStreamParser", () => {
   });
 
   /**
-   * **これが案A(§3-2)の核心。**1文字ずつ流しても、手順が閉じた文字の回でだけ
-   * 1つ出る。まとめて最後に出るなら、それは案B(全部生成してから再生)になっていて、
-   * 低レイテンシという採用理由が消えている。
+   * This is the heart of option A (§3-2). Fed one character at a time, exactly
+   * one step comes out on the character that closes it. Everything arriving at
+   * the end would mean option B (generate fully, then play), losing the low
+   * latency that motivated the choice.
    */
   it("1文字ずつ流しても、閉じた回にだけ1つ出る(最後にまとめて出ない)", () => {
     const parts = slice(lessonJson, 1);
     const { perChunk, events } = feedAll(parts);
 
-    // どのチャンクでも、出るのは高々1つ
+    // At most one comes out on any chunk
     expect(Math.max(...perChunk.map((chunk) => chunk.length))).toBe(1);
 
-    // 3手順のうち2つは、JSON全体を読み終える**前**に出ている
+    // Two of the three steps come out *before* the whole JSON is read
     const lastChunkIndex = parts.length - 1;
     const stepChunkIndexes = perChunk.flatMap((chunk, at) =>
       chunk.some((event) => event.type === "step") ? [at] : [],
@@ -79,7 +80,7 @@ describe("BoardLessonStreamParser", () => {
     expect(stepChunkIndexes).toHaveLength(3);
     for (const at of stepChunkIndexes.slice(0, 2)) expect(at).toBeLessThan(lastChunkIndex);
 
-    // ヘッダは最初の手順より先に出る(board_open を先に送れる)
+    // The header precedes the first step (so board_open can go first)
     const headIndex = perChunk.findIndex((chunk) =>
       chunk.some((event) => event.type === "lesson_head"),
     );
@@ -98,8 +99,9 @@ describe("BoardLessonStreamParser", () => {
   });
 
   /**
-   * 文字列の中・エスケープの中で切れるのは**普通に起きる**。
-   * `tex` はバックスラッシュだらけなので、`\\frac` の `\` の直後で切れる回が必ず来る。
+   * Cutting inside a string or an escape happens routinely.
+   * `tex` is full of backslashes, so some chunk always ends right after the `\`
+   * of `\\frac`.
    */
   it("文字列の中・エスケープの中で切れても壊れない", () => {
     const withEscapes = JSON.stringify({
@@ -109,13 +111,13 @@ describe("BoardLessonStreamParser", () => {
         {
           index: 0,
           speech: "ここ、分数のところ。",
-          // JSONにすると "\\frac{-b \\pm \\sqrt{D}}{2a}" になり、
-          // \\ の間で切れるチャンクが必ず現れる
+          // As JSON this is "\\frac{-b \\pm \\sqrt{D}}{2a}", so a chunk boundary
+          // inevitably falls between the two backslashes
           board: { kind: "latex", tex: "\\frac{-b \\pm \\sqrt{D}}{2a}" },
         },
         {
           index: 1,
-          // 改行・タブ・引用符・Unicodeエスケープを1手順に全部入れる
+          // Newline, tab, quotes and a Unicode escape, all in one step
           speech: '改行\nとタブ\tと "引用符" と − 記号',
           board: { kind: "text", body: "a = 1, b = -3, c = 2" },
         },
@@ -137,7 +139,7 @@ describe("BoardLessonStreamParser", () => {
     });
   });
 
-  // LLMは頼まなくてもフェンスを付けてくる(karte.ts の extractJson が同じ手当てをしている)
+  // The LLM adds fences unasked (karte.ts's extractJson handles the same case)
   it("前置きと ```json フェンスが付いていても読める", () => {
     const fenced = ["できました。", "```json", lessonJson, "```"].join("\n");
     const { events, parser } = feedAll(slice(fenced, 9));
@@ -165,16 +167,16 @@ describe("BoardLessonStreamParser", () => {
   });
 
   /* ------------------------------------------------------------------ */
-  /* 壊れたときに、壊れたと分かること                                    */
+  /* Breaking visibly when it breaks                                    */
   /* ------------------------------------------------------------------ */
 
-  // 途中で切れた板書を「全部届いた」と扱うと、モバイルは末尾の欠落を検知できない。
+  // Treating a truncated board as "fully delivered" hides the missing tail from mobile.
   it("途中で切れたストリームは completed にならない", () => {
     const truncated = lessonJson.slice(0, lessonJson.length - 30);
     const { parser, events } = feedAll(slice(truncated, 17));
 
     expect(parser.completed).toBe(false);
-    // 閉じたぶんは有効。ここまでは送ってよい。
+    // What closed is valid and may be sent
     expect(stepsOf(events)).toEqual(lesson.steps.slice(0, 2));
   });
 
@@ -187,7 +189,7 @@ describe("BoardLessonStreamParser", () => {
     expect(events.map((event) => event.type)).toEqual(["lesson_head"]);
   });
 
-  // 黙って読み飛ばすと、手順が1つ減ったまま板書が完成してしまう
+  // Skipping silently would complete the board with one step missing
   it("steps の要素がオブジェクトでなければ落ちる", () => {
     const parser = new BoardLessonStreamParser();
     expect(() =>
@@ -202,7 +204,7 @@ describe("BoardLessonStreamParser", () => {
     ).toThrow(BoardStreamError);
   });
 
-  // 閉じない文字列を掴んだまま「まだ来ていない」の顔で待ち続けない
+  // Never hold an unclosed string while pretending it just has not arrived yet
   it("長すぎるストリームは打ち切る", () => {
     const parser = new BoardLessonStreamParser();
     expect(() => parser.feed(`{"title":"${"あ".repeat(boardStreamMaxLength)}`)).toThrow(

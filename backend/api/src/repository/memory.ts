@@ -12,8 +12,8 @@ import type {
 } from "./types.ts";
 
 /**
- * テストと `wrangler dev --local` の代替用。
- * D1実装(d1.ts)と同じ振る舞いになるよう、両方を同じテストに通す。
+ * For tests and `wrangler dev --local`.
+ * Both go through the same tests so behaviour matches the D1 implementation (d1.ts).
  */
 export class MemoryRepository implements Repository {
   readonly users = new Map<string, UserRecord>();
@@ -74,8 +74,9 @@ export class MemoryRepository implements Repository {
     if (analysesToday >= input.maxAnalysesPerDay) return false;
 
     /**
-     * JavaScriptは単一スレッドなので、確認から挿入までawaitを挟まなければこの区間は原子的になる。
-     * ここにawaitを足すと、その隙間で別のリクエストが同じ「まだ空きがある」を見て通る。
+     * JavaScript is single-threaded, so with no await between the check and the
+     * insert this stretch is atomic. Adding an await here would let another
+     * request see the same "still room" in the gap and pass.
      */
     this.sessions.set(input.session.id, input.session);
     return true;
@@ -91,7 +92,7 @@ export class MemoryRepository implements Repository {
     const session = this.sessions.get(input.sessionId);
     if (!session || session.device_id !== input.deviceId) return { started: false };
 
-    // 再送は数え直さない。最初に押さえた枠のまま、その日の本数だけを返す。
+    // A resend is not recounted. The first claim stands; only the day's count is returned.
     if (session.started_at !== null) {
       return {
         started: true,
@@ -103,12 +104,12 @@ export class MemoryRepository implements Repository {
     const startedToday = this.startedOnDate(input.deviceId, input.localDate).length;
     if (startedToday >= input.maxPerDay) return { started: false };
 
-    /** D1と同じく、確認から書き込みまでawaitを挟まない(挟むと同時実行が両方通る)。 */
+    /** As in D1, no await between the check and the write (one would let concurrent requests both pass). */
     this.sessions.set(session.id, {
       ...session,
       started_at: input.startedAt,
-      // 数える日は「会話が始まった日」。解析だけして日付をまたいだ回を、
-      // 撮った日のほうへ数えないため(D1側の UPDATE と同じ)。
+      // The day counted is the day the conversation started, so a session analysed
+      // before midnight is not counted on the photo's day (same as D1's UPDATE).
       local_date: input.localDate,
     });
     return { started: true, alreadyStarted: false, sessionsToday: startedToday + 1 };
@@ -262,8 +263,9 @@ export class MemoryRepository implements Repository {
       .filter((entry) => entry.device_id === session.device_id && entry.plan_id !== null)
       .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
     if (currentSession?.plan_id && currentSession.plan_id !== input.plan.id) {
-      // D1のUNIQUE(device_id)と同じ競合を再現する。テスト用実装だけ後勝ちにすると、
-      // 二重に開いた初回セッションが本番で既存計画を上書きしない性質を検査できない。
+      // Reproduces the same conflict as D1's UNIQUE(device_id). Letting only the test
+      // implementation be last-write-wins would hide the property that a doubly opened
+      // first session does not overwrite an existing plan in production.
       this.planSessions.set(input.sessionId, {
         ...session,
         status: "completed",
@@ -275,8 +277,9 @@ export class MemoryRepository implements Repository {
     }
 
     /**
-     * 確認から2つのMap更新までawaitを挟まない。テスト実装でも本番D1と同じく、
-     * complete の再送が別内容で現行計画を上書きできない境界を保つため。
+     * No await between the check and the two Map updates. Even in the test
+     * implementation, this preserves the same boundary as production D1: a resent
+     * complete with different content cannot overwrite the current plan.
      */
     this.plans.set(input.plan.id, input.plan);
     this.planSessions.set(input.sessionId, {

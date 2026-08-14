@@ -6,35 +6,36 @@ import type { UserRecord } from "../repository/types.ts";
 export const webhooksRoute = new Hono<AppEnv>();
 
 /**
- * RevenueCatのwebhook。entitlementをD1に同期する。
+ * RevenueCat's webhook. Syncs entitlements into D1.
  *
- * app_user_id は匿名デバイスID(RevenueCatのlogIn に渡す値)。
- * 検証は Authorization ヘッダの共有シークレットで行う(RevenueCat側で設定)。
+ * app_user_id is the anonymous device id (the value passed to RevenueCat's
+ * logIn). Verification uses the shared secret in the Authorization header (set
+ * on the RevenueCat side).
  */
 const revenueCatEventSchema = z.object({
   event: z.object({
     type: z.string(),
     /**
-     * TRANSFER **だけ** app_user_id を持たない(移行元と移行先の2つがあるため)。
-     * required にしていたころは、TRANSFER が zod で弾かれて400を返し、
-     * RevenueCat が諦めるまで再送していた。
+     * TRANSFER alone has no app_user_id (it has a source and a destination).
+     * While this was required, TRANSFER was rejected by zod with a 400 and
+     * RevenueCat kept resending until it gave up.
      */
     app_user_id: z.string().optional(),
-    /** ミリ秒エポック。解約後も期限までは有効。 */
+    /** Epoch milliseconds. Still valid until expiry after cancellation. */
     expiration_at_ms: z.number().nullable().optional(),
     /**
-     * 猶予期間(ストア側の Grace period)の終わり。BILLING_ISSUE に付く。
-     * 支払いの再試行中も、ここまでは使わせる。
+     * End of the store-side grace period. Attached to BILLING_ISSUE.
+     * Access continues until then while payment is being retried.
      */
     grace_period_expiration_at_ms: z.number().nullable().optional(),
     entitlement_ids: z.array(z.string()).nullable().optional(),
-    /** TRANSFER のみ。移行元/移行先の app_user_id(複数あり得る)。 */
+    /** TRANSFER only. The source/destination app_user_ids (there may be several). */
     transferred_from: z.array(z.string()).nullable().optional(),
     transferred_to: z.array(z.string()).nullable().optional(),
   }),
 });
 
-/** entitlementを与えるイベント。 */
+/** Events that grant an entitlement. */
 const grantingTypes = new Set([
   "INITIAL_PURCHASE",
   "RENEWAL",
@@ -46,46 +47,47 @@ const grantingTypes = new Set([
 ]);
 
 /**
- * 即時に剥奪するイベント。
- * CANCELLATION(解約予約)は期限まで使えるので**ここに入れない**。
- * 払ったぶんは最後まで使える、が誠実さ(HAMM)の最低線。
+ * Events that revoke immediately.
+ * CANCELLATION (a scheduled cancellation) is not here - it stays usable until
+ * expiry. "What was paid for stays usable to the end" is the floor of honesty (HAMM).
  *
- * BILLING_ISSUE も**ここに入れない**。あれは「支払いの再試行が始まった」で、
- * 失効ではない(下の handleBillingIssue)。
+ * BILLING_ISSUE is not here either. It means "payment retry has begun", not
+ * expiry (see handleBillingIssue below).
  *
- * TRANSFER も**ここに入れない**。剥奪ではなく付け替えなので、
- * 移行元から外して移行先に付ける(下の handleTransfer)。
+ * TRANSFER is not here either. It is a reassignment, not a revocation: remove
+ * from the source and grant to the destination (see handleTransfer below).
  */
 const revokingTypes = new Set(["EXPIRATION", "REFUND"]);
 
 /**
- * BILLING_ISSUE の適用。**剥奪しない。**
+ * Applying BILLING_ISSUE. It does not revoke.
  *
- * このイベントは「カードが通らなかったので再試行を始めた」の通知で、
- * ストア側の猶予期間(Play: Grace period / Apple: Billing Retry)のあいだ
- * RevenueCat の entitlement は**有効なまま**。
+ * This event notifies that the card failed and a retry has begun. During the
+ * store's grace period (Play: Grace period / Apple: Billing Retry), the
+ * RevenueCat entitlement stays valid.
  *
- * ここで剥奪していたころは、猶予期間のあいだだけ
- *   アプリ(SDKのCustomerInfo) = Premium / サーバ(users.is_premium) = 無料
- * になった。画面の出し分けはサーバ側が正(docs/revenuecat.md §9)なので、
- * **カードを更新すれば直るはずの数日間、授業も復習も止まる**。
- * entitlement は変わっていないので premium_sync も読み直さない。
+ * While this used to revoke, the grace period looked like
+ *   app (SDK CustomerInfo) = Premium / server (users.is_premium) = free
+ * and the server is authoritative for what the screen shows
+ * (docs/revenuecat.md §9), so lessons and reviews stopped for days that a card
+ * update would have fixed. The entitlement did not change, so premium_sync does
+ * not re-read it either.
  *
- * やることは期限を猶予期間の終わりまで延ばすことだけ。
- * 猶予が明けても払われなければ EXPIRATION が来て、そこで剥奪される。
+ * All this does is extend the expiry to the end of the grace period. If payment
+ * still fails, EXPIRATION arrives and revokes there.
  */
 async function handleBillingIssue(input: {
   repository: Services["repository"];
   deviceId: string;
-  /** 猶予期間の終わり。無ければ従来の期限。どちらも無ければ null。 */
+  /** End of the grace period; otherwise the existing expiry; null if neither. */
   until: string | null;
 }): Promise<void> {
   const { repository, deviceId, until } = input;
 
-  // 期限の材料が無いときは**触らない**。ここで expiresAt: null を書くと
-  // 「無期限」の意味になり(handleTransfer 参照)、支払いに失敗しただけの人が
-  // 永久Premiumになる。直前の RENEWAL が入れた期限をそのまま残せば、
-  // 猶予がどうであれ EXPIRATION で正しく終わる。
+  // With nothing to build an expiry from, do not touch it. Writing expiresAt: null
+  // here means "no expiry" (see handleTransfer), which would make someone who
+  // merely failed a payment Premium forever. Leaving the expiry set by the last
+  // RENEWAL means EXPIRATION ends it correctly however the grace period goes.
   if (until === null) return;
 
   await repository.setPremium({
@@ -97,16 +99,16 @@ async function handleBillingIssue(input: {
 }
 
 /**
- * TRANSFER の適用。
+ * Applying TRANSFER.
  *
- * このイベントは `expiration_at_ms` も `entitlement_ids` も持たない
- * (個別の商品ではなく「そのIDが持つものすべて」の付け替えなので)。
- * よって**期限は移行元のレコードから引き継ぐ**。
+ * This event has neither `expiration_at_ms` nor `entitlement_ids` (it reassigns
+ * "everything that id holds", not a specific product), so the expiry is
+ * inherited from the source record.
  *
- * 移行元にPremiumの記録が無ければ、こちらには期限を決める材料が無い。
- * 期限なし(=無期限)で付けてしまうと復元だけで永久Premiumが作れるので、
- * その場合は付けない。次の RENEWAL / EXPIRATION が新しいIDで飛んできて
- * そこで正しい期限に揃う。
+ * If the source has no Premium record, there is nothing to derive an expiry
+ * from. Granting with no expiry (= forever) would let a restore alone create
+ * permanent Premium, so nothing is granted. The next RENEWAL / EXPIRATION
+ * arrives on the new id and settles the correct expiry there.
  */
 async function handleTransfer(input: {
   repository: Services["repository"];
@@ -116,17 +118,17 @@ async function handleTransfer(input: {
 }): Promise<void> {
   const { repository, at, from, to } = input;
 
-  // 先に読む。剥奪してから読むと、引き継ぐはずの期限が消える。
+  // Read first. Reading after revoking loses the expiry we mean to inherit.
   const sources = await Promise.all(from.map((deviceId) => repository.getUser(deviceId)));
   const premiumSources = sources.filter((user): user is UserRecord => user?.is_premium === true);
 
-  // premium_expires_at が null は「無期限」。混ざっていればそれが最長。
+  // A null premium_expires_at means "no expiry". If one is present, it is the longest.
   const unbounded = premiumSources.some((user) => user.premium_expires_at === null);
   const expiresAt = unbounded
     ? null
     : premiumSources.reduce<string | null>((latest, user) => {
         const candidate = user.premium_expires_at;
-        // ISO8601(UTC・同じ桁数)なので辞書順の比較で時刻順になる。
+        // ISO8601 (UTC, fixed width), so lexicographic comparison is chronological.
         return candidate !== null && (latest === null || candidate > latest) ? candidate : latest;
       }, null);
 
@@ -159,7 +161,7 @@ webhooksRoute.post("/revenuecat", async (c) => {
 
   const authorization = c.req.header("authorization");
   if (!c.env.REVENUECAT_WEBHOOK_AUTH || authorization !== c.env.REVENUECAT_WEBHOOK_AUTH) {
-    // 設定を入れ替えたあとの拒否がここに出る。**課金だけ静かに壊れる**のを防ぐ。
+    // A rejection after swapping the config shows up here. Stops billing from breaking silently.
     log?.warn("webhook_unauthorized", { source: "revenuecat" });
     return c.json({ error: { code: "unauthorized", message: "invalid webhook auth" } }, 401);
   }
@@ -173,12 +175,12 @@ webhooksRoute.post("/revenuecat", async (c) => {
   const event = parsed.data.event;
   const at = now();
 
-  // 機種変更・アンインストール後の「購入を復元する」。
+  // "Restore purchases" after a new device or a reinstall.
   //
-  // 匿名デバイスIDは端末ごとに作り直されるので、復元すると RevenueCat が
-  // 購入を古いIDから新しいIDへ**付け替えて** TRANSFER を送ってくる。
-  // ここを処理しないと、アプリは「復元しました」と言うのに
-  // サーバ側は無料のまま = 復習も履歴も開かない、という食い違いになる。
+  // Anonymous device ids are regenerated per device, so a restore makes
+  // RevenueCat reassign the purchase from the old id to the new one and send
+  // TRANSFER. Without handling it, the app says "restored" while the server stays
+  // free - reviews and history never open.
   if (event.type === "TRANSFER") {
     await handleTransfer({
       repository,
@@ -189,7 +191,7 @@ webhooksRoute.post("/revenuecat", async (c) => {
     return c.json({ ok: true });
   }
 
-  // TRANSFER 以外は app_user_id を必ず持つ。
+  // Everything other than TRANSFER always has an app_user_id.
   const deviceId = event.app_user_id;
   if (!deviceId) {
     return c.json({ error: { code: "internal_error", message: "missing app_user_id" } }, 400);
@@ -227,7 +229,7 @@ webhooksRoute.post("/revenuecat", async (c) => {
       rcAppUserId: deviceId,
     });
   } else if (event.type === "CANCELLATION") {
-    // 解約予約。期限までは Premium のままにする。
+    // A scheduled cancellation. Stays Premium until expiry.
     await repository.setPremium({
       deviceId,
       isPremium: true,

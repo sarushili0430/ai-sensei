@@ -20,10 +20,11 @@ export const plansRoute = new Hono<AppEnv>();
 export const planMeRoute = new Hono<AppEnv>();
 
 /**
- * POST /v1/plans — 音声で学習計画を作る部屋を開く。
+ * POST /v1/plans - opens a room for building a study plan by voice.
  *
- * 計画はLLMと音声の変動原価が発生するためPremiumだが、日次の授業枠は消費しない。
- * 授業枠へ混ぜると、計画を組んだだけで「今日は授業済み」になり、連続日数まで増えるため。
+ * Planning is Premium because it incurs variable LLM and voice cost, but it does
+ * not consume the daily lesson slot. Mixing it in would make merely building a
+ * plan count as "had a lesson today" and even extend the streak.
  */
 plansRoute.post("/", async (c) => {
   const { repository, now, newId } = c.get("services");
@@ -59,9 +60,10 @@ plansRoute.post("/", async (c) => {
   const metadataJson = JSON.stringify(metadata);
 
   /**
-   * トークンより先に行を作る。agentが接続直後に計画を返すほど速くても、complete側が
-   * セッションを見失わないため。トークン発行が失敗した行はopenのまま残るだけで、
-   * 授業枠も計画本体も消費しないので、危険な補償削除はしない。
+   * The row is created before the token, so complete never loses the session even
+   * if the agent returns a plan immediately after connecting. A row whose token
+   * issue failed just stays open, consuming neither a lesson slot nor a plan, so
+   * no risky compensating delete is needed.
    */
   await repository.createPlanSession({
     id: planSessionId,
@@ -102,10 +104,11 @@ plansRoute.post("/", async (c) => {
 });
 
 /**
- * POST /v1/plans/{id}/complete — 計画agentだけが呼ぶ保存口。
+ * POST /v1/plans/{id}/complete - the save endpoint only the plan agent calls.
  *
- * agent側の照合だけに任せない。LLM出力を保存する直前にも同じ guardrail を通し、
- * 再生成処理の不具合や古いagentが、範囲外の割り当てを親レポートの一次データへ残すのを防ぐ。
+ * Not left to the agent's own matching. The same guardrail runs again right
+ * before saving LLM output, so a bug in regeneration or an old agent cannot leave
+ * out-of-scope assignments in the parent report's primary data.
  */
 plansRoute.post("/:planSessionId/complete", async (c) => {
   const { repository, now, newId } = c.get("services");
@@ -161,7 +164,7 @@ plansRoute.post("/:planSessionId/complete", async (c) => {
 
   const today = toLocalDate(at);
   if (body.plan.days.some((day) => day.date < today)) {
-    // contractは「今日」を知らないので下限を検査できない。保存時のサーバ日付が唯一の正。
+    // The contract does not know "today", so it cannot check the lower bound. The server date at save time is the only truth.
     log?.warn("plan_past_day_rejected", { plan_session_id: session.id, today });
     throw apiError("out_of_scope", { locale: session.locale });
   }
@@ -169,7 +172,7 @@ plansRoute.post("/:planSessionId/complete", async (c) => {
   const current = await repository.getCurrentPlan(session.device_id);
   const isRevision = current !== null;
   if (isRevision !== (body.plan.revision !== null)) {
-    // 組み直しの本人の言葉を後付けで作文しない。欠けていれば保存せず、agentに失敗を返す。
+    // Never invent the student's own words for a rebuild after the fact. If missing, do not save and return a failure to the agent.
     log?.warn("plan_revision_mismatch", {
       plan_session_id: session.id,
       has_current_plan: isRevision,
@@ -190,8 +193,9 @@ plansRoute.post("/:planSessionId/complete", async (c) => {
   const planId = current?.id ?? newId("pln");
   const revisions = body.plan.revision
     ? [
-        // 上限に達したら古い記録から落とす。現行計画を保存不能にするより、直近の
-        // 「なぜ組み直したか」を親への説明材料として残すほうが契約の目的に合う。
+        // On hitting the cap, drop the oldest records. Keeping the recent "why it was
+        // rebuilt" as material for explaining to parents suits the contract's purpose
+        // better than making the current plan unsavable.
         ...(current?.revisions.slice(-19) ?? []),
         { ...body.plan.revision, at: at.toISOString() },
       ]
@@ -215,7 +219,7 @@ plansRoute.post("/:planSessionId/complete", async (c) => {
     plan,
   });
   if (!saved) {
-    // 同時再送が先に完了した。こちらで組んだ値ではなく、実際に保存された値を返す。
+    // A concurrent resend finished first. Return what was actually saved, not what we built.
     const completed = await repository.getPlanSession(session.id);
     const existing = completed?.plan_id ? await repository.getPlan(completed.plan_id) : null;
     if (!existing)
@@ -235,14 +239,14 @@ plansRoute.post("/:planSessionId/complete", async (c) => {
   return c.json(response, 201);
 });
 
-/** GET /v1/me/plan — 未作成は404ではなくnull。画面がそのまま作成導線を出せる。 */
+/** GET /v1/me/plan - not-yet-created is null, not 404, so the screen can offer creation directly. */
 planMeRoute.get("/", async (c) => {
   const { repository } = c.get("services");
   const response: PlanResponse = { plan: await repository.getCurrentPlan(c.get("deviceId")) };
   return c.json(response);
 });
 
-/** sessions.ts と同じく、名前つきagentではトークンに明示ディスパッチを載せる。 */
+/** As in sessions.ts, named agents get explicit dispatch on the token. */
 function agentDispatch(env: Bindings, metadata: string): AgentDispatch | undefined {
   const name = env.LIVEKIT_AGENT_NAME?.trim();
   return name ? { name, metadata } : undefined;

@@ -6,21 +6,22 @@ import { setDegradationReporter, setErrorReporter } from "./log.ts";
 import { createDegradationReporter, scrubFields, scrubMessage } from "./telemetry.ts";
 
 /**
- * エージェントのワーカー起動口。
+ * Worker entry point for the agent.
  *
- *   npm run -w @ai-sensei/agent dev      # ローカルでルームを待ち受ける
- *   npm run -w @ai-sensei/agent start    # 本番
+ *   npm run -w @ai-sensei/agent dev      # listen for rooms locally
+ *   npm run -w @ai-sensei/agent start    # production
  *
- * 監視の配線はここだけ。**DSNが無ければ何も送らない**(ローカルは設定なしで動く)。
- * ジョブの節目のログは `log.ts`(1行1JSON)、縮退の判定は `telemetry.ts`。
+ * Monitoring is wired only here, and sends nothing without a DSN (local runs
+ * work unconfigured). Job milestones go to `log.ts` (one JSON per line);
+ * `telemetry.ts` decides what counts as a degradation.
  *
- * 送るのは2種類。**同じ棚に置かない**(計画書 §10-7):
+ * Two kinds are sent, and they must not share a shelf (plan §10-7):
  *
- *   - クラッシュ … `log.error()` → `captureException`
- *   - **縮退**   … `log.warn()` → `captureMessage(level: "warning")`
+ *   - crash       ... `log.error()` -> `captureException`
+ *   - degradation ... `log.warn()`  -> `captureMessage(level: "warning")`
  *
- * 落ちてはいないが約束が破れている状態をクラッシュに混ぜると、
- * 本当に落ちたものが埋もれる。
+ * Folding "still up but breaking a promise" into crashes buries the things
+ * that really crashed.
  */
 const dsn = process.env["SENTRY_DSN"];
 if (dsn) {
@@ -28,39 +29,40 @@ if (dsn) {
     dsn,
     environment: process.env["ENVIRONMENT"] ?? "unknown",
     tracesSampleRate: 0,
-    // 会話の中身・写真の要約は送らない。落ちた場所が分かれば足りる。
+    // Never send conversation content or photo summaries; where it broke is enough.
     sendDefaultPii: false,
 
     /**
-     * **`consoleIntegration` を外す。既定で入っている。**
+     * Drop `consoleIntegration`, which is on by default.
      *
-     * このワーカーは構造化ログを**全部 `console.log`** に書く(`log.ts`)。
-     * 既定のままだと、その1行1JSONがそっくりパンくずになり、
-     * **エラーが1件起きるたびに直前のログがまとめてSentryへ運ばれる**。
-     * その中には `board_opened` の `title`(= LLMが問題を見て書いた文字列)や
-     * `board_step_rejected` の `detail` が入っている。
+     * This worker writes every structured log to `console.log` (`log.ts`). Left
+     * at the default, each of those JSON lines becomes a breadcrumb, so every
+     * single error carries the preceding logs to Sentry - including
+     * `board_opened`'s `title` (a string the LLM wrote from the problem photo)
+     * and `board_step_rejected`'s `detail`.
      *
-     * モバイル側の `enablePrintBreadcrumbs`(既定 true)と同じ罠が、
-     * サーバ側では `consoleIntegration` という別の名前で待っていた。
+     * The same trap as mobile's `enablePrintBreadcrumbs` (default true), waiting
+     * on the server under a different name.
      */
     integrations: (defaults) => defaults.filter((integration) => integration.name !== "Console"),
 
     /**
-     * 最後の関門。上をすり抜けたものはここで落とす(モバイル側の `scrubEvent` と対)。
-     * **イベントごと捨てない** — 落とすのは中身だけ。
+     * Last gate: whatever slipped past the above is dropped here (the twin of
+     * mobile's `scrubEvent`). Drop the contents, never the whole event.
      */
     beforeSend: (event) => {
       event.breadcrumbs = [];
-      // biome-ignore lint/performance/noDelete: SDKの型では省略可能な欄なので消して送らない
+      // biome-ignore lint/performance/noDelete: optional in the SDK types, so delete rather than send
       delete event.request;
 
       /**
-       * **例外メッセージから秘密を落とす。**
+       * Scrub secrets from exception messages.
        *
-       * モバイル側は「LiveKit の例外は `toString()` に接続先URLやトークンの断片を
-       * 含むことがある」ことに気づいて `runtimeType` だけにした。こちらは外部SDK
-       * (LiveKit / Deepgram / Anthropic)の例外がそのまま `captureException` に載るので、
-       * 同じものが飛びうる。クラス名とスタックは残す(サーバ側では唯一の手がかり)。
+       * Mobile noticed that LiveKit exceptions can carry URL or token fragments
+       * in `toString()` and kept only `runtimeType`. Here, exceptions from
+       * external SDKs (LiveKit / Deepgram / Anthropic) reach `captureException`
+       * verbatim, so the same can leak. Class name and stack are kept - on the
+       * server they are the only clue.
        */
       for (const value of event.exception?.values ?? []) {
         if (value.value !== undefined) value.value = scrubMessage(value.value);
@@ -73,8 +75,9 @@ if (dsn) {
   });
 
   setErrorReporter((error, context) => {
-    // 文脈も縮退と同じ許可リストで絞る。`log.error` の欄は今後も増えるので、
-    // ここを素通しにすると、足された欄が既定でクラッシュ報告に乗る。
+    // Narrow context with the same allow-list as degradations. `log.error` will
+    // keep gaining fields, and passing them through means new fields land in
+    // crash reports by default.
     Sentry.captureException(error, { extra: scrubFields(context) });
   });
 
@@ -82,7 +85,7 @@ if (dsn) {
     createDegradationReporter((event, fields) => {
       Sentry.captureMessage(event, {
         level: "warning",
-        // 種類ごとに絞れるようにする(モバイル側の `degradation` タグと揃える)。
+        // Lets us filter by kind (matches mobile's `degradation` tag).
         tags: { degradation: event },
         extra: fields,
       });
@@ -91,15 +94,16 @@ if (dsn) {
 }
 
 /**
- * 環境変数は**ワーカーを起こす前に**見る。
+ * Read env vars *before* waking the worker.
  *
- * 設定を実際に使うのはジョブ側(`agent.ts`)だが、そこまで待つと、値が壊れている
- * ことに気づくのが「先輩が来ない」と言われたときになる。しかもフレームワークは
- * 起動中の例外を握り潰して `closing worker due to error.` としか出さないので、
- * **理由の分かる形で先に落とす**のがいちばん安い。
+ * The config is actually used by the job (`agent.ts`), but waiting that long
+ * means finding out a value is broken only when someone says "senpai never
+ * came". The framework also swallows startup exceptions and prints only
+ * `closing worker due to error.`, so failing early with a readable reason is
+ * by far the cheapest option.
  *
- * `--help` や将来のサブコマンドまで巻き込まないよう、ワーカーを実際に起こす
- * ときだけ見る。
+ * Checked only when actually waking the worker, so `--help` and future
+ * subcommands are unaffected.
  */
 if (process.argv.includes("start") || process.argv.includes("dev")) {
   loadConfig();

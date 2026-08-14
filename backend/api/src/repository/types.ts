@@ -9,28 +9,29 @@ export type UserRecord = {
 };
 
 /**
- * 会話の文脈。LiveKitトークンの metadata に載せる分だけを持つ。
+ * The conversation context. Holds only what goes into the LiveKit token metadata.
  *
- * 単元を絞り込んだあとにトークンを出し直すとき、写真をもう一度
- * 解析しないで済むように、解析の結果をセッションに残しておく。
+ * The analysis result is kept on the session so that reissuing a token after
+ * narrowing the unit does not re-analyse the photo.
  */
 export type SessionContext = {
   summary: string;
   /**
-   * 解析が読み取った問題。読めなければ null。
+   * The problem the analysis read. null if unreadable.
    *
-   * **写真そのものは残らないので、ここが問題文の唯一の保存先。**
-   * 問題の写真は解析後に破棄する(著作物。`contract` の `sessionPhotoParts`)ので、
-   * ここを落とすと、単元を絞り込んだ瞬間(PATCH /topics)に問題文が消え、
-   * 先輩が問題を見ないまま教え始める状態に戻る。
+   * The photo itself is not kept, so this is the only home for the problem text.
+   * The problem photo is discarded after analysis (copyrighted work; `contract`'s
+   * `sessionPhotoParts`), so dropping this would erase the problem text the
+   * moment the unit is narrowed (PATCH /topics), returning to a senpai who
+   * teaches without seeing the problem.
    *
-   * D1では `context` 列にJSONで入る(列は増えないのでマイグレーション不要)。
-   * この欄が無い古い行は `undefined` で読めるので、`?? null` で受けること。
+   * In D1 it lives as JSON in the `context` column (no new column, no migration).
+   * Old rows without this field read as `undefined`, so receive it with `?? null`.
    */
   problem?: SessionProblem | null;
   visible_work: string[];
   question_seeds: string[];
-  /** 検出時の確信度。チップUIの表示を、単元を絞ったあとも同じに保つ。 */
+  /** Confidence at detection time. Keeps the chip UI identical after narrowing. */
   topics: { topic_id: string; confidence: number }[];
 };
 
@@ -42,50 +43,52 @@ export type SessionRecord = {
   created_at: string;
   completed_at: string | null;
   /**
-   * 数える日。**会話が始まった時点で、その日へ書き直される**(`startSession`)。
+   * The day counted. Rewritten to the day the conversation started (`startSession`).
    *
-   * 解析だけして日付をまたいだセッションを、撮った日のほうへ数えないため。
-   * streakと親レポートの月境界も同じ列を見ているので、「授業をした日」の
-   * 定義が3か所で揃う。
+   * So a session analysed before midnight is not counted on the day of the photo.
+   * Streaks and the parent report's month boundary read the same column, so
+   * "a day with a lesson" means the same thing in all three places.
    */
   local_date: string;
   photo_key: string | null;
   topic_ids: string[];
   hole_id: string | null;
   duration_seconds: number | null;
-  /** 解析前・復習セッションでは null。 */
+  /** null before analysis and for review sessions. */
   context: SessionContext | null;
   /**
-   * 会話が始まった時刻。まだ始まっていなければ null。
+   * When the conversation started; null if it has not.
    *
-   * **1日の回数はこの列で数える。** 行が在ることではない — 写真を読んだだけの
-   * セッションは行にはなるが、先輩とは1度も話していない。
+   * The daily count comes from this column, not from the row existing - a session
+   * that only read a photo has a row but never spoke to the senpai.
    */
   started_at: string | null;
 };
 
 /**
- * 授業枠(= 会話を1回する権利)の確保の結果。
- * **数えてから入れるのではなく、入れられたかどうかで判定する。**
+ * The result of claiming a lesson slot (= the right to one conversation).
+ * Not "count, then insert" but "decide from whether the insert succeeded".
  *
- * 数えた件数ではなく `started` を返すのは、呼び出し側に「まだ空いているか」を
- * 判断させないため。件数を渡すと、そこからもう一度上限と比べる書き方に戻れてしまう。
+ * It returns `started` rather than a count so the caller never judges "is there
+ * room left". Handing over a count invites rewriting the comparison against the
+ * cap all over again.
  */
 export type SessionStartResult =
   | {
       started: true;
       /**
-       * 押さえたのは今回ではなく、前に押さえた枠のまま。
+       * The slot held is the one claimed earlier, not one claimed now.
        *
-       * 通信が切れて押し直したとき、同じセッションの2度目をここで区別する。
-       * 二重に数えないための印で、呼び出し側はトークンだけ出し直せばよい。
+       * On a reconnect and retry, this distinguishes the second attempt at the
+       * same session. It marks "do not count twice"; the caller need only reissue
+       * the token.
        */
       alreadyStarted: boolean;
       /**
-       * 押さえた分を含む、その日の本数。
+       * The day's count, including the one just claimed.
        *
-       * 上限の判定には使わない(判定はもう終わっている)。`lesson_allowed_today` =
-       * 「今日もう一度始められるか」を組み立てるためだけの値。
+       * Not used for the cap check (that is already done). Only for assembling
+       * `lesson_allowed_today` = "can another be started today".
        */
       sessionsToday: number;
     }
@@ -125,11 +128,12 @@ export type ReviewScheduleRecord = {
 };
 
 /**
- * 計画を作るための音声セッション。授業セッションとは別の寿命・集計で持つ。
+ * A voice session for building a plan. Separate lifetime and accounting from a
+ * lesson session.
  *
- * 計画を `sessions` に混ぜると、計画を組み直した日まで連続学習日に数えられ、
- * 「授業をした日」という親への説明が嘘になる。LiveKitを使う点だけは同じでも、
- * プロダクト上の出来事は別なのでレコードも分ける。
+ * Mixing plans into `sessions` would count the day a plan was rebuilt as a study
+ * day, making the streak we report to parents a lie. They share LiveKit, but as
+ * product events they are different, so the records are separate too.
  */
 export type PlanSessionRecord = {
   id: string;
@@ -143,11 +147,11 @@ export type PlanSessionRecord = {
 };
 
 /**
- * 永続化の境界。
+ * The persistence boundary.
  *
- * ルートはこのインターフェースにだけ依存する。本番はD1、テストはメモリ実装。
- * こうしておかないと、無料枠の判定やstreakの数え方をテストするたびに
- * miniflareを起こす羽目になる。
+ * Routes depend only on this interface: D1 in production, an in-memory
+ * implementation in tests. Without it, testing free-tier checks or streak
+ * counting would mean spinning up miniflare every time.
  */
 export type Repository = {
   ensureUser(deviceId: string, now: Date): Promise<UserRecord>;
@@ -160,49 +164,51 @@ export type Repository = {
   }): Promise<void>;
 
   /**
-   * その日に**会話が始まった**セッションの本数。
+   * How many sessions *started a conversation* that day.
    *
-   * 表示と事前案内のためのもので、枠の判定には使わないこと。数えてから入れると、
-   * 同時実行が同じ件数を見て上限を抜ける。
+   * For display and advance notice only; never for the slot check. Counting then
+   * inserting lets concurrent requests read the same count and slip past the cap.
    */
   countStartedSessionsOnDate(deviceId: string, localDate: string): Promise<number>;
   /**
-   * セッション行を作る道はこの操作だけにする。上限の確認と作成を分ける道を残すと、
-   * 将来また「数えてから入れる」が書けてしまうため。
+   * The only way to create a session row. Leaving a path that separates the cap
+   * check from creation would let "count, then insert" be written again.
    *
-   * **ここで押さえるのは授業の枠ではなく、写真解析の枠。** 授業の枠は
-   * {@link Repository.startSession} が会話の開始時に押さえる。この上限は
-   * 1日の授業回数よりずっと緩く、解析だけを延々と繰り返してVisionの原価を
-   * 積む使い方だけを止める。
+   * What is claimed here is the photo-analysis slot, not the lesson slot. The
+   * lesson slot is claimed by {@link Repository.startSession} at conversation
+   * start. This cap is far looser than the daily lesson count and stops only
+   * endless analysis that racks up Vision costs.
    */
   createSession(input: {
     session: SessionRecord;
-    /** その日に許す解析の本数。 */
+    /** How many analyses to allow that day. */
     maxAnalysesPerDay: number;
   }): Promise<boolean>;
   /**
-   * 会話の開始。**授業枠の確保とこの記録は1操作**にする。
+   * Conversation start. Claiming the lesson slot and writing this record are one
+   * operation.
    *
-   * 分けて書くと、同時に始めた2本が同じ「まだ空いている」を見て両方通る。
-   * `localDate` も一緒に書き直すのは、数える日を「会話が始まった日」に
-   * 揃えるため({@link SessionRecord.local_date})。
+   * Written separately, two conversations starting at once both see the same
+   * "still room" and both pass. `localDate` is rewritten at the same time so the
+   * counted day matches the day the conversation started
+   * ({@link SessionRecord.local_date}).
    */
   startSession(input: {
     sessionId: string;
     deviceId: string;
     startedAt: string;
     localDate: string;
-    /** その日に許す授業の本数(無料1 / Premium 3)。 */
+    /** How many lessons to allow that day (free 1 / Premium 3). */
     maxPerDay: number;
   }): Promise<SessionStartResult>;
-  /** 写真解析のあとに、確定した単元と写真キー、会話の文脈を書き戻す。 */
+  /** After photo analysis, writes back the settled units, photo key and conversation context. */
   updateSessionTopics(input: {
     sessionId: string;
     topicIds: string[];
     photoKey: string | null;
     context: SessionContext | null;
   }): Promise<void>;
-  /** 解析に失敗したときに予約を取り消す(無料枠を無駄に消費させないため)。 */
+  /** Cancels the reservation when analysis fails (so the free slot is not wasted). */
   deleteSession(sessionId: string): Promise<void>;
   getSession(sessionId: string): Promise<SessionRecord | null>;
   completeSession(input: {
@@ -210,18 +216,19 @@ export type Repository = {
     completedAt: string;
     durationSeconds: number;
   }): Promise<void>;
-  /** 完了済みセッションのローカル日付一覧(streakの計算に使う)。 */
+  /** Local dates of completed sessions (used for the streak). */
   sessionDates(deviceId: string): Promise<string[]>;
 
   insertKarte(karte: KarteRecord, holes: HoleRecord[]): Promise<void>;
   getKarte(karteId: string): Promise<{ karte: KarteRecord; holes: HoleRecord[] } | null>;
-  /** セッションに紐づくカルテ。/complete の再送判定と、アプリの結果取得に使う。 */
+  /** The karte for a session. Used for /complete resend checks and the app's result fetch. */
   getKarteBySession(sessionId: string): Promise<{ karte: KarteRecord; holes: HoleRecord[] } | null>;
 
   /**
-   * 親レポートに載せる期間のカルテ。
-   * `created_at` のUTC日付ではなくセッションの `local_date` で絞る。月初の深夜に
-   * 作ったカルテを前月へ落とすと、ホームのstreakと親レポートで日付が食い違うため。
+   * Kartes for the parent report's period.
+   * Filtered by the session's `local_date`, not `created_at`'s UTC date. Pushing a
+   * karte made late on the 1st into the previous month would make the home streak
+   * and the parent report disagree on dates.
    */
   listKartesOnLocalDates(input: {
     deviceId: string;
@@ -231,22 +238,23 @@ export type Repository = {
 
   listHoles(deviceId: string): Promise<HoleRecord[]>;
   getHole(holeId: string): Promise<HoleRecord | null>;
-  /** open → filled の最初の更新だけを反映する。再送で filled_at を動かさない。 */
+  /** Applies only the first open -> filled update. A resend must not move filled_at. */
   markHoleFilled(holeId: string, filledAt: string): Promise<void>;
 
   insertReviewSchedules(entries: ReviewScheduleRecord[]): Promise<void>;
   cancelReviewSchedules(holeId: string): Promise<ReviewScheduleRecord[]>;
 
-  /** 計画セッションには日次の授業枠を使わない。Premium判定はルート側で行う。 */
+  /** Plan sessions do not use the daily lesson slot. The Premium check is done in the route. */
   createPlanSession(session: PlanSessionRecord): Promise<void>;
   getPlanSession(planSessionId: string): Promise<PlanSessionRecord | null>;
-  /** 組み直し前の事実を音声セッションへ渡すため、ユーザーごとの現行計画を読む。 */
+  /** Reads the user's current plan, to hand the pre-rebuild facts to the voice session. */
   getCurrentPlan(deviceId: string): Promise<StudyPlan | null>;
-  /** complete の再送では、そのセッションが実際に保存した計画を返す。 */
+  /** On a complete resend, returns the plan that session actually saved. */
   getPlan(planId: string): Promise<StudyPlan | null>;
   /**
-   * 計画の置換とセッション完了を同じ原子的操作にする。
-   * false は別の同時リクエストが先に完了したという意味で、呼び出し側は保存済みを返す。
+   * Makes replacing the plan and completing the session one atomic operation.
+   * false means another concurrent request finished first, and the caller returns
+   * what is already stored.
    */
   completePlanSession(input: {
     sessionId: string;

@@ -39,7 +39,7 @@ describe("createLiveKitToken", () => {
     const claims = await verifyJwt(token, secret);
     const issuedAt = Math.floor(now.getTime() / 1000);
     expect(claims?.["exp"]).toBe(issuedAt + 420);
-    // 時計ずれを見込んでnbfを前に倒す
+    // Back-date nbf to allow for clock skew
     expect(claims?.["nbf"]).toBe(issuedAt - 10);
   });
 
@@ -58,7 +58,7 @@ describe("createLiveKitToken", () => {
     expect(claims?.["metadata"]).toBe(metadata);
   });
 
-  // 名前つきワーカーは自動ディスパッチの対象外。トークンで呼ばないと誰も来ない。
+  // Named workers are excluded from auto dispatch. Without the token calling them, nobody joins.
   it("agentを渡すと、ルーム作成時のディスパッチがトークンに載る", async () => {
     const metadata = JSON.stringify({ session_id: "ses_1" });
     const token = await createLiveKitToken({

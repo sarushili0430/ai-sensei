@@ -21,7 +21,7 @@ function session(id: string, overrides: Partial<SessionRecord> = {}): SessionRec
   };
 }
 
-/** 解析の枠(行を作れるか)。授業の枠とは別で、こちらはずっと緩い。 */
+/** The analysis slot (can a row be created). Separate from the lesson slot, and much looser. */
 describe("MemoryRepository.createSession", () => {
   it("その日の解析の上限に達したら作らない", async () => {
     const repository = new MemoryRepository();
@@ -64,10 +64,11 @@ describe("MemoryRepository.createSession", () => {
 });
 
 /**
- * 授業の枠 = 会話を1回する権利。
+ * The lesson slot = the right to one conversation.
  *
- * 確認と書き込みの間にawaitを足すと、Promise.allの全呼び出しが同じ空きを見てこのテストが落ちる。
- * MemoryRepositoryも本番D1と同じく、枠の確認と記録を分離できないことを固定する。
+ * Adding an await between the check and the write makes every Promise.all caller
+ * see the same opening and fails this test. Pins that MemoryRepository, like
+ * production D1, cannot separate the slot check from the record.
  */
 describe("MemoryRepository.startSession", () => {
   async function seed(repository: MemoryRepository, ids: string[], device = "device_a") {
@@ -112,7 +113,7 @@ describe("MemoryRepository.startSession", () => {
     expect(sessionsToday).toEqual([1, 2, 3]);
   });
 
-  // つなぎ直し・押し直しで二重に数えないこと。ここが緩むと再接続のたびに枠が減る。
+  // Reconnects and retries must not double-count. Loosen this and every reconnect costs a slot.
   it("同じセッションを2度始めても数え直さない", async () => {
     const repository = new MemoryRepository();
     await seed(repository, ["a"]);
@@ -130,7 +131,7 @@ describe("MemoryRepository.startSession", () => {
     expect(await repository.countStartedSessionsOnDate("device_a", "2026-08-03")).toBe(1);
   });
 
-  // 撮った日ではなく、始めた日で数える。日付をまたいだセッションは翌日の1本。
+  // Counted by the start day, not the photo day. A session across midnight is the next day's.
   it("数える日は会話が始まった日へ書き直される", async () => {
     const repository = new MemoryRepository();
     await seed(repository, ["a"]);
@@ -170,7 +171,7 @@ describe("MemoryRepository.listKartesOnLocalDates", () => {
     await repository.createSession({
       session: session("month_start", {
         local_date: "2026-08-01",
-        // UTCでは前日でも、JSTのセッション日としては8月1日。
+        // Previous day in UTC, but 1 August as a JST session date.
         created_at: "2026-07-31T15:30:00.000Z",
       }),
       maxAnalysesPerDay: 5,

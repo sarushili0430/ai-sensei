@@ -1,8 +1,8 @@
 /**
- * LiveKitの参加トークン(JWT / HS256)を発行する。
+ * Issues the LiveKit join token (JWT / HS256).
  *
- * server-sdk-js はNode APIに依存する箇所があるので、Workersでは
- * WebCryptoで最小限のJWTを自前で組む。署名対象はLiveKitのgrant仕様に沿う。
+ * server-sdk-js depends on Node APIs in places, so on Workers we build a minimal
+ * JWT ourselves with WebCrypto. What is signed follows LiveKit's grant spec.
  */
 
 export type VideoGrant = {
@@ -14,16 +14,16 @@ export type VideoGrant = {
 };
 
 /**
- * ルームに後輩(agent)を呼ぶ指定。
+ * How the agent is called into the room.
  *
- * LiveKitのワーカーが**名前つき**で登録されていると、自動ディスパッチは効かない。
- * その場合、ルームを作る側が「このエージェントを呼ぶ」と言わないと、
- * 部屋は誰も来ないまま開き続ける(アプリからは「聞いています」のまま止まる)。
+ * When the LiveKit worker is registered *with a name*, auto dispatch does not
+ * fire. In that case, unless the room's creator says "call this agent", the room
+ * stays open with nobody in it (the app sits on "listening").
  */
 export type AgentDispatch = {
-  /** ワーカーの `agentName`(LIVEKIT_AGENT_NAME)。 */
+  /** The worker's `agentName` (LIVEKIT_AGENT_NAME). */
   name: string;
-  /** ジョブに渡す文脈。参加者metadataと同じものを載せる。 */
+  /** Context passed to the job. The same content as participant metadata. */
   metadata?: string;
 };
 
@@ -32,11 +32,11 @@ export type TokenInput = {
   apiSecret: string;
   identity: string;
   room: string;
-  /** 有効期限(秒)。セッション上限 + 猶予にする。 */
+  /** Lifetime in seconds. Session cap plus grace. */
   ttlSeconds: number;
-  /** エージェントに渡す文脈(写真の解釈・許可トピック・質問方針)。 */
+  /** Context for the agent (photo interpretation, allowed topics, question policy). */
   metadata?: string;
-  /** 明示ディスパッチが要るワーカーのときだけ渡す。 */
+  /** Passed only for workers that need explicit dispatch. */
   agent?: AgentDispatch;
   now?: Date;
 };
@@ -54,7 +54,7 @@ export async function createLiveKitToken(input: TokenInput): Promise<string> {
   const payload: Record<string, unknown> = {
     iss: input.apiKey,
     sub: input.identity,
-    // LiveKitはnbfを見るので、時計ずれを見込んで少し前に倒す
+    // LiveKit checks nbf, so back-date slightly to allow for clock skew
     nbf: issuedAt - 10,
     exp: issuedAt + input.ttlSeconds,
     jti: input.identity,
@@ -62,8 +62,8 @@ export async function createLiveKitToken(input: TokenInput): Promise<string> {
   };
   if (input.metadata !== undefined) payload["metadata"] = input.metadata;
 
-  // ルームが作られる瞬間に後輩を呼ぶ。トークンに載せるので、
-  // アプリが接続した時点で必ずディスパッチが走る(別APIを叩かなくてよい)。
+  // Call the agent the moment the room is created. Riding on the token means
+  // dispatch always fires when the app connects (no separate API call).
   if (input.agent) {
     payload["roomConfig"] = {
       agents: [
@@ -97,7 +97,7 @@ export async function signJwt(payload: Record<string, unknown>, secret: string):
   return `${signingInput}.${base64UrlEncode(new Uint8Array(signature))}`;
 }
 
-/** テストと、agentからの折り返し検証で使う。 */
+/** Used by tests and by the agent's callback verification. */
 export async function verifyJwt(
   token: string,
   secret: string,

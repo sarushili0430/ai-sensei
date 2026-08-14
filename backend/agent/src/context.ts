@@ -8,14 +8,15 @@ import { type CurriculumSubject, subjectOfTopicId } from "@ai-sensei/curriculum"
 import { formatBullets } from "@ai-sensei/prompts";
 
 /**
- * backend/api が LiveKit トークンの metadata に載せた会話文脈。
+ * Conversation context that backend/api put in the LiveKit token metadata.
  *
- * 「写真の解釈」と「触れてよいトピック」がここに入っている。
- * 別チャネルで渡すと、トークンと文脈がずれたセッションが生まれうるので、
- * トークンと同じ経路で運ぶ。
+ * The photo interpretation and the topics that may be touched live here.
+ * Passing them on a separate channel could produce a session whose token and
+ * context disagree, so they ride the same path as the token.
  *
- * 受信側だけで形を定義すると、APIとの改名・必須化のずれを既定値で隠してしまう。
- * そのため検証は共有契約そのものを使い、agent固有の整形は検証後にだけ行う。
+ * Defining the shape only on the receiving side would let renames and new
+ * required fields hide behind defaults, so validation uses the shared contract
+ * itself and agent-specific shaping happens only after validation.
  */
 export const sessionContextSchema = sessionMetadataSchema;
 
@@ -26,15 +27,17 @@ export type AgentContext = SessionContext | PlanSessionContext;
 export class InvalidSessionContextError extends Error {}
 
 /**
- * この授業の教科。**板書に使える要素と、同梱する音声補正ヒントを決める。**
+ * The subject of this lesson. Decides what the board may use and which audio
+ * hints are bundled.
  *
- * metadata に教科の欄は無い。`allowed_topic_ids` の接頭辞から引く
- * (ADR 0007 — 課程・言語・教科・学校段階はすべて topic_id ひとつから決まる)。
- * 契約を増やさずに済むので、APIとagentのデプロイ順を気にしなくてよい。
+ * There is no subject field in metadata; it is derived from the `allowed_topic_ids`
+ * prefix (ADR 0007 - curriculum, language, subject and school stage all follow
+ * from a single topic_id). No extra contract, so API and agent deploy order does
+ * not matter.
  *
- * 許可トピックが空のセッションは {@link readSessionContext} が弾くので、
- * 先頭は必ずある。それでも引けないときは数学に倒す —
- * 数学しか無かった頃と同じ挙動で、少なくとも今までどおりに動く。
+ * {@link readSessionContext} rejects sessions with no allowed topics, so a first
+ * element always exists. If it still cannot be derived, fall back to math - the
+ * behaviour from when math was the only subject, so nothing gets worse.
  */
 export function subjectOf(context: Pick<SessionContext, "allowed_topic_ids">): CurriculumSubject {
   const [first] = context.allowed_topic_ids;
@@ -42,9 +45,9 @@ export function subjectOf(context: Pick<SessionContext, "allowed_topic_ids">): C
 }
 
 /**
- * 参加者のmetadataを読む。
- * **落ちたら会話を始めない。** 文脈なしで先輩を喋らせると、
- * 写真と関係ない一般論を聞き始めてしまう。
+ * Read participant metadata.
+ * Never start the conversation if this fails: without context the senpai teaches
+ * generalities unrelated to the photo.
  */
 export function readSessionContext(metadata: string | undefined | null): SessionContext {
   if (!metadata) {
@@ -68,17 +71,18 @@ export function readSessionContext(metadata: string | undefined | null): Session
 }
 
 /**
- * 空欄に**会話の言語で**「なし」を入れる。
+ * Fill blanks with "none" *in the conversation's language*.
  *
- * 残っているのは `question_seeds` だけ。`problem_text` と `visible_work` は
- * 契約が `.min(1)` を保証していて、**プレースホルダも契約側が入れてくる**ので
- * こちらでは触らない(埋める場所が2つあると文言がずれる)。
+ * Only `question_seeds` is left. The contract guarantees `.min(1)` for
+ * `problem_text` and `visible_work` and supplies their placeholders, so we do
+ * not touch them (two fill sites means drifting wording).
  *
- * `question_seeds` は欄そのものは必須だが、契約側が空文字を許しているぶん、
- * 検証後にここで整える。空の節が残るとモデルが「読めなかった」と解釈して、
- * 写真の話を推測で埋めにいく。
- * `formatBullets([])` を借りているのは、**文言を1か所に保つ**ため —
- * backend/api が同じ関数で組み立てているので、ここで別の文字列を書かないかぎりずれない。
+ * `question_seeds` is a required field, but the contract allows an empty string,
+ * so it is tidied here after validation. An empty section makes the model read it
+ * as "unreadable" and start guessing about the photo.
+ * `formatBullets([])` is borrowed to keep the wording in one place - backend/api
+ * builds it with the same function, so it cannot drift unless a different string
+ * is written here.
  */
 function withLocalePlaceholders(context: SessionContext): SessionContext {
   if (context.question_seeds.trim() !== "") return context;
@@ -86,14 +90,14 @@ function withLocalePlaceholders(context: SessionContext): SessionContext {
 }
 
 /**
- * 文脈が来る経路は2つある。**最初に読めたほうを使う。**
+ * Context arrives on two paths. Use whichever reads first.
  *
- * - 参加者のmetadata(トークンの `metadata` クレーム)
- * - ジョブのmetadata(明示ディスパッチのとき、`roomConfig.agents[].metadata`)
+ * - participant metadata (the token's `metadata` claim)
+ * - job metadata (`roomConfig.agents[].metadata`, on explicit dispatch)
  *
- * どちらもAPIが同じ内容を載せるが、ワーカーが名前つきかどうかで
- * 届く経路が変わる。片方しか見ないと、ディスパッチの仕方を変えた瞬間に
- * 「文脈が読めないので黙って切る」に落ちる。
+ * The API puts the same content on both, but which one arrives depends on
+ * whether the worker is named. Reading only one drops to "context unreadable,
+ * hang up quietly" the moment dispatch style changes.
  */
 export function resolveSessionContext(
   candidates: readonly (string | undefined | null)[],
@@ -113,11 +117,12 @@ export function resolveSessionContext(
 }
 
 /**
- * 授業と計画の封筒を判別して読む。
+ * Tell the lesson and plan envelopes apart, then read.
  *
- * `sessionKinds` を広げて授業schemaをunionにすると、授業に必須の問題文まで任意になる。
- * 入口だけをunionにし、判別後はそれぞれの厳しいschemaを通すことで、計画を足しても
- * 「問題を見ずに教える」経路を再び開けない。
+ * Widening `sessionKinds` into a union on the lesson schema would make the
+ * problem text - required for a lesson - optional too. Only the entrance is a
+ * union; after discrimination each strict schema applies, so adding planning
+ * cannot reopen the "teach without seeing the problem" path.
  */
 export function readAgentContext(metadata: string | undefined | null): AgentContext {
   if (!metadata) throw new InvalidSessionContextError("参加者のmetadataが空です");
@@ -159,7 +164,7 @@ function isPlanEnvelope(raw: unknown): boolean {
   return typeof raw === "object" && raw !== null && "kind" in raw && raw.kind === "plan";
 }
 
-/** 会話の残り時間(秒)。プロンプトに渡して、締めに入る判断をさせる。 */
+/** Seconds left in the conversation. Passed to the prompt to decide when to wrap up. */
 export function remainingSeconds(
   context: Pick<AgentContext, "max_seconds">,
   startedAt: Date,

@@ -1,9 +1,9 @@
 /**
- * Cloudflareバインディングの最小型定義。
+ * Minimal type definitions for Cloudflare bindings.
  *
- * `@cloudflare/workers-types` をグローバルに入れると `@types/node` と
- * fetch/Request/Response の宣言が衝突し、モノレポ全体の型検査が壊れる。
- * ここで使う分だけを手で宣言して、単一のtsconfigで通るようにしている。
+ * Putting `@cloudflare/workers-types` in globals collides with `@types/node` on
+ * the fetch/Request/Response declarations and breaks typechecking across the
+ * monorepo. Only what is used here is declared by hand so a single tsconfig works.
  */
 
 export type D1Result<T = unknown> = {

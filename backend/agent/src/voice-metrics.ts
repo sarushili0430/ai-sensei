@@ -2,16 +2,17 @@ import { voice } from "@livekit/agents";
 import type { JobLogger } from "./log.ts";
 
 /**
- * 音声パイプラインを変える #99 (TTS変換) / #101 (文分割器) / #102 (ターンテイキング) の
- * 効果を、体感ではなくセッションごとの数字で比較するための観測点。
+ * Observation point for comparing #99 (TTS transforms) / #101 (sentence
+ * splitter) / #102 (turn-taking) by per-session numbers rather than by feel.
  *
- * TTS の TTFB は #101、EOU 遅延は #102 の効き先として見る。変更ごとに「速くなった
- * 気がする」で終わらせず、発話時間比・遅延・割り込みの内訳を並べて、教え返しが
- * 実際に成立しているかを確かめる。
+ * TTS TTFB tracks #101, EOU delay tracks #102. Instead of ending each change at
+ * "feels faster", line up speech-time ratio, latency and barge-in breakdown to
+ * confirm teach-back actually happens.
  *
- * 生徒は未成年で、問題文は他者の著作物なので、既存の `telemetry.ts` と同じ方針で
- * 本文・生音声・確率列をログに載せない。ここは `log.info` のため現状は Sentry へ
- * 流れないが、将来 `warn` に変える人にも理由が残るようにしている。
+ * Students are minors and problem texts are someone else's copyrighted work, so
+ * - as in `telemetry.ts` - no content, raw audio or probability series is
+ * logged. These are `log.info` so they do not reach Sentry today, but the reason
+ * is recorded for whoever changes them to `warn`.
  */
 export type VoiceMetricsSummary = {
   agent_speech_seconds: number;
@@ -89,7 +90,7 @@ export function observeVoiceMetrics(
         });
         break;
       case "interruption_metrics":
-        // SDK は累積値ではなく、このイベントで増えた 0 / 1 を送る。
+        // The SDK sends the 0/1 increment for this event, not a running total.
         interruptions += metrics.numInterruptions;
         backchannels += metrics.numBackchannels;
         log.info("voice_metrics", {
@@ -147,8 +148,9 @@ export function observeVoiceMetrics(
   });
 
   session.on(voice.AgentSessionEventTypes.UserStateChanged, (event) => {
-    // VAD の発話区間なので、咳や生活音も user_speech_seconds に混じりうる。
-    // user_turns は STT の final 回数で別の出所のため、両者がずれても異常とは限らない。
+    // This is a VAD speech span, so coughs and household noise can land in
+    // user_speech_seconds. user_turns comes from STT final counts - a different
+    // source - so a mismatch is not necessarily an anomaly.
     if (event.newState === "speaking") {
       userSpeakingStartedAt ??= event.createdAt;
       return;
@@ -174,9 +176,10 @@ export function observeVoiceMetrics(
       return {
         agent_speech_seconds: roundToTwo(agentSpeechSeconds),
         user_speech_seconds: roundToTwo(userSpeechSeconds),
-        // 教え返しでは生徒が長く話せることが成功なので、生徒 ÷ 先輩にする。
-        // 分子を逆にすると、値を見るたびにどちらが話した比率かを読み直す必要がある。
-        // 1 未満なら、生徒が説明する教え返しが成立していないと一発で判定できる。
+        // Teach-back succeeds when the student talks a lot, so it is student /
+        // senpai. Inverting the numerator would mean re-reading which side the
+        // ratio describes every time. Below 1 says at a glance that teach-back
+        // is not happening.
         speech_ratio:
           agentSpeechSeconds === 0 ? null : roundToTwo(userSpeechSeconds / agentSpeechSeconds),
         eou_delay_ms_avg: average(eouDelays),

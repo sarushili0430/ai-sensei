@@ -2,8 +2,8 @@ import type { ApiErrorCode } from "@ai-sensei/contract";
 import { HTTPException } from "hono/http-exception";
 
 /**
- * エラー文言はユーザーにそのまま出る。**煽らない・責めない**文体で書く。
- * 「制限に達しました」ではなく「また明日、続きを聞かせてください」。
+ * Error text goes straight to the user. Write it without nagging or blaming:
+ * not "limit reached" but "tell me the rest tomorrow".
  */
 const messages: Record<ApiErrorCode, { ja: string; en: string; status: number }> = {
   unauthorized: {
@@ -17,15 +17,16 @@ const messages: Record<ApiErrorCode, { ja: string; en: string; status: number }>
     status: 402,
   },
   fair_use_limit_reached: {
-    // Premiumの上限値は見せず、§6-3どおり先輩が学習を締める言い方にする。
+    // Never show the Premium cap's number; per §6-3, the senpai closes the study session.
     ja: "今日はここまでにしよっか。詰め込みすぎても入らないから、また明日続きをやろう。",
     en: "Let's stop here for today. Cramming more won't help it stick, so let's continue tomorrow.",
     status: 429,
   },
   premium_required: {
-    // 計画モードと声で聞き直す授業は、同じ `premium_required` を返す。
-    // 有料側の機能名を固定すると別の導線で誤案内になるため汎用にしつつ、
-    // 無料で残る小テストとカルテは明示して、すべて閉じたようには見せない。
+    // Plan mode and re-asking a lesson by voice both return the same
+    // `premium_required`. Naming the paid feature would misdirect on other flows,
+    // so it stays generic while naming the quiz and karte that remain free, so it
+    // does not look like everything is closed.
     ja: "この機能はPremiumで利用できます。無料のままでも、小テストと今日のカルテは使えます。",
     en: "This feature is available with Premium. Quick quizzes and today's karte stay free.",
     status: 402,
@@ -35,8 +36,8 @@ const messages: Record<ApiErrorCode, { ja: string; en: string; status: number }>
     en: "We couldn't read any notes in this photo. Could you take another one?",
     status: 422,
   },
-  // **教科名を数え上げない。** 課程を足すたびに文言を直す作りにすると、
-  // どこかで必ず古いままになり、対応しているのに「対応していません」と返る。
+  // Never enumerate subject names. Text that needs editing per added curriculum
+  // always goes stale somewhere, answering "unsupported" for something supported.
   out_of_scope: {
     ja: "このノートは、いま対応している範囲の外みたいです。中学・高校の数学と英語に対応しています。",
     en: "This looks outside what we cover. We support maths and English for junior high and high school.",

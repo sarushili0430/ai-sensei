@@ -65,13 +65,13 @@ describe("TranscriptCollector", () => {
   });
 
   /**
-   * 答えの漏れは**もう見ていない**(ピボット計画 v1 §0 の改正・§8 の「捨てる」列)。
-   * 先輩は詰まった箇所を教えるのが仕事なので、当てたままだと
-   * **ほぼ全セッションが漏れとして記録され、警告が鳴りっぱなしになる**。
+   * Answer leaks are no longer checked (pivot plan v1 §0 revision, §8's "drop"
+   * column). Teaching the stuck point is the senpai's job, so leaving the check
+   * on would record nearly every session as a leak and keep the warning lit.
    *
-   * 教えた発話も、そのまま transcript に載る(カルテ生成の文脈として要る)。
-   * 授業フェーズの発話が載らないのは `addToChatCtx: false` のほうの手当てで、
-   * ここではない。
+   * Utterances that taught something still go into the transcript (needed as
+   * context for the karte). Keeping lesson-phase speech out is handled by
+   * `addToChatCtx: false`, not here.
    */
   it("先輩が答えを教えた発話も、そのまま積む", () => {
     const collector = new TranscriptCollector(startedAt, context);

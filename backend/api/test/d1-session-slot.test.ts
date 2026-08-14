@@ -11,14 +11,15 @@ import type { SessionRecord } from "../src/repository/types.ts";
 
 let sqliteModule: typeof import("node:sqlite") | null = null;
 /**
- * CIはNode 22で、node:sqliteは22系では実験的なため、フラグなしでは読み込めない場合がある。
- * SQLの検証を持たない状態へ戻さず、使える環境では実行し、使えない環境だけスイートを飛ばす。
+ * CI runs Node 22, where node:sqlite is experimental and may not load without a
+ * flag. Rather than going back to having no SQL verification, run it where it is
+ * available and skip the suite only where it is not.
  */
 try {
   sqliteModule = await import("node:sqlite");
 } catch {
   try {
-    // Vite 5がnode:sqliteをsqliteへ書き換える環境では、Node自身のrequireへ戻す。
+    // Where Vite 5 rewrites node:sqlite to sqlite, fall back to Node's own require.
     sqliteModule = createRequire(import.meta.url)("node:sqlite") as typeof import("node:sqlite");
   } catch {
     sqliteModule = null;
@@ -110,7 +111,7 @@ class SQLitePreparedStatement implements D1PreparedStatement {
   }
 }
 
-/** D1Repositoryが使うAPIだけをnode:sqliteへ写す薄いアダプタ。 */
+/** A thin adapter mapping only the APIs D1Repository uses onto node:sqlite. */
 class SQLiteD1Database implements D1Database {
   constructor(private readonly database: DatabaseSync) {}
 
@@ -275,7 +276,7 @@ describeWithSqlite("D1の授業枠", () => {
       }
 
       expect(created).toEqual([true, true, true, false]);
-      // 行はあるが、まだ誰も会話していない = 今日の授業は0本。
+      // The row exists but nobody has talked yet = 0 lessons today.
       expect(await repository.countStartedSessionsOnDate("device_a", "2026-08-03")).toBe(0);
     } finally {
       database.close();
@@ -283,10 +284,11 @@ describeWithSqlite("D1の授業枠", () => {
   });
 
   /**
-   * **1日の回数を数える本体。**
+   * The core of counting daily uses.
    *
-   * 枠の確認と `started_at` の書き込みが1文になっていること、再送で数え直さないこと、
-   * 数える日が「始めた日」になることを、実際のSQLで固定する。
+   * Pins - with real SQL - that the slot check and the `started_at` write are one
+   * statement, that a resend does not recount, and that the day counted is the day
+   * it started.
    */
   it("授業の上限を超えて始められず、確保した分を含む本数を返す", async () => {
     const database = openDatabase();
@@ -351,7 +353,7 @@ describeWithSqlite("D1の授業枠", () => {
     }
   });
 
-  // 撮った日ではなく始めた日で数える。日付をまたいで始めた会話は、その日の1本。
+  // Counted by the start day, not the photo day. A conversation started across midnight is that day's.
   it("数える日を、会話が始まった日へ書き直す", async () => {
     const database = openDatabase();
     try {
@@ -446,7 +448,7 @@ describeWithSqlite("D1の授業枠", () => {
           .prepare("SELECT COUNT(*) AS count FROM sessions WHERE device_id = ?")
           .get("device_a")?.["count"],
       ).toBe(3);
-      // 0008 は既存行を「会話が始まったもの」として埋める(行が在ること = 1回だった頃の意味)。
+      // 0008 backfills existing rows as "conversation started" (the old meaning where a row = one use).
       expect(await repository.countStartedSessionsOnDate("device_a", "2026-08-03")).toBe(2);
     } finally {
       database.close();
@@ -480,8 +482,8 @@ describeWithSqlite("D1の授業枠", () => {
       `);
       const before = database.prepare("SELECT * FROM sessions ORDER BY id").all();
 
-      // **0004だけを当てる。**あとの回まで通すと、列を足すマイグレーション(0008)の
-      // 差分まで拾ってしまい、「0004がINDEXだけを外す」ことを見なくなる。
+      // Apply 0004 only. Running the later ones would pick up the column-adding
+      // migration (0008) and stop us seeing that 0004 removes just the INDEX.
       apply(database, [entries[fourthIndex]!]);
 
       expect(database.prepare("SELECT * FROM sessions ORDER BY id").all()).toEqual(before);
@@ -526,9 +528,9 @@ describeWithSqlite("D1の授業枠", () => {
 });
 
 describeWithSqlite("自習室の表を落とすマイグレーション", () => {
-  // 0006 で作った `study_room_daily` は、自習室モードごと畳んだので 0007 で落とす。
-  // マイグレーションは追記だけにする(0006 を消すと、既に適用済みの本番DBには
-  // 表が残り続け、リポジトリの履歴からは消えた表を誰も掃除できなくなる)。
+  // `study_room_daily` from 0006 is dropped in 0007, together with study-room mode.
+  // Migrations are append-only (deleting 0006 would leave the table in already
+  // migrated production DBs, with nobody able to clean up a table the repo forgot).
   it("0007を通したあと、自習室の表はどこにも残らない", async () => {
     const database = openDatabase();
     try {

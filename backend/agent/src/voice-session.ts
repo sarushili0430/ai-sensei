@@ -7,27 +7,29 @@ import type { AgentConfig } from "./config.ts";
 import { JapaneseSentenceTokenizer } from "./sentence-tokenizer.ja.ts";
 
 /**
- * 音声パイプラインの組み立てをここだけに置く。
+ * The one place the voice pipeline is assembled.
  *
- * #99 の `ttsTextTransforms`、#101 の `sentenceTokenizer`、#102 の
- * `turnHandling`、STT設定は授業・計画で別々に足すと会話の片方だけが古いまま残る。
- * 効果を比較できるよう、設定を変えるPRはこのファクトリだけを触る。
+ * Adding #99's `ttsTextTransforms`, #101's `sentenceTokenizer`, #102's
+ * `turnHandling` and the STT config separately for lessons and planning leaves
+ * one of the two conversations stale. So the settings can be compared, PRs that
+ * change them touch only this factory.
  */
 export type VoiceSessionOptions = {
   ctx: JobContext;
   config: AgentConfig;
   locale: Locale;
-  /** 先輩の文体の振れ幅。授業 0.6 / 計画 0.4 — 現状の値をそのまま保つ */
+  /** How much the senpai's tone may vary. Lesson 0.6 / plan 0.4 - keep as-is. */
   llmTemperature: number;
 };
 
 const incompleteMathTokenPattern = /[A-Za-z0-9^²√∠△:/°≦≧≠≤≥→⇒θπ]+$/u;
 
 /**
- * TTS入力を、数式記号を途中で分断しない単位にしてから日本語の読みへ替える。
+ * Chunk TTS input so math symbols are never split, then map to Japanese readings.
  *
- * SDKの変換は任意のチャンク境界で呼ばれるため、`∠` と `ABC` が別チャンクでも
- * 末尾の数式らしい断片を次のチャンクまで保留する。文末まで全量を待つ必要はない。
+ * The SDK calls the transform on arbitrary chunk boundaries, so a trailing
+ * math-looking fragment is held back for the next chunk even when `∠` and `ABC`
+ * arrive separately. No need to wait for the whole sentence.
  */
 export function jaSpeakable(text: ReadableStream<string>): ReadableStream<string> {
   let buffer = "";
@@ -57,8 +59,8 @@ export function createVoiceSession(options: VoiceSessionOptions): voice.AgentSes
   const { ctx, config, locale, llmTemperature } = options;
   return new voice.AgentSession({
     vad: ctx.proc.userData["vad"] as never,
-    // localeはAPIが受け付ける値なので、STTの言語もそれに合わせる。
-    // 日本語のモデルのまま英語を流すと、認識が崩れて会話が成立しない。
+    // The locale is an API-accepted value, so STT follows it. Feeding English to
+    // the Japanese model wrecks recognition and the conversation falls apart.
     stt: new deepgram.STT({
       model: "nova-2-general",
       language: locale,
@@ -67,46 +69,54 @@ export function createVoiceSession(options: VoiceSessionOptions): voice.AgentSes
     llm: new anthropic.LLM({
       apiKey: config.ANTHROPIC_API_KEY,
       model: config.LLM_MODEL_CONVERSATION,
-      // 先輩の文体を安定させたいので、振れ幅は小さめにする
+      // Keep the senpai's tone stable, so keep variance low.
       temperature: llmTemperature,
     }),
-    // 声は**言語ごとにモデルが分かれる**。1ボイスに言語を渡す作りではないので、
-    // localeで選び分ける(日本語ボイスに英語を喋らせることはできない)。
-    // SDK 1.6.1 の `TTSModels` は英語ボイスしか型に持たないが、`model` の型は
-    // `TTSModels | string` で、実体はAPIへそのまま渡るだけなので日本語ボイスも通る。
+    // Voices are split *per language*; a single voice does not take a language
+    // argument, so pick by locale (a Japanese voice cannot speak English).
+    // SDK 1.6.1's `TTSModels` types only English voices, but `model` is typed
+    // `TTSModels | string` and is passed straight to the API, so Japanese works.
     tts: new deepgram.TTS({
       apiKey: config.DEEPGRAM_API_KEY,
       model: locale === "en" ? config.DEEPGRAM_TTS_MODEL_EN : config.DEEPGRAM_TTS_MODEL_JA,
-      // 既定分割器は半角の文末記号しか見ないため、日本語では生成完了までTTSへ渡らない。
-      // 英語は既定の英語向け規則のままにし、日本語だけ早く確定した文を送る。
+      // The default splitter only looks at ASCII sentence marks, so Japanese
+      // reaches TTS only after generation finishes. English keeps the default
+      // English rules; only Japanese sends sentences as soon as they settle.
       ...(locale === "ja" ? { sentenceTokenizer: new JapaneseSentenceTokenizer() } : {}),
     }),
-    // LiveKit SDK 1.6.1 の `voice/agent_activity.ts` は会話・`session.say()` とも先に `tee()` し、
-    // TTS枝だけへ `performTTSInference` 内でこの変換を適用する。字幕枝は元の文字列のまま流れる。
-    // 既定値も明示しないと自作変換を渡した時点でMarkdown・絵文字の除去が消える。
+    // LiveKit SDK 1.6.1's `voice/agent_activity.ts` `tee()`s first for both the
+    // conversation and `session.say()`, applying this transform inside
+    // `performTTSInference` on the TTS branch only; captions get the original
+    // string. The defaults must be listed too - passing a custom transform drops
+    // Markdown and emoji stripping.
     ttsTextTransforms: ttsTextTransformsForLocale(locale),
     turnHandling: {
-      // `turn-detector-v1-mini` は日本語(ja)対応のローカルEOTモデル。モデル本体は
-      // `@livekit/local-inference` のOS別ネイティブ依存に同梱され、Workerが共有の
-      // inference processへ自動登録して起動時に読む。未指定でもSDKはdetectorを自動生成するが、
-      // hosted/dev環境では`v1`、それ以外では`v1-mini`を選ぶため、版を固定して#103の
-      // `eou_delay_ms`を環境差なく比較する。ネットワーク往復とInference課金も避けられる。
-      // 小さい`v1-mini`は`v1`より精度が落ちうる上に、コンテナのCPUを使う。精度が足りなければ
-      // #103のメトリクスを見てから`v1`へ上げる。
+      // `turn-detector-v1-mini` is a local EOT model with Japanese (ja) support.
+      // The model ships inside `@livekit/local-inference`'s per-OS native
+      // dependency; the Worker registers it with the shared inference process and
+      // loads it at startup. The SDK auto-creates a detector when unset, but picks
+      // `v1` on hosted/dev and `v1-mini` elsewhere, so pin the version to compare
+      // #103's `eou_delay_ms` without environment drift. It also avoids a network
+      // round trip and Inference billing. The smaller `v1-mini` may be less
+      // accurate than `v1` and uses container CPU; if accuracy falls short, check
+      // #103's metrics before moving up to `v1`.
       turnDetection: new inference.TurnDetector({ version: "v1-mini" }),
-      // `resolveEndpointing`は部分指定を既定へ併合するため、`fixed / minDelay: 300ms`を残して
-      // maxDelayだけを4秒にする。EOTが終わりと判定したときはminDelayだけ待ち、まだ話すと
-      // 判定したときはmaxDelayへ切り替わる（加算ではない）。教え返しで考える時間は3秒超を
-      // 確保しつつ、速く返せる場面まで遅くしない。
+      // `resolveEndpointing` merges partial settings into the defaults, so keep
+      // `fixed / minDelay: 300ms` and raise only maxDelay to 4s. On "done" the EOT
+      // waits minDelay; on "still talking" it switches to maxDelay (not additive).
+      // That leaves over 3s to think during teach-back without slowing down turns
+      // that can answer fast.
       endpointing: { maxDelay: 4_000 },
       interruption: {
-        // adaptiveは重なり音声をクラウドへ送るため、未成年の会話内容を外へ出さない方針から
-        // 今回は指定しない。ローカルのVADベース検出を使う。
-        // 咳や短い生活音で授業を切らず、実際に話し始めた生徒は止められるよう、
-        // 推奨範囲700〜1000msの中間寄りである800msまで確認する。
+        // adaptive sends overlapping audio to the cloud, so it is not used here -
+        // minors' conversation content stays in. Local VAD-based detection instead.
+        // 800ms sits mid-range of the recommended 700-1000ms: coughs and short
+        // household noise will not cut the lesson, but a student who really starts
+        // talking does.
         minDuration: 800,
-        // `minWords` は既定の0のままにする。SDKの語数カウントは空白区切りの英語前提で、
-        // 日本語は1発話が常に1語になるため、値を上げると生徒の割り込みを検出できない。
+        // `minWords` stays at the default 0. The SDK counts words by whitespace,
+        // assuming English; a Japanese utterance is always one word, so raising it
+        // would hide every student barge-in.
       },
     },
   });

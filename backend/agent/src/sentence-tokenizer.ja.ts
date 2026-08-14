@@ -19,12 +19,14 @@ const closingMarks = new Set([
   "'",
 ]);
 
-// 日本語は10〜20字の文が多い。12字なら短すぎる相槌を単独で読ませず、既定の20字より
-// 早く最初の音を出せる。実測時はここを動かしてTTFBを比べる。
+// Japanese sentences are mostly 10-20 chars. 12 avoids reading a too-short
+// interjection alone and emits the first audio sooner than the default 20.
+// When measuring, move this and compare TTFB.
 const minSentenceLength = 12;
 
-// 読点ごとに切るとTTSがぶつ切りになる。24字あれば一息の節として十分長く、句点を待つ
-// より早く話し始める価値がある。こちらも会話ログのTTFBで調整する。
+// Splitting at every comma makes TTS choppy. 24 chars is long enough for one
+// breath group and worth starting to speak before the full stop. Also tuned from
+// TTFB in conversation logs.
 const longClauseLength = 24;
 
 function isDecimalPoint(text: string, index: number): boolean {
@@ -44,8 +46,8 @@ function addToken(tokens: SentenceToken[], text: string, start: number, end: num
 }
 
 /**
- * `BufferedSentenceStream` は終了位置を使って未送信の入力を取り除くため、
- * SDKのbasic/sentence.jsと同じ `[token, start, end]` を返す。
+ * `BufferedSentenceStream` uses the end offset to drop unsent input, so return
+ * `[token, start, end]` exactly like the SDK's basic/sentence.js.
  */
 export function splitJapaneseSentences(text: string): SentenceToken[] {
   const tokens: SentenceToken[] = [];
@@ -95,16 +97,16 @@ export function splitJapaneseSentences(text: string): SentenceToken[] {
   return tokens;
 }
 
-/** 日本語の句読点を読める、Deepgram TTS用の文分割器。 */
+/** A sentence splitter for Deepgram TTS that understands Japanese punctuation. */
 export class JapaneseSentenceTokenizer extends tokenize.SentenceTokenizer {
   tokenize(text: string, _language?: string): string[] {
     return splitJapaneseSentences(text).map(([token]) => token);
   }
 
   stream(_language?: string): tokenize.SentenceStream {
-    // SDKが公開しているBufferedSentenceStreamを使うことで、flush/endInput/closeの
-    // 振る舞いは既定分割器と一致する。1字ごとに再評価し、LLMのchunkサイズ由来の
-    // 余計な待ちを入れない。
+    // Using the SDK's public BufferedSentenceStream keeps flush/endInput/close
+    // behaviour identical to the default splitter. Re-evaluates per character so
+    // the LLM's chunk size adds no extra wait.
     return new tokenize.BufferedSentenceStream(splitJapaneseSentences, minSentenceLength, 1);
   }
 }

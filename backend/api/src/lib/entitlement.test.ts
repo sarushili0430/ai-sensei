@@ -24,7 +24,7 @@ const limits = {
 };
 const now = new Date("2026-08-03T13:24:07.000Z"); // 22:24 JST
 
-/** クローズドβの開放中(期限は `now` より後)。 */
+/** Closed beta open (the deadline is after `now`). */
 const betaLimits = { ...limits, betaOpenAccessUntil: new Date("2026-09-30T15:00:00.000Z") };
 
 function user(overrides: Partial<UserRecord> = {}): UserRecord {
@@ -61,11 +61,12 @@ describe("isPremiumNow", () => {
 });
 
 /**
- * クローズドβの開放。
+ * Closed beta open access.
  *
- * 配れるのが限定公開テストの名簿に載っている人だけ、という前提で
- * **期間中は全員をPremium相当**にする。前提が崩れる日(一般公開)に備えて、
- * 期限を過ぎたら勝手に通常営業へ戻ることをここで固定する。
+ * On the assumption that distribution is limited to the closed testing list,
+ * everyone is Premium-equivalent during the period. For the day that assumption
+ * breaks (public launch), this pins that it returns to business as usual once the
+ * deadline passes.
  */
 describe("isBetaOpenAccess / hasPremiumAccess", () => {
   it("期限内なら、課金していない人も機能が開く", () => {
@@ -85,8 +86,8 @@ describe("isBetaOpenAccess / hasPremiumAccess", () => {
     expect(hasPremiumAccess({ user: user({ is_premium: true }), now, limits })).toBe(true);
   });
 
-  // β開放は「解放してよいか」の判定であって、支払いの記録ではない。
-  // ここが混ざると、webhookの同期やTRANSFERの引き継ぎが嘘の期限を掴む。
+  // Beta access decides whether to unlock, not whether payment happened.
+  // Conflated, webhook sync and TRANSFER handoff would grab a false expiry.
   it("β開放中でも、払っていない人は isPremiumNow では false のまま", () => {
     expect(isPremiumNow(user(), now)).toBe(false);
   });
@@ -156,7 +157,7 @@ describe("sessionsPerDay / startedAllowance / limitReachedAllowance", () => {
 
   it("止めるときは翌日までの秒数を返す(「また明日」と言えるように)", () => {
     const allowance = limitReachedAllowance({ user: user(), now, limits });
-    // 22:24:07 JST → 翌0:00まで 1時間35分53秒
+    // 22:24:07 JST -> 1h35m53s until midnight
     expect(allowance.retryAfterSeconds).toBe(5753);
   });
 
@@ -200,8 +201,8 @@ describe("sessionsPerDay / startedAllowance / limitReachedAllowance", () => {
 });
 
 /**
- * 解析の上限は「見せない上限」。1日に話せる回数(見せる約束)とは別に持ち、
- * **撮り直しでは絶対に当たらない**ことをここで固定する。
+ * The analysis cap is a hidden cap. It is held separately from the number of
+ * conversations a day (the promise we show), and this pins that retakes never hit it.
  */
 describe("analysesPerDay", () => {
   it("1回の授業あたり、撮り直しに余裕のある回数を許す", () => {
@@ -220,11 +221,11 @@ describe("analysesPerDay", () => {
 });
 
 /**
- * 押し直しでトークンを出し直せる窓。
+ * The window for reissuing a token on a retry.
  *
- * 無条件に出し直せると、**部屋に入らないまま開いたセッションが、期限のない
- * 鍵の引換券**になる(その1本は最初の日に数えられているので、翌日に押せば
- * 今日の枠を減らさずに授業が1回増える)。
+ * Reissuing unconditionally makes a session opened without entering the room a
+ * voucher for a key with no expiry (it was counted on day one, so pressing it
+ * tomorrow adds a lesson without spending today's slot).
  */
 describe("canReissueToken", () => {
   const startedAt = "2026-08-03T13:00:00.000Z";
@@ -240,7 +241,7 @@ describe("canReissueToken", () => {
   });
 
   it("上限時間 + 余白を過ぎたら、もう出し直さない", () => {
-    // 20分 + 余白2分 = 22分。その1秒あと。
+    // 20 min + 2 min grace = 22 min. One second after that.
     expect(
       canReissueToken({
         startedAt,
@@ -260,7 +261,7 @@ describe("canReissueToken", () => {
     ).toBe(true);
   });
 
-  // 読めない値を「まだ生きている」側へ倒すと、壊れた1行が抜け道になる。
+  // Falling toward "still alive" on an unreadable value makes one broken row a loophole.
   it("started_at が読めなければ出し直さない", () => {
     expect(canReissueToken({ startedAt: "not-a-date", now, maxSeconds: 1200 })).toBe(false);
   });
@@ -273,7 +274,7 @@ describe("secondsUntilLocalMidnight", () => {
 });
 
 describe("shouldShowPaywall", () => {
-  // 初回カルテで穴が見えた直後 = 価値実感の瞬間、の1回だけ
+  // Once only, right after holes become visible in the first karte = the moment of felt value
   it("初回カルテで穴があれば出す", () => {
     expect(shouldShowPaywall({ isPremium: false, completedSessionCount: 1, holesFound: 1 })).toBe(
       true,

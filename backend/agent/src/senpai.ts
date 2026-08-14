@@ -4,45 +4,46 @@ import { boardLessonSystemPrompt, conversationSystemPrompt } from "@ai-sensei/pr
 import { type SessionContext, subjectOf } from "./context.ts";
 
 /**
- * 板書授業とフェーズ2「教え返し」をつなぐ、agent 側にしか置けないもの。
+ * What connects the board lesson to phase 2, teaching back — the parts that can
+ * only live on the agent side.
  *
- * **人格と約束はここには無い。**正本は `prompts/senpai_conversation.{ja,en}.md` で、
- * このファイルが持つのは3つだけ:
+ * Personality and promises are not here. The canonical text is
+ * `prompts/senpai_conversation.{ja,en}.md`; this file holds only three things:
  *
- *   1. **定型の一言**(教え返しへの受け渡し・立て直し)。
- *      会話LLMを通さずにTTSへ直接渡す文なので、プロンプトには置けない。
- *   2. **板書の要約**(`lesson_recap` に入れる値)。板書は配送層の事実
- *      (`BoardStep`)なので、プロンプト側からは見えない。
- *   3. **セッション文脈から各プロンプトへ写す値**。写真と復習の穴を
- *      同じ欄に偽装せず、`lesson_mode` で選べる形にする。
+ *   1. Fixed lines (handing over to the teach-back, and recovery). They go
+ *      straight to TTS without passing through the conversational LLM, so they
+ *      cannot live in a prompt.
+ *   2. The board summary (the value put into `lesson_recap`). The board is a
+ *      delivery-layer fact (`BoardStep`) and is invisible from the prompt side.
+ *   3. Values copied from the session context into each prompt, so a photo and a
+ *      review gap are selectable via `lesson_mode` rather than disguised as the
+ *      same field.
  *
- * ─────────────────────────────────────────────────────────────────────────
- * 【板書の内容は instructions にだけ入れる。transcript には入れない】
- * ─────────────────────────────────────────────────────────────────────────
+ * ## Board content goes into instructions only, never into the transcript
  *
- * 先輩が何を教えたかを知らないと、教え返しを聞いても「言えた / 詰まった」の
- * 判定ができない。だが計画書 §2 の設計制約は
- * **「出題元はユーザーが説明した内容。AIが教えた内容から作らない」**で、
- * カルテと小テストの材料は transcript だけ。
+ * Without knowing what senpai taught, a teach-back cannot be judged as "said it"
+ * or "got stuck". But the design constraint is that questions come from what the
+ * user explained, never from what the AI taught, so the karte and the quiz draw
+ * on the transcript alone.
  *
- * だから板書の要約は **instructions(この層)にだけ**渡し、
- * 授業中の発話は `addToChatCtx: false` で transcript に入れない(`agent.ts`)。
- * 「先輩は知っているが、カルテの材料にはならない」という置き分けになる。
- * この線引きは `senpai_conversation.<locale>.md` の本文にも二重に書いてある。
+ * So the board summary is passed only into instructions (this layer), and
+ * in-lesson utterances are kept out of the transcript with `addToChatCtx: false`
+ * (`agent.ts`). The split is "senpai knows it, but it is not karte material". The
+ * same line is drawn again in the body of `senpai_conversation.<locale>.md`.
  */
 
-/** 授業が終わったら教え返しへ渡す。計画書 §2 のコアループの2つ目。 */
+/** Hands over to the teach-back once the lesson ends; the core loop's step two. */
 const TEACH_BACK_PROMPT: Record<CurriculumLocale, string> = {
   ja: "じゃあ今の、自分の言葉で説明してみて。",
   en: "Alright — now explain that back to me in your own words.",
 };
 
 /**
- * 板書が1行も出せなかったときの立て直し。
+ * Recovery when not one board line could be produced.
  *
- * **黙って会話に落とさない。**板書ゼロで「じゃあ今の、説明してみて」と言うと、
- * 教わっていないことの説明を求めることになる。何が起きたかを認めて、
- * 生徒の手が止まっている場所を聞くところからやり直す。
+ * It never falls silently into conversation. "Now explain that back" with an
+ * empty board asks the student to explain something they were never taught. It
+ * acknowledges what happened and restarts by asking where they got stuck.
  */
 const LESSON_FAILED_PROMPT: Record<CurriculumLocale, string> = {
   ja: "ごめん、板書がうまく出せなかった。口でやろっか。この問題、どこまでできた?",
@@ -50,32 +51,36 @@ const LESSON_FAILED_PROMPT: Record<CurriculumLocale, string> = {
 };
 
 /**
- * 復習セッションの最初の一言。板書は出さず、前回の穴から聞き直す。
+ * The opening line of a review session: no board, asking again from the previous
+ * gap.
  *
- * 通常の復習は `review_hole` から板書を始める。これは新しいagentを先に出した
- * デプロイの窓で、古いAPIが欄を送らなかったときだけ使う互換フォールバック。
+ * Normal reviews start a board from `review_hole`. This is the compatibility
+ * fallback for the deployment window where a newer agent shipped first and an
+ * older API sent no such field.
  *
- * **「覚えてる?」と聞かない。**それは `senpai_conversation.*.md` が禁じている
- * 申告させる聞き方そのもので、「うん」で返せてしまう。言わせて判定する。
+ * It never asks "do you remember?". That is exactly the self-reporting question
+ * `senpai_conversation.*.md` forbids, answerable with "yes". Have them say it and
+ * judge from that.
  */
 const REVIEW_OPENING: Record<CurriculumLocale, string> = {
   ja: "この前つまずいたとこ、もう一回説明してみて。",
   en: "Let's take another run at the bit you got stuck on — explain it to me.",
 };
 
-/** 復習には「この問題」が存在しないので、板書失敗時も穴を起点に立て直す。 */
+/** A review has no "this problem", so recovery also restarts from the gap. */
 const REVIEW_LESSON_FAILED_PROMPT: Record<CurriculumLocale, string> = {
   ja: "ごめん、板書がうまく出せなかった。口でやろっか。前に止まったところ、何が引っかかる?",
   en: "Sorry — the board didn't come up. Let's talk it through. What catches you at that spot?",
 };
 
 /**
- * 板書がまだ1行も無いときに `lesson_recap` へ入れる定型句。
+ * The boilerplate put into `lesson_recap` when the board is still empty.
  *
- * **会話の言語で書く。**日本語の「(なし)」が英語のプロンプトに混ざると、
- * モデルはそこだけ日本語で応答しはじめる(`render.ts` の `phrases` と同じ理由)。
- * 空文字を渡さないのは、見出しだけが残った節を先輩が読むと
- * 「板書はあるが読めない」と解釈しうるから。**無いことを書く。**
+ * Written in the conversation's language: a Japanese "(none)" inside an English
+ * prompt makes the model start replying in Japanese there (the same reason as
+ * `phrases` in `render.ts`). It is not an empty string, because a section left
+ * with only a heading can read to senpai as "there is a board but I cannot read
+ * it". State the absence.
  */
 const NO_LESSON_RECAP: Record<CurriculumLocale, string> = {
   ja: "(まだ板書には何も出していません)",
@@ -83,14 +88,15 @@ const NO_LESSON_RECAP: Record<CurriculumLocale, string> = {
 };
 
 /**
- * 最後の手順が、もう生徒に番を渡しているか。
+ * Whether the last step already handed the turn to the student.
  *
- * 渡しているのに {@link teachBackPrompt} を続けると、先輩が同じことを2回言う。
- * 板書プロンプト(`senpai_board.*.md`)は「教えたら必ず『じゃあ今の、自分の言葉で
- * 説明してみて』に渡す」と指示しているので、**普通に成功した授業では毎回起きる**。
+ * Appending {@link teachBackPrompt} when it did makes senpai say the same thing
+ * twice. The board prompt (`senpai_board.*.md`) instructs it to always hand over
+ * after teaching, so this happens on every lesson that simply went well.
  *
- * **文言の一致ではなく「番を渡したか」で見る。**切り分けの質問
- * (「最初の一手、言ってみて」)で終わった授業も、答えを待っている状態なので同じ扱い。
+ * It matches on "was the turn handed over", not on exact wording. A lesson ending
+ * on a narrowing question ("say the first move") is also waiting for an answer
+ * and counts the same.
  */
 const HANDOFF_PATTERNS: Record<CurriculumLocale, RegExp[]> = {
   ja: [/説明してみて/, /言ってみて/, /やってみて/, /話してみて/, /書いてみて/],
@@ -98,22 +104,25 @@ const HANDOFF_PATTERNS: Record<CurriculumLocale, RegExp[]> = {
 };
 
 /**
- * 疑問符。**「〜してみて」型だけを番の受け渡しと見なしていたのが、実際の壊れ方だった。**
+ * A question mark. Treating only "try saying..." forms as handing over the turn
+ * was the real break.
  *
- * 問題の写真が読めなかった授業は、板書プロンプトの指示どおり
- * 「問題、読んでもらってもいい?」から始まる。これは上のどのパターンにも当たらないので
- * `teachBackFallback` が**無条件で**「じゃあ今の、自分の言葉で説明してみて。」を続けていた
- * (2026-08-12 の報告そのもの)。生徒から見ると、読み上げを頼まれた次の瞬間に
- * **まだ何も教わっていない内容の説明を求められる**。
+ * A lesson whose problem photo could not be read starts, as the board prompt
+ * instructs, with "could you read the problem out for me?". That matches none of
+ * the patterns above, so `teachBackFallback` unconditionally appended "now
+ * explain that back in your own words" (exactly the 2026-08-12 report). To the
+ * student, being asked to read something aloud is immediately followed by being
+ * asked to explain something they have not been taught.
  *
- * 先輩が問いかけで終えたなら、形がどうであれ**番はもう生徒にある**。
+ * If senpai ends on a question, whatever its shape, the turn is already with the
+ * student.
  *
- * **全角の `？` はコードポイントで書く(`？`)。**
- * 一度ここを `[??]` と生の字で書いて、`？` が半角に潰れたまま入っていた
- * (見た目は2文字だが中身は `?` が2つで、全角では止まらない)。
- * 日本語の出力はほとんど全角なので、**この取りこぼしは日本語の授業ぜんぶに効く** —
- * 直したはずのターン制が、そのまま元に戻る。字で書けば次も同じ形で壊れるので、
- * 目で見て違いの分かる書き方にしておく。
+ * The full-width question mark is written as a code point. It was once written
+ * literally and got flattened to half-width (it looked like two characters but
+ * was two ASCII `?`), so full-width never matched. Japanese output is almost
+ * entirely full-width, so that miss affects every Japanese lesson and silently
+ * reverts the turn-taking fix. Written literally it would break the same way
+ * again, so it is written so the difference is visible.
  */
 const QUESTION_MARK = /[?？]\s*$/;
 
@@ -140,14 +149,15 @@ export function handsTurnToStudent(speech: string, locale: CurriculumLocale): bo
 }
 
 /**
- * セッション開始時に板書授業へ入るか。
+ * Whether the session opens with a board lesson.
  *
- * `review` はすでに小テストで「まだ」→「先輩に聞く」を選んだあとに作られる。
- * ここでもう一度説明だけを求めると、§2 の「詰まったら授業モードへ」を1段戻し、
- * 生徒は**教えてもらうために同じ詰まりを二度見せる**ことになる。したがって
- * 通常の2種類はどちらも板書から始める。ただし、新しいagentを先に出した
- * ローリングデプロイの窓では、古いAPIが `review_hole` を送らない。その復習だけは
- * 根拠なしで板書を作らず、従来の聞き直し会話へ縮退する。
+ * A `review` is created only after the quiz already went "not yet" -> "ask
+ * senpai". Asking for an explanation again here would step back from "when stuck,
+ * enter lesson mode" and make the student demonstrate the same block twice to get
+ * taught. So both normal kinds start from the board. The exception is the rolling
+ * deployment window where a newer agent shipped first and the older API sends no
+ * `review_hole`: that review alone builds no board without evidence and degrades
+ * to the previous ask-again conversation.
  */
 export function startsWithBoardLesson(
   context: Pick<SessionContext, "kind" | "review_hole">,
@@ -156,13 +166,13 @@ export function startsWithBoardLesson(
 }
 
 /**
- * 復習の穴を板書プロンプトへ貼るJSON。
+ * The JSON that pastes a review gap into the board prompt.
  *
- * `problem_text` へ穴を詰めない。問題写真の事実と前回の観測を混ぜると、
- * 「問題写真なしなら推測しない」という新規授業の保険が効かなくなる。
- * JSONにするのは `desc` / `evidence` の改行や引用符まで**データの境界内**に置き、
- * 見出しに化けさせないため。新規授業では文字列 `null` を渡し、ロケール固有の
- * ダミー文言を増やさない。
+ * The gap is not stuffed into `problem_text`. Mixing the fact of a problem photo
+ * with a previous observation would disable the new-lesson safeguard that says
+ * "with no problem photo, do not guess". JSON keeps newlines and quotes in `desc`
+ * / `evidence` inside the data boundary so they cannot become headings. New
+ * lessons pass the string `null`, adding no locale-specific dummy wording.
  */
 export function renderReviewBoardContext(context: SessionContext): string {
   return context.review_hole == null ? "null" : JSON.stringify(context.review_hole, null, 2);
@@ -174,12 +184,13 @@ export type SenpaiBoardLessonInput = {
 };
 
 /**
- * 写真起点と穴起点を、同じ板書プロンプトの明示的なモードへ写す。
+ * Maps photo-started and gap-started lessons onto explicit modes of the same
+ * board prompt.
  *
- * 別の復習プロンプトをコピーしない理由は `packages/prompts/src/index.ts` に置いた。
- * ここでは**どちらの入力も渡し、本文に mode で片方だけ選ばせる**。復習時にも
- * `problem_text` を契約どおりのプレースホルダのまま渡すことで、写真が無い事実を
- * 穴の説明で上書きしない。
+ * Why a separate review prompt was not copied is documented in
+ * `packages/prompts/src/index.ts`. Both inputs are passed and the body selects
+ * one by mode. Reviews still pass `problem_text` as the contract's placeholder,
+ * so the absence of a photo is not overwritten by the gap's description.
  */
 export function senpaiBoardLessonPrompt(input: SenpaiBoardLessonInput): string {
   const { context } = input;
@@ -197,33 +208,37 @@ export function senpaiBoardLessonPrompt(input: SenpaiBoardLessonInput): string {
 }
 
 /**
- * 板書に1行でも書いたか。**音声だけの手順は「教えた」に数えない。**
+ * Whether anything was written on the board. Voice-only steps do not count as
+ * teaching.
  *
- * `board: null` の手順は、切り分けの質問と相づちのための枠
- * (`senpai_board.*.md` の要素表)。それしか出ていない授業は、
- * 生徒の画面では**見出しだけの白い黒板**で、教わった中身はどこにも残っていない。
+ * Steps with `board: null` are the slot for narrowing questions and
+ * acknowledgements. A lesson that produced only those leaves the student a blank
+ * board with a heading, and nothing taught survives anywhere.
  */
 export function wroteOnBoard(steps: readonly BoardStep[]): boolean {
   return steps.some((step) => step.board !== null);
 }
 
 /**
- * 板書LLMが最後の一言で番を渡し忘れたときの、コード側の保険。
+ * The code-side safety net for when the board LLM forgets to hand over the turn
+ * on its last line.
  *
- * プロンプトだけに任せると、生成が1回ぶれただけで「教えて終わり」になる。
- * 一方、すでに番を渡しているのに毎回定型句を足すと同じ質問を二度聞く。
- * 実際に配送できた最後の手順を見て、不足したときだけ教え返しへ戻す。
+ * Left to the prompt alone, one wobbly generation ends with "taught, and done".
+ * Appending the fixed line every time, though, asks the same question twice. So
+ * it inspects the last step actually delivered and hands back only when that is
+ * missing.
  *
- * **板書に1行も書いていない回では足さない。**「じゃあ今の」の「今の」が
- * 存在しないので、教わっていないことの説明を求めることになる(§2 の逆)。
- * 実際に起きていたのは次の並びで、しかも会話プロンプトは
- * 「いまやっていること — 教え返し」で固定なので、**そのまま堂々巡りになる**:
+ * It appends nothing when no board line was written: there is no "that" in "now
+ * explain that", so it would ask the student to explain what they were never
+ * taught. What actually happened was this pair — and since the conversation
+ * prompt is pinned to "what we are doing now: teaching back", it loops:
  *
- *   先輩「問題、読んでもらってもいい?」  ← 写真から問題文が取れなかった授業の第一声
- *   先輩「じゃあ今の、自分の言葉で説明してみて。」  ← ここ(無条件で足していた)
+ *   senpai: "could you read the problem out for me?"  <- first line when the
+ *                                                        photo yielded no text
+ *   senpai: "now explain that back in your own words." <- appended unconditionally
  *
- * 立て直しは呼び出し側の責務(`agent.ts` が `lessonFailedPrompt` を出す)。
- * ここは「**足さない**」だけを決める。
+ * Recovery is the caller's job (`agent.ts` emits `lessonFailedPrompt`). This only
+ * decides not to append.
  */
 export function teachBackFallback(
   context: Pick<SessionContext, "locale">,
@@ -236,19 +251,21 @@ export function teachBackFallback(
 }
 
 /**
- * 板書の要約の上限(文字)。
+ * Character cap on the board summary.
  *
- * 板書1枚は最大40手順(`boardStepsMaxCount`)で、`speech` 120字 + `tex` 200字が
- * 上限だから、詰まると10KB級になる。instructions は毎ターン全部送られるので、
- * そのまま入れると会話のたびに板書ぶんの入力トークンを払い続けることになる。
+ * One board holds up to 40 steps (`boardStepsMaxCount`) with `speech` up to 120
+ * characters and `tex` up to 200, so a full one runs to tens of kilobytes.
+ * Instructions are sent in full every turn, so including it whole would pay for
+ * the board in input tokens on every exchange.
  *
- * 溢れたときは**先頭から入れて、入らなくなったところで止める**(末尾を落とす)。
- * 授業は上から積み上がる構造なので、途中で切れても「ここまでは教えた」が読める。
- * 逆に先頭を落とすと、話の前提だけが消えた飛び飛びの板書が残る。
+ * On overflow it fills from the start and stops when it no longer fits, dropping
+ * the tail. A lesson accumulates from the top, so a cut still reads as "this much
+ * was taught". Dropping the head instead would leave a disjointed board with the
+ * premises missing.
  */
 export const lessonRecapMaxLength = 2000;
 
-/** 板書1要素を1行で書き下す。先輩に「何を書いたか」を思い出させるためだけの表現。 */
+/** Writes one board element as a line, purely to remind senpai what it wrote. */
 function describeBoard(board: BoardStep["board"], locale: CurriculumLocale): string | null {
   if (board === null) return null;
   const label = locale === "en" ? "board" : "板書";
@@ -266,17 +283,18 @@ function describeBoard(board: BoardStep["board"], locale: CurriculumLocale): str
     case "circle":
       return `${label}: ${locale === "en" ? "circle" : "円"} r = ${board.r}`;
     case "figure":
-      // **名前のついた点を出す。**ここを「図」の一言で畳むと、先輩は自分が置いた点を
-      // 思い出せず、次の説明で同じ図を描き直す(D-12「図が育たない」の原因はこれだった)。
-      // `alt` は agent が詰めるので、まだ無い場合(検証前)は点の名前だけで書く。
+      // Name the labelled points. Folding this to just "figure" leaves senpai
+      // unable to recall the points it placed, so the next explanation redraws the
+      // same figure (the cause of D-12, "figures do not grow"). `alt` is filled in
+      // by the agent, so before validation it falls back to the names.
       return `${label}: ${board.alt ?? (locale === "en" ? "figure" : "図")}${(() => {
         const names = board.items
           .map((item) => item.pt)
           .filter((name): name is string => typeof name === "string");
         return names.length === 0 ? "" : ` [${names.join(" ")}]`;
       })()}`;
-    // 英語の板書。**例文と、そこで見せた焦点まで**を残す。
-    // 「例文を出した」だけだと、教え返しで何を聞き返せばいいか決められない。
+    // The English board: keep the example sentence and the focus it showed.
+    // "An example was given" alone leaves nothing to ask back about.
     case "sentence":
       return [
         `${label}: ${board.text}`,
@@ -295,8 +313,9 @@ function describeBoard(board: BoardStep["board"], locale: CurriculumLocale): str
 }
 
 /**
- * 送った板書を、先輩が読み返せる形に畳む。
- * 1行も無ければ**空文字ではなく「無い」と書いた定型句**を返す(上の `NO_LESSON_RECAP`)。
+ * Folds the delivered board into something senpai can read back. With no lines it
+ * returns the boilerplate that states the absence, not an empty string (see
+ * `NO_LESSON_RECAP` above).
  */
 export function renderLessonRecap(
   steps: readonly BoardStep[],
@@ -306,8 +325,9 @@ export function renderLessonRecap(
   const lines: string[] = [];
   let length = 0;
 
-  // 引用符も本文と同じ言語のものを使う。英語のプロンプトに「」が混ざると、
-  // そこだけ日本語で応答しはじめる(`render.ts` の `phrases` と同じ理由)。
+  // Quotation marks match the body's language: Japanese brackets inside an
+  // English prompt make the model start replying in Japanese there (the same
+  // reason as `phrases` in `render.ts`).
   const [open, close] = locale === "en" ? ['"', '"'] : ["「", "」"];
 
   for (const step of steps) {
@@ -325,18 +345,19 @@ export function renderLessonRecap(
 
 export type SenpaiConversationInput = {
   context: SessionContext;
-  /** 会話の残り時間。締めに入る判断に使う(会話プロンプトの変数)。 */
+  /** Time left in the conversation, used to decide when to wrap up. */
   remainingSeconds: number;
-  /** 授業で実際にワイヤーへ出した手順。授業前だけ空でよい。 */
+  /** Steps actually put on the wire; empty only before the lesson. */
   lesson?: readonly BoardStep[];
 };
 
 /**
- * 教え返しを聞く先輩のシステムプロンプト。
+ * The system prompt for senpai listening to a teach-back.
  *
- * `SessionContext` と板書の手順を、プロンプトの変数に写すだけの層。
- * **人格・約束・聞き方は `prompts/senpai_conversation.<locale>.md` にある。**
- * ここに文言を足したくなったら、それはプロンプト側に書くべきもの。
+ * A layer that only copies `SessionContext` and the board's steps into the
+ * prompt's variables. Personality, promises and how to ask live in
+ * `prompts/senpai_conversation.<locale>.md`; wanting to add wording here means it
+ * belongs there.
  */
 export function senpaiConversationPrompt(input: SenpaiConversationInput): string {
   const locale = input.context.locale;

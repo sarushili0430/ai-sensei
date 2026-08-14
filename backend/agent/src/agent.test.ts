@@ -12,13 +12,15 @@ import {
 import { sessionMetadataJson } from "./test-support.ts";
 
 /**
- * 計画書 §2 の下半分「小テストで詰まる → 先輩を呼ぶ → 板書で教え直す →
- * 教え返す」を、agent が実際に判断に使う関数で固定する。
+ * Pins the lower half of plan §2 ("stuck on the quiz -> call the senpai -> be
+ * retaught on the board -> teach it back") using the functions the agent
+ * actually decides with.
  *
- * プロンプト本文だけを検査しても、`agent.ts` が `review` を会話分岐へ送ったままなら
- * 板書は1行も開かない。逆に開始分岐だけを検査しても、板書LLMが番を渡し忘れたとき
- * 「教えて終わり」に戻れる。入口と出口を同じ復習文脈で見るのは、その2つを
- * 別々の緑色のテストにして間の配線を見失わないため。
+ * Checking prompt text alone would miss `agent.ts` still routing `review` to the
+ * conversation branch, opening no board at all. Checking only the start branch
+ * would miss falling back to "taught and done" when the board LLM forgets to
+ * hand over the turn. Entry and exit are checked in the same review context so
+ * they do not become two green tests with the wiring between them unwatched.
  */
 
 const reviewContext = readSessionContext(
@@ -45,8 +47,8 @@ const reviewContext = readSessionContext(
 const reviewHole = reviewContext.review_hole;
 if (reviewHole == null) throw new Error("復習テストの文脈に review_hole がありません");
 
-// 追加前のAPIは null ではなく、キーそのものを送らない。
-// `sessionMetadataJson` は実際のAPIと同じJSON化で undefined のキーを省く。
+// The pre-addition API omits the key entirely rather than sending null.
+// `sessionMetadataJson` drops undefined keys with the same JSON encoding as the real API.
 const legacyReviewContext = readSessionContext(
   sessionMetadataJson({
     session_id: "ses_legacy_review",
@@ -87,7 +89,7 @@ describe("復習から板書授業への接続", () => {
     expect(prompt).toContain(reviewHole.desc);
     expect(prompt).toContain(reviewHole.evidence);
     expect(prompt).toContain("M1-NIJI-GURAFU");
-    // 問題文を穴で上書きしていない。写真なしは事実として残し、review 分岐が無視する。
+    // The problem text is not overwritten by the hole. "No photo" stays a fact the review branch ignores.
     expect(prompt).toContain("(問題の写真なし)");
   });
 
@@ -104,16 +106,16 @@ describe("復習から板書授業への接続", () => {
   });
 
   /**
-   * **報告された壊れ方(2026-08-12)。**
+   * The failure as reported (2026-08-12).
    *
-   *   先輩「問題、読んでもらってもいい?」
-   *   先輩「じゃあ今の、自分の言葉で説明してみて。」  ← これが無条件で足されていた
+   *   senpai: "問題、読んでもらってもいい?"
+   *   senpai: "じゃあ今の、自分の言葉で説明してみて。"  <- appended unconditionally
    *
-   * 問題文が写真から読めなかった授業は、板書プロンプトの指示どおり読み上げを頼む。
-   * それを「番を渡していない」と読んだうえに、板書に1行も書いていないことも
-   * 見ていなかったので、**まだ何も教わっていない生徒に説明を求めていた。**
-   * しかも会話プロンプトは「いまやっていること — 教え返し」で固定なので、
-   * そのまま同じやりとりが繰り返される。
+   * A lesson whose problem text was unreadable asks for it to be read aloud, per
+   * the board prompt. Reading that as "the turn was not handed over" - while also
+   * not checking that nothing was written to the board - asked a student who had
+   * been taught nothing yet to explain it. And since the conversation prompt is
+   * pinned to "current activity: teach-back", the same exchange then repeats.
    */
   it("問題文の読み上げを頼んだだけの回に、教え返しを足さない", () => {
     const asked: BoardStep = { index: 0, speech: "問題、読んでもらってもいい?", board: null };

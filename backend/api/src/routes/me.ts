@@ -28,7 +28,7 @@ import type { HoleRecord } from "../repository/types.ts";
 
 export const meRoute = new Hono<AppEnv>();
 
-/** GET /v1/me/progress — ホーム画面のカウンター。 */
+/** GET /v1/me/progress - the home screen's counters. */
 meRoute.get("/progress", async (c) => {
   const { repository, now } = c.get("services");
   const at = now();
@@ -42,8 +42,8 @@ meRoute.get("/progress", async (c) => {
   const [sessionDates, holes, sessionsToday] = await Promise.all([
     repository.sessionDates(deviceId),
     repository.listHoles(deviceId),
-    // 数えるのは**会話が始まった**セッションだけ。撮って単元を確かめただけの
-    // セッションでホームの導線を閉じない。
+    // Only sessions that started a conversation are counted. A session that just
+    // took a photo and confirmed the unit must not close the home flow.
     repository.countStartedSessionsOnDate(deviceId, localDate),
   ]);
 
@@ -59,15 +59,16 @@ meRoute.get("/progress", async (c) => {
 });
 
 /**
- * GET /v1/me/reviews — 復習画面(プッシュ起点)。
+ * GET /v1/me/reviews - the review screen (entered from a push).
  *
- * 返すのは2つ。「埋めにいく穴」(open)と「埋めた穴」(filled)。
- * 小テストと1/3/7日の通知は無料(ピボット計画 §6-3)で、別画面も作らない。
+ * Two lists come back: holes to fill (open) and holes filled. The quiz and the
+ * 1/3/7-day notifications are free (pivot plan §6-3) and get no separate screen.
  *
- * 音声で「先輩を呼び直す」ときはPremiumかつ通常の授業と同じ日次枠を使う。
- * 契約判定はセッション作成側、日次の可否は `/progress` の
- * `limits.lesson_allowed_today` が正なので、キューに別名のフラグを重ねない。
- * 同じことを2か所で持つと、片方だけ更新されて分岐がずれるため。
+ * Calling the senpai back by voice requires Premium and uses the same daily slot
+ * as a normal lesson. Entitlement is checked at session creation and daily
+ * availability is authoritative in `/progress`'s `limits.lesson_allowed_today`,
+ * so no differently-named flag is layered onto the queue. Holding the same fact
+ * in two places means one gets updated and the branches diverge.
  */
 meRoute.get("/reviews", async (c) => {
   const { repository, now } = c.get("services");
@@ -84,17 +85,17 @@ meRoute.get("/reviews", async (c) => {
         hole: toHole(hole),
         topic_id: hole.topic_id,
         days_since: daysSince,
-        // 復習画面の一行も、穴と同じ課程の言語で出す(通知文と同じ文面)。
+        // The review line is shown in the same curriculum language as the hole (same text as the notification).
         prompt: buildReviewPrompt({
           desc: hole.desc,
           daysSince,
           locale: localeOfTopicId(hole.topic_id),
         }),
-        // 旧データには出題が無い。クライアントに分岐を持たせると画面ごとに違う問いが出る。
+        // Old data has no quiz. A client-side branch would show a different question per screen.
         quiz: hole.quiz ?? hole.desc,
       };
     })
-    // 古い穴 → 深い穴の順。放置されたものから声をかける。
+    // Oldest holes first, then deepest. Speak up about what has been left alone.
     .sort(
       (a, b) =>
         b.days_since - a.days_since ||
@@ -108,10 +109,10 @@ meRoute.get("/reviews", async (c) => {
       topic_id: hole.topic_id,
       days_since_filled: daysBetween(toLocalDate(new Date(hole.filled_at as string)), today),
     }))
-    // 埋めたばかりのものを上に。積み上がった手応えが先に目に入るように。
+    // Just-filled ones on top, so the accumulated progress is seen first.
     .sort((a, b) => a.days_since_filled - b.days_since_filled)
-    // 通算の件数はホームの「埋めた穴」カウンター(progress)のほうが正。
-    // ここは画面に出すぶんだけを載せる。
+    // The lifetime count is authoritative in home's "holes filled" counter
+    // (progress). This only carries what the screen shows.
     .slice(0, filledHolesLimit);
 
   const response: ReviewQueueResponse = {
@@ -122,11 +123,12 @@ meRoute.get("/reviews", async (c) => {
 });
 
 /**
- * GET /v1/me/parent-report — 今月のカルテを、親へ見せられる形にする。
+ * GET /v1/me/parent-report - this month's kartes, in a form parents can see.
  *
- * 親レポートはPremiumだが、無料ユーザーを402にはしない。復習と同じく
- * 「まだ開いていない」状態を200で返すと、アプリは失敗画面ではなく
- * 課金導線として扱える。ロック中は本文を返さず、契約の判別共用体でも漏れを防ぐ。
+ * The parent report is Premium, but free users do not get a 402. As with
+ * reviews, returning "not unlocked yet" as a 200 lets the app treat it as a
+ * purchase flow rather than an error screen. While locked, no body is returned,
+ * and the contract's discriminated union prevents leaks too.
  */
 meRoute.get("/parent-report", async (c) => {
   const { repository, now } = c.get("services");
@@ -169,11 +171,12 @@ meRoute.get("/parent-report", async (c) => {
 });
 
 /**
- * POST /v1/me/reviews/{holeId} — 10秒小テストの自己申告。
+ * POST /v1/me/reviews/{holeId} - the 10-second quiz's self-report.
  *
- * ここは**採点ではない**。サーバは正誤を判定せず、本人の申告をそのまま記録するだけ。
- * `not_yet` は失敗ではないので、何も減らさず、何も記録しない。「まだ」を選んだ
- * 回数を数えると、それ自体が点数になってしまう。
+ * This is not grading. The server judges nothing and only records what the
+ * student reported. `not_yet` is not a failure, so nothing is decremented and
+ * nothing is recorded - counting how often they chose "not yet" would itself
+ * become a score.
  */
 meRoute.post("/reviews/:holeId", async (c) => {
   const { repository, scheduler, now } = c.get("services");
@@ -194,10 +197,10 @@ meRoute.post("/reviews/:holeId", async (c) => {
   }
 
   const hole = await repository.getHole(c.req.param("holeId"));
-  // 存在の有無と所有者の違いを同じ404にして、他人の穴を触らせず、存在も漏らさない。
+  // Nonexistent and not-yours both return the same 404: no touching others' holes, and no leaking existence.
   if (!hole || hole.device_id !== deviceId) throw apiError("hole_not_found");
 
-  // openのときだけ動かすことで、「言えた」の再送でも二重に数えず、通知も再取消ししない。
+  // Acting only when open means a resent "I said it" neither double-counts nor re-cancels notifications.
   if (parsed.data.outcome === "said_it" && hole.status === "open") {
     await repository.markHoleFilled(hole.id, at.toISOString());
     const cancelled = await repository.cancelReviewSchedules(hole.id);
@@ -206,7 +209,7 @@ meRoute.post("/reviews/:holeId", async (c) => {
     }
   }
 
-  // `not_yet` では上の保存処理を一切通らない。openの穴と通知をそのまま残す。
+  // `not_yet` skips all of the saving above, leaving the open hole and its notifications alone.
   const [sessionDates, holes] = await Promise.all([
     repository.sessionDates(deviceId),
     repository.listHoles(deviceId),
@@ -221,7 +224,7 @@ meRoute.post("/reviews/:holeId", async (c) => {
   return c.json(response);
 });
 
-/** D1の行 → 契約の Hole。evidence / quiz は null を持たせず、キーごと落とす。 */
+/** D1 row -> contract Hole. evidence / quiz are dropped by key rather than set to null. */
 function toHole(hole: HoleRecord): Hole {
   return {
     id: hole.id,

@@ -79,7 +79,7 @@ describe("observeVoiceMetrics", () => {
 
     expect(observed.summary(new Date(7_000))).toMatchObject({ agent_speech_seconds: 5 });
 
-    // `close()` が後から speaking を抜けさせても、会話終了時刻を越えた分は混ぜない。
+    // Even if `close()` leaves speaking later, nothing past the conversation end time is counted.
     emitter.emit(voice.AgentSessionEventTypes.AgentStateChanged, {
       type: "agent_state_changed",
       oldState: "speaking",

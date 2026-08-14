@@ -91,15 +91,17 @@ export class D1Repository implements Repository {
   }): Promise<boolean> {
     const { session } = input;
     /**
-     * 上限確認とINSERTは同じSQL文に入れる。SQLiteでは1文が原子的に実行され、
-     * 書き込みも直列化されるため、同時実行は同じ古いCOUNTを見たまま両方通れない。
+     * The cap check and the INSERT live in one SQL statement. SQLite runs a
+     * statement atomically and serializes writes, so concurrent requests cannot
+     * both pass while seeing the same stale COUNT.
      *
-     * ここで数えるのは**その日に作った行の全部**(started_at は見ない)。
-     * 解析の原価は会話を始めたかどうかに関係なく発生するので、始めなかった
-     * セッションもこちらの上限には数える。
+     * What is counted here is every row created that day (started_at is
+     * ignored). Analysis cost is incurred whether or not a conversation began,
+     * so sessions that never started count toward this cap.
      *
-     * day_seqのUNIQUE INDEXは意図的に使わない。デプロイはマイグレーションが先なので、
-     * 列を書かない旧Workerが既定値0を重ねる窓でINDEXがあると、2行目から失敗するため。
+     * A UNIQUE INDEX on day_seq is deliberately avoided. Migrations deploy
+     * first, so during the window where an old Worker omits the column and
+     * repeats the default 0, an index would fail from the second row on.
      */
     const insert = await this.db
       .prepare(
@@ -139,11 +141,12 @@ export class D1Repository implements Repository {
     maxPerDay: number;
   }): Promise<SessionStartResult> {
     /**
-     * 授業枠の確保 = この1文。上限の確認と `started_at` の書き込みが同じ文なので、
-     * 同時に押された2本が同じ古いCOUNTを見て両方通ることがない。
+     * Claiming the lesson slot is this one statement. Because the cap check and
+     * the `started_at` write are in the same statement, two simultaneous presses
+     * cannot both pass on the same stale COUNT.
      *
-     * `started_at IS NULL` を条件に入れてあるので、**再送は2度目を数えない**
-     * (changesが0になり、下で「もう始まっている」として読み直される)。
+     * `started_at IS NULL` is in the condition, so a resend is not counted twice
+     * (changes becomes 0 and it is re-read below as "already started").
      */
     const start = this.db
       .prepare(
@@ -168,8 +171,8 @@ export class D1Repository implements Repository {
         input.localDate,
         input.maxPerDay,
       );
-    // 「押さえられなかった」と「もう押さえてある」は結果が正反対なので、
-    // changesだけでは決められない。同じトランザクションで行を読み直す。
+    // "Could not claim" and "already claimed" have opposite outcomes, so changes
+    // alone cannot decide. Re-read the row in the same transaction.
     const read = this.db
       .prepare(
         `SELECT started_at,
@@ -194,7 +197,7 @@ export class D1Repository implements Repository {
     if (!row) return { started: false };
     if (changes > 0)
       return { started: true, alreadyStarted: false, sessionsToday: row.sessions_today };
-    // 更新できなかったのに始まっている = 前に押さえた枠がそのまま生きている。
+    // Not updated yet started = a previously claimed slot is still alive.
     if (row.started_at !== null) {
       return { started: true, alreadyStarted: true, sessionsToday: row.sessions_today };
     }
@@ -337,10 +340,11 @@ export class D1Repository implements Repository {
     toDate: string;
   }): Promise<KarteRecord[]> {
     /**
-     * 月の境界は sessions.local_date を正にする。kartes.created_at はUTCなので、
-     * それだけで `2026-08-01` を比較するとJSTの月初9時間を前月へ落としてしまう。
-     * セッションは主キーで結合でき、期間条件は既存の
-     * `idx_sessions_device_date` に乗るので、新しいテーブルもマイグレーションも要らない。
+     * sessions.local_date is authoritative for the month boundary. kartes.created_at
+     * is UTC, so comparing `2026-08-01` on that alone would push JST's first nine
+     * hours into the previous month. Sessions join on the primary key and the
+     * period condition rides the existing `idx_sessions_device_date`, so no new
+     * table and no migration are needed.
      */
     const result = await this.db
       .prepare(
@@ -501,13 +505,16 @@ export class D1Repository implements Repository {
       .bind(input.completedAt, input.durationSeconds, input.sessionId);
 
     /**
-     * 保存と完了印が別々に成功すると、再送時に「完了済みだが計画が無い」か
-     * 「計画は変わったがセッションはopen」が生まれる。D1 batch の原子性で2文を束ね、
-     * 先に完了した再送では1文目の SELECT が0件になって現行計画を上書きしない。
-     * また初回の部屋が二重に開かれ、別々のplan idで同時にcompleteされても、後着の
-     * UPSERTはWHEREで更新を拒む。既存idを差し替えると、先着セッションの外部キーが
-     * 切れるだけでなく「同じ計画を組み直した」という履歴の連続性まで失うため。
-     * finish側は実際に端末へ保存されたidを引き直し、後着セッションも安全に閉じる。
+     * If the save and the completion mark succeed separately, a resend produces
+     * either "completed but no plan" or "plan changed but session open". D1
+     * batch atomicity binds the two statements: on a resend that lost the race,
+     * the first statement's SELECT returns nothing and the current plan is not
+     * overwritten. And if the first room is opened twice and completed
+     * concurrently with different plan ids, the later UPSERT is refused by the
+     * WHERE. Replacing an existing id would not only break the earlier session's
+     * foreign key but lose the historical continuity of "the same plan, rebuilt".
+     * The finish side re-reads the id actually stored on the device, so the later
+     * session also closes safely.
      */
     const results = await this.db.batch([save, finish]);
     const saveResult = results[0];
@@ -516,7 +523,7 @@ export class D1Repository implements Repository {
   }
 }
 
-/** metaの形が変わったとき、全員を上限到達として黙って止めずに異常を表へ出す。 */
+/** When meta's shape changes, surface the anomaly instead of silently capping everyone. */
 function changesOf(meta: Record<string, unknown>): number {
   const changes = meta["changes"];
   if (typeof changes !== "number") throw new Error("書き込んだ行数を読み取れません");
@@ -534,7 +541,7 @@ function toUser(row: UserRow): UserRecord {
   return { ...row, is_premium: row.is_premium === 1 };
 }
 
-/** 0002以前に作られた行では null。読めない値も null 扱いにして落とさない。 */
+/** null on rows created before 0002. Unreadable values are treated as null rather than throwing. */
 function parseContext(value: string | null): SessionContext | null {
   if (!value) return null;
   try {
@@ -558,8 +565,9 @@ function parseJsonArray(value: string | null): string[] {
 }
 
 /**
- * JSON列を個別に型アサーションすると、壊れた行がAPIレスポンスまで抜ける。
- * 保存後の計画は将来の親レポートも読む一次データなので、契約全体で検証してから返す。
+ * Type-asserting JSON columns individually lets broken rows leak into API
+ * responses. A saved plan is primary data that future parent reports also read,
+ * so validate the whole contract before returning it.
  */
 function toStudyPlan(row: StudyPlanRow): StudyPlan {
   return studyPlanSchema.parse({

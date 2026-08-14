@@ -12,11 +12,12 @@ import {
 } from "./lesson.ts";
 
 /**
- * 授業フェーズのテスト。見たいのは3つ:
+ * Tests for the lesson phase. Three things:
  *
- *   1. SSEが**チャンクの切れ目に関係なく**テキストのデルタになること
- *   2. **板書を送ってから喋る**順序が、手順ごとに崩れないこと(§3-2)
- *   3. 割り込み・検証落ち・空の出力で、**板書が閉じないこと**(寿命は1つの問題)
+ *   1. SSE becomes text deltas regardless of chunk boundaries
+ *   2. the "board first, then speak" order holds for every step (§3-2)
+ *   3. barge-in, validation failure and empty output never close the board
+ *      (its lifetime is one problem)
  */
 
 /* -------------------------------------------------------------------------- */
@@ -32,7 +33,7 @@ function deltaEvent(text: string): string {
   return `event: content_block_delta\ndata: ${payload}\n\n`;
 }
 
-/** バイト列で切る。**マルチバイトの途中で切れる**のが実際のネットワークの姿。 */
+/** Split on bytes. Real networks cut in the middle of a multi-byte character. */
 function byteChunks(text: string, size: number): Uint8Array[] {
   const bytes = new TextEncoder().encode(text);
   const parts: Uint8Array[] = [];
@@ -70,8 +71,8 @@ describe("readTextDeltas", () => {
     );
   });
 
-  // チャンクは行の途中でも、日本語の1文字の途中でも切れる。
-  // ここが壊れると、板書のJSONに文字化けが混ざって走査ごと落ちる。
+  // Chunks can split mid-line and mid-character. When this breaks, mojibake
+  // lands in the board JSON and the whole scan dies.
   it("マルチバイトの途中で切れても壊れない", async () => {
     const sse = deltaEvent("判別式で解の個数を見る") + deltaEvent("、を板書に出す");
 
@@ -80,7 +81,7 @@ describe("readTextDeltas", () => {
     );
   });
 
-  // 待っても直らないので、黙って読み飛ばさずに投げる(呼び出し側が error で締める)。
+  // Waiting will not fix it, so throw instead of skipping silently (the caller closes with error).
   it("APIのエラーイベントは理由を付けて投げる", async () => {
     const sse = `event: error\ndata: ${JSON.stringify({
       type: "error",
@@ -92,7 +93,7 @@ describe("readTextDeltas", () => {
     );
   });
 
-  // 読み飛ばすと**手順が1つ減ったまま板書が完成**してしまう
+  // Skipping it would complete the board with one step missing
   it("壊れた data 行は握り潰さない", async () => {
     const sse = "data: {これはJSONではない}\n\n";
 
@@ -122,12 +123,12 @@ describe("createAnthropicLessonClient", () => {
     const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
     const body = JSON.parse(init.body as string);
     expect(body.stream).toBe(true);
-    // 既定でadaptive thinkingが入るモデルだと、思考時間がそのまま冒頭の無音になる
+    // On models with adaptive thinking by default, thinking time becomes opening silence
     expect(body.thinking).toEqual({ type: "disabled" });
     expect(body.model).toBe("claude-sonnet-5");
   });
 
-  // イテレータを離すだけでは接続が残り、聞かれない板書のトークンを払い続ける
+  // Releasing the iterator alone leaves the connection open, still paying for board tokens nobody hears
   it("割り込みのシグナルをHTTPまで通す", async () => {
     const fetchImpl = stubFetch(deltaEvent("{}"));
     const interrupt = new AbortController();
@@ -163,7 +164,7 @@ describe("createAnthropicLessonClient", () => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* 授業の配送                                                                  */
+/* Lesson delivery                                                            */
 /* -------------------------------------------------------------------------- */
 
 const step = (index: number, tex: string): unknown => ({
@@ -180,7 +181,7 @@ function lessonJson(steps: readonly unknown[]): string {
   });
 }
 
-/** 出力を1回ぶん返すだけのLLM。呼ばれた `user` を記録する。 */
+/** An LLM that returns one output. Records the `user` message it was asked. */
 function stubLlm(...outputs: readonly string[]): LessonLlm & { asked: string[] } {
   const asked: string[] = [];
   let call = 0;
@@ -191,7 +192,7 @@ function stubLlm(...outputs: readonly string[]): LessonLlm & { asked: string[] }
       const output = outputs[Math.min(call, outputs.length - 1)] ?? "";
       call += 1;
       return (async function* () {
-        // 実際のストリームと同じく、チャンクの間にイベントループを挟む
+        // Yield to the event loop between chunks, like a real stream
         for (const part of output.match(/[\s\S]{1,7}/g) ?? []) {
           await Promise.resolve();
           yield part;
@@ -225,9 +226,9 @@ function channelWith(sink: BoardSink): BoardChannel {
 }
 
 describe("runBoardLesson", () => {
-  // §3-2 の順序。逆にすると「ここ、見て」が空の盤面を指す。
+  // The order from §3-2. Reversed, "look here" points at an empty surface.
   it("板書を送ってから喋る、を手順ごとに繰り返す", async () => {
-    // 送信と読み上げを**同じ列**に積んで、交互になっていることを見る
+    // Push sends and playouts onto the same list to check they alternate
     const trace: string[] = [];
     const board = channelWith({
       async send(message) {
@@ -251,12 +252,13 @@ describe("runBoardLesson", () => {
   });
 
   /**
-   * **ターン制はプロンプトの願いではなく、ここで守る。**
+   * Turn taking is enforced here, not merely wished for by the prompt.
    *
-   * 板書プロンプトは「質問を出したら、その板書はそこで終える。`steps` を続けない」と
-   * 書いているが、生成が1回ぶれると問いかけごと12手順を一息で読み上げる。
-   * 生徒から見ると、先輩が自分の質問に自分で答えながら喋り続ける
-   * (2026-08-12 の「ターン制を守り切れていない」報告)。
+   * The board prompt says "once you ask a question, end that board; do not
+   * continue `steps`", but one wobble in generation reads out 12 steps in a
+   * single breath, question included. To the student the senpai keeps talking
+   * while answering their own question (the 2026-08-12 "turn taking not held"
+   * report).
    */
   it("問いかけたらそこで止めて、残りの手順は板書にも音声にも出さない", async () => {
     const spoken: number[] = [];
@@ -280,10 +282,10 @@ describe("runBoardLesson", () => {
       },
     });
 
-    // 問いかけまでは届ける。その先は生徒の答えを聞いてから。
+    // Deliver up to the question. Anything past it waits for the student's answer.
     expect(spoken).toEqual([0, 1]);
     expect(result.step_count).toBe(2);
-    // 壊れたのではなく、予定どおり番を渡しただけ。
+    // Nothing broke; the turn was handed over as planned.
     expect(result.reason).toBe("completed");
   });
 
@@ -308,7 +310,7 @@ describe("runBoardLesson", () => {
     expect(result.reason).toBe("completed");
   });
 
-  // 板書の寿命は1つの問題。教え返しの間も残っていないと、説明する対象が消える。
+  // A board lives for one problem. If it does not survive teach-back, what they explain disappears.
   it("授業が終わっても板書は閉じない", async () => {
     const sink = recordingSink();
     const board = channelWith(sink).startBoard();
@@ -341,12 +343,12 @@ describe("runBoardLesson", () => {
     expect(boardChannelLogSchema.safeParse({ messages: sink.sent }).success).toBe(true);
   });
 
-  // 検証に落ちた手順を作り直させる配線。ここが繋がっていないと、
-  // 描けない式が1つ来ただけでその回の説明が丸ごと止まる。
+  // The wiring that has failed steps rebuilt. Without it, one unrenderable
+  // formula stops that entire explanation.
   it("落ちた手順は理由を添えて作り直させ、直ったものを送る", async () => {
     const sink = recordingSink();
     const board = channelWith(sink).startBoard();
-    // 数式に日本語を入れると、端末では黒い棒に化ける(計画書 §3-6d)
+    // Japanese inside math renders as black bars on the device (plan §3-6d)
     const llm = stubLlm(
       lessonJson([step(0, "\\text{よって} x = 2")]),
       JSON.stringify({
@@ -367,7 +369,7 @@ describe("runBoardLesson", () => {
     expect(result.rejections.map((rejection) => rejection.reason)).toEqual(["text_in_math"]);
     expect(result.step_count).toBe(1);
     expect(result.steps[0]?.board).toEqual({ kind: "text", body: "x = 2" });
-    // 作り直しの依頼には、落ちた理由(guardrailの指示文)がそのまま入る
+    // The repair request carries the failure reason (the guardrail's guidance) verbatim
     expect(llm.asked[1]).toContain("text の板書として送る");
   });
 
@@ -385,7 +387,7 @@ describe("runBoardLesson", () => {
 
     expect(result.reason).toBe("error");
     expect(result.step_count).toBe(0);
-    // 1手順も確定していないので board_open すら送らない(前の板書を白紙にしない)
+    // Not one step settled, so not even board_open is sent (never blank the previous board)
     expect(sink.sent).toEqual([]);
     expect(board.isClosed).toBe(false);
   });
@@ -408,12 +410,12 @@ describe("runBoardLesson", () => {
 
     expect(result.reason).toBe("interrupted");
     expect(result.step_count).toBe(1);
-    // 割り込みでも板書は閉じない。「いま質問がある」であって「この問題は終わり」ではない
+    // A barge-in does not close the board: "I have a question now" is not "this problem is done"
     expect(board.isClosed).toBe(false);
   });
 
-  // 送信と読み上げの間に割り込みが入る窓は実際にある(送信はネットワーク待ち)。
-  // そこで喋ると、生徒が話し始めた上に音声が重なる。
+  // There is a real window for a barge-in between sending and playout (sending
+  // waits on the network). Speaking then overlaps a student who has started talking.
   it("送信の直後に割り込まれたら、その手順は喋らない", async () => {
     const interrupt = new AbortController();
     const spoken: number[] = [];
@@ -445,14 +447,14 @@ describe("runBoardLesson", () => {
     });
 
     expect(spoken).toEqual([]);
-    // 板書に出た事実は残す(消えるのは board_open のときだけ)
+    // What reached the board stays (only board_open clears it)
     expect(result.steps.map((delivered) => delivered.index)).toEqual([0]);
   });
 });
 
 describe("boardCloseReasonFor", () => {
-  // 上限時間はサーバが決めた予定どおりの終わり方。エラーにすると、
-  // 15分使い切ったセッションが全部「壊れた板書」に見える。
+  // The time cap is the planned ending decided by the server. Making it an error
+  // would show every fully used 15-minute session as "broken board".
   it("timeout は completed 扱いにする", () => {
     expect(boardCloseReasonFor("timeout")).toBe("completed");
     expect(boardCloseReasonFor("completed")).toBe("completed");

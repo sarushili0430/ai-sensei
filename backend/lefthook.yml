@@ -1,12 +1,12 @@
-# backend/ の pre-commit。ルートの lefthook.yml から extends で読まれる。
+# pre-commit for backend/. Loaded from the root lefthook.yml via extends.
 #
-# root: を切ってあるので、`backend/` 配下にステージされたファイルが1つも無ければ
-# このジョブはスキップされる。{staged_files} も backend/ からの相対パスになる。
+# `root:` is set, so this job is skipped when no staged file lives under
+# `backend/`. {staged_files} is also relative to backend/.
 pre-commit:
   jobs:
     - name: backend-lint
       root: "backend/"
       glob: "*.{ts,tsx,js,mjs,cjs,json,jsonc}"
-      # ルートの `pnpm run lint`(= biome ci .)と同じチェックを、
-      # 触ったファイルにだけ掛ける。設定はルートの biome.json を拾う。
+      # The same check as the root `pnpm run lint` (= biome ci .), applied only to
+      # touched files. The config comes from the root biome.json.
       run: pnpm exec biome ci {staged_files}

@@ -122,7 +122,7 @@ describe("計画モードAPI", () => {
       today: "2026-08-03",
       current_plan: null,
     });
-    // 計画を開いても、授業の連続日数に使う行は増えない。
+    // Opening a plan adds no row that feeds the lesson streak.
     expect(services.repository.sessions.size).toBe(0);
   });
 

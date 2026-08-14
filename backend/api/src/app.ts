@@ -21,7 +21,7 @@ import { sessionsRoute } from "./routes/sessions.ts";
 import { webhooksRoute } from "./routes/webhooks.ts";
 
 export type CreateAppOptions = {
-  /** テストから依存を差し替えるためのフック。 */
+  /** Hook for swapping dependencies from tests. */
   services?: (env: Bindings) => Services;
 };
 
@@ -36,8 +36,8 @@ export function createApp(options: CreateAppOptions = {}) {
     }),
   );
 
-  // 全リクエストに1行。**遅い・落ちるがここだけで分かる**ようにしておく。
-  // trace_id はレスポンスヘッダにも返すので、アプリ側の報告から辿れる。
+  // One line per request, so "slow" and "failing" are visible from here alone.
+  // trace_id also comes back in a response header, traceable from an app report.
   app.use("*", async (c, next) => {
     const traceId = newTraceId();
     const startedAt = Date.now();
@@ -54,7 +54,7 @@ export function createApp(options: CreateAppOptions = {}) {
     c.res.headers.set("x-trace-id", traceId);
     log.info("http_request", {
       method: c.req.method,
-      // ルートのパターンで出す(セッションIDでログが散らばらないように)
+      // Report the route pattern (so logs are not scattered by session id)
       route: c.req.routePath,
       path: c.req.path,
       status: c.res.status,
@@ -69,12 +69,12 @@ export function createApp(options: CreateAppOptions = {}) {
     await next();
   });
 
-  // develop と production は見た目が同じなので、どちらに当たったかを返す
-  // (デプロイ直後のスモークで、URLの取り違えに気づけるようにする)。
+  // develop and production look identical, so return which one was hit
+  // (a post-deploy smoke test then catches a mixed-up URL).
   app.get("/health", (c) => c.json({ ok: true, environment: c.env?.ENVIRONMENT ?? "unknown" }));
 
-  // 匿名デバイスID(アカウント作成を要求しない)。
-  // webhookはRevenueCatから来るので、この認証の対象外。
+  // Anonymous device id (no account creation required).
+  // Webhooks come from RevenueCat and are exempt from this auth.
   app.use("/v1/sessions/*", deviceAuth);
   app.use("/v1/sessions", deviceAuth);
   app.use("/v1/me/*", deviceAuth);
@@ -89,14 +89,14 @@ export function createApp(options: CreateAppOptions = {}) {
   app.route("/v1/me/plan", planMeRoute);
 
   app.onError((error, c) => {
-    // 想定内の失敗(無料枠・写真が読めない等)は、そのままアプリへ返す。
-    // 上のミドルウェアが status と error_code をログに残す。
+    // Expected failures (free tier, unreadable photo, ...) are returned to the app
+    // as-is. The middleware above logs status and error_code.
     if (error instanceof HTTPException) {
       return error.getResponse();
     }
 
-    // ここに来たものはアプリからは internal_error にしか見えない。
-    // **原因はログにしか残らない**ので、文脈ごと出す。
+    // Anything reaching here looks like internal_error to the app.
+    // The cause exists only in the logs, so emit it with full context.
     const log = c.get("log");
     const fields = {
       method: c.req.method,
@@ -119,8 +119,8 @@ export function createApp(options: CreateAppOptions = {}) {
 }
 
 const deviceAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
-  // agentからの /complete は内部トークンで入るため、デバイスIDを持たない
-  // (/result はアプリが呼ぶので、デバイスIDが要る)
+  // /complete from the agent enters with an internal token and has no device id
+  // (/result is called by the app, which does need one)
   if (c.req.path.endsWith("/complete")) return next();
 
   const deviceId = c.req.header("x-device-id");

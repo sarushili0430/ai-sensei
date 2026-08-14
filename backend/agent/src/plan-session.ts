@@ -47,7 +47,8 @@ export async function runPlanSession(input: {
     locale: context.locale,
     llmTemperature: 0.4,
   });
-  // 計画も同じ会話基盤なので、開始前から同じ尺度で品質を比べられるようにする。
+  // Planning shares the conversation stack, so quality is comparable on the same
+  // scale from before it starts.
   const voiceMetrics = observeVoiceMetrics(session, log);
 
   const agent = new PlanVoiceAgent({
@@ -55,8 +56,8 @@ export async function runPlanSession(input: {
     startedAt,
     log,
     onReady: (next) => {
-      // llmNodeがspeechだけを返す前にここへ来る。TTSが終わるまでは閉じず、
-      // 下のAgentStateChangedで speaking を抜けた瞬間に完了させる。
+      // We arrive here before llmNode returns speech only. Do not close until TTS
+      // finishes; complete the moment AgentStateChanged below leaves speaking.
       state.ready = next;
     },
   });
@@ -77,8 +78,9 @@ export async function runPlanSession(input: {
     state.finish = settle;
 
     session.on(voice.AgentSessionEventTypes.AgentStateChanged, (event) => {
-      // 計画を画面へ出すcompleteは、最後の提案を読み終えてから送る。
-      // llmNode直後に閉じるとJSONの検証は通っても、生徒には最後の一言が聞こえない。
+      // The complete that puts the plan on screen is sent after the last proposal
+      // is read out. Closing right after llmNode passes JSON validation but the
+      // student never hears the final line.
       if (state.ready !== null && event.oldState === "speaking" && event.newState !== "speaking") {
         settle("completed");
       }
@@ -94,7 +96,8 @@ export async function runPlanSession(input: {
     max_seconds: context.max_seconds,
   });
 
-  // 初回は3問の1つ目、組み直しは崩れた事実だけを聞く。フォーム入力は1つも作らない。
+  // First run asks the first of three questions; a redo asks only about the facts
+  // that broke. No form inputs at all.
   const opening =
     context.current_plan === null
       ? context.locale === "en"
@@ -126,7 +129,8 @@ export async function runPlanSession(input: {
   });
   const ready = state.ready;
   if (ready === null) {
-    // 事実が揃う前の離脱では、テスト日や本人の言葉をでっち上げて空の計画を保存しない。
+    // If they leave before the facts are in, never invent a test date or their own
+    // words and save an empty plan.
     log.warn("plan_not_completed", { ended_reason: endedReason });
     return;
   }
@@ -151,9 +155,10 @@ export async function runPlanSession(input: {
 }
 
 /**
- * 計画LLMのJSONをTTSへ流さず、`speech` だけを会話パイプラインへ戻すagent。
- * 生のJSONをそのまま返すと、先輩が括弧・topic_id・分数を全部読み上げ、
- * モバイルの字幕にも計画本体が混ざる。計画は画面に出し、声は短い問いかけだけにする。
+ * An agent that keeps the plan LLM's JSON out of TTS and returns only `speech`
+ * to the conversation pipeline. Returning raw JSON makes the senpai read out
+ * every bracket, topic_id and fraction, and mixes the plan body into mobile's
+ * captions. The plan goes on screen; the voice only asks short questions.
  */
 class PlanVoiceAgent extends voice.Agent {
   private readonly context: PlanSessionContext;
@@ -170,11 +175,13 @@ class PlanVoiceAgent extends voice.Agent {
       instructions: studyPlanSystemPrompt(
         {
           today: input.context.today,
-          // 写真が無いので範囲を絞れない。**この段のトピックを全部貼る**。
+          // No photo, so the scope cannot be narrowed: paste every topic at this
+          // level.
           //
-          // 到達目標は落とす(`formatTopicIndex`)。計画LLMの仕事は「範囲の
-          // topic_id を選ぶ」ことだけで、目標は選択の材料にならない。
-          // 実測: 日本の高校数学52件で 6,516字 → 2,503字(-61%)。
+          // Learning goals are dropped (`formatTopicIndex`). The plan LLM's only
+          // job is picking the scope's topic_ids, and goals do not inform that
+          // choice. Measured on 52 Japanese high-school math entries:
+          // 6,516 chars -> 2,503 (-61%).
           allowed_topics: formatTopicIndex(
             topicsForTracks(tracksForStage(input.context.school_stage, input.context.locale)),
             input.context.locale,
@@ -206,8 +213,9 @@ class PlanVoiceAgent extends voice.Agent {
     if (inspected.kind === "repair") {
       this.log.warn("plan_regeneration_requested", { reason: inspected.reason });
       const repairContext = chatCtx.copy();
-      // 壊れた出力と修正理由を同じ文脈に置く。理由だけ渡すと、モデルは何を直すのか
-      // 分からず、聞き取った範囲のほうを書き換えて辻褄を合わせにいく。
+      // Put the broken output and the repair reason in the same context. Given the
+      // reason alone, the model cannot tell what to fix and rewrites the scope it
+      // heard to make things add up.
       repairContext.addMessage({ role: "assistant", content: raw.slice(0, 20_000) });
       repairContext.addMessage({
         role: "user",
@@ -261,14 +269,15 @@ class PlanVoiceAgent extends voice.Agent {
         this.context.locale === "en"
           ? "Okay, I've made this light enough to start. If it slips, we'll redo it."
           : "オッケー、まず動ける軽さで組んだよ。崩れたらまた組み直そ。";
-      // 画面では同じ計画として出す。縮退した事実は運用ログとsourceにだけ残す。
+      // On screen it is the same plan. The degradation is recorded only in ops logs
+      // and in source.
       this.log.warn("plan_template_fallback", { reason: inspected.reason, days: plan.days.length });
       this.onReady({ plan, source: "template", speech });
       return speechStream(speech);
     }
 
-    // 範囲そのものが壊れているときはテンプレにも落とさない。聞き取った事実を
-    // 黙って狭めるより、短く一度だけ聞き直すほうが安全。
+    // If the scope itself is broken, do not even fall back to the template. Asking
+    // once, briefly, is safer than silently narrowing the facts we heard.
     this.log.warn("plan_regeneration_exhausted", { reason: inspected.reason });
     return speechStream(
       this.context.locale === "en"

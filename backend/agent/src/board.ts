@@ -29,133 +29,134 @@ import { BoardLessonStreamParser, BoardStreamError } from "./board-stream.ts";
 import type { JobLogger } from "./log.ts";
 
 /**
- * 板書の配送層。LLMのストリーミング出力を、手順が閉じた端から
- * LiveKit の Text Streams(topic `board`)へ1手順ずつ流す。
+ * The board's delivery layer. It streams the LLM's output to LiveKit Text
+ * Streams (topic `board`) one step at a time, as each step closes.
  *
- * ここが持つのは **配管だけ**。何を板書するか(先輩の口調・教え方・式の組み立て)は
- * プロンプトの責務で、このファイルは一切知らない。逆に、宛先(`session_id`)・
- * 板書の識別(`board_id`)・順序(`seq` / `index`)・締め方(`reason`)は
- * **全部こちらの責務**で、LLMの出力には漏らさない(`contract/src/board.ts` の分担)。
+ * This file is plumbing only. What to write on the board (senpai's voice, how to
+ * teach, how to build the working) belongs to the prompt and is unknown here.
+ * Conversely the destination (`session_id`), the board's identity (`board_id`),
+ * ordering (`seq` / `index`) and how it closes (`reason`) are entirely ours and
+ * never leak into the LLM's output (see the split in `contract/src/board.ts`).
  *
- * ─────────────────────────────────────────────────────────────────────────
- * 【寿命】板書1枚 = **1つの問題**(1回のLLM呼び出しではない)
- * ─────────────────────────────────────────────────────────────────────────
+ * ## Lifetime: one board = one problem, not one LLM call
  *
- * 教え方は1往復で終わらない(確定した仕様):
+ * Teaching does not finish in one turn:
  *
- *   1往復目: 切り分ける(「最初の一手、言ってみて」)→ 答えを聞くためにいったん止まる
- *   生徒が答える
- *   2往復目: 詰まった地点から教える
- *   3往復目: 「じゃあ今の、自分の言葉で説明してみて」
+ *   turn 1: narrow it down ("say the first move") -> stop to hear the answer
+ *   the student answers
+ *   turn 2: teach from where they got stuck
+ *   turn 3: "now explain that back in your own words"
  *
- * **LLM呼び出しごとに板書を開き直すと、会話が1往復するたびに板書が消える。**
- * 契約上、板書が消えるのは `board_open` が来たときだけだから。
- * §3-2 の「前の行は消さない。消えるのは別の問題に移るときだけ」が毎ターン破れ、
- * 「書いたものが残る」という板書の価値そのものが失われる。
+ * Reopening the board per LLM call would erase it on every conversational turn,
+ * because the contract only clears the board on `board_open`. The rule that
+ * earlier lines survive and clear only when moving to another problem would
+ * break every turn, losing the board's whole value.
  *
- * だから {@link BoardChannel.startBoard} で1枚はじめ、説明のたびに
- * {@link BoardDelivery.append} で同じ `board_id` に積み、問題が終わったら
- * {@link BoardDelivery.close} で締める。**通し番号(`index`)を振り直すのはここ**で、
- * LLMは自分が何回目の呼び出しかを知らない(知らせると幻覚した番号がワイヤーに出る)。
+ * So {@link BoardChannel.startBoard} starts one board, each explanation appends
+ * to the same `board_id` via {@link BoardDelivery.append}, and
+ * {@link BoardDelivery.close} closes it when the problem ends. The running
+ * `index` is assigned here; the LLM does not know which call it is on, and
+ * telling it would put hallucinated numbers on the wire.
  *
- * ─────────────────────────────────────────────────────────────────────────
- * 【設計判断】送りながら検証する以上、落ちた手順の手前は取り消せない
- * ─────────────────────────────────────────────────────────────────────────
+ * ## Design decision: validating while sending means earlier steps cannot be
+ * ## retracted
  *
- * 8手順の板書で、0〜4は送信済み、5手順目の `tex` が `checkBoardLatex` に弾かれた。
- * 送信は取り消せない(板書は積み上げで、消えるのは `board_open` のときだけ)。
+ * On an eight-step board, steps 0-4 are sent and step 5's `tex` is rejected by
+ * `checkBoardLatex`. The send cannot be undone (the board accumulates, and only
+ * `board_open` clears it).
  *
- * **採るのは (b) — 落ちた手順だけ直させて、続きを送る。** 上限回数を超えたら
- * **その回の説明だけをやめて、板書は開けたままにする**(そこまでの板書は残り、
- * 次の説明は同じ板書に続けられる)。
+ * We take (b): have only the failed step redone and keep going. Past the retry
+ * limit we abandon that explanation and leave the board open, so what is there
+ * survives and the next explanation continues on the same board.
  *
- * 理由:
+ * Reasons:
  *
- * 1. **(a) 全部バッファしてから送る、は却下。**§3-2 が案Aを採ったのは
- *    「割り込める・待たされない」ためで、全バッファは案Bそのもの。
- *    覆すだけの根拠は見つからなかった。むしろ逆で、**全バッファは
- *    この問題自体を解かない** — 板書1枚を丸ごと捨てて作り直すことになり、
- *    「1手順の作り直し」より待ち時間が長い。
+ * 1. (a) buffer everything, then send — rejected. Streaming was chosen so the
+ *    student can interrupt and is not kept waiting; full buffering is the option
+ *    that lost then, and nothing has changed. It also does not solve this
+ *    problem: it means discarding and rebuilding a whole board, which waits
+ *    longer than redoing one step.
  *
- * 2. **(b) の待ちは、1手順ぶんの音声と同じ桁。隠れるかどうかは、隠れ蓑を
- *    どこに求めるかで決まる。**
+ * 2. (b)'s wait is the same order as one step's audio, and whether it hides
+ *    depends on where the cover comes from.
  *
- *    最初ここに「1手順は `speech` 120字 = 約20〜25秒のTTSだから、その裏に隠れる」と
- *    書いた。**これは誤り。120字は契約の上限であって典型値ではない。**
- *    §3-1(音声は問いかけと接続だけ)は `speech` を上限に張り付かせる原則ではなく、
- *    **上限から遠ざける**原則で、実際そうなっている。
- *    実測(`packages/contract/fixtures/board-lesson.json` の7手順):
+ *    This originally said "one step is 120 characters of `speech`, roughly 20-25
+ *    seconds of TTS, so the wait hides behind it". That was wrong: 120 is the
+ *    contract's ceiling, not a typical value. Keeping speech to questions and
+ *    connective tissue pushes away from the ceiling, not towards it, and in
+ *    practice it does. Measured over the seven steps in
+ *    `packages/contract/fixtures/board-lesson.json`:
  *
- *      中央値 14字 ≒ **2.5秒**、最長 29字 ≒ **5.3秒**(日本語TTS 330字/分)
- *      英語のfixture(`board-lesson.en.json`)も 39〜57字 ≒ **2.8〜4.1秒**で同じ帯
+ *      median 14 characters ~ 2.5s, longest 29 ~ 5.3s (Japanese TTS, 330 cpm)
+ *      the English fixture lands in the same band, 2.8-4.1s
  *
- *    **1手順の音声は2〜5秒で、再生成の往復と同じ桁。**上限を根拠にすると
- *    「1手順あたり20秒の余裕がある」という前提が次にここを触る人に残るので、
- *    誤りごと残しておく。
+ *    So one step's audio is 2-5 seconds, the same order as a regeneration round
+ *    trip. The wrong version is recorded here so the "20 seconds of slack per
+ *    step" premise does not survive into the next person's changes.
  *
- *    本当の余裕は、**生成がTTSより速いことで積み上がるリード**のほう。
- *    1手順ぶんのJSON(数十トークン)を作る時間は、その手順を読み上げる時間より短い。
- *    差は手順ごとにたまるので、手順5で再生成が要るときの待ちは、
- *    手順0〜4で積み上がったリードから引かれる。
- *    **予測: 授業が進むほどリードは厚くなり、序盤ほど再生成は目立つ。**
- *    最初の手順で落ちたときはリードがゼロで、待ちがそのまま沈黙になる
- *    (§3-2 が「最初の手順までの無音」を事前生成音声で埋めると決めた、あの穴と同じ場所)。
+ *    The real slack is the lead that builds up because generating is faster than
+ *    speaking: producing one step's JSON (tens of tokens) takes less time than
+ *    reading it aloud, and the difference accumulates. A regeneration at step 5
+ *    is drawn against the lead built over steps 0-4, so regeneration is most
+ *    visible early and least visible late. A failure on the very first step has
+ *    no lead at all and the wait becomes silence — the same hole the pre-rendered
+ *    opening audio was introduced to fill.
  *
- *    **ただしリードが積み上がる場所は、呼び出し側の {@link AppendBoardOptions.onStep}
- *    の作り方で変わる。**TTSへ渡して即座に返すなら、リードは配送そのものに乗る
- *    (板書が音声を追い越して積まれる)。読み上げ終わりまで待つなら、
- *    §3-2 の「同期の粒度は手順」は守られるが、**リードは生成側にしか残らず、
- *    再生成の往復は音声の空白としてそのまま出る**。後者を採るつもりなら、
- *    再生成の待ちは隠れないものとして扱うこと — {@link defaultMaxRepairAttempts} を
- *    1回にしてあるのはそのため。
+ *    Where the lead accumulates depends on how the caller writes
+ *    {@link AppendBoardOptions.onStep}. Handing to TTS and returning at once puts
+ *    the lead into delivery itself (the board runs ahead of the voice). Waiting
+ *    until speech finishes keeps step-level synchronization but leaves the lead
+ *    only on the generation side, so a regeneration round trip surfaces as
+ *    silence. If you take the latter, treat the wait as unhidden — which is why
+ *    {@link defaultMaxRepairAttempts} is 1.
  *
- * 3. **既に送った手順は、直後の手順が落ちても無効にならない。**板書は
- *    1手順=1行の積み上げ(§3-2)で、手順4は手順5の下書きではない。
- *    落ちるのは「この式は `flutter_math_fork` が描けない」という**描画の理由**であって、
- *    手順4の内容が間違っていたわけではない。取り消す理由がない。
+ * 3. Steps already sent are not invalidated by the next one failing. The board
+ *    accumulates one line per step, and step 4 is not a draft of step 5. The
+ *    rejection is a rendering reason ("`flutter_math_fork` cannot draw this"),
+ *    not a statement that step 4 was wrong. There is nothing to retract.
  *
- * 4. **(c) 板書ごと作り直す、は割に合わない。**ただし (c) の欠点は
- *    「`board_close(error)` を送ると画面がリセットされる」ではない —
- *    契約上、板書が消えるのは **`board_open` が来たときだけ**で、
- *    `board_close` は何も消さない。リセットを起こすのは、そのあとに送る
- *    `board_open` のほう。つまり (c) の本当のコストは
- *    **「生徒が読んでいる途中の板書が、生徒には理由の分からないタイミングで白紙に戻る」**。
- *    §3-2 の「前の行は消さない」を、ユーザーには観測できない内部事情で破ることになる。
+ * 4. (c) rebuild the whole board — not worth it. Its drawback is not that
+ *    "`board_close(error)` resets the screen": by contract only `board_open`
+ *    clears anything, and `board_close` erases nothing. The reset comes from the
+ *    `board_open` sent afterwards. So (c)'s real cost is that a board the student
+ *    is reading goes blank at a moment they cannot account for, breaking "earlier
+ *    lines are never erased" for an internal reason they cannot observe.
  *
- * 5. だから**行き止まりでも板書は閉じない。**再生成が上限に達したら、
- *    その回の `append()` を打ち切って `reason: "error"` を返すだけで、
- *    `board_open` も `board_close` も送らない。板書は途中まで残ったまま開いていて、
- *    **次の説明は同じ板書に続けられる**。先輩は会話(音声)で続けられるし、
- *    画面が変わるのは次の問題に移るときだけ。
- *    **「壊れたら止まる。ただし今あるものは消さないし、次を受け入れる余地も潰さない」**が、
- *    この層の失敗のしかた。
+ * 5. Hence a dead end still does not close the board. On hitting the retry
+ *    limit, that `append()` stops and returns `reason: "error"`, sending neither
+ *    `board_open` nor `board_close`. The board stays open with what it has, and
+ *    the next explanation continues on it. Senpai carries on in voice, and the
+ *    screen only changes when the next problem starts. "Stop on breakage, but
+ *    erase nothing and leave room for what comes next" is how this layer fails.
  *
- *    板書ごと閉じる唯一の場合は**上限に達したとき**({@link boardStepsMaxCount})。
- *    そこはもう1手順も積めないので、開けておくと呼び出し側が黒い穴にLLMを呼び続ける。
+ *    The one case that closes the board is the step limit
+ *    ({@link boardStepsMaxCount}). Nothing more can be appended, so leaving it
+ *    open would have the caller calling the LLM into a black hole.
  *
- * 再生成そのもの(LLMへの投げ直し)は {@link StepRepair} として外に出してある。
- * 落ちた理由に対応する `latexRejectionGuidanceByLocale` の指示文を添えて渡すので、
- * 呼び出し側は「その文をプロンプトに足してもう一度吐かせる」だけでよい。
- * ここに書かないのは、**この層が実鍵なしでテストできる**ことを保つため。
+ * Regeneration itself (calling the LLM again) is factored out as
+ * {@link StepRepair}. The rejection carries the matching
+ * `latexRejectionGuidanceByLocale` instruction, so the caller only has to add
+ * that text to the prompt and ask again. Keeping it out of this file is what
+ * lets this layer be tested without real keys.
  */
 
-/** 封筒1つを送る先。LiveKit を差し替えられるように、ここで薄く切っている。 */
+/** Where one envelope goes. A thin seam so LiveKit can be swapped out. */
 export type BoardSink = {
   send(message: BoardChannelMessage): Promise<void>;
 };
 
-/** `sendText` を持つもの(= `room.localParticipant`)。LiveKit の型に依存しないための構造型。 */
+/** Anything with `sendText` (`room.localParticipant`); structural, so this file does not depend on LiveKit's types. */
 export type TextStreamPublisher = {
   sendText(text: string, options?: { topic?: string }): Promise<unknown>;
 };
 
 /**
- * LiveKit の Text Streams へ送る sink。
+ * Sink that writes to LiveKit Text Streams.
  *
- * **封筒1つ = 1ストリーム**(§3-5)。`sendText` は1回の呼び出しで
- * ストリームを開いて書いて閉じるので、受信側の `readAll()` がそのまま
- * 「封筒1つが揃った」になる。生の `publishData` は使わない —
- * 既定が LOSSY で、書き忘れると板書が黙って欠ける。
+ * One envelope is one stream. `sendText` opens, writes and closes in a single
+ * call, so the receiver's `readAll()` means exactly "one envelope is complete".
+ * Raw `publishData` is not used: its LOSSY default silently drops board lines
+ * when forgotten.
  */
 export function createTextStreamBoardSink(publisher: TextStreamPublisher): BoardSink {
   return {
@@ -165,43 +166,46 @@ export function createTextStreamBoardSink(publisher: TextStreamPublisher): Board
   };
 }
 
-/** 手順が検証に落ちた理由。再生成の指示文まで込みで渡す。 */
+/** Why a step failed validation, including the regeneration instruction. */
 export type BoardStepRejection = {
-  /** 落ちた手順が積まれるはずだった位置(= そのとき送ろうとしていた `index`)。 */
+  /** Where the failed step would have gone (the `index` being sent). */
   index: number;
   /**
-   * `latex` は描けないコマンド(三段構えの②)、`syntax` は構文の壊れ(③)、
-   * `schema` は契約違反(長さ・形)、`figure` は**解けなかった作図**。
+   * `latex` is an undrawable command (tier 2), `syntax` is broken syntax
+   * (tier 3), `schema` is a contract violation (length or shape), and `figure`
+   * is a construction that could not be solved.
    */
   kind: "latex" | "syntax" | "schema" | "figure";
   reason: LatexRejectionReason | "syntax" | "schema" | "figure" | "figure_too_large";
-  /** 何が引っかかったか(ログ用)。 */
+  /** What tripped it, for logging. */
   detail: string;
-  /** **会話の言語で書かれた再生成の指示。**そのままプロンプトに足せる。 */
+  /** The regeneration instruction, in the conversation's language; append as is. */
   guidance: string;
-  /** 落ちた手順の生の値。直させるときの材料。 */
+  /** The raw failed step, as material for the repair. */
   raw: unknown;
 };
 
 /**
- * 落ちた手順を直させる。直せなければ `null` を返す(そこで板書は `error` で締まる)。
- * 実装はLLM呼び出しになるが、**この層はそれを知らない**(テストではただの関数)。
+ * Repairs a failed step, returning `null` when it cannot be repaired (the
+ * explanation then ends with `error`). The implementation calls the LLM, but
+ * this layer does not know that — in tests it is just a function.
  */
 export type StepRepair = (rejection: BoardStepRejection) => Promise<unknown>;
 
 /**
- * 範囲外の見出しを直させる。直せなければ `null`。
- * 実装はLLM呼び出しになるが、**この層はそれを知らない**(テストではただの関数)。
+ * Repairs an out-of-scope heading, returning `null` when it cannot be. As with
+ * {@link StepRepair}, this layer knows nothing about the LLM call.
  */
 export type HeadRepair = (rejection: BoardHeadRejection) => Promise<unknown>;
 
 /**
- * **その教科で使ってよい板書要素。**
+ * Which board elements each subject may use.
  *
- * contract は「表現できる形」を全部持っているが、教科ごとに使える枝は違う。
- * 英語の授業に `latex` を許すと、先輩は英文を数式ブロックに入れようとする
- * (`latex-guard` が全角を禁止しているので、そこで初めて弾かれて作り直しになる)。
- * ここで先に閉じておけば、**英語の課程では LaTeX の検査に到達しない**。
+ * The contract holds every expressible shape, but the usable branches differ by
+ * subject. Allowing `latex` in an English lesson has senpai putting English
+ * sentences into a formula block, only to be rejected later by `latex-guard`'s
+ * ban on full-width characters and sent back for a redo. Closing it here means
+ * English curricula never reach the LaTeX checks at all.
  */
 const boardKindsBySubject: Record<CurriculumSubject, readonly string[]> = {
   math: ["latex", "text", "plot", "triangle", "circle", "figure"],
@@ -209,15 +213,17 @@ const boardKindsBySubject: Record<CurriculumSubject, readonly string[]> = {
 };
 
 /**
- * 契約に合わなかったときの指示。LaTeXの理由別の文面は guardrail 側にある。
+ * The instruction when the contract is not met. LaTeX's per-reason wording lives
+ * in guardrail.
  *
- * **`null` を逃げ道として書かない。** 以前は「〜のどれか、または null にすること」と
- * 書いていたが、それは**落ちた板書を消せば検査を通る**と教えているのと同じで、
- * いちばん安いのがその道になる。直った手順が音声だけになると、
- * 授業は最後まで進むのに黒板は白いまま — しかも配送層から見れば全部成功なので、
- * **どこにも記録が残らない**(2026-08-12 の「板書が描画されない」報告で、
- * 図が落ちた手順がここを通っていた)。`null` が正しいのは切り分けの質問だけで、
- * それはプロンプト本文の役割。**直しの指示では常に置き場所を名指しする。**
+ * `null` is never offered as an escape. It used to say "one of these, or null",
+ * which teaches that deleting the rejected board passes validation — and makes
+ * that the cheapest path. A repaired step that becomes voice-only leaves the
+ * lesson running to the end with a blank board, and since the delivery layer
+ * sees only successes, nothing is recorded anywhere (the "board not rendering"
+ * report of 2026-08-12 came through here, on steps whose figure had failed).
+ * `null` is right only for narrowing questions, and that belongs to the prompt
+ * body. Repair instructions always name where the content goes.
  */
 const schemaGuidanceBySubject: Record<CurriculumSubject, Record<CurriculumLocale, string>> = {
   math: {
@@ -230,7 +236,7 @@ const schemaGuidanceBySubject: Record<CurriculumSubject, Record<CurriculumLocale
   },
 };
 
-/** その教科で使えない要素が来たときの指示。 */
+/** The instruction when an element the subject cannot use arrives. */
 const wrongKindGuidance: Record<CurriculumSubject, Record<CurriculumLocale, string>> = {
   math: {
     ja: "その要素は数学の板書では使えません。式は latex、図は figure(作図)か plot / triangle / circle、注記は text に置くこと。",
@@ -243,8 +249,9 @@ const wrongKindGuidance: Record<CurriculumSubject, Record<CurriculumLocale, stri
 };
 
 /**
- * 構文が壊れていたときの指示。**「何を直せばよいか」まで書く**
- * (`latexRejectionGuidanceByLocale` と同じ方針 — 理由だけ渡すと同じ式が返ってくる)。
+ * The instruction for broken syntax. It states what to fix, not just what went
+ * wrong (as with `latexRejectionGuidanceByLocale`: a reason alone gets the same
+ * formula back).
  */
 const syntaxGuidanceByLocale: Record<CurriculumLocale, string> = {
   ja: "数式の構文が壊れています。{ } が対応しているか、\\frac{分子}{分母} や \\sqrt{中身} のように引数を最後まで書いているかを確かめて、式を書き直すこと。",
@@ -252,20 +259,21 @@ const syntaxGuidanceByLocale: Record<CurriculumLocale, string> = {
 };
 
 /**
- * 三段構えの③(§3-6)— **KaTeXに実際にパースさせる**。
+ * Tier 3 of the three-tier check: actually parse with KaTeX.
  *
- * ②(`checkBoardLatex`)はコマンドと環境の**名前**しか見ない。だから
- * `\frac{1}{` のように**許可コマンドだけでできた壊れた式**は素通りする。
- * それが端末に届くと `flutter_math_fork` がその行を描けず、板書が1行
- * 「数式を表示できません」に化ける — 授業の途中で1行消えるのは、遅いより悪い。
+ * Tier 2 (`checkBoardLatex`) only inspects command and environment names, so a
+ * broken formula built entirely from allowed commands — `\frac{1}{` — passes
+ * straight through. On the device `flutter_math_fork` then cannot draw that line
+ * and the board shows "cannot display formula"; a line vanishing mid-lesson is
+ * worse than a slow one.
  *
- * `flutter_math_fork` はKaTeXのDart移植なので、Node側で本家に通すと構文エラーは事前に捕まる。
- * **②の代わりにはならない**(KaTeXが通しても移植版が対応しているとは限らない)ので、
- * 必ず②を通してから呼ぶこと。
+ * `flutter_math_fork` is a Dart port of KaTeX, so running the original in Node
+ * catches syntax errors up front. It does not replace tier 2 (KaTeX passing does
+ * not mean the port supports it), so always run tier 2 first.
  *
- * `strict: "ignore"` にしてあるのは、ここで見たいのが**構文だけ**だから。
- * 既定の `"warn"` は Unicode などで標準エラーに書き込み、agentのログを汚す
- * (文字種の判定は②の `japaneseCharacters` が既に済ませている)。
+ * `strict: "ignore"` because only syntax matters here. The `"warn"` default
+ * writes to stderr for things like Unicode and pollutes the agent's logs, and
+ * character classes were already settled by tier 2's `japaneseCharacters`.
  */
 export function checkLatexSyntax(tex: string): { ok: true } | { ok: false; detail: string } {
   try {
@@ -284,14 +292,14 @@ export type StepVerdict =
   | { ok: false; rejection: BoardStepRejection };
 
 /**
- * 手順1つを検証する。**ワイヤーに出る前の最後の関門**。
+ * Validates one step: the last gate before it reaches the wire.
  *
- * `index` は **LLMの申告を採らず、実際に送る位置で上書きする**。
- * `index` は「板書の何行目に積むか」という配送の事実で、モバイルはこれを
- * `seq` と並ぶ欠落検知に使う(contract README の不変条件の表)。
- * LLMの数え間違いをそのまま流すと、**受信側は正しく届いた板書を「抜けている」と判定する** —
- * 直せる嘘を、検知能力のある場所に置いてしまうことになる。
- * ずれていた事実はログに出す(呼び出し側の {@link BoardChannel} が拾う)。
+ * `index` is overwritten with the position actually being sent, never the LLM's
+ * claim. It is a delivery fact — which line of the board this goes on — and
+ * mobile uses it alongside `seq` to detect gaps. Passing an LLM miscount through
+ * makes the receiver judge a correctly delivered board as incomplete: a fixable
+ * lie planted where the detection lives. The discrepancy is logged instead (the
+ * calling {@link BoardChannel} picks it up).
  */
 export function validateStep(
   raw: unknown,
@@ -322,8 +330,8 @@ export function validateStep(
 
   const board = parsed.data.board;
 
-  // **教科で使えない要素は、中身を見る前に落とす。**
-  // 英語の板書に latex が来たら、LaTeXの構文を直させても意味がない。
+  // Elements the subject cannot use are rejected before their contents are
+  // inspected: fixing LaTeX syntax on an English board is pointless.
   if (board !== null && !boardKindsBySubject[subject].includes(board.kind)) {
     return {
       ok: false,
@@ -338,9 +346,9 @@ export function validateStep(
     };
   }
 
-  // `focus` が `text` の一部であること。**JSON Schema に残らない不変条件**
-  // (contract README の表)なので、ここで見る。破れたときの見え方は
-  // 「下線が引かれないだけ」で、検査が無いと壊れたまま気づかれない。
+  // `focus` must be part of `text`. JSON Schema cannot carry this invariant, so
+  // it is checked here; broken, it merely fails to draw an underline, which goes
+  // unnoticed without a check.
   if (board !== null && board.kind === "sentence" && board.focus !== undefined) {
     if (!board.text.includes(board.focus)) {
       return {
@@ -361,8 +369,8 @@ export function validateStep(
   }
 
   if (board !== null && board.kind === "latex") {
-    // 三段構えの②(§3-6)。移植版が描けないコマンドは、届いた時点で
-    // その行だけ空白か例外になる。授業の途中で1行消えるのは、遅いより悪い。
+    // Tier 2. A command the port cannot draw leaves that line blank or throws on
+    // arrival, and a line vanishing mid-lesson is worse than a slow one.
     const verdict = checkBoardLatex(board.tex);
     if (!verdict.ok) {
       return {
@@ -378,7 +386,7 @@ export function validateStep(
       };
     }
 
-    // 三段構えの③。**②のあとに置く**(②が名前を、③が構文を見る。順序に意味がある)。
+    // Tier 3, deliberately after tier 2: names first, then syntax.
     const syntax = checkLatexSyntax(board.tex);
     if (!syntax.ok) {
       return {
@@ -396,10 +404,12 @@ export function validateStep(
   }
 
   if (board !== null && board.kind === "figure") {
-    // **先輩が書くのは関係の宣言だけ。**ここで解いて、座標も SVG もこちらが作る。
-    // 解けない図(定義していない点・平行な2直線の交点・実際と合わない長さのラベル)は
-    // **描かずに落とす** — そこを通すと「それらしく見えて中身が違う図」が生徒に届く。
-    // 落ちた理由はそのまま直しの指示になるので、既存の作り直しの輪に乗せる。
+    // Senpai writes only the relations; we solve them and produce coordinates and
+    // SVG here. Unsolvable figures (an undefined point, the intersection of two
+    // parallel lines, a length label that does not match) are rejected rather
+    // than drawn — letting them through delivers a plausible-looking figure whose
+    // contents are wrong. The reason doubles as the repair instruction, so it
+    // joins the existing redo loop.
     const drawn = drawFigure(board.items);
     if (!drawn.ok) {
       return {
@@ -415,7 +425,7 @@ export function validateStep(
       };
     }
     if (drawn.svg.length > boardFigureSvgMaxLength) {
-      // 描けはしたが、板書に載せるには濃すぎる。図を分けさせる。
+      // Drawable, but too dense for the board; have the figure split.
       return {
         ok: false,
         rejection: {
@@ -441,10 +451,11 @@ export function validateStep(
 }
 
 /**
- * 図の読み上げ文。**SVGは読み上げられない**ので、こちらで一言にする。
+ * The narration for a figure. SVG cannot be read aloud, so we produce one
+ * sentence here.
  *
- * 作図の宣言はこちらが持っているので、`Semantics` に載せる文言は自前で書ける
- * (wireframe D-13c で「読み上げは問題にならない」と判断した根拠がこれ)。
+ * We hold the construction declaration, so the wording for `Semantics` can be
+ * written on this side — the basis for judging narration a solved problem.
  */
 function describeFigure(
   items: readonly Record<string, unknown>[],
@@ -481,7 +492,7 @@ function describeFigure(
   return `${body}${points}`.slice(0, boardFigureAltMaxLength);
 }
 
-/** 図が解けなかったときの指示。**理由をそのまま渡す** — 先輩は自分の間違いを読めないと直せない。 */
+/** Instruction when a figure could not be solved; the reason passes straight through, since senpai cannot fix what it cannot read. */
 const figureGuidanceByLocale: Record<CurriculumLocale, (errors: readonly string[]) => string> = {
   ja: (errors) =>
     [
@@ -503,21 +514,22 @@ const figureTooLargeGuidanceByLocale: Record<CurriculumLocale, string> = {
 };
 
 /**
- * 見出しが範囲外だった理由。手順の {@link BoardStepRejection} と同じ形で持つ。
+ * Why a heading was out of scope, in the same shape as a step's
+ * {@link BoardStepRejection}.
  */
 export type BoardHeadRejection = {
   reason: "topic_not_allowed";
-  /** 外れた `topic_id`。**カリキュラムの閉じた語彙**なのでログに出してよい。 */
+  /** The offending `topic_id`. A closed curriculum vocabulary, so safe to log. */
   detail: string;
-  /** **会話の言語で書かれた再生成の指示。**そのままプロンプトに足せる。 */
+  /** The regeneration instruction, in the conversation's language; append as is. */
   guidance: string;
-  /** 落ちた見出しの生の値。直させるときの材料。 */
+  /** The raw rejected heading, as material for the repair. */
   raw: unknown;
 };
 
 export type HeadVerdict = { ok: true } | { ok: false; rejection: BoardHeadRejection };
 
-/** 範囲外の単元を教えようとしたときの指示。理由だけ渡すと同じIDが返ってくる。 */
+/** Instruction for an out-of-scope topic; a reason alone gets the same ID back. */
 const topicGuidanceByLocale: Record<CurriculumLocale, (outside: string) => string> = {
   ja: (outside) =>
     [
@@ -534,20 +546,21 @@ const topicGuidanceByLocale: Record<CurriculumLocale, (outside: string) => strin
 };
 
 /**
- * 見出しの `topic_ids` が、このセッションで教えてよい範囲に入っているか。
+ * Whether the heading's `topic_ids` fall within what this session may teach.
  *
- * **ここが無いと、板書だけがガードレールの片翼になる。**
- * README は「サーバ側で出力の `topic_id` をホワイトリスト照合して、外れたものは
- * 再生成させる」= 二重のガードレールと書いていて、カルテ側には
- * `filterHoleTopicIds` がある。契約の `topicIdSchema` は**書式しか見ない**ので、
- * `M9-ARIENAI-TANGEN` のような**形だけ正しい別単元**は素通りしてしまう。
+ * Without this, the board is only half the guardrail. The README describes
+ * whitelisting output `topic_id`s server-side and regenerating what falls
+ * outside — a double guardrail — and the karte side has `filterHoleTopicIds`.
+ * The contract's `topicIdSchema` checks only the format, so a well-formed ID for
+ * a different topic passes straight through.
  *
- * 計画書 §8 は topic_id 照合を「**教える範囲の妥当性**」チェックに転用すると
- * 書いていて、板書こそがその対象。ピボット後にガードレールが向くべき先が、
- * いちばん無防備だった。
+ * The plan repurposes topic_id matching as a check on the validity of what is
+ * being taught, and the board is exactly that. After the pivot, the thing the
+ * guardrail should point at was the least protected.
  *
- * **見出しの時点で見る。**手順を1つも送る前なので、弾いても画面には何も出ていない。
- * 手順を送り始めてからでは、消せないものが既に生徒の画面に載っている。
+ * It is checked at the heading, before a single step is sent, so a rejection
+ * leaves nothing on screen. Once steps are going out, something unerasable is
+ * already in front of the student.
  */
 export function validateHead(
   raw: unknown,
@@ -555,8 +568,8 @@ export function validateHead(
   locale: CurriculumLocale,
 ): HeadVerdict {
   const topicIds = (raw as { topic_ids?: unknown } | null)?.topic_ids;
-  // 形が違うものはここでは弾かない。封筒スキーマ(`boardOpenMessageSchema`)が
-  // 見るので、二重に判定して食い違わせない。
+  // Malformed values are not rejected here: the envelope schema
+  // (`boardOpenMessageSchema`) checks them, and judging twice risks disagreement.
   if (!Array.isArray(topicIds)) return { ok: true };
 
   const outside = topicIds.filter(
@@ -580,33 +593,36 @@ export type BoardChannelOptions = {
   locale: CurriculumLocale;
   sink: BoardSink;
   /**
-   * このセッションで教えてよい単元。**見出しの照合に使う**({@link validateHead})。
+   * Topics this session may teach, used to match the heading
+   * ({@link validateHead}).
    *
-   * `backend/api` が既に前提2段ぶん(`conversationPrerequisiteDepth`)を含めて
-   * 載せてくるので、ここで**さらに広げない**(`karte.ts` が
-   * `prerequisiteDepth: 0` で組むのと同じ理由)。
+   * `backend/api` already includes two levels of prerequisites
+   * (`conversationPrerequisiteDepth`), so it is not widened again here (the same
+   * reason `karte.ts` builds with `prerequisiteDepth: 0`).
    *
-   * 省略すると照合しない。テストと、範囲が取れない経路のための逃げ道。
+   * Omitting it skips the match — an escape for tests and paths where the scope
+   * is unavailable.
    */
   allowedTopicIds?: readonly string[];
   /**
-   * `board_id` の発行。テストから固定値を入れられるようにしてある。
+   * Mints the `board_id`, so tests can inject a fixed value.
    *
-   * 既定はUUID。契約は `z.string().min(1)` しか要求していない(形は契約ではない)。
-   * fixtureが `brd_01J8Z9...` というULID風なのは、`backend/api` の `newId()` で
-   * 作られたIDの見本だから — あれは別パッケージで、agent からは import できない。
-   * 時系列に並ぶIDが欲しくなったら、ここに関数を渡せばよい。
+   * The default is a UUID; the contract only requires `z.string().min(1)`, so the
+   * format is not part of it. The fixtures' ULID-like `brd_01J8Z9...` is a sample
+   * from `backend/api`'s `newId()`, which lives in another package the agent
+   * cannot import. Pass a function here if time-ordered IDs are wanted.
    */
   newBoardId?: () => string;
   log?: Pick<JobLogger, "info" | "warn">;
 };
 
-/** 締め方。契約のenumから引く(こちらで書き写すと、増えたときにずれる)。 */
+/** How it closes, taken from the contract enum; copying it here would drift. */
 export type BoardCloseReason = Extract<BoardChannelMessage, { type: "board_close" }>["reason"];
 
 /**
- * 封筒の中身から、チャネルが埋める部分(`v` / `session_id` / `seq`)を除いたもの。
- * **`seq` を呼び出し側に書かせない**ための形 — 連番はチャネルだけが持つ。
+ * An envelope body minus the parts the channel fills in (`v`, `session_id`,
+ * `seq`). The shape exists so callers cannot write `seq` — the running number
+ * belongs to the channel alone.
  */
 type BoardEnvelopeBody =
   | { type: "board_open"; board_id: string; title: string; topic_ids: string[] }
@@ -614,100 +630,108 @@ type BoardEnvelopeBody =
   | { type: "board_close"; board_id: string; step_count: number; reason: BoardCloseReason };
 
 export type AppendBoardOptions = {
-  /** LLMの出力。チャンクの切れ目はどこでもよい(文字列の中・エスケープの中でも壊れない)。 */
+  /** The LLM's output; chunks may split anywhere, even inside a string or escape. */
   chunks: AsyncIterable<string>;
   /**
-   * ユーザーの割り込み。**abort したらこの回の説明を途中でやめる**(§3-2 案Aの利点そのもの)。
-   * チャンク待ちの最中でも効くよう、`next()` と競走させている —
-   * ポーリングだけだと、LLMが黙り込んだときに止めそこねる。
+   * The user's interruption. Aborting stops this explanation partway — the point
+   * of streaming. It races `next()` so it works while awaiting a chunk; polling
+   * alone would miss it whenever the LLM goes quiet.
    *
-   * **板書は閉じない。**割り込みは「いま質問がある」であって「この問題は終わり」ではない。
-   * ここで閉じると、割り込みに答えたあと同じ問題を続けるときに板書を開き直すことになり、
-   * 生徒が読んでいる板書が消える。閉じるのは呼び出し側が {@link BoardDelivery.close} を
-   * 呼んだとき(= 問題が終わったとき)だけ。
+   * The board is not closed. An interruption means "I have a question now", not
+   * "this problem is over". Closing here would reopen the board when the same
+   * problem resumes, erasing what the student is reading. Only the caller's
+   * {@link BoardDelivery.close} closes it, when the problem ends.
    */
   signal?: AbortSignal;
   /**
-   * 手順を1つ送り終えた直後に呼ぶ。**板書 → 音声の順**(§3-2)を守るための穴で、
-   * 呼び出し側はここで `step.speech` をTTSへ渡す。
+   * Called right after one step is sent. It is the hook that keeps board before
+   * voice, and callers hand `step.speech` to TTS here.
    *
-   * **返すまで次の手順は送らない。**ここに何を待たせるかが、そのまま
-   * 同期の粒度になる:
+   * The next step is not sent until it returns, so what is awaited here becomes
+   * the synchronization granularity:
    *
-   *   - TTSへ渡して即座に返す → 板書が音声を追い越して積まれる。
-   *     再生成の待ちはこのリードに吸収されるが、§3-2 の「同期の粒度は手順」は緩む。
-   *   - 読み上げ終わりまで待つ → 手順単位の同期は保たれる。ただし
-   *     **再生成の往復は音声の空白としてそのまま出る**(上の設計判断の2)。
+   *   - hand to TTS and return at once -> the board runs ahead of the voice.
+   *     Regeneration waits are absorbed by that lead, but step-level
+   *     synchronization loosens.
+   *   - wait until speech finishes -> step-level synchronization holds, but a
+   *     regeneration round trip surfaces as silence (see design decision 2).
    *
-   * どちらを採るかはまだ決めていない。W1のドッグフーディングで、
-   * 板書が音声より何行先に出ていると読みにくいかを見てから決める値。
+   * Which to take is undecided; it is a value to set after dogfooding shows how
+   * many lines ahead of the voice the board can run before it becomes hard to
+   * read.
    */
   onStep?: (step: BoardStep) => void | Promise<void>;
   /**
-   * 手順を1つ出し終えた時点で、**そこで説明を打ち切るか**を決める。
+   * Decides, after each step, whether the explanation stops there.
    *
-   * 板書プロンプトは「質問を出したら、その板書はそこで終える。`steps` を続けないで
-   * ください。答えを聞く前に次の手順を書くのは、**自分で答えを埋めて先に進む**ことで、
-   * 申告させるより悪い」と書いているが、**それを守らせる仕組みが配送側に無かった。**
-   * 守れなかった出力は、問いかけを含む12手順を一息で読み上げる — 生徒から見ると
-   * 先輩が**自分の質問に自分で答えながら喋り続ける**(2026-08-12 の「ターン制を
-   * 守り切れていない」報告)。
+   * The board prompt says to end the board once a question is asked and not to
+   * continue `steps`, because writing the next step before hearing the answer is
+   * filling in your own answer and moving on — worse than asking them to
+   * self-report. Nothing in the delivery layer enforced it, so an output that
+   * ignored it read twelve steps including the question in one breath: senpai
+   * answering their own question while talking on (the "turn taking is not being
+   * held" report of 2026-08-12).
    *
-   * 打ち切りは `interrupted` ではなく **`completed`**。生徒が割り込んだのではなく、
-   * 先輩が**予定どおり番を渡した**ので、この回の説明はそこで完結している。
+   * Stopping is `completed`, not `interrupted`: the student did not interrupt,
+   * senpai handed over the turn as planned, so this explanation is complete.
    *
-   * **何を「番の受け渡し」と見るかはここでは決めない。**判定は会話の言語の問題で、
-   * この層は言語を知らない(`senpai.ts` の `handsTurnToStudent` が持つ)。
+   * What counts as handing over the turn is not decided here — that is a language
+   * question and this layer knows no language (`handsTurnToStudent` in
+   * `senpai.ts` owns it).
    */
   stopAfter?: (step: BoardStep) => boolean;
   repair?: StepRepair;
   /**
-   * 範囲外の単元で板書を始めようとしたときに、見出しを作り直させる。
+   * Has the heading redone when a board would start on an out-of-scope topic.
    *
-   * **直らなくても板書は止めない。**縮退として記録して、そのまま進む
-   * (`append` の中の説明を参照)。`repair` と同じく、この層はLLM呼び出しを知らない。
+   * A failed repair does not stop the board: it is recorded as a degradation and
+   * proceeds (see the explanation inside `append`). As with `repair`, this layer
+   * knows nothing about the LLM call.
    */
   repairHead?: HeadRepair;
-  /** 1手順あたりの作り直し回数の上限。0にすると再生成しない。 */
+  /** Retry limit per step; 0 disables regeneration. */
   maxRepairAttempts?: number;
 };
 
 export type BoardAppendResult = {
   board_id: string;
-  /** `board_open` が済んでいるか。**済んでいなければ手順は1つも出ていない**。 */
+  /** Whether `board_open` was sent; if not, no step has gone out. */
   opened: boolean;
-  /** **この呼び出しで**ワイヤーへ出した手順数。 */
+  /** Steps this call put on the wire. */
   appended: number;
-  /** **板書1枚の合計**。`board_close.step_count` になる値。 */
+  /** The board's total, which becomes `board_close.step_count`. */
   step_count: number;
-  /** この呼び出しの終わり方。`error` でも板書は開いたまま(下の `closed` を見ること)。 */
+  /** How this call ended. Even on `error` the board stays open; see `closed`. */
   reason: BoardCloseReason;
-  /** 板書ごと閉じたか。**上限に達したときだけ true**。 */
+  /** Whether the board itself closed; true only on hitting the step limit. */
   closed: boolean;
-  /** 検証に落ちた手順(直って送れたものも含む)。プロンプト調整の材料。 */
+  /** Steps that failed validation, repaired ones included; prompt-tuning material. */
   rejections: BoardStepRejection[];
 };
 
-/** 割り込みの合図。`iterator.next()` と競走させるための番人。 */
+/** The abort marker, raced against `iterator.next()`. */
 const aborted = Symbol("aborted");
 
 /**
- * 1セッションぶんの板書チャネル。
+ * The board channel for one session.
  *
- * **`seq` はここが持つ**。契約上 `seq` は「セッション内の通し番号(0始まり・
- * 種別をまたいで1ずつ)」なので、板書を跨いで連番になる。板書ごとに
- * リセットすると、2枚目の `board_open` で受信側が「巻き戻った」と見る。
+ * `seq` lives here. By contract it is a running number within the session (from
+ * 0, incrementing across message kinds), so it continues across boards.
+ * Resetting it per board makes the receiver see the second `board_open` as a
+ * rewind.
  *
- * **板書1枚の寿命は {@link BoardDelivery} が持つ。**チャネルは
- * 「どの部屋へ、何番目に送るか」だけを知っていて、「いま何を教えているか」は知らない。
+ * A single board's lifetime belongs to {@link BoardDelivery}. The channel knows
+ * only which room to send to and in what order, never what is being taught.
  */
 export class BoardChannel {
-  // コンストラクタ引数への修飾子は使わない(`node --experimental-strip-types`・ADR 0002)。
+  // No parameter properties on the constructor (`node --experimental-strip-types`,
+  // ADR 0002).
   private readonly sessionId: string;
   private readonly locale: CurriculumLocale;
   /**
-   * 授業の教科。**許可トピックの接頭辞から決まる**(ADR 0007)ので、
-   * 呼び出し側が別に持たなくてよい。数学しか無かった頃と同じ既定は `math`。
+   * The lesson's subject. It follows from the allowed topics' prefix (ADR 0007),
+   * so callers need not track it separately. The default is `math`, as when that
+   * was the only subject.
    */
   private readonly subject: CurriculumSubject;
   private readonly sink: BoardSink;
@@ -724,7 +748,7 @@ export class BoardChannel {
         ? undefined
         : subjectOfTopicId(options.allowedTopicIds[0])) ?? "math";
     this.sink = options.sink;
-    // 前提はAPI側で入っているので、ここでは広げない(depth 0)。
+    // Prerequisites are already included by the API, so no widening here (depth 0).
     this.allowedTopics =
       options.allowedTopicIds === undefined
         ? undefined
@@ -733,17 +757,18 @@ export class BoardChannel {
     this.log = options.log;
   }
 
-  /** 次に送る封筒の `seq`(テストと検算用)。 */
+  /** The `seq` of the next envelope, for tests and cross-checking. */
   get nextSeq(): number {
     return this.seq;
   }
 
   /**
-   * 板書を1枚はじめる。**単位は「1つの問題」であって「1回の説明」ではない。**
+   * Starts one board. The unit is one problem, not one explanation.
    *
-   * この時点ではまだ何も送らない。`board_open` は最初の {@link BoardDelivery.append} で、
-   * LLMが出した `title` / `topic_ids` を使って送る — 見出しは「何の問題か」なので、
-   * 問題を見ているLLMにしか書けない。
+   * Nothing is sent yet: `board_open` goes out from the first
+   * {@link BoardDelivery.append}, using the `title` / `topic_ids` the LLM
+   * produced — the heading says which problem it is, so only the LLM looking at
+   * the problem can write it.
    */
   startBoard(): BoardDelivery {
     return new BoardDelivery({
@@ -757,14 +782,15 @@ export class BoardChannel {
   }
 
   /**
-   * 封筒を1つ送る。`v` / `session_id` / `seq` はここで埋める。
+   * Sends one envelope, filling in `v`, `session_id` and `seq`.
    *
-   * **送る直前に封筒スキーマで自分を検算する。**配送層のバグ(`seq` の付け間違い・
-   * 板書IDの取り違え)は、トランスポートからは正常に見えるので、
-   * ここで落とさないと誰も気づかない。
+   * It validates itself against the envelope schema immediately before sending.
+   * Delivery-layer bugs (a mis-assigned `seq`, the wrong board ID) look fine to
+   * the transport, so nothing catches them unless they are caught here.
    *
-   * `seq` を進めるのは **送れたあと**。失敗した封筒でも番号を消費すると、
-   * 受信側からは「1つ欠けた板書」に見えて、次の手順まで巻き添えにする。
+   * `seq` advances only after a successful send. Consuming a number on a failed
+   * envelope makes the receiver see a board with one message missing and takes
+   * the following steps down with it.
    */
   private async sendEnvelope(body: BoardEnvelopeBody): Promise<void> {
     const validated = boardChannelMessageSchema.parse({
@@ -781,7 +807,7 @@ export class BoardChannel {
 type BoardDeliveryOptions = {
   boardId: string;
   locale: CurriculumLocale;
-  /** 授業の教科。省略すると数学(それしか無かった頃と同じ挙動)。 */
+  /** The lesson's subject; omitted, it is maths, as when that was the only one. */
   subject?: CurriculumSubject;
   allowedTopics: AllowedTopics | undefined;
   log: Pick<JobLogger, "info" | "warn"> | undefined;
@@ -789,24 +815,27 @@ type BoardDeliveryOptions = {
 };
 
 /**
- * 板書1枚 = **1つの問題**。
+ * One board = one problem.
  *
- * ライフサイクルは `append()` × n → `close(reason)`。
- * `board_open` は最初の `append()` が1回だけ送り、以降の説明は同じ `board_id` に積む。
+ * Its lifecycle is `append()` x n, then `close(reason)`. `board_open` is sent
+ * once by the first `append()`, and later explanations stack on the same
+ * `board_id`.
  *
- * **`append()` は板書を閉じない。**1回の説明が割り込まれても、検証で落ちても、
- * 板書は開いたままで次の説明を待つ。これは §3-2 の「前の行は消さない。消えるのは
- * 別の問題に移るときだけ」を、**配送層の失敗まで含めて**守るため —
- * 説明が1回失敗しただけで閉じると、次の説明で板書を開き直すことになり、
- * 生徒が読んでいた式が「生徒には理由の分からないタイミングで」消える。
+ * `append()` never closes the board. Whether an explanation is interrupted or
+ * fails validation, the board stays open awaiting the next one. That is how
+ * "earlier lines are never erased; only moving to another problem clears them"
+ * survives delivery-layer failures: closing after one failed explanation would
+ * mean reopening for the next, and the formula the student was reading would
+ * vanish at a moment they cannot account for.
  *
- * 例外は**上限に達したとき**だけ。それ以上1手順も積めない板書を開けておくと、
- * 呼び出し側は黒い穴に向かってLLMを呼び続ける。そこは閉じて止める。
+ * The one exception is hitting the step limit. Leaving open a board that cannot
+ * take another step has the caller calling the LLM into a black hole, so that
+ * one closes and stops.
  */
 export class BoardDelivery {
   private readonly boardId: string;
   private readonly locale: CurriculumLocale;
-  /** その授業の教科。板書に使ってよい要素を決める。 */
+  /** The lesson's subject, deciding which board elements may be used. */
   private readonly subject: CurriculumSubject;
   private readonly allowedTopics: AllowedTopics | undefined;
   private readonly log: Pick<JobLogger, "info" | "warn"> | undefined;
@@ -814,7 +843,7 @@ export class BoardDelivery {
 
   private opened = false;
   private closed = false;
-  /** 板書1枚で送った手順数。**ワイヤーの `index` はこの値**(LLMの申告ではない)。 */
+  /** Steps sent on this board; the wire `index` is this, not the LLM's claim. */
   private sent = 0;
 
   constructor(options: BoardDeliveryOptions) {
@@ -830,33 +859,34 @@ export class BoardDelivery {
     return this.boardId;
   }
 
-  /** 板書1枚で送った手順数。次に積む手順の `index` でもある。 */
+  /** Steps sent on this board, which is also the next step's `index`. */
   get stepCount(): number {
     return this.sent;
   }
 
   /**
-   * `board_open` を送り、まだ締めていない状態。
+   * `board_open` sent and not yet closed.
    *
-   * **「まだ積めるか」を聞きたいときはこれではなく {@link isClosed} を見ること。**
-   * 板書を始めた直後は `board_open` をまだ送っていない(見出しはLLMの最初の出力から取る)ので、
-   * `isOpen` は false のまま — それでも `append()` は当然できる。
+   * To ask whether more can be appended, read {@link isClosed} instead. Right
+   * after starting a board, `board_open` has not gone out (the heading comes from
+   * the LLM's first output), so `isOpen` is false — and `append()` still works
+   * perfectly well.
    */
   get isOpen(): boolean {
     return this.opened && !this.closed;
   }
 
-  /** 締めたあと。**ここが true なら `append()` は1件もワイヤーに出さない。** */
+  /** After closing. While true, `append()` puts nothing on the wire. */
   get isClosed(): boolean {
     return this.closed;
   }
 
   /**
-   * 1回ぶんの説明を、同じ板書に積む。
+   * Appends one explanation to the same board.
    *
-   * ストリームを食べながら、手順が閉じた端から送る(§3-2 案A)。
-   * 最初の呼び出しだけ `board_open` を出し、2回目以降はLLMが付けてくる
-   * `title` / `topic_ids` を**捨てる** — そこで開き直すと板書が消える。
+   * It consumes the stream and sends each step as it closes. Only the first call
+   * emits `board_open`; later calls discard the `title` / `topic_ids` the LLM
+   * attaches, because reopening there would erase the board.
    */
   async append(options: AppendBoardOptions): Promise<BoardAppendResult> {
     const {
@@ -873,28 +903,30 @@ export class BoardDelivery {
     const before = this.sent;
     let reason: BoardCloseReason = "completed";
     /**
-     * {@link AppendBoardOptions.stopAfter} で自分から降りたか。
+     * Whether we stepped down deliberately via
+     * {@link AppendBoardOptions.stopAfter}.
      *
-     * **途中で切れた出力(`board_stream_truncated`)と区別する**ために要る。
-     * こちらは残りを**読まないと決めた**だけで、壊れてはいない。
+     * Needed to distinguish this from truncated output
+     * (`board_stream_truncated`): here we chose not to read the rest, and nothing
+     * is broken.
      */
     let handedOver = false;
 
     if (this.closed) {
-      // 上限で閉じた板書に積もうとした。呼び出し側は知らずに呼びうるので、
-      // 例外にせず「積めなかった」と返す(会話は音声で続けられる)。
+      // Appending to a board closed at the limit. Callers may not know, so this
+      // returns "could not append" rather than throwing (voice carries on).
       this.log?.warn("board_append_after_close", { board_id: this.boardId, step_count: this.sent });
       return this.result({ reason: "error", before, rejections });
     }
 
     const parser = new BoardLessonStreamParser();
-    /** ヘッダ(title / topic_ids)より先に閉じた手順の待避所。 */
+    /** Holding area for steps that closed before the heading arrived. */
     const pending: unknown[] = [];
-    /** **この呼び出しの中での**位置。LLMの申告と突き合わせるのはこちら。 */
+    /** Position within this call; this is what the LLM's claim is compared to. */
     let position = 0;
     /**
-     * 見出し。**受け取っても、すぐには `board_open` を送らない**(下の `openIfNeeded`)。
-     * 送るのは最初の手順が検証を通ってから。
+     * The heading. Receiving it does not send `board_open` (see `openIfNeeded`);
+     * that waits until the first step passes validation.
      */
     let head: { title: unknown; topic_ids: unknown } | null = null;
 
@@ -911,7 +943,7 @@ export class BoardDelivery {
 
         for (const event of parser.feed(next.value)) {
           if (event.type === "lesson_head") {
-            // 2回目以降の見出しは捨てる。**ここで開き直すと板書が消える。**
+            // Later headings are discarded; reopening here would erase the board.
             if (this.opened) {
               this.log?.info("board_head_ignored", {
                 board_id: this.boardId,
@@ -929,7 +961,7 @@ export class BoardDelivery {
           pending.push(event.raw);
         }
 
-        // 見出しが来るまでは手順を出せない(`board_open` が先に要る)。
+        // No step can go out before the heading (`board_open` comes first).
         if (head === null && !this.opened) continue;
 
         while (pending.length > 0) {
@@ -938,8 +970,9 @@ export class BoardDelivery {
             break consume;
           }
 
-          // 板書1枚の上限。ここに達したら**板書ごと閉じる**(下の finally 後の処理)。
-          // これ以上1手順も積めないので、開けておくと呼び出し側が黒い穴にLLMを呼び続ける。
+          // The per-board limit. Reaching it closes the board (handled after the
+          // finally below): nothing more can be appended, and leaving it open has
+          // the caller calling the LLM into a black hole.
           if (this.sent >= boardStepsMaxCount) {
             this.log?.warn("board_steps_overflow", {
               board_id: this.boardId,
@@ -949,9 +982,10 @@ export class BoardDelivery {
             break consume;
           }
 
-          // 1回の出力の上限。**「1行ずつだが40行」で答案を丸ごと流し込む抜け道**
-          // (contract の `boardLessonStepsMaxCount`)を、送る前に閉じる。
-          // 板書は閉じない — 次の説明はまだこの板書に積める。
+          // The per-output limit, closing the loophole of streaming a whole worked
+          // answer as "one line at a time, but forty lines"
+          // (`boardLessonStepsMaxCount` in the contract) before it is sent. The
+          // board is not closed; the next explanation can still append to it.
           if (position >= boardLessonStepsMaxCount) {
             this.log?.warn("board_lesson_overflow", {
               board_id: this.boardId,
@@ -972,8 +1006,8 @@ export class BoardDelivery {
           });
 
           if (!verdict.ok) {
-            // 直らなかった。**この回の説明だけをやめる。板書は開けたまま**にして、
-            // 次の説明を待つ(閉じると、次の説明で板書が消える)。
+            // Not repaired. Only this explanation stops; the board stays open
+            // awaiting the next one (closing would erase it next time).
             this.log?.warn("board_step_rejected", {
               board_id: this.boardId,
               index: verdict.rejection.index,
@@ -984,10 +1018,11 @@ export class BoardDelivery {
             break consume;
           }
 
-          // **手順が1つ確定してから板書を開く。**`board_open` は前の板書を消す信号なので、
-          // 中身が1行も無い出力(`steps: []`)や、最初の手順から検証に落ちる出力で
-          // これを送ると、**生徒が読んでいた板書を白紙にしただけで終わる**。
-          // 開くのを1手順ぶん遅らせるコストは見出しの表示が数百ms遅れることだけ。
+          // Open the board only once a step is settled. `board_open` is the signal
+          // that clears the previous board, so sending it for an output with no
+          // steps (`steps: []`), or one whose first step fails validation, would
+          // blank the board the student was reading and nothing else. Delaying by
+          // one step costs only a few hundred ms on the heading.
           await this.openIfNeeded(head);
 
           await this.send({
@@ -998,12 +1033,12 @@ export class BoardDelivery {
           this.sent += 1;
           position += 1;
 
-          // 板書を出してから喋る(§3-2)。ここで待つのは意図的で、
-          // 音声が板書を追い越すと「ここ、見て」が空の盤面を指すことになる。
+          // Board before voice. Awaiting here is deliberate: voice overtaking the
+          // board makes "look here" point at an empty surface.
           await onStep?.(verdict.step);
 
-          // 番を渡したら、そこで止める。**読み上げたあとに見る**のは、
-          // 問いかけそのものは生徒に届けきる必要があるから。
+          // Stop once the turn is handed over. It is checked after speaking
+          // because the question itself must reach the student in full.
           if (stopAfter?.(verdict.step) === true) {
             this.log?.info("board_turn_handed_over", {
               board_id: this.boardId,
@@ -1015,9 +1050,10 @@ export class BoardDelivery {
         }
       }
 
-      // ルートの `}` まで読めていない = 途中で切れた出力。送った手順は有効だが、
-      // 「1回ぶん全部送った」とは言えないので `completed` にはしない。
-      // **自分から降りた回は別**(残りを読まないと決めただけで、壊れていない)。
+      // The root `}` was never reached, so the output was truncated. The steps
+      // sent are valid, but this is not "the whole explanation was sent", so it is
+      // not `completed`. Deliberately stepping down is different: we chose not to
+      // read the rest and nothing is broken.
       if (reason === "completed" && !handedOver && !parser.completed) {
         this.log?.warn("board_stream_truncated", {
           board_id: this.boardId,
@@ -1026,11 +1062,11 @@ export class BoardDelivery {
         reason = "error";
       }
 
-      // 最後まで読めたのに1手順も積めなかった = 契約違反の出力。
-      // `boardLessonSchema` は `steps` を1件以上に縛っているので、
-      // 「読み切れたが空だった」は成功ではない。1件も送っていないぶん受信側には
-      // 何も起きないが、**成功として返してはいけない** —
-      // 呼び出し側が「板書は出た」と思って音声だけ進めてしまう。
+      // Read to the end but appended nothing: the output violated the contract.
+      // `boardLessonSchema` requires at least one entry in `steps`, so "read fully
+      // but empty" is not success. Nothing reaches the receiver either way, but
+      // returning success would have the caller believe a board went out and carry
+      // on in voice alone.
       if (reason === "completed" && this.sent === before) {
         this.log?.warn(head === null ? "board_head_missing" : "board_lesson_empty", {
           board_id: this.boardId,
@@ -1039,8 +1075,8 @@ export class BoardDelivery {
         reason = "error";
       }
     } catch (error) {
-      // 走査の破綻(`BoardStreamError`)・封筒の契約違反・送信の失敗。
-      // どれも「この回は待っても直らない」が、**板書そのものは生きている**。
+      // A parse failure (`BoardStreamError`), an envelope contract violation, or a
+      // send failure. None get better by waiting, and the board is still alive.
       reason = "error";
       this.log?.warn("board_append_failed", {
         board_id: this.boardId,
@@ -1051,12 +1087,13 @@ export class BoardDelivery {
       releaseIterator(iterator);
     }
 
-    // 上流を離す。番を渡して降りたときも同じ — 残りの手順は**読まないと決めた**ので、
-    // 接続を掴んだままだと、誰も聞かない板書の出力トークンを払い続ける
-    // (`lesson.ts` の `createAnthropicLessonClient` が HTTP ごと切る)。
+    // Release the upstream, handing over the turn included: we chose not to read
+    // the remaining steps, so holding the connection keeps paying for output
+    // tokens nobody will hear (`createAnthropicLessonClient` in `lesson.ts` drops
+    // the HTTP connection).
     if (reason === "interrupted" || handedOver) releaseIterator(iterator);
 
-    // 上限に達した板書だけは、ここで閉じる。
+    // Only a board at the step limit closes here.
     if (this.opened && !this.closed && this.sent >= boardStepsMaxCount) {
       await this.close("error");
     }
@@ -1065,18 +1102,18 @@ export class BoardDelivery {
   }
 
   /**
-   * まだ開いていなければ `board_open` を送る。**最初の手順が確定した時点で呼ぶ。**
+   * Sends `board_open` if not already open. Called once the first step settles.
    *
-   * 見出しを受け取った時点では送らない理由は、呼び出し元のコメントを参照
-   * (空の出力で生徒の板書を白紙にしないため)。
+   * For why it is not sent when the heading arrives, see the call site: an empty
+   * output must not blank the student's board.
    */
   private async openIfNeeded(head: { title: unknown; topic_ids: unknown } | null): Promise<void> {
     if (this.opened || head === null) return;
     await this.send({
       type: "board_open",
       board_id: this.boardId,
-      // 型は封筒スキーマが見る。LLMが変な値を入れたらここで落ちて、
-      // 板書は開かない(壊れた板書を開くよりよい)。
+      // The envelope schema checks the types. A bad value from the LLM fails here
+      // and the board does not open, which beats opening a broken one.
       title: head.title as string,
       topic_ids: head.topic_ids as string[],
     });
@@ -1085,17 +1122,17 @@ export class BoardDelivery {
   }
 
   /**
-   * 板書を締める。**問題が終わったときに呼ぶ**(1回の説明が終わったときではない)。
+   * Closes the board. Called when the problem ends, not when one explanation does.
    *
-   * `board_open` を送っていなければ何も送らない — 開いていない板書の `board_close` は
-   * 受信側が「未開封」として捨てるので、`seq` を無駄に進めるぶん害がある。
-   * 2回目以降の呼び出しは何もしない(締めの二重送信は受信側で契約違反になる)。
+   * If `board_open` was never sent, nothing is sent: the receiver discards a
+   * `board_close` for an unopened board, so it only wastes a `seq`. A second call
+   * does nothing (a duplicate close is a contract violation on the receiver).
    *
-   * **送れなかったときは閉じたことにしない。**受信側から見ると板書はまだ開いたままで、
-   * 次の問題の `board_open` を「前の板書が board_close されていません」で弾く —
-   * つまり1回の送信失敗で、**そのセッションの板書が以降ぜんぶ出なくなる**。
-   * 締められなかった事実を状態に残して、呼び出し側が締め直せるようにする
-   * (`send` は成功したときしか `seq` を進めないので、送り直しても番号は飛ばない)。
+   * A failed send does not count as closed. To the receiver the board is still
+   * open, and it rejects the next problem's `board_open` with "the previous board
+   * was not closed" — one failed send would stop every later board in the session
+   * from appearing. The failure is kept in state so the caller can close again
+   * (`send` advances `seq` only on success, so retrying skips no numbers).
    */
   async close(reason: BoardCloseReason): Promise<void> {
     if (this.closed) return;
@@ -1105,7 +1142,8 @@ export class BoardDelivery {
     }
 
     try {
-      // `step_count` は**板書1枚で実際に送った数**。末尾の欠落はこれでしか検知できない。
+      // `step_count` is what was actually sent for this board; it is the only way
+      // to detect a lost tail.
       await this.send({
         type: "board_close",
         board_id: this.boardId,
@@ -1139,14 +1177,17 @@ export class BoardDelivery {
   }
 
   /**
-   * 見出しを、必要なら直させながら確定させる。**弾いても板書は止めない。**
+   * Settles the heading, repairing it if needed. A rejection never stops the
+   * board.
    *
-   * 範囲外の単元で教え始めるのは、写真に無い話を教えることなので直させる。
-   * だが**直らなかったときに板書を殺してはいけない** — 生徒は15分の授業を
-   * 丸ごと失う。範囲が少しずれた板書のほうが、板書が出ないよりまし。
-   * だから最後は**元の見出しをそのまま返して進む**(縮退としてログに残す)。
+   * Starting on an out-of-scope topic means teaching something not in the photo,
+   * so it is repaired. But a failed repair must not kill the board — the student
+   * would lose a whole 15-minute lesson, and a slightly off-scope board beats no
+   * board. So it ultimately returns the original heading and proceeds, recording
+   * the degradation in the log.
    *
-   * 許可集合が渡されていなければ素通し(テストと、範囲が取れない経路)。
+   * With no allowed set it passes through (tests, and paths where the scope is
+   * unavailable).
    */
   private async settleHead(
     head: { title: unknown; topic_ids: unknown },
@@ -1164,7 +1205,8 @@ export class BoardDelivery {
 
       this.log?.warn("board_topics_rejected", {
         board_id: this.boardId,
-        // 外れたIDはカリキュラムの閉じた語彙。頻発するならプロンプト側を直す材料になる。
+        // Out-of-scope IDs come from a closed vocabulary; if frequent, they are
+        // material for fixing the prompt.
         reason: verdict.rejection.reason,
         detail: verdict.rejection.detail,
         attempt,
@@ -1185,14 +1227,14 @@ export class BoardDelivery {
   }
 
   /**
-   * 手順1つを、必要なら直させながら確定させる。
-   * **落ちた手順はここから外に出ない** — 呼び出し側は `ok` のものしか送らない。
+   * Settles one step, repairing it if needed. A failed step never leaves here —
+   * the caller only sends `ok` ones.
    */
   private async settleStep(input: {
     raw: unknown;
-    /** ワイヤーに出す `index`(板書1枚での通し番号)。 */
+    /** The `index` that goes on the wire (the running number within the board). */
     index: number;
-    /** この呼び出しの中での位置。LLMの申告と突き合わせるのはこちら。 */
+    /** Position within this call; this is what the LLM's claim is compared to. */
     position: number;
     repair: StepRepair | undefined;
     maxRepairAttempts: number;
@@ -1216,20 +1258,21 @@ export class BoardDelivery {
         if (repaired === null || repaired === undefined) return verdict;
         candidate = repaired;
       } catch {
-        // 直させる側が落ちたら、それ以上は粘らない(会話は音声で続けられる)。
+        // If the repairer itself fails, do not persist (voice carries on).
         return verdict;
       }
     }
   }
 
   /**
-   * LLMが数え間違えた事実だけを残す。
+   * Records only the fact that the LLM miscounted.
    *
-   * **突き合わせる相手は `position`(その出力の中での位置)であって、
-   * ワイヤーの `index` ではない。**LLMは自分が何回目の呼び出しかを知らないので、
-   * 2回目の説明では必ず0から数え直してくる — それは正しい振る舞いで、
-   * ワイヤーの通し番号とずれているのは当たり前。ここでワイヤー側と比べると、
-   * **2回目以降の全手順に警告が出て、本物の数え間違いが埋もれる。**
+   * It is compared against `position` (the place within that output), never the
+   * wire `index`. The LLM does not know which call it is on, so on the second
+   * explanation it always counts from 0 — which is correct behaviour, and being
+   * out of step with the wire's running number is expected. Comparing against the
+   * wire here would warn on every step from the second explanation on and bury
+   * real miscounts.
    */
   private warnIfIndexMoved(raw: unknown, position: number, index: number): void {
     if (typeof raw !== "object" || raw === null) return;
@@ -1241,31 +1284,34 @@ export class BoardDelivery {
 }
 
 /**
- * 作り直しの既定回数。**1回**。
+ * The default repair count: one.
  *
- * はじめ2回にしていたが、1手順の音声が**2〜5秒**(上の実測)と分かった時点で
- * 割に合わなくなった。訂正後の数字から導くとこうなる:
+ * It was two until one step's audio turned out to be 2-5 seconds (measured
+ * above), which stopped paying:
  *
- *   - 再生成1回(数秒)は、体感で**手順1つぶんの間**にあたる。息継ぎに聞こえる範囲。
- *   - 2回だと手順1つを丸ごと超える沈黙になる。この長さは、このアプリでは既に
- *     一度バグとして扱われている領域(`closingGraceMs = 2500` は「切れて聞こえない」ための
- *     **最小の**余白で、2.5秒が黙って許される長さではないことの裏返し)。
- *   - そして**2回目に渡す材料は1回目と同じ**。`latexRejectionGuidanceByLocale` は
- *     理由ごとに固定の文面で、行き先まで書いてある(「`text` の板書として送れ」)。
- *     1回目で直らなかったのは、その指示が効かない書き方をしているということで、
- *     同じ指示をもう一度渡しても同じ失敗の族に落ちる。**新しい情報のない再試行に、
- *     手順1つぶんの沈黙を払う理由がない。**
+ *   - one regeneration (a few seconds) feels like the space of one step, within
+ *     the range that reads as a breath
+ *   - two exceeds a whole step's worth of silence, a length this app has already
+ *     treated as a bug (`closingGraceMs = 2500` is the minimum padding for "it
+ *     did not sound cut off", the inverse of 2.5 seconds passing unnoticed)
+ *   - and the second attempt gets the same material as the first.
+ *     `latexRejectionGuidanceByLocale` is fixed wording per reason, right down to
+ *     where the content should go ("send it as a `text` board"). Failing the
+ *     first time means the phrasing does not respond to that instruction, and
+ *     repeating it lands in the same family of failures. There is no reason to
+ *     pay a step's worth of silence for a retry carrying no new information.
  *
- * 呼び出し側は `maxRepairAttempts` で上書きできる。指示文が枝分かれして
- * 「2回目は別の言い方をする」形になったら、そのときは2回に戻す価値が出る。
+ * Callers can override with `maxRepairAttempts`. If the instructions ever branch
+ * so the second attempt says something different, two becomes worth restoring.
  */
 export const defaultMaxRepairAttempts = 1;
 
 /**
- * 次のチャンクか、割り込みか、早く来たほうを返す。
+ * Returns whichever arrives first: the next chunk or an abort.
  *
- * `for await` のポーリングにしないのは、**LLMが黙り込んだときに割り込みを取りこぼす**から。
- * 割り込みは「次のチャンクが来たら気づく」では遅い — 生徒はもう喋っている。
+ * Not `for await` polling, because that misses an interruption whenever the LLM
+ * goes quiet. Noticing an interruption "when the next chunk arrives" is too
+ * late — the student is already talking.
  */
 async function nextOrAbort(
   iterator: AsyncIterator<string>,
@@ -1280,8 +1326,9 @@ async function nextOrAbort(
     signal.addEventListener("abort", onAbort, { once: true });
   });
 
-  // 割り込みが勝つと、この next() は誰も待たないまま残る。
-  // あとで落ちると unhandled rejection でプロセスごと落ちるので、先に手当てする。
+  // If the abort wins, this next() is left with nobody awaiting it. Failing later
+  // would take the process down as an unhandled rejection, so it is handled up
+  // front.
   const next = iterator.next();
   next.catch(() => undefined);
 
@@ -1293,13 +1340,14 @@ async function nextOrAbort(
 }
 
 /**
- * 上流(LLMのストリーム)を離す。
+ * Releases the upstream (the LLM's stream).
  *
- * **待たない。**割り込みで抜けるとき、上流は `await` の途中で止まっていることがあり、
- * その状態の async generator に `return()` を投げても**その await が解けるまで返ってこない**
- * (LLMが黙り込んだままなら永久に返らない)。ここで待つと、割り込みの目的である
- * `board_close` が送れなくなる — 生徒はもう喋っているのに板書が締まらない。
- * 後片付けは best effort に留める。
+ * It does not wait. When leaving on an interruption the upstream may be parked
+ * mid-`await`, and calling `return()` on an async generator in that state does
+ * not come back until that await resolves — never, if the LLM stays quiet.
+ * Waiting here would stop `board_close` being sent, the very point of the
+ * interruption: the student is already talking and the board never closes.
+ * Cleanup is best effort.
  */
 function releaseIterator(iterator: AsyncIterator<string>): void {
   iterator.return?.().catch(() => undefined);

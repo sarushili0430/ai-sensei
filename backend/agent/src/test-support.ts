@@ -5,9 +5,10 @@ import { type PlanSessionMetadata, type SessionMetadata, fixturePath } from "@ai
 const repoRoot = resolve(import.meta.dirname, "..", "..", "..");
 
 /**
- * APIとagentの境界テストに使う正本。
- * 手書きの有効JSONを各テストに持つと契約変更後も旧フィールドのまま通りうるため、
- * contractのfixtureを土台にし、各テストで意味のある差分だけを上書きする。
+ * The source of truth for API/agent boundary tests.
+ * Hand-written valid JSON in every test can keep passing with stale fields after
+ * a contract change, so build on the contract's fixture and override only the
+ * differences that matter per test.
  */
 export const sessionMetadataFixture = JSON.parse(
   readFileSync(resolve(repoRoot, fixturePath("session-metadata")), "utf8"),

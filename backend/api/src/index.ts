@@ -8,16 +8,15 @@ import {
 } from "./lib/observability.ts";
 
 /**
- * ワーカーの入口。
+ * The worker's entry point.
  *
- * 監視の配線はここだけで行う。`app.ts` は素のHonoのままにしておく
- * (テストがSentryを引き込まないように)。**DSNが無ければ何も送らない**ので、
- * ローカルとCIは設定なしで動く。
+ * Monitoring is wired only here; `app.ts` stays plain Hono (so tests do not pull
+ * in Sentry). Nothing is sent without a DSN, so local and CI work unconfigured.
  *
- * 送るのは2種類。**同じ棚に置かない**(計画書 §10-7):
+ * Two kinds are sent, and they must not share a shelf (plan §10-7):
  *
- *   - クラッシュ … `log.error()` → `captureException`
- *   - **縮退**   … `log.warn()` → `captureMessage(level: "warning")`
+ *   - crash       ... `log.error()` -> `captureException`
+ *   - degradation ... `log.warn()`  -> `captureMessage(level: "warning")`
  */
 const app = createApp();
 
@@ -29,7 +28,7 @@ setDegradationReporter(
   createDegradationReporter((event, fields) => {
     captureMessage(event, {
       level: "warning",
-      // 種類ごとに絞れるようにする(agent・モバイルと同じタグ名で揃える)。
+      // Lets us filter by kind (same tag name as the agent and mobile).
       tags: { degradation: event },
       extra: fields,
     });
@@ -41,34 +40,35 @@ export default withSentry(
     dsn: env.SENTRY_DSN,
     enabled: Boolean(env.SENTRY_DSN),
     environment: env.ENVIRONMENT ?? "unknown",
-    // まずはエラーだけ。トレースは要るようになってから上げる
-    // (無料枠を性能計測で使い切ると、肝心のエラーが落ちる)。
+    // Errors only for now. Raise traces when they are actually needed (burning the
+    // free tier on performance data would drop the errors that matter).
     tracesSampleRate: 0,
-    // 写真・トランスクリプト・デバイスIDを送らない。
-    // 何が起きたかはスタックと構造化ログの trace_id で足りる。
+    // No photos, transcripts or device ids. The stack plus the structured logs'
+    // trace_id is enough to say what happened.
     sendDefaultPii: false,
 
     /**
-     * **`consoleIntegration` を外す。既定で入っている。**
+     * Drop `consoleIntegration`, which is on by default.
      *
-     * このワーカーは構造化ログを**全部 `console.log`** に書く(`observability.ts`)。
-     * 既定のままだと、その1行1JSONがそっくりパンくずになり、
-     * **エラーが1件起きるたびに直前のログがまとめてSentryへ運ばれる**。
-     * `[observability]` が拾うために出している行が、そのまま外へ出ていく形になる。
+     * This worker writes every structured log to `console.log`
+     * (`observability.ts`). Left at the default, each of those JSON lines becomes
+     * a breadcrumb, so every single error carries the preceding logs to Sentry -
+     * the very lines emitted for `[observability]` would go straight out.
      *
-     * モバイル側の `enablePrintBreadcrumbs`(既定 true)と同じ罠が、
-     * サーバ側では `consoleIntegration` という別の名前で待っていた。
+     * The same trap as mobile's `enablePrintBreadcrumbs` (default true), waiting
+     * on the server under a different name.
      */
     integrations: (defaults) => defaults.filter((integration) => integration.name !== "Console"),
 
     /**
-     * 最後の関門。上をすり抜けたものはここで落とす(モバイル側の `scrubEvent` と対)。
-     * **イベントごと捨てない** — 落とすのは中身だけ。
-     * `request` にはURLとヘッダが載る。本文は載らないが、監視に要らない。
+     * Last gate: whatever slipped past the above is dropped here (the twin of
+     * mobile's `scrubEvent`). Drop the contents, never the whole event.
+     * `request` carries the URL and headers - no body, but monitoring does not
+     * need it.
      */
     beforeSend: (event) => {
       event.breadcrumbs = [];
-      // biome-ignore lint/performance/noDelete: SDKの型では省略可能な欄なので消して送らない
+      // biome-ignore lint/performance/noDelete: optional in the SDK types, so delete rather than send
       delete event.request;
       return event;
     },

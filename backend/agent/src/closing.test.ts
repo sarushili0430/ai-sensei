@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { isClosingUtterance } from "./closing.ts";
 
-// レビュー指摘: 締めを検出しないと、うまく終わった会話も上限時間まで
-// 部屋が空回りし、ended_reason に completed が一度も立たない
+// From review: without closing detection, a well-finished conversation idles
+// until the cap and ended_reason never becomes completed
 describe("isClosingUtterance", () => {
   it.each([
     "今日はここまでにしよっか。詰め込みすぎても入らないから",
@@ -33,8 +33,8 @@ describe("isClosingUtterance", () => {
     expect(isClosingUtterance(text)).toBe(false);
   });
 
-  // レビュー指摘: 「ここまで」は説明の区切りにも使う。ここを締めと取り違えると
-  // 授業の途中で部屋が閉じる — 検出できないより悪い
+  // From review: "ここまで" also marks the end of an explanation. Mistaking it for a
+  // close shuts the room mid-lesson - worse than not detecting it at all
   it.each([
     "説明はここまでかな?じゃあ次は円の方程式ね",
     "この説明はここまでにしとこっか。つぎは問題を解いてみよう",

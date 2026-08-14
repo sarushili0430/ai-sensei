@@ -32,7 +32,7 @@ type InspectOptions = {
   locale: "ja" | "en";
   today: string;
   currentPlan: StudyPlan | null;
-  /** 1回目は再生成、2回目は安全に落とせる項目だけ落としてテンプレへ縮退する。 */
+  /** First pass regenerates; second drops only safely droppable items and falls back to the template. */
   finalAttempt?: boolean;
 };
 
@@ -59,11 +59,12 @@ const guidance = {
 } as const;
 
 /**
- * 1ターンの構造・日付・範囲をまとめて検査する。
+ * Inspects one turn's structure, dates and scope together.
  *
- * contractだけではカリキュラムの中身と「今日」を知らない。ここで両方を重ね、
- * 1回目は再生成、2回目だけ安全に削れる生成物を削る。聞き取った範囲そのものは
- * 1件でも壊れていたら削らない — 狭い範囲へ黙って変えるとテスト範囲を欠落させるため。
+ * The contract alone knows neither the curriculum contents nor "today". Both are
+ * layered here: the first pass regenerates, only the second drops safely
+ * removable output. The scope we heard is never trimmed even if one entry is
+ * broken - silently narrowing it would drop part of the exam range.
  */
 export function inspectPlanTurn(raw: string, options: InspectOptions): PlanTurnInspection {
   let value: unknown;
@@ -196,7 +197,7 @@ function fallbackOrRepair(
   return { kind: "repair", guidance: repairGuidance, reason };
 }
 
-/** 壊れた割り当ての中から、テンプレに使ってよい聞き取り事実だけを拾う。 */
+/** From a broken assignment, keep only the heard facts that may feed the template. */
 function extractPlanFacts(value: unknown, currentPlan: StudyPlan | null): PlanFacts | null {
   if (!isRecord(value) || !isRecord(value["plan"])) return null;
   const rawPlan = value["plan"];
@@ -209,7 +210,8 @@ function extractPlanFacts(value: unknown, currentPlan: StudyPlan | null): PlanFa
   }
   if (revision.data === null) return null;
 
-  // 遅れ・前倒しで事実を書き換えたLLM出力は使わず、APIから来た前回の事実へ戻す。
+  // Never use LLM output that rewrote the facts to catch up or get ahead; fall
+  // back to the previous facts from the API.
   if (revision.data.reason !== "facts_changed") {
     return { intake: currentPlan.intake, revision: revision.data };
   }
@@ -218,9 +220,10 @@ function extractPlanFacts(value: unknown, currentPlan: StudyPlan | null): PlanFa
 }
 
 /**
- * LLMが割り当てを作れなかったときの定型テンプレ。
- * 聞き取った教材・範囲の外へ出ず、組み直しでは分量を軽くする。画面上の形は同じで、
- * `source: template` はcomplete body側にだけ載せて運用から縮退を観測できるようにする。
+ * Fixed template for when the LLM could not produce an assignment.
+ * Stays within the materials and scope we heard, and lightens the load on a redo.
+ * The on-screen shape is identical; `source: template` rides only on the
+ * complete body so the degradation is observable in operations.
  */
 export function buildTemplatePlan(input: {
   facts: PlanFacts;
@@ -233,7 +236,7 @@ export function buildTemplatePlan(input: {
   const material = intake.materials.length > 0 ? 0 : null;
 
   const days = dates.map((date, index) => {
-    // 4日ごとに休みを置く。休みを「抜けた日」ではなく計画の一部として明示する。
+    // A rest day every fourth day, stated as part of the plan rather than a gap.
     if ((index + 1) % 4 === 0) return { date, items: [] };
     const topicId = intake.scope.topic_ids[index % intake.scope.topic_ids.length]!;
     const topicName = findTopic(topicId)?.topic ?? intake.scope.said;

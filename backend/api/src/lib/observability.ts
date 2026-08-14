@@ -1,21 +1,21 @@
 /**
- * 何が起きたかを、あとから追えるようにする。
+ * Makes what happened traceable after the fact.
  *
- * Cloudflare Workers の Observability(`wrangler.toml` の `[observability]`)は
- * stdout をそのまま拾う。**1行1JSON**で書いておくと、ダッシュボードや
- * `wrangler tail` でフィールド単位に絞り込める("photo_analysis_failed だけ"
- * "この trace_id だけ")。人が読む用の文字列を混ぜると、そこで検索が切れる。
+ * Cloudflare Workers Observability (`[observability]` in `wrangler.toml`) picks
+ * up stdout as-is. One JSON per line lets the dashboard and `wrangler tail`
+ * filter by field ("only photo_analysis_failed", "only this trace_id"). Mixing
+ * in human-readable strings breaks that.
  *
- * 出すのは3種類だけにする。増やすと、どれを見ればいいのか分からなくなる。
+ * Only three kinds are emitted. More would make it unclear what to look at.
  *
- * | event                | いつ |
+ * | event                | when |
  * | -------------------- | --- |
- * | `http_request`       | 全リクエストに1行(結果と所要時間) |
- * | `<何か>_failed`      | 想定内の失敗(写真が読めない・通知の予約に失敗など) |
- * | `unhandled_error`    | 想定外。ユーザーには internal_error を返している |
+ * | `http_request`       | one line per request (result and duration) |
+ * | `<something>_failed` | expected failures (unreadable photo, failed notification booking) |
+ * | `unhandled_error`    | unexpected; the user got internal_error |
  *
- * 個人が特定できるものは載せない。デバイスIDは匿名だが端末をまたいで
- * 追える識別子なので、**先頭8文字だけ**にして相関に使えるだけに留める。
+ * Nothing personally identifying is logged. Device ids are anonymous but track
+ * across a device, so only the first 8 characters are kept - enough to correlate.
  */
 
 export type LogFields = Record<string, unknown>;
@@ -23,10 +23,10 @@ export type LogFields = Record<string, unknown>;
 export type ErrorReporter = (error: unknown, context: LogFields) => void;
 
 /**
- * Sentryのような外部の受け皿。`index.ts` が(DSNがあれば)差し込む。
+ * An external sink such as Sentry. Injected by `index.ts` when a DSN exists.
  *
- * ここを直接importしないのは、テストとルートの実装を素のままに保つため。
- * 受け皿が無ければ何もしない(ローカル開発でDSNを持たなくても動く)。
+ * It is not imported directly so tests and route implementations stay plain.
+ * With no sink, nothing happens (local development works without a DSN).
  */
 let reporter: ErrorReporter | null = null;
 
@@ -35,11 +35,11 @@ export function setErrorReporter(next: ErrorReporter | null): void {
 }
 
 /**
- * **縮退**の受け皿。エラーとは別の口にする(計画書 §10-7)。
+ * The sink for degradations. Kept separate from errors (plan §10-7).
  *
- * `error` はクラッシュとして `captureException` に流れる。こちらは
- * 「落ちてはいないが約束が破れている」状態で、`captureMessage(level: "warning")` へ送る。
- * 混ぜると本当に落ちたものが埋もれる。モバイル側・agent 側と同じ切り分け。
+ * `error` flows to `captureException` as a crash. This one is "still up but a
+ * promise is broken" and goes to `captureMessage(level: "warning")`. Mixing them
+ * buries real crashes. Same split as on mobile and in the agent.
  */
 export type DegradationReporter = (event: string, fields: LogFields) => void;
 
@@ -50,11 +50,11 @@ export function setDegradationReporter(next: DegradationReporter | null): void {
 }
 
 /**
- * どこまで出すか。
+ * How much to emit.
  *
- * `error` にすると、全リクエストの1行(`http_request`)を落として失敗だけ残す。
- * ログの量が問題になったときの逃げ道で、**既定は info**(何も起きていないことも
- * 見えていないと、遅くなったことに気づけない)。
+ * `error` drops the per-request line (`http_request`) and keeps only failures.
+ * It is the escape hatch for when log volume becomes a problem; the default is
+ * info (without seeing that nothing is wrong, you cannot notice it got slower).
  */
 export type LogLevel = "info" | "error";
 
@@ -62,7 +62,7 @@ export function readLogLevel(env: { LOG_LEVEL?: string } | undefined): LogLevel 
   return env?.LOG_LEVEL === "error" ? "error" : "info";
 }
 
-/** 1リクエストぶんの文脈を持つロガー。全行に同じ `trace_id` が入る。 */
+/** A logger holding one request's context. Every line carries the same `trace_id`. */
 export class RequestLogger {
   constructor(
     readonly traceId: string,
@@ -77,22 +77,22 @@ export class RequestLogger {
   }
 
   /**
-   * **縮退の通報は `LOG_LEVEL` で止めない。**
+   * Degradation reports are not silenced by `LOG_LEVEL`.
    *
-   * `level: "error"` は**標準出力の量**を落とすための逃げ道で、
-   * 「気づかなくてよい」という意味ではない。ここで一緒に黙らせると、
-   * ログが多いという理由で監視まで切れる — しかも切れたことに気づく手段がない。
+   * `level: "error"` is an escape hatch for stdout volume, not a statement that
+   * something need not be noticed. Silencing this too would cut monitoring
+   * because of log volume - with no way to notice that it was cut.
    */
   warn(event: string, fields: LogFields = {}): void {
-    // 受け皿が無ければ何もしない(ローカルとテストは常にこちら)。
+    // Do nothing without a sink (always the case locally and in tests).
     degradationReporter?.(event, { trace_id: this.traceId, ...this.base, ...fields });
     if (this.level === "error") return;
     this.write("warn", event, fields);
   }
 
   /**
-   * 失敗を1行にする。**スタックはここでしか出ない**ので必ず通す。
-   * 外部の受け皿(Sentry)にも同じものを渡す。
+   * Turns a failure into one line. Stacks appear nowhere else, so always route
+   * through here. The same goes to the external sink (Sentry).
    */
   error(event: string, error: unknown, fields: LogFields = {}): void {
     const described = describeError(error);
@@ -113,7 +113,7 @@ export class RequestLogger {
   }
 }
 
-/** エラーを構造化する。Errorでないものを投げられても落ちないようにする。 */
+/** Structures an error, without dying when something that is not an Error is thrown. */
 export function describeError(error: unknown): LogFields {
   if (error instanceof Error) {
     return {
@@ -127,15 +127,15 @@ export function describeError(error: unknown): LogFields {
 }
 
 /**
- * デバイスIDの頭だけ。
+ * Only the head of a device id.
  *
- * 同じ端末のリクエストを並べて見られれば十分で、全体は要らない。
+ * Lining up requests from the same device is enough; the whole thing is not needed.
  */
 export function deviceTag(deviceId: string | undefined): string | undefined {
   return deviceId ? deviceId.slice(0, 8) : undefined;
 }
 
-/** レスポンスから、アプリに返したエラーコードを拾う(ログの絞り込み用)。 */
+/** Picks the error code returned to the app out of a response (for log filtering). */
 export async function errorCodeOf(response: Response): Promise<string | undefined> {
   if (response.status < 400) return undefined;
   if (!response.headers.get("content-type")?.includes("application/json")) return undefined;
@@ -153,34 +153,36 @@ export function newTraceId(): string {
 }
 
 /* -------------------------------------------------------------------------- */
-/* 縮退(warn のうち、監視に上げるもの)                                        */
+/* Degradations (the warns that are escalated to monitoring)                  */
 /* -------------------------------------------------------------------------- */
 
 /**
- * 監視に上げる縮退。**閉じた集合にする。**
+ * Degradations escalated to monitoring. Kept a closed set.
  *
- * `warn` を全部上げると、認証の弾き(スキャナが常時叩く)まで飛んで
- * **アラート疲れ**になる。入れる基準は「**ユーザーが損をしたか**」の1つ。
+ * Escalating every `warn` would send auth rejections (scanners hit them
+ * constantly) and cause alert fatigue. The single criterion for inclusion is
+ * "did the user lose out".
  *
- * agent 側(`backend/agent/src/telemetry.ts`)と**同じ考え方だが、別の実装**。
- * ランタイムもSDKも違う(`@sentry/node` / `@sentry/cloudflare`)ので、
- * 共有パッケージにはしていない。**揃えるのは方針**(縮退はwarning・本文は送らない・
- * 鍵が無ければ何もしない)であって、コードではない。
+ * Same thinking as the agent side (`backend/agent/src/telemetry.ts`), different
+ * implementation. The runtime and SDK differ (`@sentry/node` /
+ * `@sentry/cloudflare`), so it is not a shared package. What is kept aligned is
+ * the policy (degradations are warnings, no content is sent, no key means no
+ * action) - not the code.
  */
 export const apiDegradations = [
   /**
-   * ノートの写真が読めなかった。手がかりゼロで授業が始まる。
-   * ここが増え続けるなら、撮影のガイドか解析のどちらかが効いていない。
+   * The notes photo was unreadable, so the lesson starts with zero clues.
+   * If this keeps rising, either the capture guidance or the analysis is failing.
    */
   "notes_photo_unreadable",
   /**
-   * 問題の写真が読めなかった。**先輩は問題を見ないまま教える**ことになり、
-   * 「問題、読んでもらってもいい?」から始まる(計画書 §4-1)。
+   * The problem photo was unreadable, so the senpai teaches without seeing the
+   * problem and opens with "could you read the problem out?" (plan §4-1).
    */
   "problem_photo_unreadable",
   /**
-   * カルテのLLMが許可リスト外のtopic_idを付け、こちらで付け替えた。
-   * 復習の通知が的外れになる方向の劣化で、**画面上は何事もなく進む**。
+   * The karte LLM attached an off-allow-list topic_id and we remapped it.
+   * A degradation toward off-target review notifications, invisible on screen.
    */
   "guardrail_retagged_holes",
 ] as const;
@@ -194,23 +196,24 @@ export function isDegradation(event: string): event is ApiDegradation {
 }
 
 /**
- * 監視に送ってよい欄。**ここに無い文字列は落とす(deny ではなく allow)。**
+ * Fields allowed to reach monitoring. Strings not listed here are dropped
+ * (allow-list, not deny-list).
  *
- * ログの欄は今後も増えるので、「危ないものを列挙して落とす」形だと
- * 足された欄が既定で送られてしまう。既定は落とす側に倒す。
+ * Log fields will keep growing, so "enumerate the dangerous ones" would send new
+ * fields by default. Default to dropping.
  */
 export const degradationStringFields = [
   "trace_id",
   "session_id",
   "kind",
   "locale",
-  /** カリキュラムの閉じた語彙(`packages/curriculum` のID)。ユーザーの入力ではない。 */
+  /** Closed curriculum vocabulary (`packages/curriculum` ids). Not user input. */
   "retagged_to",
 ] as const;
 
 const allowedStrings = new Set<string>(degradationStringFields);
 
-/** 送る直前に本文を落とす最後の関門。数値・真偽値は通し、文字列は許可リストのみ。 */
+/** The last gate that drops content before sending. Numbers and booleans pass; strings only if allow-listed. */
 export function scrubFields(fields: LogFields): LogFields {
   const out: LogFields = {};
   for (const [key, value] of Object.entries(fields)) {
@@ -226,11 +229,11 @@ export function scrubFields(fields: LogFields): LogFields {
 }
 
 /**
- * 同じことを何度も送らないための間引き。
+ * Throttling so the same thing is not sent repeatedly.
  *
- * Workers は**リクエストごとにアイソレートが使い回される**ので、状態はプロセス内に
- * 溜まる。上限に達したら全部忘れる(送りすぎより「長く生きたアイソレートからは
- * 何も飛ばなくなる」ほうが困る)。
+ * Workers reuse isolates across requests, so state accumulates in-process. On
+ * hitting the cap it forgets everything (over-sending is less bad than a
+ * long-lived isolate going permanently silent).
  */
 export class DegradationThrottle {
   private readonly limit: number;
@@ -252,7 +255,7 @@ export class DegradationThrottle {
   }
 }
 
-/** 「同じ出来事」の単位。セッション単位で1件だけ送る。 */
+/** The unit of "the same event". One per session. */
 export function degradationKey(event: string, fields: LogFields): string {
   const scope = fields["session_id"];
   return `${event}/${typeof scope === "string" ? scope : ""}`;
@@ -261,8 +264,9 @@ export function degradationKey(event: string, fields: LogFields): string {
 export type CaptureDegradation = (event: ApiDegradation, fields: LogFields) => void;
 
 /**
- * `RequestLogger.warn` を受けて、縮退だけを間引いて送る関数を作る。
- * 判定・間引き・伏せ字をここに集めるので、`index.ts` は差し込むだけでよい。
+ * Builds the function that takes `RequestLogger.warn` and sends only the
+ * degradations, throttled. Deciding, throttling and redacting all live here, so
+ * `index.ts` only has to inject it.
  */
 export function createDegradationReporter(
   capture: CaptureDegradation,

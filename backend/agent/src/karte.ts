@@ -16,8 +16,8 @@ import { type SessionContext, subjectOf } from "./context.ts";
 import { renderTranscript } from "./transcript.ts";
 
 /**
- * セッション終了時に、transcript全体からカルテを作って backend/api へ送る。
- * ここはLiveKitに依存しないので、単体でテストできる。
+ * Builds the karte from the whole transcript at session end and posts it to
+ * backend/api. It does not depend on LiveKit, so it can be unit tested.
  */
 
 export type LlmClient = {
@@ -30,13 +30,13 @@ export type BuildKarteOptions = {
   llm: LlmClient;
 };
 
-/** カルテ生成の指示。systemと同じ言語で頼む(混ぜると出力の言語が揺れる)。 */
+/** The karte instruction, in the system prompt's language; mixing them makes the output language wobble. */
 const karteInstruction: Record<"ja" | "en", string> = {
   ja: "この会話からカルテのJSONだけを返してください。",
   en: "Return only the karte JSON for this conversation.",
 };
 
-/** LLMの出力からカルテを作り、ガードレールを通す。 */
+/** Builds the karte from the LLM's output and runs it through the guardrails. */
 export async function buildKarte({
   context,
   transcript,
@@ -63,16 +63,19 @@ export async function buildKarte({
 }
 
 /**
- * カルテ側のガードレール。
- * 会話の許可リストを越えたタグを直し、Premium限定のあと追い質問を落とす。
- * サーバ側でも同じ照合をするが、送る前に直しておけば無駄な往復が減る。
+ * The karte's guardrails.
  *
- * **穴そのものは捨てない。** 以前はタグが許可リストから外れた穴を丸ごと
- * 落としていたが、落ちるのはLLMが付けたIDであって、本人が「わからない」と
- * 言った事実ではない。捨てるとカルテには何も残らず、画面には
- * 「今日は、止まらずに説明できました」と出てしまう。
- * タグはこのセッションの主単元に付け替える(会話はその単元の話だったので、
- * 復習の通知も的外れにはならない)。
+ * They correct tags outside the conversation's allow list and drop the
+ * Premium-only follow-up question. The server matches the same way, but fixing it
+ * before sending saves a round trip.
+ *
+ * Gaps themselves are never discarded. Gaps whose tag fell outside the allow list
+ * used to be dropped whole, but what failed was the ID the LLM attached, not the
+ * fact that the student said they did not understand. Discarding it leaves the
+ * karte with nothing and the screen reports "you explained it without stopping
+ * today". The tag is reassigned to the session's primary topic instead (the
+ * conversation was about that topic, so the review notification is not off the
+ * mark either).
  */
 export function applyGuardrails(draft: KarteDraft, context: SessionContext): KarteDraft {
   const allowed = buildAllowedTopics(context.allowed_topic_ids, { prerequisiteDepth: 0 });
@@ -83,8 +86,9 @@ export function applyGuardrails(draft: KarteDraft, context: SessionContext): Kar
   const holes = draft.holes
     .map((hole) => {
       if (!misTagged.has(hole)) return hole;
-      // 付け替える先が無いセッションは、そもそも会話が始まらない。
-      // それでも来たときだけは落とす(的外れなIDのまま残すよりまし)。
+      // A session with nothing to reassign to could not have started a
+      // conversation at all; if one arrives anyway it is dropped, which beats
+      // keeping an irrelevant ID.
       if (fallbackTopicId === undefined) return undefined;
       return { ...hole, topic_id: fallbackTopicId };
     })
@@ -98,21 +102,23 @@ export function applyGuardrails(draft: KarteDraft, context: SessionContext): Kar
   };
 }
 
-/** このセッションの主単元。穴のタグを付け替える先。 */
+/** The session's primary topic; where a gap's tag is reassigned. */
 function primaryTopicId(context: SessionContext): string | undefined {
   return context.allowed_topic_ids[0];
 }
 
 /**
- * 「わからない」と言ったのに穴がゼロだったカルテを、そのまま出さない。
+ * Stops a karte with zero gaps going out when the student said they did not
+ * understand.
  *
- * 穴を書くのはLLMなので、会話が短かった・言い淀みが多かったという理由で
- * 穴を1件も返さないことがある。だが**本人が「わからない」と口にした箇所は、
- * 理解の穴のいちばんはっきりした証拠**で、それを落として
- * 「今日は、止まらずに説明できました」と返すのが、このアプリで一番わるい嘘になる。
+ * The LLM writes the gaps, so it sometimes returns none because the conversation
+ * was short or full of hesitation. But a spot where the student actually said "I
+ * don't understand" is the clearest possible evidence of a gap, and dropping it
+ * to reply "you explained it without stopping today" is the worst lie this app
+ * can tell.
  *
- * ここで足すのは、本人の発話をそのまま根拠にした1件だけ。
- * LLMが既に穴を書いているときは何もしない(数を水増ししない)。
+ * It adds exactly one gap, grounded in the student's own words. If the LLM
+ * already wrote gaps it does nothing — the count is never padded.
  */
 export function withUncertaintyHole(
   karte: KarteDraft,
@@ -133,16 +139,18 @@ export function withUncertaintyHole(
       {
         topic_id: topicId,
         desc: uncertaintyDesc(topicId, context.locale),
-        // 何度も言っているほど、次に効く。1回だけなら言い淀みのこともある。
+        // The more often it was said, the more it matters next time; once may be
+        // just hesitation.
         severity: said.length >= 2 ? "high" : "medium",
-        // 根拠は本人の言葉のまま。要約すると「そんなことは言っていない」になる。
+        // The evidence is their own words verbatim; summarised, it becomes "I
+        // never said that".
         evidence: said.join(" / ").slice(0, 500),
       },
     ],
   };
 }
 
-/** 断定しない文体で書く。「理解していない」ではなく「説明が止まった」。 */
+/** Written without asserting: "the explanation stopped", not "they don't understand". */
 function uncertaintyDesc(topicId: string, locale: string): string {
   const topic = findTopic(topicId)?.topic;
   const desc =
@@ -156,16 +164,16 @@ function uncertaintyDesc(topicId: string, locale: string): string {
   return desc.slice(0, 200);
 }
 
-/** 会話が成立しなかったときのカルテ。空のカルテは失敗ではない。 */
+/** The karte when no conversation happened. An empty karte is not a failure. */
 export function emptyKarte(): KarteDraft {
   return { said_well: [], holes: [], term_notes: [], followup_question: null };
 }
 
 /**
- * `/complete` 1回ぶんの上限。
+ * Timeout for one `/complete` call.
  *
- * 返事が来ない接続を掴んだままにすると、送り直しにも入れないまま
- * ジョブが終わる。アプリからは「カルテがいつまでも来ない」に見える。
+ * Holding a connection that never answers ends the job without even reaching a
+ * retry, and from the app it looks like the karte simply never arrives.
  */
 export const postCompleteTimeoutMs = 15_000;
 
@@ -175,21 +183,22 @@ export type PostCompleteOptions = {
   sessionId: string;
   body: CompleteSessionRequest;
   fetchImpl?: typeof fetch;
-  /** 送り直す回数。1回きりだと、一瞬の失敗でカルテが永久に表に出ない。 */
+  /** Retry count. With one attempt, a momentary failure hides the karte forever. */
   attempts?: number;
-  /** 待ち時間(テストから0にする)。 */
+  /** Backoff delay; tests set it to 0. */
   sleep?: (ms: number) => Promise<void>;
 };
 
 /**
- * カルテをAPIへ送る。
+ * Posts the karte to the API.
  *
- * **ここが通らないと、会話が成立していてもカルテは存在しないことになる。**
- * アプリは `/result` を見に来るだけなので、送信の失敗は「カルテが出ない」
- * としか見えない。`/complete` は冪等(既にあれば保存済みを返す)なので、
- * 落ちたら送り直す。
+ * Without this succeeding, the karte does not exist even though the conversation
+ * did. The app only polls `/result`, so a failed send looks like nothing more
+ * than "no karte". `/complete` is idempotent (an existing one is returned), so a
+ * failure is retried.
  *
- * 4xx は送り直しても同じなので、すぐ諦める(トークンずれ・契約違反)。
+ * 4xx responses (a token mismatch, a contract violation) do not improve on retry,
+ * so they give up immediately.
  */
 export async function postComplete({
   apiBaseUrl,
@@ -221,7 +230,7 @@ export async function postComplete({
       if (response.status < 500) throw error;
       lastError = error;
     } catch (error) {
-      // 4xx はここで throw されたもの。送り直さない。
+      // 4xx was thrown above; do not retry.
       if (error instanceof Error && /失敗しました: 4/.test(error.message)) throw error;
       lastError = error;
     }
@@ -242,12 +251,12 @@ export function extractJson(text: string): unknown {
 }
 
 /**
- * カルテを書くLLM呼び出しの上限。
+ * Timeout for the LLM call that writes the karte.
  *
- * ここで詰まると、会話は終わっているのに `/complete` が永久に送られない。
- * アプリ側は `/result` が202を返し続けるので、「取りに行っています…」の
- * まま固まったようにしか見えない。**待つのをやめて空のカルテで送る**ほうが、
- * 待たせ続けるよりずっとまし(呼び出し側が catch して空カルテに落とす)。
+ * Stalling here means `/complete` is never sent even though the conversation is
+ * over. The app keeps getting 202 from `/result` and appears stuck on
+ * "fetching…". Giving up and posting an empty karte is far better than making
+ * them wait (the caller catches and falls back to an empty karte).
  */
 export const karteTimeoutMs = 60_000;
 

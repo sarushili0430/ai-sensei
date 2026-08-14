@@ -27,14 +27,14 @@ import type {
 export const completeRoute = new Hono<AppEnv>();
 
 /**
- * POST /v1/sessions/{id}/complete — agentが呼ぶ内部エンドポイント。
+ * POST /v1/sessions/{id}/complete - the internal endpoint the agent calls.
  *
- * transcriptとカルテ下書きを受け取り、
- *   1. 穴のtopic_idをこのセッションの許可リストで照合(ガードレール2枚目)
- *   2. カルテと穴をD1に保存
- *   3. 翌日/3日後/7日後の復習プッシュをOneSignalに予約
- *   4. 復習セッションで本人が「言えた」と申告した場合は、対象の穴を「埋まった」にする
- * を行う。
+ * Takes the transcript and the karte draft, then:
+ *   1. matches the holes' topic_ids against this session's allow-list (guardrail 2)
+ *   2. saves the karte and holes to D1
+ *   3. books review pushes for +1/+3/+7 days with OneSignal
+ *   4. marks the target hole "filled" when the student self-reported "I said it"
+ *      in a review session
  */
 completeRoute.post("/:sessionId/complete", async (c) => {
   const { repository, scheduler, now, newId } = c.get("services");
@@ -43,8 +43,8 @@ completeRoute.post("/:sessionId/complete", async (c) => {
 
   const authorized = c.req.header("authorization") === `Bearer ${c.env.INTERNAL_API_TOKEN}`;
   if (!authorized) {
-    // agent と API で内部トークンがずれていると、会話は成立するのにカルテだけ
-    // 落ちる。アプリからは「カルテが出ない」としか見えないので、ここに残す。
+    // A mismatched internal token between agent and API drops only the karte while
+    // the conversation succeeds. The app just shows "no karte", so log it here.
     log?.warn("complete_unauthorized", { session_id: c.req.param("sessionId") });
     throw apiError("unauthorized");
   }
@@ -52,8 +52,8 @@ completeRoute.post("/:sessionId/complete", async (c) => {
   const session = await repository.getSession(c.req.param("sessionId"));
   if (!session) throw apiError("session_not_found");
 
-  // agentがタイムアウトで再送してくることがある。素通しすると、カルテも穴も
-  // 通知予約も二重に作られて進捗が壊れるので、既にあるものをそのまま返す。
+  // The agent sometimes resends after a timeout. Passing it through would create
+  // duplicate kartes, holes and notification bookings, so return what already exists.
   const existing = await repository.getKarteBySession(session.id);
   if (existing) {
     log?.info("complete_replayed", { session_id: session.id });
@@ -65,7 +65,7 @@ completeRoute.post("/:sessionId/complete", async (c) => {
 
   const parsed = completeSessionRequestSchema.safeParse(await c.req.json());
   if (!parsed.success) {
-    // カルテの契約が壊れている。agent側のLLM出力かスキーマのずれ。
+    // The karte contract is broken - either the agent's LLM output or schema drift.
     log?.error("complete_invalid_payload", parsed.error, { session_id: session.id });
     return c.json({ error: { code: "internal_error", message: parsed.error.message } }, 400);
   }
@@ -78,10 +78,11 @@ completeRoute.post("/:sessionId/complete", async (c) => {
     durationSeconds,
   });
 
-  // 会話中に許可範囲を越えたタグが付いていたら、ここで直す。
-  // 的外れなタグを残すと復習の通知まで的外れになるが、**穴そのものは捨てない** —
-  // 外れているのはLLMが付けたIDであって、本人が説明に詰まった事実ではない。
-  // 捨てるとカルテが空になり、画面には「止まらずに説明できました」と出てしまう。
+  // Tags that went outside the allowed scope during the conversation are fixed
+  // here. Off-target tags make review notifications off-target too, but the hole
+  // itself is never dropped: what is off is the id the LLM attached, not the fact
+  // that the student got stuck. Dropping it empties the karte and the screen reads
+  // "explained without stalling".
   const allowed = buildAllowedTopics(session.topic_ids);
   const { rejected } = filterHoleTopicIds(body.karte.holes, allowed);
   const misTagged = new Set(rejected.map((entry) => entry.hole));
@@ -98,7 +99,7 @@ completeRoute.post("/:sessionId/complete", async (c) => {
   }
   const acceptedHoles = body.karte.holes.flatMap((hole) => {
     if (!misTagged.has(hole)) return [hole];
-    // 付け替える先が無いセッションだけは落とす。
+    // Only sessions with nowhere to remap are dropped.
     return fallbackTopicId === undefined ? [] : [{ ...hole, topic_id: fallbackTopicId }];
   });
 
@@ -128,17 +129,18 @@ completeRoute.post("/:sessionId/complete", async (c) => {
     topic_ids: session.topic_ids,
     said_well: body.karte.said_well,
     term_notes: body.karte.term_notes,
-    // あと追い質問はPremium機能。無料ユーザーには保存もしない。
+    // Follow-up questions are Premium. Not even stored for free users.
     followup_question: premium ? (body.karte.followup_question ?? null) : null,
   };
   await repository.insertKarte(karteRecord, holeRecords);
 
-  // 復習の穴は、AIの採点ではなく本人が「言えた」と申告したときだけ埋める。
-  // 接続しただけのセッションで自動的に埋めると、説明できたかを本人が決められなくなる。
+  // Review holes are filled only when the student self-reports "I said it", never
+  // by AI grading. Auto-filling on a session that merely connected would take the
+  // decision about whether they explained it away from them.
   let filledThisSession = 0;
   if (session.kind === "review" && session.hole_id && body.review_outcome === "said_it") {
     const target = await repository.getHole(session.hole_id);
-    // 他人の穴を埋めてしまわないよう、セッションの持ち主と突き合わせる
+    // Cross-check the session's owner so someone else's hole is never filled
     if (target && target.device_id === session.device_id && target.status === "open") {
       await repository.markHoleFilled(target.id, at.toISOString());
       filledThisSession += 1;
@@ -166,13 +168,15 @@ completeRoute.post("/:sessionId/complete", async (c) => {
         sendAt: entry.scheduled_at,
         desc: hole.desc,
         daysSince: entry.step === 1 ? 1 : entry.step === 2 ? 3 : 7,
-        // 通知の言語は穴のtopic_idから引く。カルテの文言はその課程の言語で
-        // 書かれているので、端末の設定ではなくこちらが正。
+        // The notification language comes from the hole's topic_id. The karte is
+        // written in that curriculum's language, so this - not the device setting -
+        // is authoritative.
         locale: localeOfTopicId(hole.topic_id),
       });
       externalId = scheduled.externalId;
     } catch (error) {
-      // 通知の予約に失敗しても、カルテは返す。プッシュのために体験を止めない。
+      // Return the karte even if booking the notification failed. Do not stop the
+      // experience for a push.
       log?.error("review_schedule_failed", error, { session_id: session.id, hole_id: hole.id });
     }
     persisted.push({
@@ -208,14 +212,14 @@ completeRoute.post("/:sessionId/complete", async (c) => {
     progress,
     show_paywall: shouldShowPaywall({
       isPremium: premium,
-      // セッション回数ではなく「カルテができた日数」で数えるので、
-      // 同じ日に何度やってもペイウォールは初回の1回だけになる。
+      // Counted by days with a karte, not by session count, so repeating on the
+      // same day still shows the paywall only once.
       completedSessionCount: sessionDates.length,
       holesFound: holeRecords.length,
     }),
   };
 
-  // 会話が成立したかどうかは、この1行で分かる(穴0件は失敗ではない)。
+  // Whether a conversation happened is visible from this one line (zero holes is not a failure).
   log?.info("karte_stored", {
     session_id: session.id,
     kind: session.kind,
@@ -246,13 +250,14 @@ function toHolePayload(hole: HoleRecord): Hole {
 }
 
 /**
- * 保存済みのカルテからレスポンスを組み立て直す。
+ * Rebuilds the response from a stored karte.
  *
- * - agentからの再送(/complete が二度呼ばれた場合)
- * - アプリからの結果取得(GET /v1/sessions/{id}/result)
+ * Used both by:
+ * - the agent's resend (/complete called twice)
+ * - the app's result fetch (GET /v1/sessions/{id}/result)
  *
- * の両方で使う。会話が終わってからカルテができるまでには数秒かかるので、
- * アプリは完了後にこのエンドポイントを見に来る。
+ * The karte takes a few seconds after the conversation ends, so the app polls
+ * this endpoint after completion.
  */
 export async function buildResponse(input: {
   repository: Repository;
@@ -291,8 +296,8 @@ export async function buildResponse(input: {
 }
 
 /**
- * GET /v1/sessions/{id}/result — アプリが会話後に結果を取りに来る。
- * まだカルテができていなければ 202 を返し、アプリはしばらく待って再度たずねる。
+ * GET /v1/sessions/{id}/result - the app fetches the result after a conversation.
+ * Returns 202 while the karte is not ready; the app waits and asks again.
  */
 completeRoute.get("/:sessionId/result", async (c) => {
   const { repository, now } = c.get("services");
@@ -304,7 +309,7 @@ completeRoute.get("/:sessionId/result", async (c) => {
 
   const stored = await repository.getKarteBySession(session.id);
   if (!stored) {
-    // カルテ生成中。アプリはこの状態を「まだ」として扱い、少し待って聞き直す。
+    // Karte generation in progress. The app treats this as "not yet" and retries shortly.
     return c.json({ status: "pending" }, 202);
   }
 

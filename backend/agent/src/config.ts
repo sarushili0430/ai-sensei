@@ -1,12 +1,12 @@
 import { z } from "zod";
 
 /**
- * 既定値のある設定。**空文字を「未設定」として扱う。**
+ * Settings with defaults. An empty string counts as "unset".
  *
- * `.env` に `KEY=` と書くと、値は undefined ではなく空文字になる。
- * 素の `z.string().default()` は undefined のときしか既定値を入れないので、
- * 空文字がそのまま下流(モデル名など)へ流れて、起動は通るのに
- * APIが弾く、という分かりにくい壊れ方をする。ここで吸収しておく。
+ * Writing `KEY=` in `.env` yields an empty string, not undefined. Plain
+ * `z.string().default()` only fills in on undefined, so the empty string flows
+ * downstream (into model names, say) and startup succeeds while the API
+ * rejects everything - a confusing failure. Absorb it here.
  */
 function withDefault(fallback: string): z.ZodType<string> {
   return z.preprocess(
@@ -15,18 +15,19 @@ function withDefault(fallback: string): z.ZodType<string> {
   ) as z.ZodType<string>;
 }
 
-/** agentの環境変数。起動時に一度だけ検証する(会話中に落ちないように)。 */
+/** The agent's env vars. Validated once at startup, never mid-conversation. */
 const configSchema = z.object({
   API_BASE_URL: z.string().url(),
   INTERNAL_API_TOKEN: z.string().min(1),
 
   /**
-   * LiveKitのプロジェクトURL。**中身が空でないかだけでなく、URLとして読めるかまで見る。**
+   * The LiveKit project URL. Checked not just for emptiness but for being a
+   * readable URL.
    *
-   * スキームが落ちた `example.livekit.cloud` のような値を渡すと、ワーカーの起動中に
-   * フレームワーク側の `new URL()` が投げる。その例外は握り潰されていて
-   * **`closing worker due to error.` としか出ない**(どの環境変数が悪いのかも、
-   * URLの話だということも分からない)。名前を出して落とすためにここで見る。
+   * A value with the scheme dropped (`example.livekit.cloud`) makes the
+   * framework's `new URL()` throw during worker startup. That exception is
+   * swallowed and prints only `closing worker due to error.` - naming neither
+   * the bad env var nor that it is about a URL. Check here so it fails by name.
    */
   LIVEKIT_URL: z
     .string()
@@ -40,37 +41,39 @@ const configSchema = z.object({
   LLM_MODEL_KARTE: withDefault("claude-sonnet-5"),
 
   /**
-   * 板書を書くモデル(授業モード)。**会話より上のモデルを充てる。**
+   * The model that writes the board (lesson mode). Use a stronger one than for
+   * conversation.
    *
-   * 8/16のゲートは「板書つきで1問教わって『わかる』に到達するか」(計画書 §3-4)で、
-   * そこで測られるのは会話の速さではなく**板書の質**。式の割り方(§3-6b)も
-   * 許可コマンドの守り方(§3-6)も、外すと授業が止まるか描画が壊れる。
+   * The 8/16 gate is "one problem taught with a board, reaching 'I get it'"
+   * (plan §3-4), which measures board quality, not conversation speed. Both how
+   * formulas are split (§3-6b) and how the allowed commands are respected (§3-6)
+   * stop the lesson or break rendering when missed.
    *
-   * 代償はレイテンシで、それは**最初の1手順が出るまでの沈黙**として直に出る。
-   * 冒頭は事前生成音声で埋める前提(§3-2)なので、質を採っている。
-   * 差し替えるときは `lesson.ts` の `thinking: {type: "disabled"}` を
-   * その版が受け付けるかも一緒に確かめること。
+   * The cost is latency, felt directly as silence before the first step. The
+   * opening is covered by pre-rendered audio (§3-2), so quality wins.
+   * When swapping models, also confirm the new version accepts
+   * `thinking: {type: "disabled"}` in `lesson.ts`.
    */
   LLM_MODEL_BOARD: withDefault("claude-sonnet-5"),
 
-  /** 聞く(STT)と喋る(TTS)は同じ鍵で通る。声のベンダーは1つに寄せてある(ADR 0003)。 */
+  /** Listening (STT) and speaking (TTS) share a key; one voice vendor (ADR 0003). */
   DEEPGRAM_API_KEY: z.string().min(1),
 
   /**
-   * 先輩の声(日本語)。**キャラクターそのものなので、既定値で固定する。**
+   * The senpai's Japanese voice. Part of the character, so pinned by default.
    *
-   * 環境変数で上書きできるのは声を聴き比べるときのため。ローカルと本番で
-   * 別の声になってはいけない(同じ先輩が環境ごとに違う声で喋ることになる)ので、
-   * 差し替えるならここを変えて、全環境で一度に変える。
+   * The env override exists only for A/B listening. Local and production must
+   * never differ (the same senpai would speak in a different voice per
+   * environment), so change it here to change it everywhere at once.
    */
   DEEPGRAM_TTS_MODEL_JA: withDefault("aura-2-izanami-ja"),
 
   /**
-   * 英語ロケールの声。
+   * The English-locale voice.
    *
-   * Deepgramは**言語がモデル名に埋まっている**ので、日本語ボイスは英語を喋れない
-   * (1ボイスに言語を渡す作りではない)。`locale=en` はデモと審査向けなので、
-   * 既定のまま動けばよく、こだわるときだけ差し替える。
+   * Deepgram bakes the language into the model name, so a Japanese voice cannot
+   * speak English (a voice does not take a language argument). `locale=en` is
+   * for demos and review, so the default is fine; override only when it matters.
    */
   DEEPGRAM_TTS_MODEL_EN: withDefault("aura-2-andromeda-en"),
 });
@@ -80,8 +83,8 @@ export type AgentConfig = z.infer<typeof configSchema>;
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig {
   const parsed = configSchema.safeParse(env);
   if (!parsed.success) {
-    // 名前だけでなく理由も出す。「足りない」と「入っているが形が違う」は
-    // 直し方がまったく違うのに、名前だけだと見分けがつかない。
+    // Print the reason, not just the name. "missing" and "present but malformed"
+    // need completely different fixes, and names alone cannot tell them apart.
     const detail = parsed.error.issues
       .map((issue) => `${issue.path.join(".")}(${issue.message})`)
       .join(", ");

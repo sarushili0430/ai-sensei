@@ -59,7 +59,7 @@ function sessionRow(id: string, overrides: Partial<SessionRecord> = {}): Session
   };
 }
 
-/** 会話まで進んだセッション。**数えられるのはこれだけ**(`started_at` が入っている)。 */
+/** A session that reached a conversation. Only these are counted (`started_at` is set). */
 async function startedSession(id: string, overrides: Partial<SessionRecord> = {}): Promise<void> {
   await services.repository.createSession({
     session: sessionRow(id, { started_at: "2026-08-03T13:00:00.000Z", ...overrides }),
@@ -130,8 +130,8 @@ describe("GET /v1/me/progress", () => {
   });
 
   /**
-   * 写真を読んだだけのセッションは行としては在るが、先輩とは1度も話していない。
-   * ここを行数で数えていた頃は、撮って単元を確かめただけでホームの導線が閉じた。
+   * A session that only read a photo exists as a row but never spoke to the senpai.
+   * While this counted rows, taking a photo and confirming the unit closed the home flow.
    */
   it("写真を読んだだけで会話していないセッションは数えない", async () => {
     await services.repository.createSession({
@@ -172,11 +172,11 @@ describe("GET /v1/me/progress", () => {
 });
 
 /**
- * クローズドβの開放(`BETA_OPEN_ACCESS_UNTIL`)。
+ * Closed beta open access (`BETA_OPEN_ACCESS_UNTIL`).
  *
- * テスターに「無料で使い放題」と伝えている以上、**アプリが課金導線を出さない**
- * ところまでがこの設定の仕事。判定はサーバに1本化されているので、
- * ここが通れば復習・プラン・親レポート・ペイウォールの出し分けも同じ答えになる。
+ * Having told testers "free and unlimited", this setting's job extends to the app
+ * not showing a purchase flow. The check is centralised on the server, so if this
+ * passes, reviews, plans, parent reports and paywall gating all answer the same.
  */
 describe("クローズドβの開放中", () => {
   const betaBindings = testBindings({
@@ -457,7 +457,7 @@ describe("POST /v1/me/reviews/{holeId}", () => {
   });
 });
 
-// 復習画面の一行も、穴と同じ課程の言語で出す(通知文と同じ文面)。
+// The review line is shown in the same curriculum language as the hole (same text as the notification).
 describe("復習キューの言語", () => {
   it("英語の課程の穴には英語の一行を返す", async () => {
     await makePremium();
@@ -504,7 +504,7 @@ async function seedReportKarte(input: {
       duration_seconds: 900,
       started_at: input.createdAt,
     }),
-    // これは原価上限のテストではなく、月次集計の履歴を作る足場。
+    // Not a cost-cap test; scaffolding to build history for the monthly rollup.
     maxAnalysesPerDay: 99,
   });
   if (!created) throw new Error("親レポート用セッションを作れませんでした");
@@ -581,7 +581,7 @@ describe("GET /v1/me/parent-report", () => {
           desc: "判別式の意味で説明が止まった",
           severity: "medium",
           evidence: null,
-          // 小テストの出題は本人の引用ではないので、親レポートへ混ぜない。
+          // Quiz questions are not the student's own words, so they stay out of the parent report.
           quiz: "判別式から実数解の個数を説明できる?",
           status: "filled",
           created_at: "2026-08-01T11:00:00.000Z",

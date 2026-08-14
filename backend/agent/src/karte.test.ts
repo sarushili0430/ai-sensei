@@ -112,8 +112,8 @@ describe("buildKarte", () => {
 });
 
 describe("applyGuardrails", () => {
-  // 落ちるのはLLMが付けたIDであって、本人が説明に詰まった事実ではない。
-  // 穴ごと捨てるとカルテが空になり、画面には「止まらずに説明できました」と出る。
+  // What is dropped is the LLM's id, not the fact that they got stuck. Dropping
+  // the hole too empties the karte and shows "explained without stalling".
   it("許可リスト外のtopic_idは、穴を捨てずに主単元へ付け替える", () => {
     const guarded = applyGuardrails(
       {
@@ -158,7 +158,7 @@ describe("applyGuardrails", () => {
   });
 });
 
-// 「わからない」と何度も言ったのに「穴なし」と返すのが、このアプリで一番わるい間違い。
+// Saying "I don't get it" repeatedly and getting "no holes" is the worst mistake this app can make.
 describe("withUncertaintyHole", () => {
   const said = (text: string) => ({ role: "user" as const, text, at_ms: 1000 });
 
@@ -170,9 +170,9 @@ describe("withUncertaintyHole", () => {
 
     expect(karte.holes).toHaveLength(1);
     expect(karte.holes[0]?.topic_id).toBe("M2-ZUKEI-ENCHOKU");
-    // 単元の名前が入る(「説明が止まった」の文体は崩さない)
+    // The unit name appears (without breaking the "explanation stalled" phrasing)
     expect(karte.holes[0]?.desc).toContain("止まった");
-    // 根拠は本人の言葉のまま。要約すると「そんなことは言っていない」になる。
+    // Evidence stays in their own words. Summarizing turns it into "I never said that".
     expect(karte.holes[0]?.evidence).toBe("えっと、そこはわからないです");
     expect(karteDraftSchema.safeParse(karte).success).toBe(true);
   });
@@ -224,9 +224,9 @@ describe("extractJson", () => {
 });
 
 describe("createAnthropicClient", () => {
-  // ここで詰まると `/complete` が永久に送られない。アプリ側は `/result` が
-  // 202を返し続けるので、「取りに行っています…」のまま固まったように見える。
-  // 待ち続けるくらいなら、諦めて空のカルテで送るほうがまし。
+  // Hanging here means `/complete` is never sent. The app keeps getting 202 from
+  // `/result`, so it looks frozen on "fetching...". Better to give up and send an
+  // empty karte than to wait forever.
   it("カルテを書く呼び出しに上限を付ける", async () => {
     const fetchImpl = vi.fn(
       async () =>
@@ -267,8 +267,8 @@ describe("postComplete", () => {
     expect((init.headers as Record<string, string>)["authorization"]).toBe("Bearer secret-token");
   });
 
-  // 返事の来ない接続を掴んだままにすると、送り直しにも入れないままジョブが
-  // 終わる。アプリからは「カルテがいつまでも来ない」としか見えない。
+  // Holding a connection that never answers ends the job without even reaching a
+  // retry. The app only sees "the karte never comes".
   it("返事を待ち続けないよう、1回ぶんの上限を付ける", async () => {
     const fetchImpl = vi.fn(async () => new Response("{}", { status: 201 }));
     await postComplete({
@@ -297,7 +297,7 @@ describe("postComplete", () => {
     ).rejects.toThrow(/500/);
   });
 
-  // 一瞬の失敗でカルテが永久に表に出ないのを避ける(/complete は冪等)
+  // Avoid a momentary failure hiding the karte forever (/complete is idempotent)
   it("5xxと通信エラーは送り直す", async () => {
     const fetchImpl = vi
       .fn()
@@ -317,7 +317,7 @@ describe("postComplete", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
-  // トークンずれ・契約違反は何度送っても同じ
+  // Token mismatches and contract violations fail the same way every time
   it("4xxは送り直さない", async () => {
     const fetchImpl = vi.fn(async () => new Response("unauthorized", { status: 401 }));
 
@@ -336,8 +336,8 @@ describe("postComplete", () => {
 });
 
 /**
- * 英語のセッション。プロンプトは日本語の本文に「英語で答えて」を足すのではなく、
- * **英語のプロンプトそのもの**を使う(ペルソナも禁止事項も英語で書かれている)。
+ * An English session. The prompt is not a Japanese body with "answer in English"
+ * appended - it is the English prompt itself (persona and bans written in English).
  */
 describe("英語のセッション", () => {
   const englishContext = readSessionContext(
@@ -389,10 +389,11 @@ describe("英語のセッション", () => {
   });
 
   /**
-   * 別の課程のタグが付いても、**穴は捨てずにこのセッションの主単元へ付け替える**。
-   * 捨てると「今日は、止まらずに説明できました」に化けるため(develop の判断)。
-   * ここで見たいのは、付け替え先が**同じ課程のID**になっていること —
-   * 英語のセッションのカルテに日本語の単元が残ると、復習の通知まで日本語になる。
+   * Even tagged with another curriculum, the hole is remapped to this session's
+   * main unit rather than dropped. Dropping turns it into "explained without
+   * stalling today" (the develop decision). What matters here is that the target
+   * is an id from the *same* curriculum - a Japanese unit left in an English
+   * session's karte would make even the review notification Japanese.
    */
   it("別の課程のタグは、英語の課程の主単元へ付け替える", () => {
     const filtered = applyGuardrails(
@@ -417,8 +418,9 @@ describe("英語のセッション", () => {
   });
 
   /**
-   * 「わからない」と言ったのに穴ゼロ、を英語でも出さない。
-   * 発話の検出は言語をまたぐが、**足す穴の文言とタグはその課程のもの**になる。
+   * "I don't get it" with zero holes must not happen in English either.
+   * Utterance detection crosses languages, but the added hole's wording and tag
+   * come from that curriculum.
    */
   it("英語で「わからない」と言われたら、英語の穴を足す", () => {
     const karte = withUncertaintyHole(emptyKarte(), englishContext, [

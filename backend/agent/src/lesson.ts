@@ -12,35 +12,40 @@ import type { JobLogger } from "./log.ts";
 import { handsTurnToStudent } from "./senpai.ts";
 
 /**
- * フェーズ1「授業」— 板書レッスンの生成と、手順単位の配送・読み上げ。
+ * Phase 1, the lesson: generating the board lesson and delivering and speaking
+ * it step by step.
  *
- * 板書の**配管**は `board.ts`(封筒・seq・寿命)、**走査**は `board-stream.ts`。
- * ここが持つのは、その2つと Anthropic のストリーミングを繋ぐ**上流側**だけ:
+ * The board's plumbing is `board.ts` (envelopes, seq, lifetime) and its parsing
+ * is `board-stream.ts`. This file holds only the upstream side joining those two
+ * to Anthropic's streaming:
  *
- *   Anthropic のSSE → テキストのチャンク列 → BoardDelivery.append() → onStep で読み上げ
+ *   Anthropic SSE -> text chunks -> BoardDelivery.append() -> speak via onStep
  *
- * LiveKit の型には依存しない({@link RunBoardLessonOptions.speak} が薄い穴)。
- * 実鍵なしでテストできる状態を保つのは `board.ts` と同じ方針。
+ * It does not depend on LiveKit's types ({@link RunBoardLessonOptions.speak} is
+ * the thin seam). Staying testable without real keys is the same policy as
+ * `board.ts`.
  */
 
 /**
- * 板書レッスン1回ぶんのトークン上限。
+ * Token cap for one board lesson.
  *
- * 手順12件(`boardLessonStepsMaxCount`)× (`speech` 120字 + `tex` 200字)の
- * JSONでも数KB。日本語は1文字あたり1トークンを超えるので余裕を持って4000。
- * ここを絞りすぎると `steps` の途中で `max_tokens` に当たり、
- * ルートの `}` まで読めずに `board_stream_truncated` になる。
+ * Twelve steps (`boardLessonStepsMaxCount`) of `speech` up to 120 characters and
+ * `tex` up to 200 is only a few KB of JSON. Japanese runs over one token per
+ * character, so 4000 leaves room. Set too low it hits `max_tokens` partway
+ * through `steps`, never reaches the root `}` and becomes
+ * `board_stream_truncated`.
  */
 export const boardLessonMaxTokens = 4000;
 
-/** 作り直しは手順1つぶん。レッスン全体の上限を使わせない。 */
+/** A repair covers one step; it must not use the whole lesson's budget. */
 export const boardRepairMaxTokens = 600;
 
 /**
- * ストリーム1本の上限時間。
+ * Time cap for one stream.
  *
- * 返事の来ない接続を掴んだままだと、生徒の前で板書が止まったまま何も起きない。
- * 上限秒数(無料5分)より短くしておかないと、打ち切りより先にセッションが終わる。
+ * Holding a connection that never answers leaves the board frozen in front of the
+ * student. It must stay under the session limit (5 minutes on the free tier), or
+ * the session ends before the cut-off fires.
  */
 export const boardStreamTimeoutMs = 60_000;
 
@@ -52,11 +57,11 @@ export type LessonStreamInput = {
 };
 
 /**
- * 板書を吐くLLM。**ストリーミングだけを持つ。**
+ * The LLM that emits the board. Streaming only.
  *
- * 一括で受け取る口を用意しないのは、計画書 §3-2 の案B(全部生成してから再生)へ
- * 落ちる経路を作らないため。作り直し({@link StepRepair})も同じ口を使って、
- * 出てきたテキストを呼び出し側で溜める。
+ * There is no batch entry point, so no path exists back to the rejected option of
+ * generating everything before playing it. Repairs ({@link StepRepair}) use the
+ * same entry point, with the caller accumulating the emitted text.
  */
 export type LessonLlm = {
   stream(input: LessonStreamInput): AsyncIterable<string>;
@@ -71,20 +76,20 @@ export type AnthropicLessonOptions = {
 };
 
 /**
- * Anthropic Messages API のストリーミング(SSE)から、テキストのデルタだけを取り出す。
+ * Extracts only the text deltas from the Anthropic Messages API's SSE stream.
  *
- * `karte.ts` の `createAnthropicClient` と同じく素の `fetch` で書いてある。
- * 公式SDKを使わないのは、**`backend/agent` の依存に `@anthropic-ai/sdk` が無い**から
- * (`package.json` はこの作業の担当範囲外)。入れるなら差し替える価値はある。
+ * Written with plain `fetch`, like `createAnthropicClient` in `karte.ts`. The
+ * official SDK is not used because `@anthropic-ai/sdk` is not among
+ * `backend/agent`'s dependencies (`package.json` is outside this change's scope).
+ * Adding it would be worth the swap.
  *
- * **`thinking` を明示的に切っている。**既定でadaptive thinkingが入るモデル
- * (Sonnet 5 など)だと、最初の1手順が出るまでに思考時間が丸ごと乗る。
- * その待ちは計画書 §3-2 が「冒頭の無音」として名指ししている穴そのもので、
- * 板書では**沈黙の長さ = 生成の待ち時間**になる。
- * モデルを差し替えるときは、その版が `thinking: {type: "disabled"}` を
- * 受け付けるかを確かめること(古い版では受け付けない可能性がある)。
- * `output_config.effort` は送っていない — 受け付けないモデルがあり、
- * モデル名を1つ変えただけで授業が丸ごと落ちるのは割に合わない。
+ * `thinking` is explicitly disabled. On models where adaptive thinking is on by
+ * default (Sonnet 5 and the like), the whole thinking time lands before the first
+ * step appears. That wait is exactly the "silence at the start" hole named in the
+ * plan, and on the board silence equals generation time. When changing models,
+ * check that the version accepts `thinking: {type: "disabled"}` (older ones may
+ * not). `output_config.effort` is not sent: some models reject it, and losing a
+ * whole lesson to a single model-name change is not worth it.
  */
 export function createAnthropicLessonClient(options: AnthropicLessonOptions): LessonLlm {
   const doFetch = options.fetchImpl ?? fetch;
@@ -93,9 +98,9 @@ export function createAnthropicLessonClient(options: AnthropicLessonOptions): Le
 
   return {
     async *stream({ system, user, maxTokens, signal }) {
-      // 割り込みでも上限時間でも、**HTTPごと切る**。
-      // イテレータを離すだけだと接続は生きたままで、聞かれない板書の
-      // 出力トークンを払い続ける(§6-1 の LLM 費目がそのぶん膨らむ)。
+      // Both an interruption and the time cap drop the HTTP connection. Releasing
+      // the iterator alone leaves it alive, still paying for output tokens on a
+      // board nobody will hear.
       const deadline = AbortSignal.timeout(timeoutMs);
       const aborter = signal === undefined ? deadline : AbortSignal.any([signal, deadline]);
 
@@ -131,15 +136,16 @@ export function createAnthropicLessonClient(options: AnthropicLessonOptions): Le
 }
 
 /**
- * SSEのバイト列から `text_delta` のテキストだけを流す。
+ * Streams only `text_delta` text out of the SSE byte stream.
  *
- * **イベントの区切り(空行)は待たない。**Anthropic のSSEは1イベントにつき
- * `data:` 行が1本なので、行が閉じた時点でその中身は完成している。
- * ここで空行まで待つ設計にすると、`board-stream.ts` が「手順が閉じた端から出す」
- * ために稼いだレイテンシを、1行ぶんとはいえ手前で食い潰すことになる。
+ * It does not wait for the event separator (a blank line). Anthropic's SSE puts
+ * one `data:` line per event, so the contents are complete once the line closes.
+ * Waiting for the blank line would spend, one line at a time, the latency
+ * `board-stream.ts` earned by emitting each step as it closes.
  *
- * チャンクは行の途中で切れる(`decode(..., { stream: true })` がマルチバイトを跨ぐ)。
- * 残りはバッファに持ち越すだけで、下流の走査器と同じくチャンク境界を特別扱いしない。
+ * Chunks split mid-line (`decode(..., { stream: true })` spans multibyte
+ * characters). The remainder simply carries over in a buffer; like the downstream
+ * parser, chunk boundaries get no special treatment.
  */
 export async function* readTextDeltas(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
   const decoder = new TextDecoder();
@@ -161,21 +167,22 @@ export async function* readTextDeltas(body: ReadableStream<Uint8Array>): AsyncGe
       }
     }
   } finally {
-    // 割り込みで抜けるときも上流を離す(HTTPは `signal` 側で切れている)。
+    // Release the upstream on an interruption too (the HTTP side is already cut
+    // via `signal`).
     reader.releaseLock();
   }
 }
 
 /**
- * SSEの1行を読む。テキストのデルタなら中身、それ以外は `null`。
+ * Reads one SSE line: the contents if it is a text delta, otherwise `null`.
  *
- * **壊れた `data:` 行は握り潰さずに投げる。**黙って読み飛ばすと、
- * 手順が1つ減ったまま板書が「完成」してしまう(`board-stream.ts` が
- * steps の要素型を検査しているのと同じ理由)。
+ * A malformed `data:` line throws rather than being swallowed. Skipping it
+ * silently would let the board "complete" one step short (the same reason
+ * `board-stream.ts` checks the element type of `steps`).
  */
 function textOfSseLine(line: string): string | null {
   const trimmed = line.trim();
-  // `event:` 行・空行・`: ping` のコメント行はここで落ちる。
+  // `event:` lines, blank lines and `: ping` comments are dropped here.
   if (!trimmed.startsWith("data:")) return null;
 
   const payload = trimmed.slice("data:".length).trim();
@@ -208,18 +215,20 @@ function textOfSseLine(line: string): string | null {
   return delta.text;
 }
 
-/** 板書を出す指示。systemと同じ言語で頼む(混ぜると出力の言語が揺れる)。 */
+/** The instruction to produce a board, in the system prompt's language; mixing them makes the output language wobble. */
 const lessonInstruction: Record<CurriculumLocale, string> = {
-  // 「問題」と呼ばない。復習は写真なしで、前回の穴そのものを教え直す授業だから。
+  // It does not say "the problem": a review has no photo and re-teaches the
+  // previous gap itself.
   ja: "この授業の板書レッスンのJSONだけを返してください。",
   en: "Return only the board lesson JSON for this lesson.",
 };
 
 /**
- * 落ちた手順を作り直させる指示。
+ * The instruction for redoing a failed step.
  *
- * **「手順1つだけ」と明示する。**ここでレッスン全体の形(`{title, topic_ids, steps}`)を
- * 返されると、`validateStep` は `boardStepSchema` で見ているので必ずもう一度落ちる。
+ * It states "one step only" explicitly. Returning a whole lesson shape
+ * (`{title, topic_ids, steps}`) here always fails again, because `validateStep`
+ * checks against `boardStepSchema`.
  */
 const repairInstruction: Record<CurriculumLocale, (rejection: BoardStepRejection) => string> = {
   ja: (rejection) =>
@@ -227,7 +236,8 @@ const repairInstruction: Record<CurriculumLocale, (rejection: BoardStepRejection
       "直前の板書の手順が検証に落ちました。**その手順1つだけ**を書き直してください。",
       "返すのは手順1つのJSONオブジェクト(`index` / `speech` / `board`)だけです。",
       "配列にしない、前置きを書かない、コードフェンスで囲まない。",
-      // 直しがいちばん安い道へ落ちるのを塞ぐ(`board.ts` の schemaGuidance と同じ理由)。
+      // Blocks the repair from taking the cheapest path (the same reason as
+      // schemaGuidance in `board.ts`).
       "**`board` を `null` にして逃げないこと。**書くはずだったものを消すと、この手順は板書に何も残しません。",
       "",
       `落ちた理由: ${rejection.guidance}`,
@@ -246,10 +256,11 @@ const repairInstruction: Record<CurriculumLocale, (rejection: BoardStepRejection
 };
 
 /**
- * 範囲外の単元で板書を始めようとしたときの指示。
+ * The instruction when a board would start on an out-of-scope topic.
  *
- * **見出しだけを直させる。**ここでレッスン全体を返されると、走査済みの手順と
- * 二重になる(見出しは `steps` より先に閉じるので、まだ手順は1つも出ていない)。
+ * Only the heading is redone. Returning a whole lesson here would duplicate steps
+ * already parsed (the heading closes before `steps`, so no step has been emitted
+ * yet).
  */
 const headRepairInstruction: Record<CurriculumLocale, (rejection: BoardHeadRejection) => string> = {
   ja: (rejection) =>
@@ -272,22 +283,23 @@ const headRepairInstruction: Record<CurriculumLocale, (rejection: BoardHeadRejec
     ].join("\n"),
 };
 
-/** 板書1枚(`BoardChannel.startBoard()` が返すもの)のうち、授業で使う口だけ。 */
+/** Only the parts of one board (from `BoardChannel.startBoard()`) a lesson uses. */
 export type BoardLessonDelivery = {
   append(options: AppendBoardOptions): Promise<BoardAppendResult>;
 };
 
 export type RunBoardLessonOptions = {
   llm: LessonLlm;
-  /** `boardLessonSystemPrompt()` の出力。 */
+  /** The output of `boardLessonSystemPrompt()`. */
   system: string;
   locale: CurriculumLocale;
   delivery: BoardLessonDelivery;
   /**
-   * 板書を1行出した**直後**に呼ばれる。ここでTTSに渡す。
+   * Called right after one board line goes out; hand it to TTS here.
    *
-   * **返るまで次の手順は送らない**(`board.ts` の `onStep` の契約)。
-   * 読み上げ終わりまで待つか、投げて即返すかで同期の粒度が変わる。判断は `agent.ts` 側。
+   * The next step is not sent until it returns (the `onStep` contract in
+   * `board.ts`). Waiting for speech to finish versus firing and returning changes
+   * the synchronization granularity; that call is `agent.ts`'s.
    */
   speak: (step: BoardStep) => Promise<void>;
   signal?: AbortSignal;
@@ -296,18 +308,18 @@ export type RunBoardLessonOptions = {
 };
 
 export type BoardLessonResult = BoardAppendResult & {
-  /** **実際にワイヤーへ出した**手順。教え返しのプロンプトに渡す材料。 */
+  /** Steps actually put on the wire; material for the teach-back prompt. */
   steps: BoardStep[];
 };
 
 /**
- * 板書レッスンを1回ぶん流す。
+ * Streams one board lesson.
  *
- * 手順が閉じた端から `board_step` を送り、**送信の直後に**読み上げる(§3-2)。
- * 逆にすると「ここ、見て」が空の盤面を指す。
+ * Each step is sent as `board_step` the moment it closes, and spoken immediately
+ * after sending. Reversed, "look here" points at an empty surface.
  *
- * 板書は**閉じない**。寿命は1つの問題で、教え返しの間も画面に残る
- * (閉じるのは `agent.ts` がセッションを終えるとき)。
+ * It does not close the board. Its lifetime is one problem, and it stays on
+ * screen through the teach-back; `agent.ts` closes it when the session ends.
  */
 export async function runBoardLesson(options: RunBoardLessonOptions): Promise<BoardLessonResult> {
   const {
@@ -328,14 +340,14 @@ export async function runBoardLesson(options: RunBoardLessonOptions): Promise<Bo
     signal,
     onStep: async (step) => {
       steps.push(step);
-      // 割り込み後は喋らない。板書はもう出ているので消さないが、
-      // 生徒が話し始めた上に音声を重ねる理由はない。
+      // Do not speak after an interruption. The board is already out and is not
+      // erased, but there is no reason to talk over a student who has started.
       if (signal?.aborted === true) return;
       await speak(step);
     },
-    // **問いかけたら、そこで止めて答えを待つ。**プロンプト側の「質問を出したら
-    // その板書はそこで終える」を、生成のぶれに任せずここで守る
-    // (`board.ts` の `stopAfter` にその判断を置かない理由も同じコメントにある)。
+    // Ask, then stop and wait for the answer. The prompt's "end the board once a
+    // question is asked" is enforced here rather than left to generation wobble
+    // (see `stopAfter` in `board.ts` for why the judgement does not live there).
     stopAfter: (step) => handsTurnToStudent(step.speech, locale),
     repair: (rejection) => repairStep({ llm, system, locale, rejection, signal, log }),
     repairHead: (rejection) =>
@@ -354,10 +366,11 @@ export async function runBoardLesson(options: RunBoardLessonOptions): Promise<Bo
 }
 
 /**
- * 落ちた手順1つを作り直させる。直らなければ `null`(そこで説明は打ち切られる)。
+ * Redoes one failed step, returning `null` when it cannot be repaired (the
+ * explanation stops there).
  *
- * ここでの待ちは**そのまま音声の空白になる**(`board.ts` の設計判断の2)。
- * だから `maxTokens` は手順1つぶんに絞ってあり、既定の再試行回数も1回のまま。
+ * The wait here surfaces directly as silence (design decision 2 in `board.ts`),
+ * so `maxTokens` is scoped to a single step and the default retry count stays 1.
  */
 async function repairStep(input: {
   llm: LessonLlm;
@@ -381,10 +394,12 @@ async function repairStep(input: {
 }
 
 /**
- * 作り直しをLLMに頼んで、JSONを1つ取り出す。手順と見出しで共通の口。
+ * Asks the LLM for a repair and extracts one JSON value; shared by steps and
+ * headings.
  *
- * 落ちたときは `null`。**粘らない** — 直らなかったのは指示が効かない書き方を
- * しているということで、同じ指示をもう一度渡しても同じ失敗の族に落ちる。
+ * Returns `null` on failure and does not persist: failing means the phrasing does
+ * not respond to the instruction, and repeating it lands in the same family of
+ * failures.
  */
 async function askForJson(input: {
   llm: LessonLlm;
@@ -392,7 +407,7 @@ async function askForJson(input: {
   user: string;
   signal?: AbortSignal;
   log?: Pick<JobLogger, "info" | "warn">;
-  /** ログの見出しの接頭辞(`board_step_repair` / `board_head_repair`)。 */
+  /** Log heading prefix (`board_step_repair` / `board_head_repair`). */
   what: string;
   index: number;
   reason?: string;
@@ -430,11 +445,12 @@ async function askForJson(input: {
 }
 
 /**
- * セッションの終わり方を、板書の締め方に翻訳する。
+ * Translates how the session ended into how the board closes.
  *
- * `timeout` を `completed` に寄せるのは、**上限時間はサーバが決めた予定どおりの
- * 終わり方**だから。板書の `reason` は受信側が「途中で壊れたのか」を見るための札で、
- * ここに `error` を入れると、正常に15分使い切ったセッションが全部エラー扱いになる。
+ * `timeout` maps to `completed` because the time limit is the server's planned
+ * ending. The board's `reason` is the receiver's marker for "did this break
+ * partway", so putting `error` here would make every session that used its full
+ * 15 minutes look like a failure.
  */
 export function boardCloseReasonFor(
   reason: CompleteSessionRequest["ended_reason"],

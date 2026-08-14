@@ -26,10 +26,10 @@ describe("newId", () => {
   });
 
   /**
-   * workerd は組み込みAPIのレシーバを見るので、`crypto` から切り離した
-   * `getRandomValues` を呼ぶと Illegal invocation で落ちる。
-   * Node のcryptoは切り離しても通ってしまい、素のテストでは差が出ない。
-   * ここではworkerdと同じ厳しさを再現して、既定値の呼び方を固定する。
+   * workerd checks the receiver of built-in APIs, so calling `getRandomValues`
+   * detached from `crypto` throws Illegal invocation. Node's crypto tolerates it,
+   * so a plain test shows no difference. This reproduces workerd's strictness to
+   * pin how the default calls it.
    */
   it("乱数は crypto をレシーバにしたまま引く(workerdのIllegal invocation対策)", () => {
     let receiver: unknown = null;
@@ -41,7 +41,7 @@ describe("newId", () => {
         if (this !== crypto) {
           throw new TypeError("Illegal invocation: function called with incorrect `this`");
         }
-        // 見たいのは呼び方(レシーバ)だけなので、中身は本物の乱数でなくていい
+        // Only the call style (the receiver) matters, so the values need not be real randomness
         return array.fill(1);
       },
     });

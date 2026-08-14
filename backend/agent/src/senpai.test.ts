@@ -13,13 +13,13 @@ import {
 import { sessionMetadataJson } from "./test-support.ts";
 
 /**
- * 教え返しフェーズのうち、**agent 側にしか置けないもの**のテスト。
+ * Tests for the parts of the teach-back phase that can only live in the agent.
  *
- * 人格と約束の検査は `packages/prompts` 側(正本がそこにあるため)。
- * ここで見るのは2つ:
+ * Persona and promise checks live in `packages/prompts` (the source of truth).
+ * Two things are checked here:
  *
- *   1. 定型の一言が、言語ごとに・約束を破らない形で出ること
- *   2. 板書の要約が `lesson_recap` に入り、§2 の断り書きと一緒に出ること
+ *   1. fixed lines come out per language, without breaking a promise
+ *   2. the board summary lands in `lesson_recap` alongside §2's disclaimer
  */
 
 const context = readSessionContext(
@@ -35,7 +35,7 @@ const context = readSessionContext(
   }),
 );
 
-/** ノートを撮らずに問題だけを持ってきた、英語のセッション(§4-1 の正規の経路)。 */
+/** An English session with only the problem photographed, no notes (§4-1's supported path). */
 const englishContext = readSessionContext(
   sessionMetadataJson({
     session_id: "ses_2",
@@ -64,18 +64,18 @@ describe("定型の一言", () => {
     expect(lessonFailedPrompt("ja", "review")).not.toBe(lessonFailedPrompt("en", "review"));
   });
 
-  // 板書が1行も出せなかったのに「じゃあ今の、説明してみて」と言うと、
-  // 教わっていないことの説明を求めることになる
+  // Saying "now explain that back to me" after not one board line came out asks
+  // the student to explain something they were never taught
   it("板書が出せなかったときは、教え返しを求めない", () => {
     expect(lessonFailedPrompt("ja")).not.toContain("説明してみて");
   });
 
   /**
-   * 定型の一言は**会話LLMを通らない**ので、プロンプトの約束が効かない。
-   * ここが唯一の歯止め。
+   * Fixed lines never pass through the conversation LLM, so the prompt's promises
+   * do not apply. This is the only brake.
    *
-   * - 【申告させず、やらせる】: 「覚えてる?」は「うん」で返せてしまう
-   * - 約束4(改正後): 命令・催促・数字を出さない
+   * - "make them do it, not report it": "remember?" can be answered with "yes"
+   * - promise 4 (post-revision): no commands, no nagging, no numbers
    */
   it("こちらから言う一言が、申告させる聞き方や催促になっていない", () => {
     const lines = [
@@ -93,7 +93,7 @@ describe("定型の一言", () => {
 });
 
 describe("handsTurnToStudent", () => {
-  // 成功した授業では毎回そうなる(`senpai_board.*.md` が最後にそう指示している)
+  // Always true for a successful lesson (`senpai_board.*.md` instructs it at the end)
   it("最後の手順がもう番を渡していれば true", () => {
     expect(handsTurnToStudent("じゃあ今の、自分の言葉で説明してみて。", "ja")).toBe(true);
     expect(handsTurnToStudent("最初の一手、言ってみて。", "ja")).toBe(true);
@@ -107,18 +107,19 @@ describe("handsTurnToStudent", () => {
   });
 
   /**
-   * **実際に踏んだ壊れ方。** 問題文が読めなかった授業は
-   * 「問題、読んでもらってもいい?」から始まる(`senpai_board.*.md` の指示)。
-   * これを「まだ喋っている途中」と読むと、直後に教え返しの定型句が足され、
-   * **読み上げを頼まれた次の瞬間に、まだ教わっていない内容の説明を求められる。**
+   * A failure actually hit in production. A lesson whose problem text was
+   * unreadable starts with "could you read the problem out?" (per
+   * `senpai_board.*.md`). Reading that as "still mid-sentence" appends the
+   * teach-back line right after, so the moment after being asked to read aloud,
+   * the student is asked to explain what they have not been taught.
    */
   it("問いかけで終わっていれば、形が違っても番は渡っている", () => {
     expect(handsTurnToStudent("問題、読んでもらってもいい?", "ja")).toBe(true);
     expect(handsTurnToStudent("この式、まず何する?", "ja")).toBe(true);
-    // **全角の疑問符。**日本語の出力はほとんどこちらで、ここを取りこぼすと
-    // 日本語の授業ではターン制が丸ごと元に戻る(実際に一度、正規表現の中の
-    // 全角 `？` が半角に潰れていた)。半角に化けても落ちるよう、
-    // コードポイントで書いてある。
+    // A full-width question mark. Almost all Japanese output uses it, and missing
+    // it rolls turn taking fully back for Japanese lessons (a full-width `？` in
+    // the regex was once flattened to half-width). Written as a code point so it
+    // still fails loudly if mangled.
     expect(handsTurnToStudent("D はプラスだよね。だから\uFF1F", "ja")).toBe(true);
     expect(handsTurnToStudent("じゃあ、次はどうする\uFF1F ", "ja")).toBe(true);
     expect(handsTurnToStudent("Could you read me the problem?", "en")).toBe(true);
@@ -153,8 +154,8 @@ describe("renderLessonRecap", () => {
     ]);
   });
 
-  // instructions は毎ターン全部送られる。板書1枚は最大40手順あるので、
-  // 上限がないと会話のたびに板書ぶんの入力トークンを払い続けることになる。
+  // instructions are resent in full every turn. One board holds up to 40 steps, so
+  // without a cap every turn pays board-sized input tokens.
   it("上限を超えたら末尾を落とす(先頭は残す)", () => {
     const many = Array.from({ length: 40 }, (_, index) =>
       step(index, "あ".repeat(100), { kind: "latex", tex: "x = 1" }),
@@ -167,8 +168,8 @@ describe("renderLessonRecap", () => {
     expect(recap).not.toContain("40. 「");
   });
 
-  // 空文字を返すと、見出しだけが残った節を先輩が読むことになり、
-  // 「板書はあるが読めない」と解釈されうる。**無いことを書く。**
+  // Returning an empty string leaves a heading-only section for the senpai to read,
+  // which can be read as "there is a board but it is unreadable". State the absence.
   it("授業前は「まだ無い」と書いた定型句を、会話の言語で返す", () => {
     expect(renderLessonRecap([], "ja")).toContain("まだ板書には何も出していません");
     expect(renderLessonRecap([], "en")).toContain("nothing on the board yet");
@@ -177,8 +178,8 @@ describe("renderLessonRecap", () => {
 });
 
 describe("senpaiConversationPrompt", () => {
-  // 人格・約束の中身は正本(prompts/senpai_conversation.*.md)側で見る。
-  // ここで見るのは「正本がちゃんと使われているか」だけ。
+  // Persona and promise content is checked against the source (prompts/senpai_conversation.*.md).
+  // Here we only check that the source is actually used.
   it("先輩の正本を使う(後輩の人物像は残っていない)", () => {
     const prompt = senpaiConversationPrompt({ context, remainingSeconds: 600 });
 
@@ -200,7 +201,7 @@ describe("senpaiConversationPrompt", () => {
     expect(prompt).toContain("まだ板書には何も出していません");
   });
 
-  // 先輩が「何を教えたか」を知らないと、教え返しの「言えた / 詰まった」が判定できない
+  // Without knowing what was taught, the senpai cannot judge "said it / got stuck"
   it("授業のあとは板書の要約を渡す", () => {
     const prompt = senpaiConversationPrompt({
       context,
@@ -211,8 +212,8 @@ describe("senpaiConversationPrompt", () => {
     expect(prompt).toContain("D = b^2 - 4ac");
   });
 
-  // 計画書 §2「出題元はユーザーが説明した内容。AIが教えた内容から作らない」を
-  // プロンプト側にも二重に書く。要約を渡した瞬間に破りやすくなる約束なので
+  // Plan §2 ("questions come from what the user explained, never from what the AI
+  // taught") is written into the prompt too - handing over a summary makes it easy to break
   it("板書の要約には「ユーザーが説明できた内容ではない」が必ず添う", () => {
     const prompt = senpaiConversationPrompt({
       context,
@@ -223,7 +224,7 @@ describe("senpaiConversationPrompt", () => {
     expect(prompt).toContain("ユーザーが説明できた内容ではありません");
   });
 
-  // 日本語の本文に「英語で答えて」を足す作りにしない(prompts/README.md)
+  // Never a Japanese body with "answer in English" appended (prompts/README.md)
   it("英語ロケールでは正本も定型句も英語になる", () => {
     const prompt = senpaiConversationPrompt({
       context: englishContext,

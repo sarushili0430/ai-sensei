@@ -1,98 +1,99 @@
 import type { LogFields } from "./log.ts";
 
 /**
- * **縮退**の監視(計画書 §10-7)。モバイル側の `lib/src/telemetry/telemetry.dart` と対。
+ * Degradation monitoring, the counterpart to `lib/src/telemetry/telemetry.dart`
+ * on mobile.
  *
- * ─────────────────────────────────────────────────────────────────────────
- * 【なぜ agent 側に要るのか】穴が非対称だった
- * ─────────────────────────────────────────────────────────────────────────
+ * ## Why the agent needs its own
  *
- * モバイル側は「板書がとぎれた」「式が縮小率の下限を割った」を報告するようになった。
- * だがそれは**受け取り側から見た縮退**で、次の2つは原理的に見えない:
+ * The hole was asymmetric. Mobile reports "the board was truncated" and "a
+ * formula fell below the minimum scale", but those are degradations as seen by
+ * the receiver, and two cases are invisible from there:
  *
- *   1. **agent が板書を送り損ねた**とき。受け取り側には「来なかった」としか映らず、
- *      送信側で何が起きたか(検証に落ちた・上限で打ち切った・送信が失敗した)は分からない
- *   2. **受け取り側が起動する前**に縮退したとき。生成が始まる前に落ちれば、
- *      報告する主体そのものが存在しない
+ *   1. The agent failed to send the board. The receiver only sees "it never came"
+ *      and learns nothing about what happened on the sending side (failed
+ *      validation, cut off at a limit, a failed send).
+ *   2. A degradation before the receiver even starts. If it fails before
+ *      generation begins, the thing that would report it does not exist.
  *
- * ─────────────────────────────────────────────────────────────────────────
- * 【クラッシュと縮退を同じ棚に置かない】
- * ─────────────────────────────────────────────────────────────────────────
+ * ## Crashes and degradations stay on separate shelves
  *
- * `JobLogger.error()` は既に `captureException` に流れている。こちらが扱うのは
- * **落ちてはいないが約束が破れている**状態で、`captureMessage(level: "warning")` に送る。
- * クラッシュの棚に混ぜると、本当に落ちたものが埋もれる。
+ * `JobLogger.error()` already flows to `captureException`. This handles states
+ * that have not crashed but have broken a promise, and sends them to
+ * `captureMessage(level: "warning")`. Mixing them into the crash shelf buries
+ * real crashes.
  *
- * ─────────────────────────────────────────────────────────────────────────
- * 【送らないもの】ユーザーは未成年で、問題文は他者の著作物
- * ─────────────────────────────────────────────────────────────────────────
+ * ## Never sent — the users are minors and problem text is someone else's work
  *
- * 生徒の発話・transcript・カルテ・**問題文**は送らない。問題文は
- * **R2にすら保存しないと決めたもの**(計画書 §4-1)なので、監視に流れたら
- * 決定そのものが無効になる。
+ * No student speech, transcripts, kartes or problem text. Problem text is what we
+ * decided not to store even in R2, so letting it reach monitoring would void that
+ * decision.
  *
- * **落とし方は許可リスト(deny ではなく allow)。** ログの欄は今後も増えるので、
- * 「危ないものを列挙して落とす」形だと、足された欄が既定で送られてしまう。
- * `board_opened` の `title` のように、**LLMが問題を見て書いた文字列**が
- * 平然と欄に載る場所なので、既定は落とす側でなければならない。
+ * Stripping works by allow list, not deny list. Log fields will keep being added,
+ * and an "enumerate the dangerous ones" approach sends every new field by
+ * default. Strings written by an LLM looking at the problem — `board_opened`'s
+ * `title`, for instance — sit plainly in these fields, so the default must be to
+ * drop.
  *
- * ここは Sentry を import しない(テストが SDK を引き込まないように)。
- * 実際の送信は `index.ts` が {@link createDegradationReporter} に差し込む。
+ * Sentry is not imported here, so tests do not pull in the SDK. The actual send
+ * is injected by `index.ts` through {@link createDegradationReporter}.
  */
 
 /**
- * 監視に上げる縮退。**閉じた集合にする。**
+ * Degradations raised to monitoring. A closed set.
  *
- * `JobLogger.warn` を全部上げると、正常動作の警告(2回目以降の見出しを捨てた・
- * LLMが `index` を数え間違えたが直した)まで飛んで**アラート疲れ**になる。
- * それは #12 で `containsAnswerLeak` を捨てたのと同じ失敗の形で、
- * **本物の異常を見落とす方向にしか働かない。**
+ * Raising every `JobLogger.warn` would also send warnings from normal operation
+ * (a later heading discarded, an LLM miscount that was corrected) and cause alert
+ * fatigue — the same failure shape as dropping `containsAnswerLeak` in #12, and
+ * it only ever pushes towards missing the real anomalies.
  *
- * 入れる基準は「**生徒に届くはずのものが届かなかったか**」の1つだけ。
+ * The single criterion for inclusion: did something that should have reached the
+ * student fail to?
  */
 export const agentDegradations = [
-  /** 走査の破綻・封筒の契約違反・送信の失敗。**送信側の縮退そのもの。** */
+  /** A parse failure, envelope contract violation or failed send. */
   "board_append_failed",
   /**
-   * 締めの封筒を送れなかった。受信側から見ると板書が開いたままなので、
-   * **そのセッションの以降の板書がぜんぶ出なくなる**(`board.ts` の `close` 参照)。
+   * The closing envelope could not be sent. To the receiver the board stays open,
+   * so every later board in that session fails to appear (see `close` in
+   * `board.ts`).
    */
   "board_close_failed",
-  /** 検証に落ちた手順が直らなかった。その手順は生徒に届いていない。 */
+  /** A step failed validation and could not be repaired; it never reached them. */
   "board_step_rejected",
-  /** ルートの `}` まで読めなかった。1回ぶんの説明が途中で切れている。 */
+  /** The root `}` was never reached: one explanation was cut off. */
   "board_stream_truncated",
-  /** 読み切れたのに1手順も無い / 見出しが来ない。契約違反の出力。 */
+  /** Read fully but no steps, or no heading: output violating the contract. */
   "board_lesson_empty",
   "board_head_missing",
-  /** 上限で打ち切った。板書1枚(40)と1回の出力(12)。 */
+  /** Cut off at a limit: 40 per board, 12 per output. */
   "board_steps_overflow",
   "board_lesson_overflow",
-  /** 閉じた板書に積もうとした。呼び出し側の状態管理がずれている。 */
+  /** Appending to a closed board: the caller's state tracking has drifted. */
   "board_append_after_close",
-  /** 作り直しが失敗した / JSONですらなかった。 */
+  /** The repair failed, or was not even JSON. */
   "board_step_repair_failed",
   "board_step_repair_unreadable",
   /**
-   * 範囲外の単元で板書を始めようとした(計画書 §8「教える範囲の妥当性」)。
+   * A board would have started on an out-of-scope topic.
    *
-   * **写真に無い話を教えかけた**ということなので、頻発するなら
-   * プロンプト側(`senpai_board.*.md` の許可トピックの節)を直す材料になる。
-   * 直らなくても授業は続くので、落ちてはいない縮退。
+   * It means senpai was about to teach something not in the photo, so if frequent
+   * it is material for fixing the allowed-topics section of `senpai_board.*.md`.
+   * The lesson continues even unrepaired, so it is a degradation, not a crash.
    */
   "board_topics_rejected",
-  /** 見出しの作り直しが失敗した / JSONですらなかった。 */
+  /** The heading repair failed, or was not even JSON. */
   "board_head_repair_failed",
   "board_head_repair_unreadable",
-  /** Text Streams の送り口が無い。**板書がまったく出ない**経路。 */
+  /** No Text Streams publisher: the path where no board appears at all. */
   "board_publisher_missing",
-  /** 古いAPIの復習metadata。対象穴が無いため、板書を出さず従来の会話へ縮退する。 */
+  /** Review metadata from an older API: with no target gap it degrades to the previous board-less conversation. */
   "review_hole_missing",
-  /** 授業が1行も板書を出せなかった。**8/16ゲートを見る指標**(計画書 §3-4)。 */
+  /** The lesson produced no board lines at all; a release-gate metric. */
   "lesson_empty",
-  /** 読み上げに失敗した。板書は出ているのに音声だけ落ちている。 */
+  /** Speech failed: the board appeared but the audio alone was lost. */
   "say_failed",
-  /** 自動割り当てが作れず定型テンプレへ落ちた。計画は届くが自動化の品質は失われている。 */
+  /** Automatic allocation failed and fell back to a template: the plan arrives, but the automation's quality is gone. */
   "plan_template_fallback",
 ] as const;
 
@@ -105,22 +106,22 @@ export function isDegradation(event: string): event is AgentDegradation {
 }
 
 /**
- * 監視に送ってよい欄。**ここに無い文字列は落とす。**
+ * Fields that may be sent to monitoring. Any string not listed is dropped.
  *
- * 判断の材料は「どの板書の、何手順目で、どの種類の失敗が起きたか」で足りる。
- * 詳細(`detail` / `message` / `title`)は**標準出力には残る**ので、
- * 当たりを付けてから `lk agent logs` で引けばよい。
- * 監視に要るのは**気づくこと**で、原因の全文ではない。
+ * "Which board, which step, which kind of failure" is enough to act on. The
+ * details (`detail`, `message`, `title`) stay in stdout, so they can be pulled
+ * with `lk agent logs` once you know where to look. Monitoring needs to make you
+ * notice, not to carry the whole cause.
  */
 export const degradationStringFields = [
-  /** ログの見出し。`error` の文脈を送るときに要る。 */
+  /** The log's heading; needed when sending an `error`'s context. */
   "event",
   "board_id",
   "session_id",
   "plan_session_id",
   "room",
   "job_id",
-  /** `latex` / `syntax` / `schema`、`text_in_math` などの列挙。自由文ではない。 */
+  /** An enum such as `latex` / `syntax` / `schema` or `text_in_math`; never free text. */
   "reason",
   "ended_reason",
   "kind",
@@ -131,10 +132,11 @@ export const degradationStringFields = [
 const allowedStrings = new Set<string>(degradationStringFields);
 
 /**
- * 送る直前に本文を落とす**最後の関門**。
+ * The last gate, stripping content immediately before sending.
  *
- * 数値・真偽値はそのまま通す(件数・位置・所要時間)。文字列は許可リストのみ。
- * 配列とオブジェクトは中身が読めないので丸ごと落とす。
+ * Numbers and booleans pass through (counts, positions, durations). Strings pass
+ * only via the allow list. Arrays and objects are opaque, so they are dropped
+ * whole.
  */
 export function scrubFields(fields: LogFields): LogFields {
   const out: LogFields = {};
@@ -151,20 +153,21 @@ export function scrubFields(fields: LogFields): LogFields {
 }
 
 /**
- * 同じことを何度も送らないための間引き。モバイル側の `DegradationThrottle` と対。
+ * Throttling so the same thing is not sent repeatedly; the counterpart to
+ * mobile's `DegradationThrottle`.
  *
- * **1回の授業で何十手順も流れる。** 素直に送ると1セッションで大量に飛び、
- * 「1件起きた」と「ずっと起き続けている」の区別がつかなくなる。
- * 板書1枚につき1件送れば、どの板書で起きたかは分かる。
+ * A single lesson streams dozens of steps. Sending each would flood one session
+ * and blur "happened once" against "happening constantly". One report per board
+ * is enough to identify which board.
  */
 export class DegradationThrottle {
   private readonly limit: number;
   private readonly seen = new Set<string>();
 
   /**
-   * `limit` は覚えておく鍵の上限。**無制限に覚えるとここだけが太り続ける。**
-   * 上限に達したら全部忘れる(= そこから先はもう一度だけ送る)。
-   * 送りすぎより「長く動いているワーカーからは何も飛ばなくなる」ほうが困る。
+   * `limit` caps the remembered keys; remembering without bound makes this the
+   * one thing that grows. On reaching it everything is forgotten, so each key
+   * sends once more. Over-reporting beats a long-running worker going silent.
    */
   constructor(limit = 64) {
     this.limit = limit;
@@ -183,22 +186,23 @@ export class DegradationThrottle {
 }
 
 /**
- * 「同じ出来事」の単位。板書がらみは `board_id` で1枚につき1件。
- * `board_id` を持たない縮退(`board_publisher_missing` など)はセッション単位。
+ * The unit of "same event". Board-related ones use `board_id`, one per board;
+ * those without it (`board_publisher_missing` and the like) go per session.
  */
 export function degradationKey(event: string, fields: LogFields): string {
   const scope = fields["board_id"] ?? fields["session_id"] ?? fields["plan_session_id"] ?? "";
   return `${event}/${typeof scope === "string" ? scope : ""}`;
 }
 
-/** 実際に送る口。`index.ts` が Sentry を差し込む。 */
+/** The actual send. `index.ts` injects Sentry here. */
 export type CaptureDegradation = (event: AgentDegradation, fields: LogFields) => void;
 
 /**
- * `JobLogger.warn` を受けて、縮退だけを間引いて送る関数を作る。
+ * Builds the function that takes `JobLogger.warn` and sends only throttled
+ * degradations.
  *
- * **判定・間引き・伏せ字をここに集める。**`log.ts` には「warn が来たら渡す」しか
- * 書かないので、送る条件を変えるときに触る場所が1つで済む。
+ * Selection, throttling and redaction all live here. `log.ts` says only "pass on
+ * a warn", so changing what gets sent means touching one place.
  */
 export function createDegradationReporter(
   capture: CaptureDegradation,
@@ -212,40 +216,42 @@ export function createDegradationReporter(
 }
 
 /* -------------------------------------------------------------------------- */
-/* 例外メッセージ                                                              */
+/* Exception messages                                                         */
 /* -------------------------------------------------------------------------- */
 
-/** 例外メッセージを送ってよい長さ。**種類が分かればよく、全文は要らない。** */
+/** How much of an exception message may be sent; the kind is enough. */
 export const messageMaxLength = 200;
 
 /**
- * URLは**スキームとホストまで**にする。
+ * URLs are truncated to scheme and host.
  *
- * 秘密が乗るのはパスとクエリ(`?access_token=` / 署名つきURL)なので、
- * そこを落とす。ホストは残す — どのサービスで失敗したかは判断に要る。
+ * Secrets ride in the path and query (`?access_token=`, signed URLs), so those
+ * are dropped. The host stays — knowing which service failed is needed.
  */
 const urlPattern = /\b([a-z][a-z0-9+.-]*:\/\/[^\s/?#]+)[^\s]*/gi;
 
 /**
- * トークンらしい長い塊。JWT・APIキー・base64の断片。
- * 16文字以上の「英数と `-_.` だけの連なり」を潰す。日本語の文と数式は巻き込まない。
+ * Token-shaped runs: JWTs, API keys, base64 fragments. It collapses runs of 16 or
+ * more characters made only of alphanumerics and `-_.`, so Japanese prose and
+ * formulas are not caught.
  */
 const tokenPattern = /\b[A-Za-z0-9_-]{16,}\.?[A-Za-z0-9_-]*\b/g;
 
 /**
- * 例外メッセージから秘密を落とす。
+ * Strips secrets from an exception message.
  *
- * **モバイル側が踏んだ罠のサーバ版。**あちらは「LiveKit の例外は `toString()` に
- * 接続先URLやトークンの断片を含むことがある」ことに気づいて `runtimeType` だけにした。
- * こちらは外部SDK(LiveKit / Deepgram / Anthropic)の例外がそのまま
- * `captureException` に載るので、同じものが飛びうる。
+ * The server-side version of a trap mobile hit: it noticed that LiveKit
+ * exceptions can carry endpoint URLs and token fragments in `toString()` and
+ * reduced them to `runtimeType`. Here, exceptions from external SDKs (LiveKit,
+ * Deepgram, Anthropic) reach `captureException` directly, so the same things can
+ * escape.
  *
- * ただし**種類ごと捨てはしない。**サーバ側はスタックが唯一の手がかりなので、
- * クラス名とスタックは残し、**メッセージの中身だけ**を潰す。
+ * But the kind is not thrown away: on the server the stack is the only handle, so
+ * the class name and stack stay and only the message's contents are scrubbed.
  *
- * 加えて、自前で組み立てたメッセージにAPIの応答本文が入ることがある
- * (`lesson.ts` / `karte.ts` の「失敗しました: <status> <body>」)。
- * 応答本文にはLLMの出力が入りうるので、長さでも切る。
+ * Messages we assemble ourselves can also embed an API response body ("failed:
+ * <status> <body>" in `lesson.ts` / `karte.ts`), which may contain LLM output, so
+ * it is capped by length too.
  */
 export function scrubMessage(message: string): string {
   const redacted = message.replace(urlPattern, "$1/…").replace(tokenPattern, "…");

@@ -1,39 +1,42 @@
 /**
- * 会話が自然に終わったことの検出。
+ * Detects that a conversation ended naturally.
  *
- * 会話プロンプトは「今日はここまでにしよっか」または
- * "Let's stop here for today" で終えると指示している。その締めの発話を見て
- * `completed` として閉じる。
+ * The conversation prompt says to end with "今日はここまでにしよっか" or
+ * "Let's stop here for today". Seeing that closing utterance closes the session
+ * as `completed`.
  *
- * これがないと、うまく終わった会話でも上限時間(最長5分)まで部屋が空回りし、
- * ended_reason に `completed` が一度も立たない。
+ * Without it, even a well-finished conversation idles until the cap (5 minutes
+ * at most) and ended_reason never becomes `completed`.
  *
- * 文言パターンは `senpai.ts` の `handsTurnToStudent` と同じく、プロンプト変更時に
- * 同期漏れを起こす構造的な脆さを持つ。将来は `end_session` のようなツールを
- * LLM に呼ばせる案があるが、文言合わせの効果を切り分けるため今回は実装しない。
+ * Like `handsTurnToStudent` in `senpai.ts`, the wording patterns are
+ * structurally fragile: change the prompt and they silently fall out of sync.
+ * A future option is having the LLM call an `end_session` tool, but that is not
+ * implemented yet so the effect of the wording match can be isolated.
  */
 
 /**
- * 「ここまで」が**今日の授業ぜんぶ**を指していることの裏付け。
+ * Confirms that "this far" means the whole of today's lesson.
  *
- * レビュー指摘: 「ここまで」は説明の区切りにも使う。「説明はここまでかな?じゃあ次は」を
- * 締めと取り違えると、**授業の途中で部屋が閉じる** — 検出できないより悪い壊れ方になる。
- * 「今日は」「そろそろ」のような、今日ぜんぶを指す語を前に要求して切り分ける。
+ * From review: "ここまで" also marks the end of an explanation. Mistaking
+ * "説明はここまでかな?じゃあ次は" for a close shuts the room mid-lesson - worse
+ * than not detecting it at all. Requiring a preceding word that scopes the whole
+ * day ("今日は", "そろそろ") separates the two.
  *
- * 逆に取りこぼしたとき(「じゃあここまでにしよっか」)は上限時間まで空回りするだけなので、
- * **見逃す側に倒している。** プロンプトは「今日はここまでにしよっか」と明示する指示に
- * してあり(`prompts/senpai_conversation.ja.md` の「締め方」)、その形を受ける。
+ * A miss the other way ("じゃあここまでにしよっか") only idles until the cap, so
+ * this errs toward missing. The prompt explicitly says to use
+ * "今日はここまでにしよっか" (see "締め方" in `prompts/senpai_conversation.ja.md`),
+ * and this matches that form.
  *
- * 句点をまたがせないのは、前の文の「今日」を裏付けに使わせないため
- * (「今日は二次関数やったね。説明はここまでかな?」は締めではない)。
+ * It must not span a full stop, so "今日" from a previous sentence cannot serve
+ * as the scope ("今日は二次関数やったね。説明はここまでかな?" is not a close).
  */
 const SESSION_SCOPE = String.raw`(?:今日|きょう|本日|そろそろ)[^。！!?？\n]{0,8}`;
 
-/** 語の途中で切らないための後続アンカー(「ここまでかなり進んだね」を締めにしない)。 */
+/** Trailing anchor so words are not cut mid-token ("ここまでかなり進んだね" is not a close). */
 const SENTENCE_TAIL = String.raw`(?:[。、！!?？,]|\s|$)`;
 
 const CLOSING_PATTERNS: RegExp[] = [
-  // 終止の形だけで「今日はここまでいい?」を除外できるため、後続アンカーは置かない。
+  // The terminal form alone rules out "今日はここまでいい?", so no trailing anchor.
   new RegExp(`${SESSION_SCOPE}ここまでにし(?:よ(?:う|っか)|とこ(?:う|っか))`),
   new RegExp(`${SESSION_SCOPE}ここまでかな${SENTENCE_TAIL}`),
   new RegExp(
@@ -43,7 +46,7 @@ const CLOSING_PATTERNS: RegExp[] = [
   /next time you['’]re here, let['’]s pick this up\b/i,
 ];
 
-/** AI側の締めの発話かどうか。ユーザー側の発話には使わない。 */
+/** Whether this is the AI's closing utterance. Never used on user speech. */
 export function isClosingUtterance(text: string): boolean {
   const normalized = text.trim();
   if (normalized.length === 0) return false;

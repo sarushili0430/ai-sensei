@@ -22,7 +22,7 @@ describe("JobLogger", () => {
     ]);
   });
 
-  // 文脈を読んだあとは、APIのログと session_id で突き合わせられるようにする
+  // After the context is read, make it joinable with the API's logs by session_id
   it("childでsession_idを全行に足せる", () => {
     const out = capture();
     const log = new JobLogger({ room: "ses_1" }, out.sink, out.sink).child({ session_id: "ses_1" });

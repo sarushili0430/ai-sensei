@@ -29,13 +29,14 @@ import {
 } from "./board.ts";
 
 /**
- * 配送層のテスト。**「動くこと」ではなく「壊れたときに壊れたと分かること」**を見る。
+ * Tests for the delivery layer. Not "does it work" but "when it breaks, is the
+ * break visible".
  *
- * 見たいのは4つ:
- *   1. 手順が閉じた端から出ていること(まとめて出ていないこと)
- *   2. 検証に落ちた手順が**ワイヤーに出ないこと**
- *   3. `seq` / `index` / `step_count` が、受信側の欠落検知として機能すること
- *   4. 割り込みで、板書が途中まで残る形に締まること
+ * Four things:
+ *   1. steps go out as soon as each closes (not batched)
+ *   2. steps that fail validation never reach the wire
+ *   3. `seq` / `index` / `step_count` work as the receiver's gap detection
+ *   4. a barge-in closes the board with the partial content kept
  */
 
 const step = (index: number, tex: string): unknown => ({
@@ -48,7 +49,7 @@ function lessonJson(steps: readonly unknown[], title = "判別式で解の個数
   return JSON.stringify({ title, topic_ids: ["M1-NIJI-HANBETSU"], steps });
 }
 
-/** チャンクの切れ目に意味を持たせない。 */
+/** Chunk boundaries must carry no meaning. */
 function slice(text: string, size: number): string[] {
   const parts: string[] = [];
   for (let at = 0; at < text.length; at += size) parts.push(text.slice(at, at + size));
@@ -58,7 +59,7 @@ function slice(text: string, size: number): string[] {
 async function* stream(parts: readonly string[], onBeforeYield?: (at: number) => void) {
   for (const [at, part] of parts.entries()) {
     onBeforeYield?.(at);
-    // 実際のLLMストリームと同じく、チャンクの間にイベントループを挟む
+    // Yield to the event loop between chunks, like a real LLM stream
     await Promise.resolve();
     yield part;
   }
@@ -93,12 +94,13 @@ function channelWith(
 }
 
 /**
- * 1回の説明で終わる板書。**テスト用の近道**で、本番の呼び出し側は
- * `append()` を何度か呼んでから `close()` する(板書の寿命は1つの問題)。
+ * A board finished in one explanation. A test-only shortcut: in production the
+ * caller calls `append()` several times before `close()` (a board lives for one
+ * problem).
  *
- * 「開く → 1回積む → その回の理由で締める」までを1つにまとめてある。
- * 検証・再生成・割り込みのテストは板書の寿命とは無関係なので、
- * こちらを通して**1回ぶんの振る舞いだけ**を見る。
+ * It rolls "open -> append once -> close with that call's reason" into one.
+ * Validation, repair and barge-in tests are unrelated to board lifetime, so they
+ * go through this and observe a single call's behaviour only.
  */
 async function deliverOnce(
   channel: BoardChannel,
@@ -127,7 +129,7 @@ describe("板書の配送(正常系)", () => {
 
     expect(typesOf(sink.sent)).toEqual(["board_open", "board_step", "board_step", "board_close"]);
     expect(result).toMatchObject({ opened: true, step_count: 2, reason: "completed" });
-    // 送った列そのものが契約(順序・seq・index・step_count)を満たす
+    // The sent sequence itself satisfies the contract (order, seq, index, step_count)
     expect(boardChannelLogSchema.safeParse({ messages: sink.sent }).success).toBe(true);
   });
 
@@ -141,8 +143,8 @@ describe("板書の配送(正常系)", () => {
   });
 
   /**
-   * **`seq` はセッションの通し番号**(contract の `envelopeFields`)。
-   * 板書ごとにリセットすると、2枚目の `board_open` で受信側が「巻き戻った」と見る。
+   * `seq` is per session (contract's `envelopeFields`). Resetting it per board
+   * makes the receiver read the second `board_open` as a rewind.
    */
   it("2枚目の板書でも seq は続きから振る", async () => {
     const sink = recordingSink();
@@ -157,9 +159,9 @@ describe("板書の配送(正常系)", () => {
   });
 
   /**
-   * **案A(§3-2)の核心が配送層まで届いていること。**
-   * 全部揃うのを待って一気に送っているなら、最後のチャンクの直前まで
-   * 送信数は0のままになる。
+   * The heart of option A (§3-2), verified down to the delivery layer.
+   * If everything were batched, the sent count would stay 0 until just before
+   * the final chunk.
    */
   it("手順が閉じた端から送る(全部揃うのを待たない)", async () => {
     const sink = recordingSink();
@@ -171,11 +173,10 @@ describe("板書の配送(正常系)", () => {
       chunks: stream(parts, () => sentBefore.push(sink.sent.length)),
     });
 
-    // 最後のチャンクを食べる前に、既に open + 手順3つが出ている
-    // (`]` で最後の手順が閉じ、`}` はそのあとに来る)。まとめて送っているなら
-    // ここは0のままになる。
+    // Before the last chunk is consumed, open + 3 steps are already out (`]`
+    // closes the last step and `}` comes after). Batching would leave this at 0.
     expect(sentBefore.at(-1)).toBe(4);
-    // 「最初の手順が出るまで」が短いことも見る。全チャンクの半分より前に1つ目が出る。
+    // Also check time-to-first-step: the first one lands before half the chunks.
     expect(sentBefore.findIndex((count) => count >= 2)).toBeLessThan(parts.length / 2);
     expect(typesOf(sink.sent)).toEqual([
       "board_open",
@@ -186,7 +187,7 @@ describe("板書の配送(正常系)", () => {
     ]);
   });
 
-  // 音声が板書を追い越すと「ここ、見て」が空の盤面を指す(§3-2)
+  // Audio overtaking the board makes "look here" point at an empty surface (§3-2)
   it("手順を送ってから speech を渡す", async () => {
     const sink = recordingSink();
     const order: string[] = [];
@@ -220,11 +221,11 @@ describe("板書の配送(正常系)", () => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* 検証に落ちた手順                                                            */
+/* Steps that failed validation                                               */
 /* -------------------------------------------------------------------------- */
 
 describe("板書の配送(描けない式)", () => {
-  // `\text{}` の日本語は tofu になる(§3-6d)。LLMが最もやりたがる書き方。
+  // Japanese inside `\text{}` renders as tofu (§3-6d) - the form the LLM most wants.
   const rejected = "\\text{よって} x = 2";
 
   it("弾かれた式はワイヤーに出ない(再生成しない設定)", async () => {
@@ -242,9 +243,9 @@ describe("板書の配送(描けない式)", () => {
   });
 
   /**
-   * 落ちても **`board_open` を送り直さない**。契約上、板書が消えるのは
-   * `board_open` が来たときだけなので、送り直すと画面が白紙に戻る。
-   * ここは「閉じるだけ」で、そこまでの板書は残す。
+   * Never resend `board_open` after a failure. By contract the board is only
+   * cleared by `board_open`, so resending blanks the screen. Here we only close,
+   * keeping everything written so far.
    */
   it("落ちても板書は作り直さない(そこまでを残して閉じる)", async () => {
     const sink = recordingSink();
@@ -275,7 +276,7 @@ describe("板書の配送(描けない式)", () => {
     expect(seen[0]?.kind).toBe("latex");
     expect(seen[0]?.reason).toBe("text_in_math");
     expect(seen[0]?.guidance).toBe(latexRejectionGuidanceByLocale.ja.text_in_math);
-    // 「行き先」が書かれていること(使うな、で終わると別の書き方に逃げて空回りする)
+    // It states where to go instead (a bare "don't" makes it flee to another form)
     expect(seen[0]?.guidance).toContain("text の板書");
     expect(seen[0]?.index).toBe(0);
   });
@@ -297,8 +298,8 @@ describe("板書の配送(描けない式)", () => {
   });
 
   /**
-   * **採用した案(b)そのもの。**落ちた手順だけ直させ、送信済みの手順は
-   * 有効なまま、続きを送る。
+   * Option (b), exactly as adopted: repair only the failed step, keep the sent
+   * ones valid, and continue.
    */
   it("直った手順は送られ、その前後の手順は影響を受けない", async () => {
     const sink = recordingSink();
@@ -322,9 +323,9 @@ describe("板書の配送(描けない式)", () => {
       "board_close",
     ]);
     expect(result).toMatchObject({ step_count: 3, reason: "completed" });
-    // 直したぶんも含めて、index は詰まったまま0始まり1ずつ
+    // Including the repair, index stays gapless from 0 in steps of 1
     expect(boardChannelLogSchema.safeParse({ messages: sink.sent }).success).toBe(true);
-    // 落ちた事実は結果に残る(プロンプト調整の材料)
+    // The failure is kept in the result (material for prompt tuning)
     expect(result.rejections.map((entry) => entry.reason)).toEqual(["text_in_math"]);
   });
 
@@ -345,11 +346,12 @@ describe("板書の配送(描けない式)", () => {
   });
 
   /**
-   * **既定は1回。**1手順の音声は実測で2〜5秒(`board-lesson.json` の中央値14字 ≒ 2.5秒)で、
-   * 再生成1回はほぼ手順1つぶんの間にあたる。2回目に渡す材料は1回目と同じ固定文面なので、
-   * **新しい情報のない再試行に、手順1つぶんの沈黙を払うことになる**。
-   * ここを増やすときは、指示文が枝分かれして「2回目は別の言い方をする」形に
-   * なってからにすること。
+   * The default is one attempt. One step of audio measures 2-5s (a 14-char median
+   * in `board-lesson.json` is about 2.5s), so one regeneration costs roughly one
+   * step. The second attempt is handed the same fixed wording as the first, so it
+   * pays a step of silence for a retry carrying no new information.
+   * Raise this only once the instructions branch into "say it differently the
+   * second time".
    */
   it("既定では1回しか直させない", async () => {
     const sink = recordingSink();
@@ -365,9 +367,9 @@ describe("板書の配送(描けない式)", () => {
   });
 
   /**
-   * **1手順も出せない出力では、`board_open` すら送らない。**
-   * `board_open` は前の板書を消す信号なので、ここで送ると
-   * 「生徒が読んでいた板書を白紙にしただけで、新しい行は1つも出ない」になる。
+   * Output that yields no step at all must not even send `board_open`.
+   * `board_open` is the signal that clears the previous board, so sending it here
+   * only blanks the board the student was reading and adds no new line.
    */
   it("直させる側が落ちても、板書を白紙にしない", async () => {
     const sink = recordingSink();
@@ -386,7 +388,7 @@ describe("板書の配送(描けない式)", () => {
     const sink = recordingSink();
     const seen: BoardStepRejection[] = [];
 
-    // speech に数式(LaTeXコマンド)を入れている = 板書に置くべきものを喋らせている
+    // Math (a LaTeX command) in speech = speaking what belongs on the board
     const result = await deliverOnce(channelWith(sink), {
       chunks: stream([
         lessonJson([{ index: 0, speech: "\\frac{1}{2} を読み上げます", board: null }]),
@@ -404,17 +406,17 @@ describe("板書の配送(描けない式)", () => {
   });
 
   /**
-   * **三段構えの③(§3-6)。**②(`checkBoardLatex`)はコマンドの名前しか見ないので、
-   * `\frac{1}{` のように**許可コマンドだけでできた壊れた式**は素通りする。
-   * 端末に届くと `flutter_math_fork` がその行を描けず、板書が1行
-   * 「数式を表示できません」に化ける。
+   * Stage 3 of the three-stage check (§3-6). Stage 2 (`checkBoardLatex`) only
+   * looks at command names, so a broken formula built purely from allowed
+   * commands - `\frac{1}{` - passes. On the device `flutter_math_fork` cannot
+   * render that line and the board turns into "cannot display formula".
    */
   it("許可コマンドだけでも構文が壊れていれば、ワイヤーに出さない", async () => {
     const sink = recordingSink();
     const seen: BoardStepRejection[] = [];
 
     const broken = "\\frac{1}{";
-    // ②は素通りする(コマンドは \frac だけで、許可リストに載っている)
+    // Stage 2 lets it through (the only command is \frac, which is allow-listed)
     expect(checkBoardLatex(broken).ok).toBe(true);
 
     const result = await deliverOnce(channelWith(sink), {
@@ -428,7 +430,7 @@ describe("板書の配送(描けない式)", () => {
     expect(texOf(sink.sent)).toEqual(["x = 1"]);
     expect(result).toMatchObject({ step_count: 1, reason: "error" });
     expect(seen[0]).toMatchObject({ kind: "syntax", reason: "syntax" });
-    // 「何を直せばよいか」まで書いてある(理由だけ渡すと同じ式が返ってくる)
+    // It also says what to fix (given only a reason, the same formula comes back)
     expect(seen[0]?.guidance).toContain("{ }");
   });
 
@@ -450,8 +452,8 @@ describe("板書の配送(描けない式)", () => {
 });
 
 /**
- * 三段構えの③を単体で。**②を置き換えるものではない**(KaTeXが通しても
- * 移植版が対応しているとは限らない)ので、②で通る式が③でも通ることを確かめておく。
+ * Stage 3 on its own. It does not replace stage 2 (KaTeX passing does not mean
+ * the port supports it), so confirm that formulas passing stage 2 also pass 3.
  */
 describe("checkLatexSyntax", () => {
   it("括弧の閉じ忘れ・引数の不足を落とす", () => {
@@ -485,15 +487,15 @@ describe("checkLatexSyntax", () => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* 割り込み                                                                    */
+/* Barge-in                                                                   */
 /* -------------------------------------------------------------------------- */
 
 /**
- * 番を渡したらそこで止まること(`stopAfter`)。
+ * Stopping once the turn is handed over (`stopAfter`).
  *
- * プロンプトは「質問を出したら、その板書はそこで終える」と書いているが、
- * **守らせる仕組みが無かった**。守れなかった出力は問いかけごと12手順を
- * 一息で読み上げ、先輩が自分の質問に自分で答える形になる。
+ * The prompt says "once you ask a question, end that board there", but nothing
+ * enforced it. Output that broke the rule read out 12 steps in one breath,
+ * question included, leaving the senpai answering their own question.
  */
 describe("板書の配送(番の受け渡し)", () => {
   const asking = (index: number): unknown => ({
@@ -511,7 +513,7 @@ describe("板書の配送(番の受け渡し)", () => {
       stopAfter: (sent) => sent.speech.includes("言ってみて"),
     });
 
-    // 問いかけそのものは届ける。**その先だけ**を送らない。
+    // The question itself is delivered; only what follows it is not.
     expect(typesOf(sink.sent)).toEqual(["board_open", "board_step", "board_step", "board_close"]);
     expect(texOf(sink.sent)).toEqual(["x^2 - 3x + 2 = 0"]);
     expect(result.step_count).toBe(2);
@@ -519,9 +521,9 @@ describe("板書の配送(番の受け渡し)", () => {
   });
 
   /**
-   * **`interrupted` でも `error` でもない。** 生徒が割り込んだのでも壊れたのでもなく、
-   * 先輩が予定どおり番を渡しただけ。ここを `error` にすると、
-   * 正常な授業が全部「板書がとぎれた」として記録される。
+   * Neither `interrupted` nor `error`: the student did not barge in and nothing
+   * broke - the senpai handed over the turn as planned. Marking it `error` would
+   * record every healthy lesson as "the board was cut off".
    */
   it("自分から降りた回は completed(途中で切れた出力と区別する)", async () => {
     const sink = recordingSink();
@@ -553,7 +555,7 @@ describe("板書の配送(番の受け渡し)", () => {
     }
 
     await deliverOnce(channelWith(sink), { chunks: watched(), stopAfter: () => true });
-    // `releaseIterator` は待たない(best effort)ので、1周まわしてから見る。
+    // `releaseIterator` is best effort and not awaited, so check after one tick.
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(released).toBe(true);
   });
@@ -578,7 +580,7 @@ describe("板書の配送(割り込み)", () => {
     const controller = new AbortController();
     const json = lessonJson([step(0, "x = 1"), step(1, "y = 2"), step(2, "z = 3")]);
 
-    // 2手順ぶん送れたところで割り込む
+    // Barge in once two steps have been sent
     const chunks = stream(slice(json, 1), () => {
       if (sink.sent.length === 3) controller.abort();
     });
@@ -589,26 +591,26 @@ describe("板書の配送(割り込み)", () => {
     expect(result.step_count).toBe(2);
     const close = sink.sent.at(-1);
     expect(close).toMatchObject({ type: "board_close", reason: "interrupted", step_count: 2 });
-    // 板書は途中まで残る(§3-2 案Aの利点そのもの)
+    // The board keeps what was written (the point of option A, §3-2)
     expect(typesOf(sink.sent)).toEqual(["board_open", "board_step", "board_step", "board_close"]);
     expect(boardChannelLogSchema.safeParse({ messages: sink.sent }).success).toBe(true);
   });
 
   /**
-   * 割り込みは「次のチャンクが来たら気づく」では遅い。生徒はもう喋っている。
-   * LLMが黙り込んだままでも締まること。
+   * Noticing a barge-in "when the next chunk arrives" is too late - the student is
+   * already talking. It must close even if the LLM goes silent.
    */
   it("チャンクを待っている最中の割り込みでも締まる", async () => {
     const sink = recordingSink();
     const controller = new AbortController();
 
-    // 1手順ぶんは閉じた状態で止まる(手順が1つも無ければ、そもそも開かない)
+    // Stops with one step closed (with no steps at all it would never open)
     const json = lessonJson([step(0, "x = 1"), step(1, "y = 2")]);
     const upToFirstStep = json.slice(0, json.indexOf("},{") + 1);
 
     async function* stalling() {
       yield upToFirstStep;
-      // ここから先は永久に来ない
+      // Nothing ever arrives from here on
       await new Promise(() => undefined);
       yield "";
     }
@@ -642,19 +644,20 @@ describe("板書の配送(割り込み)", () => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* 板書の寿命 = 1つの問題(1回のLLM呼び出しではない)                          */
+/* Board lifetime = one problem (not one LLM call)                            */
 /* -------------------------------------------------------------------------- */
 
 /**
- * **ここが継ぎ目のテスト。**
+ * This is the seam under test.
  *
- * 教え方は1往復で終わらない(切り分ける → 教える → 教え返させる)。
- * LLM呼び出しごとに板書を開き直すと、契約上 `board_open` が板書を消すので、
- * **会話が1往復するたびに生徒が読んでいた式が消える**。
- * §3-2 の「前の行は消さない。消えるのは別の問題に移るときだけ」が毎ターン破れる。
+ * Teaching is not one round trip (diagnose -> teach -> have them teach back).
+ * Reopening the board per LLM call would, by contract, clear it on every
+ * `board_open`, wiping the formula the student was reading once per exchange.
+ * §3-2's "never erase earlier lines; only a new problem clears them" would break
+ * every turn.
  */
 describe("板書の寿命", () => {
-  /** n手順のLLM出力。`index` は**その出力の中で**0始まり(LLMは通し番号を知らない)。 */
+  /** LLM output of n steps. `index` starts at 0 *within that output* (the LLM has no running count). */
   function lessonOf(count: number, offset = 0): string {
     return lessonJson(
       Array.from({ length: count }, (_, at) => step(at, `x = ${offset + at}`)),
@@ -666,9 +669,9 @@ describe("板書の寿命", () => {
     const sink = recordingSink();
     const board = channelWith(sink).startBoard();
 
-    await board.append({ chunks: stream([lessonOf(2)]) }); // 切り分け
-    await board.append({ chunks: stream([lessonOf(3, 10)]) }); // 教える
-    await board.append({ chunks: stream([lessonOf(1, 20)]) }); // 教え返しへ渡す
+    await board.append({ chunks: stream([lessonOf(2)]) }); // diagnose
+    await board.append({ chunks: stream([lessonOf(3, 10)]) }); // teach
+    await board.append({ chunks: stream([lessonOf(1, 20)]) }); // hand over to teach-back
     await board.close("completed");
 
     expect(typesOf(sink.sent).filter((type) => type === "board_open")).toHaveLength(1);
@@ -682,8 +685,9 @@ describe("板書の寿命", () => {
   });
 
   /**
-   * LLMは自分が何回目の呼び出しかを知らないので、毎回0から数え直してくる。
-   * **通し番号を振るのは配送層**(振らせると幻覚した番号がワイヤーに出る)。
+   * The LLM does not know which call this is, so it counts from 0 every time.
+   * The delivery layer assigns the running number (letting the LLM do it puts
+   * hallucinated numbers on the wire).
    */
   it("LLMが毎回0始まりで返しても、ワイヤーの index は板書を通して連続する", async () => {
     const sink = recordingSink();
@@ -693,11 +697,11 @@ describe("板書の寿命", () => {
     const second = await board.append({ chunks: stream([lessonOf(2, 10)]) });
     const third = await board.append({ chunks: stream([lessonOf(2, 20)]) });
 
-    // LLMの出力は 0,1,2 / 0,1 / 0,1
+    // LLM output is 0,1,2 / 0,1 / 0,1
     expect(JSON.parse(lessonOf(2, 10)).steps.map((s: { index: number }) => s.index)).toEqual([
       0, 1,
     ]);
-    // ワイヤーは 0..6
+    // The wire is 0..6
     expect(
       sink.sent.flatMap((message) => (message.type === "board_step" ? [message.step.index] : [])),
     ).toEqual([0, 1, 2, 3, 4, 5, 6]);
@@ -725,8 +729,9 @@ describe("板書の寿命", () => {
   });
 
   /**
-   * **割り込みは「いま質問がある」であって「この問題は終わり」ではない。**
-   * ここで閉じると、割り込みに答えたあと同じ問題を続けるときに板書が消える。
+   * A barge-in means "I have a question now", not "this problem is done".
+   * Closing here would wipe the board when the same problem resumes after the
+   * question is answered.
    */
   it("割り込みでは板書を閉じない(続きは同じ板書に積める)", async () => {
     const sink = recordingSink();
@@ -745,7 +750,7 @@ describe("板書の寿命", () => {
     expect(board.isOpen).toBe(true);
     expect(typesOf(sink.sent)).not.toContain("board_close");
 
-    // 割り込みに答えたあと、同じ板書に続きを積む
+    // After answering the barge-in, append to the same board
     const resumed = await board.append({ chunks: stream([lessonOf(2, 10)]) });
     expect(resumed).toMatchObject({ reason: "completed", appended: 2 });
     expect(typesOf(sink.sent).filter((type) => type === "board_open")).toHaveLength(1);
@@ -754,7 +759,7 @@ describe("板書の寿命", () => {
     expect(boardChannelLogSchema.safeParse({ messages: sink.sent }).success).toBe(true);
   });
 
-  // 説明が1回失敗しただけで閉じると、次の説明で板書を開き直すことになる。
+  // Closing after one failed explanation would mean reopening on the next one.
   it("検証に落ちても板書を閉じない(次の説明は同じ板書に続く)", async () => {
     const sink = recordingSink();
     const board = channelWith(sink).startBoard();
@@ -773,15 +778,15 @@ describe("板書の寿命", () => {
   });
 
   /**
-   * 上限に達した板書だけは閉じる。**これ以上1手順も積めない板書を開けておくと、
-   * 呼び出し側は黒い穴に向かってLLMを呼び続ける。**
+   * Only a board that hit its cap is closed. Leaving open a board that cannot
+   * take one more step makes the caller keep calling the LLM into a black hole.
    */
   it("板書1枚の上限に達したら閉じ、以降は1件も送らない", async () => {
     const sink = recordingSink();
     const board = channelWith(sink).startBoard();
 
-    // 1回の出力は12手順まで。40に達するまで積む。
-    // 続きを積めるかは `isClosed` で見る(`isOpen` は board_open を送ったあとで真になる)。
+    // One output is capped at 12 steps; append until 40. Whether more can be
+    // appended is read from `isClosed` (`isOpen` turns true after board_open is sent).
     let guard = 0;
     while (!board.isClosed && guard < 10) {
       await board.append({ chunks: stream([lessonOf(boardLessonStepsMaxCount, guard * 100)]) });
@@ -797,7 +802,7 @@ describe("板書の寿命", () => {
     });
     expect(boardChannelLogSchema.safeParse({ messages: sink.sent }).success).toBe(true);
 
-    // 閉じた板書に積もうとしても、ワイヤーには1件も出ない
+    // Appending to a closed board puts nothing on the wire
     const sentAfterClose = sink.sent.length;
     const refused = await board.append({ chunks: stream([lessonOf(2)]) });
     expect(refused).toMatchObject({ appended: 0, reason: "error", closed: true });
@@ -805,10 +810,10 @@ describe("板書の寿命", () => {
   });
 
   /**
-   * **締めが送れなかったら、閉じたことにしてはいけない。**
-   * 受信側から見ると板書はまだ開いたままで、次の問題の `board_open` を
-   * 「前の板書が board_close されていません」で弾く —
-   * つまり1回の送信失敗で、そのセッションの板書が以降ぜんぶ出なくなる。
+   * A close that could not be sent must not count as closed.
+   * To the receiver the board is still open, so the next problem's `board_open`
+   * is rejected with "the previous board was not board_closed" - one send failure
+   * would suppress every board for the rest of the session.
    */
   it("board_close の送信に失敗したら、締め直せる状態のまま残す", async () => {
     const sent: BoardChannelMessage[] = [];
@@ -833,11 +838,11 @@ describe("板書の寿命", () => {
     await board.append({ chunks: stream([lessonJson([step(0, "x = 1")])]) });
     await board.close("completed");
 
-    // 失敗した締めは「閉じた」ことになっていない
+    // A failed close does not count as closed
     expect(board.isClosed).toBe(false);
     expect(typesOf(sent)).toEqual(["board_open", "board_step"]);
 
-    // 締め直せる。seq は消費されていないので番号も飛ばない。
+    // It can be closed again; seq was not consumed, so no number is skipped.
     await board.close("completed");
     expect(board.isClosed).toBe(true);
     expect(typesOf(sent)).toEqual(["board_open", "board_step", "board_close"]);
@@ -846,8 +851,9 @@ describe("板書の寿命", () => {
   });
 
   /**
-   * `boardLessonSchema` は `steps` を1件以上に縛っている。読み切れたが空だった出力を
-   * `completed` で返すと、呼び出し側は「板書は出た」と思って音声だけ進める。
+   * `boardLessonSchema` requires at least one `steps` entry. Returning `completed`
+   * for output that parsed but was empty makes the caller think the board
+   * appeared and advance the audio alone.
    */
   it("手順が空の出力は成功にしない(板書も開かない)", async () => {
     const sink = recordingSink();
@@ -863,7 +869,7 @@ describe("板書の寿命", () => {
     expect(sink.sent).toEqual([]);
   });
 
-  // 既に開いている板書でも、空の出力は成功にしない(音声だけ先に進むのを防ぐ)
+  // Even on an already-open board, empty output is not a success (keeps audio from running ahead)
   it("2回目の出力が空でも成功にしない", async () => {
     const sink = recordingSink();
     const board = channelWith(sink).startBoard();
@@ -879,7 +885,7 @@ describe("板書の寿命", () => {
     expect(typesOf(sink.sent)).toEqual(["board_open", "board_step"]);
   });
 
-  // 締めの二重送信は、受信側では「未開封の板書のメッセージ」になる(契約違反)
+  // A double close reads to the receiver as "a message for an unopened board" (contract violation)
   it("close を2回呼んでも board_close は1回だけ", async () => {
     const sink = recordingSink();
     const board = channelWith(sink).startBoard();
@@ -892,7 +898,7 @@ describe("板書の寿命", () => {
     expect(sink.sent.at(-1)).toMatchObject({ reason: "completed" });
   });
 
-  // 見出しは「何の問題か」なので、問題が変わらない限り出し直さない
+  // The heading says which problem this is, so it is not resent unless the problem changes
   it("2回目以降の出力の見出しは捨てる(board_open を出し直さない)", async () => {
     const sink = recordingSink();
     const board = channelWith(sink).startBoard();
@@ -919,8 +925,8 @@ describe("板書の寿命", () => {
   });
 
   /**
-   * 別の問題に移るときは、**新しい板書を始める**。ここで初めて画面が変わる
-   * (§3-2「消えるのは別の問題に移るときだけ」)。
+   * Moving to another problem starts a new board. Only here does the screen
+   * change (§3-2: "only a new problem clears it").
    */
   it("別の問題では新しい板書になり、seq はセッションを通して連続する", async () => {
     const sink = recordingSink();
@@ -943,7 +949,7 @@ describe("板書の寿命", () => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* 壊れたときに壊れたと分かること                                              */
+/* Breaking visibly when it breaks                                            */
 /* -------------------------------------------------------------------------- */
 
 describe("板書の配送(壊れ方)", () => {
@@ -969,7 +975,7 @@ describe("板書の配送(壊れ方)", () => {
     expect(result).toMatchObject({ opened: false, step_count: 0, reason: "error" });
   });
 
-  // 壊れた板書を開くくらいなら、1枚も開かないほうがよい
+  // Better to open no board at all than a broken one
   it("見出しが契約に合わなければ、板書を開かない", async () => {
     const sink = recordingSink();
     const result = await deliverOnce(channelWith(sink), {
@@ -981,10 +987,12 @@ describe("板書の配送(壊れ方)", () => {
   });
 
   /**
-   * **「1行ずつだが40行」で答案を丸ごと流し込む抜け道**(contract の
-   * `boardLessonStepsMaxCount`)を、送る前に閉じる。上限を超えた手順は1つもワイヤーに出ない。
+   * Close off the loophole of pouring a whole worked answer through as "one line
+   * at a time, but 40 lines" (contract's `boardLessonStepsMaxCount`) before
+   * sending. Not one step past the cap reaches the wire.
    *
-   * **ここで板書は閉じない。**1回の出力が長すぎただけで、この問題はまだ続く。
+   * The board is not closed here: one output was merely too long, and the problem
+   * continues.
    */
   it("1回の出力が12手順を超えたら、そこで打ち切る(板書は閉じない)", async () => {
     const sink = recordingSink();
@@ -1008,12 +1016,13 @@ describe("板書の配送(壊れ方)", () => {
   });
 
   /**
-   * `index` は「板書の何行目に積むか」という配送の事実。LLMの数え間違いを
-   * 流すと、**受信側は正しく届いた板書を「抜けている」と判定する**。
+   * `index` is a delivery fact - which board line to append to. Passing the LLM's
+   * miscount through makes the receiver judge a correctly delivered board as
+   * "missing entries".
    *
-   * 警告の突き合わせ先は **`position`(その出力の中での位置)**。
-   * ワイヤーの通し番号と比べると、2回目以降の説明では全手順が「ずれている」ことになり、
-   * 本物の数え間違いが埋もれる。
+   * The warning is compared against `position` (the position within that output).
+   * Comparing it to the wire's running number would mark every step of the second
+   * and later explanations as "off", burying real miscounts.
    */
   it("LLMが index を間違えても、送信位置で上書きする", async () => {
     const sink = recordingSink();
@@ -1052,8 +1061,8 @@ describe("板書の配送(壊れ方)", () => {
   });
 
   /**
-   * 送れなかった封筒で `seq` を消費すると、受信側からは「1つ欠けた板書」に見えて
-   * 次の手順まで巻き添えにする。
+   * Consuming `seq` for an envelope that was not sent looks like "a board with one
+   * entry missing" to the receiver and drags the next step down with it.
    */
   it("送信に失敗した封筒は seq を消費しない", async () => {
     const sent: BoardChannelMessage[] = [];
@@ -1085,7 +1094,7 @@ describe("板書の配送(壊れ方)", () => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* 部品                                                                        */
+/* Parts                                                                      */
 /* -------------------------------------------------------------------------- */
 
 describe("validateStep", () => {
@@ -1132,16 +1141,16 @@ describe("validateStep", () => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* 契約のfixtureを、そのまま配管に通す                                         */
+/* Contract fixtures, straight through the pipe                               */
 /* -------------------------------------------------------------------------- */
 
 /**
- * `board-lesson` のfixtureは「LLMがこう出す」という契約側の見本。
- * **それが配送層をそのまま通り抜けること**を固定しておく。
+ * The `board-lesson` fixtures are the contract side's sample of "this is what the
+ * LLM emits". Pin down that they pass through the delivery layer unchanged.
  *
- * ここが落ちるのは、fixtureに `packages/guardrail` が描けない式が入ったとき
- * (= 契約の見本と、実際に送れるものがずれたとき)。そのずれは
- * fixtureのパーステスト(contract側)だけでは絶対に出ない。
+ * This fails when a fixture gains a formula `packages/guardrail` cannot render
+ * (= the contract's sample and what can actually be sent have drifted apart).
+ * The fixture parse tests on the contract side can never surface that drift.
  */
 describe("契約のfixture", () => {
   const repoRoot = resolve(import.meta.dirname, "..", "..", "..");
@@ -1170,7 +1179,7 @@ describe("契約のfixture", () => {
 });
 
 describe("createTextStreamBoardSink", () => {
-  // 生の publishData は使わない(既定が LOSSY で、書き忘れると板書が黙って欠ける・§3-5)
+  // Never raw publishData (it defaults to LOSSY, and forgetting silently drops board lines, §3-5)
   it("封筒1つを1ストリームで、topic `board` に送る", async () => {
     const sendText = vi.fn(async () => ({}));
     const sink = createTextStreamBoardSink({ sendText });
@@ -1193,13 +1202,13 @@ describe("createTextStreamBoardSink", () => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* 教える範囲の妥当性(計画書 §8)                                              */
+/* Scope validity of what may be taught (plan §8)                             */
 /* -------------------------------------------------------------------------- */
 
 /**
- * 板書の `topic_id` の照合。**カルテ側には `filterHoleTopicIds` があるのに、
- * 板書だけが片翼だった。** 契約の `topicIdSchema` は書式しか見ないので、
- * 形だけ正しい別単元は素通りする。
+ * Checking the board's `topic_id`. The karte side has `filterHoleTopicIds` while
+ * the board had only one wing. The contract's `topicIdSchema` checks format
+ * only, so a well-formed but unrelated unit passes straight through.
  */
 describe("validateHead", () => {
   const allowed = buildAllowedTopics(["M2-ZUKEI-ENCHOKU", "M1-NIJI-HANBETSU"], {
@@ -1212,7 +1221,7 @@ describe("validateHead", () => {
     ).toEqual({ ok: true });
   });
 
-  // 書式は正しいので `topicIdSchema` では止まらない
+  // The format is valid, so `topicIdSchema` does not stop it
   it("形だけ正しい別単元を弾く", () => {
     const verdict = validateHead(
       { title: "ベクトルの内積", topic_ids: ["M2-ZUKEI-ENCHOKU", "MB-VECTOR-NAISEKI"] },
@@ -1223,7 +1232,7 @@ describe("validateHead", () => {
     expect(verdict.ok).toBe(false);
     if (verdict.ok) return;
     expect(verdict.rejection.reason).toBe("topic_not_allowed");
-    // 外れたIDだけを出す(カリキュラムの閉じた語彙なのでログに出してよい)
+    // Report only the out-of-scope id (curriculum is a closed vocabulary, safe to log)
     expect(verdict.rejection.detail).toBe("MB-VECTOR-NAISEKI");
     expect(verdict.rejection.guidance).toContain("許可リスト");
   });
@@ -1235,7 +1244,7 @@ describe("validateHead", () => {
     expect(verdict.rejection.guidance).not.toMatch(/[ぁ-んァ-ン一-龯]/);
   });
 
-  // 形の検査は封筒スキーマの仕事。二重に判定して食い違わせない
+  // Shape checking belongs to the envelope schema; do not judge twice and disagree
   it("形が違うものはここでは弾かない", () => {
     expect(validateHead({ topic_ids: "not an array" }, allowed, "ja")).toEqual({ ok: true });
     expect(validateHead(null, allowed, "ja")).toEqual({ ok: true });
@@ -1263,7 +1272,7 @@ describe("板書の範囲の照合(配送を通して)", () => {
     expect(sink.sent[0]).toMatchObject({ type: "board_open", topic_ids: ["M1-NIJI-HANBETSU"] });
   });
 
-  // 手順を1つも送る前に見るので、弾いても画面には何も出ていない
+  // Checked before any step is sent, so a rejection leaves the screen untouched
   it("範囲外なら作り直させ、直ったものを開く", async () => {
     const sink = recordingSink();
     const repairHead = vi.fn(async () => ({
@@ -1281,8 +1290,8 @@ describe("板書の範囲の照合(配送を通して)", () => {
   });
 
   /**
-   * **直らなくても板書は殺さない。**板書を止めると生徒は15分の授業を丸ごと失う。
-   * 範囲が少しずれた板書のほうが、板書が出ないよりまし。
+   * A failed repair must not kill the board. Stopping it costs the student the
+   * whole 15-minute lesson, and a slightly off-scope board beats no board.
    */
   it("作り直しが失敗しても、授業は続ける", async () => {
     const sink = recordingSink();
@@ -1305,7 +1314,7 @@ describe("板書の範囲の照合(配送を通して)", () => {
 
     expect(result.opened).toBe(true);
     expect(result.step_count).toBe(1);
-    // 縮退としてログに残す(頻発するならプロンプト側を直す材料)
+    // Logged as a degradation (material for fixing the prompt if it recurs)
     expect(warnings).toContain("board_topics_rejected");
   });
 
@@ -1386,7 +1395,7 @@ describe("figure(作図)", () => {
       0,
       "ja",
     );
-    // svg 自体は optional なので形は通るが、**こちらが解いた SVG で上書きされる**
+    // svg is optional so the shape passes, but it is overwritten by the SVG we solved
     if (!verdict.ok) return;
     const board = verdict.step.board;
     if (board?.kind !== "figure") return;

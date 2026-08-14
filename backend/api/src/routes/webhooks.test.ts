@@ -45,7 +45,7 @@ describe("POST /v1/webhooks/revenuecat", () => {
     expect((await services.repository.getUser(testDeviceId))?.is_premium).toBe(true);
   });
 
-  // 払ったぶんは最後まで使える、が誠実さ(HAMM)の最低線
+  // "What was paid for stays usable to the end" is the floor of honesty (HAMM)
   it("解約予約(CANCELLATION)では、期限までPremiumのままにする", async () => {
     await postWebhook({
       type: "INITIAL_PURCHASE",
@@ -85,9 +85,9 @@ describe("POST /v1/webhooks/revenuecat", () => {
     expect((await services.repository.getUser(testDeviceId))?.is_premium).toBe(false);
   });
 
-  // 支払い失敗は失効ではない。ここで剥奪すると、猶予期間のあいだだけ
-  // アプリはPremium・サーバは無料になり、カードを更新すれば直るはずの
-  // 数日間、授業も復習も止まる(docs/revenuecat.md §9)。
+  // A payment failure is not an expiry. Revoking here makes the app Premium and the
+  // server free for the grace period, stopping lessons and reviews for days that a
+  // card update would have fixed (docs/revenuecat.md §9).
   describe("BILLING_ISSUE(支払いの再試行が始まっただけ)", () => {
     it("Premiumを外さず、猶予期間の終わりまで延ばす", async () => {
       await postWebhook({
@@ -108,7 +108,7 @@ describe("POST /v1/webhooks/revenuecat", () => {
       expect(user?.premium_expires_at).toBe("2026-09-06T00:00:00.000Z");
     });
 
-    // 猶予期間を0日にしているストアでは grace_period_expiration_at_ms が来ない
+    // Stores with a zero-day grace period send no grace_period_expiration_at_ms
     it("猶予期間が無ければ、そのイベントの期限をそのまま使う", async () => {
       await postWebhook({
         type: "INITIAL_PURCHASE",
@@ -126,8 +126,8 @@ describe("POST /v1/webhooks/revenuecat", () => {
       expect(user?.premium_expires_at).toBe("2026-09-03T00:00:00.000Z");
     });
 
-    // 期限なしで付け直すと「無期限」の意味になる(handleTransfer と同じ理由)。
-    // 支払いに失敗しただけの人が永久Premiumになってはいけない。
+    // Re-granting with no expiry means "forever" (same reason as handleTransfer).
+    // Someone who merely failed a payment must not become Premium permanently.
     it("期限の材料が1つも無ければ、いまの期限を書き換えない", async () => {
       await postWebhook({
         type: "INITIAL_PURCHASE",
@@ -158,10 +158,10 @@ describe("POST /v1/webhooks/revenuecat", () => {
     });
   });
 
-  // 機種変更・再インストール後の「購入を復元する」。
-  // 匿名デバイスIDは作り直されるので、RevenueCat は購入を付け替えて
-  // TRANSFER を送ってくる。ここを落とすと、アプリは「復元しました」と言うのに
-  // サーバは無料のまま = 復習も履歴も開かない。
+  // "Restore purchases" after a new device or a reinstall.
+  // Anonymous device ids are regenerated, so RevenueCat reassigns the purchase and
+  // sends TRANSFER. Drop it and the app says "restored" while the server stays free
+  // - reviews and history never open.
   describe("TRANSFER(復元によるIDの付け替え)", () => {
     const newDeviceId = "dev_after_reinstall";
 
@@ -181,14 +181,14 @@ describe("POST /v1/webhooks/revenuecat", () => {
 
       const moved = await services.repository.getUser(newDeviceId);
       expect(moved?.is_premium).toBe(true);
-      // TRANSFER は expiration_at_ms を持たないので、期限は移行元から引き継ぐ
+      // TRANSFER has no expiration_at_ms, so the expiry is inherited from the source
       expect(moved?.premium_expires_at).toBe("2026-09-03T00:00:00.000Z");
 
       expect((await services.repository.getUser(testDeviceId))?.is_premium).toBe(false);
     });
 
-    // app_user_id が無いのがこのイベントの特徴。required にしていたころは
-    // ここで400を返し、RevenueCat が諦めるまで再送していた。
+    // Having no app_user_id is what defines this event. While it was required, this
+    // returned 400 and RevenueCat kept resending until it gave up.
     it("app_user_id が無くても400にしない", async () => {
       const response = await postWebhook({
         type: "TRANSFER",
@@ -198,7 +198,7 @@ describe("POST /v1/webhooks/revenuecat", () => {
       expect(response.status).toBe(200);
     });
 
-    // 復元だけで永久Premiumが作れてしまわないようにする。
+    // Make sure a restore alone cannot create permanent Premium.
     it("移行元にPremiumの記録が無ければ、移行先に付けない", async () => {
       await postWebhook({
         type: "TRANSFER",
@@ -206,7 +206,7 @@ describe("POST /v1/webhooks/revenuecat", () => {
         transferred_to: [newDeviceId],
       });
 
-      // 付けないので行も作らない(その端末が初めてAPIを叩いたときに作られる)
+      // Nothing is granted, so no row is created (it appears when that device first calls the API)
       const moved = await services.repository.getUser(newDeviceId);
       expect(moved?.is_premium ?? false).toBe(false);
     });

@@ -5,9 +5,9 @@ import { testBindings, testDeviceId, testServices } from "./test-support.ts";
 const app = createApp({ services: () => testServices() });
 
 describe("GET /health", () => {
-  // develop と production は同じコードなので、URLを取り違えても
-  // {"ok":true} だけでは気づけない。デプロイ後のスモークがこの形に依存している
-  // (docs/ci/deploy.yml の Smoke check)。
+  // develop and production run the same code, so {"ok":true} alone cannot catch a
+  // mixed-up URL. The post-deploy smoke test depends on this shape
+  // (Smoke check in docs/ci/deploy.yml).
   it("環境名を名乗る", async () => {
     const response = await app.request("/health", {}, testBindings({ ENVIRONMENT: "production" }));
 
@@ -30,7 +30,7 @@ describe("GET /health", () => {
 });
 
 describe("trace_id", () => {
-  // ユーザーからの報告と、Workersのログを突き合わせるための唯一の手がかり
+  // The only handle for matching a user report against the Workers logs
   it("成功したリクエストにも付ける", async () => {
     const response = await app.request("/health", {}, testBindings());
     expect(response.headers.get("x-trace-id")).toMatch(/^[0-9a-f-]{36}$/);

@@ -7,8 +7,8 @@ import type { PhotoAnalysis, PhotoAnalyzer, PhotoAnalyzerInput } from "./lib/pho
 import { MemoryRepository } from "./repository/memory.ts";
 
 /**
- * テスト用の足場。
- * ネットワークもD1も使わずに、ルートの振る舞いだけを確かめられるようにする。
+ * Test scaffolding.
+ * Lets route behaviour be checked without touching the network or D1.
  */
 
 export const analysisFixture: PhotoAnalysis = {
@@ -25,7 +25,7 @@ export const analysisFixture: PhotoAnalysis = {
   question_seeds: ["方法を変えた理由", "判別式で何がわかるのか"],
 };
 
-/** 海外向けの課程(Algebra 1 / Algebra 2 ...)で返ってくる解析結果。 */
+/** An analysis result for an overseas curriculum (Algebra 1 / Algebra 2 ...). */
 export const analysisFixtureEn: PhotoAnalysis = {
   subject: "math",
   summary: "A line-and-circle problem. Part (1) asks for the number of intersection points.",
@@ -44,12 +44,12 @@ export const analysisFixtureEn: PhotoAnalysis = {
 };
 
 /**
- * 解析器のスタブ。**呼ばれたロケールを記録する**。
- * ここが素通しだと、英語のセッションで日本語のカリキュラムを
- * 渡していても、テストからは気づけない。
+ * A stub analyser that records the locale it was called with.
+ * If this passed everything through, an English session handed the Japanese
+ * curriculum would be invisible to tests.
  */
 export class RecordingAnalyzer implements PhotoAnalyzer {
-  /** 呼ばれたロケールと、どちらの写真が渡されたか。 */
+  /** The locale it was called with, and which photos were passed. */
   readonly calls: { locale: CurriculumLocale; hadNotes: boolean; hadProblem: boolean }[] = [];
 
   private readonly byLocale: Partial<Record<CurriculumLocale, PhotoAnalysis>>;
@@ -164,7 +164,7 @@ export function testBindings(overrides: Partial<Bindings> = {}): Bindings {
     PREMIUM_SESSIONS_PER_DAY: "3",
     FREE_SESSION_MAX_SECONDS: "1200",
     PREMIUM_SESSION_MAX_SECONDS: "1200",
-    // テスト出力を1リクエスト1行で埋めない。失敗のログは残す。
+    // Do not flood test output with a line per request. Failure logs stay.
     LOG_LEVEL: "error",
     ...overrides,
   };
@@ -182,7 +182,7 @@ export function testServices(options: { now?: Date; analysis?: PhotoAnalysis } =
     analyzer: new RecordingAnalyzer(options.analysis),
     scheduler: new RecordingScheduler(),
     now: () => options.now ?? new Date("2026-08-03T13:24:07.000Z"),
-    // テストで安定したIDにする(ses_1, kar_2, ...)
+    // Stable ids in tests (ses_1, kar_2, ...)
     newId: (prefix) => {
       counter += 1;
       return `${prefix}_${counter}`;
@@ -191,11 +191,13 @@ export function testServices(options: { now?: Date; analysis?: PhotoAnalysis } =
 }
 
 /**
- * N本が揃うまで全員を止め、揃ったら同じタイミングで進ませる関門。
+ * A barrier that holds everyone until N arrive, then releases them together.
  *
- * 素のPromise.allだけでは、c.req.formData()などが通るマイクロタスク数が揃わず、
- * 1本目が先に走り切ってしまう。その場合は壊れた「数えてから入れる」実装でも
- * [201, 402, 402]になり、同時実行の穴を再現できないため、確保直前で明示的に揃える。
+ * Plain Promise.all is not enough: the number of microtasks through things like
+ * c.req.formData() differs, so the first request runs to completion. That would
+ * give [201, 402, 402] even for a broken "count, then insert" implementation and
+ * would not reproduce the concurrency hole, so they are aligned explicitly right
+ * before the claim.
  */
 export function concurrencyBarrier(count: number): () => Promise<void> {
   let arrived = 0;
@@ -210,30 +212,30 @@ export function concurrencyBarrier(count: number): () => Promise<void> {
   };
 }
 
-/** JPEGとして通るだけの最小のバイト列(SOIマーカー + APP0)。 */
+/** The minimum byte string that passes as JPEG (SOI marker + APP0). */
 export const JPEG_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
 
 /**
- * multipart/form-data のセッション作成リクエストを組み立てる。
+ * Builds a multipart/form-data session-creation request.
  *
- * `problemPhoto` は §4-1 の2枚目(教科書・問題集の紙面)。**任意**なので、
- * 既定では付けない — 「2枚必須にしない」が既定の経路で守られていることが、
- * ここに何も渡さないテストがすべて通ることで示される。
+ * `problemPhoto` is §4-1's second image (the textbook or workbook page). It is
+ * optional, so it is not attached by default - "two photos are not required"
+ * being upheld on the default path is shown by every test passing without it.
  */
 export function createSessionForm(
   meta: Record<string, unknown> = {},
   options: { problemPhoto?: File } = {},
 ): FormData {
   const form = new FormData();
-  // 先頭はJPEGのマジックナンバー。中身で形式を判定するので、ここが
-  // ただのダミーバイトだと「読み取れない写真」として弾かれる。
+  // The head is the JPEG magic number. The format is decided from the content, so
+  // plain dummy bytes here would be rejected as an unreadable photo.
   form.set(sessionPhotoParts.notes, new File([JPEG_BYTES], "note.jpg", { type: "image/jpeg" }));
   if (options.problemPhoto) form.set(sessionPhotoParts.problem, options.problemPhoto);
   form.set("meta", JSON.stringify({ kind: "new", locale: "ja", ...meta }));
   return form;
 }
 
-/** 問題の写真(2枚目)。中身はノートと同じダミーで、扱いの違いだけを見る。 */
+/** The problem photo (second image). Same dummy content as the notes; only the handling differs. */
 export function problemPhotoFile(type = "image/jpeg"): File {
   return new File([JPEG_BYTES], "problem.jpg", { type });
 }

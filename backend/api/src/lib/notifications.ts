@@ -2,11 +2,11 @@ import type { CurriculumLocale } from "@ai-sensei/curriculum";
 import { buildReviewPrompt } from "@ai-sensei/guardrail";
 
 /**
- * 復習プッシュの予約。
+ * Booking review pushes.
  *
- * cronは持たず、OneSignalのスケジュール送信に載せる。
- * 予約IDはD1に残し、穴が埋まったらキャンセルする。
- * 埋めた穴について通知が届くのは、いちばん白ける体験なので。
+ * There is no cron; it rides OneSignal's scheduled send. The booking id is kept
+ * in D1 and cancelled once the hole is filled - a notification about a hole you
+ * already filled is the most deflating thing there is.
  */
 
 export type ScheduledNotification = {
@@ -21,28 +21,30 @@ export type NotificationScheduler = {
     sendAt: string;
     desc: string;
     daysSince: number;
-    /** 穴の文言の言語。呼び出し側が topic_id から引く。 */
+    /** The hole wording's language. The caller derives it from topic_id. */
     locale?: CurriculumLocale;
   }): Promise<ScheduledNotification>;
   cancel(externalId: string): Promise<void>;
 };
 
 /**
- * 通知のタイトル。先輩からの声で、アプリ名を叫ばない。
+ * The notification title. It is the senpai's voice; it does not shout the app name.
  *
- * **ここがアプリの外で最初に目に入る面**なので、改正後の約束4
- * (「通知もペイウォールも、先輩の判断として書く。数字は見せず、命令や催促にもしない」)
- * が最も試される場所でもある。後輩の「教えてほしい」は**構造的に催促になりようがなかった**が、
- * 先輩は言い切れる立場なので、「リマインド」「忘れていませんか」を入れた瞬間に催促になる。
- * だから**誰が命じるかではなく、届くものの中身で名づける**(英語の `Reminders` も同じ理由で避ける)。
- * 本文({@link buildReviewPrompt})が問いかけなので、タイトルは何が来たかだけを言う。
+ * This is the first surface seen outside the app, so it is where post-revision
+ * promise 4 ("notifications and paywalls are written as the senpai's judgement:
+ * no numbers, no orders, no nagging") is tested most. The old kouhai's "teach
+ * me" could not structurally become nagging, but the senpai speaks with
+ * authority, so "reminder" or "haven't you forgotten?" becomes nagging on the
+ * spot. So it is named by what arrives, not by who is telling whom (the English
+ * `Reminders` is avoided for the same reason). The body
+ * ({@link buildReviewPrompt}) asks the question, so the title only says what came.
  */
 const headings: Record<CurriculumLocale, string> = {
   ja: "先輩からおさらいです",
   en: "A check-back from your senpai",
 };
 
-/** 通知が設定されていない環境(ローカル開発)では何もしない。 */
+/** Does nothing in environments with no notification config (local development). */
 export const noopScheduler: NotificationScheduler = {
   async schedule() {
     return { externalId: null };
@@ -66,9 +68,9 @@ export function createOneSignalScheduler(options: OneSignalOptions): Notificatio
   return {
     async schedule({ deviceId, holeId, step, sendAt, desc, daysSince, locale = "ja" }) {
       const message = buildReviewPrompt({ desc, daysSince, locale });
-      // 穴の文言は、そのセッションの課程の言語で書かれている。端末の言語設定で
-      // 選び分けると、日本語で説明した穴が英語のタイトルで届くことになるので、
-      // **どちらのキーにも同じ(=穴と同じ言語の)文面を入れる**。
+      // A hole's wording is written in that session's curriculum language. Choosing
+      // by the device's language setting would deliver a hole explained in Japanese
+      // under an English title, so both keys get the same text (the hole's language).
       const heading = headings[locale];
       const response = await doFetch(`${baseUrl}/notifications`, {
         method: "POST",
@@ -78,10 +80,10 @@ export function createOneSignalScheduler(options: OneSignalOptions): Notificatio
         },
         body: JSON.stringify({
           app_id: options.appId,
-          // 匿名運用なので、デバイスIDをexternal idにしてある
+          // Anonymous operation, so the device id is the external id
           include_aliases: { external_id: [deviceId] },
           target_channel: "push",
-          // 通知は先輩の声で。タイトルにアプリ名を叫ばせない
+          // Notifications speak in the senpai's voice; the title never shouts the app name
           headings: { ja: heading, en: heading },
           contents: { ja: message, en: message },
           send_after: sendAt,

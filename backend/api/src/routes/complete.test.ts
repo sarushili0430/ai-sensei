@@ -73,13 +73,13 @@ function complete(
 }
 
 async function startReviewSession(): Promise<string> {
-  // 1日目: 穴ができる
+  // Day 1: a hole appears
   const first = await startSession();
   const firstBody = (await (await complete(first)).json()) as CompleteSessionResponse;
   const holeId = firstBody.karte.holes[0]?.id;
   expect(holeId).toBeDefined();
 
-  // 小テストは無料だが、音声で先輩を呼び直す復習セッションはPremium機能
+  // The quiz is free, but calling the senpai back by voice is a Premium feature
   await services.repository.setPremium({
     deviceId: testDeviceId,
     isPremium: true,
@@ -87,7 +87,7 @@ async function startReviewSession(): Promise<string> {
     rcAppUserId: null,
   });
 
-  // 2日目: 復習セッション(写真なしでも kind=review で入る)
+  // Day 2: a review session (kind=review enters even without a photo)
   services.now = () => new Date("2026-08-04T13:00:00.000Z");
   return startSession({ kind: "review", hole_id: holeId });
 }
@@ -129,14 +129,14 @@ describe("POST /v1/sessions/{id}/complete", () => {
   it("通知文は後輩からのお願いの形にする", async () => {
     const sessionId = await startSession();
     await complete(sessionId);
-    // buildReviewPromptがスケジューラ側で使われる。descがそのまま渡ること。
+    // buildReviewPrompt is used by the scheduler. desc must be passed through.
     expect(services.scheduler.scheduled[0]?.desc).toContain("判別式");
   });
 
-  // 会話中に許可範囲を越えたタグが付くと復習の通知まで的外れになるので直す。
-  // ただし**穴そのものは捨てない** — 外れているのはLLMが付けたIDであって、
-  // 本人が説明に詰まった事実ではない。捨てるとカルテが空になり、画面には
-  // 「今日は、止まらずに説明できました」と出てしまう。
+  // Tags that went outside the allowed scope make review notifications off-target,
+  // so they are fixed. But the hole itself is never dropped: what is off is the id
+  // the LLM attached, not the fact that the student got stuck. Dropping it empties
+  // the karte and the screen reads "today you explained without stalling".
   it("許可リスト外のtopic_idは、穴を捨てずにこのセッションの単元へ付け替える", async () => {
     const sessionId = await startSession();
     const body = (await (
@@ -155,7 +155,7 @@ describe("POST /v1/sessions/{id}/complete", () => {
       "判別式を「なぜ」使うのか、で説明が止まった",
       "Σで止まった",
     ]);
-    // 付け替え先はこのセッションで検出した単元。復習の通知は的外れにならない。
+    // Remapped to a unit detected in this session, so review notifications stay on target.
     expect(body.karte.holes[1]?.topic_id).not.toBe("MB-SURETSU-SIGMA");
     expect(body.karte.topic_ids).toContain(body.karte.holes[1]?.topic_id);
   });
@@ -264,7 +264,7 @@ describe("POST /v1/sessions/{id}/complete", () => {
       review_outcome: "said_it",
     });
 
-    // 埋まった穴について通知が届くのがいちばん白ける
+    // A notification about a hole you already filled is the most deflating thing there is
     expect(services.scheduler.cancelled).toEqual(["os_1", "os_2", "os_3"]);
   });
 
@@ -287,7 +287,7 @@ describe("POST /v1/sessions/{id}/complete", () => {
   });
 });
 
-// レビュー指摘: agentのタイムアウト再送で、カルテも穴も通知も二重にできていた
+// From review: the agent's timeout resend created duplicate kartes, holes and notifications
 describe("再送(冪等性)", () => {
   it("同じセッションを2度completeしても、カルテは1つだけ", async () => {
     const sessionId = await startSession();
@@ -300,7 +300,7 @@ describe("再送(冪等性)", () => {
     expect(second.karte.id).toBe(first.karte.id);
     expect(services.repository.kartes.size).toBe(1);
     expect(services.repository.holes.size).toBe(1);
-    // 通知も増えない
+    // No extra notifications either
     expect(services.scheduler.scheduled).toHaveLength(3);
   });
 });
@@ -361,9 +361,9 @@ describe("GET /v1/sessions/{id}/result", () => {
 });
 
 /**
- * 通知の言語は端末の設定ではなく、**穴のtopic_idが属する課程**で決まる。
- * カルテの文言はその課程の言語で書かれているので、ここを取り違えると
- * 「きのうの『why the discriminant is used』」という通知が届く。
+ * The notification language comes from the curriculum the hole's topic_id belongs
+ * to, not the device setting. The karte is written in that curriculum's language,
+ * so getting this wrong delivers "yesterday's 'why the discriminant is used'".
  */
 describe("通知の言語", () => {
   it("英語の課程の穴は、英語で予約する", async () => {

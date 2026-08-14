@@ -80,8 +80,9 @@ describe("resolveDetectedTopics", () => {
 });
 
 /**
- * 問題文もLLMの出力なので、topic_id と同じく**そのまま信じない一段**を通す
- * (計画書 §0 決定4「問題とノートをセットで送る」の受け口)。
+ * The problem text is LLM output too, so like topic_id it goes through a layer
+ * that does not trust it (the receiving end of plan §0 decision 4, "send the
+ * problem and the notes together").
  */
 describe("resolveSessionProblem", () => {
   it("読めた問題文を、どちらの写真から来たかと一緒に返す", () => {
@@ -91,13 +92,13 @@ describe("resolveSessionProblem", () => {
     });
   });
 
-  // 1枚に問題とノートの両方が写るケース(§4-1 が「多い」と書いているほう)。
+  // The case where one photo holds both the problem and the notes (§4-1 calls it common).
   it("問題の写真が無ければ、ノートから読んだものとして記録する", () => {
     const resolved = resolveSessionProblem({ analysis: analysisFixture, hadProblemPhoto: false });
     expect(resolved.problem?.source).toBe("notes_photo");
   });
 
-  // 問題が読めないのは失敗ではない。先輩が「問題、読んでもらってもいい?」から始める。
+  // An unreadable problem is not a failure. The senpai opens with "could you read the problem out?".
   it("空・空白だけ・解析なしは not_found(セッションは止めない)", () => {
     for (const analysis of [
       { ...analysisFixture, problem_text: "" },
@@ -112,8 +113,9 @@ describe("resolveSessionProblem", () => {
   });
 
   /**
-   * 上限超えは「紙面を丸ごと書き起こした」とき。先頭で切ると設問の途中で切れた問題を
-   * 教えることになり、章末の解答まで混ざっている可能性も高い。**切らずに捨てる。**
+   * Exceeding the cap means the whole page was transcribed. Truncating would teach
+   * a problem cut mid-question, and the chapter's answers are likely mixed in.
+   * Discard it whole.
    */
   it("上限を超えた問題文は切らずに捨て、not_found と区別できる形で返す", () => {
     const resolved = resolveSessionProblem({
@@ -124,9 +126,9 @@ describe("resolveSessionProblem", () => {
   });
 
   /**
-   * `@ai-sensei/guardrail` の `checkProblemText()` を通していること。
-   * **ガードだけあって呼ばれていない状態は「入れたつもり」で運用に入る**ので、
-   * 「繋がっている」ことをここで固定する。
+   * Confirms `checkProblemText()` from `@ai-sensei/guardrail` is actually called.
+   * A guard that exists but is never invoked ships as "we added it", so "it is
+   * wired" is pinned here.
    */
   it("解答が混ざった問題文を落とす(guardrailを通している)", () => {
     const resolved = resolveSessionProblem({
@@ -148,9 +150,10 @@ describe("resolveSessionProblem", () => {
   });
 
   /**
-   * **弾く条件はこちら側で足さない。** guardrail が「迷ったら通す」で書いてあるので、
-   * ここに独自の条件を足すと方針が2か所に分かれ、どこまで厳しいのかが読めなくなる。
-   * ふつうの設問がそのまま通ることを、境目の例で押さえておく。
+   * Do not add rejection conditions on this side. The guardrail is written to pass
+   * when unsure, so extra conditions here would split the policy across two places
+   * and make its strictness unreadable. Pin that ordinary questions pass, using
+   * borderline examples.
    */
   it("「解答用紙」「答えを求めよ」を含むふつうの設問は通す", () => {
     for (const problemText of [
@@ -166,8 +169,9 @@ describe("resolveSessionProblem", () => {
   });
 
   /**
-   * 落ち方を `not_found` にまとめない。`too_long` が続けば600字の指示が、
-   * `solution_included` が続けば「解答は取らない」の指示が効いていないと読み分けられる。
+   * The failures are not collapsed into `not_found`: repeated `too_long` means the
+   * 600-char instruction is not landing, repeated `solution_included` means "do not
+   * take the answers" is not landing.
    */
   it("落ちた理由がログで読み分けられる(全部 not_found にしない)", () => {
     const outcomes = [
@@ -193,7 +197,7 @@ describe("resolveSessionProblem", () => {
     expect(resolved.outcome).toBe("read");
   });
 
-  // contract 側のスキーマと、ここが通す値の範囲がずれていないこと。
+  // The contract-side schema and the range of values this passes must not drift.
   it("返す問題は contract のスキーマを満たす", () => {
     const resolved = resolveSessionProblem({ analysis: analysisFixture, hadProblemPhoto: true });
     expect(sessionProblemSchema.safeParse(resolved.problem).success).toBe(true);
@@ -201,8 +205,9 @@ describe("resolveSessionProblem", () => {
 });
 
 /**
- * 解析器に貼る一覧は**学校段階で半分に切る**。全課程を貼ると、中学生の写真にも
- * 数学I〜Cの52件が候補として並び、解析器が高校の単元を選べてしまう。
+ * The list pasted for the analyser is halved by school stage. Pasting every
+ * curriculum lists all 52 Math I-C entries as candidates for a middle-schooler's
+ * photo and lets the analyser pick a high-school unit.
  */
 describe("curriculumDigest", () => {
   it("中学生には中学の課程だけを貼る", () => {
@@ -223,8 +228,8 @@ describe("curriculumDigest", () => {
 });
 
 describe("resolveDetectedTopics", () => {
-  // 段階の外の単元は、解析器が返しても通さない。中学生のセッションに
-  // 数学IIが混ざると、そのまま許可トピックになって先輩が教え始める。
+  // Units outside the stage do not pass even if the analyser returns them. Math II
+  // mixed into a middle-schooler's session becomes an allowed topic and gets taught.
   it("段階の外の単元は落とす", () => {
     const resolved = resolveDetectedTopics(
       {
@@ -243,9 +248,10 @@ describe("resolveDetectedTopics", () => {
 });
 
 /**
- * 教科の取り違えは**授業まるごとに効く**。agent 側の `subjectOf()` は
- * 許可トピックの先頭から教科を決めるので、英語の写真に数学のIDが1つ混ざって
- * それが先頭に来ると、板書も音声補正も数学のものになる。
+ * Getting the subject wrong affects the entire lesson. The agent's `subjectOf()`
+ * decides the subject from the first allowed topic, so one math id mixed into an
+ * English photo - if it comes first - makes both the board and the spoken-math
+ * corrections math.
  */
 describe("resolveDetectedTopics(教科での絞り込み)", () => {
   it("英語の写真に混ざった数学の単元は落とす", () => {
@@ -281,8 +287,8 @@ describe("resolveDetectedTopics(教科での絞り込み)", () => {
     expect(resolved.topicIds).toEqual(["J2-KANSU-ICHIJI"]);
   });
 
-  // キーワード推定も教科の中で閉じる。ここが漏れると、英語の写真の要約に
-  // 「関数」の2文字があるだけで数学の単元に着地する。
+  // Keyword inference is closed within the subject too. A leak here lands an English
+  // photo on a math unit just because its summary contains the word "function".
   it("キーワード推定も教科の中で閉じる", () => {
     const resolved = resolveDetectedTopics(
       {
@@ -302,9 +308,10 @@ describe("resolveDetectedTopics(教科での絞り込み)", () => {
 });
 
 /**
- * **英語のノートに「to不定詞」とは書かれていない。** 写っているのは英文なので、
- * キーワード照合が空振りするのは異常ではなく既定の経路。ここで空を返すと、
- * 読めている写真が呼び出し側で `photo_unreadable` として弾かれる。
+ * An English notebook never says "to-infinitive": it contains English sentences,
+ * so a keyword miss is the default path, not an anomaly. Returning empty here
+ * would get a perfectly readable photo rejected by the caller as
+ * `photo_unreadable`.
  */
 describe("resolveDetectedTopics(着地点)", () => {
   it("英語でキーワードが空振りしたら、その課程の着地点に降ろす", () => {
@@ -341,8 +348,8 @@ describe("resolveDetectedTopics(着地点)", () => {
     expect(resolved.topicIds).toEqual(["E1-DOKKAI-YOTEN"]);
   });
 
-  // 数学は着地点を持たない(キーワードが効くので要らない)。
-  // 従来どおり空で返し、呼び出し側が撮り直しを促す。
+  // Math has no landing point (keywords work, so it does not need one).
+  // It returns empty as before and the caller prompts a retake.
   it("数学は着地点を持たず、空のまま返す", () => {
     const resolved = resolveDetectedTopics(
       {
@@ -383,8 +390,9 @@ describe("toDetectedTopicPayload", () => {
     });
   });
 
-  // チップは「中1 正負の数」の形で出す。高校数学は科目名がそのまま短縮名だが、
-  // 中学は学年になる(指導要領の区切りが学年別なので、course が学年を表す)。
+  // Chips read like "Grade 7 - positive and negative numbers". High-school math uses
+  // the course name as the short label, but middle school uses the grade (the
+  // curriculum guidelines split by grade, so course represents the grade).
   it("中学の単元では、チップのラベルが学年になる", () => {
     const payload = toDetectedTopicPayload(["J1-KAZUSHIKI-SEIFU"], {
       ...analysisFixture,
@@ -429,9 +437,9 @@ describe("detectImageMediaType", () => {
   });
 
   /**
-   * Flutterの MultipartFile は contentType を渡さないと
-   * application/octet-stream を送ってくる。これをそのまま media_type にすると
-   * Vision APIが400を返し、写真つきのセッション作成が全部500になる。
+   * Flutter's MultipartFile sends application/octet-stream unless contentType is
+   * given. Passing that straight into media_type makes the Vision API return 400,
+   * so every photo session creation becomes a 500.
    */
   it("申告が application/octet-stream でも中身で判断する", () => {
     expect(detectImageMediaType(jpeg, "application/octet-stream")).toBe("image/jpeg");
@@ -457,8 +465,8 @@ describe("detectImageMediaType", () => {
   });
 });
 
-// 海外向けの課程。ここで日本のカリキュラムを渡していると、
-// 英語のノートに「数学II / 図形と方程式」というチップが出る。
+// Overseas curricula. Handing the Japanese curriculum here would put a
+// "Math II / coordinate geometry" chip on an English notebook.
 describe("課程の切り替え", () => {
   it("英語のセッションには英語のカリキュラムを渡す", () => {
     const prompt = photoAnalysisPrompt("en");
@@ -506,9 +514,9 @@ describe("課程の切り替え", () => {
 });
 
 /**
- * contract は依存を持たない層なので、topic_idの正規表現を
- * カリキュラム側と二重に書いている。**ここがずれると、カリキュラムには
- * あるのに保存できないトピックができる。**
+ * contract is a dependency-free layer, so the topic_id regex is written twice -
+ * here and on the curriculum side. Drift creates topics that exist in the
+ * curriculum but cannot be stored.
  */
 describe("topic_idの形(contract ↔ curriculum)", () => {
   it("すべてのトピックが contract のスキーマを通る", () => {

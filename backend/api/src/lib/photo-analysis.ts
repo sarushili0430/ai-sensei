@@ -17,43 +17,45 @@ import { formatBullets, getPrompt, renderPrompt } from "@ai-sensei/prompts";
 import { z } from "zod";
 
 /**
- * ノート写真の解析(Vision LLM)。
+ * Notes photo analysis (Vision LLM).
  *
- * ここが「写真に写っている内容」の側のガードレールを作る工程。
- * 出力のtopic_idはこの時点でカリキュラム照合し、通ったものだけを
- * セッションの許可リストにする。
+ * This step builds the guardrail on the "what is in the photo" side. The output
+ * topic_ids are matched against the curriculum here, and only those that pass
+ * become the session's allow-list.
  *
- * カリキュラムは**ロケールごとに違う**(日本は数学I〜C、海外は Algebra 1〜)。
- * 解析器に渡す一覧も、キーワード推定のフォールバックも、セッションの
- * ロケールで絞る。混ぜると、英語のノートに「数学II / 図形と方程式」という
- * チップが出てしまう。
+ * Curricula differ per locale (Japan has Math I-C, elsewhere Algebra 1+). The
+ * list handed to the analyser and the keyword-inference fallback are both
+ * filtered by the session's locale. Mixing them puts a "Math II / coordinate
+ * geometry" chip on an English notebook.
  */
 
 /**
- * 写真に写っている教科。
+ * The subject in the photo.
  *
- * `is_math_note: boolean` から替えた。対応教科が数学だけだった頃は真偽値で
- * 足りたが、英語を足すと「数学ではない」と「対応していない」が別物になる。
- * **`other` だけが範囲外**で、それ以外は課程を絞る手がかりになる。
+ * Replaces `is_math_note: boolean`. A boolean sufficed while math was the only
+ * supported subject, but adding English makes "not math" and "unsupported" two
+ * different things. Only `other` is out of scope; the rest narrow the curriculum.
  */
 export const analysisSubjects = ["math", "english", "other"] as const;
 export type AnalysisSubject = (typeof analysisSubjects)[number];
 
 export const photoAnalysisSchema = z.object({
-  /** 既定を `other` にしない — 解析器が欄を落としたときに、写真を捨てる方へ倒れる。 */
+  /** Not defaulting to `other`: a dropped field would fall toward discarding the photo. */
   subject: z.enum(analysisSubjects).default("math"),
   summary: z.string(),
   /**
-   * 解いている問題そのものの書き起こし(計画書 §0 の決定4「問題とノートをセットで送る」)。
+   * A transcription of the problem itself (plan §0 decision 4, "send the problem
+   * and the notes together").
    *
-   * **読めなければ空文字**。既定を `""` にしてあるのは、解析器が古い形で返しても
-   * セッションが始まるようにするため — ここで parse に失敗させると、
-   * 問題文が読めないだけで**授業そのものが始まらなくなる**。
-   * 空だったときに何をプロンプトへ渡すかは、呼び出し側(`routes/sessions.ts`)の責務。
+   * Empty string when unreadable. The `""` default lets a session start even if
+   * the analyser answers in an old shape - failing the parse here would stop the
+   * lesson entirely just because the problem text was unreadable.
+   * What to pass to the prompt when empty is the caller's job
+   * (`routes/sessions.ts`).
    *
-   * 上限は `@ai-sensei/contract` の `problemTextMaxLength`。**ここでは切らずに通す。**
-   * 超えた場合は「紙面を丸ごと書き起こした」ということなので、
-   * 黙って先頭600字を使うと、設問の途中で切れた問題を教えることになる。
+   * The cap is `@ai-sensei/contract`'s `problemTextMaxLength`, and it is not
+   * truncated here. Exceeding it means "the whole page was transcribed", and
+   * silently taking the first 600 chars would teach a problem cut mid-question.
    */
   problem_text: z.string().default(""),
   visible_work: z.array(z.string()).default([]),
@@ -65,19 +67,20 @@ export const photoAnalysisSchema = z.object({
 });
 export type PhotoAnalysis = z.infer<typeof photoAnalysisSchema>;
 
-/** 解析に渡す画像1枚。 */
+/** One image passed to the analysis. */
 export type PhotoAnalysisImage = { image: ArrayBuffer; contentType: string };
 
 /**
- * 解析に渡すもの。**どちらか1枚は必ずある**ことを型で言っている。
+ * What is passed to the analysis. The type states that at least one of the two
+ * is always present.
  *
- * 配列(`images: [...]`)にしていないのは、2枚が対等ではないから:
- * ノートはR2に保存し、問題の紙面は**保存しない**(`contract` の `sessionPhotoParts`)。
- * 配列にすると、この非対称性が型から消える。
+ * It is not an array (`images: [...]`) because the two are not equivalent: notes
+ * are stored in R2 and the problem page is not (`contract`'s `sessionPhotoParts`).
+ * An array would erase that asymmetry from the type.
  *
- * 「両方 undefined」を書けなくしてあるのは、そこが**無音で壊れる形**だから —
- * 画像なしでVision APIを呼ぶと、解析器は写真を見ないまま `is_math_note: true` と
- * 想像で答えることがあり、**写真に無い単元でセッションが始まる**。
+ * "Both undefined" is unrepresentable because that is the silent failure: called
+ * with no image, the analyser sometimes answers `is_math_note: true` from
+ * imagination, and the session starts on a unit that is not in any photo.
  */
 export type PhotoAnalyzerInput = { locale?: CurriculumLocale; stage?: SchoolStage } & (
   | { notes: PhotoAnalysisImage; problem?: PhotoAnalysisImage }
@@ -88,19 +91,19 @@ export type PhotoAnalyzer = {
   analyze(input: PhotoAnalyzerInput): Promise<PhotoAnalysis>;
 };
 
-/** Vision API(Anthropic Messages)が受け取れる画像形式。これ以外は400が返る。 */
+/** Image formats the Vision API (Anthropic Messages) accepts. Anything else returns 400. */
 const SUPPORTED_MEDIA_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
 
 /**
- * 画像の形式を決める。
+ * Decides the image format.
  *
- * multipartの申告(`File.type`)は当てにならない。Flutterの MultipartFile は
- * 既定で `application/octet-stream` を送ってくるので、それをそのまま
- * media_type に流すと Vision API が400を返し、500として表に出てしまう。
+ * The multipart claim (`File.type`) is unreliable: Flutter's MultipartFile sends
+ * `application/octet-stream` by default, and passing that straight to media_type
+ * makes the Vision API return 400, surfacing as a 500.
  *
- * 中身の先頭バイトで判定し、決められないときだけ申告を見る(許可リストに
- * 載っているものだけ)。どちらでも決まらなければ null を返し、呼び出し側で
- * 「読み取れなかった写真」として扱う。
+ * Decide from the leading bytes of the content, falling back to the claim only
+ * when undecidable (and only for allow-listed values). If neither decides,
+ * return null and let the caller treat it as an unreadable photo.
  */
 export function detectImageMediaType(
   image: ArrayBuffer,
@@ -132,7 +135,7 @@ export function detectImageMediaType(
   ) {
     return "image/gif";
   }
-  // WebP: "RIFF" + 4バイトの長さ + "WEBP"
+  // WebP: "RIFF" + 4-byte length + "WEBP"
   if (
     bytes.length >= 12 &&
     bytes[0] === 0x52 &&
@@ -152,19 +155,22 @@ export function detectImageMediaType(
 }
 
 /**
- * この解析で見る課程。
+ * The curricula this analysis considers.
  *
- * **段階で必ず絞る。** 「その言語の課程を全部」にすると、中学生の写真にも
- * 数学I〜Cの52件が候補として並び、解析器が高校の単元を選べてしまう。
- * プロンプトに貼る量も課程の数だけ線形に増える。
+ * Always narrow by stage. "Every curriculum in that language" would list all 52
+ * Math I-C entries as candidates for a middle-schooler's photo and let the
+ * analyser pick a high-school unit. The prompt also grows linearly with the
+ * number of curricula.
  *
- * **教科が分かっているなら、そこでも絞る。** 1つの段には数学と英語の2課程が
- * あるので、教科で絞らないと英語の写真に数学のIDが混ざりうる。混ざったIDが
- * 先頭に来ると、agent 側の `subjectOf()` が**それで授業全体の教科を決める** —
- * 英語の写真で数学の板書と数式の音声補正が始まる。
+ * Narrow by subject too when it is known. One stage holds both a math and an
+ * English curriculum, so without it an English photo can pick up math ids. If a
+ * mixed-in id comes first, the agent's `subjectOf()` decides the whole lesson's
+ * subject from it - an English photo would start a math board with spoken-math
+ * corrections.
  *
- * 教科が分かるのは写真を読んだ**あと**なので、プロンプトに貼る一覧
- * ({@link curriculumDigest})は段でしか絞れない。絞れるのは照合の側だけ。
+ * The subject is known only *after* the photo is read, so the list pasted into
+ * the prompt ({@link curriculumDigest}) can only be narrowed by stage. Only the
+ * matching side can narrow further.
  */
 function tracksFor(
   locale: CurriculumLocale,
@@ -176,7 +182,7 @@ function tracksFor(
   return eligible.filter((track) => curriculumTracks[track].subject === subject);
 }
 
-/** その課程のカリキュラムマップを、プロンプトに貼れる形に畳む。 */
+/** Folds that curriculum's map into a form that can be pasted into the prompt. */
 export function curriculumDigest(
   locale: CurriculumLocale = "ja",
   stage: SchoolStage = "high_school",
@@ -196,19 +202,21 @@ export function photoAnalysisPrompt(
 }
 
 /**
- * LLMが返したtopic_idを照合し、許可リストを作る(ガードレール1段目)。
+ * Matches the topic_ids the LLM returned and builds the allow-list (guardrail
+ * stage 1).
  *
- * 絞りは3段:
+ * Three stages of narrowing:
  *
- *   1. **課程**(段階 × 教科)。日本語のプロンプトに載っていない `A1-...` も、
- *      英語の写真に付いた `M2-...` も、ここで落ちる
- *   2. 1件も残らなければ、写真テキストからの**キーワード推定**
- *   3. それでも空なら、その課程の**着地点**(`fallback_topic_id`)
+ *   1. curriculum (stage x subject). Both an `A1-...` absent from a Japanese
+ *      prompt and an `M2-...` attached to an English photo fall out here
+ *   2. if nothing remains, keyword inference from the photo text
+ *   3. if still empty, the curriculum's landing point (`fallback_topic_id`)
  *
- * 3段目が要るのは英語の課程。数学は「判別式」「√」がそのままノートに写るが、
- * **英語のノートに「to不定詞」とは書かれていない** — 写っているのは英文で、
- * キーワード照合が効きにくい。ここで空のまま返すと、読めている写真が
- * 呼び出し側で `photo_unreadable` として弾かれる。
+ * Stage 3 exists for English curricula. Math notes literally contain
+ * "discriminant" and "√", but an English notebook never says "to-infinitive" -
+ * it contains English sentences, so keyword matching barely works. Returning
+ * empty here would get a perfectly readable photo rejected by the caller as
+ * `photo_unreadable`.
  */
 export function resolveDetectedTopics(
   analysis: PhotoAnalysis,
@@ -238,8 +246,8 @@ export function resolveDetectedTopics(
     topicIds.push(...suggestTopics(haystack, 3, { tracks: eligible }).map((t) => t.id));
   }
 
-  // キーワードでも当たらなかった。**英語ではこれが普通に起きる**ので、
-  // 課程が用意している着地点へ降ろす(無い課程は空のまま = 従来どおり弾かれる)。
+  // Keywords missed too. This happens routinely in English, so drop to the
+  // curriculum's landing point (curricula without one stay empty = rejected as before).
   if (topicIds.length === 0 && analysis.subject !== "other") {
     for (const track of eligible) {
       const fallback = curricula[track].fallback_topic_id;
@@ -254,30 +262,34 @@ export function resolveDetectedTopics(
 }
 
 /**
- * 解析結果から、そのセッションが扱う問題を決める(ガードレール1段目の問題文版)。
+ * Decides which problem this session handles, from the analysis result (the
+ * problem-text counterpart of guardrail stage 1).
  *
- * `resolveDetectedTopics` が topic_id にやっていることと同じ立ち位置で、
- * **LLMの出力をそのまま信じないための一段**。3つに分かれる:
+ * It stands where `resolveDetectedTopics` stands for topic_ids: a layer for not
+ * trusting the LLM's output. Five outcomes:
  *
- *   - `read` … 読めた。会話の起点になる
- *   - `not_found` … 写っていない(または解析器が空で返した)。
- *     **これは失敗ではない。** 問題の写真は必須ではないので(§4-1)、
- *     セッションはこのまま成立する。先輩は「問題、読んでもらってもいい?」から始める
- *   - `too_long` … 上限を超えた = **紙面を丸ごと書き起こしている**。
- *     先頭で切ると設問の途中で切れた問題を教えることになるので、**丸ごと捨てる**。
- *     章末の解答まで書き起こしている可能性が高く、そのまま渡すと先輩が答えを読み上げる
- *   - `solution_included` / `not_a_problem` … `@ai-sensei/guardrail` の
- *     {@link checkProblemText} が弾いたもの
+ *   - `read` ... readable; the starting point of the conversation
+ *   - `not_found` ... not in the photo (or the analyser returned empty).
+ *     This is not a failure. The problem photo is optional (§4-1), so the
+ *     session still stands, and the senpai opens with "could you read the
+ *     problem out?"
+ *   - `too_long` ... over the cap = the whole page was transcribed. Truncating
+ *     would teach a problem cut mid-question, so it is discarded whole. It very
+ *     likely includes the chapter's answers, which would have the senpai read
+ *     the answer aloud
+ *   - `solution_included` / `not_a_problem` ... rejected by
+ *     {@link checkProblemText} in `@ai-sensei/guardrail`
  *
- * **どの落ち方でも `problem` は `null` にするだけで、セッションは止めない。**
- * 再解析はしない: 解答が混ざる原因は「紙面のどこを写したか」なので、
- * **同じ写真をもう一度投げても同じものが返る**。Vision の課金とセッション開始の
- * 数秒を払って、同じ結果を得るだけになりやすい。
+ * Every failure only sets `problem` to `null`; the session is never stopped.
+ * There is no re-analysis: answers get mixed in because of *what part of the
+ * page was photographed*, so the same photo returns the same thing. Paying for
+ * Vision again plus seconds of session start usually just buys the same result.
  *
- * 落ち方を `not_found` にまとめないのは、**観測のため**。
- * `too_long` が続けば `prompts/photo_analysis.*.md` の600字の指示が効いていない、
- * `solution_included` が続けば「解答は取らない」の指示が効いていない、と読み分けられる。
- * ログで区別できないと、どちらも永遠に気づけない。
+ * The failures are not collapsed into `not_found` because they are observable
+ * signals: repeated `too_long` means the 600-char instruction in
+ * `prompts/photo_analysis.*.md` is not landing; repeated `solution_included`
+ * means "do not take the answers" is not landing. Indistinguishable in logs,
+ * neither would ever be noticed.
  */
 export const problemOutcomes = [
   "read",
@@ -290,7 +302,7 @@ export type ProblemOutcome = (typeof problemOutcomes)[number];
 
 export function resolveSessionProblem(input: {
   analysis: PhotoAnalysis | null;
-  /** `problem_photo` パートが送られてきたか。読み取り元の記録に使う。 */
+  /** Whether a `problem_photo` part was sent. Used to record where it was read from. */
   hadProblemPhoto: boolean;
 }): { problem: SessionProblem | null; outcome: ProblemOutcome } {
   const text = input.analysis?.problem_text.trim() ?? "";
@@ -298,11 +310,12 @@ export function resolveSessionProblem(input: {
   if (text.length > problemTextMaxLength) return { problem: null, outcome: "too_long" };
 
   /**
-   * 中身の妥当性は guardrail の担当(`topicIdSchema` と同じ分担)。
+   * Content validity is the guardrail's job (the same split as `topicIdSchema`).
    *
-   * **弾いた結果は「問題が写っているのに見ないまま教える」に戻る**ので、
-   * 向こうは「迷ったら通す」で書いてある。ここでその方針を上書きしない —
-   * 追加の条件をこちら側に足すと、方針が2か所に分かれて緩急が読めなくなる。
+   * Since a rejection means falling back to "teach without looking at a problem
+   * that is right there", that side is written to pass when unsure. Do not
+   * override that policy here - extra conditions on this side would split the
+   * policy across two places and make its strictness unreadable.
    */
   const verdict = checkProblemText(text);
   if (!verdict.ok) return { problem: null, outcome: verdict.reason };
@@ -336,36 +349,36 @@ export function toDetectedTopicPayload(
         course: topic.course,
         unit: topic.unit,
         topic: topic.topic,
-        // チップに出す短い課程名。作るのはカリキュラム側の1関数だけ(ADR 0007)
+        // The short curriculum label for the chip. Built by one curriculum-side function (ADR 0007)
         label: topicLabel(topic),
-        // キーワード推定にフォールバックした分は、確信度を明示的に低くする
+        // Anything that fell back to keyword inference gets an explicitly low confidence
         confidence: confidenceById.get(topicId) ?? 0.4,
       },
     ];
   });
 }
 
-/** systemと同じ言語で頼む。日本語で頼むと、英語のプロンプトでも日本語のsummaryが返る。 */
+/** Ask in the same language as the system prompt. Asking in Japanese returns a Japanese summary even for an English prompt. */
 const analysisInstruction: Record<CurriculumLocale, string> = {
   ja: "このノートを解析してJSONだけを返してください。",
   en: "Analyze these notes and return the JSON only.",
 };
 
 /**
- * 各画像の前に置く見出し。
+ * The heading placed before each image.
  *
- * **2枚を1回の呼び出しで渡すときは、どちらがどちらかを言葉で教える。**
- * ラベルなしで2枚並べると、解析器は問題集の紙面を「生徒が書いた作業」として
- * `visible_work` に入れる(= 印刷された模範解答を、生徒がやったことだと誤読する)。
+ * When both images go in one call, say in words which is which. Two unlabelled
+ * images make the analyser put the workbook page into `visible_work` as "the
+ * student's work" (= misreading a printed model answer as something they did).
  *
- * **ノートだけのときはラベルを付けない。**「1枚目」と言われると、
- * 解析器は写っていない2枚目を前提に答えはじめる。
+ * With notes only, add no label. Told "image 1", the analyser starts answering
+ * on the assumption of an image 2 that is not there.
  *
- * **問題だけのときは、必ずラベルを付ける。**
- * システムプロンプト(`prompts/photo_analysis.*.md`)は「2枚目が無ければ、
- * ノートの写真に問題が写っていないか探す」と書いてあり、**1枚しか無い場合は
- * それをノートだと想定している**。問題だけを送る経路はそのあとに増えたので、
- * ここで打ち消さないと、印刷された紙面がまるごと「生徒がやった作業」になる。
+ * With the problem only, always add a label. The system prompt
+ * (`prompts/photo_analysis.*.md`) says "if there is no second image, look for
+ * the problem in the notes photo", i.e. it assumes a lone image is the notes.
+ * The problem-only path was added afterwards, so without cancelling that here,
+ * a printed page becomes "the student's work" wholesale.
  */
 const imageLabels: Record<
   CurriculumLocale,
@@ -392,18 +405,18 @@ export type AnthropicAnalyzerOptions = {
   fetchImpl?: typeof fetch;
 };
 
-/** Anthropic Messages API を叩くVision解析器。 */
+/** The Vision analyser that calls the Anthropic Messages API. */
 export function createAnthropicAnalyzer(options: AnthropicAnalyzerOptions): PhotoAnalyzer {
   const doFetch = options.fetchImpl ?? fetch;
   const baseUrl = options.baseUrl ?? "https://api.anthropic.com";
 
   return {
     async analyze({ notes, problem, locale = "ja", stage = "high_school" }) {
-      // 2枚あるときは **1回の呼び出し** で渡す。分けて2回叩くと、
-      // (a) Vision の課金が2倍になる(§6-1 の見積もりは「問題+ノート2枚」で1項目)
-      // (b) **解析器が2枚を突き合わせられない** — ノートだけを見た回は
-      //     「何の問題を解いているか」を知らないまま単元を当てることになる。
-      //     問題とノートをセットで送る(§0 決定4)の意味は、まさにこの突き合わせにある。
+      // With two images, pass them in one call. Two separate calls would
+      // (a) double the Vision bill (§6-1 estimates "problem + notes" as one item)
+      // (b) stop the analyser from cross-referencing them - a notes-only pass has
+      //     to guess the unit without knowing which problem is being solved.
+      //     Cross-referencing is exactly the point of sending both (§0 decision 4).
       const labels = imageLabels[locale];
       const content: Record<string, unknown>[] = [];
 
@@ -439,8 +452,9 @@ export function createAnthropicAnalyzer(options: AnthropicAnalyzerOptions): Phot
       });
 
       if (!response.ok) {
-        // 本文を捨てると「500だった」しか残らず、鍵切れ・過負荷・画像が大きすぎるの
-        // どれなのか分からなくなる。長さだけ切って、理由をエラーに載せる。
+        // Dropping the body leaves only "it was a 500", with no way to tell an
+        // expired key from overload from an oversized image. Truncate the length
+        // only, and put the reason on the error.
         const detail = await response.text().catch(() => "");
         throw new Error(`vision APIが失敗しました: ${response.status} ${detail.slice(0, 300)}`);
       }
@@ -452,7 +466,7 @@ export function createAnthropicAnalyzer(options: AnthropicAnalyzerOptions): Phot
   };
 }
 
-/** ```json フェンスや前置きが付いて返ってきても拾えるようにする。 */
+/** Still parseable when it comes back with a ```json fence or a preamble. */
 export function extractJson(text: string): unknown {
   const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text);
   const candidate = fenced?.[1] ?? text;
