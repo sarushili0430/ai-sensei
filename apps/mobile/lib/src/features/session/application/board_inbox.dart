@@ -5,83 +5,88 @@ import 'package:flutter/foundation.dart';
 import '../../../telemetry/telemetry.dart';
 import '../domain/board.dart';
 
-/// 画面に出せる形にした板書。
+/// The board in a form the screen can render.
 ///
-/// [BoardChannelReceiver] が持っているのは「契約が守られているか」で、
-/// こちらは「いま何が黒板に書いてあるか」。分けてあるのは、契約違反が起きた
-/// あとも**書いてあるものは消さない**(計画書§3-2)ため — 検査の状態と
-/// 表示の状態を同じ入れ物にすると、違反のたびに板書ごと落とすことになる。
+/// [BoardChannelReceiver] holds whether the contract is being met; this holds
+/// what is currently written. They are separate so a contract violation never
+/// erases what was already written: sharing one container for inspection state
+/// and display state would drop the whole board on every violation.
 @immutable
 class BoardSnapshot {
   const BoardSnapshot({this.title, this.steps = const <BoardStep>[], this.gapReason});
 
-  /// 板書の見出し(`board_open` の `title`)。「この板書は何の問題か」。
+  /// The board heading (`board_open`'s `title`): which problem this board is for.
   final String? title;
 
-  /// これまでに積まれた手順。**前の行は消えない**(消えるのは `board_open` のときだけ)。
+  /// The steps accumulated so far. Earlier lines are never erased; only
+  /// `board_open` clears them.
   final List<BoardStep> steps;
 
-  /// 板書がとぎれた理由。null なら健全。
+  /// Why the board is truncated; null means healthy.
   ///
-  /// **これは画面に出す文言ではない**(契約違反の技術的な説明)。画面には
-  /// ロケールに沿った一行を出す。ここに残しているのは、開発中に手元のログと
-  /// 突き合わせるためと、縮退の記録(`Degradation.boardGap`)に載せる材料のため。
+  /// Not user-facing copy — it is a technical description of the contract
+  /// violation, while the screen shows a localized line. It is kept for matching
+  /// against local logs during development, and as material for the degradation
+  /// record (`Degradation.boardGap`).
   final String? gapReason;
 
-  /// 授業モードに入っているか。**画面のレイアウトが切り替わる条件**。
+  /// Whether lesson mode is active; the condition that switches the layout.
   ///
-  /// `title` だけで判定しないのは、`board_open` が落ちて手順から届いた場合でも
-  /// 板書を出すため(その状態は [gapReason] が別に伝える)。
+  /// Not decided by `title` alone, so the board still shows when `board_open`
+  /// was lost and steps arrived first ([gapReason] reports that separately).
   bool get hasBoard => title != null || steps.isNotEmpty;
 
-  /// とぎれたまま止まっているか。
+  /// Whether it is stopped in a truncated state.
   bool get hasGap => gapReason != null;
 
   static const BoardSnapshot empty = BoardSnapshot();
 }
 
-/// data channel から届いた封筒を、画面に出せる板書([BoardSnapshot])に変える。
+/// Turns envelopes from the data channel into a renderable board
+/// ([BoardSnapshot]).
 ///
-/// LiveKitを知らない層にしてある(受け取るのは文字列と封筒だけ)。理由は
-/// **欠落したときの振る舞いが、この層でいちばん決まるから** — 実機の接続を
-/// 用意しないと試せない場所に置くと、いちばん試したい壊れ方が試せなくなる。
+/// Deliberately knows nothing about LiveKit (it takes only strings and
+/// envelopes), because this is the layer where behaviour on a gap is decided —
+/// putting it somewhere that needs a real connection would make the failure mode
+/// we most want to test untestable.
 ///
-/// ## 欠落したときにどうするか(黙って握りつぶさない)
+/// ## What happens on a gap (never swallowed silently)
 ///
-/// `seq` / `index` が飛んだ、`session_id` が違う、JSONが読めない —
-/// どれも「板書が虫食いのまま画面に出る」一歩手前の状態
-/// (`domain/board.dart` の [BoardContractViolation] のコメント)。決めた振る舞いは3つ:
+/// A skipped `seq` / `index`, a wrong `session_id`, unparseable JSON — each is
+/// one step from a board rendered full of holes (see [BoardContractViolation] in
+/// `domain/board.dart`). Three rules:
 ///
-///   1. **すでに積んだ行は消さない。**欠落は「そこから先が読めない」であって、
-///      それまで書かれたものが嘘になるわけではない。消すほうが損失が大きい。
-///   2. **そこから先はその板書に積まない。**積むと、抜けた場所が分からないまま
-///      虫食いの板書ができあがる。生徒は「抜けている」ことに気づけないので、
-///      間違ったまま覚える。**とぎれた印を出して止めるほうが安全。**
-///   3. **次の `board_open` で復帰する。**別の問題に移るなら板書はどのみち
-///      作り直されるので、そこを復帰点にする。1問ぶん壊れて終わりにして、
-///      セッション全体を道連れにしない。
+///   1. Never erase what was already written. A gap means "nothing readable from
+///      here on", not that earlier lines became false; erasing loses more.
+///   2. Add nothing further to that board. Continuing would build a hole-riddled
+///      board with no sign of where the hole is, and a student cannot tell
+///      something is missing, so they learn it wrong. Showing a truncation
+///      marker and stopping is safer.
+///   3. Recover on the next `board_open`. Moving to another problem rebuilds the
+///      board anyway, so that is the recovery point: one problem is lost, not
+///      the whole session.
 ///
-/// 復帰しても `seq` は数え直すだけ([BoardChannelReceiver] の `expectedSeq`)なので、
-/// **復帰後に起きた欠落もひきつづき検知できる**。
+/// After recovery `seq` simply restarts (`expectedSeq` in
+/// [BoardChannelReceiver]), so later gaps are still detected.
 class BoardInbox {
   BoardInbox({required this.sessionId})
     : _receiver = BoardChannelReceiver(sessionId: sessionId);
 
-  /// この接続のセッション。宛先違いの封筒を落とすために要る。
+  /// This connection's session, used to drop misaddressed envelopes.
   final String sessionId;
 
   BoardChannelReceiver _receiver;
   String? _title;
   String? _gapReason;
 
-  /// いまの板書。
+  /// The current board.
   BoardSnapshot get snapshot =>
       BoardSnapshot(title: _title, steps: _receiver.currentSteps, gapReason: _gapReason);
 
-  /// ストリームから読み切った封筒1通(JSON文字列)を処理する。
+  /// Handles one complete envelope (a JSON string) read from the stream.
   ///
-  /// 戻り値は **板書が変わったか**。変わっていないなら画面を塗り直す必要がない
-  /// (とぎれたあとに届き続ける封筒は、ここで静かに捨てられる)。
+  /// Returns whether the board changed; if not, no repaint is needed. Envelopes
+  /// that keep arriving after a truncation are quietly dropped here.
   bool acceptPayload(String payload) {
     final BoardChannelMessage message;
     try {
@@ -89,17 +94,18 @@ class BoardInbox {
         jsonDecode(payload) as Map<String, dynamic>,
       );
     } catch (error) {
-      // 読めない封筒は**中身が分からない = 何が抜けたかも分からない**。
-      // 欠落と同じ扱いにする(黙って捨てると虫食いになる)。
+      // An unreadable envelope means unknown contents, so also unknown what is
+      // missing. Treat it as a gap — dropping it silently leaves holes.
       return _breakBoard('封筒を読めませんでした: $error');
     }
     return accept(message);
   }
 
-  /// 封筒1通を処理する。
+  /// Handles a single envelope.
   bool accept(BoardChannelMessage message) {
     if (_gapReason != null) {
-      // とぎれた板書には積まない。復帰点は「別の問題に移るとき」だけ。
+      // Never add to a truncated board; the only recovery point is moving to
+      // another problem.
       if (message is! BoardOpenMessage) return false;
       _receiver = BoardChannelReceiver.resumingAt(sessionId: sessionId, seq: message.seq);
       _gapReason = null;
@@ -112,28 +118,28 @@ class BoardInbox {
       return _breakBoard(violation.message);
     }
 
-    // 受理できたときだけ見出しを差し替える。検査を通る前に書き換えると、
-    // 宛先違いの封筒で見出しだけがすり替わる。
+    // Replace the heading only once accepted; doing it before validation would
+    // let a misaddressed envelope swap the heading alone.
     if (message is BoardOpenMessage) _title = message.title;
     return true;
   }
 
-  /// 板書をとぎれた状態にする。戻り値は [accept] の「変わったか」に合わせてある。
+  /// Marks the board truncated. The return value matches [accept]'s "changed".
   bool _breakBoard(String reason) {
     _gapReason = reason;
 
-    // **握りつぶさない。** ここは agent の送信漏れに気づく唯一の手段で、
-    // 以前は `debugPrint` にしか出ていなかった = 本番では観測手段がゼロだった
-    // (計画書 §10-7)。画面にはロケールに沿った一行が出る(この文は出さない)。
+    // Never swallowed: this is the only way to notice the agent failing to send,
+    // and it used to reach `debugPrint` alone, so production had zero
+    // visibility. The screen shows a localized line, not this text.
     //
-    // 間引きは板書1枚ごと。`board_open` すら読めずに壊れた場合は板書IDが無いので、
-    // セッション単位に落とす(その場合は1セッションに1件だけ飛ぶ)。
+    // Throttled per board. If it broke before even `board_open` was readable
+    // there is no board ID, so it falls back to per session (one report each).
     Telemetry.report(
       DegradationEvent.boardGap(
         sessionId: sessionId,
         boardId: _receiver.openBoardId,
-        // 契約違反の理由。**生徒の発話も問題文も含まない**
-        // (`BoardContractViolation` が組み立てる、seq と index の話だけ)。
+        // The violation reason. Contains no student speech and no problem text —
+        // `BoardContractViolation` builds it from seq and index only.
         reason: reason,
         stepsSoFar: _receiver.currentSteps.length,
       ),

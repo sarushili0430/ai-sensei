@@ -13,14 +13,14 @@ import '../../session/domain/session.dart';
 import '../application/karte_controllers.dart';
 import '../domain/karte.dart';
 
-/// 復習画面(ホームのカード、またはプッシュ通知が起点)。
+/// Review screen, reached from home's card or a push notification.
 ///
-/// 出すものは2つ。**埋めにいく穴**(これからやること)と
-/// **埋めた穴**(やってきたこと)。後者がペイウォールの謳う「履歴」で、
-/// 別画面は作らない。
+/// It shows two things: gaps to fill (what is next) and filled gaps (what has
+/// been done). The latter is the "history" the paywall advertises, and gets no
+/// screen of its own.
 ///
-/// どの状態でも必ず出口を持たせる。ここは通知から直接着地しうる画面なので、
-/// 「読み込み中のまま」「文言だけ」で行き止まりにすると本当に戻れなくなる。
+/// Every state has an exit. People can land here straight from a notification,
+/// so a dead end of "still loading" or bare copy would really trap them.
 class ReviewScreen extends ConsumerStatefulWidget {
   const ReviewScreen({super.key});
 
@@ -29,7 +29,8 @@ class ReviewScreen extends ConsumerStatefulWidget {
 }
 
 class _ReviewScreenState extends ConsumerState<ReviewScreen> {
-  /// 「まだ」を選んだ穴。キューが次へ進めばIDが変わるので、自動で質問状態に戻る。
+  /// The gap answered "not yet". The ID changes as the queue advances, so it
+  /// returns to the question state on its own.
   String? _notYetHoleId;
   bool _isAnswering = false;
   bool _answerFailed = false;
@@ -54,7 +55,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   }
 
   void _chooseNotYet(ReviewQueueItem item) {
-    // 「まだ」だけではサーバへ送らない。穴はopenのまま、次の行き先を本人が選べる。
+    // "Not yet" alone sends nothing: the gap stays open and they choose what to
+    // do next.
     setState(() {
       _notYetHoleId = item.hole.id;
       _answerFailed = false;
@@ -77,7 +79,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   Future<void> _startLesson(ReviewQueueItem item) async {
     setState(() => _showLessonError = false);
 
-    // 復習授業は写真を使わず、この穴を起点にサーバ側でセッションを作る。
+    // Review lessons use no photo; the server builds a session from this gap.
     final SessionStart? session = await ref
         .read(captureControllerProvider.notifier)
         .startReview(
@@ -86,11 +88,12 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         );
     if (!mounted) return;
 
-    // 会話は一方通行。戻る先を持たせない。
+    // The conversation is one-way; give it no back target.
     if (session != null) {
       context.go(AppRoute.session.path);
     } else {
-      // startReview は失敗理由を CaptureState に残す。黙って元の画面に留めない。
+      // startReview records the failure reason in CaptureState; never leave
+      // them on the old screen with no explanation.
       setState(() => _showLessonError = true);
     }
   }
@@ -101,7 +104,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     required ProgressSummary progress,
     required CaptureState capture,
   }) {
-    // §2「1回1問」。残りをリストにせず、先頭の1件だけを大きく出す。
+    // One question at a time: no list of the rest, just the first, shown large.
     final ReviewQueueItem? item = data.items.isEmpty ? null : data.items.first;
     final bool notYet = item != null && _notYetHoleId == item.hole.id;
     final ApiException? lessonError = notYet && _showLessonError
@@ -116,7 +119,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         !premiumRequired &&
         progress.limits.lessonAllowedToday &&
         !lessonLimitReached;
-    // エラーの code が返った競合時は、直前の進捗よりサーバの判定を優先する。
+    // When an error code arrives in a race, the server's verdict beats the
+    // progress we last read.
     final bool showUpgrade = lessonError?.isFairUseLimitReached == true
         ? false
         : premiumRequired || lessonError?.isFreeLimitReached == true;
@@ -128,7 +132,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         _showLessonError &&
         !lessonLimitReached &&
         !premiumRequired) {
-      // 日次上限以外は、撮影画面と同じくサーバの理由をそのまま出す。
+      // Apart from the daily limit, show the server's reason verbatim, as
+      // capture does.
       final String message = lessonError?.message ?? strings.errorGeneric;
       errorMessage = message.isEmpty ? strings.errorGeneric : message;
     }
@@ -146,7 +151,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
             errorMessage: errorMessage,
             onSaidIt: () => _answer(item),
             onNotYet: () => _chooseNotYet(item),
-            // 声を使う復習授業はPremium。契約と日次枠の両方が通るときだけ呼ぶ。
+            // Voice review lessons are Premium; called only when both the
+            // subscription and the daily allowance pass.
             onAskSenpai: () => _startLesson(item),
             onUpgrade: _openPaywall,
             onLater: _later,
@@ -179,7 +185,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(strings.reviewTitle),
-        // 通知から直接来たときは戻る先が積まれていない。ホームへ逃がす。
+        // Arriving straight from a notification leaves nothing to pop to, so
+        // fall back to home.
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: context.closeOrGoHome,
@@ -198,16 +205,16 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
             if (data.isEmpty) {
               return _Message(text: strings.reviewEmpty);
             }
-            // **進捗の取得で小テストを人質に取らない。**
+            // Never hold the quiz hostage to a progress fetch.
             //
-            // 小テストは「1問・テキストで10秒」が売りで、答えるのに要るのは
-            // キューだけ。進捗を使うのは「先輩に聞く」のPremium判定と
-            // `lessonAllowedToday`だけなので、そちらが取れなくても
-            // 言えた / まだ言えない は答えられなければならない。
+            // The quiz is sold as one question, text, ten seconds, and only the
+            // queue is needed to answer it. Progress is used solely for the
+            // Premium check on "ask senpai" and for `lessonAllowedToday`, so
+            // said it / not yet must stay answerable without it.
             //
-            // 取れていないあいだは「枠が無い」側に倒す。授業へ進ませてから
-            // サーバに断られるより、いま答えられることを優先する
-            // (押せたのに断られるのが、いちばん信用を落とす)。
+            // While it is missing, fail towards "no allowance": answering now
+            // beats advancing into a lesson only to be refused, which costs the
+            // most trust.
             return _content(
               strings: strings,
               data: data,
@@ -262,7 +269,7 @@ class _ReviewCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           if (notYet) ...<Widget>[
-            // 「まだ」を咎めず、ここから先は先輩が引き取る。
+            // "Not yet" draws no blame; senpai takes it from here.
             Text(
               strings.reviewNotYetLead,
               style: Theme.of(context).textTheme.bodyLarge,
@@ -282,7 +289,8 @@ class _ReviewCard extends StatelessWidget {
               ),
             ] else ...<Widget>[
               if (showUpgrade) ...<Widget>[
-                // 小テストは閉じない。従量原価が始まる音声授業だけが境界だと伝える。
+                // The quiz stays open: only voice lessons, where metered cost
+                // starts, sit behind the boundary.
                 Text(
                   strings.reviewVoicePremium,
                   style: Theme.of(context).textTheme.bodySmall,
@@ -302,7 +310,8 @@ class _ReviewCard extends StatelessWidget {
                   ),
                 ),
               ] else
-                // Premiumのフェアユース上限は、先輩が今日の学習を締める判断として伝える。
+                // The Premium fair-use limit is framed as senpai closing out
+                // today's study.
                 Text(
                   strings.lessonEnoughForToday,
                   style: Theme.of(context).textTheme.bodySmall,
@@ -314,7 +323,8 @@ class _ReviewCard extends StatelessWidget {
               onPressed: isBusy ? null : onLater,
             ),
           ] else ...<Widget>[
-            // 先輩の声のひとこと。通知文と同じものを見せて、続きだと分かるようにする。
+            // Senpai's spoken line, identical to the notification text so it
+            // reads as a continuation.
             Text(item.prompt, style: Theme.of(context).textTheme.bodySmall),
             const SizedBox(height: AppSpacing.md),
             Text(item.quiz, style: Theme.of(context).textTheme.titleMedium),
@@ -328,7 +338,7 @@ class _ReviewCard extends StatelessWidget {
               onPressed: isBusy ? null : onSaidIt,
             ),
             const SizedBox(height: AppSpacing.sm),
-            // 「まだ」は選んでも損しない選択肢。約束3を GhostButton の形にする。
+            // "Not yet" costs nothing to choose; the promise, as a GhostButton.
             GhostButton(
               label: strings.reviewNotYet,
               onPressed: isBusy ? null : onNotYet,
@@ -340,9 +350,9 @@ class _ReviewCard extends StatelessWidget {
   }
 }
 
-/// 埋めた穴。ペイウォールが謳う Premium の「履歴」はここ。
+/// Filled gaps — the "history" the paywall advertises for Premium.
 ///
-/// 静かに置く。祝福画面のにぎやかさは持ち込まない。
+/// Presented quietly; none of the celebration screen's noise.
 class _FilledSection extends StatelessWidget {
   const _FilledSection({required this.filled});
 
@@ -366,8 +376,8 @@ class _FilledSection extends StatelessWidget {
             style: Theme.of(context).textTheme.bodySmall,
           )
         else
-          // 埋めた穴は、ピンクではなく黄で引き直される。
-          // 上から順に引くことで、積み上がってきたものとして見える。
+          // Filled gaps are redrawn in yellow, not pink. Drawing them top down
+          // makes them read as something accumulated.
           for (int i = 0; i < filled.length; i++)
             Padding(
               padding: const EdgeInsets.only(bottom: AppSpacing.md),
@@ -391,7 +401,7 @@ class _FilledSection extends StatelessWidget {
   }
 }
 
-/// 中身が出せないときの画面。**必ずホームに戻れる**ようにする。
+/// Screen for when there is nothing to show; always offers a way home.
 class _Message extends StatelessWidget {
   const _Message({required this.text, this.primaryLabel, this.onPrimary});
 

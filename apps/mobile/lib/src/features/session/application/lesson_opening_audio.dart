@@ -1,11 +1,11 @@
 import '../../../audio/prerendered_audio.dart';
 
-/// 授業冒頭の一言の寿命だけを持つ。
+/// Owns only the lifetime of the lesson's opening line.
 ///
-/// LiveKit の接続や板書の検証は `SessionController` の責務だが、再生開始の途中に
-/// 板書・発話が先着する競合まで同じクラスへ直書きすると、実機の Room 無しでは
-/// 試せなくなる。ここは「いつ鳴らし、何が来たら止めるか」だけにして fake 再生器で
-/// 固定する。
+/// LiveKit connection and board validation belong to `SessionController`, but
+/// writing the race where a board step or utterance beats playback into that
+/// class too would make it untestable without a real Room. This holds just when
+/// to play and what stops it, pinned by a fake player.
 class LessonOpeningAudio {
   LessonOpeningAudio(this._audio);
 
@@ -16,10 +16,11 @@ class LessonOpeningAudio {
   int _generation = 0;
   int? _playbackId;
 
-  /// 接続を始める前に待機状態へ入れる。
+  /// Enters the waiting state before connecting.
   ///
-  /// `Room.connect()` の途中で先輩が先に喋ることがある。接続後に初めて待機状態を
-  /// 作ると、その停止信号を取りこぼしてから cue を鳴らし、先輩の声へかぶせてしまう。
+  /// Senpai can start speaking during `Room.connect()`. Creating the waiting
+  /// state only after connecting would miss that stop signal and then play the
+  /// cue over senpai's voice.
   void arm({required bool lessonMode, required String languageCode}) {
     _generation += 1;
     _waiting = lessonMode;
@@ -27,11 +28,12 @@ class LessonOpeningAudio {
     _playbackId = null;
   }
 
-  /// LiveKit 接続後・マイク公開前に鳴らし始める。
+  /// Starts playback after connecting to LiveKit and before publishing the mic.
   ///
-  /// 接続後なら agent の板書生成と同時に走り、マイク公開前なら iOS の ambient audio
-  /// session を準備しても LiveKit が直後に会話用へ戻せる。順序を逆にすると、
-  /// 消音スイッチを尊重するための設定が録音用 session を上書きしうる。
+  /// After connecting, it runs alongside the agent generating the board; before
+  /// publishing, preparing iOS's ambient audio session still lets LiveKit switch
+  /// back to the conversation session straight after. Reversed, the setting that
+  /// respects the mute switch could overwrite the recording session.
   Future<void> start() async {
     final String? languageCode = _languageCode;
     if (!_waiting || languageCode == null) return;
@@ -42,8 +44,8 @@ class LessonOpeningAudio {
       languageCode: languageCode,
     );
 
-    // アセットを読み込んでいるあいだに、板書か先輩の声が先着した。
-    // 読み込み完了後に再生を復活させない。
+    // A board step or senpai's voice arrived while the asset was loading; do
+    // not revive playback once loading finishes.
     if (!_waiting || generation != _generation) {
       await _audio.stop(playbackId);
       return;
@@ -51,13 +53,14 @@ class LessonOpeningAudio {
     _playbackId = playbackId;
   }
 
-  /// `board_open`(見出しだけ)では止めず、最初の手順が届いたときだけ止める。
+  /// `board_open` (heading only) does not stop it; the first step does.
   Future<void> firstBoardStepArrived() => _finishWaiting();
 
-  /// 板書より先に本物の先輩が喋り始めた場合も、同じ cue を止める。
+  /// The real senpai speaking before the board also stops the same cue.
   Future<void> senpaiStartedSpeaking() => _finishWaiting();
 
-  /// 接続失敗・画面離脱でも、読み込み中を含めて再生を無効にする。
+  /// A failed connection or leaving the screen also disables playback,
+  /// including while loading.
   Future<void> stop() => _finishWaiting();
 
   Future<void> _finishWaiting() async {

@@ -10,35 +10,35 @@ import '../../../routing/routes.dart';
 import '../../../theme/tokens.dart';
 import '../application/entitlement_controller.dart';
 
-/// お礼の言い方。**「ご購入ありがとうございます」と書けない場合がある。**
+/// How to say thanks. "Thank you for your purchase" is not always truthful.
 enum ThanksKind {
-  /// 買った。素直にお礼を言っていい唯一のケース。
+  /// Bought. The one case where a plain thank-you is honest.
   purchased,
 
-  /// 無料トライアルが始まった。まだ1円も払っていないので、
-  /// お礼を言うと事実として嘘になる。
+  /// A free trial started. Nothing has been paid, so thanking them would be
+  /// factually false.
   trial,
 
-  /// 機種変更などで復元した。買い直していないので、お礼を言うと
-  /// 二重に払ったのかと思わせる。
+  /// Restored after a device change. Nothing was re-bought, so a thank-you
+  /// would suggest they paid twice.
   restored,
 }
 
-/// 購入のお礼(ペイウォールの直後)。
+/// Thank-you screen, straight after the paywall.
 ///
-/// ここが無いあいだ、購入が通ると**画面が閉じるだけ**だった。お金を払った
-/// 瞬間にアプリが何も言わないのは、いちばん安く直せる不親切なので埋める。
+/// Without it, a successful purchase merely closed the screen — saying nothing
+/// at the moment someone pays was the cheapest unkindness to fix.
 ///
-/// 祝福画面と同じ文法(紙吹雪 + 先輩のはずみ)で作る。にぎやかにするのは
-/// **ここ1回だけ**で、カルテと復習には祝いの色を持ち込まない。
+/// Built in the celebration screen's grammar (confetti plus senpai's bounce).
+/// This is the only place that gets loud; karte and review keep no party colors.
 ///
-/// 決済は通ったが entitlement が付いていない場合は、そもそもここへ来ない
-/// (ルータが弾く)。祝ってから使えないのが、いちばん落差が大きい。
+/// A payment that succeeded without an entitlement never reaches here (the
+/// router blocks it): celebrating and then locking out is the worst drop.
 class ThanksScreen extends ConsumerWidget {
   const ThanksScreen({this.restored = false, super.key});
 
-  /// 復元で来たか。**購入かトライアルかは渡さない** — それは entitlement が
-  /// 知っているので、画面とSDKで別々の事実を持たないようにする。
+  /// Whether we arrived via restore. Purchase vs trial is not passed in — the
+  /// entitlement knows that, and screen and SDK must not hold separate truths.
   final bool restored;
 
   @override
@@ -53,8 +53,8 @@ class ThanksScreen extends ConsumerWidget {
         ? ThanksKind.trial
         : ThanksKind.purchased;
 
-    // 期限が読めないと、更新日も無料期間の残りも言えない。
-    // 数を騙るくらいなら黙るので、ここから下はすべて null を許す。
+    // Without an expiry we can state neither the renewal date nor the days
+    // left. Silence beats inventing numbers, so everything below allows null.
     final DateTime? expiresAt = entitlement.expiresAt;
     final String? date = expiresAt == null ? null : strings.date(expiresAt);
     final int daysLeft = entitlement.daysLeft(DateTime.now());
@@ -72,8 +72,8 @@ class ThanksScreen extends ConsumerWidget {
       _ => strings.thanksBody,
     };
 
-    // 自動更新であることは、祝っている画面でも省かない(Guideline 3.1.2)。
-    // トライアルは本文で課金開始日を言い切っているので、ここでは繰り返さない。
+    // Auto-renewal is stated even on a celebratory screen (guideline 3.1.2).
+    // Trials already state the billing start date in the body, so no repeat.
     final String note = kind == ThanksKind.purchased && date != null
         ? strings.thanksRenewsOn(date)
         : strings.thanksCancelAnytime;
@@ -82,7 +82,7 @@ class ThanksScreen extends ConsumerWidget {
       backgroundColor: AppColors.celebration,
       body: Stack(
         children: <Widget>[
-          // 紙吹雪は本文の下に敷く。読むものの前に紙を落とさない。
+          // Confetti sits behind the text; never drop paper in front of reading.
           const Positioned.fill(child: ConfettiBurst()),
           SafeArea(
             child: Padding(
@@ -138,11 +138,11 @@ class ThanksScreen extends ConsumerWidget {
   }
 }
 
-/// 解放されたもの。
+/// What was unlocked.
 ///
-/// 「Premiumになりました」だけだと、何が変わったのか分からないまま
-/// ホームへ戻ることになる。ペイウォールの比較表と**同じ3つを同じ順で**出して、
-/// 売り文句と受け取ったものを突き合わせられるようにする。
+/// "You're Premium now" alone sends people home without knowing what changed.
+/// This lists the same three items in the same order as the paywall's
+/// comparison, so the pitch and what arrived can be checked against each other.
 class _UnlockedCard extends StatelessWidget {
   const _UnlockedCard();
 

@@ -15,46 +15,47 @@ import '../../../theme/tokens.dart';
 import '../../session/domain/session.dart';
 import '../application/capture_controller.dart';
 
-/// 何を撮るか選ぶ → 撮る → 撮ったものの確認 → 単元と問題文の確認。
+/// Choose what to photograph, shoot it, review it, then confirm topic and
+/// problem text.
 ///
-/// 検出した単元はチップで出し、**ユーザーが外せる**ようにする。
-/// 写真解析が外したときに直せる余地を残すため。
+/// Detected topics appear as chips the user can remove, leaving room to correct
+/// what photo analysis got wrong.
 ///
-/// ## カメラを自動で開かない理由
+/// ## Why the camera does not open automatically
 ///
-/// 以前はこの画面に入った瞬間に**ノートのカメラ**が開いていた。ノートがある
-/// 生徒にはタップ0回で速かったが、**解けなくてノートが無い生徒は、問題の枠を
-/// 一度も見ないままシャッターの前に立っていた**。手元にあるのは問題集だけなので、
-/// そこで撮れば紙面がノート枠に入る — `api.ts` の `sessionPhotoParts` が
-/// 「残る穴。防げるのは取り違える**動機**まで」と書いた、その動機がUI側に
-/// 残っていた(他者の著作物がR2に保存され、先輩には `(ノートの写真なし)` ではなく
-/// 紙面の中身が届く)。
+/// Entering this screen used to open the notes camera immediately. That was zero
+/// taps for a student with notes, but a student stuck with nothing written stood
+/// at the shutter without ever seeing the problem slot. With only the workbook
+/// to hand, shooting there put the page in the notes part — the very motive
+/// `sessionPhotoParts` in `api.ts` calls the remaining hole (someone else's work
+/// stored in R2, and senpai receiving the page contents instead of "no notes
+/// photo").
 ///
-/// 逃げ道(キャンセルすると枠が2つ見える)はあったが、**キャンセルは「やめる」に
-/// 読める。**「ノートは無い」を言う操作としては誰も選ばない。
+/// There was an escape (cancel and both slots appear), but cancel reads as
+/// "give up"; nobody picks it to say "I have no notes".
 ///
-/// なので枠を先に見せ、どちらから撮るかを選んでもらう。ノートがある人には
-/// 1タップ増えるが、**「ノートは無い」をシャッターの前に言えるのはここしかない。**
-/// この画面はもともと「解析の前に一度止まる」を受け入れているので、
-/// 止まる場所が1つ手前に伸びただけになる。
+/// So the slots come first and the student chooses which to shoot. That is one
+/// extra tap for anyone with notes, but the only place to say "I have no notes"
+/// before the shutter. The screen already accepts one stop before analysis, so
+/// the stop just moved a step earlier.
 ///
-/// ## 解析の前に一度止まる理由
+/// ## Why we stop before analysis
 ///
-/// 撮ってすぐ解析していたのを、確認を1枚挟む形に変えた。
+/// Shooting used to run straight into analysis; now a review step sits between.
 ///
-///   1. **問題の写真を足せるのは、解析の前だけ。** あとから足しても写真は
-///      読み直されない(`capture_controller.dart` の `setProblemPhoto`)。
-///      任意の2枚目に居場所を作るには、ここしかない
-///   2. 撮った直後の1枚をそのまま送っていたので、ぶれていても気づけないまま
-///      Vision LLMに通していた
+///   1. The problem photo can only be added before analysis — adding it later
+///      does not re-read the photos (`setProblemPhoto` in
+///      `capture_controller.dart`). This is the only place the optional second
+///      photo can live
+///   2. The shot went to the vision LLM as taken, so blur went unnoticed
 ///
-/// **今日の1回を使うのはここではない。** 数えるのは会話が始まったときなので
-/// (`api.ts` の `startSessionResponseSchema`)、解析まで進んでから撮り直しても
-/// 授業の回数は減らない。
+/// The day's use is not spent here. It is counted when the conversation starts
+/// (`startSessionResponseSchema` in `api.ts`), so retaking after analysis costs
+/// no lessons.
 ///
-/// **どちらか1枚で始められる**(§4-1)。1枚に問題とノートの両方が写ることが
-/// 多いので、2枚必須にすると撮影の摩擦だけが増える。ここで出すのは「撮れ」ではなく
-/// 「写っていると迷子になりません」というヒントに留める。
+/// Either photo alone can start it. One shot often captures both problem and
+/// notes, so requiring two would only add friction. The copy here is a hint that
+/// including the problem keeps senpai on track, not an instruction.
 class CaptureScreen extends ConsumerStatefulWidget {
   const CaptureScreen({super.key});
 
@@ -62,10 +63,10 @@ class CaptureScreen extends ConsumerStatefulWidget {
   ConsumerState<CaptureScreen> createState() => _CaptureScreenState();
 }
 
-/// 許可がないことを表す image_picker のエラーコード。
+/// image_picker error codes meaning permission was denied.
 ///
-/// iOSは許可がないと **null を返さず例外を投げる**。撮影をやめたときと同じ
-/// 「nullが返る」前提でいると、この経路が丸ごと抜ける。
+/// iOS throws rather than returning null when permission is missing. Assuming
+/// the same "returns null" as a cancelled shot would skip this path entirely.
 const Set<String> _kPermissionErrorCodes = <String>{
   'camera_access_denied',
   'photo_access_denied',
@@ -73,43 +74,45 @@ const Set<String> _kPermissionErrorCodes = <String>{
 };
 
 class _CaptureScreenState extends ConsumerState<CaptureScreen> {
-  /// カメラを断られた。閉じるのではなく、戻し方を出す。
+  /// Camera was denied. Show the way back rather than closing.
   bool _cameraDenied = false;
 
-  /// 許可はあるのにカメラを開けなかった(端末側の理由)。撮り直しの導線を出す。
+  /// Permission held but the camera would not open (a device-side reason);
+  /// offer a retake path.
   bool _cameraFailed = false;
 
-  /// カメラを開いている最中。まだ見せるものが無い。
+  /// The camera is open and there is nothing to show yet.
   ///
-  /// 「1枚も撮っていない」と区別が要る。撮らずに帰ってきた人には
-  /// **枠を見せて留まってもらう**ので、写真の有無だけでは判断できない。
+  /// Distinct from "nothing shot yet": someone who came back without shooting
+  /// stays here with the slots visible, so photo presence alone cannot decide.
   ///
-  /// 最初は立てておく。[reset] が次のフレームまで走らないので、寝かせて始めると
-  /// **前回の写真が1フレームだけ見えてしまう**(コントローラは keepAlive)。
+  /// Starts true. [reset] does not run until the next frame, so starting false
+  /// would flash the previous photo for one frame (the controller is keepAlive).
   bool _picking = true;
 
-  /// 直近にカメラを開いた枠。開けなかったときの「もう一度」を同じ枠へ戻すため。
+  /// The slot the camera last opened for, so a retry returns to the same one.
   ///
-  /// カメラの自動起動をやめてからは、**どちらの枠から来たかは本人の選択**なので、
-  /// 失敗のたびにノートへ引き戻すと、ノートが無い生徒を無い枠へ送り返すことになる。
+  /// Since the camera no longer opens automatically, the slot is the student's
+  /// own choice; snapping back to notes on every failure would send a student
+  /// without notes right back to the slot they cannot fill.
   bool _lastPickWasProblem = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // 前回の撮影を持ち越さない。コントローラは keepAlive なので、
-      // ここで白紙に戻さないと前の問題の写真が次の授業に紛れ込む。
+      // Do not carry the previous shoot over. The controller is keepAlive, so
+      // without resetting here the old problem photo leaks into the next lesson.
       ref.read(captureControllerProvider.notifier).reset();
-      // **ここでカメラを開かない**(理由はクラスのコメント)。枠を見せて選ばせる。
+      // Do not open the camera here (see the class comment); show the slots.
       if (mounted) setState(() => _picking = false);
     });
   }
 
-  /// ノートの写真。**必須ではない**(サーバは `kind: new` でどちらか1枚を要求する)。
+  /// The notes photo. Not required — the server wants either one for `kind: new`.
   Future<void> _pickPhoto() => _pick(forProblem: false);
 
-  /// 問題の写真。これだけでも始められる(§4-1)。
+  /// The problem photo. It can start a session on its own.
   Future<void> _pickProblemPhoto() => _pick(forProblem: true);
 
   Future<void> _pick({required bool forProblem}) async {
@@ -127,8 +130,8 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
         imageQuality: 85,
       );
     } on PlatformException catch (error, stack) {
-      // ここで拾わないと、initState の postFrameCallback から呼んでいるぶん
-      // 受け取り手がいないまま未処理例外になり、撮影画面ごと落ちる。
+      // Called from initState's postFrameCallback, so without catching here it
+      // becomes an unhandled exception and takes the capture screen down.
       debugPrint('カメラを開けませんでした(${error.code}): ${error.message}\n$stack');
       if (!mounted) return;
       setState(() {
@@ -141,7 +144,8 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
       });
       return;
     } on Object catch (error, stack) {
-      // プラグインの想定外(ファイルの読み出し失敗など)。落とさずに撮り直させる。
+      // Unexpected plugin failures (a bad file read, say). Allow a retake
+      // rather than crashing.
       debugPrint('写真を取得できませんでした: $error\n$stack');
       if (!mounted) return;
       setState(() {
@@ -151,15 +155,15 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
       return;
     }
 
-    // 撮らずに帰ってきた。許可が無いなら設定への行き方を出す —
-    // 何度カメラを開いても結果が同じなので、そこだけは別扱いにする。
-    // **枠で出し分けない。** どちらの枠も本人が選んで開いたものなので、
-    // 許可が無いことを片方でだけ知らせる理由が無い。
+    // Came back without shooting. Without permission, show the way to settings —
+    // reopening the camera would give the same result, so that case is handled
+    // separately. Not per slot: both were opened by choice, so there is no
+    // reason to report a missing permission on only one.
     //
-    // **それ以外は、どこにも戻さずこの画面に留まる。**
-    // 以前はホームへ降ろしていたが、降ろすと選び直せない —
-    // ノートを撮ろうとしてやめた人が、問題の枠にたどり着けなくなる。
-    // 本当にやめたい人は、この画面の戻るで降りられる(push で来ている)。
+    // Otherwise stay on this screen. We used to drop to home, which removed the
+    // chance to choose again: someone who started at notes and backed out could
+    // never reach the problem slot. Anyone truly leaving can use back (we
+    // arrived by push).
     if (picked == null) {
       if (!mounted) return;
       final PermissionStatus status = await _cameraStatus();
@@ -177,7 +181,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     if (forProblem) {
       controller.setProblemPhoto(File(picked.path));
     } else {
-      // ここでは解析しない(理由はクラスのコメント)。
+      // No analysis here (see the class comment).
       controller.setPhoto(File(picked.path));
     }
     setState(() => _picking = false);
@@ -188,9 +192,10 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     await ref.read(captureControllerProvider.notifier).analyze(locale: locale);
   }
 
-  /// 外した単元を反映してから会話を始める。**今日の1回を使うのはここ。**
+  /// Applies deselected topics, then starts the conversation. This is where the
+  /// day's use is spent.
   ///
-  /// 失敗したときの「もう一度」もここへ戻す(理由は [_body] のエラー分岐)。
+  /// A retry after failure comes back here too (see the error branch in [_body]).
   Future<void> _start() async {
     final String locale = Localizations.localeOf(context).languageCode;
     final SessionStart? session = await ref
@@ -199,7 +204,8 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     if (session != null && mounted) context.go(AppRoute.session.path);
   }
 
-  /// 許可の照会も失敗しうる。ここで落とすと、撮影をやめただけの人まで巻き込む。
+  /// Even the permission query can fail; crashing here would take down someone
+  /// who merely cancelled the shot.
   Future<PermissionStatus> _cameraStatus() async {
     try {
       return await Permission.camera.status;
@@ -214,12 +220,12 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     final AppStrings strings = AppStrings.of(context);
     final CaptureState state = ref.watch(captureControllerProvider);
 
-    // 見出しは、いまユーザーが確かめているものに合わせる。
-    // 写真を見ている段階で「この単元で合っていますか?」と出ていると、
-    // まだ何も解析していないのに単元を聞かれているように読める。
+    // The heading matches what is being confirmed right now. Asking "is this the
+    // right topic?" while they are looking at a photo reads as a topic question
+    // before anything has been analyzed.
     //
-    // **1枚も撮っていないあいだは「撮れました」でもない。** ここで選んでいるのは
-    // 何を撮るかで、そこに「ノートは無い」という答えが含まれている。
+    // With nothing shot it is not "got it" either: what is being chosen is what
+    // to photograph, and that includes answering "I have no notes".
     final String title;
     if (state.analysis != null || state.isSubmitting) {
       title = strings.captureConfirmTitle;
@@ -254,8 +260,8 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     if (_cameraFailed) {
       return _ErrorView(
         message: strings.captureCameraFailed,
-        // 開けなかった枠へ戻す。ノートへ固定すると、ノートが無い生徒を
-        // 無い枠へ送り返すことになる。
+        // Return to the slot that failed. Pinning to notes would send a student
+        // without notes back to the slot they cannot fill.
         onRetry: () => _pick(forProblem: _lastPickWasProblem),
       );
     }
@@ -265,27 +271,28 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
       final bool lessonLimitReached =
           error.isFreeLimitReached || error.isFairUseLimitReached;
       return _ErrorView(
-        // 無料・Premiumのどちらも数値は見せず、先輩が今日の学習を締める。
+        // Neither tier sees a number; senpai closes out today's study.
         message: lessonLimitReached ? strings.lessonEnoughForToday : error.message,
-        // 日ごとの上限は押し直しても変わらない。無料・Premium とも再試行させない。
+        // A daily limit does not change on retry, so neither tier retries.
         //
-        // **解析まで進んでいたら、撮り直しではなく会話の開始をやり直す。**
-        // ここを `_pick` に固定していると、[CaptureController.setPhoto] が
-        // 解析済みの状態を守って写真を捨てるので、カメラだけが何度も開いて
-        // エラーが消えない画面になる。しかも会話の開始で落ちた場合は、
-        // サーバ側で枠を押さえていることがあり、撮り直すとその1回を捨てる。
-        // `/start` は同じIDなら二重に数えないので、押し直すほうが正しい
-        // (セッションごと消えていれば `analysis` も捨てられ、撮り直しに戻る)。
+        // Past analysis, retry the conversation start rather than the shot.
+        // Pinning this to `_pick` makes [CaptureController.setPhoto] protect the
+        // analyzed state and discard the photo, so the camera reopens forever
+        // and the error never clears. Worse, a failed start may already hold a
+        // server-side slot, and retaking would throw that use away. `/start` is
+        // not double-counted for the same ID, so retrying is correct (if the
+        // session is gone, `analysis` is dropped too and we fall back to a
+        // retake).
         onRetry: lessonLimitReached
             ? null
             : state.analysis != null
                 ? _start
-                // 撮り直すのは、直前に開いていた枠(ノートとは限らない)。
+                // Retake into the slot last opened, which may not be notes.
                 : () => _pick(forProblem: _lastPickWasProblem),
       );
     }
-    // カメラを開いている最中は、まだ何も見せるものが無い。
-    // **写真の有無では判断しない** — 1枚も撮っていない状態にも枠を出すので。
+    // Nothing to show while the camera is open. Not decided by photo presence —
+    // the slots are shown even with nothing shot.
     if (state.isSubmitting || _picking) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -301,35 +308,36 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
   }
 }
 
-/// 何を撮るかを選ぶ画面であり、撮ったものの確認でもある。
-/// **解析(= Vision LLMに通す)の直前に一度だけ止まる。**
+/// Both the screen for choosing what to shoot and the review of what was shot.
+/// It stops exactly once, right before analysis (the vision LLM).
 ///
-/// 2つの枠を並べているのは見た目のためではない。ノートはR2に保存され、
-/// 問題の紙面は解析後に破棄される — **どちらの枠に入れたかでしか区別できない**
-/// ので、枠を見せることがそのまま破棄の前提になる(計画書 §4-1)。
-/// だからこの画面は**1枚目より先に**出る(理由は [CaptureScreen] のコメント)。
+/// The two slots are not a visual choice. Notes are stored in R2 and the problem
+/// page is discarded after analysis, and the part is the only thing
+/// distinguishing them, so showing the slots is what makes the discard possible.
+/// That is why this appears before the first photo (see [CaptureScreen]).
 ///
-/// **どちらか1枚あれば始められる。止めるのは両方空のときだけ。**
-/// ノートを必須にしているかぎり、手も付けていない問題を持ってきた生徒は
-/// 紙面をノート枠に入れるしかなく、破棄の約束が自分たちのUI制約で破れる。
+/// Either photo alone starts a session; only both empty blocks it. While notes
+/// were required, a student stuck before writing anything had to put the page in
+/// the notes slot, breaking the discard promise through our own UI.
 ///
-/// ただし**ノートの枠を「任意」に見せ替えてはいない。** ノートがあるほうが
-/// 良いことは変わっていない(先輩が切り分けの出発点を得られる)ので、
-/// 見出しはそのまま。**無いことを咎める文言も出さない** —
-/// ノートが無い生徒にとって、それは直しようのない指摘になる。
+/// The notes slot is still not presented as "optional": having notes is better
+/// (it gives senpai a starting point), so the heading is unchanged. Nor is their
+/// absence called out — for a student without notes that is an uncorrectable
+/// complaint.
 ///
-/// ## ヒントを埋まり方で出し分ける
+/// ## Hints vary by which slots are filled
 ///
-/// 出す言葉が要る人が2人いて、要る言葉が逆を向いている:
+/// Two people need words here, and they need opposite ones:
 ///
-///   - まだ1枚も無い人 … **「ノートが無くてもいい」を先に言う。** ここで黙ると、
-///     解けなかった生徒は紙面をノート枠に入れる(前へ進む道が他に見えない)
-///   - ノートだけ撮った人 … 問題も撮ると先輩が迷子にならない、と促す
+///   - nothing shot yet … say "notes are not required" first. Silence here
+///     pushes a stuck student to put the page in the notes slot, seeing no other
+///     way forward
+///   - notes only … suggest the problem photo keeps senpai on track
 ///
-/// 両方を常時並べると、どちらの人にも半分は関係のない文章になる。
-/// **どちらも撮る前に出る言葉なので、§4-1 の「警告にしない」は保たれている**
-/// (`api.ts` の `problemSources` が言う、解析後に出すと2枚目が事実上の必須に
-/// なる、という話とは別の軸)。
+/// Showing both at once leaves half of it irrelevant to each. Both appear before
+/// shooting, so the rule against turning this into a warning holds (a separate
+/// axis from `problemSources` in `api.ts`, which is about post-analysis warnings
+/// making the second photo effectively mandatory).
 class _PhotoReview extends StatelessWidget {
   const _PhotoReview({
     required this.state,
@@ -347,7 +355,7 @@ class _PhotoReview extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
 
-    // 空の枠に合わせて、要る言葉だけを出す(理由はクラスのコメント)。
+    // Show only the words the empty slots call for (see the class comment).
     final String? hint;
     if (!state.hasAnyPhoto) {
       hint = strings.captureEitherIsFine;
@@ -385,7 +393,7 @@ class _PhotoReview extends StatelessWidget {
           ),
         ),
         const SizedBox(height: AppSpacing.md),
-        // **促しであって要求ではない。** 撮っていなくても下のボタンは押せる。
+        // A nudge, not a requirement: the button below works without it.
         if (hint != null) ...<Widget>[
           Text(
             hint,
@@ -400,9 +408,9 @@ class _PhotoReview extends StatelessWidget {
           style: Theme.of(context).textTheme.bodySmall,
         ),
         const SizedBox(height: AppSpacing.md),
-        // 両方空のときだけ押せない。**押せない理由は書かない** —
-        // 空の枠が2つ見えていて、どちらもその場で撮れる。上のヒントが
-        // 「どちらか1枚で始められる」と言っているので、文章で足すことは無い。
+        // Disabled only when both are empty, and the reason is not written out:
+        // two empty slots are visible and either can be shot on the spot, and
+        // the hint above already says one is enough.
         ChunkyButton(
           label: strings.captureStart,
           onPressed: state.hasAnyPhoto ? onStart : null,
@@ -412,7 +420,7 @@ class _PhotoReview extends StatelessWidget {
   }
 }
 
-/// 写真1枚ぶんの枠。空のときは撮る、入っているときは撮り直す。
+/// One photo slot: shoot when empty, retake when filled.
 class _PhotoSlot extends StatelessWidget {
   const _PhotoSlot({
     required this.label,
@@ -424,7 +432,7 @@ class _PhotoSlot extends StatelessWidget {
   final String label;
   final File? photo;
 
-  /// まだ撮っていないときの操作名。撮ったあとは「撮り直す」に変わる。
+  /// Action label before anything is shot; becomes "retake" afterwards.
   final String emptyLabel;
   final VoidCallback onTap;
 
@@ -459,7 +467,7 @@ class _PhotoSlot extends StatelessWidget {
                             color: AppColors.inkMuted,
                           ),
                         )
-                      // 撮ったものが判別できればよいので、拡大せず全体を入れる。
+                      // Recognising the shot is enough, so fit it all in.
                       : Image.file(file, fit: BoxFit.cover),
                 ),
               ),
@@ -482,7 +490,7 @@ class _TopicConfirm extends ConsumerWidget {
 
   final CaptureState state;
 
-  /// 会話を始める。失敗したときの「もう一度」も同じ操作へ戻る。
+  /// Starts the conversation; a retry after failure returns to the same action.
   final Future<void> Function() onStart;
 
   @override
@@ -493,22 +501,22 @@ class _TopicConfirm extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        // **読む側だけスクロールさせ、始めるボタンは折り返しの上に固定する。**
+        // Only the reading area scrolls; the start button stays above the fold.
         //
-        // 問題文は契約の上限で600字まで来る(`problemTextMaxLength`)。
-        // `Spacer` で下に押し付ける作りのままだと、長い問題文が入った瞬間に
-        // ボタンが画面の外へ出ていた(実測: 375×667 で557px はみ出し)。
-        // **上限は例外ではなく仕様の一部**なので、収まる前提にはできない。
+        // Problem text can reach the contract's 600-character limit
+        // (`problemTextMaxLength`). Pushing the button down with `Spacer` sent it
+        // off screen as soon as the text got long (measured: 557px overflow at
+        // 375x667). The limit is part of the spec, not an edge case, so we cannot
+        // assume it fits.
         Expanded(
           child: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                // **読めているときだけ出す。読めていないときは黙って進める。**
-                //
-                // 「問題を読み取れませんでした」を出すと、任意のはずの2枚目が
-                // 事実上の必須になる(撮り直さないと消えない警告になるため)。
-                // §4-1 のヒントは撮る前に出してあるので、ここで念を押す必要もない。
+                // Shown only when the text was read; otherwise carry on
+                // silently. "Could not read the problem" would make the optional
+                // second photo effectively mandatory, since the warning only
+                // clears by retaking. The hint before shooting already covers it.
                 if (problem != null) ...<Widget>[
                   _ProblemReadback(problem: problem),
                   const SizedBox(height: AppSpacing.lg),
@@ -535,8 +543,9 @@ class _TopicConfirm extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: AppSpacing.md),
-        // 外した単元は始める前に反映される。飛ばすと、サーバ側のセッションは
-        // 解析時のままで、外した単元を先輩が教えてしまう([CaptureController]）。
+        // Deselected topics are pushed before starting. Skipping that leaves the
+        // server's session as analyzed, and senpai teaches a removed topic (see
+        // [CaptureController]).
         ChunkyButton(
           label: strings.captureStart,
           onPressed: state.canStart ? onStart : null,
@@ -546,16 +555,16 @@ class _TopicConfirm extends ConsumerWidget {
   }
 }
 
-/// 読み取った問題文の読み合わせ。**授業が始まる前の、誤読の関所。**
+/// A read-back of the problem text: the misreading checkpoint before a lesson.
 ///
-/// 15分教わったあとに「それ別の問題です」と気づくのと、始まる前に気づくのとでは
-/// 価値がまったく違う(計画書 §1-1「AIが理解している建て付けのアプリほど
-/// 誤読が致命傷になる」)。
+/// Noticing "that's a different problem" after 15 minutes of teaching is worth
+/// nothing like noticing it before starting — the more the app is built on the
+/// AI understanding the problem, the more fatal a misreading becomes.
 ///
-/// **合っているかを問わない。** ここは読み合わせの場で、正誤の申告を求める場では
-/// ない。ちがっていれば会話の最初に本人が言う — それが §1-1 の「誤読の保険」そのもの。
-/// (授業の回数を数えるのは会話が始まったときなので、戻って撮り直しても
-/// 今日の1回は減らない。)
+/// It does not ask whether it is correct. This is a read-back, not a request for
+/// a verdict; if it is wrong, the student says so at the start of the
+/// conversation, which is the insurance itself. (Lessons are counted when the
+/// conversation begins, so going back to retake costs nothing.)
 class _ProblemReadback extends StatelessWidget {
   const _ProblemReadback({required this.problem});
 
@@ -577,8 +586,8 @@ class _ProblemReadback extends StatelessWidget {
         children: <Widget>[
           Text(strings.captureProblemTitle, style: Theme.of(context).textTheme.bodySmall),
           const SizedBox(height: AppSpacing.xs),
-          // 長い問題文(契約の上限は600字)でも、ここだけで送りきる。
-          // 折りたたむと、読み合わせという目的そのものが消える。
+          // Even at the contract's 600-character limit, it all shows here.
+          // Collapsing it would defeat the point of a read-back.
           Text(problem.text, style: Theme.of(context).textTheme.bodyLarge),
         ],
       ),
@@ -598,9 +607,9 @@ class _TopicChip extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        // **1チップが画面幅を超えうる。** 「中1 データの分布とヒストグラム」の
-        // ように、学年ラベルが付いたぶん長い単元名は 375px に収まらない。
-        // 上限を切って折り返す(切り詰めない — どの単元か読めなくなる)。
+        // A single chip can exceed the screen width: with a grade label
+        // prefixed, longer topic names do not fit 375px. Cap the width and wrap
+        // rather than truncating, which would hide which topic it is.
         constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width - AppSpacing.xl * 2),
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
         decoration: BoxDecoration(
@@ -608,8 +617,8 @@ class _TopicChip extends StatelessWidget {
           borderRadius: BorderRadius.circular(AppRadius.chip),
           border: Border.all(color: selected ? AppColors.blue : AppColors.border),
         ),
-        // 「中1 正負の数」「数学I 二次関数」。学年か科目かは課程で決まっていて、
-        // サーバが `label` に入れてくる(ADR 0007)。
+        // Whether the prefix is a grade or a subject is fixed by the curriculum,
+        // and the server supplies it in `label` (ADR 0007).
         child: Text(
           '${topic.label} ${topic.topic}',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -634,7 +643,7 @@ class _ErrorView extends StatelessWidget {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: <Widget>[
-        // サーバの文言をそのまま出す。煽らない文体で書かれている。
+        // Show the server's wording as is; it is written not to nag.
         Text(message, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyLarge),
         const SizedBox(height: AppSpacing.lg),
         if (onRetry != null)

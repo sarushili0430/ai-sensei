@@ -14,25 +14,24 @@ import '../../../theme/tokens.dart';
 import 'onboarding_karte_preview.dart';
 import 'onboarding_rehearsal.dart';
 
-/// オンボーディング(初回のみ・4ページ)。
+/// Onboarding: four pages, first launch only.
 ///
-/// 1枚目は機能ではなく**約束**。ピボット計画 §0 の憲法改正で、この約束は
-/// 「答えを教えない」から**「教える。そのあと教え返してもらう」**に変わった。
-/// 機能ではなく約束を先に言い切る、という設計意図はそのまま引き継いでいる
-/// (「教える」だけなら手元の無料AIと同じに見えるので、後半まで含めて1つの約束)。
-/// 2枚目でコアループ(§2)の全体像を見せる。何をする時間なのか分からないまま
-/// カメラを開かせない。
+/// Page one is a promise, not a feature. The promise changed from "we don't give
+/// you the answer" to "we teach you, then you teach it back", but the intent of
+/// leading with a promise is unchanged (teaching alone would look like any free
+/// AI, so both halves form one promise). Page two shows the whole core loop:
+/// nobody opens the camera without knowing what the time is for.
 ///
-/// 3枚目と4枚目は**やってみる枚**。
-/// 約束は、読むだけでは腑に落ちない(inception-deck §7-7 が
-/// 「答えを教えない」について指摘していた問題。改正後も構造は同じで、
-/// **言葉を足すほど遠くなる**)。だから説明を増やすのではなく、
-/// 教わって・教え返して(または言えなくて)・カルテに残る、までを1往復させる。
-/// 台本は固定で、写真も声も使わないので、ここではまだ何の権限も要らない。
+/// Pages three and four are for doing it. A promise does not land by reading —
+/// the more words are added, the further away it gets. So instead of more
+/// explanation, they run one full round: taught, teach back (or fail to), and it
+/// lands in the karte. The script is fixed and uses neither photos nor voice, so
+/// no permissions are needed yet.
 ///
-/// **権限はここで求めない。** カメラは撮る直前、マイクは会話の直前、
-/// 通知は初回カルテで穴が見えた直後に、それぞれ文脈の中で聞く。
-/// 初回離脱の最大要因を、まとめて先頭に置かないため。
+/// No permissions are requested here. Camera comes just before shooting, mic
+/// just before the conversation, notifications just after a gap appears in the
+/// first karte — each in context, so the biggest cause of first-run drop-off is
+/// not stacked up front.
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
 
@@ -47,7 +46,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   static const int _pageCount = 4;
 
-  /// リハーサルの枚。ここだけ、先に進むボタンが操作待ちになる。
+  /// The rehearsal page — the only one where the next button waits on input.
   static const int _rehearsalPage = 2;
 
   @override
@@ -58,9 +57,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   bool get _isLast => _page == _pageCount - 1;
 
-  /// リハーサルは「説明する」か「うまく言えない」のどちらかを通ってほしい。
-  /// どちらでも先へ進めるので行き止まりにはならないし、
-  /// 上の「とばす」でいつでも降りられる。
+  /// The rehearsal wants either "explain" or "I can't say it". Both advance, so
+  /// it is never a dead end, and "skip" above always exits.
   bool get _canAdvance => _page != _rehearsalPage || _outcome != null;
 
   Future<void> _next() async {
@@ -69,8 +67,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       return;
     }
 
-    // 動かさない設定では、めくらずに切り替える
-    // (`nextPage` は長さ0を受け付けない)。
+    // With reduced motion, switch without the page turn (`nextPage` rejects a
+    // zero duration).
     final Duration duration = AppMotion.decorative(context, AppDurations.reaction);
     if (duration == Duration.zero) {
       _controller.jumpToPage(_page + 1);
@@ -106,9 +104,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               height: 40,
               child: Align(
                 alignment: Alignment.centerRight,
-                // 約束(1枚目)とやること(2枚目)は飛ばさせない。
-                // デッキが期待値の設計をこの2枚に置いているので、
-                // 出口を作るのはあとから足した2枚から。
+                // The promise (page 1) and the loop (page 2) cannot be skipped:
+                // expectation setting lives on those two, so the exit appears
+                // only from the later pages.
                 child: AnimatedOpacity(
                   opacity: _page >= _rehearsalPage ? 1 : 0,
                   duration: AppMotion.decorative(context, AppDurations.reaction),
@@ -149,10 +147,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 }
 
-/// めくっている最中だけ、隣のページを少し縮めて薄くする。
+/// Shrinks and fades the neighbouring page while turning.
 ///
-/// 横に動いていることが指の下で分かるようにするための演出で、
-/// 止まっている状態(= golden で撮る状態)には何の影響もない。
+/// Purely so the horizontal movement is felt under the finger; it has no effect
+/// at rest, which is what goldens capture.
 class _PageTransition extends StatelessWidget {
   const _PageTransition({required this.controller, required this.index, required this.child});
 
@@ -167,7 +165,7 @@ class _PageTransition extends StatelessWidget {
     return AnimatedBuilder(
       animation: controller,
       builder: (BuildContext context, Widget? child) {
-        // 初回ビルドではまだ寸法が無い。そのときは静止状態として扱う。
+        // No dimensions on the first build; treat that as at rest.
         final double page = controller.hasClients && controller.position.haveDimensions
             ? (controller.page ?? index.toDouble())
             : index.toDouble();
@@ -183,14 +181,13 @@ class _PageTransition extends StatelessWidget {
   }
 }
 
-/// 1枚目 — 約束。
+/// Page 1 — the promise.
 ///
-/// **`Spacer` で中央に置いた `Column` から [CenteredScroll] に替えてある。**
-/// 改正後の約束は前後2拍あるぶん長く、英語(`The AI tutor that teaches you —
-/// then asks you to teach it back.`)を 375pt 幅の端末に流すと、
-/// 見出しだけで画面を食い切って**下がはみ出す**(実測で確認)。
-/// はみ出した `Column` は中身を切り落とすので、
-/// 3・4枚目と同じ「収まれば中央・収まらなければスクロール」に揃える。
+/// Moved from a `Spacer`-centred `Column` to [CenteredScroll]. The revised
+/// promise has two beats and runs long: in English it fills a 375pt screen with
+/// the heading alone and overflows (measured). An overflowing `Column` clips its
+/// children, so this matches pages 3 and 4: centred when it fits, scrolling when
+/// it does not.
 class _PromisePage extends StatelessWidget {
   const _PromisePage();
 
@@ -199,9 +196,9 @@ class _PromisePage extends StatelessWidget {
     final AppStrings strings = AppStrings.of(context);
     return CenteredScroll(
       children: <Widget>[
-        // 困り顔(`puzzled`)は「教わる側」の表情だった。配役が先輩に変わって
-        // ここは教える側の顔になるので、待っている顔で置く。
-        // 顔ウィジェットそのものの刷新は横断的なので別タスク。
+        // `puzzled` was the learner's expression. With senpai teaching, this is
+        // the teacher's face, so it waits instead. Reworking the face widget
+        // itself is cross-cutting and tracked separately.
         const FadeSlideIn(
           child: Center(child: SenpaiFace(mood: SenpaiMood.neutral, size: 140)),
         ),
@@ -228,20 +225,21 @@ class _PromisePage extends StatelessWidget {
   }
 }
 
-/// 2枚目 — コアループ(計画書§2)の全体像と、権限の予告。
+/// Page 2 — the whole core loop, plus a heads-up about permissions.
 ///
-/// 4行は「撮る → 先輩が板書つきで教える → 教え返す → 詰まったところが穴として残る」。
-/// **穴の出どころが4行目にある**のが要で、ここが「質問した内容をメモ」に
-/// 化けると、1/3/7日の再訪の根拠(§1-3)ごと崩れる。
+/// The four lines: shoot, senpai teaches on the board, you teach it back, where
+/// you stopped is kept as a gap. Line four is the crux — if it degrades into
+/// "notes on what you asked", the whole basis for the 1/3/7-day revisits goes
+/// with it.
 class _HowItWorksPage extends StatelessWidget {
   const _HowItWorksPage();
 
   @override
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
-    // 1枚目と同じ理由で [CenteredScroll]。手順の文が長くなったぶん、
-    // 小さい端末の英語では4行目(穴の出どころ)から先が切れていた。
-    // **切れてはいけないのが最後の1行**なので、スクロールできる形にする。
+    // [CenteredScroll] for the same reason as page 1: with longer step text,
+    // English on a small screen cut off from line four (where gaps come from)
+    // onwards — and that last line is exactly the one that must not be cut.
     return CenteredScroll(
       children: <Widget>[
         FadeSlideIn(
@@ -253,13 +251,14 @@ class _HowItWorksPage extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.xl),
         _Step(index: 1, icon: Icons.photo_camera_outlined, label: strings.onboardingStepCapture),
-        // 2番目は「書きながら教える」。ペン先のアイコンにしてあるのは、
-        // 板書が飾りではなくこのループの一手だと1行目で分かるようにするため。
+        // Step two is teaching while writing. The nib icon makes the board read
+        // as a move in the loop rather than decoration, from the first line.
         _Step(index: 2, icon: Icons.draw_outlined, label: strings.onboardingStepTaught),
         _Step(index: 3, icon: Icons.mic_none_outlined, label: strings.onboardingStepExplain),
         _Step(index: 4, icon: Icons.description_outlined, label: strings.onboardingStepKarte),
-        // `Spacer` で画面下へ押し付けるのはやめた(スクロールの中では使えない)。
-        // 権限の予告は手順のすぐ下、同じかたまりの一部として置く。
+        // No longer pushed to the bottom with `Spacer` (unusable inside a scroll
+        // view). The permissions note sits right below the steps, as part of the
+        // same block.
         const SizedBox(height: AppSpacing.lg),
         Text(
           strings.onboardingPermissionNote,
@@ -280,7 +279,7 @@ class _Step extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 4番目だけ色を変える。ここが持ち帰るもの(カルテ)だと分かるように。
+    // Only the fourth is recolored, marking it as what you take away.
     final bool isLast = index == 4;
     final Color tint = isLast ? AppColors.hole : AppColors.blue;
 
@@ -301,7 +300,7 @@ class _Step extends StatelessWidget {
                   ),
                   child: Icon(icon, size: 20, color: tint),
                 ),
-                // 次の手順へ続く線。1周であることが縦に見える。
+                // The line to the next step, showing the loop vertically.
                 if (!isLast) Expanded(child: Container(width: 2, color: AppColors.border)),
               ],
             ),
@@ -338,7 +337,7 @@ class _Dots extends StatelessWidget {
             width: i == current ? 20 : 8,
             height: 8,
             decoration: BoxDecoration(
-              // 通ってきた枚は薄く残す。あと何枚あるかが見えるように。
+              // Visited pages stay faint, so how many remain is visible.
               color: switch (i) {
                 _ when i == current => AppColors.blue,
                 _ when i < current => AppColors.blue.withValues(alpha: 0.35),

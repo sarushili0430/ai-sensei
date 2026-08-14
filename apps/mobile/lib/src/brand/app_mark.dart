@@ -5,33 +5,33 @@ import 'package:flutter/widgets.dart';
 
 import '../theme/tokens.dart';
 
-/// アプリマーク —— **先輩の顔そのものが吹き出し**になっている。
+/// App mark: senpai's face is itself a speech bubble.
 ///
-/// アイコンに「顔」だけを置くと世の中の青い丸顔と見分けがつかないので、
-/// 輪郭に吹き出しのしっぽを足して「**きいてくる**」という
-/// プロダクトの一行(README冒頭)をシルエットに入れている。
-/// 表情は `delighted`(^ ^)。説明が伝わった顔がこのアプリの報酬なので、
-/// 看板と報酬を一致させる(「最大の報酬はキャラの表情」)。
+/// A face alone would be indistinguishable from every other blue round icon, so
+/// the outline grows a bubble tail, putting the product's one-liner — it asks
+/// you things — into the silhouette. The expression is `delighted` (^ ^): the
+/// face of an explanation landing is this app's reward, so the sign matches it.
 ///
-/// **アイコンの絵はここが唯一の正**。iOS/Androidのpngは
-/// `tool/generate_brand_assets.dart` がこのコードから書き出すので、
-/// 画像ファイルを直接描き直さないこと(アプリ内の顔と二重管理になる)。
+/// This code is the only source for the icon artwork.
+/// `tool/generate_brand_assets.dart` exports the iOS/Android pngs from it, so
+/// never redraw the image files by hand — that would mean maintaining the
+/// in-app face twice.
 abstract final class AppMark {
-  /// 顔の中心(キャンバスに対する比)。しっぽの分だけ上に寄せている。
+  /// Face centre as a fraction of the canvas, nudged up to fit the tail.
   static const Offset _center = Offset(0.5, 0.475);
   static const double _radius = 0.315;
 
-  /// しっぽの付け根(ラジアン)と先端。短く太く —— 小さいサイズで
-  /// 折れて見えないように、付け根を広く取って先端を伸ばしすぎない。
+  /// Tail base (radians) and tip. Short and thick — a wide base and a modest
+  /// tip keep it from looking broken at small sizes.
   static const double _tailFrom = 0.60 * math.pi;
   static const double _tailTo = 0.88 * math.pi;
   static const Offset _tailTip = Offset(0.255, 0.835);
 
-  /// `size` 四方に描く。原点は左上。
+  /// Draws into a `size` square, origin top left.
   ///
-  /// [contentScale] は中心を保ったまま絵柄だけを縮める。Androidの
-  /// アダプティブアイコンは108dpのうち中央72dpしか見えないので、
-  /// 前景レイヤをここで 0.667 に縮めて安全域に収める。
+  /// [contentScale] shrinks the artwork while keeping it centred. Android's
+  /// adaptive icon shows only the middle 72dp of 108dp, so the foreground layer
+  /// is scaled to 0.667 here to stay inside the safe area.
   static void paint(
     Canvas canvas,
     double size, {
@@ -51,8 +51,8 @@ abstract final class AppMark {
     }
 
     if (skin.punchOutFeatures) {
-      // Androidのモノクロレイヤ / iOSのティント用。塗りは1色しか使えないので、
-      // 目と口は「色を変える」のではなく**くり抜いて**表情を出す。
+      // For Android's monochrome layer and iOS tinting. Only one fill color is
+      // available, so eyes and mouth are punched out rather than recolored.
       canvas.saveLayer(Rect.fromLTWH(0, 0, size, size), Paint());
       _paintBubble(canvas, size, skin.face);
       _paintFeatures(canvas, size, Paint()..blendMode = BlendMode.clear);
@@ -61,7 +61,8 @@ abstract final class AppMark {
       _paintBubble(canvas, size, skin.face);
       final Color? cheek = skin.cheek;
       if (cheek != null) {
-        // 目の弧の下端(0.486)と口(0.515〜)のあいだ。詰めると目に食い込む。
+        // Between the eye arcs' bottom (0.486) and the mouth (0.515+); any
+        // tighter and it cuts into the eyes.
         for (final double sign in <double>[-1, 1]) {
           canvas.drawCircle(
             Offset(size * (0.5 + sign * 0.205), size * 0.535),
@@ -78,8 +79,8 @@ abstract final class AppMark {
     }
   }
 
-  /// 顔の円としっぽを1つの輪郭に合成する。別々に描くと、
-  /// 半透明のスキン(ティント)で継ぎ目が線になって出る。
+  /// Merges the face circle and tail into one outline. Drawn separately, the
+  /// seam shows as a line under semi-transparent (tinted) skins.
   static void _paintBubble(Canvas canvas, double size, Color color) {
     final Offset center = Offset(_center.dx * size, _center.dy * size);
     final double r = _radius * size;
@@ -94,7 +95,7 @@ abstract final class AppMark {
     canvas.drawPath(Path.combine(PathOperation.union, circle, tail), Paint()..color = color);
   }
 
-  /// 目(^ ^)と口。`base` の blendMode / color をそのまま使う。
+  /// Eyes (^ ^) and mouth, using `base`'s blendMode and color as given.
   static void _paintFeatures(Canvas canvas, double size, Paint base) {
     final Paint stroke = Paint()
       ..color = base.color
@@ -127,7 +128,7 @@ abstract final class AppMark {
     );
   }
 
-  /// 1辺 [size] のpngバイト列を作る。生成ツールから使う。
+  /// Produces png bytes [size] on a side; used by the generator tool.
   static Future<ui.Image> rasterize(
     int size, {
     AppMarkSkin skin = AppMarkSkin.standard,
@@ -139,7 +140,7 @@ abstract final class AppMark {
   }
 }
 
-/// マークの配色。プラットフォームごとの見え方の違いはここだけで吸収する。
+/// The mark's palette. Per-platform rendering differences are absorbed here only.
 @immutable
 class AppMarkSkin {
   const AppMarkSkin({
@@ -150,16 +151,17 @@ class AppMarkSkin {
     this.punchOutFeatures = false,
   });
 
-  /// 背景。null で透過(iOSのダーク/ティント、Androidの前景レイヤ)。
+  /// Background; null means transparent (iOS dark/tint, Android foreground).
   final Color? background;
   final Color face;
   final Color feature;
   final Color? cheek;
 
-  /// 表情を塗りではなく「くり抜き」で出すか。単色レイヤ用。
+  /// Whether to punch the features out instead of filling them; for
+  /// single-color layers.
   final bool punchOutFeatures;
 
-  /// 通常。青ベタにクリームの吹き出し。
+  /// Standard: a cream bubble on solid blue.
   static const AppMarkSkin standard = AppMarkSkin(
     background: AppColors.blue,
     face: Color(0xFFFBFAF7),
@@ -167,29 +169,30 @@ class AppMarkSkin {
     cheek: Color(0xFFFFC0D4),
   );
 
-  /// iOS 18 のダーク。背景は**システムが敷く**ので透過にする。
-  /// 暗い下地の上ではほおの淡いピンクが濁るので落とす。
+  /// iOS 18 dark. The system paints the background, so this stays transparent;
+  /// the pale pink cheeks muddy on a dark ground and are dropped.
   static const AppMarkSkin dark = AppMarkSkin(
     face: Color(0xFFF2F6F8),
     feature: AppColors.ink,
   );
 
-  /// iOS 18 のティント。輝度からシステムが色を作るのでグレースケール、
-  /// かつ背景は透過。
+  /// iOS 18 tinted: greyscale, since the system derives color from luminance,
+  /// and transparent behind.
   static const AppMarkSkin tinted = AppMarkSkin(
     face: Color(0xFFFFFFFF),
     feature: Color(0xFF000000),
     punchOutFeatures: true,
   );
 
-  /// Android のアダプティブアイコン前景。背景は色リソース側で敷く。
+  /// Android adaptive icon foreground; the background comes from a color
+  /// resource.
   static const AppMarkSkin adaptiveForeground = AppMarkSkin(
     face: Color(0xFFFBFAF7),
     feature: AppColors.ink,
     cheek: Color(0xFFFFC0D4),
   );
 
-  /// Android 13+ のテーマアイコン。アルファだけが使われる。
+  /// Android 13+ themed icon; only the alpha channel is used.
   static const AppMarkSkin monochrome = AppMarkSkin(
     face: Color(0xFFFFFFFF),
     feature: Color(0xFF000000),
@@ -197,7 +200,7 @@ class AppMarkSkin {
   );
 }
 
-/// アプリ内でマークを出したいとき用(スプラッシュ・オンボーディングの見出しなど)。
+/// For showing the mark in-app (splash, onboarding headings and the like).
 class AppMarkView extends StatelessWidget {
   const AppMarkView({this.size = 96, this.skin = AppMarkSkin.standard, super.key});
 

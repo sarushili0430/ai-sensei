@@ -7,12 +7,13 @@ import '../../../theme/tokens.dart';
 import '../application/karte_controllers.dart';
 import '../domain/karte.dart';
 
-/// 穴を埋めるかどうかを、本人にだけ聞くカード。
+/// Card that asks only the student whether a gap is filled.
 ///
-/// 「言えた」を押したときだけAPIを呼ぶ。「まだ」は画面を閉じるだけで、穴・通知・
-/// 進捗のどれも変えない。二択を置くのは、閉じる操作を失敗や減点に見せないため。
-/// AIの判定結果を受け取る入口は持たない(計画書 §2)。送信経路と二択の文言は
-/// 10秒小テストと共有し、画面ごとに別の「自己申告」を作らない。
+/// The API is called only on "said it". "Not yet" just closes the card, leaving
+/// the gap, notifications and progress untouched. Two options exist so closing
+/// never reads as a failure or a deduction. There is no entry point for an AI
+/// verdict. The submit path and both labels are shared with the 10-second quiz,
+/// so no screen invents its own self-report.
 class HoleSelfReportPrompt extends ConsumerStatefulWidget {
   const HoleSelfReportPrompt({
     required this.hole,
@@ -52,7 +53,8 @@ class _HoleSelfReportPromptState extends ConsumerState<HoleSelfReportPrompt> {
       }
       widget.onFilled();
     } on Object catch (error) {
-      // 失敗しても open のままなので、本人の記録は失われない。再送はAPI側が冪等。
+      // On failure the gap stays open, so nothing they recorded is lost.
+      // Resending is idempotent on the API side.
       debugPrint('穴の自己申告を反映できませんでした: $error');
       if (!mounted) return;
       setState(() => _submitting = false);

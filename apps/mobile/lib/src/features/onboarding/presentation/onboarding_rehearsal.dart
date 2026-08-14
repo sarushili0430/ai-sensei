@@ -14,64 +14,66 @@ import '../../../theme/tokens.dart';
 import '../../session/domain/board.dart';
 import '../../session/presentation/board/board_view.dart';
 
-/// 板書が下に続いていることを示す帯([_BottomFade])の目印。
+/// Marker for the band ([_BottomFade]) showing the board continues below.
 ///
-/// **出る / 出ないの出し分けそのものが仕様**(切れているのに手がかりが無いのが
-/// いちばん悪い状態で、切れていないのに出続けるのは嘘)なので、
-/// 見た目ではなくこの目印でテストできるようにしてある。
+/// Whether it appears is itself the spec — no cue while content is cut off is
+/// the worst state, and showing it when nothing is cut is a lie — so this key
+/// makes it testable without relying on appearance.
 const Key onboardingBoardMoreBelowKey = Key('onboarding_board_more_below');
 
-/// リハーサルの結果。
+/// Outcome of the rehearsal.
 enum RehearsalOutcome {
-  /// 教え返せた → 黄マーカー。
+  /// Taught it back — yellow marker.
   explained,
 
-  /// うまく言えなかった → ピンクのマーカー(= 穴)。**失敗ではない。**
+  /// Could not say it — pink marker (a gap). Not a failure.
   passed,
 }
 
-/// オンボーディング3枚目 — リハーサル。
+/// Onboarding page 3 — the rehearsal.
 ///
-/// 読んで分かった気になる説明を、**一度やってみる**に置き換える枚。
-/// ここを通ると、初回の撮影ボタンを押す前に、
-/// 「先輩が板書で教えてくれる」と「教え返せなかったことが残る」の両方を体験している。
+/// Replaces an explanation that only feels understood with actually doing it
+/// once. Anyone who passes through has experienced both "senpai teaches on the
+/// board" and "what I couldn't explain stays" before ever pressing the shutter.
 ///
-/// **この1枚の主張は「答えが目の前にあっても、説明できるとは限らない」。**
-/// 板書には結論(`解が2つ ⇔ D > 0`)まで書いてあり、隠していない。
-/// それでも「なんで D を見るんだっけ?」には詰まる — そこが穴で、
-/// 教えて終わりにしない理由そのもの(ピボット計画 §1-1「誤読の保険」と同じ構造)。
-/// 改正前の「答えを出さない」を守るために質問だけを見せていたのを、
-/// **答えを見せたうえで聞く**に作り替えてある。
+/// The claim of this page: having the answer in front of you does not mean you
+/// can explain it. The board states the conclusion (`two roots ⇔ D > 0`) and
+/// hides nothing, yet "why do we look at D again?" still stalls — that stall is
+/// the gap, and the whole reason teaching is not the end. What used to show only
+/// the question (to avoid giving the answer) now shows the answer and then asks.
 ///
-/// 3つ守る:
-///   - **繋がない。** 板書も質問も固定の台本で、LiveKitにもAPIにも触らない。
-///   - **権限を要求しない。** マイクもカメラも使わない。録らないことは画面に書く。
-///   - **正解にしない。** 教え返しても、パスしても、先へ進める。
-///     どちらを選んだかで責めない(§0 の約束3。ここは改正されていない)。
+/// Three rules:
+///   - Nothing is connected. Board and question are a fixed script; no LiveKit,
+///     no API.
+///   - No permissions. Neither mic nor camera; the screen says nothing is
+///     recorded.
+///   - No right answer. Teaching back and passing both advance, and neither is
+///     held against you.
 ///
-/// ## 画面を「読む側」と「やる側」に割ってある
+/// ## The screen is split into a reading half and a doing half
 ///
-/// 板書を積んだぶん縦に伸び、375×667(SE級)では操作が折り返しの下に落ちた。
-/// **操作が初期表示に無いことは、板書が全部見えないことより重い** —
-/// 板書は切れていても「下に続く」と分かれば体験は壊れないが、操作が見えなければ
-/// **やることがある枚だと気づかれないままスワイプされる**。この1枚は
-/// 「読ませる枚」ではなく「やらせる枚」なので、そこで離脱されると存在理由が消える。
+/// Stacking the board made it taller, and at 375x667 the controls fell below the
+/// fold. Missing controls matter more than a partly hidden board: a cut-off
+/// board still works as long as "more below" is clear, but invisible controls
+/// mean the page gets swiped past without anyone realising there is something to
+/// do — and this page exists to be done, not read.
 ///
-/// そこで上下に割った:
-///   - **上(スクロールする)**: 見出し・撮った問題・板書。収まらなければここだけが動く
-///   - **下(固定)**: 先輩の顔とふきだし・操作・録音しない注記
+/// Hence the split:
+///   - top (scrolls): heading, the photographed problem, the board
+///   - bottom (fixed): senpai's face and bubble, the controls, the "not
+///     recorded" note
 ///
-/// 顔とふきだしを固定側に入れているのは、**押しているあいだの手ごたえが顔だから**。
-/// 長押し中は表情が `listening` に変わるので、顔が流れて見えなくなると
-/// 「聞いてもらえている」という唯一のフィードバックが消える。
-/// ふきだしの問いかけも、操作の意味そのものなので離さない。
+/// The face and bubble are fixed because the face is the feedback while holding:
+/// the expression changes to `listening`, so scrolling it away would remove the
+/// only sign of being heard. The bubble's question is the meaning of the control
+/// itself, so it stays too.
 class OnboardingRehearsalPage extends StatefulWidget {
   const OnboardingRehearsalPage({required this.outcome, required this.onOutcome, super.key});
 
   final RehearsalOutcome? outcome;
 
-  /// 結果が決まった(または「もう一度ためす」で消えた)ときに親へ返す。
-  /// 4枚目のカルテ見本が、この結果をそのまま使う。
+  /// Reports the outcome to the parent once decided, or cleared by "try again".
+  /// Page 4's sample karte uses it directly.
   final ValueChanged<RehearsalOutcome?> onOutcome;
 
   @override
@@ -79,17 +81,18 @@ class OnboardingRehearsalPage extends StatefulWidget {
 }
 
 class _OnboardingRehearsalPageState extends State<OnboardingRehearsalPage> {
-  /// 質問を打ち終わるまで、操作は出さない。まだ聞かれていないので。
+  /// Controls stay hidden until the question finishes typing — nothing has been
+  /// asked yet.
   bool _asked = false;
   bool _holding = false;
 
-  /// **うまく言えなかったときに顔を曇らせない。**
+  /// The face never clouds over when they could not explain.
   ///
-  /// 後輩版はここで困り顔([SenpaiMood.puzzled])にしていた。後輩にとっては
-  /// 「聞いても分からなかった」という事実の表示で、責める意味を持たなかったからだ。
-  /// 先輩がここで困ると意味が変わる — **教えたのに伝わらなかった、という落胆**に
-  /// 読める。詰まることは織り込み済み(それを見つけに来ている)なので、
-  /// 顔は受け取ったまま動かさず、応えるのは言葉とマーカーだけにする(§0 の約束3)。
+  /// The junior version used [SenpaiMood.puzzled] here: for a junior it merely
+  /// stated "I listened and didn't understand", carrying no blame. From senpai
+  /// it reads as disappointment that the teaching did not land. Getting stuck is
+  /// expected — it is what we came to find — so the face stays as it received it
+  /// and only words and markers respond.
   SenpaiMood get _mood => switch (widget.outcome) {
     RehearsalOutcome.explained => SenpaiMood.delighted,
     RehearsalOutcome.passed => SenpaiMood.neutral,
@@ -103,7 +106,7 @@ class _OnboardingRehearsalPageState extends State<OnboardingRehearsalPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        // 読む側。ここだけがスクロールする。
+        // The reading half; only this scrolls.
         Flexible(
           child: _ScrollWithBottomFade(
             child: CenteredScroll(
@@ -118,7 +121,7 @@ class _OnboardingRehearsalPageState extends State<OnboardingRehearsalPage> {
                 ),
                 const SizedBox(height: AppSpacing.lg),
                 const FadeSlideIn.staggered(index: 1, child: _NotebookCard()),
-                // 問題と板書はひとつながりなので、あいだの間は詰める。
+                // Problem and board are one unit, so tighten the gap between.
                 const SizedBox(height: AppSpacing.md),
                 const FadeSlideIn.staggered(index: 2, child: _SenpaiBoard()),
                 const SizedBox(height: AppSpacing.md),
@@ -126,7 +129,7 @@ class _OnboardingRehearsalPageState extends State<OnboardingRehearsalPage> {
             ),
           ),
         ),
-        // やる側。**折り返しの下には絶対に出さない。**
+        // The doing half; never allowed below the fold.
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
           child: Column(
@@ -157,8 +160,8 @@ class _OnboardingRehearsalPageState extends State<OnboardingRehearsalPage> {
               _resize(
                 child: _asked ? _buildAnswer(strings) : const SizedBox(width: double.infinity),
               ),
-              // 注記を操作と「つぎへ」のあいだに挟む。
-              // 同じ幅のボタンが2つ続けて並ぶと、どちらが今の一手か分かりにくい。
+              // The note sits between the control and "next": two same-width
+              // buttons in a row blur which one is the current move.
               const SizedBox(height: AppSpacing.sm),
               Text(
                 strings.onboardingTryNotRecording,
@@ -173,10 +176,11 @@ class _OnboardingRehearsalPageState extends State<OnboardingRehearsalPage> {
     );
   }
 
-  /// 質問 → 操作 → 結果 で高さが変わる。急に伸び縮みしないよう繋ぐ。
+  /// Height changes across question -> control -> outcome; this smooths the
+  /// jumps.
   ///
-  /// [AnimatedSize] は長さ0を渡せない(レイアウト中に自分をやり直して落ちる)ので、
-  /// 動かさない設定のときは包まずにそのまま返す。
+  /// [AnimatedSize] rejects a zero duration (it re-lays-out itself mid-layout and
+  /// crashes), so under reduced motion the child is returned unwrapped.
   Widget _resize({required Widget child}) {
     if (AppMotion.isReduced(context)) return child;
 
@@ -198,7 +202,7 @@ class _OnboardingRehearsalPageState extends State<OnboardingRehearsalPage> {
             onHoldChanged: (bool value) => setState(() => _holding = value),
             onExplained: () => widget.onOutcome(RehearsalOutcome.explained),
           ),
-          // パスは恥ではない。同じ大きさで並べないが、隠しもしない。
+          // Passing is not shameful: not the same weight, but never hidden.
           GhostButton(
             label: strings.sessionPass,
             onPressed: () => widget.onOutcome(RehearsalOutcome.passed),
@@ -235,10 +239,11 @@ class _OnboardingRehearsalPageState extends State<OnboardingRehearsalPage> {
   }
 }
 
-/// 撮った問題の代わり。本物の写真は使わない(まだカメラを開かせない)。
+/// Stands in for the photographed problem; no real photo, since the camera is
+/// not opened yet.
 ///
-/// わずかに傾けてあるのは、机の上に置いた紙に見せるため。
-/// まっすぐ置くと、アプリが用意した問題集に見える。
+/// Slightly tilted so it reads as paper on a desk — set straight, it looks like
+/// a workbook the app supplied.
 class _NotebookCard extends StatelessWidget {
   const _NotebookCard();
 
@@ -268,24 +273,26 @@ class _NotebookCard extends StatelessWidget {
   }
 }
 
-/// 下に続きがあることを示す帯を重ねたスクロール領域。
+/// A scroll area with a band signalling more content below.
 ///
-/// **`LatexElementView` の右端フェード(`_ScrollWithEdgeFade`)の縦版。**
-/// 判定基準も同じで、「スクロールできること」ではなく
-/// **「スクロールできると分かること」**を保証する。計画書§3-6b が横スクロールを
-/// 不採用にした理由 —「静止画では続きがある手がかりが一切出ず、
-/// 『これで全部だ』と誤読させる」— は、板書が縦に切れるときもそのまま当てはまる。
-/// 最後まで見えたら帯は消す(見えているのに手がかりを出し続けるのは嘘になる)。
+/// The vertical counterpart of `LatexElementView`'s right-edge fade
+/// (`_ScrollWithEdgeFade`), on the same criterion: it guarantees not that
+/// scrolling is possible but that it is visibly possible. The reason horizontal
+/// scrolling was rejected for the board — a still frame gives no cue that more
+/// follows, so it reads as "that's all" — applies just as much vertically. The
+/// band disappears once the end is visible, since keeping a cue up when nothing
+/// is hidden would be a lie.
 ///
-/// 中身の [CenteredScroll] は共有ウィジェットで `ScrollController` を外に出して
-/// いないので、位置は通知から読む。`ScrollMetricsNotification` が初回レイアウトの
-/// ぶんを、`ScrollNotification` が指で動かしたぶんを運んでくる。
+/// The inner [CenteredScroll] is a shared widget that does not expose its
+/// `ScrollController`, so position comes from notifications:
+/// `ScrollMetricsNotification` covers the first layout and `ScrollNotification`
+/// covers dragging.
 ///
-/// 既定を「続きが無い」にしてあるのは、`_ScrollWithEdgeFade` と逆
-/// (あちらは計測前を「あるかもしれない」にしている)。**縦は、収まる端末のほうが
-/// 主戦場**(393×852 では日本語は収まる)なので、計測前に帯を出すと、
-/// 何も切れていない画面に一瞬だけ影が差す。通知は初回レイアウトで届くので、
-/// 出遅れて困ることはない。
+/// The default is "nothing below", the opposite of `_ScrollWithEdgeFade` (which
+/// assumes "maybe" before measuring). Vertically, screens where it fits are the
+/// common case (Japanese fits at 393x852), so defaulting to visible would flash
+/// a shadow over a screen with nothing cut off. Notifications arrive on the
+/// first layout, so being late costs nothing.
 class _ScrollWithBottomFade extends StatefulWidget {
   const _ScrollWithBottomFade({required this.child});
 
@@ -302,8 +309,8 @@ class _ScrollWithBottomFadeState extends State<_ScrollWithBottomFade> {
     final bool hasMore = metrics.extentAfter > 1;
     if (hasMore == _hasMore) return;
 
-    // 通知はレイアウトの直後に来る。その場で setState するとフレームの最中に
-    // 自分を作り直すことになるので、次のフレームに送る。
+    // Notifications arrive right after layout; calling setState there would
+    // rebuild mid-frame, so defer to the next frame.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && hasMore != _hasMore) setState(() => _hasMore = hasMore);
     });
@@ -339,8 +346,8 @@ class _ScrollWithBottomFadeState extends State<_ScrollWithBottomFade> {
   }
 }
 
-/// 帯そのもの。色は既存トークンの範囲内(`AppColors.background` = 画面の地。
-/// 透明から不透明へ)。新しい色は定義しない。
+/// The band itself. Colors stay within existing tokens
+/// (`AppColors.background`, transparent to opaque); no new color is defined.
 class _BottomFade extends StatelessWidget {
   const _BottomFade();
 
@@ -355,7 +362,7 @@ class _BottomFade extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            // alpha:0 は「その色の透明版」であって別の色ではない。
+            // alpha:0 is that color made transparent, not a different color.
             colors: <Color>[
               AppColors.background.withValues(alpha: 0),
               AppColors.background,
@@ -367,27 +374,27 @@ class _BottomFade extends StatelessWidget {
   }
 }
 
-/// 先輩が書いた板書。**本番と同じ [BoardView] に、固定の台本を渡しているだけ。**
+/// The board senpai wrote: the production [BoardView] fed a fixed script.
 ///
-/// ここだけ別の見た目を作らないのは、リハーサルで見た板書と授業モードで出る板書が
-/// 食い違うと、この枚が下見として機能しなくなるため。LiveKit も
-/// `BoardChannelReceiver` も通らない — 届くはずの手順が最初から手元にあるので、
-/// 通す相手がいない。
+/// It gets no separate look, because a rehearsal board that differed from the
+/// lesson board would stop this page working as a preview. Neither LiveKit nor
+/// `BoardChannelReceiver` is involved — the steps are already here, so there is
+/// nothing to route.
 ///
-/// **白いカードには乗せない。** `LatexElementView` の右端フェードは、板書が
-/// 画面の地(`AppColors.background`)に直接乗っている前提の色で描かれる
-/// (同ファイルの `_EdgeFade` のコメントに既知の前提として書いてある)。
-/// 別の地の上に置くと、長い式が来たときにフェードだけ色が合わない。
-/// ここは地の上に直接置き、見出しだけで区切る。
+/// Not placed on a white card. `LatexElementView`'s right-edge fade is drawn
+/// assuming the board sits directly on the screen background
+/// (`AppColors.background`), documented as a known premise beside `_EdgeFade` in
+/// that file. On another ground the fade alone would mismatch once a long
+/// formula arrives. So it sits on the background, separated only by a heading.
 class _SenpaiBoard extends StatelessWidget {
   const _SenpaiBoard();
 
-  /// 2手順目。**数式はロケールを持たないので、ここに直接置く**
-  /// (1手順目の日本語は `text` 要素として `strings` 側にある。
-  /// LaTeXの中に日本語を入れると文字化けする・計画書§3-6d)。
+  /// Step two. Formulas carry no locale, so it lives here directly (step one's
+  /// prose is a `text` element in `strings`; Japanese inside LaTeX renders as
+  /// mojibake).
   ///
-  /// 短い式を選んであるのは意図的で、`BoardStyle.latexMinScale`(70%)の
-  /// フォールバック(横スクロール)に落ちない幅に収まる。
+  /// A short formula is a deliberate choice: it fits without falling back to
+  /// horizontal scrolling at `BoardStyle.latexMinScale` (70%).
   static const String _tex = r'D = (-4)^2 - 4k > 0';
 
   @override
@@ -400,9 +407,9 @@ class _SenpaiBoard extends StatelessWidget {
         Text(strings.onboardingTryBoardLabel, style: Theme.of(context).textTheme.bodySmall),
         const SizedBox(height: AppSpacing.xs),
         BoardView(
-          // `speech` を空にしてあるのは手抜きではない。この枚は音を出さないし、
-          // そもそも「書いている間は喋らない」が板書レイヤーの原則(§3-1)なので、
-          // 板書だけが残る形は本番の1手順としても正しい。
+          // The empty `speech` is deliberate: this page makes no sound, and "no
+          // speaking while writing" is the board layer's principle anyway, so a
+          // board-only step is also correct in production.
           steps: <BoardStep>[
             BoardStep(
               index: 0,
@@ -417,7 +424,7 @@ class _SenpaiBoard extends StatelessWidget {
   }
 }
 
-/// 先輩のふきだし。しっぽを左に向けて、話しているのが顔の側だと分かるようにする。
+/// Senpai's speech bubble; the tail points left so the face is clearly speaking.
 class _SpeechBubble extends StatelessWidget {
   const _SpeechBubble({required this.child});
 
@@ -461,7 +468,7 @@ class _TailPainter extends CustomPainter {
   bool shouldRepaint(_TailPainter oldDelegate) => false;
 }
 
-/// カルテに1行だけ書かれた状態。本物のカルテと同じ見出しとマーカーを使う。
+/// A karte with a single line, using the real karte's heading and markers.
 class _KarteLine extends StatelessWidget {
   const _KarteLine({required this.title, required this.text, required this.marker});
 
@@ -483,7 +490,7 @@ class _KarteLine extends StatelessWidget {
         children: <Widget>[
           Text(title, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: AppSpacing.sm),
-          // 少し待ってから引く。反応の言葉を読む時間をつくる。
+          // A short wait before drawing, leaving time to read the reply.
           MarkerText(text, marker: marker, delay: AppDurations.reaction),
         ],
       ),
@@ -491,12 +498,12 @@ class _KarteLine extends StatelessWidget {
   }
 }
 
-/// 長押ししているあいだだけ、先輩が聞いている。
+/// Senpai listens only while the button is held.
 ///
-/// 本番のセッションは「話し続ける」ので、ここでも押し続ける操作にしてある。
-/// 押している時間そのものが説明の比喩なので、この長さは
-/// アニメーションを減らす設定でも縮めない([AppDurations.hold])。
-/// 押し続けられない人のために、読み上げ利用時はタップで済むようにする。
+/// Real sessions involve speaking continuously, so this is a press-and-hold too.
+/// The hold time is a metaphor for explaining, so reduced motion does not
+/// shorten it ([AppDurations.hold]). For anyone who cannot hold, a tap suffices
+/// when a screen reader is active.
 class _HoldToExplainButton extends StatefulWidget {
   const _HoldToExplainButton({required this.onHoldChanged, required this.onExplained});
 
@@ -548,12 +555,12 @@ class _HoldToExplainButtonState extends State<_HoldToExplainButton>
   void _stop() {
     if (_progress.isCompleted) return;
     _setHolding(false);
-    // 途中で離した。責めずに、押し方だけ伝える。
+    // Released early. No blame; just explain how to hold.
     if (_progress.value > 0.05) setState(() => _showHint = true);
     _progress.reverse();
   }
 
-  /// 押し続けずに離したとき。読み上げ中は、これが正規の操作になる。
+  /// Released without holding. With a screen reader, this is the proper action.
   void _tapped() {
     if (!AppMotion.prefersTapOverHold(context)) return;
     _progress.value = 1;
@@ -588,8 +595,8 @@ class _HoldToExplainButtonState extends State<_HoldToExplainButton>
                   ),
                   child: Stack(
                     children: <Widget>[
-                      // 押しているあいだ、左から満ちていく。
-                      // 進み具合が見えないと、いつまで押すのか分からない。
+                      // Fills from the left while held; without visible
+                      // progress there is no telling how long to hold.
                       FractionallySizedBox(
                         widthFactor: _progress.value,
                         alignment: Alignment.centerLeft,

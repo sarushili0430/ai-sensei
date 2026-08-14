@@ -2,28 +2,30 @@ import 'package:flutter/foundation.dart';
 
 import '../../session/domain/board.dart';
 
-/// 授業が終わったあとも残る板書。カルテが読み返すのはこれ。
+/// The board that outlives the lesson; what the karte reads back.
 ///
-/// - 授業中の `BoardSnapshot` は会話画面(AutoDispose)と一緒に消える
-/// - あちらは授業中にしか意味の無いもの(`gapReason`・`title`)を含む
-/// - 読み返す側に要るのは「何が書いてあるか」と「それで全部か」の2つだけ
+/// - The in-lesson `BoardSnapshot` dies with the AutoDispose conversation screen
+/// - That one carries lesson-only fields (`gapReason`, `title`)
+/// - Reading back needs just two things: what is written, and whether it is all
 @immutable
 class LastBoard {
   const LastBoard({this.steps = const <BoardStep>[], this.truncated = false});
 
-  /// 積まれた手順。板書は前の行を消さない(計画書§3-2)。
+  /// The accumulated steps. The board never erases earlier lines.
   final List<BoardStep> steps;
 
-  /// **この板書はとぎれている。**
+  /// This board is incomplete.
   ///
-  /// - 配送の欠落を検知すると受信側はそこで積むのをやめる
-  /// - 列が途中で終わっていることは、列そのものからは区別がつかない
-  /// - 黙ると「これで全部だ」と誤読させる。カルテは音声が無いぶん危ない
+  /// - On detecting a delivery gap, the receiver stops accumulating
+  /// - A truncated list is indistinguishable from a complete one
+  /// - Staying silent reads as "that's all", which is riskier in the karte,
+  ///   where there is no audio
   final bool truncated;
 
   bool get isEmpty => steps.isEmpty;
 
-  /// とぎれた印を出すべきか。板書が空なら出さない(壊れて見えるだけ)。
+  /// Whether to show the truncation marker; hidden on an empty board, where it
+  /// would just look broken.
   bool get showsTruncation => truncated && steps.isNotEmpty;
 
   static const LastBoard empty = LastBoard();

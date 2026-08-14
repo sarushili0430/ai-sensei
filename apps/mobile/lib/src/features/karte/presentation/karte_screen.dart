@@ -19,12 +19,14 @@ import '../domain/karte.dart';
 import '../domain/last_board.dart';
 import 'hole_self_report_prompt.dart';
 
-/// カルテ画面。
+/// Karte screen.
 ///
-/// - **静かな画面**にする。祝福画面のにぎやかさを持ち込まない
-/// - 点数は出さない。穴は「これから埋まる場所」として出す
-/// - 読む順は 結論(言えたこと・穴・用語メモ)→ 根拠([_BoardSection])→ 操作
-/// - 板書を先頭に置かないのは、長い板書が結論を画面の外へ押し出すため
+/// - A quiet screen; none of the celebration screen's noise
+/// - No scores. Gaps are shown as places still to fill
+/// - Reading order: conclusion (said well, gaps, term notes), then evidence
+///   ([_BoardSection]), then actions
+/// - The board is not first because a long one would push the conclusion off
+///   screen
 class KarteScreen extends ConsumerWidget {
   const KarteScreen({super.key});
 
@@ -35,8 +37,8 @@ class KarteScreen extends ConsumerWidget {
     final SessionOutcome outcome = ref.watch(sessionOutcomeControllerProvider);
     final bool showPaywall = outcome.showPaywall;
 
-    // 直近のカルテが無いときはルータがホームへ戻す(app_router.dart の redirect)。
-    // ここに来るのはその1フレームぶんなので、エラー文言は出さない。
+    // Without a recent karte the router redirects home (app_router.dart), so
+    // this runs for a single frame and shows no error copy.
     if (karte == null) {
       return Scaffold(
         appBar: AppBar(title: Text(strings.karteTitle)),
@@ -50,8 +52,9 @@ class KarteScreen extends ConsumerWidget {
         child: ListView(
           padding: const EdgeInsets.all(AppSpacing.lg),
           children: <Widget>[
-            // マーカーは上の行から順に引かれる。今日の会話が書き取られていく順。
-            // 速くしない — ここは読み返す画面なので、走らせると落ち着かない。
+            // Markers draw top down, in the order today's conversation was
+            // written. Not sped up: this is a screen for reading back, and
+            // rushing it feels restless.
             _Section(
               title: strings.karteSaidWell,
               children: <Widget>[
@@ -73,7 +76,7 @@ class KarteScreen extends ConsumerWidget {
                         MarkerText(
                           karte.holes[i].description,
                           marker: MarkerColor.hole,
-                          // 言えたことを引き終わってから、穴に移る。
+                          // Finish drawing what was said, then move to gaps.
                           delay: AppDurations.draw * (karte.saidWell.length + i),
                         ),
                     ],
@@ -106,8 +109,9 @@ class KarteScreen extends ConsumerWidget {
               ),
             GhostButton(
               label: strings.karteDone,
-              // 初回カルテで穴が見えた直後だけ、ここでペイウォールを挟む。
-              // 出す/出さないの判断はサーバが持つ(煽らないため2回目以降は出さない)。
+              // The paywall slots in here only just after a gap appears in the
+              // first karte. The server decides whether to show it, and it never
+              // reappears, so as not to nag.
               onPressed: () => context.go(
                 showPaywall ? AppRoute.paywall.path : AppRoute.home.path,
               ),
@@ -119,14 +123,15 @@ class KarteScreen extends ConsumerWidget {
   }
 }
 
-/// 授業で扱った内容と重なる、**過去の穴**だけをカルテのあとに聞く。
+/// Asks after the karte about past gaps only, and only ones overlapping this
+/// lesson.
 ///
-/// 祝福画面に置かないのは、そこがまだカルテを受け取っている途中で、
-/// `said_well`(候補を絞る根拠)が揃っていないことがあるため。カルテの本文を読んだ
-/// 直後なら、何について自己申告しているかも見失わない。
+/// Not on the celebration screen: that one may still be receiving the karte, so
+/// `said_well` — the basis for narrowing candidates — can be missing. Right
+/// after reading the karte it is also clear what is being self-reported.
 ///
-/// キューの取得失敗は黙って省略する。今日のカルテを読むことまで止めて再試行を
-/// 求めると、任意の聞き直しがカルテ閲覧の関門になり、催促に変わる。
+/// A failed queue fetch is silently skipped. Blocking today's karte to demand a
+/// retry would turn an optional follow-up into a gate, and a gate into nagging.
 class _LessonHoleSelfReport extends ConsumerStatefulWidget {
   const _LessonHoleSelfReport({required this.karte});
 
@@ -154,23 +159,26 @@ class _LessonHoleSelfReportState extends ConsumerState<_LessonHoleSelfReport> {
     return HoleSelfReportPrompt(
       hole: candidate.hole,
       showLaterHint: true,
-      // 「まだ」はこのカルテでの問いを閉じるだけ。穴も通知もそのまま残り、
-      // 復習画面からいつでも同じ選択に戻れる。
+      // "Not yet" only closes the question on this karte. The gap and its
+      // notifications remain, and review offers the same choice any time.
       onNotYet: () => setState(() => _dismissed = true),
       onFilled: () => setState(() => _dismissed = true),
     );
   }
 }
 
-/// 授業で先輩が書いた板書。**授業の寿命を超えて読み返せる唯一の場所**。
+/// The board senpai wrote; the only place it can be read back after the lesson.
 ///
-/// - 会話画面の板書は AutoDispose で消える。残るのは [LastBoardController] だけ
-/// - 板書が無ければ見出しごと出さない。空の見出しは壊れて見える
-/// - **カードに入れない**(囲わない・内側に余白を足さない)。理由は下の2つ
-/// - `latexMinScale`(70%)は実効幅340ptの実測値。カードを足すと311ptへ落ち、
-///   収まると確認した式が横スクロールになる。しかも `debugPrint` にしか出ない
-/// - 右端フェードは板書が `AppColors.background` に直接乗る前提の色
-/// - 「ここが板書だ」は囲いではなく見出しが示す([_Section] と同じ形)
+/// - The conversation screen's board dies with AutoDispose; only
+///   [LastBoardController] survives
+/// - With no board, the heading is omitted too — an empty heading looks broken
+/// - Not wrapped in a card (no border, no inner padding), for two reasons:
+/// - `latexMinScale` (70%) was measured at an effective width of 340pt; a card
+///   drops that to 311pt and formulas verified to fit start scrolling
+///   horizontally, and only `debugPrint` would say so
+/// - The right-edge fade assumes the board sits directly on
+///   `AppColors.background`
+/// - The heading marks this as the board, not a container (as in [_Section])
 class _BoardSection extends ConsumerWidget {
   const _BoardSection();
 
@@ -181,8 +189,9 @@ class _BoardSection extends ConsumerWidget {
     if (board.isEmpty) return const SizedBox.shrink();
 
     return Column(
-      // **`start` にしない。** 子が自然幅まで痩せ、縮小率が下がって横スクロールが増える。
-      // 授業モードの `_BoardStage` も同じ理由で `stretch`。
+      // Not `start`: children would shrink to intrinsic width, lowering the
+      // scale factor and adding horizontal scroll. `_BoardStage` in lesson mode
+      // uses `stretch` for the same reason.
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         const SizedBox(height: AppSpacing.lg),
@@ -195,8 +204,9 @@ class _BoardSection extends ConsumerWidget {
         ),
         const SizedBox(height: AppSpacing.sm),
         BoardView(steps: board.steps),
-        // とぎれた印は、**板書の最後の行の下**に置く。見出しの横や画面の隅ではなく、
-        // 読み進めた人が「続きがない」ことに気づく場所に置きたい([LastBoard.truncated])。
+        // The truncation marker goes below the board's last line — not beside
+        // the heading or in a corner — so a reader reaching the end notices
+        // there is no more ([LastBoard.truncated]).
         if (board.showsTruncation) ...<Widget>[
           const SizedBox(height: AppSpacing.sm),
           Align(
@@ -235,14 +245,15 @@ class _Section extends StatelessWidget {
   }
 }
 
-/// あしたの夜、もう一度きいてもいいか。
+/// "May I ask again tomorrow night?"
 ///
-/// **通知の許可を求めるのはアプリ中でここだけ。** 初回起動では聞かない。
-/// 穴が見つかった直後、先輩からのお願いとして尋ねるほうが文脈が立つし、
-/// ここで断られても「翌日・3日後・7日後」の価値は伝わっている。
+/// The only place in the app that requests notification permission, and never
+/// on first launch. Asking as a favour from senpai right after a gap is found
+/// has real context, and even a refusal has conveyed the value of the 1/3/7-day
+/// revisits.
 ///
-/// スイッチをアプリ側に持たないのは、OSの許可がそのまま状態だから。
-/// 二重に持つと「アプリではオンなのに届かない」が生まれる。
+/// There is no in-app switch because the OS permission is the state; holding it
+/// twice creates "on in the app but nothing arrives".
 class _ReviewReminderCard extends ConsumerWidget {
   const _ReviewReminderCard();
 
@@ -251,7 +262,7 @@ class _ReviewReminderCard extends ConsumerWidget {
     final AppStrings strings = AppStrings.of(context);
     final PushPermission permission = ref.watch(pushPermissionControllerProvider);
 
-    // 通知を扱えないビルドでは、約束の文言だけを静かに出す。
+    // In builds without notifications, show only the promise, quietly.
     final bool granted = permission.granted || !permission.available;
 
     return Container(
@@ -274,7 +285,7 @@ class _ReviewReminderCard extends ConsumerWidget {
               value: permission.granted,
               activeThumbColor: AppColors.blue,
               onChanged: (bool wantsOn) async {
-                // 切るのは設定アプリで。アプリ側に別のスイッチを作らない。
+                // Turning it off happens in system settings; no second switch.
                 if (!wantsOn) {
                   await openAppSettings();
                   return;
@@ -282,7 +293,8 @@ class _ReviewReminderCard extends ConsumerWidget {
                 final bool ok =
                     await ref.read(pushPermissionControllerProvider.notifier).request();
                 if (ok || !context.mounted) return;
-                // 一度断られると、iOSはもうダイアログを出さない。設定への行き方を伝える。
+                // After one refusal iOS never shows the dialog again, so
+                // explain how to reach settings.
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(strings.karteReviewDenied),
@@ -300,7 +312,7 @@ class _ReviewReminderCard extends ConsumerWidget {
   }
 }
 
-/// 先輩のあと追い質問(Premium)。
+/// Senpai's follow-up question (Premium).
 class _FollowupCard extends StatelessWidget {
   const _FollowupCard({required this.question});
 

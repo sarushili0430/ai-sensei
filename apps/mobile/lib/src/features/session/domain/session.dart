@@ -5,7 +5,7 @@ import '../../karte/domain/karte.dart';
 part 'session.freezed.dart';
 part 'session.g.dart';
 
-/// セッション関連のモデル。正は `packages/contract`。
+/// Session models; `packages/contract` is the source of truth.
 
 @freezed
 abstract class DetectedTopic with _$DetectedTopic {
@@ -17,13 +17,13 @@ abstract class DetectedTopic with _$DetectedTopic {
     required String unit,
     required String topic,
 
-    /// チップに出す短い課程名。「中1」「数学I」「Algebra 2」。
+    /// Short curriculum label for the chip, e.g. "Algebra 2".
     ///
-    /// **サーバが計算したものをそのまま出す。** topic_id の接頭辞から
-    /// 端末側で引く作りにすると、接頭辞の対応表がここで4か所目になる。
+    /// Shown exactly as the server computed it. Deriving it from the topic_id
+    /// prefix on the device would make this a fourth copy of the prefix table.
     required String label,
 
-    /// 0..1。低いものは選択済みにせず、候補として並べるだけにする。
+    /// 0..1. Low values are listed as candidates rather than preselected.
     required double confidence,
   }) = _DetectedTopic;
 
@@ -32,13 +32,13 @@ abstract class DetectedTopic with _$DetectedTopic {
   bool get isConfident => confidence >= 0.5;
 }
 
-/// 問題文をどの写真から読んだか(`api.ts` の `problemSources`)。
+/// Which photo the problem text was read from (`problemSources` in `api.ts`).
 ///
-/// **画面の出しわけには使っていない。** 読めたときは出どころに関係なく
-/// 問題文をそのまま見せる([SessionProblem] 参照)。ここを持っているのは、
-/// 契約が `text` と `source` を1オブジェクトで縛っているから
-/// (「本文はあるが出どころが無い」を表現できなくするため)と、
-/// **実際に何割の生徒が2枚送っているかが、この値でしか観測できない**ため。
+/// Not used to vary the UI: when the text is readable it is shown as is,
+/// whatever the source (see [SessionProblem]). It exists because the contract
+/// binds `text` and `source` in one object — so "text with no source" cannot be
+/// expressed — and because this value is the only way to observe what share of
+/// students send both photos.
 enum ProblemSource {
   @JsonValue('problem_photo')
   problemPhoto,
@@ -46,12 +46,11 @@ enum ProblemSource {
   notesPhoto,
 }
 
-/// このセッションが扱う問題。**読み取れたときだけ存在する。**
+/// The problem this session covers; present only when it could be read.
 ///
-/// 授業を始める前に画面へ出す。**誤読が表面化するのがここで最も早い**からで、
-/// 15分教わったあとに「それ別の問題です」となるのと、開始前に気づくのとでは
-/// 価値がまったく違う(計画書 §1-1「AIが理解している建て付けのアプリほど
-/// 誤読が致命傷になる」への、授業前の手当て)。
+/// Shown before the lesson starts, because this is the earliest a misreading can
+/// surface. Catching "that's a different problem" before starting is worth
+/// nothing like catching it after 15 minutes of teaching.
 @freezed
 abstract class SessionProblem with _$SessionProblem {
   const factory SessionProblem({
@@ -79,18 +78,19 @@ abstract class SessionLimits with _$SessionLimits {
   const factory SessionLimits({
     @JsonKey(name: 'max_seconds') required int maxSeconds,
 
-    /// この応答時点から、今日さらに授業を始められるか。
+    /// Whether another lesson can start today, as of this response.
     @JsonKey(name: 'lesson_allowed_today') required bool lessonAllowedToday,
   }) = _SessionLimits;
 
   factory SessionLimits.fromJson(Map<String, dynamic> json) => _$SessionLimitsFromJson(json);
 }
 
-/// 写真を読んだ結果。**まだ部屋の鍵は入っていない。**
+/// Result of reading the photo; it carries no room key yet.
 ///
-/// 単元と問題文を確かめる画面のための値で、ここまでは**今日の1回を使わない**
-/// (数えるのは会話が始まったとき = [SessionStart])。撮って単元を見ただけで
-/// 「今日はここまで」になっていたのを直したときに、応答ごと2つに分けた。
+/// This feeds the topic and problem confirmation screen and spends nothing — the
+/// use is counted when the conversation starts ([SessionStart]). The response
+/// was split in two when we fixed shooting and merely viewing the topic counting
+/// as the day's lesson.
 @freezed
 abstract class SessionAnalysis with _$SessionAnalysis {
   const factory SessionAnalysis({
@@ -98,23 +98,24 @@ abstract class SessionAnalysis with _$SessionAnalysis {
     required String kind,
     @JsonKey(name: 'detected_topics') required List<DetectedTopic> detectedTopics,
 
-    /// 読み取れた問題文。読めなければ null。
+    /// The problem text that was read; null if unreadable.
     ///
-    /// **`required` にしない。** 契約上はキーが必ず来る(`nullable()`)が、
-    /// 復習セッション(`kind: review`)のように写真を送らない経路もあるので、
-    /// キーの有無ではなく値の有無だけを見る。
+    /// Deliberately not `required`. The contract always sends the key
+    /// (`nullable()`), but paths like a review session (`kind: review`) send no
+    /// photo, so we check the value rather than the key.
     SessionProblem? problem,
   }) = _SessionAnalysis;
 
   factory SessionAnalysis.fromJson(Map<String, dynamic> json) => _$SessionAnalysisFromJson(json);
 }
 
-/// 始まった会話。**この応答が返った時点で、今日の1回を使っている。**
+/// The started conversation. Receiving this response spends the day's use.
 ///
-/// 部屋の鍵(`livekit`)と上限がここにしか無いのは仕様で、枠の確保と
-/// トークンの発行がサーバ側の同じ1操作になっている(`api.ts` の
-/// `startSessionResponseSchema`)。解析の時点で鍵を配ると、
-/// 鍵を持っている = いつでも始められる になり、数える位置を移した意味が消える。
+/// The room key (`livekit`) and the limits live only here by design: reserving
+/// the slot and issuing the token are one server-side operation
+/// (`startSessionResponseSchema` in `api.ts`). Handing out the key at analysis
+/// time would make holding a key mean "can start any time", undoing the move of
+/// where the use is counted.
 @freezed
 abstract class SessionStart with _$SessionStart {
   const factory SessionStart({
@@ -127,14 +128,14 @@ abstract class SessionStart with _$SessionStart {
   factory SessionStart.fromJson(Map<String, dynamic> json) => _$SessionStartFromJson(json);
 }
 
-/// セッション終了後に受け取る結果。
+/// The result received after a session ends.
 @freezed
 abstract class SessionResult with _$SessionResult {
   const factory SessionResult({
     required Karte karte,
     required Progress progress,
 
-    /// 初回カルテで穴が見えた直後だけ true。
+    /// True only just after a gap appears in the first karte.
     @JsonKey(name: 'show_paywall') required bool showPaywall,
   }) = _SessionResult;
 

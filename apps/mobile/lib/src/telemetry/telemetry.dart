@@ -3,97 +3,95 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
-/// クラッシュと**縮退**の監視(計画書 §10-7)。
+/// Crash and degradation monitoring.
 ///
-/// §10-7 が「提出前に必ず塞ぐ」と名指ししている唯一の項目。穴は3層とも空いていた:
-/// Dartコードに `Sentry.` の呼び出しが1件も無く、`SENTRY_DSN` が空で、
-/// `codemagic.yaml` が `SENTRY_DSN` だけ `--dart-define` に渡していなかった。
-/// **依存だけ入って動いていない状態は、入っていないより危険**(入れたつもりで
-/// 運用に入るため)。実際、dSYMs は「Sentryのシンボル化に要る」というコメント付きで
-/// 保存されていた —— 送り先が無いのにシンボルだけ集めていた。
+/// All three layers were previously open: no `Sentry.` call in the Dart code,
+/// an empty `SENTRY_DSN`, and `codemagic.yaml` never passing it through
+/// `--dart-define`. A dependency that is present but inert is worse than none —
+/// dSYMs were archived "for Sentry symbolication" with nowhere to send them.
 ///
-/// ## クラッシュと縮退を同じ棚に置かない
+/// ## Crashes and degradations stay on separate shelves
 ///
-/// ここで本当に見たいのはクラッシュではなく**縮退**。
-/// 「落ちてはいないが、約束が破れている」状態のことで、いまはどれも
-/// `debugPrint` にしか出ていない = **本番では観測手段がゼロ**だった:
+/// What we want to see is degradation: not crashed, but a promise broken. It
+/// previously reached only `debugPrint`, so production had zero visibility:
 ///
-///   - 板書がとぎれた([Degradation.boardGap])— agent の送信漏れに気づく唯一の手段
-///   - LaTeX が縮小率の下限を割って横スクロールに落ちた([Degradation.latexScaleFloor])
-///     — **agent 側の式の分割が効いていない**シグナル(計画書 §3-6b の宿題そのもの)
-///   - 板書の実効幅が実測の前提(340pt)を割った([Degradation.boardTooNarrow])
+///   - board truncated ([Degradation.boardGap]) — the only way to spot the
+///     agent failing to send
+///   - LaTeX below the minimum scale, scrolling horizontally
+///     ([Degradation.latexScaleFloor]) — the agent is not splitting formulas
+///   - board width below the measured 340pt premise
+///     ([Degradation.boardTooNarrow])
 ///
-/// だから `captureException` ではなく **`captureMessage(level: warning)`** を使う。
-/// クラッシュの棚に混ぜると、本当に落ちたものが埋もれる。
+/// Hence `captureMessage(level: warning)`, not `captureException`: mixing these
+/// into the crash shelf buries real crashes.
 ///
-/// ## 送らないもの — ユーザーは未成年
+/// ## Never sent — the users are minors
 ///
-/// ノートの写真・問題の写真・生徒の発話・transcript・カルテの本文・**問題文**は
-/// 一切送らない。問題文は他者の著作物で、**R2にすら保存しないと決めたもの**
-/// (計画書 §4-1)なので、監視に流れたら決定そのものが無効になる。
-/// 数式(`tex`)だけは中身が数式なので先頭を送るが、それも [texPrefixLength] 文字まで。
+/// No notebook or problem photos, student speech, transcripts, karte bodies or
+/// problem text. Problem text is someone else's work we decided not to store
+/// even in R2, so leaking it to monitoring would void that decision. Only `tex`
+/// goes out, truncated to [texPrefixLength] chars.
 ///
-/// 落とし方は [scrubEvent] と [SentryOptions] の設定の2段構え。理由はそれぞれのコメント。
+/// Stripping is two-stage: [scrubEvent] and the [SentryOptions] settings.
 abstract final class SentryConfig {
-  /// **既定値を持たせない。** 値が入ると、テストでもCIでも本番の受け口に飛ぶ。
+  /// No default: a value here would send test and CI events to production.
   ///
-  /// 渡し方:
-  ///   - 手元 … `dart_defines/local.json`(`local.example.json` に欄がある)
-  ///   - CI  … `codemagic.yaml` の `--dart-define=SENTRY_DSN=...`
-  ///           (変数グループ `mobile-dart-defines`)
+  /// How it is passed:
+  ///   - local … `dart_defines/local.json` (see `local.example.json`)
+  ///   - CI    … `--dart-define=SENTRY_DSN=...` in `codemagic.yaml`
+  ///             (variable group `mobile-dart-defines`)
   static const String dsn = String.fromEnvironment('SENTRY_DSN');
 
-  /// DSN の無いビルド(手元・テスト・値の入れ忘れ)では**何もしない**。
-  /// 監視が無いことでアプリの挙動が変わってはいけないので、初期化ごと飛ばす。
+  /// Builds without a DSN (local, tests, a forgotten value) do nothing at all:
+  /// init is skipped entirely, so monitoring never changes app behaviour.
   static bool get isConfigured => dsn.isNotEmpty;
 }
 
-/// 落ちてはいないが、約束が破れている状態。
+/// Not crashed, but a promise broken.
 enum Degradation {
-  /// 板書がとぎれた(封筒の欠落・順序違反・読めないJSON)。
+  /// Board truncated (missing envelope, out-of-order seq, unparseable JSON).
   boardGap('board_gap'),
 
-  /// LaTeX が縮小率の下限(`BoardStyle.latexMinScale`)を割り、横スクロールに落ちた。
-  /// **起きてはいけない状態**で、agent 側が式を2手順に分割していないことを意味する。
+  /// LaTeX fell below `BoardStyle.latexMinScale` into horizontal scrolling.
+  /// This should never happen; it means the agent did not split the formula.
   latexScaleFloor('latex_scale_floor'),
 
-  /// 板書に使える幅が、実測の前提(340pt)を割った。
-  /// 縮小率の判定はこの幅を基準にしているので、ここが痩せると
-  /// 「収まるはずの式」が横スクロールに落ちる。
+  /// The width available to the board fell below the measured 340pt premise.
+  /// Scale decisions use that width, so a narrower one pushes formulas that
+  /// should fit into horizontal scrolling.
   boardTooNarrow('board_too_narrow'),
 
-  /// 「うまく言えない」を押したのに、先輩に伝えられなかった。
+  /// "I can't explain it" was tapped but never reached senpai.
   ///
-  /// **約束3(パスを恥にしない)は、パスが残ることで成立している。**
-  /// 送れないと穴として価値化されず、その生徒にとっては
-  /// 「言えなかったのに、何も起きなかった」だけになる。しかも
-  /// **画面上は何事もなく進む**ので、本人にもこちらにも見えない。
+  /// The promise that passing is not shameful only holds because a pass is
+  /// recorded. Undelivered, it becomes no gap at all — just "I couldn't say it
+  /// and nothing happened" — and the screen carries on as if fine, so neither
+  /// the student nor we can see it.
   passNotSent('pass_not_sent');
 
   const Degradation(this.id);
 
-  /// Sentry 上の見出し。**日本語にしない**(検索とグルーピングのため)。
+  /// The Sentry title. Kept in English, for search and grouping.
   final String id;
 }
 
-/// `tex` を送ってよい長さ。式の見分けがつけばよく、全文は要らない。
+/// How much `tex` may be sent: enough to tell formulas apart, never the whole.
 const int texPrefixLength = 40;
 
-/// 同じことを何度も送らないための間引き。
+/// Throttling so the same thing is not reported over and over.
 ///
-/// **1回の授業で何十手順も流れる。** 素直に送ると1セッションで大量に飛び、
-/// 「1件起きた」と「ずっと起き続けている」の区別がつかなくなるうえ、
-/// 無料枠のイベント数も食う。板書1枚につき1件だけ送れば、どの板書で
-/// 起きたかは分かる。
+/// A single lesson streams dozens of steps. Reporting each would flood one
+/// session, blur "happened once" against "happening constantly", and eat the
+/// free event quota. One report per board is enough to identify which board.
 class DegradationThrottle {
   DegradationThrottle({this.limit = 64});
 
-  /// 覚えておく鍵の上限。
+  /// Cap on remembered keys.
   ///
-  /// **無制限に覚えると、長時間の利用でここだけが太り続ける。**
-  /// 上限に達したら全部忘れる(= そこから先はもう一度だけ送る)。
-  /// 送りすぎより「長く使った人からは何も飛ばなくなる」ほうが困るので、
-  /// 忘れる側に倒してある。
+  /// Remembering without bound would make this the one thing that grows during
+  /// long use. On reaching the cap everything is forgotten, so each key sends
+  /// once more. Over-reporting beats going silent for long-running users, so it
+  /// errs towards forgetting.
   final int limit;
 
   final Set<String> _seen = <String>{};
@@ -108,71 +106,75 @@ class DegradationThrottle {
   void reset() => _seen.clear();
 }
 
-/// 送る直前に、本文が混ざっていないか落とす**最後の関門**。
+/// The last gate before sending, stripping any content that slipped in.
 ///
-/// ここが要るのは、こちらが積んでいない情報を SDK が勝手に足すため:
+/// It is needed because the SDK adds things we never attached:
 ///
-///   - **`enablePrintBreadcrumbs` の既定が true。** `debugPrint` の出力が
-///     そのままパンくずになる。このアプリの `debugPrint` には `tex` の全文や
-///     カルテ取得の失敗理由が入っているので、**既定のままだと本文が流れる**。
-///     オプション側でも切っているが(二重に止める)、ここでも全部落とす。
-///   - `request` にはAPIのURLが載る。本文は載らないが、監視に要らない。
+///   - `enablePrintBreadcrumbs` defaults to true, turning `debugPrint` output
+///     into breadcrumbs. Ours carries full `tex` and karte fetch failures, so
+///     the default would leak content. It is disabled in the options too; this
+///     drops them all again.
+///   - `request` carries the API URL. No body, but monitoring does not need it.
 ///
-/// **[SentryEvent] を返さないと送信そのものが止まる**ので、落とすのは中身だけ。
+/// Returning no [SentryEvent] would stop the send entirely, so only the
+/// contents are cleared.
 SentryEvent? scrubEvent(SentryEvent event, Hint hint) {
-  // `copyWith` は非推奨(値を直接入れる形に変わった)。
-  // `request` は null を代入して消す必要があるので、どのみち直接代入が要る。
+  // `copyWith` is deprecated in favour of direct assignment, and clearing
+  // `request` needs a null assignment anyway.
   event.breadcrumbs = const <Breadcrumb>[];
   event.request = null;
   return event;
 }
 
-/// `tex` を送ってよい形に切る。[DegradationEvent.latexScaleFloor] の内側で呼ばれる。
+/// Trims `tex` to a sendable form; called inside
+/// [DegradationEvent.latexScaleFloor].
 String truncateTex(String tex) =>
     tex.length <= texPrefixLength ? tex : '${tex.substring(0, texPrefixLength)}…';
 
-/// payload のどの文字列にも許す最大長。
+/// Maximum length allowed for any string in a payload.
 ///
-/// **1フィールドに発話やカルテが丸ごと入らない、という上限。**
-/// ここに来る文字列は本来ID・型名・診断文だけなので、200字あれば足りる。
-/// 万一この先で自由文が混ざる書き方をしても、**流れる量を切り落とす**。
+/// A ceiling ensuring no single field can hold a whole utterance or karte.
+/// Strings reaching here should only be IDs, type names and diagnostics, so 200
+/// is plenty — and if free text ever slips in, this caps what escapes.
 const int maxFieldLength = 200;
 
-/// 縮退1件ぶんの中身。
+/// The contents of one degradation report.
 ///
-/// **コンストラクタは private で、名前つきの生成子からしか作れない。**
-/// [Telemetry.report] が生のMapを受け取らないのはそのためで、
-/// 「payload に何を入れてよいか」の判断を**このファイルの外に出さない**。
-/// 5種目を足すときも、ここに生成子を1つ増やすことになる —— 送ってよいものの
-/// 規則([SentryConfig] のコメント)が目に入る場所で書かれる。
+/// The constructor is private and only the named factories can build one.
+/// [Telemetry.report] therefore takes no raw Map, keeping the judgement of what
+/// may go into a payload inside this file. Adding a fifth kind means adding a
+/// factory here, where the rules (see [SentryConfig]) are in view.
 ///
-/// ## 文字列を入れてよいのは3種類だけ
+/// ## Only three kinds of string are allowed
 ///
-///   1. **ID**(`session_id` / `board_id`)
-///   2. **型名・enum名**(`error` の `runtimeType` / `phase`)
-///   3. **こちらが組み立てた診断文**(契約違反の理由。数値とIDだけでできている)
+///   1. IDs (`session_id`, `board_id`)
+///   2. type and enum names (`error`'s `runtimeType`, `phase`)
+///   3. diagnostics we assembled ourselves (contract violations — numbers and
+///      IDs only)
 ///
-/// **唯一の例外が `tex`**。中身は数式なので送ってよいが、それでも
-/// [texPrefixLength] 字までに切る。**切るのはここの内側**で、
-/// 呼び出し側が全文を渡しても外には出ない。
+/// `tex` is the single exception: it is a formula, so it may be sent, but still
+/// truncated to [texPrefixLength]. Truncation happens in here, so a caller
+/// passing the whole string leaks nothing.
 ///
-/// 生徒の発話・transcript・カルテ本文・**問題文**を入れる生成子は無い。
-/// 増やさないこと(問題文はR2にすら保存しないと決めたもの・計画書§4-1)。
+/// There is no factory taking student speech, transcripts, karte bodies or
+/// problem text. Do not add one — problem text is what we decided not to store
+/// even in R2.
 @immutable
 class DegradationEvent {
   const DegradationEvent._(this.kind, {required this.dedupeKey, required this.data});
 
   final Degradation kind;
 
-  /// 「同じ出来事」の単位。板書がらみは `board_id`(1枚につき1件)。
+  /// The unit of "same event"; board-related ones use `board_id`, one per board.
   final String dedupeKey;
 
   final Map<String, Object?> data;
 
-  /// 板書がとぎれた。
+  /// The board was truncated.
   ///
-  /// [reason] は `BoardContractViolation` が組み立てた文で、seq と index の話しかない
-  /// (生徒の発話も問題文も入らない)。それでも [maxFieldLength] で頭を押さえる。
+  /// [reason] comes from `BoardContractViolation` and mentions only seq and
+  /// index — no student speech, no problem text — but is still capped at
+  /// [maxFieldLength].
   factory DegradationEvent.boardGap({
     required String sessionId,
     required String? boardId,
@@ -181,7 +183,7 @@ class DegradationEvent {
   }) {
     return DegradationEvent._(
       Degradation.boardGap,
-      // 板書IDが取れないほど早く壊れたときは、セッション単位に落とす。
+      // If it broke too early to have a board ID, fall back to the session.
       dedupeKey: boardId ?? sessionId,
       data: _sanitize(<String, Object?>{
         'session_id': sessionId,
@@ -192,9 +194,9 @@ class DegradationEvent {
     );
   }
 
-  /// LaTeX が縮小率の下限を割り、横スクロールに落ちた。
+  /// LaTeX fell below the minimum scale into horizontal scrolling.
   ///
-  /// **[tex] は全文で渡してよい。** ここで切る。
+  /// [tex] may be passed in full; it is truncated here.
   factory DegradationEvent.latexScaleFloor({
     required String tex,
     required double scale,
@@ -205,8 +207,9 @@ class DegradationEvent {
     final String prefix = truncateTex(tex);
     return DegradationEvent._(
       Degradation.latexScaleFloor,
-      // この層は `board_id` を知らないので、式ごとに1件。
-      // 同じ式が何度描き直されても1件、別の式なら別件で飛ぶ。
+      // This layer does not know `board_id`, so it dedupes per formula: one
+      // report however often the same formula is redrawn, and separate ones for
+      // different formulas.
       dedupeKey: prefix,
       data: _sanitize(<String, Object?>{
         'tex': prefix,
@@ -218,7 +221,7 @@ class DegradationEvent {
     );
   }
 
-  /// 板書の実効幅が実測の前提を割った。**数値しか入らない。**
+  /// The board's effective width fell below the measured premise. Numbers only.
   factory DegradationEvent.boardTooNarrow({
     required double availableWidth,
     required double assumedWidth,
@@ -233,11 +236,11 @@ class DegradationEvent {
     );
   }
 
-  /// 「うまく言えない」を送れなかった。
+  /// "I can't explain it" could not be sent.
   ///
-  /// **パスの文言は受け取らない。** 引数に無いので、渡しようがない。
-  /// [error] も型だけ受け取る —— 例外の `toString()` は接続先URLやトークンの
-  /// 断片を含むことがあるので、`runtimeType` を渡すこと。
+  /// It takes no pass wording — there is no parameter for it. [error] takes only
+  /// the type: an exception's `toString()` can carry endpoint URLs or token
+  /// fragments, so pass `runtimeType`.
   factory DegradationEvent.passNotSent({
     required String? sessionId,
     required String phase,
@@ -245,8 +248,9 @@ class DegradationEvent {
   }) {
     return DegradationEvent._(
       Degradation.passNotSent,
-      // 1セッションに1件。同じ会話で何度も詰まるのは**正常**なので、
-      // そのたびに飛ばすと「送信経路が壊れている」ほうが埋もれる。
+      // One per session. Getting stuck repeatedly in one conversation is
+      // normal, and reporting each time would bury the real signal that the
+      // send path is broken.
       dedupeKey: sessionId ?? 'unknown',
       data: _sanitize(<String, Object?>{
         'session_id': sessionId,
@@ -256,7 +260,7 @@ class DegradationEvent {
     );
   }
 
-  /// 文字列は長さで頭を押さえる。**最後の安全弁**で、通常はここで切れない。
+  /// Caps strings by length. A last safety valve that normally trims nothing.
   static Map<String, Object?> _sanitize(Map<String, Object?> data) {
     return data.map((String key, Object? value) {
       if (value is! String || value.length <= maxFieldLength) {
@@ -270,14 +274,14 @@ class DegradationEvent {
 abstract final class Telemetry {
   static final DegradationThrottle _throttle = DegradationThrottle();
 
-  /// テスト用。間引きの記憶を消す。
+  /// For tests: clears the throttle's memory.
   @visibleForTesting
   static void resetThrottle() => _throttle.reset();
 
-  /// アプリを監視つきで起動する。
+  /// Starts the app with monitoring attached.
   ///
-  /// DSN が無ければ**初期化ごと飛ばして**そのまま起動する。監視の有無で
-  /// アプリの挙動が変わらないようにするため(手元とCIは常にこちらを通る)。
+  /// Without a DSN it skips init entirely and starts normally, so monitoring
+  /// never changes behaviour — local and CI always take this path.
   static Future<void> runWithMonitoring(FutureOr<void> Function() appRunner) async {
     if (!SentryConfig.isConfigured) {
       await appRunner();
@@ -288,51 +292,52 @@ abstract final class Telemetry {
       (SentryFlutterOptions options) {
         options.dsn = SentryConfig.dsn;
 
-        // --- 本文を送らないための設定(ユーザーは未成年) ---
+        // --- Settings that keep content out (the users are minors) ---
 
-        // 画面をそのまま送る設定。**ノートと問題の写真が写る。**
-        // 既定は false だが、既定に頼らず明示する(既定が変わったら気づけない)。
+        // Sends the screen as is, which would include notebook and problem
+        // photos. False by default, but stated explicitly — a changed default
+        // would go unnoticed.
         options.attachScreenshot = false;
 
-        // ウィジェットの木。テキストの中身が載りうるので使わない。
-        // (SDK側では experimental 扱いだが、**既定に頼らず切っておく**ほうが安全。
-        //  将来この項目が消えたらコンパイルが落ちて気づける。)
+        // The widget tree, which can carry text content. Experimental in the
+        // SDK, but turning it off explicitly beats trusting the default, and a
+        // future removal fails the build so we notice.
         // ignore: experimental_member_use
         options.attachViewHierarchy = false;
 
-        // 端末やユーザーを特定しうる情報。匿名のデバイスIDだけで運用する。
+        // Anything identifying device or user; we run on the anonymous ID only.
         options.sendDefaultPii = false;
 
-        // **既定 true。`debugPrint` がそのままパンくずになる。**
-        // このアプリの `debugPrint` には `tex` の全文や失敗理由が入っている。
+        // Defaults to true, turning `debugPrint` straight into breadcrumbs —
+        // and ours carries full `tex` and failure reasons.
         options.enablePrintBreadcrumbs = false;
 
-        // ネイティブ側のパンくず(タップした要素のラベルなど)も止める。
+        // Also stop native breadcrumbs (tapped element labels and the like).
         options.enableAutoNativeBreadcrumbs = false;
 
-        // 最後の関門。上をすり抜けたものはここで落とす。
+        // The last gate; anything past the above is dropped here.
         options.beforeSend = scrubEvent;
 
-        // パンくずはそもそも溜めない(溜めなければ漏れようがない)。
+        // Never accumulate breadcrumbs at all — nothing stored, nothing leaked.
         options.beforeBreadcrumb = (Breadcrumb? breadcrumb, Hint hint) => null;
 
-        // 性能計測はしない。縮退とクラッシュだけを見る。
+        // No performance tracing; only degradations and crashes.
         options.tracesSampleRate = 0;
       },
       appRunner: () async => appRunner(),
     );
   }
 
-  /// 縮退を1件記録する。
+  /// Records one degradation.
   ///
-  /// **`captureException` は使わない。** 落ちてはいないので、
-  /// クラッシュと同じ棚に積むと本当に落ちたものが埋もれる(§10-7)。
+  /// Not `captureException`: nothing crashed, and stacking these on the crash
+  /// shelf buries real crashes.
   ///
-  /// **生のMapを受け取らない。** 何を送ってよいかの判断を呼び出し側に配ると、
-  /// 種類が増えるたびに同じ判断をやり直すことになる(そして1回間違えば漏れる)。
-  /// [DegradationEvent] の生成子だけが入口。
+  /// It takes no raw Map. Spreading the judgement of what may be sent across
+  /// callers would mean redoing it for every new kind, and one mistake leaks.
+  /// The [DegradationEvent] factories are the only entry point.
   static void report(DegradationEvent event) {
-    // 監視の有無にかかわらず、手元では今までどおり見えるようにしておく。
+    // Keep local visibility unchanged, with or without monitoring.
     debugPrint('[${event.kind.id}] ${event.data}');
 
     if (!SentryConfig.isConfigured) return;
@@ -343,7 +348,7 @@ abstract final class Telemetry {
         event.kind.id,
         level: SentryLevel.warning,
         withScope: (Scope scope) async {
-          // タグにしておくと Sentry 側で種類ごとに絞れる。
+          // As a tag, so Sentry can filter by kind.
           await scope.setTag('degradation', event.kind.id);
           await scope.setContexts(event.kind.id, event.data);
         },

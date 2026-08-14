@@ -5,27 +5,31 @@ import '../domain/last_board.dart';
 
 part 'last_board_controller.g.dart';
 
-/// 直前の授業で先輩が書いた板書。
+/// The board senpai wrote in the last lesson.
 ///
-/// - 授業側は AutoDispose なので、寿命を超えて残る場所はここだけ
-/// - 置き場所が karte なのは「作った側」ではなく**使う側**に置く方針から
-/// - 板書の寿命は1つの問題ぶん。次の `board_open` で自然に空になる
-/// - 書き込みは `SessionController._applyBoard` の1か所だけ
-/// - `board_close` ではなく**変わるたび**に書く。締めは途中終了では来ない
+/// - The lesson side is AutoDispose, so this is the only place it outlives
+/// - It lives under karte because we store things with the consumer, not the
+///   producer
+/// - Its lifetime is one problem; the next `board_open` empties it naturally
+/// - Written from exactly one place, `SessionController._applyBoard`
+/// - Written on every change, not on `board_close` — the close never arrives
+///   when a lesson ends early
 @Riverpod(keepAlive: true)
 class LastBoardController extends _$LastBoardController {
   @override
   LastBoard build() => LastBoard.empty;
 
-  /// 板書を丸ごと置き換える。**積み足しではない**(受信側が既に積んでいる)。
+  /// Replaces the board wholesale — this does not append, since the receiver has
+  /// already accumulated.
   ///
-  /// [truncated] は `BoardSnapshot.hasGap`。渡さないと、とぎれた板書が
-  /// 健全な板書として残る([LastBoard.truncated])。
+  /// [truncated] is `BoardSnapshot.hasGap`. Omit it and a truncated board is
+  /// stored as a healthy one (see [LastBoard.truncated]).
   void set(List<BoardStep> steps, {bool truncated = false}) => state = LastBoard(
         steps: List<BoardStep>.unmodifiable(steps),
         truncated: truncated,
       );
 
-  /// 板書を消す。次の問題に移ったが、まだ1手順も届いていないときのため。
+  /// Clears the board, for when the next problem started but no step has arrived
+  /// yet.
   void clear() => state = LastBoard.empty;
 }

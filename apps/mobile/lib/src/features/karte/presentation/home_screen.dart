@@ -13,12 +13,13 @@ import '../../monetization/presentation/manage_subscription_button.dart';
 import '../application/karte_controllers.dart';
 import '../domain/karte.dart';
 
-/// ホーム。カメラの起動ボタンではなく**ハブ**。
+/// Home. A hub, not a shutter button.
 ///
-/// - 数えるのは連続日数と埋めた穴だけ。XP・レベル・偏差値は出さない(§5-2)
-/// - 入口は2つ。今日の1手([_PrimaryAction])と、きのうの続き([_OpenHolesCard])
-/// - **下に置く操作はいつでも1つ**。並べず、同じ場所の中身を入れ替える
-/// - 回数の数字は出さない(§6-3)。上限は先輩の判断として文章で見せる
+/// - Counts only streak days and filled gaps; no XP, levels or rankings
+/// - Two entrances: today's move ([_PrimaryAction]) and yesterday's thread
+///   ([_OpenHolesCard])
+/// - Always exactly one action at the bottom — swap its contents, never stack
+/// - No usage counts; the limit is shown as senpai's judgement, in prose
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
@@ -28,9 +29,9 @@ class HomeScreen extends ConsumerWidget {
     final AsyncValue<ProgressSummary> summary = ref.watch(progressControllerProvider);
     final ProgressSummary data = summary.value ?? ProgressSummary.empty;
 
-    // 今日はもう授業をしない、と先輩が決めた状態(§6-3)。
-    // 撮ってから断られるより、ここで先に「今日はここまで」と言われるほうがいい。
-    // 進捗が取れていないときは `unknown` が true なので、入口を止めない。
+    // Senpai has decided there are no more lessons today. Better to say so here
+    // than to refuse after the photo. When progress is unavailable `unknown` is
+    // true, so the entrance is never blocked.
     final bool enoughForToday = !data.limits.lessonAllowedToday;
 
     return Scaffold(
@@ -41,29 +42,31 @@ class HomeScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               FadeSlideIn(child: _TopRow(progress: data.progress)),
-              // 顔とあいさつは**読む側**。収まれば中央、収まらなければここだけ動く。
+              // The face and greeting are the reading area: centred when it
+              // fits, and the only part that moves when it does not.
               //
-              // 以前は `Spacer` 2つで中央に置いていたが、それだと文言が伸びた瞬間に
-              // 下の操作ごと画面の外へ押し出される(実測: 英語で「今日はここまで」の
-              // 一文が入ると 375×667 で溢れた)。**溢れた `Column` は中身を
-              // 切り落とす**ので、押せないボタンができる。
-              // 収まるときの見え方は `Spacer` と同じ(中央)。
+              // Two `Spacer`s used to centre this, but longer copy pushed the
+              // action below off screen (measured: the English "that's it for
+              // today" line overflowed at 375x667). An overflowing `Column`
+              // clips its children, producing an unreachable button. When it
+              // fits, this looks identical to `Spacer`.
               Expanded(
                 child: CenteredScroll(
                   padding: EdgeInsets.zero,
                   children: <Widget>[
                     const FadeSlideIn(
-                      // 顔が自分で「先輩が待っています」と読み上げるようになったので、
-                      // ここで包んで差し替えていたラベルは外した(同じ文言の二重管理になる)。
+                      // The face now announces "senpai is waiting" itself, so
+                      // the wrapper label here was removed rather than
+                      // maintaining the same wording twice.
                       child: Center(child: SenpaiFace(mood: SenpaiMood.neutral, size: 140)),
                     ),
                     const SizedBox(height: AppSpacing.lg),
                     FadeSlideIn.staggered(
                       index: 1,
                       child: Text(
-                        // 締めた日だけ、あいさつも問いかけから労いへ変える。
-                        // 「どこでつまずいた?」と聞いておいて撮らせないのは、
-                        // 呼びかけと操作が食い違っている。
+                        // On a closed-out day the greeting shifts from a
+                        // question to thanks. Asking "where did you get stuck?"
+                        // and then refusing the photo contradicts itself.
                         enoughForToday ? strings.homeGreetingDone : strings.homeGreeting,
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.titleLarge,
@@ -98,17 +101,18 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
-/// 画面の下でいつも同じ場所に居る、今日の1手。
+/// Today's move, always in the same place at the bottom.
 ///
-/// **並べない。差し替える。** 2本並べると、押せるほうを色で見分けさせることになる。
+/// Swapped, never stacked: two buttons would make color the only way to tell
+/// which one is live.
 ///
-/// | 状態 | ラベル | 行き先 |
+/// | State | Label | Destination |
 /// | --- | --- | --- |
-/// | 授業ができる | 先輩に教わる | 撮影(`push` — やめれば戻れる) |
-/// | 締めた・穴がある | 埋めにいく穴 | 復習(無料。原価が出ない側) |
-/// | 締めた・穴が無い | 先輩に教わる(押せない) | — |
+/// | lesson available | learn from senpai | capture (`push` — cancel returns) |
+/// | closed out, gaps open | a gap to fill | review (free, no marginal cost) |
+/// | closed out, no gaps | learn from senpai (disabled) | — |
 ///
-/// 締めた日を復習へ向けるのは、上限に当たった人の道を途切れさせないため。
+/// Closed-out days point at review so hitting the limit does not end the path.
 class _PrimaryAction extends StatelessWidget {
   const _PrimaryAction({required this.enoughForToday, required this.hasOpenHoles});
 
@@ -145,11 +149,12 @@ class _TopRow extends StatelessWidget {
     final AppStrings strings = AppStrings.of(context);
     return Row(
       children: <Widget>[
-        // 数えている2つ。余白を持つのはこちらなので、Spacer は要らない。
+        // The two things we count. This side owns the slack, so no Spacer.
         //
-        // Premium のチップが並ぶぶん、横幅の狭い端末では入りきらなくなる。
-        // 縮めば読めるものを RenderFlex の縞模様にしない — 入るときは
-        // 何も起きず(scaleDown は等倍までしか拡げない)、入らないときだけ縮む。
+        // The Premium chip alongside can overflow narrow screens. Something
+        // that stays readable when shrunk should not become RenderFlex stripes:
+        // scaleDown never enlarges, so it changes nothing when it fits and only
+        // shrinks when it does not.
         Expanded(
           child: FittedBox(
             fit: BoxFit.scaleDown,
@@ -173,24 +178,26 @@ class _TopRow extends StatelessWidget {
             ),
           ),
         ),
-        // 契約している印。契約が無ければ何も出ない。
+        // The subscribed marker; renders nothing without a subscription.
         const PremiumChip(),
       ],
     );
   }
 }
 
-/// きのうの続き。再訪の起点で、通知の着地先でもある。
+/// Yesterday's thread: the start of a return visit, and the notification's
+/// landing spot.
 ///
-/// 穴がゼロのときは代わりに「最初の1枚から始まる」と書く。
-/// 初回起動のホームが、押すもののない空白にならないように。
+/// With no gaps it says "it starts with your first photo" instead, so home on
+/// first launch is not blank with nothing to press.
 ///
-/// 先輩が今日を締めた日は、すぐ下の [_PrimaryAction] も同じ復習画面へ行く。
-/// **重ねているのは意図**で、このカードは「何が残っているか」を出す説明、
-/// 下のボタンは「それをやる」操作。行き先が同じでも、読む順に並んでいる。
+/// On a closed-out day the [_PrimaryAction] just below leads to the same review
+/// screen. The overlap is deliberate: this card explains what is left, the
+/// button does it, and they read in that order.
 ///
-/// **穴の件数は出さない。** 未完了の数は、穴を資産ではなく借金に見せる。
-/// 複数あるときも、次に向き合う内容が分かれば十分なので直近の1件だけを出す。
+/// The gap count is never shown — a number of unfinished items makes gaps look
+/// like debt rather than assets. Even with several, only the most recent one is
+/// shown, since knowing what comes next is enough.
 class _OpenHolesCard extends ConsumerWidget {
   const _OpenHolesCard({required this.progress});
 
@@ -208,8 +215,9 @@ class _OpenHolesCard extends ConsumerWidget {
       );
     }
 
-    // キューの取得前・失敗時にも内容を出せるよう、会話直後のカルテも候補にする。
-    // 両方に同じ穴がいても、日付で選ぶだけなので表示は1件のまま変わらない。
+    // The just-written karte is also a candidate, so content shows before the
+    // queue loads or when it fails. A gap present in both changes nothing: the
+    // pick is by date and stays a single entry.
     final ReviewQueue? queue = ref.watch(reviewControllerProvider).value;
     final Karte? latestKarte = ref.watch(latestKarteControllerProvider);
     final Hole? recentHole = _mostRecentOpenHole(queue, latestKarte);
@@ -268,22 +276,22 @@ class _OpenHolesCard extends ConsumerWidget {
   }
 }
 
-/// 今日はここまで、という**先輩の判断**(§6-3)。
+/// "That's it for today" — senpai's judgement.
 ///
-/// ここは以前「今日の無料セッション: 残り1回」を出していた場所。
-/// **回数の数字は出さない**に変えた:
-///   - 数字を見せた瞬間に、上限は「先生の判断」ではなく「制限」になる(約束4)
-///   - 残りが見えていれば、ユーザーは残りの使い道を計算しはじめる。
-///     今日いちばん聞きたい1問を、明日に取っておく理由を作ってしまう
-///   - 通常利用(1日1〜2回)では一度も発火しない値にする設計なので、
-///     そもそも普段は出す数字が無い
+/// This used to show "1 free session left today". Usage counts were dropped:
+///   - a number turns the limit from a teacher's call into a restriction
+///   - seeing the remainder makes people budget it, giving them a reason to save
+///     today's most pressing question for tomorrow
+///   - it is tuned never to fire in normal use (1-2 lessons a day), so there is
+///     usually no number to show anyway
 ///
-/// **残っているあいだは何も出さない。** 「まだ大丈夫です」も残数の匂わせになる。
-/// 出すのは先輩が締めたときだけ。無料なら契約への道も置くが、Premium の
-/// フェアユース上限では、すでに契約している人へ課金導線を重ねない。
+/// While anything remains, nothing is shown at all — even "you're fine for now"
+/// hints at a remainder. It appears only once senpai closes the day. Free users
+/// also get a path to subscribing; the Premium fair-use limit does not stack a
+/// billing prompt onto someone who already pays.
 ///
-/// 締めた日はあいさつも [AppStrings.homeGreetingDone] に変わっているので、
-/// ここは**同じことを繰り返さない**説明に徹する(「今日はここまで」の理由)。
+/// The greeting already changed to [AppStrings.homeGreetingDone] on such days,
+/// so this stays strictly explanatory and does not repeat it.
 class _EnoughForTodayLine extends StatelessWidget {
   const _EnoughForTodayLine({required this.show, required this.showUpgrade});
 
@@ -294,7 +302,8 @@ class _EnoughForTodayLine extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
 
-    // 高さは空でも確保する。締められた瞬間にボタンが跳ね上がらないように。
+    // Reserve the height even when empty, so the button does not jump when the
+    // day closes out.
     if (!show) return const SizedBox(height: AppSpacing.md);
 
     return Column(
@@ -346,8 +355,8 @@ class _Counter extends StatelessWidget {
         onTap: onTap,
         child: Row(
           children: <Widget>[
-            // 数えているのはこの2つだけ(連続日数と埋めた穴)。
-            // 増えたことが見えるように、0から数え上げる。
+            // The only two things counted: streak days and filled gaps. They
+            // count up from 0 so the increase is visible.
             CountUpText(
               value,
               style: Theme.of(context).textTheme.titleLarge?.copyWith(color: color),
@@ -359,9 +368,10 @@ class _Counter extends StatelessWidget {
       ),
     );
 
-    // ホームへ新しいカードを足すと、狭い端末で今日の1手を下へ押し出す。
-    // すでにレポートの中心指標である「埋めた穴」を入口にし、見た目の第三カウンターは
-    // 作らない。Tooltipとbutton semanticsで、長押し・読み上げでは行き先も伝える。
+    // A new card on home would push today's move down on narrow screens. The
+    // report's headline metric, filled gaps, doubles as the entrance instead of
+    // adding a visible third counter. Tooltip and button semantics convey the
+    // destination on long press and to screen readers.
     final String? message = tooltip;
     return message == null ? counter : Tooltip(message: message, child: counter);
   }

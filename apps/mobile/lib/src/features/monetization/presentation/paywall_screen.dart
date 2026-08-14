@@ -10,20 +10,20 @@ import '../../../theme/tokens.dart';
 import '../application/entitlement_controller.dart';
 import 'purchase_messages.dart';
 
-/// ペイウォール(初回カルテ直後)。
+/// Paywall, shown right after the first karte.
 ///
-/// HAMM賞は**誠実さ**を見る。ここで守ること:
-///   - 「無料のまま続ける」を同じ画面に、隠さず置く
-///   - 解約できることを明記する
-///   - カウントダウン・煽り文言・閉じにくいUIを使わない
+/// Honesty is what matters here:
+///   - "stay on free" sits on the same screen, unhidden
+///   - cancellation is stated explicitly
+///   - no countdowns, no pressure copy, no hard-to-close UI
 ///
-/// 出す順番は2段構え:
-///   1. RevenueCat のペイウォール(ダッシュボードで文言と価格を差し替えられる)
-///   2. 1が出せないときは、下の自前ペイウォール
+/// It is shown in two tiers:
+///   1. RevenueCat's paywall (copy and prices editable in the dashboard)
+///   2. our own paywall below, when the first cannot be shown
 ///
-/// 自前のほうを消さないのは、鍵の無いビルド・古いOS・ダッシュボード未設定の
-/// どれでも「無料継続の導線がある画面」が必ず出るようにするため。
-/// golden test が見ているのもこちら。
+/// Ours is kept so key-less builds, old OS versions and an unconfigured
+/// dashboard all still get a screen with a way to stay free. It is also what
+/// the golden tests look at.
 class PaywallScreen extends ConsumerStatefulWidget {
   const PaywallScreen({super.key});
 
@@ -35,8 +35,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   @override
   void initState() {
     super.initState();
-    // 自前のペイウォールを下に敷いたまま、上に RevenueCat のものを出す。
-    // こうしておくと、出せなかったときに空の画面が一瞬見えることがない。
+    // Show RevenueCat's on top while ours stays underneath, so a failure to
+    // present never flashes an empty screen.
     if (RevenueCatConfig.isConfigured) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _presentRemotePaywall());
     }
@@ -48,18 +48,18 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     if (!mounted) return;
 
     switch (result) {
-      // 買えた・戻せた。**ここを閉じるだけにしない。** RevenueCat の
-      // ペイウォールで買った人にも、自前で買った人と同じお礼を出す。
+      // Bought or restored. Do not merely close: people who bought through
+      // RevenueCat's paywall get the same thank-you as everyone else.
       case PaywallResult.purchased:
         context.replaceWithThanks();
       case PaywallResult.restored:
         context.replaceWithThanks(restored: true);
-      // 閉じただけ。「無料のまま続ける」を押したのと同じ扱いにする。
+      // Just closed; treated the same as tapping "stay on free".
       case PaywallResult.cancelled:
       case PaywallResult.notPresented:
         context.closeOrGoHome();
-      // ダッシュボードにペイウォールが無い / OSが古い。
-      // 下に敷いてある自前のペイウォールがそのまま残る。
+      // No paywall in the dashboard, or the OS is too old. Ours, already
+      // underneath, simply stays.
       case PaywallResult.error:
         break;
     }
@@ -69,11 +69,11 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   Widget build(BuildContext context) => const _ManualPaywall();
 }
 
-/// 自前のペイウォール。
+/// Our own paywall.
 ///
-/// RevenueCat の Offering が取れていれば、その価格でプランを出す。
-/// 取れていなければ価格を約束しない文言だけを出して、購入ボタンは押せなくする
-/// (押せるのに買えない、が一番わるい)。
+/// With a RevenueCat Offering it lists plans at those prices. Without one it
+/// shows copy that promises no price and disables the buy button — a button
+/// that taps but cannot buy is the worst outcome.
 class _ManualPaywall extends ConsumerStatefulWidget {
   const _ManualPaywall();
 
@@ -82,8 +82,8 @@ class _ManualPaywall extends ConsumerStatefulWidget {
 }
 
 class _ManualPaywallState extends ConsumerState<_ManualPaywall> {
-  /// 選択中のプラン。既定は月額(いちばん踏み出しやすい額)にする。
-  /// 年額を初期選択にして高いほうを既定にする、はやらない。
+  /// The selected plan, defaulting to monthly — the easiest step to take. We do
+  /// not preselect yearly to make the pricier option the default.
   PlanPeriod? _selected;
   String? _message;
   bool _busy = false;
@@ -103,7 +103,7 @@ class _ManualPaywallState extends ConsumerState<_ManualPaywall> {
     switch (outcome) {
       case PurchaseSucceeded():
         context.replaceWithThanks();
-      // 自分で閉じただけ。エラーは出さないし、引き止めもしない。
+      // They closed it themselves: no error, and no attempt to hold them back.
       case PurchaseCancelled():
         break;
       case PurchaseNotEntitled():
@@ -128,7 +128,7 @@ class _ManualPaywallState extends ConsumerState<_ManualPaywall> {
     switch (outcome) {
       case RestoreSucceeded():
         context.replaceWithThanks(restored: true);
-      // 「失敗」ではない。見つからなかった、と正直に出す。
+      // Not a failure: say plainly that nothing was found.
       case RestoreFoundNothing():
         setState(() => _message = strings.paywallRestoredNothing);
       case RestoreFailed(:final PurchaseFailure failure):
@@ -159,8 +159,8 @@ class _ManualPaywallState extends ConsumerState<_ManualPaywall> {
                   const SizedBox(height: AppSpacing.lg),
                   Text(strings.paywallTitle, style: Theme.of(context).textTheme.displaySmall),
                   const SizedBox(height: AppSpacing.sm),
-                  // Offering が取れていないあいだは、価格を約束しない文言に落とす。
-                  // ストアの値段もトライアルも、取れていない状態からは作らない。
+                  // Without an Offering, fall back to copy that promises no
+                  // price. Never invent store prices or trials from nothing.
                   if (plans.isEmpty)
                     Text(strings.paywallPriceUnavailable,
                         style: Theme.of(context).textTheme.bodyLarge)
@@ -194,13 +194,14 @@ class _ManualPaywallState extends ConsumerState<_ManualPaywall> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
                   ChunkyButton(
-                    // トライアルの有無は Offering を読むまで分からない。
-                    // 分かっているときだけ「無料」と書く。無い商品に
-                    // 「7日間無料でためす」と出すと、押した瞬間に課金される。
+                    // Whether a trial exists is unknown until the Offering is
+                    // read; only say "free" when it is. Offering "7 days free"
+                    // on a product without one bills on the first tap.
                     label: selected != null && selected.hasFreeTrial
                         ? strings.planFreeTrial(selected.freeTrialDays)
                         : strings.paywallSubscribe,
-                    // 買えないときは押せなくする。押しても何も起きないボタンは置かない。
+                    // Disabled when buying is impossible; never a button that
+                    // does nothing when tapped.
                     onPressed: selected == null || _busy ? null : () => _purchase(selected),
                   ),
                   if (_message != null)
@@ -212,7 +213,8 @@ class _ManualPaywallState extends ConsumerState<_ManualPaywall> {
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ),
-                  // 無料継続の導線は隠さない。押しても損をしないことが分かる文言にする。
+                  // The stay-free path is never hidden; the wording makes clear
+                  // that taking it costs nothing.
                   GhostButton(
                     label: strings.paywallDismiss,
                     onPressed: _busy ? null : context.closeOrGoHome,
@@ -222,12 +224,13 @@ class _ManualPaywallState extends ConsumerState<_ManualPaywall> {
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
-                  // 復元はApp Reviewの必須要件。機種変更で戻れなくなる人が出る。
+                  // Restore is required by App Review, and people do get locked
+                  // out after changing devices.
                   GhostButton(
                     label: strings.paywallRestore,
                     onPressed: _busy ? null : _restore,
                   ),
-                  // 規約とプライバシーポリシーも同じく必須(Guideline 3.1.2)。
+                  // Terms and privacy policy are equally required (3.1.2).
                   const LegalLinks(),
                   const SizedBox(height: AppSpacing.sm),
                 ],
@@ -240,7 +243,7 @@ class _ManualPaywallState extends ConsumerState<_ManualPaywall> {
   }
 }
 
-/// プラン1枚。価格の文字列はストアが返したものをそのまま出す。
+/// One plan card. Price strings are shown exactly as the store returns them.
 class _PlanCard extends StatelessWidget {
   const _PlanCard({required this.plan, required this.selected, required this.onTap});
 
@@ -282,7 +285,8 @@ class _PlanCard extends StatelessWidget {
                         strings.planFreeTrial(plan.freeTrialDays),
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
-                    // 「いちばんお得」は月あたり単価から計算した事実だけ書く。
+                    // "Best value" states only the fact computed from the
+                    // per-month price.
                     if (plan.isBestValue)
                       Text(
                         strings.planBestValue,

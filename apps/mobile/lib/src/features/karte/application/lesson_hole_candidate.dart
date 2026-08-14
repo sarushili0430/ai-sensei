@@ -1,20 +1,23 @@
 import '../domain/karte.dart';
 
-/// 授業後に本人へ聞き直す、過去の open な穴を1件だけ選ぶ。
+/// Picks exactly one past open gap to ask about after a lesson.
 ///
-/// **`topic_id` が同じものを全部は出さない。** 1つの単元には別々のつまずきがあり、
-/// 「判別式を使う理由」を話した授業のあとに「解の公式の符号」まで並べると、
-/// 本人の自己申告ではなく、アプリが単元ごと一括で埋めさせる画面になる。
+/// It does not offer every gap sharing a `topic_id`: one topic holds separate
+/// stumbles, and following a lesson about "why use the discriminant" with "the
+/// sign in the quadratic formula" turns self-reporting into the app clearing a
+/// topic wholesale.
 ///
-/// 選ぶ条件は次の順で狭める。
+/// Candidates are narrowed in order:
 ///
-/// 1. 今回より前にできた open な穴で、今回の `topic_id` と一致する
-/// 2. 今回のカルテの「言えたこと」と、穴の説明に具体語のアンカーが重なる
-/// 3. 重なりが最も多い1件だけ。同数なら最近の穴を選ぶ
+/// 1. open gaps created before this lesson whose `topic_id` matches
+/// 2. concrete-word anchors shared between this karte's "said well" and the
+///    gap's description
+/// 3. the single gap with the most overlap; ties go to the more recent one
 ///
-/// **これは理解の採点ではない。** AIも正答率も使わず、聞く候補を決めるだけの
-/// 決定的な文字列照合で、穴を埋める操作は一切しない。言い換えでアンカーが
-/// 取れないときは出さない。関係ない穴を催促するより、聞き漏らすほうを選ぶ。
+/// This is not grading comprehension. It uses no AI and no accuracy — just a
+/// deterministic string match to choose what to ask, and it never fills a gap.
+/// When paraphrasing leaves no anchor it offers nothing: missing a question
+/// beats nagging about an unrelated gap.
 ReviewQueueItem? selectLessonHoleCandidate({
   required Karte karte,
   required ReviewQueue queue,
@@ -62,8 +65,9 @@ ReviewQueueItem? selectLessonHoleCandidate({
   return candidates.firstOrNull?.item;
 }
 
-/// 日本語は語間に空白が無いので3文字の並び、英語は意味のある単語をアンカーにする。
-/// 「説明」「止まった」だけが重なって関係ありと誤認しないよう、英語の定型語は落とす。
+/// Japanese has no word spacing, so anchors are 3-character runs; English uses
+/// meaningful words. Boilerplate English words are dropped so overlap on
+/// "explain" or "stopped" alone is not mistaken for relevance.
 Set<String> _conceptAnchors(String text) {
   final String lower = text.toLowerCase();
   final Set<String> anchors = <String>{};

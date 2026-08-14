@@ -8,14 +8,13 @@ import '../../../theme/tokens.dart';
 import '../application/entitlement_controller.dart';
 import 'purchase_messages.dart';
 
-/// 契約の管理(RevenueCat の Customer Center)。
+/// Subscription management (RevenueCat's Customer Center).
 ///
-/// 解約・プラン変更・返金申請・購入の復元がここに入っている。
-/// 自前で作ると App Review のたびに指摘が出る類の画面なので、
-/// RevenueCat のものをそのまま出す。
+/// Cancel, plan change, refund request and restore all live there. Building our
+/// own is the kind of screen App Review flags every time, so we show theirs.
 ///
-/// 契約が無い人には出さない。ホームは静かな画面にしておきたいし、
-/// 復元の導線はペイウォール側にある。
+/// Hidden for people without a subscription: home stays quiet, and the restore
+/// path is on the paywall.
 class ManageSubscriptionButton extends ConsumerWidget {
   const ManageSubscriptionButton({super.key});
 
@@ -33,7 +32,8 @@ class ManageSubscriptionButton extends ConsumerWidget {
         final bool shown =
             await ref.read(entitlementControllerProvider.notifier).presentCustomerCenter();
         if (shown || !context.mounted) return;
-        // 出せなかった(OSが古い等)。黙って何も起きないのが一番わるいので伝える。
+        // Could not be shown (an old OS, say). Silently doing nothing is the
+        // worst outcome, so say so.
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(strings.errorGeneric)));
       },
@@ -48,11 +48,11 @@ class ManageSubscriptionButton extends ConsumerWidget {
   }
 }
 
-/// 購入の復元。
+/// Restore purchases.
 ///
-/// ペイウォールにも同じものがあるが、**契約していない人にはペイウォールしか
-/// 出口が無い**状態にはしたくない。機種変更した人が最初に探すのは設定なので、
-/// ここにも置く(App Review でも復元導線は見られる)。
+/// The paywall has the same action, but people without a subscription should not
+/// find the paywall their only exit. Anyone who changed devices looks in
+/// settings first, so it lives here too (App Review checks for it as well).
 class RestorePurchasesButton extends ConsumerStatefulWidget {
   const RestorePurchasesButton({super.key});
 
@@ -73,12 +73,13 @@ class _RestorePurchasesButtonState extends ConsumerState<RestorePurchasesButton>
     setState(() => _busy = false);
 
     switch (outcome) {
-      // 戻せたときは SnackBar で済ませない。機種変更でここへ来た人にとっては、
-      // 契約が戻った瞬間がいちばん不安な瞬間なので、ペイウォールから買った人と
-      // 同じ画面で「おかえりなさい」と出す。設定は残す(push で重ねる)。
+      // A successful restore deserves more than a SnackBar. For someone who
+      // came here after changing devices this is the anxious moment, so they get
+      // the same welcome-back screen as a buyer. Settings stays beneath (pushed
+      // on top).
       case RestoreSucceeded():
         context.pushThanks(restored: true);
-      // 「失敗」ではない。見つからなかった、と正直に出す。
+      // Not a failure: say plainly that nothing was found.
       case RestoreFoundNothing():
         _tell(strings.paywallRestoredNothing);
       case RestoreFailed(:final PurchaseFailure failure):
@@ -92,7 +93,7 @@ class _RestorePurchasesButtonState extends ConsumerState<RestorePurchasesButton>
   @override
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
-    // 鍵の無いビルドでは押しても何も起きないので、行ごと出さない。
+    // In key-less builds tapping does nothing, so drop the whole row.
     if (!RevenueCatConfig.isConfigured) return const SizedBox.shrink();
 
     return ListTile(
@@ -109,14 +110,14 @@ class _RestorePurchasesButtonState extends ConsumerState<RestorePurchasesButton>
   }
 }
 
-/// 契約の状態。設定の「契約」セクションの先頭に出す。
+/// Subscription status, at the top of the settings "subscription" section.
 ///
-/// 一行のテキストではなくカードにしてあるのは、**契約している印がここにしか
-/// 無い**ため。ホーム右上のチップ([PremiumChip])を押した人が着地する先でも
-/// あるので、状態と次に起きること(更新日・終了日・課金開始日)をここで言い切る。
+/// A card rather than a line of text, because this is the only place the
+/// subscription is shown. It is also where [PremiumChip] on home lands, so it
+/// states the status and what happens next (renewal, end or billing start).
 ///
-/// 「あと◯日で終わります」と急かすのではなく、
-/// 「それまではこのまま使えます」と書く(§6 煽らない)。
+/// It says "you can keep using it until then" rather than counting down
+/// "X days left".
 class SubscriptionStatusCard extends ConsumerWidget {
   const SubscriptionStatusCard({super.key});
 
@@ -125,14 +126,14 @@ class SubscriptionStatusCard extends ConsumerWidget {
     final AppStrings strings = AppStrings.of(context);
     final Entitlement? entitlement = ref.watch(entitlementControllerProvider).value;
 
-    // 契約していない人には出さない。ここに「無料プランです」と書くと、
-    // 設定を開くたびに売り込まれているように読める。
+    // Hidden without a subscription: saying "you're on the free plan" here
+    // would read as a pitch every time settings is opened.
     if (entitlement == null || !entitlement.isPremium) return const SizedBox.shrink();
 
     final DateTime? expiresAt = entitlement.expiresAt;
     final String? date = expiresAt == null ? null : strings.date(expiresAt);
     final String? note = switch (entitlement) {
-      // 無料期間中は、更新日ではなく**課金が始まる日**を言う。
+      // During a trial, state the billing start date, not the renewal date.
       Entitlement(isTrial: true) when date != null => strings.premiumBillingStarts(date),
       Entitlement(isCancelled: true) when date != null => strings.premiumEndsOn(date),
       _ when date != null => strings.premiumRenewsOn(date),
@@ -168,8 +169,8 @@ class SubscriptionStatusCard extends ConsumerWidget {
   }
 }
 
-/// 「有効」「無料おためし中」。塗りのピルは押せるものに見えるので、
-/// 押せるもの(チップ)と取り違えないよう、こちらは小さく色を薄くしておく。
+/// "Active" / "In free trial". A filled pill reads as tappable, so this one
+/// stays small and pale to avoid confusion with the tappable chip.
 class _StateBadge extends StatelessWidget {
   const _StateBadge({required this.label});
 
@@ -194,13 +195,14 @@ class _StateBadge extends StatelessWidget {
   }
 }
 
-/// 契約している印(ホーム右上)。
+/// The subscribed marker, top right on home.
 ///
-/// **ランクでも称号でもない。** 数えるのは連続日数と埋めた穴だけなので、
-/// 数字を持たせず、色も主役のブルーの枠線だけに留める。
-/// 塗りにすると厚いボタンと同じ重さになって、押すもののように見えてしまう。
+/// Not a rank or a title. We count only streak days and filled gaps, so it
+/// carries no number and no more color than a blue outline; filling it would
+/// give it a chunky button's weight and make it look tappable in that way.
 ///
-/// 押すと設定へ飛ぶ。契約の状態と更新日はそこ([SubscriptionStatusCard])にある。
+/// Tapping goes to settings, where the status and renewal date live
+/// ([SubscriptionStatusCard]).
 class PremiumChip extends ConsumerWidget {
   const PremiumChip({super.key});
 

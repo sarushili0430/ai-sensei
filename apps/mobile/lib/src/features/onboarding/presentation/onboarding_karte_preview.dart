@@ -8,15 +8,15 @@ import '../../../theme/motion.dart';
 import '../../../theme/tokens.dart';
 import 'onboarding_rehearsal.dart';
 
-/// オンボーディング4枚目 — さっきのリハーサルが、カルテになって返ってくる。
+/// Onboarding page 4 — the rehearsal comes back as a karte.
 ///
-/// ここで初めて「持ち帰るもの」が見える。3枚目で**教え返した / 詰まった**ことが
-/// そのまま1行として残っているので、カルテが**自分の記録**だと分かる。
-/// 教わった内容の要約ではない、というのがこの枚の要
-/// (ピボット計画 §2「出題元はユーザーが説明した内容。AIが教えた内容から作らない」)。
+/// This is the first sight of what you take away. What was taught back or got
+/// stuck on page 3 remains as a line, so the karte reads as your own record.
+/// That it is not a summary of what was taught is the point of this page:
+/// questions come from what the user explained, never from what the AI said.
 ///
-/// リハーサルを飛ばしてきた人には見本として両方の色を見せる。
-/// やっていないことを「やった」として書かない。
+/// Anyone who skipped the rehearsal sees both colors as a sample. We never write
+/// something they did not do as though they did.
 class OnboardingKartePreviewPage extends StatelessWidget {
   const OnboardingKartePreviewPage({required this.outcome, super.key});
 
@@ -79,7 +79,7 @@ class _KarteCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
 
-    // リハーサルをしていれば、その1行だけ。していなければ見本として両方。
+    // After a rehearsal, just that one line; otherwise both, as a sample.
     final List<(String, String, MarkerColor)> lines = switch (outcome) {
       RehearsalOutcome.explained => <(String, String, MarkerColor)>[
         (strings.karteSaidWell, strings.onboardingTrySaid, MarkerColor.said),
@@ -109,7 +109,7 @@ class _KarteCard extends StatelessWidget {
             if (i > 0) const SizedBox(height: AppSpacing.md),
             Text(lines[i].$1, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: AppSpacing.xs),
-            // 上の行から順に引かれる。書かれていく順番が見えるように。
+            // Drawn top down, so the order of writing is visible.
             MarkerText(
               lines[i].$2,
               marker: lines[i].$3,
@@ -122,13 +122,13 @@ class _KarteCard extends StatelessWidget {
   }
 }
 
-/// 翌日・3日後・7日後。**間隔反復そのものが製品機能**(デッキ §9 の OneSignal 賞の根拠)
-/// なので、文字で説明せず、線と点で「また来る」ことを見せる。
+/// Tomorrow, in 3 days, in 7 days. Spaced repetition is itself the product
+/// feature, so it is shown with a line and dots rather than explained in words.
 ///
-/// ピボット後もここは落とさない。再訪の起点は小テストに変わったが、
-/// 出題元は**本人が説明した内容**のままなので、後付けの通知にはなっていない
-/// (計画書 §2。有料か無料かはここでは主張しない — 1/3/7日の通知は
-/// 原価が出ない側なので、§6-3 では無料枠に置かれている)。
+/// Kept after the pivot. The revisit now starts from the quiz, but the questions
+/// still come from what the student explained, so these are not bolted-on
+/// notifications. Free vs paid is not claimed here — the 1/3/7-day notifications
+/// carry no marginal cost and sit on the free tier.
 class _ReviewTimeline extends StatelessWidget {
   const _ReviewTimeline();
 
@@ -182,7 +182,7 @@ class _TimelinePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 点は、下のラベル(3等分の中央)に合わせて 1/6・3/6・5/6 に置く。
+    // Dots at 1/6, 3/6 and 5/6, aligned to the centres of the three labels.
     final List<double> stops = <double>[size.width / 6, size.width / 2, size.width * 5 / 6];
     final double y = size.height / 2;
     final double head = stops.first + (stops.last - stops.first) * progress;

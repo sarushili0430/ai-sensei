@@ -10,23 +10,27 @@ import '../../settings/application/school_stage_controller.dart';
 
 part 'capture_controller.g.dart';
 
-/// 撮影 → (問題の写真は任意で追加)→ 解析 → 単元と問題文の確認 → 会話の開始。
+/// Capture, optionally add a problem photo, analyze, confirm topic and problem
+/// text, then start the conversation.
 ///
-/// **今日の1回を使うのは最後の一歩だけ。** 解析([analyze])まではセッションを
-/// 作るだけで数えず、会話を始める([confirmAndStart] / [startReview])ときに
-/// サーバが枠を押さえてトークンを返す。だから状態も2つに分かれている:
+/// The day's single use is spent only on the last step. Up to [analyze] we just
+/// create a session and count nothing; starting the conversation
+/// ([confirmAndStart] / [startReview]) is where the server reserves the slot and
+/// returns a token. Hence the two states:
 ///
-///   - [CaptureState.analysis] … 写真から読めたもの(単元・問題文)。数えない
-///   - [CaptureState.session]  … 始まった会話(部屋の鍵)。**これが返った = 1回使った**
+///   - [CaptureState.analysis] … what the photo yielded (topic, problem text);
+///     not counted
+///   - [CaptureState.session]  … the started conversation (room key); getting
+///     this back means the use is spent
 ///
-/// 単元のチップは**外せる**。写真解析が外したときに、ユーザーが直せる余地を残す
-/// (「修正可能なチップUI」)。
+/// Topic chips can be removed, leaving room to correct what photo analysis got
+/// wrong.
 ///
-/// **写真は2枚を別々に持つ。寿命が違うから**(計画書 §4-1・`api.ts` の
-/// `sessionPhotoParts`)。ノートは本人の著作物なのでR2に保存されるが、
-/// 問題の紙面は他者の著作物なので解析後に破棄される。
-/// **どちらの枠で送ったかでしか区別できない**ので、枠を分けて持つこと自体が
-/// 破棄の前提になっている。
+/// The two photos are held separately because their lifetimes differ (see
+/// `sessionPhotoParts` in `api.ts`): notes are the student's own work and are
+/// stored in R2, while the problem page is someone else's and is discarded
+/// after analysis. The part is the only thing distinguishing them, so keeping
+/// them apart here is what makes the discard possible.
 @immutable
 class CaptureState {
   const CaptureState({
@@ -40,33 +44,34 @@ class CaptureState {
     this.error,
   });
 
-  /// ノートの写真。**必須**(サーバが `kind: new` で要求する)。
+  /// The notebook photo; required by the server for `kind: new`.
   final File? photo;
 
-  /// 問題(教科書・問題集の紙面)の写真。**任意**(§4-1)。
+  /// Photo of the problem (a textbook or workbook page). Optional.
   ///
-  /// 1枚に問題とノートの両方が写ることが多いので、2枚必須にすると
-  /// 撮影の摩擦だけが増える。無ければ解析器はノートの写真から問題文を読み取る。
+  /// One shot often captures both problem and notes, so requiring two would add
+  /// friction and nothing else. Without it, the analyzer reads the problem text
+  /// from the notebook photo.
   final File? problemPhoto;
 
-  /// 写真を読んだ結果。**ここまでは今日の1回を使っていない。**
+  /// Result of reading the photo. Nothing has been spent up to this point.
   final SessionAnalysis? analysis;
 
-  /// 始まった会話。**入った時点で今日の1回を使っている**(部屋の鍵つき)。
+  /// The started conversation, with its room key. Reaching this spends the use.
   final SessionStart? session;
 
-  /// [analysis] が復習セッションのとき、その対象の穴。
+  /// The target gap, when [analysis] belongs to a review session.
   ///
-  /// **同じ穴で押し直されたときに、セッションを作り直さない**ために持つ
-  /// ([startReview])。作り直すと、前回の `/start` がサーバに届いていた場合に
-  /// もう1回ぶんの枠を使ってしまう。
+  /// Held so retrying the same gap does not recreate the session
+  /// ([startReview]): recreating would spend another slot if the previous
+  /// `/start` had in fact reached the server.
   final String? reviewHoleId;
 
   final Set<String> excludedTopicIds;
   final bool isSubmitting;
   final ApiException? error;
 
-  /// 読み取れた問題文。読めなければ null。
+  /// The problem text that was read; null if unreadable.
   SessionProblem? get problem => analysis?.problem;
 
   List<DetectedTopic> get topics => analysis?.detectedTopics ?? const <DetectedTopic>[];
@@ -78,16 +83,17 @@ class CaptureState {
 
   bool isSelected(String topicId) => !excludedTopicIds.contains(topicId);
 
-  /// 1つも残っていない状態では会話を始めない(許可リストが空になるため)。
+  /// No conversation starts with nothing selected — the allow list would be
+  /// empty.
   bool get canStart => selectedTopicIds.isNotEmpty && !isSubmitting;
 
-  /// 解析に出せる状態か。**どちらか1枚あればよい。**
+  /// Whether analysis can run. Either photo alone is enough.
   ///
-  /// ノートは必須ではなくなった(PM判断)。必須にしているかぎり
-  /// 「手も付けられない問題」を持ってきた生徒は**紙面をノート枠に入れるしかなく**、
-  /// 解析後破棄の約束が自分たちのUI制約で破られるため
-  /// (`api.ts` の `sessionPhotoParts` が「既知の穴」と書いていたもの)。
-  /// ノートがあるほうが良いことは変わらないので、**枠の見せ方は変えない**。
+  /// Notes are no longer required: while they were, a student stuck before
+  /// writing anything had to put the problem page in the notes part, breaking
+  /// the discard-after-analysis promise through our own UI constraint — the
+  /// "known hole" `sessionPhotoParts` in `api.ts` called out. Notes are still
+  /// better to have, so how the parts are presented is unchanged.
   bool get hasAnyPhoto => photo != null || problemPhoto != null;
 
   CaptureState copyWith({
@@ -119,20 +125,20 @@ class CaptureController extends _$CaptureController {
   @override
   CaptureState build() => const CaptureState();
 
-  /// ノートの写真。**問題の写真は消さない。**
+  /// Sets the notebook photo without clearing the problem photo.
   ///
-  /// 以前は状態ごと作り直していたが、それだと先に問題を撮ってから
-  /// ノートを撮り直したときに2枚目が黙って消える。撮影のたびに白紙に戻すのは
-  /// 画面に入ったときの [reset] の役目で、ここではない。
+  /// This used to rebuild the whole state, which silently dropped the second
+  /// photo when someone shot the problem first and then retook the notes.
+  /// Starting blank is [reset]'s job on entering the screen, not this one's.
   void setPhoto(File photo) {
     if (state.analysis != null) return;
     state = state.copyWith(photo: photo, clearError: true);
   }
 
-  /// 問題の写真を足す(任意)。**解析の前にしか呼ばれない。**
+  /// Adds the optional problem photo. Only ever called before analysis.
   ///
-  /// 解析はもう済んでいるので、あとから足しても読み直されない
-  /// (読み直すには撮影からやり直す = この画面に入り直す)。
+  /// Adding one afterwards would not be re-read, since analysis has already run;
+  /// re-reading means starting over from capture.
   void setProblemPhoto(File photo) {
     if (state.analysis != null) return;
     state = state.copyWith(problemPhoto: photo, clearError: true);
@@ -144,11 +150,12 @@ class CaptureController extends _$CaptureController {
     state = state.copyWith(excludedTopicIds: excluded);
   }
 
-  /// 写真を送って単元を検出する(**まだ会話は始めないので、今日の1回も使わない**)。
+  /// Sends the photo to detect topics. No conversation starts, so nothing is
+  /// spent.
   ///
-  /// **どちらか1枚あれば出せる**([CaptureState.hasAnyPhoto])。
-  /// 問題だけでも成立するのは、手も付けられない問題を持ってきた生徒に
-  /// 「ノートも撮れ」と言わずに済ませるため。
+  /// Either photo alone suffices ([CaptureState.hasAnyPhoto]). The problem photo
+  /// works on its own so a student stuck before writing anything is not told to
+  /// photograph notes too.
   Future<void> analyze({String locale = 'ja'}) async {
     if (!state.hasAnyPhoto) return;
 
@@ -158,13 +165,14 @@ class CaptureController extends _$CaptureController {
             photo: state.photo,
             problemPhoto: state.problemPhoto,
             locale: locale,
-            // 単元を探す範囲を半分に切る。復習は穴が起点で写真を見ないので渡さない。
+            // Halves the topic search space. Review starts from a gap and
+            // reads no photo, so it is not passed there.
             schoolStage: ref.read(schoolStageControllerProvider).wireValue,
           );
       state = state.copyWith(
         analysis: analysis,
         isSubmitting: false,
-        // 確信度の低い候補は、はじめから外しておく(押しつけない)
+        // Low-confidence candidates start deselected rather than imposed.
         excludedTopicIds: analysis.detectedTopics
             .where((DetectedTopic it) => !it.isConfident)
             .map((DetectedTopic it) => it.topicId)
@@ -173,22 +181,24 @@ class CaptureController extends _$CaptureController {
     } on ApiException catch (error) {
       _fail(error);
     } catch (_) {
-      // 圏外・タイムアウト・プロキシのHTML応答など。ここを拾わないと
-      // isSubmitting が立ったままスピナーで固まり、撮り直しの導線も消える。
+      // No signal, timeouts, HTML from a proxy. Without catching these,
+      // isSubmitting stays set, the spinner hangs and the retake path vanishes.
       _fail(_networkError(locale));
     }
   }
 
-  /// 単元の確認を反映してから、**会話を始める**。
+  /// Applies the topic confirmation, then starts the conversation.
   ///
-  /// チップを外しただけでは、サーバ側のセッションは解析時の単元のままになる。
-  /// **外した単元を先輩が教えてしまう**ので、選択が変わっていれば先に反映する。
+  /// Deselecting a chip alone leaves the server's session on the topics from
+  /// analysis, so senpai would teach a topic that was removed. Any change is
+  /// pushed first.
   ///
-  /// ここでセッションを作り直してはいけない。同じ写真をもう一度Vision LLMに
-  /// 通すことになり、解析の回数だけを見ている上限にも二重に当たる。
+  /// The session must not be recreated here: that would re-run the same photo
+  /// through the vision LLM and double-count against the analysis limit.
   ///
-  /// **今日の1回を使うのはこの最後の一歩。** 上限に当たるならここで
-  /// `free_limit_reached` が返るので、撮影画面のまま文言を出せる。
+  /// This last step is where the day's use is spent, so a limit returns
+  /// `free_limit_reached` here and the message can be shown without leaving
+  /// capture.
   Future<SessionStart?> confirmAndStart({String locale = 'ja'}) async {
     final SessionAnalysis? current = state.analysis;
     if (current == null) return null;
@@ -219,15 +229,15 @@ class CaptureController extends _$CaptureController {
     }
   }
 
-  /// 復習(プッシュ起点)。写真は送らず、埋めにいく穴を指定する。
+  /// Review, driven by push. No photo; it names the gap to fill.
   ///
-  /// 単元を確かめる画面が無いので、作成と開始を続けて呼ぶ。
-  /// **数える位置は新規授業と同じ**(開始のほう)。
+  /// There is no topic confirmation screen, so create and start are called back
+  /// to back. The use is counted at the same point as a new lesson: on start.
   ///
-  /// **同じ穴で押し直されたら、セッションは作り直さない。** 作成は通って
-  /// `/start` だけが落ちた(通信が切れた)ときに作り直すと、最初の開始が
-  /// サーバに届いていた場合にもう1回ぶんの枠を使う。同じIDで始め直せば、
-  /// サーバは二重に数えない。
+  /// Retrying the same gap never recreates the session. If creation succeeded
+  /// and only `/start` failed on a dropped connection, recreating would spend a
+  /// second slot when the first start had reached the server; restarting with
+  /// the same ID is not double-counted.
   Future<SessionStart?> startReview(String holeId, {String locale = 'ja'}) async {
     final SessionAnalysis? pending =
         state.reviewHoleId == holeId && state.session == null ? state.analysis : null;
@@ -240,7 +250,8 @@ class CaptureController extends _$CaptureController {
                 holeId: holeId,
                 locale: locale,
               );
-      // **開始の前に残す。** ここで落ちても、次の一押しが同じセッションを始め直せる。
+      // Stored before starting, so a failure here still lets the next tap
+      // restart the same session.
       state = state.copyWith(analysis: analysis);
 
       final SessionStart session = await ref.read(apiClientProvider).startSession(
@@ -258,19 +269,20 @@ class CaptureController extends _$CaptureController {
     }
   }
 
-  /// 失敗を画面へ渡す。
+  /// Hands a failure to the screen.
   ///
-  /// **セッションが消えていたら、握っている解析ごと捨てる。** 上限時間を過ぎた
-  /// 押し直しはサーバが404にする(`entitlement.ts` の `canReissueToken`)ので、
-  /// 同じIDを持ったままにすると、押し直しが同じ404を繰り返すだけになる。
-  /// 捨てておけば、次の一押しは撮影(復習なら作成)からやり直せる。
+  /// If the session is gone, the held analysis goes with it. A retry past the
+  /// time limit gets a 404 (`canReissueToken` in `entitlement.ts`), so keeping
+  /// the same ID would just repeat that 404. Dropping it lets the next tap start
+  /// over from capture, or from creation for a review.
   void _fail(ApiException error) {
     state = error.isSessionNotFound
         ? CaptureState(photo: state.photo, problemPhoto: state.problemPhoto, error: error)
         : state.copyWith(isSubmitting: false, error: error);
   }
 
-  /// 圏外・タイムアウト・プロキシのHTML応答など。サーバの文言が無いので端末側で作る。
+  /// No signal, timeouts, HTML from a proxy. There is no server message, so the
+  /// device composes one.
   ApiException _networkError(String locale) => ApiException(
         code: 'internal_error',
         message: AppStrings.forLanguage(locale).errorNetwork,

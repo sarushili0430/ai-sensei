@@ -7,8 +7,8 @@ import '../domain/karte.dart';
 
 part 'karte_controllers.g.dart';
 
-/// ホーム画面が読む進捗。カウンター(連続日数・埋めた穴)と、今日の授業可否。
-/// 数えるのは連続日数と埋めた穴だけで、授業回数や点数は持たない。
+/// Progress read by home: the counters (streak days, filled gaps) and today's
+/// lesson allowance. Only those two are counted — no lesson tallies or scores.
 @Riverpod(keepAlive: true)
 class ProgressController extends _$ProgressController {
   @override
@@ -22,10 +22,10 @@ class ProgressController extends _$ProgressController {
     );
   }
 
-  /// セッション作成後の可否を、そのレスポンスから引き継ぐ。
+  /// Carries the post-creation allowance over from the session response.
   ///
-  /// 回数から推測しない。セッションを作った時点でサーバが返した真偽値が、
-  /// その授業のあとにもう一度始められるかを表している。
+  /// Never inferred from a count: the boolean the server returned at creation is
+  /// what says whether another lesson can start after this one.
   void applyLessonAllowance(bool lessonAllowedToday) {
     final ProgressSummary previous = state.value ?? ProgressSummary.empty;
     state = AsyncValue<ProgressSummary>.data(
@@ -37,8 +37,8 @@ class ProgressController extends _$ProgressController {
     );
   }
 
-  /// セッション直後は、サーバが返した進捗をそのまま反映する(再取得しない)。
-  /// 授業可否はセッション作成時に [applyLessonAllowance] で反映済み。
+  /// Right after a session, apply the progress the server returned rather than
+  /// refetching. The allowance already landed via [applyLessonAllowance].
   void applyFromSession(Progress progress) {
     final ProgressSummary previous = state.value ?? ProgressSummary.empty;
     state = AsyncValue<ProgressSummary>.data(
@@ -47,7 +47,8 @@ class ProgressController extends _$ProgressController {
   }
 }
 
-/// 復習キュー(プッシュ起点)。小テストと1/3/7日の再訪は無料でも中身を返す。
+/// Review queue, driven by push. The quiz and the 1/3/7-day revisits return
+/// content even on the free tier.
 @Riverpod(keepAlive: true)
 class ReviewController extends _$ReviewController {
   @override
@@ -60,15 +61,17 @@ class ReviewController extends _$ReviewController {
     );
   }
 
-  /// 小テストの自己申告を送り、成功したら次の1問へ進めるためキューを読み直す。
+  /// Sends the self-report and, on success, reloads the queue for the next
+  /// question.
   Future<bool> answer(String holeId, ReviewOutcome outcome) async {
     try {
       final ReviewAnswer answer = await ref
           .read(apiClientProvider)
           .answerReview(holeId, outcome);
 
-      // 「言えた」で穴が埋まったときだけ、応答に入っている進捗をそのまま使う。
-      // 再取得するとキューとホームで反映の瞬間がずれるため、セッション直後と同じ扱いにする。
+      // Only when "said it" fills a gap do we take the progress from the
+      // response. Refetching would let the queue and home update at different
+      // moments, so it is treated like the post-session case.
       if (outcome == ReviewOutcome.saidIt) {
         ref
             .read(progressControllerProvider.notifier)
@@ -88,11 +91,11 @@ class ReviewController extends _$ReviewController {
   }
 }
 
-/// セッションの結果のうち、画面をまたいで持ち回るもの。
+/// The parts of a session result that travel across screens.
 ///
-/// 会話画面は AutoDispose なので、祝福・カルテ画面に着いたときには
-/// もう破棄されている。ペイウォールを出すかどうかは**サーバの判断**なので、
-/// 会話画面の寿命と切り離して保持する。
+/// The conversation screen is AutoDispose and is already gone by the time
+/// celebration and karte appear. Whether to show the paywall is the server's
+/// call, so it is held independently of that screen's lifetime.
 @Riverpod(keepAlive: true)
 class SessionOutcomeController extends _$SessionOutcomeController {
   @override
@@ -102,11 +105,11 @@ class SessionOutcomeController extends _$SessionOutcomeController {
 
   void clear() => state = const SessionOutcome();
 
-  /// 待ちきれなかったカルテを、あとから取りに行く。
+  /// Fetches a karte we could not wait for.
   ///
-  /// カルテ生成は会話のあとに数秒〜十数秒かかる。待ち切れずに祝福画面へ
-  /// 進んだあとも、**サーバにはできている**ことが多い。ここが無いと、
-  /// せっかく見つけた穴が二度と見られないまま消える。
+  /// Generation takes seconds to tens of seconds after the conversation. Even
+  /// after moving on to the celebration screen it is usually ready on the
+  /// server; without this, a gap we just found would vanish unseen.
   Future<bool> retrieveKarte() async {
     final String? sessionId = state.sessionId;
     if (sessionId == null) return false;
@@ -120,8 +123,9 @@ class SessionOutcomeController extends _$SessionOutcomeController {
     ref
         .read(progressControllerProvider.notifier)
         .applyFromSession(result.progress);
-    // keepAliveの復習キューには、前回読んだopen状態が残りうる。カルテ画面で
-    // 「今回と重なる過去の穴」を選ぶ前に、完了後の状態を取り直させる。
+    // The keepAlive review queue can still hold the open state from an earlier
+    // read. Force a refetch before the karte screen picks an overlapping past
+    // gap.
     ref.invalidate(reviewControllerProvider);
     state = SessionOutcome(
       showPaywall: result.showPaywall,
@@ -141,23 +145,24 @@ class SessionOutcome {
     this.kind,
   });
 
-  /// 初回カルテで穴が見えた直後だけ true。
+  /// True only just after a gap appears in the first karte.
   final bool showPaywall;
 
-  /// カルテの生成を待ちきれなかった。
+  /// We could not wait for karte generation to finish.
   final bool resultMissing;
 
-  /// あとからカルテを取りに行くためのセッションID。
+  /// Session ID used to fetch the karte later.
   final String? sessionId;
 
-  /// 授業後だけ過去の穴を聞き直すために、会話画面の寿命を越えて持つ種類。
-  /// `SessionStart` の契約を通った値だけが入り、画面側で推測し直さない。
+  /// Session kind, held past the conversation screen so past gaps are revisited
+  /// only after a lesson. Only values that passed the `SessionStart` contract
+  /// land here; screens never re-infer it.
   final String? kind;
 
   bool get isNewLesson => kind == 'new';
 }
 
-/// 直近のカルテ。セッション完了時に置かれ、カルテ画面が読む。
+/// The latest karte, written on session completion and read by the karte screen.
 @Riverpod(keepAlive: true)
 class LatestKarteController extends _$LatestKarteController {
   @override
@@ -165,7 +170,7 @@ class LatestKarteController extends _$LatestKarteController {
 
   void set(Karte karte) => state = karte;
 
-  /// 会話を始めるときに空にする。前回のカルテを残したまま今回のカルテが
-  /// 作れないと、古い穴が「今日のカルテ」として出てしまう。
+  /// Cleared when a conversation starts: leaving the previous karte in place
+  /// would show old gaps as today's if this one fails to generate.
   void clear() => state = null;
 }

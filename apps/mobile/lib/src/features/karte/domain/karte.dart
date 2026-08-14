@@ -3,13 +3,15 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 part 'karte.freezed.dart';
 part 'karte.g.dart';
 
-/// カルテのモデル。
+/// Karte model.
 ///
-/// 正は `packages/contract`(zod + JSON Schema)。Dart側はfreezedで書き、
-/// `test/contract_fixture_test.dart` が同じfixtureをパースして契約ドリフトを検知する。
+/// `packages/contract` (zod + JSON Schema) is the source of truth. The Dart side
+/// uses freezed, and `test/contract_fixture_test.dart` parses the same fixtures
+/// to catch contract drift.
 ///
-/// **点数・正答率のフィールドは持たない。** 数えるのは連続日数と埋めた穴だけ。
-/// 解答・解説を入れる場所も用意しない(答えを教えないため)。
+/// No fields for scores or accuracy: we count only streak days and filled gaps.
+/// There is also no place for answers or worked solutions, since we do not give
+/// the answer away.
 
 enum HoleSeverity {
   @JsonValue('low')
@@ -27,9 +29,8 @@ enum HoleStatus {
   filled,
 }
 
-/// 小テストはAIが採点せず、言えたかどうかを本人が申告する。
-/// [notYet] は失点ではなく、先輩に引き取ってもらうための選択肢。
-/// 選んだ人を咎めない(約束3)。
+/// The quiz is self-reported, not AI-graded. [notYet] is not a lost point but
+/// the option that hands it back to senpai, and nobody is blamed for choosing it.
 enum ReviewOutcome {
   @JsonValue('said_it')
   saidIt,
@@ -43,7 +44,7 @@ abstract class Hole with _$Hole {
     required String id,
     @JsonKey(name: 'topic_id') required String topicId,
 
-    /// 「〜で説明が止まった」の形。責める文体にしない。
+    /// Phrased as "the explanation stopped at ...". Never accusatory.
     @JsonKey(name: 'desc') required String description,
     required HoleSeverity severity,
     required HoleStatus status,
@@ -63,14 +64,14 @@ abstract class Karte with _$Karte {
     @JsonKey(name: 'created_at') required DateTime createdAt,
     @JsonKey(name: 'topic_ids') required List<String> topicIds,
 
-    /// 言えたこと。黄色のマーカーで示す。
+    /// What they managed to say; marked in yellow.
     @JsonKey(name: 'said_well') required List<String> saidWell,
 
-    /// 穴。ピンクのマーカーで示す。失点ではなく、これから埋まる場所。
+    /// Gaps, marked in pink. Not lost points, but places still to fill.
     required List<Hole> holes,
     @JsonKey(name: 'term_notes') required List<String> termNotes,
 
-    /// 先輩のあと追い質問(Premiumのみ)。
+    /// Senpai's follow-up question (Premium only).
     @JsonKey(name: 'followup_question') String? followupQuestion,
   }) = _Karte;
 
@@ -91,13 +92,13 @@ abstract class Progress with _$Progress {
   static const Progress empty = Progress(streakDays: 0, filledHoles: 0, openHoles: 0);
 }
 
-/// サーバが強制する上限。クライアントは表示に使うだけで、判定はサーバが持つ。
+/// Server-enforced limits. The client only displays them; the server decides.
 @freezed
 abstract class SessionLimits with _$SessionLimits {
   const factory SessionLimits({
     @JsonKey(name: 'max_seconds') required int maxSeconds,
 
-    /// この応答時点から、今日さらに授業を始められるか。
+    /// Whether another lesson can start today, as of this response.
     @JsonKey(name: 'lesson_allowed_today') required bool lessonAllowedToday,
   }) = _SessionLimits;
 
@@ -107,10 +108,10 @@ abstract class SessionLimits with _$SessionLimits {
       SessionLimits(maxSeconds: 1200, lessonAllowedToday: true);
 }
 
-/// `GET /v1/me/progress` の全体。ホームが読む。
+/// The whole `GET /v1/me/progress` response, read by home.
 ///
-/// カウンターだけでなく今日の授業可否も返ってきているので、
-/// 「今日はもう撮れない」をホームで先に伝えられる(撮ってから断らない)。
+/// It carries today's lesson allowance as well as the counters, so home can say
+/// "no more today" up front instead of refusing after the photo.
 @freezed
 abstract class ProgressSummary with _$ProgressSummary {
   const factory ProgressSummary({
@@ -135,11 +136,12 @@ abstract class ReviewQueueItem with _$ReviewQueueItem {
     required Hole hole,
     @JsonKey(name: 'days_since') required int daysSince,
 
-    /// 先輩の声のひとこと。通知文と同じ。
+    /// Senpai's spoken line; the same text as the notification.
     required String prompt,
 
-    /// 1/3/7日後にたずねる**1問**。出題元は本人が説明した内容(§2)。
-    /// 旧データのフォールバックはサーバ側で解決済みなので、ここでは必ず入っている。
+    /// The single question asked after 1/3/7 days, drawn from what they
+    /// explained. Legacy fallbacks are resolved server-side, so it is always
+    /// present here.
     required String quiz,
   }) = _ReviewQueueItem;
 
@@ -147,8 +149,8 @@ abstract class ReviewQueueItem with _$ReviewQueueItem {
       _$ReviewQueueItemFromJson(json);
 }
 
-/// 埋まった穴。ペイウォールが謳う Premium の「履歴」はこれ。
-/// 別画面は作らず、復習画面の下半分に置く。
+/// A filled gap — the "history" the paywall advertises for Premium. It gets no
+/// screen of its own; it sits in the lower half of review.
 @freezed
 abstract class FilledHole with _$FilledHole {
   const factory FilledHole({
@@ -166,19 +168,19 @@ abstract class ReviewQueue with _$ReviewQueue {
   const factory ReviewQueue({
     required List<ReviewQueueItem> items,
 
-    /// 埋めた穴(新しい順)。通算の件数はホームのカウンターのほうが正で、
-    /// ここには直近ぶんしか載らない。
+    /// Filled gaps, newest first. Home's counter is authoritative for the
+    /// lifetime total; only recent entries appear here.
     @Default(<FilledHole>[]) List<FilledHole> filled,
   }) = _ReviewQueue;
 
   factory ReviewQueue.fromJson(Map<String, dynamic> json) => _$ReviewQueueFromJson(json);
 
-  /// 見せるものが何もない状態。空だと分かる文言を出すために使う。
+  /// Nothing to show; used to pick wording that makes the emptiness clear.
   bool get isEmpty => items.isEmpty && filled.isEmpty;
 }
 
-/// `POST /v1/me/reviews/{holeId}` の応答。
-/// 穴とホームのカウンターを、追加の取得なしで同じ応答から更新する。
+/// Response to `POST /v1/me/reviews/{holeId}`. It updates both the gap and
+/// home's counters from one response, with no extra fetch.
 @freezed
 abstract class ReviewAnswer with _$ReviewAnswer {
   const factory ReviewAnswer({required Hole hole, required Progress progress}) = _ReviewAnswer;
