@@ -27,7 +27,7 @@ definitions:
     #   API_BASE_URL: unbound variable
     # which fails after burning ten-plus minutes of metered mac time.
     - &assert_dart_defines
-      name: dart-define に渡す環境変数が揃っているか
+      name: Check the dart-define environment variables are present
       script: |
         set -euo pipefail
         missing=""
@@ -72,7 +72,7 @@ definitions:
         echo "dart-define 用の環境変数は揃っている"
 
     - &assert_flutter_version
-      name: .fvmrc とSDKのバージョンが一致しているか
+      name: Check the SDK version matches .fvmrc
       script: |
         set -euo pipefail
         pinned="$(python3 -c "import json;print(json.load(open('apps/mobile/.fvmrc'))['flutter'])")"
@@ -85,12 +85,12 @@ definitions:
         echo "Flutter ${actual} (.fvmrc と一致)"
 
     - &pub_get
-      name: 依存の取得
+      name: Fetch dependencies
       script: flutter pub get
       working_directory: apps/mobile
 
     - &build_runner
-      name: コード生成 (freezed / json_serializable / riverpod)
+      name: Code generation (freezed / json_serializable / riverpod)
       # Generated files (*.freezed.dart / *.g.dart) are not committed, so build them here
       script: dart run build_runner build --delete-conflicting-outputs
       working_directory: apps/mobile
@@ -101,7 +101,7 @@ definitions:
       working_directory: apps/mobile
 
     - &test
-      name: flutter test (golden以外)
+      name: flutter test (excluding goldens)
       # Goldens treat Linux rasterization as authoritative (test/golden/README.md), so
       # they always fail on a mac instance. What matters here is contract_fixture_test:
       # we want to stop shipping with the TypeScript-side contract drifted.
@@ -192,7 +192,7 @@ workflows:
       # code signing). Leaving it to the built-in step (environment.ios_signing) is a
       # different thing that uses files uploaded to the UI - see the block above.
 
-      - name: 署名ファイルを Apple から取得し Xcode プロジェクトに適用する
+      - name: Fetch signing files from Apple and apply them to the Xcode project
         working_directory: apps/mobile
         script: |
           set -euo pipefail
@@ -352,7 +352,7 @@ workflows:
           echo "--- $HOME/export_options.plist ---"
           cat "$HOME/export_options.plist"
 
-      - name: IPA をビルド
+      - name: Build the IPA
         working_directory: apps/mobile
         script: |
           set -euo pipefail
@@ -440,7 +440,7 @@ workflows:
       - *analyze
       - *test
 
-      - name: key.properties を書き出す
+      - name: Write out key.properties
         working_directory: apps/mobile/android
         # android/app/build.gradle.kts reads this file for release signing.
         # Gradle also fails without a release signing config, but this states the cause first.
@@ -461,7 +461,7 @@ workflows:
       # A step aligning the directory name to android-37 used to live here, but the name
       # was not the problem, so it was removed (details in app/build.gradle.kts's compileSdkMinor).
 
-      - name: AAB をビルド
+      - name: Build the AAB
         working_directory: apps/mobile
         script: |
           set -euo pipefail

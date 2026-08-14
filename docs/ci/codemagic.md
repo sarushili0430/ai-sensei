@@ -1,411 +1,401 @@
-# Codemagic のセットアップ
+# Codemagic setup
 
-`apps/mobile` の実機ビルドと配布(TestFlight / Google Play)は Codemagic で行う。
-検査(lint / typecheck / test / analyze / golden)は GitHub Actions 側なので、
-ここは**配布のためだけ**の設定になっている。
+Device builds and distribution of `apps/mobile` (TestFlight / Google Play) run on
+Codemagic. The checks (lint / typecheck / test / analyze / golden) live on the GitHub
+Actions side, so this is configured **for distribution only**.
 
-設定の実体はリポジトリ直下の [`codemagic.yaml`](../../codemagic.yaml)。
+The configuration itself is [`codemagic.yaml`](../../codemagic.yaml) at the repository
+root.
 
-このページは **Codemagic 側**の設定。受け取る側(App Store Connect / Play Console)で
-やること — App ID の Capability、権限、プライバシー申告、定期購入、RevenueCat連携 —
-は [`store-setup.md`](./store-setup.md) にまとめてある。
+This page covers the **Codemagic side**. What to do on the receiving side (App Store
+Connect / Play Console) — the App ID's capabilities, permissions, privacy declarations,
+subscriptions, the RevenueCat integration — is in [`store-setup.md`](./store-setup.md).
 
-## 0. まず Workflow Editor から YAML に切り替える
+## 0. First, switch from the Workflow Editor to YAML
 
-Codemagic の初期状態は GUI の Workflow Editor になっている。
-このままだと `codemagic.yaml` は読まれない。
+Codemagic starts in the GUI Workflow Editor.
+Left that way, `codemagic.yaml` is never read.
 
 **Applications > ai-sensei > Workflow Editor > "Switch to YAML configuration"**
 
-切り替えると `codemagic.yaml` の `workflows:` がそのまま一覧に出る
-(`iOS — TestFlight` と `Android — Play internal` の2つ)。
-GUI で設定した「Build for platforms」「Run build on」などは、以降は使われない。
+After switching, `codemagic.yaml`'s `workflows:` appear in the list directly
+(`iOS — TestFlight` and `Android — Play internal`).
+Anything configured in the GUI ("Build for platforms", "Run build on") is no longer used.
 
-## 1. 変数グループ
+## 1. Variable groups
 
-**Teams/Personal Account > Environment variables** で作る。
-どちらも `--dart-define` でアプリに渡る値。
+Create them under **Teams/Personal Account > Environment variables**.
+Both carry values that reach the app via `--dart-define`.
 
-### `mobile-dart-defines`(両workflowが使う)
+### `mobile-dart-defines` (used by both workflows)
 
-| 変数 | 例 | 要否 | 秘匿 |
+| Variable | Example | Required | Secret |
 | --- | --- | --- | --- |
-| `API_BASE_URL` | `https://api.example.workers.dev` | 必須 | 不要 |
-| `REVENUECAT_IOS_PUBLIC_SDK_KEY` | `appl_xxx` | ストアに商品を作ったら | 不要(公開鍵) |
-| `REVENUECAT_ANDROID_PUBLIC_SDK_KEY` | `goog_xxx` | ストアに商品を作ったら | 不要(公開鍵) |
-| `REVENUECAT_SDK_KEY` | `test_xxx` | 上が無い間の代わり | 不要(公開鍵) |
-| `REVENUECAT_ENTITLEMENT_ID` | `premium` | 任意(既定 `premium`) | 不要 |
-| `REVENUECAT_OFFERING_ID` | | 任意(空なら current) | 不要 |
+| `API_BASE_URL` | `https://api.example.workers.dev` | Yes | No |
+| `REVENUECAT_IOS_PUBLIC_SDK_KEY` | `appl_xxx` | Once products exist in the store | No (public key) |
+| `REVENUECAT_ANDROID_PUBLIC_SDK_KEY` | `goog_xxx` | Once products exist in the store | No (public key) |
+| `REVENUECAT_SDK_KEY` | `test_xxx` | A stand-in until then | No (public key) |
+| `REVENUECAT_ENTITLEMENT_ID` | `premium` | Optional (defaults to `premium`) | No |
+| `REVENUECAT_OFFERING_ID` | | Optional (empty means current) | No |
 
-いずれも `lib/` 側が `String.fromEnvironment` で読む値。
-アプリのバイナリに入るものなので、秘密鍵は**絶対にここに入れない**
-(LiveKitやLLMのキーはサーバ側 = `wrangler secret` の担当)。
+All of these are read by `lib/` through `String.fromEnvironment`.
+They go into the app binary, so **never put a secret key here** (LiveKit and LLM keys
+belong on the server, under `wrangler secret`).
 
-**ストアに商品を作る前でも配布できる。** `appl_` / `goog_` の鍵が発行できるのは
-App Store Connect / Play Console に商品を作ったあとなので、それまでは
-Test Store の鍵(`REVENUECAT_SDK_KEY`)だけ入れておけばビルドは通る。
-アプリ側もプラットフォーム別の鍵が空なら Test Store の鍵に落ちる
-(`revenuecat_config.dart` の `apiKeyFor`)。そのビルドは実売ではないので、
-1ステップ目のログに警告が出る。
+**Distribution works before the store products exist.** `appl_` / `goog_` keys can only
+be issued after products are created in App Store Connect / Play Console, so until then
+the Test Store key (`REVENUECAT_SDK_KEY`) alone is enough for the build to pass.
+The app also falls back to the Test Store key when the per-platform key is empty
+(`apiKeyFor` in `revenuecat_config.dart`). Such a build is not a real sale, so a warning
+appears in the first step's log.
 
-**グループ名は `mobile-dart-defines` と完全一致させ、アプリに紐づけること。**
-どちらかを外すと変数が渡らず、ビルドの1ステップ目
-「dart-define に渡す環境変数が揃っているか」で落ちる
-(そのチェックが無かった頃は、10分以上進んだ最後の
-`flutter build` で `API_BASE_URL: unbound variable` になっていた)。
+**The group name must match `mobile-dart-defines` exactly and be attached to the app.**
+Miss either and the variables never arrive, failing the build's first step,
+"Check the dart-define environment variables are present"
+(before that check existed, it failed ten-plus minutes later in the final
+`flutter build` with `API_BASE_URL: unbound variable`).
 
-このチェックは**そのworkflowが作る成果物のプラットフォームの鍵だけ**を見る
-(iOS workflow なら `appl_`、Android workflow なら `goog_`)。判定には
-`codemagic.yaml` の `environment.vars.TARGET_PLATFORM` を使っているので、
-workflow を足すときはこの変数も一緒に設定すること。
+That check only inspects **the keys for the platform that workflow builds** (`appl_` for
+the iOS workflow, `goog_` for Android). It decides from `environment.vars.TARGET_PLATFORM`
+in `codemagic.yaml`, so set that variable too when adding a workflow.
 
-### `ios-code-signing`(iOSのみ)
+### `ios-code-signing` (iOS only)
 
-| 変数 | 中身 | Secure |
+| Variable | Content | Secure |
 | --- | --- | --- |
-| `CERTIFICATE_PRIVATE_KEY` | 配布証明書に埋める RSA 秘密鍵(PEM 全文) | ✅ |
+| `CERTIFICATE_PRIVATE_KEY` | The RSA private key embedded in the distribution certificate (the full PEM) | ✅ |
 
-**このリポジトリで唯一、本物の秘密鍵を入れる変数**。作り方と、
-渡し忘れると何が起きるかは [2. iOS の署名](#certificate_private_key-が要る)。
+**The only variable in this repository holding a real private key.** How to create it,
+and what happens if it is missing, is in [2. iOS signing](#certificate_private_key-is-required).
 
-### `google-play`(Androidのみ)
+### `google-play` (Android only)
 
-| 変数 | 中身 | Secure |
+| Variable | Content | Secure |
 | --- | --- | --- |
-| `GCLOUD_SERVICE_ACCOUNT_CREDENTIALS` | Play Console のサービスアカウントJSON(丸ごと) | ✅ |
+| `GCLOUD_SERVICE_ACCOUNT_CREDENTIALS` | Play Console's service-account JSON (in full) | ✅ |
 
-## 2. iOS の署名
+## 2. iOS signing
 
-**Integrations > Apple Developer Portal > App Store Connect** で
-APIキーを登録する。名前は `codemagic.yaml` に書いてある
-**`codemagic`** に揃えること(名前で参照している)。
-このファイル名と同じ文字列なので紛らわしいが、
-指しているのは**APIキーに付けた表示名**のほう。
+Register an API key under
+**Integrations > Apple Developer Portal > App Store Connect**.
+The name must match **`codemagic`**, as written in `codemagic.yaml` (it is referenced by
+name). It happens to be the same string as the file name, which is confusing, but what it
+points at is **the display name given to the API key**.
 
-必要なもの(App Store Connect > ユーザーとアクセス > 統合 で発行):
+What is needed (issued at App Store Connect > Users and Access > Integrations):
 
 - Issuer ID
 - Key ID
 - `AuthKey_XXXXXXXX.p8`
-- 権限は **App Manager** 以上
+- A role of **App Manager** or above
 
-発行の手順は
-[`store-setup.md` の 1-3-1](./store-setup.md#1-3-1-app-store-connect-api-key-を発行する)
-に画面単位で書いてある。**Apple Developer 側の Keys ではなく
-App Store Connect 側**という点だけ注意。
+The issuing procedure is written screen by screen in
+[`store-setup.md`'s 1-3-1](./store-setup.md).
+The one thing to watch is that it is **App Store Connect's Keys, not Apple Developer's**.
 
-証明書とプロビジョニングプロファイルを手で作る必要はない。
-`codemagic.yaml` の scripts の
-**`署名ファイルを Apple から取得し Xcode プロジェクトに適用する`** が、
-このAPIキーを使って Apple から取得し、無ければ作る。
+Certificates and provisioning profiles need not be created by hand.
+`codemagic.yaml`'s scripts step
+**`Fetch signing files from Apple and apply them to the Xcode project`** uses that API key
+to fetch them from Apple, creating them if absent.
 
 ```
-keychain initialize                      # キーチェーンを用意する
-app-store-connect fetch-signing-files …  # Appleから取得・生成する
-keychain add-certificates                # 証明書をキーチェーンに入れる
-xcode-project use-profiles --project …   # Xcodeプロジェクトに適用し
-                                         # export_options.plist を作る
+keychain initialize                      # prepare the keychain
+app-store-connect fetch-signing-files …  # fetch or create from Apple
+keychain add-certificates                # put the certificates into the keychain
+xcode-project use-profiles --project …   # apply to the Xcode project and
+                                         # write export_options.plist
 ```
 
-`use-profiles` に `--project ios/Runner.xcodeproj` を渡しているのは、
-省略時の探し方が「クローン先ルートからの `**/*.xcodeproj`」で、
-このリポジトリのように iOS プロジェクトが `apps/mobile/ios` にある構成では
-見つけられずに素通りすることがあるため。素通りすると
-`$HOME/export_options.plist` が作られず、最後の `flutter build ipa` が
-`"/Users/builder/export_options.plist" property list does not exist` で落ちる。
+`use-profiles` is given `--project ios/Runner.xcodeproj` because, omitted, it searches
+`**/*.xcodeproj` from the clone's root and can silently miss an iOS project living at
+`apps/mobile/ios` as it does here. When it misses, `$HOME/export_options.plist` is never
+written and the final `flutter build ipa` fails with
+`"/Users/builder/export_options.plist" property list does not exist`.
 
-### `environment.ios_signing` は使わない
+### Do not use `environment.ios_signing`
 
-> **`ios_signing` は名前に反して自動署名の設定ではない。**
-> あれは「**Codemagic UI にアップロード済みの**署名ファイルから、
-> `distribution_type` と `bundle_identifier` に合うものを探して使う」指定
-> ([Codemagic Docs](https://docs.codemagic.io/yaml-code-signing/signing-ios/) の
-> "uploaded signing files")。**つまり手動署名**で、
-> Developer Portal ではなく **UI に置いたファイルが正**になる。
+> **Despite the name, `ios_signing` is not automatic signing.**
+> It means "from the signing files **already uploaded to the Codemagic UI**, pick one
+> matching `distribution_type` and `bundle_identifier`"
+> ("uploaded signing files" in the
+> [Codemagic docs](https://docs.codemagic.io/yaml-code-signing/signing-ios/)).
+> **That is manual signing**, with **the UI's files** - not the Developer Portal - as the
+> source of truth.
 
-これを自動署名だと誤解していた頃、実際に使われていたのは
-Codemagic UI に手でアップロードされた `aisenseiprd` だった。
-そのプロファイルは App Groups を持たないまま作られていたので、
-NSE が入ったあと
+While this was mistaken for automatic signing, what was actually used was the
+`aisenseiprd` uploaded by hand to the Codemagic UI.
+That profile had been created without App Groups, so once the NSE arrived it started
+failing with
 
 ```
 Provisioning profile "aisenseiprd" doesn't include the App Groups capability
 ```
 
-で落ちるようになり、しかも **Developer Portal 側をいくら直しても直らなかった**
-—— UI のファイルは Portal とは別物なので、Portal の変更が反映されないため。
+and **no amount of fixing the Developer Portal helped** - the UI's file is separate from
+the Portal, so Portal changes never reach it.
 
-`ios_signing` を書き足すと、scripts の `fetch-signing-files` と
-**両方式が混ざる**。混ぜると
-`No matching profiles found for bundle identifier ... and distribution type "app_store"`
-で落ちるので、足さないこと。
+Adding `ios_signing` back **mixes both schemes** with the scripts' `fetch-signing-files`.
+Mixed, it fails with
+`No matching profiles found for bundle identifier ... and distribution type "app_store"`,
+so do not add it.
 
-### CERTIFICATE_PRIVATE_KEY が要る
+### CERTIFICATE_PRIVATE_KEY is required
 
-変数グループ **`ios-code-signing`** に `CERTIFICATE_PRIVATE_KEY` を
-**Secure で**入れておくこと。配布証明書に埋める秘密鍵で、これだけは本物の秘密鍵。
+Put `CERTIFICATE_PRIVATE_KEY` into the **`ios-code-signing`** variable group **as
+Secure**. It is the private key embedded in the distribution certificate, and the only
+real private key here.
 
-作り方:
+To create it:
 
 ```
 ssh-keygen -t rsa -b 2048 -m PEM -f ios_distribution_private_key -q -N ""
 ```
 
-できた `ios_distribution_private_key`(拡張子なしのほう)をテキストエディタで開き、
-`-----BEGIN RSA PRIVATE KEY-----` / `-----END RSA PRIVATE KEY-----` の行も含めて <!-- pragma: allowlist secret -->
-**全文**を値として貼る。
+Open the resulting `ios_distribution_private_key` (the one with no extension) in a text
+editor and paste **the whole thing** as the value, including the
+`-----BEGIN RSA PRIVATE KEY-----` / `-----END RSA PRIVATE KEY-----` lines. <!-- pragma: allowlist secret -->
 
-**渡し忘れると毎ビルド新しい配布証明書が作られる。**
-Distribution 証明書はチームで持てる枚数に上限があるので、数回のビルドで
-上限に当たり、そこから先は発行そのものが失敗するようになる。
-署名ステップの先頭でこの変数を見て、無ければ即座に落とすようにしてあるのはそのため。
+**Without it, a new distribution certificate is created on every build.**
+A team can hold only so many Distribution certificates, so a few builds hit the cap and
+issuing fails from then on. That is why the signing step reads this variable first and
+fails immediately when it is missing.
 
-### プロファイルは中身まで検査してから使う
+### Profiles are inspected before use
 
-### プロファイルは中身まで検査してから使う
+In the same step, before calling `use-profiles`, it **reads the profiles' entitlements**
+and checks two things.
 
-同じステップで、`use-profiles` を叩く前に
-**プロファイルの Entitlements を読んで**次の2点を見ている。
+- That the profiles for both the app (`jp.co.aiSensei`) and the **Notification Service
+  Extension** (`jp.co.aiSensei.OneSignalNotificationServiceExtension`) were downloaded
+- That the profile allows the **App Group** `Runner.entitlements` requires
 
-- 本体(`jp.co.aiSensei`)と **Notification Service Extension**
-  (`jp.co.aiSensei.OneSignalNotificationServiceExtension`)の
-  プロファイルが**両方**ダウンロードされているか
-- そのプロファイルが `Runner.entitlements` の要求する
-  **App Group** を許しているか
-
-拡張が入って以降、「プロファイルが1枚でもあればOK」では足りなくなったため。
-足りないまま進むと Xcode のアーカイブ(数分)を回しきったあとで
+Since the extension arrived, "at least one profile exists" is no longer enough.
+Proceeding without them fails only after the whole Xcode archive (minutes) with
 
 ```
 Provisioning profile "aisenseiprd" doesn't include the App Groups capability.
 Signing for "OneSignalNotificationServiceExtension" requires a development team.
 ```
 
-になる。直す先は**このリポジトリではなく Developer Portal 側**なので、
-検査で落として何が足りないかをログに出すようにしてある。
-Portal 側の手順は
-[`store-setup.md` の 1-2-1](./store-setup.md#1-2-1-app-group-と拡張ぶんの-identifier)。
+The fix is **on the Developer Portal side, not in this repository**, so the check fails
+early and logs what is missing.
+The Portal-side procedure is in
+[`store-setup.md`'s 1-2-1](./store-setup.md).
 
-### 手で作らないこと
+### Do not create them by hand
 
-Developer Portal の **Generate a Provisioning Profile を手で回さない。**
-理由が3つある。
+**Do not run Generate a Provisioning Profile in the Developer Portal by hand.**
+Three reasons.
 
-- **配布証明書の秘密鍵が手元に残ってしまう。**
-  Mac で作った配布証明書の秘密鍵はそのMacのキーチェーンの中にあり、
-  Codemagic からは使えない。ビルドマシンは証明書本体をダウンロードできても
-  鍵が無いので、`Cannot save Signing Certificates without certificate
-  private key` で落ちる。
-- **配布証明書の枠を無駄に食う。** チームで持てる Distribution 証明書には
-  上限がある。手で1枚作ってから CI にも作らせると2枚消費し、
-  上限に当たると発行そのものが失敗する。
-- **種類を間違えやすい。** 必要なのは
-  **Distribution > App Store Connect** のプロファイル。
-  Development を選ぶと Select Certificates に開発用証明書しか出ず、
-  そのまま作っても `app_store` 配布には使えない。
+- **The distribution certificate's private key stays on your machine.**
+  A distribution certificate created on a Mac keeps its private key in that Mac's
+  keychain, unusable from Codemagic. The build machine can download the certificate but
+  has no key, and fails with `Cannot save Signing Certificates without certificate
+  private key`.
+- **It wastes a distribution certificate slot.** A team can hold only so many
+  Distribution certificates. Creating one by hand and letting CI create another consumes
+  two, and hitting the cap makes issuing fail outright.
+- **The type is easy to get wrong.** What is needed is a
+  **Distribution > App Store Connect** profile. Choosing Development lists only
+  development certificates under Select Certificates, and the result cannot be used for
+  `app_store` distribution.
 
-> **「端末(Device)がリストに無い」は問題ではない。**
-> 端末の登録が要るのは Development と Ad Hoc のプロファイルだけで、
-> **App Store 配布用のプロファイルは端末を持たない**。
-> CIのMacをデバイス登録する必要はない。
+> **"The device is not in the list" is not a problem.**
+> Device registration is needed only for Development and Ad Hoc profiles;
+> **an App Store distribution profile has no devices**.
+> There is no need to register the CI Mac as a device.
 
-**すでに手で作ってしまったプロファイル(例: `aisenseiprd`)は消す。**
-自動署名は条件の合う既存プロファイルがあればそれを使い回すので、
-残しておくと「Portal の App ID は直したのにビルドだけ落ち続ける」になる
-—— プロファイルは**作られた時点の Capability を焼き込んでいる**ため、
-App Groups をあとから足しても古いプロファイルには入らない。
-**Profiles から消せば**、次のビルドで自動署名が今の Capability で作り直す。
+**Delete profiles already created by hand (e.g. `aisenseiprd`).**
+Automatic signing reuses any existing profile that matches, so leaving one produces "the
+Portal's App ID is fixed but only the build keeps failing" - a profile **bakes in the
+capabilities as of its creation**, so adding App Groups later never reaches an old one.
+**Delete it from Profiles** and the next build's automatic signing recreates it with the
+current capabilities.
 
-### Codemagic UI の「Code signing identities」は空にしておく
+### Keep Codemagic UI's "Code signing identities" empty
 
-Codemagic UI の
-**Available provisioning profiles / iOS certificates**(iOS側)は、
-**手で用意したファイルをアップロードして使う手動署名のための場所**。
+Codemagic UI's **Available provisioning profiles / iOS certificates** (the iOS side) is
+**the place for manual signing, with files you uploaded yourself**.
 
-> **ここに置いたものは「使われない」のではなく、置くと使われてしまう。**
-> かつてこのドキュメントには「`codemagic.yaml` は参照していないので置いても
-> 使われない」と書いてあったが、**逆**だった。`environment.ios_signing` は
-> まさにここを見に行く指定で、実際に手で上げた `aisenseiprd` が
-> 毎ビルド使われていた。**Developer Portal を直しても直らない**という
-> 厄介な症状の出どころがこれ。
+> **What you put here is not "unused" - putting it here makes it get used.**
+> This document once said "`codemagic.yaml` does not reference it, so anything here is
+> unused". That was **backwards**. `environment.ios_signing` is precisely the setting that
+> looks here, and the hand-uploaded `aisenseiprd` really was used on every build. That is
+> the source of the awkward symptom where **fixing the Developer Portal changes nothing**.
 
-いまは `ios_signing` を書いていないので、この画面のファイルは使われない。
-ただし**残っていると次に同じ罠を踏む**ので、iOS のプロファイル・証明書は
-削除して空にしておくこと(Android の keystore は別 —— 下記)。
+`ios_signing` is no longer written, so this screen's files are unused.
+But **leaving them invites the same trap next time**, so delete the iOS profiles and
+certificates and keep it empty (the Android keystore is different - see below).
 
-**自動署名が使ったものはこの画面には出てこない。**
-プロファイルと証明書は
-「Appleの Developer Portal から取得され、ビルドマシンにダウンロードされる」
-だけで、Codemagic に保存されるわけではないため。
+**What automatic signing used does not appear on this screen.**
+Profiles and certificates are only "fetched from Apple's Developer Portal and downloaded
+onto the build machine"; they are not stored in Codemagic.
 
-確認するならこの2か所:
+To check, look in two places:
 
-- ビルドログの
-  **`署名ファイルを Apple から取得し Xcode プロジェクトに適用する`** ステップ
-  — 何を取得し、キーチェーンに何を入れたかが出る
+- The build log's **`Fetch signing files from Apple and apply them to the Xcode project`**
+  step — it shows what was fetched and what went into the keychain
 - **[developer.apple.com](https://developer.apple.com) >
-  Certificates, Identifiers & Profiles > Profiles**
-  — ビルド後に `jp.co.aiSensei` の App Store プロファイルが増えている
+  Certificates, Identifiers & Profiles > Profiles** — after a build, a new App Store
+  profile for `jp.co.aiSensei` appears
 
-> Android の keystore(`ai-sensei-upload-keystore`)は逆で、
-> **Codemagic UI に置いたものを使う**。iOS だけAPI経由という非対称になっている。
+> The Android keystore (`ai-sensei-upload-keystore`) is the opposite: **what is in the
+> Codemagic UI is used**. Only iOS goes through the API, so the two are asymmetric.
 
-### 動作確認のためにビルドを回すとき
+### Running a build to check something
 
-`ios-testflight` の自動トリガは **`develop` へのpush** だけ。
-PRブランチに置いた変更を試したいときは、Codemagic UI の
-**Start new build** でブランチと workflow を選んで手動で回す
-(`codemagic.yaml` は選んだブランチのものが読まれる)。
+`ios-testflight`'s only automatic trigger is **a push to `develop`**.
+To try a change on a PR branch, run it manually from the Codemagic UI's
+**Start new build**, choosing the branch and the workflow (the `codemagic.yaml` from the
+chosen branch is read).
 
-> **署名は scripts の `fetch-signing-files` だけでやっている。**
-> 一時期これを消して `environment.ios_signing` だけにしていたことがあるが、
-> あれは自動署名ではなく UI のファイルを使う手動署名だったので、
-> 「Portal を直しても直らない」状態に陥った(上の囲み)。
-> かつてこの2つを併用して壊れたのは、
-> **手動署名と自動署名を混ぜたから**であって、
-> `fetch-signing-files` 側に問題があったわけではない。
-> 混ぜないこと。
+> **Signing is done solely by the scripts' `fetch-signing-files`.**
+> For a while this was removed in favour of `environment.ios_signing` alone, which is
+> manual signing from UI files rather than automatic signing, and that produced the
+> "fixing the Portal changes nothing" state (see the box above).
+> What broke when the two were once used together was **mixing manual and automatic
+> signing**, not a problem with `fetch-signing-files`.
+> Do not mix them.
 
-前提として App Store Connect 側に **同じバンドルIDのアプリレコード**が要る。
-無いと `flutter build ipa` は通るがアップロードで落ちる。
+An app record with the same bundle id must exist in App Store Connect. Without it,
+`flutter build ipa` succeeds and the upload fails.
 
-## 3. Android の署名
+## 3. Android signing
 
-**Settings > Code signing identities > Android keystores** に upload keystore を上げる。
-参照名は `codemagic.yaml` の **`ai-sensei-upload-keystore`**。
+Upload the upload keystore under
+**Settings > Code signing identities > Android keystores**.
+The reference name is **`ai-sensei-upload-keystore`**, as in `codemagic.yaml`.
 
-手元に無ければ作る:
+If you do not have one:
 
 ```bash
 keytool -genkey -v -keystore upload-keystore.jks \
   -keyalg RSA -keysize 2048 -validity 10000 -alias upload
 ```
 
-ビルド中に `codemagic.yaml` が `apps/mobile/android/key.properties` を書き出し、
-`android/app/build.gradle.kts` がそれを読んでリリース署名に使う。
-**`key.properties` と `*.jks` はコミットしない**(`android/.gitignore` で除外済み)。
+During the build, `codemagic.yaml` writes `apps/mobile/android/key.properties`, and
+`android/app/build.gradle.kts` reads it for release signing.
+**Never commit `key.properties` or `*.jks`** (excluded in `android/.gitignore`).
 
-## 4. トリガ
+## 4. Triggers
 
-| workflow | いつ走るか | 出るもの |
+| workflow | When it runs | Output |
 | --- | --- | --- |
-| `ios-testflight` | `develop` へのpush | TestFlight(内部テスター) |
-| `android-internal` | `v*` タグ | Play internal トラック(ドラフト) |
+| `ios-testflight` | A push to `develop` | TestFlight (internal testers) |
+| `android-internal` | A `v*` tag | Play internal track (draft) |
 
-READMEのとおり iOS 先行なので、自動で回るのは iOS だけにしてある。
-Android は必要になったらタグを打つか、UIから "Start new build" で回す。
+iOS goes first, per the README, so only iOS runs automatically.
+Android runs when needed, by pushing a tag or via "Start new build" in the UI.
 
-`develop` への push ごとに TestFlight に上がるのが多すぎる場合は、
-`codemagic.yaml` の `triggering.branch_patterns` を `main` に変えるか、
-`events` を `tag` に変える。
+If uploading to TestFlight on every push to `develop` is too much, change
+`triggering.branch_patterns` in `codemagic.yaml` to `main`, or change `events` to `tag`.
 
-## 5. バージョン
+## 5. Versions
 
-- **バージョン名**(`1.2.3` の側)は `apps/mobile/pubspec.yaml` の `version` が正。
-  上げたいときはここを編集してコミットする。
-- **ビルド番号**は Codemagic の連番(`$PROJECT_BUILD_NUMBER`)で上書きする。
-  TestFlightは同じビルド番号の再アップロードを受け付けないため。
+- **The version name** (the `1.2.3` part) is authoritative in `apps/mobile/pubspec.yaml`'s
+  `version`. To bump it, edit and commit there.
+- **The build number** is overridden with Codemagic's counter
+  (`$PROJECT_BUILD_NUMBER`), because TestFlight rejects a re-upload with the same build
+  number.
 
-## 6. Flutter のバージョン
+## 6. The Flutter version
 
-`apps/mobile/.fvmrc`(= 手元のfvm、= GitHub Actions)が正。
-Codemagic は環境変数やファイルからSDKのバージョンを決められないので、
-`codemagic.yaml` の `definitions.flutter_version` に**同じ値を手で書いている**。
+`apps/mobile/.fvmrc` (= local fvm, = GitHub Actions) is authoritative.
+Codemagic cannot take the SDK version from an environment variable or a file, so
+`definitions.flutter_version` in `codemagic.yaml` **repeats the same value by hand**.
 
-ズレたときは最初のステップ(`.fvmrc とSDKのバージョンが一致しているか`)で
-ビルドが落ちるので、気づかないまま別バージョンで配布することはない。
-`.fvmrc` を上げたら `codemagic.yaml` も一緒に上げること。
+On drift, the first step (`Check the SDK version matches .fvmrc`) fails the build, so
+there is no way to distribute a different version unnoticed.
+Bump `codemagic.yaml` together with `.fvmrc`.
 
-## 7. golden test を Codemagic では走らせない理由
+## 7. Why golden tests do not run on Codemagic
 
-golden は **Linuxのラスタライズを正**としている
-([`apps/mobile/test/golden/README.md`](../../apps/mobile/test/golden/README.md))。
-Codemagic は macOS インスタンスなので、そのまま走らせるとフォントの描画差で必ず落ちる。
+Goldens treat **Linux rasterization as authoritative**
+([`apps/mobile/test/golden/README.md`](../../apps/mobile/test/golden/README.md)).
+Codemagic runs macOS instances, so running them there always fails on font rendering
+differences.
 
-そのため golden のテストには `golden` タグを付け
-(`apps/mobile/test/golden/screens_golden_test.dart` の `@Tags`)、
-Codemagic 側は `flutter test --exclude-tags golden` で外している。
-golden の正となる実行は GitHub Actions(ubuntu-latest)。
+So golden tests carry the `golden` tag (`@Tags` in
+`apps/mobile/test/golden/screens_golden_test.dart`), and Codemagic excludes them with
+`flutter test --exclude-tags golden`.
+The authoritative golden run is GitHub Actions (ubuntu-latest).
 
-## つまずきやすいところ
+## Common stumbling blocks
 
-- **`codemagic.yaml` が無視される** → 手順0のYAML切り替えをしていない。
+- **`codemagic.yaml` is ignored** -> step 0's YAML switch was not done.
 - **`Provisioning profile ... doesn't include signing certificate`**
-  → App Store Connect のAPIキーの権限が App Manager 未満。
+  -> the App Store Connect API key's role is below App Manager.
 - **`No matching profiles found for bundle identifier "..." and distribution type "app_store"`**
-  → 下の「プロファイルが見つからないとき」を参照。
+  -> see "When no profile is found" below.
 - **`"/Users/builder/export_options.plist" property list does not exist`**
-  → 組み込みの署名ステップが `apps/mobile/ios/Runner.xcodeproj` を見つけられず、
-    plist を作らないまま通った状態。scripts の
-    `署名をXcodeプロジェクトに適用し export_options.plist を作る` が
-    これを埋める(「2. iOS の署名」参照)。
-    そのステップが `プロビジョニングプロファイルが1つもダウンロードされていない`
-    で落ちるなら、原因は plist ではなく取得側 —— 下の
-    「プロファイルが見つからないとき」へ。
-- **AABがPlayに弾かれる(`not signed`)**
-  → keystore の参照名が `ai-sensei-upload-keystore` と一致していない。
-    一致しないと `key.properties` が書けず、debug署名にフォールバックする。
+  -> the built-in signing step could not find `apps/mobile/ios/Runner.xcodeproj` and
+     passed without writing the plist. The scripts' step that applies signing to the
+     Xcode project and writes `export_options.plist` fills that in (see "2. iOS signing").
+     If that step fails with "no provisioning profile was downloaded", the cause is the
+     fetch, not the plist - go to "When no profile is found" below.
+- **The AAB is rejected by Play (`not signed`)**
+  -> the keystore's reference name does not match `ai-sensei-upload-keystore`.
+     Mismatched, `key.properties` is never written and signing falls back to debug.
 
-## プロファイルが見つからないとき
+## When no profile is found
 
 ```
 No matching profiles found for bundle identifier "jp.co.aiSensei"
 and distribution type "app_store"
 ```
 
-Codemagic が App Store Connect に「`jp.co.aiSensei` の配布用プロファイルをくれ」と
-聞いて、Appleが**何も返さなかった**という意味。
+It means Codemagic asked App Store Connect for "a distribution profile for
+`jp.co.aiSensei`" and Apple **returned nothing**.
 
-確認する順に:
+Check in this order:
 
-### 1. Identifier が登録されているか(いちばん多い)
+### 1. Is the Identifier registered (most common)
 
+Look for `jp.co.aiSensei` under
 **[developer.apple.com](https://developer.apple.com) > Certificates, Identifiers &
-Profiles > Identifiers** に `jp.co.aiSensei` があるか見る。
+Profiles > Identifiers**.
 
-- **大文字小文字が区別される。** `jp.co.aisensei` は別物として扱われ、一致しない
-- **Explicit で登録されていること。** ワイルドカード(`jp.co.*`)では
-  `app_store` 配布のプロファイルに使えない
+- **It is case-sensitive.** `jp.co.aisensei` is a different thing and will not match
+- **It must be registered as Explicit.** A wildcard (`jp.co.*`) cannot be used for an
+  `app_store` distribution profile
 
-> **App Store Connect で「アプリを作成」したことと、
-> Developer Portal に Identifier を登録することは別の作業。**
-> 手順としては Identifier が先で、アプリレコードはそれを選んで作る。
-> アプリレコードだけあって Identifier が無い、という状態にはならないが、
-> **どちらも作っていない**場合はここから。
+> **Creating an app in App Store Connect and registering an Identifier in the Developer
+> Portal are two different tasks.**
+> The Identifier comes first, and the app record is created by choosing it. You cannot
+> end up with an app record and no Identifier, but if **neither exists**, start here.
 
-### 2. APIキーとIdentifierのチームが同じか
+### 2. Are the API key and the Identifier in the same team
 
-Apple IDが複数のチームに属している場合、**Issuer ID がチームを決める**。
-別チームで Identifier を作っていると、APIキーからは見えないので一致しない。
-Identifier のページで所属チームを確認する。
+When an Apple ID belongs to several teams, **the Issuer ID decides the team**.
+An Identifier created in another team is invisible to the API key and will not match.
+Check the team on the Identifier's page.
 
-### 3. APIキーの役割
+### 3. The API key's role
 
-**App Manager 以上**であること。Developer だと読めても**作れない**ので、
-同じ「見つからない」エラーになる。役割は後から変更できる。
+It must be **App Manager or above**. A Developer role can read but **cannot create**, so
+it produces the same "not found" error. The role can be changed later.
 
-### 4. 配布証明書の枠
+### 4. The distribution certificate quota
 
-チームの Distribution 証明書が上限に達していると、証明書が作れず失敗する。
-Certificates で使っていないものを失効させる。
+If the team's Distribution certificates are at the cap, no certificate can be created and
+it fails. Revoke unused ones under Certificates.
 
-### ログの読みどころ
+### Reading the log
 
-scripts より前の署名ステップのログに、Codemagic が
-**何を見つけて・何を取ろうとして・なぜ失敗したか**が出る。
-上の1〜4はここに理由が出るので、当てずっぽうで潰す必要はない。
+The signing step's log before the scripts shows **what Codemagic found, what it tried to
+fetch, and why it failed**. Reasons for 1-4 above appear there, so there is no need to
+guess.
 
-`Not enough permissions` のような文言なら 3、
-`Bundle ID ... not found` なら 1、
-証明書の上限に触れていれば 4。
+Wording like `Not enough permissions` means 3; `Bundle ID ... not found` means 1; anything
+about the certificate cap means 4.
 
-### プロファイルを作り直したいとき
+### When you want to recreate a profile
 
-自動署名は**あるものを取ってくるだけ**で、無いものを作らない。
-新規に作らせたいときだけ `codemagic.yaml` に一時的にステップを足す:
+Automatic signing **only fetches what exists**; it does not create what does not.
+To force creation, add a temporary step to `codemagic.yaml`:
 
 ```yaml
-- name: 署名ファイルを作る(一時的に足す)
+- name: Create the signing files (add temporarily)
   script: |
     app-store-connect fetch-signing-files "$BUNDLE_ID" \
       --type IOS_APP_STORE \
@@ -413,19 +403,19 @@ scripts より前の署名ステップのログに、Codemagic が
       --create
 ```
 
-**`--certificate-key` を省かないこと。** 省くと2つの落とし方をする。
+**Do not omit `--certificate-key`.** Omitted, it fails in two ways.
 
-- 既存の配布証明書が Developer Portal にある場合、それを拾うが
-  秘密鍵が無いので `Cannot save Signing Certificates without
-  certificate private key` で落ちる
-- 既存が無い場合は毎ビルド新しい鍵で証明書を作り、
-  すぐ枠の上限(4番)に当たる
+- If a distribution certificate already exists in the Developer Portal, it is picked up
+  but has no private key, failing with `Cannot save Signing Certificates without
+  certificate private key`
+- If none exists, a certificate is created with a new key on every build, quickly hitting
+  the quota (point 4)
 
-鍵は1度作って Codemagic の secure な環境変数
-`CERTIFICATE_PRIVATE_KEY` に入れ、使い回す:
+Create the key once, put it into Codemagic's secure environment variable
+`CERTIFICATE_PRIVATE_KEY`, and reuse it:
 
 ```
 ssh-keygen -t rsa -b 2048 -m PEM -f cert_key -q -N ""
 ```
 
-作り終わったらこのステップは消す。
+Remove the step once it has done its job.
