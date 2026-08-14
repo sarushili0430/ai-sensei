@@ -1,7 +1,7 @@
-// 保存してある実測の出力を、**新しいスキーマが弾かないか**を確かめる。
+// Confirms a new schema does not reject the stored measured output.
 //
-// 契約を後から足したときに、これまで通っていた書き方を落とすと、
-// 240回の実測がまるごと無効になる。足したら必ずこれを通す。
+// Adding to the contract later and rejecting a form that used to pass invalidates all
+// 240 measurements. Always run this after adding something.
 //
 //   node docs/figeval/verify-schema.mjs
 

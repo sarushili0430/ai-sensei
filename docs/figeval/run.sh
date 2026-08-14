@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# 8問 × 2モデル × 3回。一発で描けるかを見たいので、会話は1往復だけ。
+# 8 problems x 2 models x 3 runs. One exchange only, since we want to see whether it
+# draws first time.
 #
-# **ここで一度、測り方を間違えた。** 両モデルとも「8問まとめて答える」出力を出し、
-# 採点用の id まで書いてきた。ファイルを読みに行ったのだと思ったが、ちがった。
-#   `while read ... done < prompts.tsv` の中で `claude -p` を起動すると、
-#   claude が **標準入力を引き継いで、残りの問題を全部読んでしまう**。
-#   問題文に「他の7問」がくっついていただけで、モデルは指示どおりに動いていた。
-# → `< /dev/null` で塞ぐ。ツール禁止と空ディレクトリは、念のためそのまま残す。
+# The measurement method was got wrong once here. Both models emitted "answer all 8 at
+# once" output, including the scoring ids. It looked like they had read the file, but no:
+#   starting `claude -p` inside `while read ... done < prompts.tsv` makes claude inherit
+#   stdin and consume the remaining problems.
+#   The other seven problems were simply attached to the prompt, and the models did
+#   exactly as instructed.
+# -> Closed with `< /dev/null`. The tool ban and the empty directory stay as a precaution.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 OUT="$HERE/out"; mkdir -p "$OUT"
@@ -28,18 +30,19 @@ while IFS=$'\t' read -r id prompt <&3; do
       f="$OUT/${model}__${id}__${t}.txt"
       [ -s "$f" ] && continue
       (
-        # プロキシの TLS で弾かれることがある(self-signed certificate detected)。
-        # CA束を渡し、落ちたら少し待って2回まで引き直す。**通信の失敗をモデルの失敗に混ぜない。**
+        # The proxy's TLS sometimes rejects it (self-signed certificate detected).
+        # Pass the CA bundle and, on failure, wait briefly and retry up to twice.
+        # Do not mix transport failures into model failures.
         for attempt in 1 2 3; do
           NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt \
           timeout 240 claude -p "$prompt" --model "$model" \
             --system-prompt "$SPEC" "${NOTOOLS[@]}" \
             </dev/null > "$f.tmp" 2>"$f.err" && break
-          grep -q . "$f.tmp" && break        # 中身があるなら通信は成功している
+          grep -q . "$f.tmp" && break        # content means the request succeeded
           sleep $((attempt * 4))
         done
         grep -q . "$f.tmp" || echo "__CLI_FAILED__" >> "$f.tmp"
-        mv "$f.tmp" "$f"          # 書き終わってから見えるようにする
+        mv "$f.tmp" "$f"          # make it visible only once fully written
       ) &
       while [ "$(jobs -rp | wc -l)" -ge 8 ]; do wait -n; done
     done

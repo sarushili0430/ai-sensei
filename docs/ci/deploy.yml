@@ -1,10 +1,11 @@
-# backend/api(Cloudflare Workers)のデプロイ。
+# Deploys backend/api (Cloudflare Workers).
 #
-#   develop ブランチ → develop 環境 (ai-sensei-api-develop)
-#   main    ブランチ → production 環境 (ai-sensei-api-production)
+#   develop branch -> develop environment (ai-sensei-api-develop)
+#   main    branch -> production environment (ai-sensei-api-production)
 #
-# 環境の定義は backend/api/wrangler.toml、初回セットアップは docs/deploy.md。
-# apps/mobile の配布は Codemagic 側(codemagic.yaml)なのでここでは扱わない。
+# The environments are defined in backend/api/wrangler.toml; first-time setup is in
+# docs/deploy.md. apps/mobile is distributed by Codemagic (codemagic.yaml) and is not
+# handled here.
 name: Deploy (backend/api)
 
 on:
@@ -17,7 +18,7 @@ on:
       - "pnpm-lock.yaml"
       - "package.json"
       - ".github/workflows/deploy.yml"
-  # 手で流し直す用(コード変更なしの再デプロイ・secret入れ替え後など)
+  # For re-running by hand (a redeploy with no code change, after swapping a secret, ...)
   workflow_dispatch:
     inputs:
       environment:
@@ -26,8 +27,8 @@ on:
         options: [develop, production]
         default: develop
 
-# 同じブランチのデプロイは直列にする。走っているデプロイは**止めない**
-# (マイグレーションだけ当たってdeployが飛んだ状態がいちばん厄介なので)。
+# Deploys of the same branch are serialized. A running deploy is never cancelled
+# (having only the migration applied while the deploy vanished is the worst state).
 concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: false
@@ -37,8 +38,8 @@ jobs:
     name: ${{ inputs.environment || (github.ref_name == 'main' && 'production' || 'develop') }}
     runs-on: ubuntu-latest
 
-    # GitHub Environments。production に承認を挟みたくなったら、
-    # Settings > Environments > production に required reviewers を足す。
+    # GitHub Environments. To require approval for production, add required reviewers
+    # under Settings > Environments > production.
     environment:
       name: ${{ inputs.environment || (github.ref_name == 'main' && 'production' || 'develop') }}
       url: ${{ steps.deploy.outputs.url }}
@@ -60,22 +61,22 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # プレースホルダのまま deploy すると、Cloudflare からは
-      # 「そんなリソースは無い」という分かりにくいエラーが返る。手前で落とす。
+      # Deploying with placeholders still in place returns an opaque "no such resource"
+      # from Cloudflare. Fail earlier.
       #
-      # 見るのは**対象環境のセクションだけ**。develop を先に立ち上げて production は
-      # あとから作る、という順番はふつうにあるので、production が未設定なことを
-      # 理由に develop のデプロイを止めない(ファイル全体をgrepしない理由)。
+      # Only the target environment's sections are checked. Bringing up develop first and
+      # creating production later is a normal order, so production being unconfigured must
+      # not block a develop deploy (which is why the whole file is not grepped).
       - name: Check bindings are filled in
         run: pnpm run verify:bindings "$TARGET"
 
-      # CIワークフローと重複するが、デプロイは単体で完結させる。
-      # 「CIは緑だったが、その後のpushで壊れたものが出ていった」を防ぐため。
+      # Overlaps with the CI workflow, but a deploy must stand on its own.
+      # It prevents "CI was green, then a later push shipped something broken".
       - name: Verify (lint / typecheck / secret scan / test)
         run: pnpm run verify
 
-      # コードより先にスキーマを当てる。適用済みのマイグレーションは
-      # d1_migrations テーブルで管理されるので、再実行しても二重には当たらない。
+      # Apply the schema before the code. Applied migrations are tracked in the
+      # d1_migrations table, so re-running never applies them twice.
       - name: Apply D1 migrations
         run: pnpm --filter @ai-sensei/api run "migrate:$TARGET"
 
@@ -83,18 +84,18 @@ jobs:
         id: deploy
         shell: bash
         run: |
-          # wrangler は行によって stdout/stderr を使い分けるので、両方拾う
+          # wrangler uses stdout and stderr line by line, so capture both
           pnpm --filter @ai-sensei/api run "deploy:$TARGET" 2>&1 | tee deploy.log
-          # workers.dev でも独自ドメインでも、wrangler は triggers に URL を出す。
-          # ドキュメント/ダッシュボードへの案内リンクは拾わない。
-          # 1つも取れなくてもここでは落とさない(デプロイ自体は成功しているため)。
-          # pipefail が効いているので、空振りのgrepを `|| true` で吸収する。
+          # On workers.dev or a custom domain alike, wrangler prints the URL under triggers.
+          # Links to docs or the dashboard are not picked up.
+          # Finding none does not fail here (the deploy itself succeeded).
+          # pipefail is on, so an empty grep is absorbed with `|| true`.
           url="$(grep -oE 'https://[A-Za-z0-9._-]+(/\*)?' deploy.log \
             | grep -vE 'cloudflare\.com|github\.com' \
             | tail -1 | sed 's#/\*$##' || true)"
           echo "url=$url" >> "$GITHUB_OUTPUT"
 
-      # develop と production は見た目が同じなので、/health が名乗る環境名まで見る。
+      # develop and production look identical, so check the environment name /health reports.
       - name: Smoke check
         shell: bash
         run: |
@@ -103,7 +104,7 @@ jobs:
             echo "::warning::デプロイ出力からURLを取れなかったので /health の確認を飛ばします"
             exit 0
           fi
-          # デプロイ直後は伝播待ちがあるので数回リトライする
+          # Propagation takes a moment right after a deploy, so retry a few times
           body="$(curl -fsS --retry 5 --retry-delay 3 --retry-all-errors "$url/health")"
           echo "$body"
           if ! grep -q "\"environment\":\"$TARGET\"" <<<"$body"; then

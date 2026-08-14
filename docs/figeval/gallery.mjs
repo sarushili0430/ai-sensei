@@ -1,12 +1,12 @@
-// 実測の出力から、そのまま絵を起こす。
+// Renders figures straight from the measured output.
 //
-// **模範解答ではなく、モデルが実際に書いた JSON を描く。**
-// 通った回のうち1つを選んで solve() → render() に通すので、
-// ここに出る絵は「先輩がその場で書いたもの」そのもの。
+// It draws the JSON the model actually wrote, not a model answer.
+// One passing run is picked and put through solve() -> render(), so the figures here
+// are exactly what the senpai wrote on the spot.
 //
 //   node gallery.mjs > gallery.html
 //
-// 出てくるのは wireframe_board_v2.html に貼るための断片。
+// The output is a fragment for pasting into wireframe_board_v2.html.
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { PROBLEMS } from "./problems.mjs";
@@ -45,7 +45,7 @@ const cards = [];
 const missing = [];
 
 for (const p of PROBLEMS) {
-  // Sonnet を先に見る(成績が良いほうの実物を出す)。無ければ Haiku。
+  // Look at Sonnet first (show the better performer's real output). Haiku if absent.
   const cands = ["sonnet", "haiku"].flatMap((m) =>
     files
       .filter((n) => n.startsWith(`${m}__${p.id}__`))
@@ -73,7 +73,7 @@ for (const p of PROBLEMS) {
       hit = { ...c, items, r, why: v.why, raw: body };
       break;
     } catch {
-      /* 次の回を見る */
+      /* look at the next run */
     }
   }
 

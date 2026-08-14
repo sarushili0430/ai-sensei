@@ -1,19 +1,20 @@
-# git hooks は lefthook で管理する(`pnpm install` の prepare で自動的に入る)。
+# git hooks are managed with lefthook (installed automatically by `pnpm install`'s prepare).
 #
-# 見るものが backend(TypeScript / Biome)と apps/mobile(Dart / flutter analyze)で
-# 全く違うので、設定はそれぞれの配下に置いて、ここから読み込むだけにしてある。
-# どちらも「そのディレクトリに差分があるときだけ」走る(各ファイルの root: 指定)。
+# What is checked differs completely between backend (TypeScript / Biome) and
+# apps/mobile (Dart / flutter analyze), so each config lives under its own directory
+# and this file only loads them. Both run only when that directory has changes
+# (the `root:` setting in each file).
 #
-# コミット時に見るのは **lint だけ**。typecheck / テスト / ビルドはCIに任せる。
-# コミットのたびに数十秒待たされると、hookを外す方向に力が働くため。
+# Commits check lint only. typecheck, tests and builds are left to CI: waiting tens
+# of seconds on every commit pushes people towards disabling the hook.
 extends:
   - backend/lefthook.yml
   - apps/mobile/lefthook.yml
 
 pre-commit:
-  # backend と mobile は独立しているので同時に走らせる
+  # backend and mobile are independent, so they run together
   parallel: true
-  # マージ・リベースの最中は走らせない(自分で書いていない差分で止まるため)
+  # Do not run during a merge or rebase (it would stop on changes you did not write)
   skip:
     - merge
     - rebase

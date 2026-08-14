@@ -1,31 +1,31 @@
 # =============================================================================
 # ai-sensei — Codemagic
 # =============================================================================
-# 役割分担:
+# Division of labour:
 #   GitHub Actions (.github/workflows/ci.yml)
-#     … lint / typecheck / test / flutter analyze / golden test / シークレット走査
-#   Codemagic (このファイル)
-#     … 実機向けビルドと配布(TestFlight / Google Play)
+#     ... lint / typecheck / test / flutter analyze / golden tests / secret scanning
+#   Codemagic (this file)
+#     ... device builds and distribution (TestFlight / Google Play)
 #
-# 検査をActions側に寄せているのは、Codemagicのmacインスタンスが従量課金だから。
-# ここでは「壊れたものを配布しない」ために要る分だけを走らせる。
+# Checks live on the Actions side because Codemagic's mac instances are metered.
+# Here we run only what is needed to avoid distributing something broken.
 #
-# Codemagic UI 側でやる設定(APIキー・keystore・変数グループ)は
-# docs/ci/codemagic.md にまとめてある。
-# このファイルを使うには Workflow Editor の "Switch to YAML configuration" が要る。
+# The Codemagic UI settings (API keys, keystore, variable groups) are collected in
+# docs/ci/codemagic.md.
+# Using this file requires "Switch to YAML configuration" in the Workflow Editor.
 # =============================================================================
 
 definitions:
-  # Flutterのバージョンは apps/mobile/.fvmrc を正とする。
-  # Codemagicは環境変数やファイルからSDKのバージョンを決められないので
-  # ここは手で書き、ズレたら assert_flutter_version で落とす。
+  # apps/mobile/.fvmrc is authoritative for the Flutter version.
+  # Codemagic cannot take the SDK version from an env var or a file, so it is written
+  # by hand here and assert_flutter_version fails on drift.
   flutter_version: &flutter_version 3.44.8
 
   scripts:
-    # 最初に置いてある。ここで見ているのは変数グループ mobile-dart-defines の
-    # 中身で、渡っていないことに気づけるのが最後の flutter build 時
+    # Placed first. It checks the contents of the mobile-dart-defines variable group,
+    # because otherwise the first sign that nothing was passed is the final flutter build
     #   API_BASE_URL: unbound variable
-    # だと、macの課金時間を10分以上使ってから落ちることになるため。
+    # which fails after burning ten-plus minutes of metered mac time.
     - &assert_dart_defines
       name: dart-define に渡す環境変数が揃っているか
       script: |
@@ -33,11 +33,11 @@ definitions:
         missing=""
         [ -n "${API_BASE_URL:-}" ] || missing="$missing API_BASE_URL"
 
-        # RevenueCat の鍵は、そのworkflowが作る成果物のプラットフォームのものだけ見る。
-        # ストアに商品を作る前は appl_ / goog_ の鍵がまだ無いので、
-        # Test Store の鍵(REVENUECAT_SDK_KEY)でも通す —— アプリ側も
-        # プラットフォーム別の鍵が空なら Test Store の鍵に落ちる作りになっている
-        # (lib/src/features/monetization/data/revenuecat_config.dart の apiKeyFor)。
+        # Only the RevenueCat key for the platform this workflow builds is checked.
+        # Before products exist in the stores there is no appl_ / goog_ key yet, so the
+        # Test Store key (REVENUECAT_SDK_KEY) also passes - the app falls back to the
+        # Test Store key when the per-platform key is empty
+        # (apiKeyFor in lib/src/features/monetization/data/revenuecat_config.dart).
         case "${TARGET_PLATFORM:-}" in
           ios)     platform_key_name=REVENUECAT_IOS_PUBLIC_SDK_KEY;     platform_key="${REVENUECAT_IOS_PUBLIC_SDK_KEY:-}" ;;
           android) platform_key_name=REVENUECAT_ANDROID_PUBLIC_SDK_KEY; platform_key="${REVENUECAT_ANDROID_PUBLIC_SDK_KEY:-}" ;;
@@ -91,7 +91,7 @@ definitions:
 
     - &build_runner
       name: コード生成 (freezed / json_serializable / riverpod)
-      # 生成物(*.freezed.dart / *.g.dart)はコミットしないのでここで作る
+      # Generated files (*.freezed.dart / *.g.dart) are not committed, so build them here
       script: dart run build_runner build --delete-conflicting-outputs
       working_directory: apps/mobile
 
@@ -102,18 +102,18 @@ definitions:
 
     - &test
       name: flutter test (golden以外)
-      # golden は Linux のラスタライズを正とするので(test/golden/README.md)、
-      # macインスタンスでは必ず落ちる。ここで見たいのは contract_fixture_test —
-      # TypeScript側との契約がズレたまま配布するのを止めたい。
+      # Goldens treat Linux rasterization as authoritative (test/golden/README.md), so
+      # they always fail on a mac instance. What matters here is contract_fixture_test:
+      # we want to stop shipping with the TypeScript-side contract drifted.
       script: flutter test --exclude-tags golden
       working_directory: apps/mobile
 
 workflows:
   # ---------------------------------------------------------------------------
-  # iOS → TestFlight
+  # iOS -> TestFlight
   #
-  # develop に入ったものを内部テスターに配る。READMEのとおりiOS先行なので、
-  # 自動で回すのはこのworkflowだけ。
+  # Ships what lands on develop to internal testers. iOS goes first (see the README),
+  # so this is the only workflow that runs automatically.
   # ---------------------------------------------------------------------------
   ios-testflight:
     name: iOS — TestFlight
@@ -121,11 +121,11 @@ workflows:
     max_build_duration: 60
 
     integrations:
-      # Codemagic UI > Settings > Integrations > Developer Portal で登録した
-      # App Store Connect APIキーの「名前」。
-      # ファイル名と同じ文字列だが無関係。Code signing identities に置いた
-      # 証明書の名前(aisenseidist)でもない —— 書くと
-      # App Store Connect integration "..." does not exist で落ちる。
+      # The *name* of the App Store Connect API key registered under
+      # Codemagic UI > Settings > Integrations > Developer Portal.
+      # It happens to match the file name but is unrelated to it, and it is not the name
+      # of the certificate under Code signing identities (aisenseidist) - writing that
+      # fails with App Store Connect integration "..." does not exist.
       app_store_connect: codemagic
 
     environment:
@@ -133,42 +133,41 @@ workflows:
       xcode: latest
       cocoapods: default
       groups:
-        # API_BASE_URL / REVENUECAT_IOS_PUBLIC_SDK_KEY /
-        # REVENUECAT_ANDROID_PUBLIC_SDK_KEY を入れておく変数グループ。
-        # いずれも公開鍵・公開URLなので秘匿は不要(環境ごとに差し替えたいだけ)。
+        # The variable group holding API_BASE_URL / REVENUECAT_IOS_PUBLIC_SDK_KEY /
+        # REVENUECAT_ANDROID_PUBLIC_SDK_KEY. All are public keys and URLs needing no
+        # secrecy (we only want to swap them per environment).
         - mobile-dart-defines
-        # CERTIFICATE_PRIVATE_KEY(配布証明書に埋める秘密鍵)を入れておく変数グループ。
-        # これだけは本物の秘密鍵なので **Secure** で登録すること。
-        # 作り方と、なぜ要るかは docs/ci/codemagic.md の「2. iOS の署名」。
+        # The variable group holding CERTIFICATE_PRIVATE_KEY (the private key embedded in
+        # the distribution certificate). This one is a real private key, so register it as
+        # Secure. How to create it and why it is needed: "2. iOS signing" in docs/ci/codemagic.md.
         - ios-code-signing
       vars:
         BUNDLE_ID: jp.co.aiSensei
-        # OneSignal の Notification Service Extension のバンドルID。
-        # ios/Runner.xcodeproj の NSE ターゲットの PRODUCT_BUNDLE_IDENTIFIER と
-        # 揃えること。署名の検証ステップが、このIDのプロファイルも
-        # ダウンロードされているかを見る。
+        # The bundle id of OneSignal's Notification Service Extension. Keep it in step
+        # with the NSE target's PRODUCT_BUNDLE_IDENTIFIER in ios/Runner.xcodeproj. The
+        # signing verification step checks that this id's profile was downloaded too.
         EXTENSION_BUNDLE_ID: jp.co.aiSensei.OneSignalNotificationServiceExtension
-        # assert_dart_defines が、どちらのRevenueCat鍵を要求するかの判定に使う
+        # Used by assert_dart_defines to decide which RevenueCat key to require
         TARGET_PLATFORM: ios
 
-      # environment.ios_signing は **わざと書いていない**。
+      # environment.ios_signing is deliberately absent.
       #
-      # あれは名前に反して自動署名の設定ではなく、
-      # 「**Codemagic UI にアップロード済みの**署名ファイルから、
-      # distribution_type と bundle_identifier に合うものを探して使う」指定
-      # (docs.codemagic.io/yaml-code-signing/signing-ios/ の "uploaded signing files")。
-      # つまり手動署名で、UIに置いたファイルが正になる。
+      # Despite the name it is not automatic signing but "pick, from the signing files
+      # already uploaded to the Codemagic UI, one matching distribution_type and
+      # bundle_identifier" ("uploaded signing files" in
+      # docs.codemagic.io/yaml-code-signing/signing-ios/). That is manual signing, with the
+      # UI's files as the source of truth.
       #
-      # 書いてあった頃は、Codemagic UI に手で上げた aisenseiprd が使われていた。
-      # そのプロファイルは App Groups を持たないまま作られていたので、
-      # NSE が入ったあと
+      # While it was written, the aisenseiprd uploaded by hand to the Codemagic UI was
+      # used. That profile had been created without App Groups, so once the NSE arrived it
+      # failed with
       #   Provisioning profile "aisenseiprd" doesn't include the App Groups capability
-      # で落ち、Developer Portal 側をいくら直しても直らなかった
-      # (UIのファイルはPortalとは別物なので、Portalの変更が反映されない)。
+      # and no amount of fixing the Developer Portal helped (the UI's file is a separate
+      # thing, so Portal changes never reach it).
       #
-      # いまは下の scripts で app-store-connect fetch-signing-files を叩き、
-      # **Apple から取得・生成する**。ios_signing を書き足すと両方式が混ざり、
-      # No matching profiles found for bundle identifier ... で落ちるので足さないこと。
+      # Now the scripts below call app-store-connect fetch-signing-files and obtain or
+      # generate from Apple. Adding ios_signing back mixes the two schemes and fails with
+      # No matching profiles found for bundle identifier ..., so do not add it.
 
     triggering:
       events:
@@ -177,7 +176,7 @@ workflows:
         - pattern: develop
           include: true
           source: true
-      # 連続pushで古いビルドを走らせ続けない(macの時間を食うだけなので)
+      # Do not keep running stale builds on consecutive pushes (it only eats mac time)
       cancel_previous_builds: true
 
     scripts:
@@ -188,20 +187,20 @@ workflows:
       - *analyze
       - *test
 
-      # 署名は integrations.app_store_connect のAPIキーを使って、
-      # ここで Apple から取得・生成する(Codemagicのいう automatic code signing)。
-      # 組み込みステップに任せる書き方(environment.ios_signing)は
-      # UIにアップロードしたファイルを使う別物なので、上の囲みのとおり使わない。
+      # Signing certificates and profiles are obtained or generated from Apple here,
+      # using integrations.app_store_connect's API key (what Codemagic calls automatic
+      # code signing). Leaving it to the built-in step (environment.ios_signing) is a
+      # different thing that uses files uploaded to the UI - see the block above.
 
       - name: 署名ファイルを Apple から取得し Xcode プロジェクトに適用する
         working_directory: apps/mobile
         script: |
           set -euo pipefail
 
-          # 秘密鍵が無いと fetch-signing-files は **毎ビルド新しい配布証明書を作る**。
-          # Distribution 証明書はチームで持てる枚数に上限があるので、
-          # 数回のビルドで上限に当たり、そこから先は発行そのものが失敗する。
-          # 気づくのは上限に当たったあと —— なので先に見る。
+          # Without the private key, fetch-signing-files creates a new distribution
+          # certificate on every build. A team can hold only so many Distribution
+          # certificates, so a few builds hit the cap and issuing fails from then on.
+          # You notice only after hitting it, so check first.
           if [ -z "${CERTIFICATE_PRIVATE_KEY:-}" ]; then
             echo "CERTIFICATE_PRIVATE_KEY が渡っていない。"
             echo "Codemagic UI > このアプリ > Environment variables で、"
@@ -212,27 +211,26 @@ workflows:
             exit 1
           fi
 
-          # ビルドマシンのキーチェーンを作り、署名に使える状態にする
+          # Create the build machine's keychain and make it usable for signing
           keychain initialize
 
-          # Apple から証明書とプロファイルを取り、無ければ作る。
-          # BUNDLE_ID は前方一致で照合されるので、
-          # jp.co.aiSensei を渡せば拡張(jp.co.aiSensei.OneSignalNotificationServiceExtension)
-          # のぶんも一緒に取れる —— ただし **Developer Portal にその Identifier がある場合だけ**。
-          # 無ければ黙って本体のぶんだけ取ってくるので、下の検査で落とす。
-          # (--strict-match-identifier を付けると本体だけになる。付けないこと)
+          # Fetch certificates and profiles from Apple, creating them if absent.
+          # BUNDLE_ID is matched by prefix, so passing jp.co.aiSensei also fetches the
+          # extension's (jp.co.aiSensei.OneSignalNotificationServiceExtension) - but only
+          # if that Identifier exists in the Developer Portal. Otherwise it silently
+          # fetches only the main app's, which the check below rejects.
+          # (--strict-match-identifier would limit it to the main app. Do not add it.)
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
             --certificate-key=@env:CERTIFICATE_PRIVATE_KEY \
             --create
 
-          # 取得した証明書をキーチェーンに入れる
+          # Put the fetched certificates into the keychain
           keychain add-certificates
 
-          # プロファイルの保存先は cli-tools のバージョンで変わる
-          # (いまは Xcode 側のディレクトリに入る)。use-profiles が既定で見るのと
-          # **同じ2か所**をこちらも見ること。片方だけ見ていると、
-          # 取得は成功しているのに「1つもダウンロードされていない」と誤診する。
+          # Where profiles are saved varies by cli-tools version (currently under Xcode's
+          # directory). Check the same two locations use-profiles checks by default.
+          # Checking only one misdiagnoses a successful fetch as "nothing was downloaded".
           profile_dirs=(
             "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
             "$HOME/Library/MobileDevice/Provisioning Profiles"
@@ -253,27 +251,27 @@ workflows:
             exit 1
           fi
 
-          # プロファイルの中身まで検める。
-          # Notification Service Extension が入って以降、「1枚でもあればOK」では
-          # 足りなくなった。ここを素通りさせると、Xcodeのアーカイブを回しきった
-          # あと(数分)に
+          # Inspect the profiles' contents too.
+          # Since the Notification Service Extension arrived, "at least one exists" is no
+          # longer enough. Letting it through means, minutes later after the whole Xcode
+          # archive has run,
           #   Provisioning profile "..." doesn't include the App Groups capability
           #   Signing for "OneSignalNotificationServiceExtension" requires a development team
-          # が出る。どちらも直すのは Developer Portal 側なので、先に落とす。
+          # Both are fixed on the Developer Portal side, so fail earlier.
           python3 - "$BUNDLE_ID" "$EXTENSION_BUNDLE_ID" "${profile_dirs[@]}" <<'PY'
           import glob, os, plistlib, subprocess, sys
 
           app_id, ext_id = sys.argv[1:3]
           profile_dirs = sys.argv[3:]
 
-          # 要求している App Group は entitlements ファイルが正。
-          # (NSE 側も同じ文字列を持つ決まりなので、本体のぶんだけ見れば足りる)
+          # The entitlements file is authoritative for the App Group being requested.
+          # (The NSE must carry the same string, so checking the main app's is enough.)
           with open("ios/Runner/Runner.entitlements", "rb") as f:
               wanted = set(plistlib.load(f).get("com.apple.security.application-groups", []))
 
-          # バンドルID → そのプロファイルの素性。
-          # 名前と App Group だけでは「Portal で消したはずのプロファイルが
-          # また降ってきた」ときに何も分からないので、素性まで控えておく。
+          # bundle id -> that profile's provenance.
+          # Name and App Group alone say nothing when "a profile deleted in the Portal came
+          # down again", so the provenance is recorded too.
           profiles = {}
           paths = []
           for d in profile_dirs:
@@ -285,7 +283,7 @@ workflows:
                   continue
               parsed = plistlib.loads(raw)
               ent = parsed.get("Entitlements", {})
-              # application-identifier は "TEAMID.jp.co.aiSensei" の形
+              # application-identifier has the form "TEAMID.jp.co.aiSensei"
               bundle = ent.get("application-identifier", "").split(".", 1)[-1]
               profiles[bundle] = {
                   "name": parsed.get("Name", "?"),
@@ -299,7 +297,7 @@ workflows:
           for target in (app_id, ext_id):
               hit = profiles.get(target)
               if hit is None:
-                  # TEAMID.* のワイルドカードは App Groups を持てないので代用にならない
+                  # A TEAMID.* wildcard cannot hold App Groups, so it is no substitute
                   problems.append("%s のプロファイルが無い" % target)
                   continue
               missing = wanted - hit["groups"]
@@ -358,11 +356,11 @@ workflows:
         working_directory: apps/mobile
         script: |
           set -euo pipefail
-          # バージョン名(1.2.3の側)は pubspec.yaml の version が正。
-          # ビルド番号だけ Codemagic の連番で上書きする
-          # (TestFlightは同じビルド番号の再アップロードを受け付けないため)。
-          # 未設定の変数があっても set -u で落とさない。何が要るかは
-          # assert_dart_defines で先に見ており、ここは素通しでよい。
+          # pubspec.yaml's version is authoritative for the version name (the 1.2.3 part).
+          # Only the build number is overridden with Codemagic's counter (TestFlight rejects
+          # a re-upload with the same build number).
+          # Unset variables must not trip set -u here. What is required is already checked
+          # by assert_dart_defines, so passing through is fine.
           flutter build ipa --release \
             --build-number="$PROJECT_BUILD_NUMBER" \
             --dart-define=API_BASE_URL="${API_BASE_URL:?変数グループ mobile-dart-defines がこのビルドに渡っていない。Codemagic UI > このアプリ > Environment variables でグループ名と紐づけを確認すること}" \
@@ -380,11 +378,11 @@ workflows:
 
     artifacts:
       - apps/mobile/build/ios/ipa/*.ipa
-      # クラッシュのシンボル化(Sentry)に要る。
-      # **送り先が入るまでは、シンボルだけ集めている状態**だった(計画書 §10-7)。
-      # いまは `--dart-define=SENTRY_DSN` を渡しているので、変数グループに
-      # 値が入った時点で対になる。DSN が空のビルドでは監視ごと無効
-      # (`src/telemetry/telemetry.dart` の `SentryConfig`)。
+      # Needed to symbolicate crashes (Sentry).
+      # Until a destination was configured this was collecting symbols only (plan §10-7).
+      # `--dart-define=SENTRY_DSN` is passed now, so the pair completes the moment the
+      # variable group has a value. With an empty DSN the monitoring is disabled entirely
+      # (`SentryConfig` in `src/telemetry/telemetry.dart`).
       - apps/mobile/build/ios/archive/Runner.xcarchive/dSYMs/**
       - /tmp/xcodebuild_logs/*.log
 
@@ -392,21 +390,21 @@ workflows:
       app_store_connect:
         auth: integration
         submit_to_testflight: true
-        # 審査に出すかどうかは人が決める
+        # Whether to submit for review is a human decision
         submit_to_app_store: false
       email:
         recipients:
           - k.fuke@emobi.co.jp
         notify:
-          # 成功は TestFlight の通知が来るので二重にしない
+          # TestFlight already notifies on success, so do not duplicate it
           success: false
           failure: true
 
   # ---------------------------------------------------------------------------
-  # Android → Google Play (internal track)
+  # Android -> Google Play (internal track)
   #
-  # iOS先行なので自動トリガは付けない。v* タグを打ったときか、
-  # Codemagic UI の "Start new build" のときだけ走る。
+  # iOS goes first, so there is no automatic trigger. It runs on a v* tag or from
+  # "Start new build" in the Codemagic UI.
   # ---------------------------------------------------------------------------
   android-internal:
     name: Android — Play internal
@@ -418,13 +416,13 @@ workflows:
       java: 17
       groups:
         - mobile-dart-defines
-        # GCLOUD_SERVICE_ACCOUNT_CREDENTIALS(Play Consoleのサービスアカウント)
+        # GCLOUD_SERVICE_ACCOUNT_CREDENTIALS (the Play Console service account)
         - google-play
       vars:
-        # assert_dart_defines が、どちらのRevenueCat鍵を要求するかの判定に使う
+        # Used by assert_dart_defines to decide which RevenueCat key to require
         TARGET_PLATFORM: android
       android_signing:
-        # Codemagic UI > Code signing identities に登録した keystore の「名前」
+        # The *name* of the keystore registered under Codemagic UI > Code signing identities
         - ai-sensei-upload-keystore
 
     triggering:
@@ -444,8 +442,8 @@ workflows:
 
       - name: key.properties を書き出す
         working_directory: apps/mobile/android
-        # android/app/build.gradle.kts がこのファイルを読んでリリース署名に使う。
-        # Release署名が無ければGradle側も失敗するが、ここで先に原因を明示する。
+        # android/app/build.gradle.kts reads this file for release signing.
+        # Gradle also fails without a release signing config, but this states the cause first.
         script: |
           set -euo pipefail
           if [ -z "${CM_KEYSTORE_PATH:-}" ]; then
@@ -459,9 +457,9 @@ workflows:
           keyPassword=$CM_KEY_PASSWORD
           EOF
 
-      # compileSdk 37 のプラットフォームは AGP が自動でダウンロードする。
-      # ディレクトリ名を android-37 に揃えるステップがここにあったが、
-      # 名前の問題ではなかったので消した(詳細は app/build.gradle.kts の compileSdkMinor)。
+      # AGP downloads the compileSdk 37 platform automatically.
+      # A step aligning the directory name to android-37 used to live here, but the name
+      # was not the problem, so it was removed (details in app/build.gradle.kts's compileSdkMinor).
 
       - name: AAB をビルド
         working_directory: apps/mobile

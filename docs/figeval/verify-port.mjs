@@ -1,9 +1,9 @@
-// **移植でこわれていないか**を、保存してある実測の出力で確かめる。
+// Confirms the port did not break anything, using the stored measured output.
 //
-// docs/figeval/solver.mjs(実測に使ったもの)と
-// packages/figure/src/solve.js(本番に置いたもの)に同じ入力を流し、
-// 解けた座標がすべて一致するかを見る。
-// 単体テスト20本では、1000行の書き換えの安全は言えない。
+// It feeds the same input to docs/figeval/solver.mjs (used for the measurements) and
+// packages/figure/src/solve.js (the production copy) and checks every solved
+// coordinate matches.
+// Twenty unit tests cannot vouch for a 1000-line rewrite.
 //
 //   node --experimental-strip-types docs/figeval/verify-port.mjs
 
@@ -35,7 +35,7 @@ function firstArray(t) {
   return null;
 }
 
-/** 解けた結果を、比べられる形にたたむ。 */
+/** Folds a solved result into a comparable form. */
 function shape(result) {
   return JSON.stringify({
     pts: Object.fromEntries(

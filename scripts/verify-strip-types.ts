@@ -1,19 +1,20 @@
 /**
- * agentが実行時に読む `.ts` が、**型を消すだけ**で動くかを確かめる。
+ * Verifies the `.ts` the agent reads at runtime works with types merely stripped.
  *
- * `backend/agent` はビルド手順を持たず、`node --experimental-strip-types` で
- * `.ts` を直接動かす([ADR 0002](../docs/adr.md#adr-0002))。
- * このモードは型注釈を空白に置き換えるだけなので、**値の生成を伴うTS構文**
- * (parameter property / enum / namespace)は通らない。
+ * `backend/agent` has no build step and runs `.ts` directly with
+ * `node --experimental-strip-types` ([ADR 0002](../docs/adr.md#adr-0002)).
+ * That mode only replaces type annotations with whitespace, so TS syntax that also
+ * emits values (parameter properties, enum, namespace) does not work.
  *
- * ここを機械で見るのは、**テストが通るのに本番だけ落ちる**ため。vitestは
- * esbuildでTSをフル変換するので、`constructor(private readonly x: T)` を
- * 書いてもテストは緑のまま通り、ワーカーの起動時にだけ落ちる。
- * アプリからは「後輩が来ない」としか見えない、いちばん高くつく壊れ方になる。
+ * This is checked mechanically because otherwise the tests pass and only production
+ * fails. vitest fully transpiles TS with esbuild, so
+ * `constructor(private readonly x: T)` stays green in tests and fails only when the
+ * worker starts - which the app shows merely as "the agent never came", the most
+ * expensive kind of breakage.
  *
- * 見るのは agent と、agentが `workspace:*` で読む packages(いずれも
- * `exports` が `./src/index.ts` を指すので、実行時に同じ制約がかかる)。
- * `backend/api` は wrangler(esbuild)を通るので対象外。
+ * It checks the agent and the packages the agent reads via `workspace:*` (whose
+ * `exports` point at `./src/index.ts`, so the same constraint applies at runtime).
+ * `backend/api` goes through wrangler (esbuild) and is out of scope.
  *
  *   pnpm run verify:strip-types
  */
@@ -21,18 +22,18 @@ import { type Dirent, readFileSync, readdirSync } from "node:fs";
 import { stripTypeScriptTypes } from "node:module";
 import { join, relative, resolve } from "node:path";
 
-/** 実行時に型ストリップを通るディレクトリ。ここに `backend/api` は入れない。 */
+/** Directories that go through type stripping at runtime. `backend/api` never belongs here. */
 export const STRIPPED_ROOTS = ["backend/agent/src", "packages"] as const;
 
 export type StripFailure = {
-  /** リポジトリルートからの相対パス。 */
+  /** Path relative to the repo root. */
   file: string;
-  /** Nodeのエラーコード(例: `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`)。 */
+  /** Node's error code (e.g. `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`). */
   code: string;
   message: string;
 };
 
-/** `.ts` を集める。テストはvitest(esbuild)しか読まないので対象外。 */
+/** Collects `.ts` files. Tests are out of scope, since only vitest (esbuild) reads them. */
 export function listSourceFiles(root: string): string[] {
   const found: string[] = [];
 
@@ -41,7 +42,7 @@ export function listSourceFiles(root: string): string[] {
     try {
       entries = readdirSync(dir, { withFileTypes: true, encoding: "utf8" });
     } catch {
-      // 未取得のワークスペースなどは黙って飛ばす(存在しないことは失敗ではない)
+      // Silently skip unfetched workspaces (absence is not a failure)
       return;
     }
     for (const entry of entries) {
@@ -61,7 +62,7 @@ export function listSourceFiles(root: string): string[] {
   return found.sort();
 }
 
-/** 1ファイルを型ストリップにかける。通れば null、落ちれば理由を返す。 */
+/** Runs one file through type stripping. Returns null on success, the reason on failure. */
 export function checkFile(repoRoot: string, path: string): StripFailure | null {
   const source = readFileSync(path, "utf8");
   try {
@@ -87,7 +88,7 @@ export function checkRoots(repoRoot: string, roots: readonly string[]): StripFai
 function describe(error: unknown): { code: string; message: string } {
   if (error instanceof Error) {
     const raw = (error as { code?: unknown }).code;
-    // Nodeは該当行を続けて出すので、1行目(理由)だけを見せる
+    // Node prints the offending line after it, so show only the first line (the reason)
     return {
       code: typeof raw === "string" ? raw : error.name,
       message: error.message.split("\n")[0] ?? error.message,

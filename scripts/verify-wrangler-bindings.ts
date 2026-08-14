@@ -1,14 +1,14 @@
 /**
- * wrangler.toml のバインディングが埋まっているかを**環境ごとに**確かめる。
+ * Verifies, per environment, that wrangler.toml's bindings are filled in.
  *
- * D1/KVのIDはリポジトリにプレースホルダ(`REPLACE_ME`)で入っていて、
- * 各自が `wrangler d1 create` などの出力で差し替える。埋め忘れたまま deploy すると
- * Cloudflareからは「そんなリソースは無い」という分かりにくいエラーが返るので、
- * その手前で落とすためのチェック。
+ * D1 and KV ids live in the repo as placeholders (`REPLACE_ME`) and each person
+ * substitutes the output of `wrangler d1 create` and friends. Deploying with one
+ * unfilled returns an opaque "no such resource" from Cloudflare, so this fails
+ * before that.
  *
- * **ファイル全体をgrepしないのが要点。** develop だけ先に立ち上げて production は
- * あとで作る、という順番はふつうにあるので、production が未設定なことを理由に
- * develop のデプロイを止めてはいけない。
+ * The point is that it does not grep the whole file. Bringing up develop first and
+ * creating production later is a normal order, so production being unconfigured
+ * must never block a develop deploy.
  *
  *   pnpm run verify:bindings develop
  *   pnpm run verify:bindings production
@@ -19,30 +19,30 @@ import { relative, resolve } from "node:path";
 export const PLACEHOLDER = "REPLACE_ME";
 
 export type Placeholder = {
-  /** 属していたTOMLのセクション名(例: `env.develop.d1_databases`)。 */
+  /** The TOML section it belonged to (e.g. `env.develop.d1_databases`). */
   section: string;
   line: number;
-  /** `=` の左側。どのキーを埋めればいいかを出すために持つ。 */
+  /** The left side of the `=`. Kept so we can report which key to fill in. */
   key: string;
 };
 
-/** `[foo.bar]` / `[[foo.bar]]` の見出しからセクション名を取り出す。見出しでなければ null。 */
+/** Extracts a section name from a `[foo.bar]` / `[[foo.bar]]` heading. null if it is not one. */
 function parseSectionHeader(line: string): string | null {
   const match = /^\s*\[\[?([^\]]+)\]\]?\s*(?:#.*)?$/.exec(line);
   return match?.[1]?.trim() ?? null;
 }
 
-/** そのセクションが環境 `env` のものか。`[env.develop]` 自身とその配下を含む。 */
+/** Whether that section belongs to environment `env`. Includes `[env.develop]` itself and everything under it. */
 function belongsTo(section: string, env: string): boolean {
   return section === `env.${env}` || section.startsWith(`env.${env}.`);
 }
 
-/** wrangler.toml に定義されている環境名(`[env.x]` の x)を列挙する。 */
+/** Lists the environment names defined in wrangler.toml (the x in `[env.x]`). */
 export function listEnvironments(toml: string): string[] {
   const found = new Set<string>();
   for (const line of toml.split("\n")) {
     const section = parseSectionHeader(line);
-    // `env.develop.d1_databases` のような入れ子からも `develop` を拾う
+    // Also picks `develop` out of nesting such as `env.develop.d1_databases`
     const match = section && /^env\.([^.]+)/.exec(section);
     if (match?.[1]) found.add(match[1]);
   }
@@ -50,8 +50,8 @@ export function listEnvironments(toml: string): string[] {
 }
 
 /**
- * 指定した環境のセクションに残っているプレースホルダを返す。
- * トップレベル(`wrangler dev` 専用)や他の環境の行は見ない。
+ * Returns the placeholders left in that environment's sections.
+ * Top-level lines (for `wrangler dev` only) and other environments are ignored.
  */
 export function findPlaceholders(toml: string, env: string): Placeholder[] {
   const placeholders: Placeholder[] = [];
@@ -90,7 +90,7 @@ function main(): void {
   const toml = readFileSync(resolve(repoRoot, path), "utf8");
   const environments = listEnvironments(toml);
 
-  // 環境名のtypoを「プレースホルダ0件」として素通ししないため、先に存在を確かめる
+  // Check existence first, so a typo'd environment name does not pass as "zero placeholders"
   if (!environments.includes(env)) {
     console.error(`✘ ${path} に [env.${env}] がありません(あるのは: ${environments.join(", ")})`);
     process.exitCode = 1;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { findPlaceholders, listEnvironments } from "./verify-wrangler-bindings.ts";
 
-// 実物の wrangler.toml と同じ形(トップレベル + 2環境)。
+// The same shape as the real wrangler.toml (top level plus two environments).
 const toml = [
   'name = "ai-sensei-api"',
   "",
@@ -33,8 +33,8 @@ const toml = [
 ].join("\n");
 
 describe("findPlaceholders", () => {
-  // これが壊れると「developだけ先に立ち上げる」ができなくなる。
-  // productionが未設定なことを理由にdevelopのデプロイを止めてはいけない。
+  // Break this and "bring up develop first" stops working.
+  // production being unconfigured must never block a develop deploy.
   it("埋まっている環境では何も返さない", () => {
     expect(findPlaceholders(toml, "develop")).toEqual([]);
   });
@@ -57,7 +57,7 @@ describe("findPlaceholders", () => {
     expect(findPlaceholders(localOnly, "develop")).toEqual([]);
   });
 
-  // `[env.develop]` の見出し直下(配列テーブルの外)に書かれた場合も拾う
+  // Also picks up placeholders written directly under `[env.develop]` (outside an array table)
   it("環境の直下に書かれたプレースホルダも拾う", () => {
     const inline = ["[env.develop]", 'account_id = "REPLACE_ME"'].join("\n");
     expect(findPlaceholders(inline, "develop").map((p) => p.key)).toEqual(["account_id"]);

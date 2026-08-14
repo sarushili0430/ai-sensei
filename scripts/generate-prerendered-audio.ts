@@ -1,10 +1,12 @@
 /**
- * 授業冒頭の短い一言を、Deepgram で同梱 m4a に差し替える。
+ * Regenerates the short opening lines of a lesson as bundled m4a via Deepgram.
  *
- * backend/agent の `deepgram.TTS` と同じ `/v1/speak`、`Token` 認証、モデル既定値を
- * 使う。違うのは出力だけで、リアルタイム会話の PCM ではなく保存向け AAC を受け、
- * ffmpeg で m4a コンテナに包む。SDKをもう1本依存させないのは、このスクリプトが
- * リリース前に数回だけ走る生成工程であり、実行時の依存グラフへ持ち込む理由が無いため。
+ * It uses the same `/v1/speak`, `Token` auth and model defaults as
+ * `deepgram.TTS` in backend/agent. Only the output differs: AAC for storage rather
+ * than PCM for real-time conversation, wrapped into an m4a container with ffmpeg.
+ * No second SDK is added as a dependency because this script is a generation step
+ * that runs a handful of times before a release, with no reason to enter the
+ * runtime dependency graph.
  *
  *   node --experimental-strip-types --env-file=backend/agent/.env \
  *     scripts/generate-prerendered-audio.ts
@@ -22,7 +24,7 @@ type CueSource = {
   file: Record<Locale, string>;
 };
 
-/** 文言・出力先の正。Flutter 側の `PrerenderedAudioCue` と1対1で対応する。 */
+/** Authoritative for the wording and output paths. One-to-one with Flutter's `PrerenderedAudioCue`. */
 export const prerenderedCueSources = [
   {
     id: "lesson_opening",
@@ -35,7 +37,7 @@ export const prerenderedCueSources = [
 ] as const satisfies readonly CueSource[];
 
 const models: Record<Locale, string> = {
-  // backend/agent/src/config.ts と同じ既定。声を変えるなら両方を同じ環境変数で上書きする。
+  // The same defaults as backend/agent/src/config.ts. To change the voice, override both with the same env var.
   ja: process.env.DEEPGRAM_TTS_MODEL_JA?.trim() || "aura-2-izanami-ja",
   en: process.env.DEEPGRAM_TTS_MODEL_EN?.trim() || "aura-2-andromeda-en",
 };
@@ -69,7 +71,7 @@ async function synthesize(text: string, model: string, apiKey: string): Promise<
   url.searchParams.set("model", model);
   url.searchParams.set("encoding", "aac");
   url.searchParams.set("sample_rate", "24000");
-  // LiveKit plugin と同じく生の音声を受ける。m4a 化は下の ffmpeg に一本化する。
+  // Receive raw audio as the LiveKit plugin does. m4a packaging is done solely by ffmpeg below.
   url.searchParams.set("container", "none");
   url.searchParams.set("mip_opt_out", "false");
 
@@ -83,8 +85,9 @@ async function synthesize(text: string, model: string, apiKey: string): Promise<
   });
 
   if (!response.ok) {
-    // 応答本文に鍵は入らないが、無制限にログへ出さない。モデル名とHTTP状態で
-    // 通常の設定ミスは直せ、本文がHTMLでもターミナルを埋めない。
+    // The response body carries no key, but do not log it without bound. The model name
+    // and the HTTP status fix ordinary misconfiguration, and an HTML body will not fill
+    // the terminal.
     const detail = (await response.text()).slice(0, 500);
     throw new Error(`Deepgram TTS が失敗しました: ${response.status} ${detail}`);
   }
@@ -113,7 +116,7 @@ async function generateOne(
 ): Promise<void> {
   const filename = cue.file[locale];
   const rawPath = join(tempDir, `${cue.id}.${locale}.aac`);
-  // 末尾を .m4a にして、ffmpeg が出力コンテナを拡張子から確定できるようにする。
+  // End the name in .m4a so ffmpeg settles the output container from the extension.
   const stagedPath = join(outputDir, `.${filename}.${process.pid}.tmp.m4a`);
   const outputPath = join(outputDir, filename);
 
@@ -136,12 +139,12 @@ async function generateOne(
       stagedPath,
     ]);
 
-    // 完成した1ファイルだけを原子的に差し替える。API・ffmpeg が途中で落ちても、
-    // 既存アセットを0バイトや途中までの m4a にしない。
+    // Swap in one finished file atomically. If the API or ffmpeg dies partway, the
+    // existing asset never becomes a 0-byte or half-written m4a.
     await rename(stagedPath, outputPath);
   } finally {
-    // ffmpeg が途中で失敗した痕跡を assets 配下へ残すと、ディレクトリ指定の
-    // Flutter bundle がその壊れた一時ファイルまで同梱するため、成功時も含めて掃除する。
+    // Traces of a failed ffmpeg run left under assets would be bundled by Flutter's
+    // directory-based bundling, so clean up on success too.
     await rm(stagedPath, { force: true });
   }
   const size = (await readFile(outputPath)).byteLength;
@@ -166,8 +169,9 @@ async function main(): Promise<void> {
   await mkdir(outputDir, { recursive: true });
   const tempDir = await mkdtemp(join(tmpdir(), "ai-sensei-prerender-"));
   try {
-    // 同時に8本投げない。リリース前の手動工程なので速さより、失敗したファイル名が
-    // 直前の1行で分かり、Deepgram のレート制限へ触れにくいことを採る。
+    // Do not fire eight at once. This is a manual pre-release step, so knowing which
+    // file failed from the line just above, and staying clear of Deepgram's rate limit,
+    // beats speed.
     for (const cue of prerenderedCueSources) {
       for (const locale of locales) await generateOne(cue, locale, apiKey, tempDir);
     }

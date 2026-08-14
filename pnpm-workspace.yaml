@@ -1,18 +1,18 @@
 packages:
   - "packages/*"
   - "backend/*"
-  - "apps/lp" # 紹介ページ。wrangler で配信するので、ここから deploy を叩けるようにする
+  - "apps/lp" # The landing page. Served by wrangler, so deploy runs from here.
 
-# apps/* をまとめて入れないのは、apps/mobile が Flutter だから。
-# JSのワークスペースに入れてよいのは apps/lp だけなので、名指しで足している。
+# apps/* is not added wholesale because apps/mobile is Flutter.
+# Only apps/lp belongs in the JS workspace, so it is listed by name.
 
-# ビルドスクリプトの実行を許可する依存(pnpm 10 は既定でブロックする)。
-# 追加するときは、なぜ必要かを1行添えること。
+# Dependencies allowed to run build scripts (pnpm 10 blocks them by default).
+# When adding one, say in a line why it is needed.
 onlyBuiltDependencies:
-  - "@biomejs/biome" # lint/format のネイティブバイナリを取得する
-  - lefthook # git hooks のネイティブバイナリを配置する
-  - esbuild # wrangler が同梱するバンドラ
-  - workerd # wrangler dev のランタイム
-  - "@livekit/local-inference" # turn detection のネイティブ推論
-  - onnxruntime-node # Silero VAD のONNXランタイム
-  - sharp # LiveKit Agents が画像処理に使う
+  - "@biomejs/biome" # fetches the native lint/format binary
+  - lefthook # installs the native git-hooks binary
+  - esbuild # the bundler wrangler ships with
+  - workerd # the wrangler dev runtime
+  - "@livekit/local-inference" # native inference for turn detection
+  - onnxruntime-node # the ONNX runtime for Silero VAD
+  - sharp # used by LiveKit Agents for image processing

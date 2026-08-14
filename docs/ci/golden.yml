@@ -1,27 +1,27 @@
 name: Update goldens
 
-# **手動起動のみ。**
+# Manual trigger only.
 #
-# pushのたびに焼き直すと、golden test は**壊れを検知する能力を失う**。
-# 常に現状追認になり、意図しない見た目の変化がそのまま「正」として上書きされる。
-# 焼き直すのは、変更が意図したものだと人が確認したときだけ。
+# Re-baking on every push makes golden tests lose their ability to detect breakage:
+# they become a rubber stamp, and an unintended visual change is overwritten as "correct".
+# Re-bake only when a human has confirmed the change was intended.
 #
-# 走らせるブランチは起動時に選ぶ(workflow_dispatch は選んだrefでチェックアウトする)。
+# The branch is chosen at launch (workflow_dispatch checks out the chosen ref).
 on:
   workflow_dispatch:
 
 jobs:
   goldens:
     name: Regenerate goldens (Linux)
-    # `ci.yml` の flutter ジョブと**同じランナー**。golden はフォントのラスタライズを
-    # 見るので、ここがずれると焼いた瞬間から差分が出るPNGができあがる。
+    # The same runner as `ci.yml`'s flutter job. Goldens look at font rasterization, so
+    # drift here bakes PNGs that differ from the moment they are created.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # **バージョンの取り方まで `ci.yml` と同じにする。**
-      # 「同じ 3.44.8 を書く」ではなく「同じファイルから読む」形にしてあるのは、
-      # `.fvmrc` を上げたときに片方だけ古いまま残るのを防ぐため。
+      # Even how the version is obtained matches `ci.yml`.
+      # It reads the same file rather than repeating "3.44.8", so bumping `.fvmrc` cannot
+      # leave one side stale.
       - uses: subosito/flutter-action@v2
         with:
           flutter-version-file: apps/mobile/.fvmrc
@@ -30,20 +30,20 @@ jobs:
       - run: flutter pub get
         working-directory: apps/mobile
 
-      # 生成物(.freezed.dart / .g.dart)はコミットしないのでここで作る
+      # Generated files (.freezed.dart / .g.dart) are not committed, so build them here
       - run: dart run build_runner build
         working-directory: apps/mobile
 
-      # `--tags golden` で golden test だけを走らせる(タグは `dart_test.yaml` の宣言)。
-      # 全部走らせると、**無関係なテストの失敗でジョブが赤くなる**だけで、
-      # PNGの焼き直し自体は済んでいるという分かりにくい状態になる。
+      # `--tags golden` runs only the golden tests (the tag is declared in `dart_test.yaml`).
+      # Running everything would just turn the job red on unrelated failures while the PNGs
+      # were re-baked anyway - a confusing state.
       - name: Regenerate goldens
         working-directory: apps/mobile
         run: flutter test --update-goldens --tags golden
 
-      # **`--update-goldens` は差分があっても成功する。**
-      # 「ジョブが緑だった」は「変わらなかった」の意味ではないので、
-      # 何が書き換わったかをログに出す(artifactを落とす前に見当がつく)。
+      # `--update-goldens` succeeds even when there are differences.
+      # "The job was green" does not mean "nothing changed", so what was rewritten is
+      # printed to the log (so you know what to expect before downloading the artifact).
       - name: Show which goldens changed
         run: git status --porcelain apps/mobile/test/golden/goldens/
 
@@ -51,5 +51,5 @@ jobs:
         with:
           name: goldens
           path: apps/mobile/test/golden/goldens/
-          # 1枚も無いのは「焼けなかった」ということ。空のartifactを黙って上げない。
+          # Zero files means nothing was baked. Do not silently upload an empty artifact.
           if-no-files-found: error

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { redact, scanContent } from "./verify-no-secrets.ts";
 
-// 検出パターンはテスト内で組み立てる(このファイル自体が走査対象から
-// 外れていても、リテラルで書くと将来のgrepベース監査を汚すため)。
+// The detection patterns are assembled inside the test (even though this file is
+// excluded from scanning, writing them as literals would pollute future grep-based audits).
 const fake = (prefix: string, body: string) => `${prefix}${body}`;
 
 describe("scanContent", () => {
@@ -36,7 +36,7 @@ describe("scanContent", () => {
     expect(leaks.map((l) => l.rule)).toContain("private-key-block");
   });
 
-  // 実際の .dev.vars は `LIVEKIT_API_KEY=API...` の形。手がかりの語が値の前に来る
+  // A real .dev.vars looks like `LIVEKIT_API_KEY=API...`, with the giveaway word before the value
   it("LiveKitの鍵を、変数名が値の前にある形でも検出する", () => {
     const content = `LIVEKIT_API_KEY=${fake("API", "k".repeat(16))}`;
     expect(scanContent(".dev.vars", content).map((l) => l.rule)).toContain("livekit-api-key");

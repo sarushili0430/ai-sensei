@@ -10,16 +10,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # 触っていない側のCIは流さない(Flutterのpub get + build_runnerが特に重い)。
+  # Do not run CI for the side you did not touch (Flutter's pub get + build_runner is
+  # especially heavy).
   #
-  # ワークフロー全体の `on.paths` ではなくジョブ単位で切り分けているのは、
-  # 対象外のジョブを「スキップ」として必ず報告させるため。`on.paths` で弾くと
-  # チェック自体が作られず、required status check にしているとPRが永久に
-  # 待ち状態になる。
+  # The split is per job rather than a workflow-wide `on.paths` so that out-of-scope
+  # jobs are always reported as "skipped". Filtering with `on.paths` never creates the
+  # check at all, and with it as a required status check the PR waits forever.
   changes:
     name: Detect changes
     runs-on: ubuntu-latest
-    # PRでは差分をAPIから引く(pushではcheckout済みのgit履歴を使う)
+    # On a PR the diff comes from the API (on push, the checked-out git history is used)
     permissions:
       contents: read
       pull-requests: read
@@ -47,7 +47,7 @@ jobs:
               - ".github/workflows/ci.yml"
             flutter:
               - "apps/mobile/**"
-              # contract_fixture_test.dart が packages/contract/fixtures を直接読む
+              # contract_fixture_test.dart reads packages/contract/fixtures directly
               - "packages/contract/**"
               - ".github/workflows/ci.yml"
 
@@ -59,7 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # packageManager フィールド(package.json)のバージョンで入る
+      # Installed at the version in package.json's packageManager field
       - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v4
@@ -69,7 +69,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # 失敗しても後続を止めない。lintで落ちたついでにtestの結果も見たいため。
+      # A failure does not stop what follows. When lint fails we still want the test results.
       - name: Lint (Biome)
         run: pnpm run lint
 
@@ -81,8 +81,8 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm test
 
-      # テストは Vitest/Node で通っても、Workers のバンドラ(esbuild)で落ちることがある。
-      # 実際に JSON の import 属性で本番ビルドだけ壊れていたので、ここで必ず組む。
+      # Tests can pass under Vitest/Node yet fail in the Workers bundler (esbuild).
+      # A JSON import attribute really did break only the production build, so it is always bundled here.
       - name: Worker build (dry-run)
         if: ${{ !cancelled() }}
         run: pnpm --filter @ai-sensei/api build:check
@@ -95,7 +95,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # バージョンは apps/mobile/.fvmrc(fvmと同じファイル)から読む
+      # The version is read from apps/mobile/.fvmrc (the same file fvm uses)
       - uses: subosito/flutter-action@v2
         with:
           flutter-version-file: apps/mobile/.fvmrc
@@ -104,20 +104,20 @@ jobs:
       - run: flutter pub get
         working-directory: apps/mobile
 
-      # 生成物(.freezed.dart / .g.dart)はコミットしないのでここで作る
+      # Generated files (.freezed.dart / .g.dart) are not committed, so build them here
       - run: dart run build_runner build
         working-directory: apps/mobile
 
       - run: flutter analyze
         working-directory: apps/mobile
 
-      # contract_fixture_test.dart が packages/contract/fixtures を読むので、
-      # TypeScript側と同じ契約で通ることをここで確かめる。
-      # golden test もここが正(Linuxのラスタライズを基準にする)。
+      # contract_fixture_test.dart reads packages/contract/fixtures, so this confirms it
+      # passes against the same contract as the TypeScript side.
+      # This is also authoritative for the golden tests (Linux rasterization is the baseline).
       - run: flutter test
         working-directory: apps/mobile
 
-      # goldenが落ちたとき、差分画像を見られるようにする
+      # Lets us look at the diff images when a golden fails
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -125,7 +125,7 @@ jobs:
           path: apps/mobile/test/golden/failures/
           if-no-files-found: ignore
 
-  # 鍵の混入はどのディレクトリからでも起こるので、ここだけは常に流す。
+  # A leaked key can come from any directory, so this one always runs.
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest
@@ -136,7 +136,7 @@ jobs:
         with:
           node-version: 22
 
-      # publicリポジトリなので、鍵の混入は1コミットでも致命傷になる。
-      # 依存のインストールなしで走らせたいため pnpm install は挟まない。
+      # The repo is public, so one committed key is fatal.
+      # It should run without installing dependencies, so no pnpm install here.
       - name: Scan tracked files for secrets
         run: node --experimental-strip-types scripts/verify-no-secrets.ts

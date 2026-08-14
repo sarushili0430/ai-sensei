@@ -1,9 +1,9 @@
 /**
- * publicリポジトリ前提のシークレット混入ガード。
+ * A secret-leak guard, on the assumption of a public repository.
  *
- * Next Gen Award の要件で本リポジトリは初日からpublicなので、鍵が1度でも
- * コミットされるとgit履歴の掃除が必要になる。CIとpre-commitの両方から
- * 呼べるように、走査ロジック(純関数)とCLIを分けている。
+ * The Next Gen Award requires this repo to be public from day one, so committing a
+ * key even once means cleaning git history. The scanning logic (a pure function) and
+ * the CLI are split so both CI and pre-commit can call it.
  *
  *   pnpm run verify:secrets
  */
@@ -24,24 +24,25 @@ type Rule = {
 };
 
 /**
- * 検出ルール。誤検知でCIが止まると誰も直さなくなるので、
- * 「その形をしていたらほぼ確実に本物」のものだけを入れる。
+ * The detection rules. A false positive that stops CI means nobody fixes it, so only
+ * patterns that are almost certainly the real thing belong here.
  */
 export const RULES: Rule[] = [
   { name: "anthropic-api-key", pattern: /sk-ant-[A-Za-z0-9_-]{20,}/ },
   { name: "openai-like-api-key", pattern: /\bsk-(?!ant-)[A-Za-z0-9]{32,}\b/ },
   { name: "openrouter-api-key", pattern: /sk-or-v1-[A-Za-z0-9]{32,}/ },
   { name: "elevenlabs-api-key", pattern: /\bsk_[a-f0-9]{40,}\b/ },
-  // Deepgramの鍵は40桁のhexで、それ自体はコミットSHAと見分けがつかない。
-  // 手がかりの語が値の前後どちらにも来るので、LiveKitと同じく両方向を見る。
+  // A Deepgram key is 40 hex digits, indistinguishable on its own from a commit SHA.
+  // The giveaway word can appear on either side of the value, so both directions are
+  // checked, as with LiveKit.
   { name: "deepgram-api-key", pattern: /deepgram[^\n]*?\b[a-f0-9]{40}\b/i },
   { name: "deepgram-api-key", pattern: /\b[a-f0-9]{40}\b[^\n]*?deepgram/i },
   { name: "google-api-key", pattern: /\bAIza[0-9A-Za-z_-]{35}\b/ },
   { name: "github-token", pattern: /\bgh[pousr]_[A-Za-z0-9]{36,}\b/ },
   { name: "slack-token", pattern: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/ },
   { name: "aws-access-key-id", pattern: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/ },
-  // LiveKitの鍵は `LIVEKIT_API_KEY=API...` の形で書かれるので、
-  // 手がかりの語は値の**前**にも後ろにも来る。両方向を見る。
+  // LiveKit keys are written as `LIVEKIT_API_KEY=API...`, so the giveaway word comes
+  // *before* the value as well as after. Both directions are checked.
   { name: "livekit-api-key", pattern: /livekit[^\n]*?\bAPI[A-Za-z0-9]{10,}\b/i },
   { name: "livekit-api-key", pattern: /\bAPI[A-Za-z0-9]{10,}\b[^\n]*?livekit/i },
   { name: "revenuecat-secret-key", pattern: /\bsk_[A-Za-z0-9]{24,}\b/ },
@@ -52,7 +53,7 @@ export const RULES: Rule[] = [
   { name: "jwt", pattern: /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/ },
 ];
 
-/** 走査対象から外すパス(自分自身とテストは検出パターンの文字列を含むため)。 */
+/** Paths excluded from scanning (this file and its test contain the pattern strings). */
 export const DEFAULT_IGNORE = ["scripts/verify-no-secrets.ts", "scripts/verify-no-secrets.test.ts"];
 
 const BINARY_EXTENSIONS =
@@ -64,7 +65,7 @@ export function scanContent(file: string, content: string): Leak[] {
   const leaks: Leak[] = [];
   const lines = content.split("\n");
   lines.forEach((text, index) => {
-    // 明示的に「例」と書かれた行(.env.exampleのプレースホルダ等)は無視する
+    // Lines explicitly marked as examples (.env.example placeholders and the like) are ignored
     if (/(?:pragma:\s*allowlist secret|EXAMPLE_ONLY)/i.test(text)) return;
     for (const rule of RULES) {
       const match = rule.pattern.exec(text);
@@ -80,7 +81,7 @@ export function scanContent(file: string, content: string): Leak[] {
   return leaks;
 }
 
-/** 検出値そのものをログに出すとCIログが二次漏洩になるのでマスクする。 */
+/** Logging the detected value itself would make the CI log a second leak, so it is masked. */
 export function redact(value: string): string {
   if (value.length <= 8) return "*".repeat(value.length);
   return `${value.slice(0, 4)}${"*".repeat(Math.min(value.length - 8, 24))}${value.slice(-4)}`;
@@ -101,7 +102,7 @@ export function scanFiles(
       if (statSync(absolute).size > MAX_BYTES) continue;
       content = readFileSync(absolute, "utf8");
     } catch {
-      continue; // 削除済みなどは対象外
+      continue; // deleted files and the like are out of scope
     }
     leaks.push(...scanContent(file, content));
   }

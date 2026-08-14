@@ -1,11 +1,11 @@
-# backend/agent(LiveKit Agents)のデプロイ。
+# Deploys backend/agent (LiveKit Agents).
 #
-#   develop ブランチ → develop 環境
-#   main    ブランチ → production 環境
+#   develop branch -> develop environment
+#   main    branch -> production environment
 #
-# ソースを LiveKit Cloud へ送り、**ビルドは向こうで走る**。焼いたイメージを渡す道
-# (`lk agent deploy --image`)は Enterprise プラン限定なので使えない。
-# 手順とsecretの一覧は docs/deploy-agent.md。
+# The source is sent to LiveKit Cloud and the build runs there. Handing over a baked
+# image (`lk agent deploy --image`) is Enterprise-only and unavailable.
+# The steps and the list of secrets are in docs/deploy-agent.md.
 name: Deploy (backend/agent)
 
 on:
@@ -20,7 +20,7 @@ on:
       - "pnpm-lock.yaml"
       - "package.json"
       - ".github/workflows/deploy-agent.yml"
-  # 手で流し直す用(コード変更なしの再デプロイ・secret入れ替え後など)
+  # For re-running by hand (a redeploy with no code change, after swapping a secret, ...)
   workflow_dispatch:
     inputs:
       environment:
@@ -29,8 +29,8 @@ on:
         options: [develop, production]
         default: develop
 
-# 同じブランチのデプロイは直列にする。走っているデプロイは**止めない**
-# (会話中のワーカーをdrainの途中で捨てないため)。
+# Deploys of the same branch are serialized. A running deploy is never cancelled
+# (so a worker mid-conversation is not discarded halfway through draining).
 concurrency:
   group: deploy-agent-${{ github.ref }}
   cancel-in-progress: false
@@ -58,14 +58,14 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # CIワークフローと重複するが、デプロイは単体で完結させる。
-      # 「CIは緑だったが、その後のpushで壊れたものが出ていった」を防ぐため。
+      # Overlaps with the CI workflow, but a deploy must stand on its own.
+      # It prevents "CI was green, then a later push shipped something broken".
       - name: Verify (lint / typecheck / secret scan / test)
         run: pnpm run verify
 
-      # LiveKit側のビルドは数分かかるうえ、失敗しても向こうのログを読みに行くことになる。
-      # 手前で焼いておくと、Dockerfileが壊れているだけのときにここで分かる。
-      # イメージは使わない(pushする先が無い)ので、キャッシュだけ効かせる。
+      # The LiveKit-side build takes minutes, and a failure means reading their logs.
+      # Baking it here first surfaces a merely broken Dockerfile at this point.
+      # The image is unused (there is nowhere to push it), so only the cache matters.
       - uses: docker/setup-buildx-action@v3
       - name: Build image (fail fast)
         uses: docker/build-push-action@v6
@@ -78,11 +78,11 @@ jobs:
       - name: Install LiveKit CLI
         run: curl -sSL https://get.livekit.io/cli | bash
 
-      # `lk` はまだ動きの変わりやすいCLI。フラグ名が合わなくなったら
-      # `lk agent deploy --help` を見て直す(docs/deploy-agent.md にも同じ注意がある)。
+      # `lk` is still a fast-moving CLI. When a flag name stops matching, check
+      # `lk agent deploy --help` and fix it (the same note is in docs/deploy-agent.md).
       #
-      # 作業ディレクトリ(= リポジトリのルート)がそのままビルドコンテキストになり、
-      # 直下の Dockerfile が読まれる。何を送らないかは .dockerignore が決める。
+      # The working directory (= the repo root) becomes the build context and the
+      # Dockerfile directly inside it is read. What is excluded is decided by .dockerignore.
       - name: Deploy to LiveKit Cloud
         env:
           LIVEKIT_URL: ${{ secrets.LIVEKIT_URL }}
@@ -97,8 +97,8 @@ jobs:
           fi
           lk agent deploy --id "$AGENT_ID"
 
-      # ワーカーがLiveKitに登録し直すまで少し待つ。status が拾えなくても
-      # デプロイ自体は成功しているので、ここでは落とさない。
+      # Wait a moment for the worker to re-register with LiveKit. Failing to read the
+      # status does not fail the job - the deploy itself succeeded.
       - name: Status
         continue-on-error: true
         env:

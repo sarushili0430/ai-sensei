@@ -1,5 +1,6 @@
-// 8問。**採点は「描けたか」ではなく「図が正しいか」**。
-// どれも「作図で組み立てたときだけ成り立ち、座標を当てずっぽうで書くと崩れる」量を測る。
+// Eight problems. Scoring asks "is the figure correct", not "did it draw".
+// Each measures an amount that only holds when built by construction and collapses
+// when coordinates are guessed.
 
 const deg = (a, o, b) => {
   const u = Math.atan2(a.y - o.y, a.x - o.x);
@@ -22,7 +23,7 @@ export const PROBLEMS = [
     prompt: "三角形ABCの3本の中線が1点(重心G)で交わることを説明したい。その図を描いて。",
     check(r) {
       const g = Object.entries(r.pts).find(([, p]) => Object.keys(r.pts).length >= 4 && p);
-      // 重心の真の位置を、頂点3つから求める(名前は A,B,C を想定)
+      // Derive the centroid's true position from the three vertices (assumed named A, B, C)
       const { A, B, C } = r.pts;
       if (!A || !B || !C) return { ok: false, why: "A,B,C が無い" };
       const truth = { x: (A.x + B.x + C.x) / 3, y: (A.y + B.y + C.y) / 3 };
@@ -86,7 +87,7 @@ export const PROBLEMS = [
       }
       const T = r.pts.T;
       if (!T) return { ok: false, why: "接点方向の点 T が無い" };
-      // 接線であること = OA ⊥ AT
+      // Being a tangent = OA ⊥ AT
       const perp = deg(r.pts.O ?? K.c, A, T);
       if (Math.abs(perp - 90) > 0.5)
         return { ok: false, why: `AT が接線でない(OA との角 ${perp.toFixed(2)}°)` };
@@ -125,7 +126,7 @@ export const PROBLEMS = [
       const diag = segs(r).find((s) => {
         const [i, j] = s.names.map(idx);
         if (i < 0 || j < 0) return false;
-        return b.v3[i].every((v, k) => v !== b.v3[j][k]); // 3方向すべて違う = 空間対角線
+        return b.v3[i].every((v, k) => v !== b.v3[j][k]); // differing in all three axes = a space diagonal
       });
       if (!diag) return { ok: false, why: "空間対角線が引かれていない" };
       return { ok: true, why: `対角線 ${diag.names.join("")}、隠れ頂点 ${b.hidden}` };
@@ -140,7 +141,7 @@ export const PROBLEMS = [
       if (cs.length < 2) return { ok: false, why: `曲線が ${cs.length} 本しかない` };
       const fill = r.draws.find((d) => d.t === "poly" && d.fill);
       if (!fill) return { ok: false, why: "囲まれた部分が塗られていない" };
-      // 塗られた領域が (0,0)-(1,1) に収まり、面積が 1/6 に近いか
+      // Whether the filled region fits (0,0)-(1,1) and its area is close to 1/6
       const xs = fill.ps.map((p) => p.x);
       const ys = fill.ps.map((p) => p.y);
       let area = 0;
@@ -214,7 +215,7 @@ export const PROBLEMS = [
     },
   },
 
-  // ---- ここから、作図ではないもの ----
+  // ---- from here on, things that are not constructions ----
   {
     id: "coords",
     tag: "グラフ・座標",
@@ -235,8 +236,8 @@ export const PROBLEMS = [
       );
       if (miss.length)
         return { ok: false, why: `${miss.map((m) => `(${m})`).join(" ")} が出ていない` };
-      // **目盛りは要求していない。**問題文は「座標がわかるように」なので、
-      // 3点に座標が出ていれば要件は満たしている。ここを必須にしていたのは私の採点が厳しすぎた。
+      // Ticks are not required. The problem says "so the coordinates can be read", so
+      // coordinates on the three points satisfy it. Requiring ticks was my scoring being too strict.
       const tick = ax.ticks?.length ? `、目盛り ${ax.ticks.length} 個` : "(目盛りなし)";
       return { ok: true, why: `頂点(2,-1)・交点(1,0)(3,0)${tick}` };
     },
@@ -274,7 +275,7 @@ export const PROBLEMS = [
       if (!e) return { ok: false, why: "矢印が無い" };
       if (s.states.length !== 3)
         return { ok: false, why: `状態が ${s.states.length} 個(3個のはず)` };
-      // **出ていく確率の合計が1**。これが合わない遷移図は、絵として自然でも間違い
+      // The outgoing probabilities must sum to 1. A transition diagram that misses this is wrong however natural it looks
       const bad = [];
       for (const st of s.states) {
         const sum = e.edges.filter((x) => x.from === st.name).reduce((a, x) => a + x.value, 0);
@@ -333,7 +334,7 @@ export const PROBLEMS = [
       if (s.n !== 6) return { ok: false, why: `席が ${s.n} 個(6個のはず)` };
       if (!s.fix)
         return { ok: false, why: "固定する人が指定されていない(円順列の要点が出ていない)" };
-      // 席が等間隔か。**こちらが置いているので必ず通るが、通らなければソルバのバグ**
+      // Whether the seats are equally spaced. We place them, so it always passes - and if it does not, it is a solver bug
       const ps = s.seats.map((x) => x.p);
       const d = ps.map((p, i) => Math.hypot(p.x - ps[(i + 1) % 6].x, p.y - ps[(i + 1) % 6].y));
       if (Math.max(...d) - Math.min(...d) > 1e-9) return { ok: false, why: "席が等間隔でない" };
@@ -385,7 +386,7 @@ export const PROBLEMS = [
     },
   },
 
-  // ---- 全単元カバレッジ(units.md のギャップから) ----
+  // ---- full unit coverage (from the gaps in units.md) ----
   {
     id: "numline",
     unit: "数I 数と式",
@@ -419,7 +420,7 @@ export const PROBLEMS = [
       const miss = want.filter((w) => !degs.some((d) => Math.abs(d - w) < 1e-6));
       if (miss.length)
         return { ok: false, why: `${miss.join("°,")}° が無い(印は ${degs.join("°,")}°)` };
-      // 印の座標が本当に (cosθ, sinθ) か
+      // Whether the mark's coordinates really are (cosθ, sinθ)
       const bad = u.marks.filter((m) => Math.abs(m.p.y - Math.sin((m.deg * Math.PI) / 180)) > 1e-9);
       if (bad.length) return { ok: false, why: "印の座標が cos/sin と合っていない" };
       return { ok: true, why: "30°・150°、sin = 0.5 で一致" };
@@ -451,13 +452,13 @@ export const PROBLEMS = [
     check(r) {
       const g = r.draws.find((d) => d.t === "region");
       if (!g) return { ok: false, why: "領域が無い(region を使っていない)" };
-      // **標本点で内外を確かめる。**式の見た目ではなく、判定結果を見る
+      // Confirm inside/outside at sample points. Look at the verdict, not how the expression looks
       const cases = [
         [0, 1, true],
         [-1, 2, true],
         [0, -1, false],
         [1, 0, false],
-        // (2, 2.5) は y>x を満たすが 2²+2.5²=10.25>9 なので**円の外**。境界のすぐ外を1つ入れておく
+        // (2, 2.5) satisfies y>x but 2²+2.5²=10.25>9, so it is outside the circle. One point just outside the boundary is included
         [0, 4, false],
         [3, 3, false],
         [-2, -1, true],
@@ -562,7 +563,7 @@ export const PROBLEMS = [
     check(r) {
       const l = r.draws.find((d) => d.t === "lattice");
       if (!l) return { ok: false, why: "格子点が無い" };
-      // 0<=x, 0<=y, x+y<=4 の格子点は 15 個
+      // The lattice points of 0<=x, 0<=y, x+y<=4 number 15
       if (l.count !== 15) return { ok: false, why: `格子点が ${l.count} 個(15個のはず)` };
       const bad = l.ps.filter((p) => p.x < 0 || p.y < 0 || p.x + p.y > 4);
       if (bad.length) return { ok: false, why: "条件を外れた点が混ざっている" };
@@ -653,7 +654,7 @@ export const PROBLEMS = [
       if (rm.n !== 4) return { ok: false, why: `短冊が ${rm.n} 本(4本のはず)` };
       if (Math.abs(rm.width - 0.25) > 1e-9)
         return { ok: false, why: `幅が ${rm.width}(0.25 のはず)` };
-      // 左端なら 7/32=0.21875、右端なら 15/32=0.46875。どちらでもよいが 1/3 の周りに来ること
+      // Left endpoints give 7/32=0.21875, right endpoints 15/32=0.46875. Either is fine as long as it lands around 1/3
       if (rm.sum < 0.15 || rm.sum > 0.55)
         return { ok: false, why: `面積の和が ${rm.sum.toFixed(4)}(1/3 の近くのはず)` };
       return { ok: true, why: `4本・幅0.25・和 ${rm.sum.toFixed(5)}(∫=0.3333)` };
@@ -675,7 +676,7 @@ export const PROBLEMS = [
       }
       const cross = Math.abs((C.x - B.x) * (D.y - B.y) - (C.y - B.y) * (D.x - B.x));
       if (cross > 1e-6) return { ok: false, why: "D が BC 上にない" };
-      // 角の二等分線なら BD:DC = AB:AC = 3:2 に**なるはず**(指定していないのに、そうなる)
+      // For an angle bisector, BD:DC = AB:AC = 3:2 must hold (it does, without being specified)
       const k = Math.hypot(B.x - D.x, B.y - D.y) / Math.hypot(D.x - C.x, D.y - C.y);
       if (Math.abs(k - 1.5) > 1e-4)
         return { ok: false, why: `BD:DC = ${k.toFixed(4)}:1(1.5:1 のはず)` };
@@ -701,9 +702,9 @@ export const PROBLEMS = [
     },
   },
 
-  // ---- 「重ね合わせで書けるか」を試すだけの8問 ----
-  // **ここには新しい語彙を1つも足していない。**いまある語彙の組み合わせだけで
-  // 届くのか、それとも語彙が要るのかを、こちらの予想抜きで測る。
+  // ---- eight problems that only test "can it be written by composition" ----
+  // Not one new vocabulary word is added here. This measures, without our guesses,
+  // whether the existing vocabulary reaches or whether new vocabulary is needed.
   {
     id: "tetra",
     unit: "数A 空間図形",
@@ -739,7 +740,7 @@ export const PROBLEMS = [
       const xs = top.ps.map((p) => p.x);
       const h = Math.max(...xs) - Math.min(...xs);
       if (Math.abs(h - 4) > 0.05) return { ok: false, why: `高さが ${h.toFixed(2)}(4 のはず)` };
-      // 母線が直線か(円錐なら輪郭は直線)
+      // Whether the generating line is straight (a cone's outline is)
       const a = top.ps[0];
       const b = top.ps[top.ps.length - 1];
       const m = top.ps[Math.floor(top.ps.length / 2)];
@@ -761,7 +762,7 @@ export const PROBLEMS = [
       if (!box) return { ok: false, why: "直方体が無い" };
       const poly = r.draws.filter((d) => d.t === "poly" && d.ps.length === 3);
       if (!poly.length) return { ok: false, why: "三角形の切り口が無い" };
-      // 切り口の頂点が、直方体の辺の上に乗っているか
+      // Whether the cross-section's vertices sit on the cuboid's edges
       const vs = box.labels.map((n) => r.pts[n]);
       const onEdge = (p) =>
         vs.some((u) =>
@@ -787,7 +788,7 @@ export const PROBLEMS = [
     check(r) {
       const vs = r.draws.filter((d) => d.t === "vec");
       if (vs.length < 3) return { ok: false, why: `矢印が ${vs.length} 本(a, b, a+b で3本ほしい)` };
-      // 同じ始点から出る3本を探し、1本が他の2本の和になっているか
+      // Find three edges from the same start point and check one is the sum of the other two
       for (const o of vs) {
         const same = vs.filter((v) => Math.hypot(v.a.x - o.a.x, v.a.y - o.a.y) < 1e-6);
         if (same.length < 3) continue;
@@ -818,11 +819,11 @@ export const PROBLEMS = [
     check(r) {
       const { O, A, B, H } = r.pts;
       if (!O || !A || !B || !H) return { ok: false, why: "O,A,B,H が足りない" };
-      // H が直線 OB 上にあるか
+      // Whether H lies on the line OB
       const cr = Math.abs((B.x - O.x) * (H.y - O.y) - (B.y - O.y) * (H.x - O.x));
       if (cr / (Math.hypot(B.x - O.x, B.y - O.y) || 1) > 1e-4)
         return { ok: false, why: "H が OB 上にない" };
-      // AH ⊥ OB か
+      // Whether AH ⊥ OB
       const dot = (A.x - H.x) * (B.x - O.x) + (A.y - H.y) * (B.y - O.y);
       const n = Math.hypot(A.x - H.x, A.y - H.y) * Math.hypot(B.x - O.x, B.y - O.y);
       if (Math.abs(dot / (n || 1)) > 1e-4)
@@ -841,11 +842,11 @@ export const PROBLEMS = [
       const cs = r.draws.filter((d) => d.t === "curve");
       if (cs.length < 3)
         return { ok: false, why: `曲線・直線が ${cs.length} 本(2曲線 + y=x で3本ほしい)` };
-      // y=x を1本見つける
+      // Find one y=x line
       const diag = cs.find((c) => c.ps.every((p) => Math.abs(p.x - p.y) < 1e-6));
       if (!diag) return { ok: false, why: "y = x が無い" };
       const others = cs.filter((c) => c !== diag);
-      // 片方の点を (x,y)->(y,x) にしたとき、もう片方に乗るか
+      // Taking one point to (x,y)->(y,x), does it land on the other
       for (const u of others)
         for (const v of others) {
           if (u === v) continue;
@@ -865,7 +866,7 @@ export const PROBLEMS = [
     probe: true,
     prompt: "好きな教科のアンケート結果(数学40%、英語30%、国語20%、その他10%)を円グラフで表して。",
     check(r) {
-      // 扇形が4つ、中心角が 144/108/72/36 度になっているか
+      // Whether there are four sectors with central angles 144/108/72/36 degrees
       const wedges = r.draws.filter((d) => d.t === "poly" && d.fill);
       const arcs = r.draws.filter((d) => d.t === "arc");
       if (wedges.length < 4 && arcs.length < 4) {

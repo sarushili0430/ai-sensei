@@ -5,11 +5,11 @@ import { solve } from "./solver.mjs";
 const OUT = new URL("./out/", import.meta.url);
 const byId = Object.fromEntries(PROBLEMS.map((p) => [p.id, p]));
 
-// 失敗を3段に分ける。**「描けた/描けない」ではなく、どこで落ちたか**が知りたい。
-//   json   … JSON として読めない
-//   vocab  … 読めるが語彙が違う・未定義の点を使う(=図が出ない)
-//   wrong  … 図は出るが**幾何が間違っている**(いちばん危ない)
-//   ok     … 不変量まで通った
+// Failures split into three tiers. What matters is where it failed, not "drew / did not draw".
+//   json   ... unreadable as JSON
+//   vocab  ... readable, but the vocabulary is wrong or an undefined point is used (= no figure)
+//   wrong  ... a figure appears but the geometry is wrong (the most dangerous)
+//   ok     ... passed even the invariants
 const rows = [];
 for (const f of readdirSync(OUT)
   .filter((n) => n.endsWith(".txt"))
@@ -17,22 +17,23 @@ for (const f of readdirSync(OUT)
   const [model, id, trial] = f.replace(/\.txt$/, "").split("__");
   const raw = readFileSync(new URL(f, OUT), "utf8").trim();
   const row = { model, id, trial, tag: byId[id]?.tag, bytes: raw.length };
-  // 空ファイル = まだ走っている。**失敗と数えない**(数えると成功率が嘘になる)
+  // An empty file means it is still running. Not counted as a failure (counting it would make the success rate a lie)
   if (!raw) {
     continue;
   }
-  // **通信の失敗をモデルの失敗に混ぜない。**分母から外し、件数だけ別に出す。
-  // CLI が本文として "API Error: ..." を吐くことがある。**これも通信の失敗。**
-  // 中身があるかどうかで見分けると、エラー文をモデルの回答として数えてしまう。
+  // Do not mix transport failures into model failures. They leave the denominator and
+  // are reported separately. The CLI sometimes emits "API Error: ..." as the body -
+  // that is a transport failure too. Distinguishing by "is there content" would count
+  // an error message as the model's answer.
   if (raw.includes("__CLI_FAILED__") || /^API Error:/m.test(raw)) {
     rows.push({ ...row, level: "cli", why: raw.split("\n")[0].slice(0, 70) });
     continue;
   }
 
-  // **2通りで採点する。**
-  //   strict … 出てきた文字がそのまま JSON。運用ではこれをそのまま流したい
-  //   repair … 説明やフェンス、2個目の配列を落として**最初の配列だけ**拾う
-  // どちらで通ったかを分けておかないと、「直せば動く」を「動く」と読み違える。
+  // Scored two ways.
+  //   strict ... the emitted text is JSON as-is. In production we want to use it directly
+  //   repair ... drop the prose, fences and any second array, and take only the first array
+  // Without separating which one passed, "works if you fix it" reads as "works".
   let items = null;
   let repaired = false;
   let why = "";
@@ -85,7 +86,7 @@ for (const f of readdirSync(OUT)
   rows.push({ ...row, level: v.ok ? "ok" : "wrong", why: v.why, repaired, n: items.length });
 }
 
-// 最初の「対応が取れた」配列だけを切り出す(文字列の中の括弧は数えない)
+// Cut out only the first balanced array (brackets inside strings are not counted)
 function firstArray(t) {
   if (!t) return null;
   const s = t.indexOf("[");
@@ -129,7 +130,7 @@ for (const p of PROBLEMS) {
   console.log(p.id.padEnd(w + 2) + cells.join("") + (p.unit ? `${p.unit} / ` : "") + p.tag);
 }
 
-// **単元カバレッジ。**「その単元の図が、一度でも正しく描けたか」を出す。
+// Unit coverage: whether that unit's figure was ever drawn correctly.
 console.log("\n=== 単元カバレッジ(1回でも○になったか) ===");
 const covered = [];
 const notYet = [];
