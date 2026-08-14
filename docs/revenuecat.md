@@ -1,293 +1,300 @@
 # RevenueCat
 
-課金は RevenueCat SDK(`purchases_flutter` + `purchases_ui_flutter`)で通す。
-Shipaton の参加条件(SDKで最低1つのアプリ内課金)を満たす箇所でもある。
+Billing goes through the RevenueCat SDK (`purchases_flutter` + `purchases_ui_flutter`).
+It is also what satisfies Shipaton's entry requirement (at least one in-app purchase
+through the SDK).
 
-ストア側の申請作業は [`docs/ci/store-setup.md`](ci/store-setup.md) にある。
-ここは **アプリとダッシュボードの噛み合わせ** だけを書く。
+The store-side submission work is in [`docs/ci/store-setup.md`](ci/store-setup.md).
+This document covers **how the app meshes with the dashboard**, and nothing else.
 
 ---
 
-## 1. どこで何をしているか
+## 1. What lives where
 
-| ファイル | 役割 |
+| File | Role |
 | --- | --- |
-| `data/revenuecat_config.dart` | `--dart-define` から鍵・entitlement・offering を読む |
-| `data/purchases_repository.dart` | SDKの唯一の出入口。テストではここごと差し替える |
-| `domain/entitlement.dart` | `CustomerInfo` / `Offering` を画面が使う形に落とす純関数 |
-| `domain/purchase_outcome.dart` | SDKの例外を「キャンセル / 失敗の種類」に畳む純関数 |
-| `application/entitlement_controller.dart` | 状態を持つ。購入・復元・ペイウォール・Customer Center の入口 |
-| `application/premium_sync.dart` | entitlement が変わったら、サーバ側の判定を読み直す(§9) |
-| `presentation/paywall_screen.dart` | RevenueCatのペイウォール →(出せなければ)自前のペイウォール |
-| `presentation/thanks_screen.dart` | 購入・トライアル・復元のお礼。ペイウォールの次に出る |
-| `presentation/manage_subscription_button.dart` | Customer Center の導線・契約カード・Premium の印 |
-| `main.dart` | 起動時に一度だけ `configure` する |
+| `data/revenuecat_config.dart` | Reads the keys, entitlement and offering from `--dart-define` |
+| `data/purchases_repository.dart` | The SDK's only entry point. Tests replace this whole file |
+| `domain/entitlement.dart` | Pure functions turning `CustomerInfo` / `Offering` into what the screens use |
+| `domain/purchase_outcome.dart` | Pure functions folding SDK exceptions into "cancelled / kind of failure" |
+| `application/entitlement_controller.dart` | Holds the state. The entry point for purchase, restore, paywall and Customer Center |
+| `application/premium_sync.dart` | When the entitlement changes, re-reads the server's decision (§9) |
+| `presentation/paywall_screen.dart` | RevenueCat's paywall -> (if unavailable) our own paywall |
+| `presentation/thanks_screen.dart` | Thanks for a purchase, trial or restore. Shown after the paywall |
+| `presentation/manage_subscription_button.dart` | The Customer Center route, the subscription card, the Premium badge |
+| `main.dart` | Calls `configure` exactly once at startup |
 
-## 買えたあとに出るもの
+## What appears after a purchase
 
-購入が通ったら**必ず `/thanks` へ寄せる**。入口が3つあるので、
-どれか1つでも `closeOrGoHome()` のままだと、その経路で買った人にだけ
-何も出なくなる:
+Once a purchase goes through, **always route to `/thanks`**. There are three entry
+points, and leaving any one of them on `closeOrGoHome()` means people who bought through
+that route see nothing:
 
-| 入口 | 呼ぶもの |
+| Entry point | What to call |
 | --- | --- |
-| 自前ペイウォールの `PurchaseSucceeded()` | `context.replaceWithThanks()` |
-| RevenueCat ペイウォールの `PaywallResult.purchased` | `context.replaceWithThanks()` |
-| 復元(ペイウォール / 設定) | `context.replaceWithThanks(restored: true)` / `pushThanks(restored: true)` |
+| Our own paywall's `PurchaseSucceeded()` | `context.replaceWithThanks()` |
+| RevenueCat's paywall, `PaywallResult.purchased` | `context.replaceWithThanks()` |
+| Restore (paywall / settings) | `context.replaceWithThanks(restored: true)` / `pushThanks(restored: true)` |
 
-見出しは3通りに分かれる。**「ご購入ありがとうございます」と書けない場合が
-あるため**(§6 誠実さ):
+The heading splits three ways, **because "thank you for your purchase" cannot always be
+written** (§6, honesty):
 
-- **無料トライアル**(`Entitlement.isTrial`)— まだ1円も払っていない。
-  日数と、課金が始まる日を先に言う。`PeriodType.intro`(初月100円のような
-  **有料の**キャンペーン)は無料に数えないこと。
-- **復元** — 買い直していない。お礼を言うと二重に払ったのかと思わせる。
-- **決済は通ったが entitlement が付いていない** — ルータの `redirect` が
-  ホームへ弾く。祝ってから使えないのが、いちばん落差が大きい。
+- **A free trial** (`Entitlement.isTrial`) — not a yen has been paid yet. State the
+  number of days and the date billing starts, up front. `PeriodType.intro` (a **paid**
+  campaign such as 100 yen for the first month) does not count as free.
+- **A restore** — nothing was bought again. Thanking them suggests they paid twice.
+- **Payment succeeded but no entitlement attached** — the router's `redirect` bounces to
+  home. Celebrating and then being unable to use it is the sharpest possible drop.
 
-契約している印は2か所。ホーム右上の `PremiumChip` と、設定の
-`SubscriptionStatusCard`(状態と、更新日 / 終了日 / 課金開始日)。
-**ランクや称号にしないこと** — 数えるのは連続日数と埋めた穴だけ(§7)。
+The subscription badge appears in two places: `PremiumChip` at the top right of home, and
+`SubscriptionStatusCard` in settings (status plus renewal / end / billing-start date).
+**Never turn it into a rank or a title** - only streak days and filled holes are counted
+(§7).
 
-`Purchases.configure` は **`main()` で一度だけ**呼ぶ。
-provider の `build()` の中で呼ぶと、providerが再構築されるたびに走ってしまう。
+`Purchases.configure` is called **exactly once, in `main()`**.
+Calling it inside a provider's `build()` would run it on every provider rebuild.
 
 ```dart
 // main.dart
 await const PurchasesRepository().configure(appUserId: deviceId);
 ```
 
-`appUserID` には匿名デバイスID(`ai_sensei.device_id`)をそのまま渡す。
-アカウント作成を要求しないので `logIn` は使わない。この値が webhook の
-`app_user_id` に乗ってきて、`backend/api/src/routes/webhooks.ts` が D1 に同期する。
+`appUserID` receives the anonymous device id (`ai_sensei.device_id`) directly.
+No account creation is required, so `logIn` is not used. That value arrives as the
+webhook's `app_user_id`, and `backend/api/src/routes/webhooks.ts` syncs it into D1.
 
-**サーバ側の判定が正**。アプリ側の entitlement はUIの出し分けにだけ使い、
-セッション上限などの実効的な制限は `backend/api/src/lib/entitlement.ts` が決める。
+**The server's decision is authoritative.** The app's entitlement is used only to gate
+UI; the effective limits, such as session caps, are decided by
+`backend/api/src/lib/entitlement.ts`.
 
 ---
 
-## 2. ダッシュボードで作るもの
+## 2. What to create in the dashboard
 
 ### Products
 
-ストアに作った商品IDをそのまま登録する。
+Register the product ids created in the stores as-is.
 
-| 期間 | RevenueCatのパッケージ識別子 |
+| Period | RevenueCat package identifier |
 | --- | --- |
-| 週 | `$rc_weekly` |
-| 月 | `$rc_monthly` |
-| 年 | `$rc_annual` |
+| Weekly | `$rc_weekly` |
+| Monthly | `$rc_monthly` |
+| Annual | `$rc_annual` |
 
-アプリ側は `PackageType`(weekly / monthly / annual)で読むので、商品IDは
-iOSとAndroidで揃っていなくてよい。上の定型識別子を使っておけば
-`plansOf()` が拾う。定型以外の識別子で作ったパッケージは**画面に出ない**。
+The app reads `PackageType` (weekly / monthly / annual), so the product ids need not
+match between iOS and Android. Using the standard identifiers above lets `plansOf()`
+pick them up. Packages created with non-standard identifiers **do not appear on screen**.
 
 ### Entitlement
 
-identifier は **`premium`**。表示名は何でもよい。
+The identifier is **`premium`**. The display name can be anything.
 
-ここがずれると「課金は成立するのに何も解放されない」という、
-もっとも気づきにくい壊れ方をする。別名にしたい場合はアプリ側も合わせること:
+Getting this wrong produces the hardest breakage to notice: purchases succeed and
+nothing unlocks. To use a different name, match it in the app:
 
 ```bash
 flutter run --dart-define=REVENUECAT_ENTITLEMENT_ID=pro
 ```
 
-作った Product は忘れずに Entitlement に紐づける。紐づけ忘れると購入は
-通るのに entitlement が付かない。アプリはこれを検知して
-「購入は完了しましたが、まだ反映されていません」と出す(成功として画面を閉じない)。
+Remember to attach the Product to the Entitlement. Forget, and the purchase goes through
+without the entitlement. The app detects that and says "the purchase completed but has
+not applied yet" (it does not close the screen as a success).
 
 ### Offering
 
-`current` に設定し、上の3パッケージを入れる。current が空だと
-ペイウォールに何も出ない。
+Set it as `current` and put the three packages above in it. With `current` empty, the
+paywall shows nothing.
 
 ### Paywall
 
-Offering に紐づけて作る([Paywalls](https://www.revenuecat.com/docs/tools/paywalls))。
-文言・価格・画像をダッシュボードから差し替えられるので、
-アプリを出し直さずにペイウォールを直せる。
+Create it attached to the Offering
+([Paywalls](https://www.revenuecat.com/docs/tools/paywalls)).
+Wording, prices and images can be swapped from the dashboard, so the paywall can be fixed
+without shipping the app again.
 
-**作らなくても動く。** 未設定なら `PaywallResult.error` が返り、
-アプリは自前のペイウォール(`paywall_screen.dart` の `_ManualPaywall`)に落ちる。
-自前のほうを残してあるのは、鍵の無いビルド・古いOS・ダッシュボード未設定の
-どれでも「無料継続の導線がある画面」が必ず出るようにするため。
+**It works without one.** Unconfigured, `PaywallResult.error` comes back and the app
+falls to our own paywall (`_ManualPaywall` in `paywall_screen.dart`). Ours is kept so
+that a keyless build, an old OS or an unconfigured dashboard all still show a screen
+containing the "keep using it free" route.
 
-> ダッシュボードでペイウォールを作るときも §6 の約束は守ること:
-> 「無料のまま続ける」を隠さない・解約できると明記する・カウントダウンを使わない。
-> HAMM賞は誠実さを見る。
+> The §6 promises apply when building the paywall in the dashboard too: do not hide
+> "keep using it free", state clearly that it can be cancelled, and use no countdowns.
+> The HAMM award looks at honesty.
 
 ### Customer Center
 
-[Customer Center](https://www.revenuecat.com/docs/tools/customer-center) を有効にする。
-解約・プラン変更・返金申請・購入の復元がひとまとめになっていて、
-自前で作ると App Review のたびに指摘が出る類の画面。
+Enable [Customer Center](https://www.revenuecat.com/docs/tools/customer-center).
+It bundles cancellation, plan changes, refund requests and purchase restoration - the
+kind of screen that gets flagged in App Review every time when built by hand.
 
-アプリでは **契約がある人にだけ**ホームに導線を出す(`ManageSubscriptionButton`)。
-契約が無い人向けの「購入を復元する」はペイウォールにある。
+In the app, the route is shown on home **only to people with a subscription**
+(`ManageSubscriptionButton`). "Restore purchases", for people without one, lives on the
+paywall.
 
 ---
 
-## 3. 鍵を渡す
+## 3. Supplying the keys
 
-値は `apps/mobile/dart_defines.env`(gitignore済み)にまとめる。
-テンプレートは `dart_defines.example.env`。
+The values live in `apps/mobile/dart_defines.env` (gitignored).
+The template is `dart_defines.example.env`.
 
 ```bash
 cp dart_defines.example.env dart_defines.env
 fvm flutter run --dart-define-from-file=dart_defines.env
 ```
 
-| 変数 | 中身 |
+| Variable | Content |
 | --- | --- |
-| `REVENUECAT_IOS_PUBLIC_SDK_KEY` | `appl_...`。本番のiOS |
-| `REVENUECAT_ANDROID_PUBLIC_SDK_KEY` | `goog_...`。本番のAndroid |
-| `REVENUECAT_SDK_KEY` | `test_...`。Test Store。**上の2つが空のときだけ**使われる |
-| `REVENUECAT_ENTITLEMENT_ID` | 既定 `premium` |
-| `REVENUECAT_OFFERING_ID` | 空なら current |
+| `REVENUECAT_IOS_PUBLIC_SDK_KEY` | `appl_...`. Production iOS |
+| `REVENUECAT_ANDROID_PUBLIC_SDK_KEY` | `goog_...`. Production Android |
+| `REVENUECAT_SDK_KEY` | `test_...`. The Test Store. Used **only when both of the above are empty** |
+| `REVENUECAT_ENTITLEMENT_ID` | Defaults to `premium` |
+| `REVENUECAT_OFFERING_ID` | Empty means current |
 
-公開SDKキーは**ビルド成果物に埋め込まれる前提の値**なので秘匿不要。
-シークレットキー(`sk_...`)と webhook の共有シークレットは backend 側にあり、
-`pnpm run verify:secrets` が混入を見張っている。
+The public SDK key is **meant to be embedded in the build artifact** and needs no
+secrecy. The secret key (`sk_...`) and the webhook's shared secret live on the backend,
+and `pnpm run verify:secrets` watches for them leaking in.
 
-**鍵を渡さないビルドでは課金機能ごと黙って無効になる**(`RevenueCatConfig.isConfigured`)。
-`flutter test` と CI はこの経路を通るので、課金と関係ない画面のテストが
-巻き添えで落ちることはない。
+**A build with no keys disables billing silently and entirely**
+(`RevenueCatConfig.isConfigured`). `flutter test` and CI go down that path, so tests for
+screens unrelated to billing are never collateral damage.
 
 ### Test Store
 
-`test_` で始まる鍵を使うと、App Store Connect / Play Console に商品を作る前でも
-購入フローを最後まで通せる。実際の請求は発生しない。
-ペイウォールにその旨の注記が出る(`AppStrings.testStoreNotice`)。
+A key starting with `test_` lets the purchase flow run end to end before products exist
+in App Store Connect / Play Console. Nothing is actually charged.
+The paywall shows a note saying so (`AppStrings.testStoreNotice`).
 
-ストア側の商品ができたら `REVENUECAT_IOS_PUBLIC_SDK_KEY` /
-`REVENUECAT_ANDROID_PUBLIC_SDK_KEY` を入れる。そちらが優先されるので
-`REVENUECAT_SDK_KEY` は消さなくてよい。
+Once the store products exist, fill in `REVENUECAT_IOS_PUBLIC_SDK_KEY` /
+`REVENUECAT_ANDROID_PUBLIC_SDK_KEY`. They take precedence, so `REVENUECAT_SDK_KEY` need
+not be removed.
 
 ---
 
-## 4. プラットフォームの要件
+## 4. Platform requirements
 
-| | 要件 | 理由 |
+| | Requirement | Reason |
 | --- | --- | --- |
-| iOS | 15.0 以上 | Paywalls / Customer Center が iOS 15+。`project.pbxproj` の `IPHONEOS_DEPLOYMENT_TARGET` を 15.0 にしてある |
-| Android | minSdk 24 以上 | `purchases_ui_flutter` の要件。Flutter の既定が 24 なので追加設定は不要 |
+| iOS | 15.0+ | Paywalls / Customer Center need iOS 15+. `IPHONEOS_DEPLOYMENT_TARGET` in `project.pbxproj` is set to 15.0 |
+| Android | minSdk 24+ | Required by `purchases_ui_flutter`. Flutter defaults to 24, so nothing extra is needed |
 
 ---
 
-## 5. 復元と、サーバ側の付け替え(TRANSFER)
+## 5. Restores and server-side reassignment (TRANSFER)
 
-匿名デバイスIDはアンインストールで消え、機種変更でも変わる。
-つまり**復元するときの app_user_id は、買ったときのものと違う**。
+An anonymous device id disappears on uninstall and changes with a new device.
+So **the app_user_id at restore time differs from the one at purchase time**.
 
-ダッシュボードの **Restore Behavior** をどちらにしているかで挙動が分かれる。
+Behaviour depends on the dashboard's **Restore Behavior** setting.
 
-| 設定 | 起きること |
+| Setting | What happens |
 | --- | --- |
-| Transfer to new App User ID | RevenueCat が購入を付け替え、`TRANSFER` webhook を送る |
-| Keep with original App User ID | 付け替わらない。アプリは「復元できる購入は見つかりませんでした」と出す |
+| Transfer to new App User ID | RevenueCat reassigns the purchase and sends a `TRANSFER` webhook |
+| Keep with original App User ID | Nothing is reassigned; the app says "no restorable purchases found" |
 
-前者のとき、`TRANSFER` を取りこぼすと**アプリは「復元しました」と言うのに
-サーバ側は無料のまま**になる(復習も履歴も開かない)。
-サーバ側の判定が正なので、食い違うと利用者からは「直らない不具合」に見える。
+With the former, dropping `TRANSFER` means **the app says "restored" while the server
+stays free** (reviews and history never open). The server's decision is authoritative, so
+the mismatch looks to the user like a bug that will not go away.
 
-`backend/api/src/routes/webhooks.ts` がこれを処理する。TRANSFER だけ形が違う:
+`backend/api/src/routes/webhooks.ts` handles it. TRANSFER's shape is unique:
 
-- `app_user_id` が**無い**。代わりに `transferred_from` / `transferred_to`(配列)
-- `expiration_at_ms` も `entitlement_ids` も**無い**(商品単位ではなく全部の付け替えなので)
+- There is **no** `app_user_id`. Instead there are `transferred_from` /
+  `transferred_to` (arrays)
+- There is neither `expiration_at_ms` nor `entitlement_ids` (it reassigns everything, not
+  a single product)
 
-期限が payload に無いので、**移行元のレコードから引き継ぐ**。
-移行元にPremiumの記録が無ければ付けない — 期限なしで付けると、
-復元するだけで無期限Premiumが作れてしまうため。その場合は次の
-`RENEWAL` / `EXPIRATION` が新しいIDで届いて正しい期限に揃う。
-
----
-
-## 6. 状態はSDKから push される
-
-`Purchases.addCustomerInfoUpdateListener` を
-`PurchasesRepository.customerInfoChanges()` でStreamに包み、
-`EntitlementController` が購読している。
-
-更新・失効・ペイウォール内での購入・Customer Center での解約が、
-画面を開き直さなくても反映される。ポーリングは無い。
-
-ただしこれは**アプリ側の entitlement が変わるだけ**で、サーバ側の判定は
-別経路(webhook)で遅れて変わる。噛み合わせは §9。
+Since the expiry is absent from the payload, **it is inherited from the source record**.
+If the source has no Premium record, nothing is granted - granting with no expiry would
+let a restore alone create permanent Premium. In that case the next `RENEWAL` /
+`EXPIRATION` arrives on the new id and settles the correct expiry.
 
 ---
 
-## 7. 失敗の扱い
+## 6. State is pushed from the SDK
 
-SDKは失敗を `PlatformException` で投げる。**利用者が自分で閉じた場合も例外**なので、
-そのまま画面に流すと「やめただけ」の人にエラーを見せることになる。
+`Purchases.addCustomerInfoUpdateListener` is wrapped into a Stream by
+`PurchasesRepository.customerInfoChanges()`, which `EntitlementController` subscribes to.
 
-`PurchaseOutcome.fromException` が キャンセル / 失敗の種類 に畳んでから返す。
+Renewal, expiry, a purchase inside the paywall and a cancellation in Customer Center all
+apply without reopening the screen. There is no polling.
 
-| 分類 | 例 | 画面に出すこと |
+But that changes **only the app's entitlement**; the server's decision changes later, via
+a different route (the webhook). How they mesh is §9.
+
+---
+
+## 7. Handling failures
+
+The SDK throws failures as `PlatformException`. **A user closing the sheet is also an
+exception**, so passing it straight to the screen shows an error to someone who simply
+changed their mind.
+
+`PurchaseOutcome.fromException` folds it into cancelled / a kind of failure first.
+
+| Category | Example | What the screen shows |
 | --- | --- | --- |
-| キャンセル | 利用者が閉じた | **何も出さない**。引き止めない |
-| `network` | 圏外・タイムアウト | 時間をおけば直ると伝える |
-| `storeProblem` | ストア障害 | こちらでは直せないと伝える |
-| `alreadyOwned` | すでに契約がある | 「購入を復元する」へ誘導 |
-| `pending` | コンビニ払いなど | 承認されたら自動で使えると伝える |
-| `configuration` | 商品ID・Entitlementの取り違え | **実装ミス**。ログに詳細を出す |
+| Cancelled | The user closed it | **Nothing.** No attempt to hold them |
+| `network` | No signal, timeout | Say it should work again later |
+| `storeProblem` | A store outage | Say it is not something we can fix |
+| `alreadyOwned` | They already have a subscription | Point at "restore purchases" |
+| `pending` | Convenience-store payment and the like | Say it becomes usable automatically once approved |
+| `configuration` | The wrong product id or entitlement | **An implementation bug.** Log the details |
 
-`configuration` が出たらダッシュボードとの噛み合わせを疑うこと。
-`EntitlementController._warnIfMisconfigured` が、entitlement identifier の
-ずれと空の Offering を release ビルドでもログに残す。
+A `configuration` error means suspecting how it meshes with the dashboard.
+`EntitlementController._warnIfMisconfigured` logs a mismatched entitlement identifier and
+an empty Offering even in release builds.
 
 ---
 
-## 8. テスト
+## 8. Tests
 
 ```bash
 cd apps/mobile
 fvm flutter test test/monetization_test.dart test/premium_sync_test.dart
 ```
 
-見ているのは「SDKが動くか」ではなく **SDKの返した値をこちらが取り違えていないか**。
-entitlement identifier のずれ・パッケージの並び・0円ではない導入価格を
-「無料」と書かないこと・キャンセルを失敗にしないこと、を押さえている。
+They check not "does the SDK work" but **whether we misread the values the SDK returned**:
+a mismatched entitlement identifier, package ordering, never calling a non-zero
+introductory price "free", and never treating a cancellation as a failure.
 
-ペイウォールの golden(`test/golden/goldens/paywall.png`)は鍵の無いビルド、
-つまり自前のペイウォールを撮っている。「無料のまま続ける」と
-「いつでも解約できます」が消えていないかは `test/widget_test.dart` が見る。
+The paywall golden (`test/golden/goldens/paywall.png`) captures a keyless build, i.e. our
+own paywall. That "keep using it free" and "cancel any time" have not disappeared is
+checked by `test/widget_test.dart`.
 
 ---
 
-## 9. アプリの entitlement と、サーバの `is_premium`
+## 9. The app's entitlement versus the server's `is_premium`
 
-Premium は**2つの経路で別々に**更新される。ここがこのアプリで
-いちばん噛み合わせを間違えやすい。
+Premium is updated by **two separate routes**, and this is the easiest thing in this app
+to get wrong.
 
-| | 誰が書くか | いつ |
+| | Who writes it | When |
 | --- | --- | --- |
-| アプリの entitlement | SDK(`CustomerInfo`) | 購入した瞬間 |
-| サーバの `users.is_premium` | RevenueCat の webhook | 数秒遅れ |
+| The app's entitlement | The SDK (`CustomerInfo`) | The moment of purchase |
+| The server's `users.is_premium` | RevenueCat's webhook | A few seconds later |
 
-そして**画面が出し分けに使っているのはサーバ側**のほう。ホームと
-復習画面の授業可否(`/v1/me/progress` の `is_premium` /
-`limits.lesson_allowed_today`)、セッション開始の可否
-(`free_limit_reached` / `fair_use_limit_reached`)。
-判定を持たせないのは、クライアントの申告で上限を緩められないようにするため。
+And **the screens gate on the server's side**: whether a lesson is available on home and
+the review screen (`is_premium` / `limits.lesson_allowed_today` from
+`/v1/me/progress`), and whether a session may start (`free_limit_reached` /
+`fair_use_limit_reached`). The decision is kept off the client so a claim from the client
+cannot loosen the cap.
 
-それを読む `ProgressController` は `keepAlive` で、
-**起動時に一度読んだきり**誰も読み直さない。だから購入したあとに読み直す配線が要る。
+The `ProgressController` that reads it is `keepAlive` and **read once at startup**, with
+nobody re-reading it. So a re-read after a purchase has to be wired up.
 
-`premium_sync.dart` がそれをやる。`EntitlementController` の変化を購読して、
-Premium が付いた/外れたら `/v1/me/progress` を読み直す。webhook はまだ届いて
-いないことがあるので、追いつくまで数回(1s / 2s / 4s / 8s)読み直す。
+`premium_sync.dart` does that. It subscribes to `EntitlementController`'s changes and
+re-reads `/v1/me/progress` when Premium is granted or removed. The webhook may not have
+arrived yet, so it re-reads a few times until it catches up (1s / 2s / 4s / 8s).
 
-追いつかなければ**そこで諦めて無料のまま**にする。クライアントの言い分で
-解放はしない。webhook が恒久的に壊れているならサーバ側で直すべきもので、
-ここで上書きすると誰も壊れていることに気づけなくなる。
+If it never catches up, **it gives up and stays free**. Nothing is unlocked on the
+client's word. A permanently broken webhook is something to fix on the server, and
+overriding it here would mean nobody notices it is broken.
 
-> これが無いと **webhook が200で届いていてもアプリは無料のまま**になる。
-> 「課金は成立していて、ダッシュボードにもD1にも記録があるのに、
-> アプリを再起動するまで何も解放されない」という壊れ方をする。
-> `test/premium_sync_test.dart` がこの経路を押さえている。
+> Without this, **the app stays free even though the webhook returned 200**.
+> The breakage looks like "the purchase succeeded, the dashboard and D1 both have the
+> record, and nothing unlocks until the app is restarted".
+> `test/premium_sync_test.dart` covers this path.
 
-購入の入口(自前のペイウォール・RevenueCat のペイウォール・Customer Center・
-設定画面の復元)ごとに呼ぶのではなく、**entitlement の変化**で拾っているのは、
-入口を足したときに呼び忘れても壊れないようにするため。
+It hooks **entitlement changes** rather than being called from each purchase entry point
+(our own paywall, RevenueCat's paywall, Customer Center, the settings restore) so that
+adding an entry point and forgetting the call cannot break it.

@@ -1,93 +1,95 @@
-# 高校数学の全単元 × 必要な図 × いまの語彙
+# Every high-school maths unit x the figure it needs x today's vocabulary
 
-単元は2022年度からの学習指導要領([文科省](https://www.mext.go.jp/a_menu/shotou/old-cs/1322525.htm))。
-「必要な図」は各単元の典型問題を調べて割り出したもの(出典は本文末)。
+The units follow the national guidelines in force from 2022
+([MEXT](https://www.mext.go.jp/a_menu/shotou/old-cs/1322525.htm)).
+"The figure it needs" was worked out by surveying each unit's typical problems (sources
+at the end).
 
-`○` = いまの語彙で描ける / `△` = 一部だけ / `✗` = 描けない
+`○` = drawable with today's vocabulary / `△` = partly / `✗` = not drawable
 
-| 科目 | 単元 | 典型問題で要る図 | 現状 | 足す語彙 |
+| Course | Unit | Figure needed by typical problems | Status | Vocabulary to add |
 |---|---|---|---|---|
-| **数I** | 数と式 | 数直線(不等式の解・絶対値)、ベン図(集合と命題) | ✗ | `numberLine` `venn` |
-| | 図形と計量 | 三角形+辺と角、外接円・内接円、空間図形 | ○ | — |
-| | 二次関数 | 放物線・頂点・軸、定義域つき最大最小 | △ | `curve` の定義域制限は既存 |
-| | データの分析 | ヒストグラム、箱ひげ図、散布図 | ✗ | `histogram` `boxplot` `scatter` |
-| **数A** | 図形の性質 | 五心、チェバ・メネラウス、方べき、接弦、作図 | △ | `bisect` `perpBisect` |
-| | 場合の数と確率 | 樹形図、ベン図、表、サイコロ、玉、円順列 | △ | `tree` `venn` |
-| | 数学と人間の活動 | 格子点、整数の図 | ✗ | `lattice` |
-| **数II** | いろいろな式 | (複素数は数C) | — | — |
-| | 図形と方程式 | 円と直線、軌跡、**不等式の表す領域** | ✗ | `region` |
-| | 指数・対数関数 | y=a^x / y=log_a x、漸近線 | △ | `asymptote` |
-| | 三角関数 | **単位円**、三角関数のグラフ | ✗ | `unitCircle` |
-| | 微分・積分の考え | 接線、増減表、面積 | ○ | — |
-| **数B** | 数列 | 格子点、群数列の区切り、階差 | ✗ | `lattice` `groups` |
-| | 統計的な推測 | 正規分布曲線+斜線部、信頼区間 | ✗ | `normal` |
-| | 数学と社会生活 | (グラフ・表の読み取り) | ○ | — |
-| **数III** | 極限 | 漸近線、はさみうち | ✗ | `asymptote` |
-| | 微分法 | 増減表+**凹凸(f″)**、接線・法線 | △ | `signTable` に凹凸 |
-| | 積分法 | 面積、回転体、**区分求積の短冊**、曲線の長さ | △ | `riemann` |
-| **数C** | ベクトル | **矢印(有向線分)**、内分、空間ベクトル | ✗ | `vec` |
-| | 平面上の曲線と複素数平面 | 楕円・双曲線・放物線の**焦点/準線/漸近線**、極座標、**複素数平面** | ✗ | `conic` `polar` `complexPlane` |
-| | 数学的な表現の工夫 | (図表全般) | ○ | — |
+| **Math I** | Numbers and expressions | Number line (inequality solutions, absolute value), Venn diagram (sets and propositions) | ✗ | `numberLine` `venn` |
+| | Geometry and measurement | Triangle with sides and angles, circumscribed and inscribed circles, solids | ○ | — |
+| | Quadratic functions | Parabola, vertex, axis; max/min on a restricted domain | △ | `curve`'s domain restriction already exists |
+| | Data analysis | Histogram, box plot, scatter plot | ✗ | `histogram` `boxplot` `scatter` |
+| **Math A** | Properties of figures | The five centres, Ceva and Menelaus, power of a point, tangent-chord, constructions | △ | `bisect` `perpBisect` |
+| | Counting and probability | Tree diagram, Venn diagram, tables, dice, balls, circular permutations | △ | `tree` `venn` |
+| | Mathematics and human activity | Lattice points, integer diagrams | ✗ | `lattice` |
+| **Math II** | Various expressions | (complex numbers are in Math C) | — | — |
+| | Figures and equations | Lines and circles, loci, **regions defined by inequalities** | ✗ | `region` |
+| | Exponential and log functions | y=a^x / y=log_a x, asymptotes | △ | `asymptote` |
+| | Trigonometric functions | **The unit circle**, graphs of trigonometric functions | ✗ | `unitCircle` |
+| | Ideas of differentiation and integration | Tangents, sign tables, areas | ○ | — |
+| **Math B** | Sequences | Lattice points, group-sequence boundaries, differences | ✗ | `lattice` `groups` |
+| | Statistical inference | The normal curve with a shaded region, confidence intervals | ✗ | `normal` |
+| | Mathematics and social life | (reading graphs and tables) | ○ | — |
+| **Math III** | Limits | Asymptotes, the squeeze theorem | ✗ | `asymptote` |
+| | Differentiation | Sign table plus **concavity (f'')**, tangents and normals | △ | concavity in `signTable` |
+| | Integration | Areas, solids of revolution, **Riemann rectangles**, arc length | △ | `riemann` |
+| **Math C** | Vectors | **Arrows (directed segments)**, internal division, 3D vectors | ✗ | `vec` |
+| | Plane curves and the complex plane | **Foci / directrices / asymptotes** of ellipses, hyperbolas and parabolas; polar coordinates; **the complex plane** | ✗ | `conic` `polar` `complexPlane` |
+| | Devices of mathematical expression | (diagrams generally) | ○ | — |
 
-## 足りない語彙 18 個
+## The 18 missing vocabulary items
 
-優先順は「その単元で図が無いと説明が成り立たないか」で並べた。
+Ordered by "does the explanation fall apart without the figure in that unit".
 
-1. `unitCircle` — 三角方程式・不等式は単位円で説明するのが定石
-2. `vec` — ベクトルは矢印そのもの
-3. `numberLine` — 不等式・絶対値。いちばん基本の図
-4. `region` — 不等式の表す領域(半平面・円の内外・連立)
-5. `boxplot` `histogram` `scatter` — データの分析は単元まるごと図
-6. `tree` — 樹形図
-7. `venn` — 集合・命題・確率
-8. `lattice` — 格子点
-9. `normal` — 正規分布曲線と斜線部
-10. `conic` — 2次曲線の焦点・準線・漸近線
-11. `complexPlane` — 複素数平面
-12. `polar` — 極方程式
-13. `asymptote` — 漸近線
-14. `riemann` — 区分求積の短冊
-15. `signTable` に凹凸(f″)
-16. `bisect` `perpBisect` — 角の二等分線・垂直二等分線
-17. `groups` — 群数列の区切り
+1. `unitCircle` — trigonometric equations and inequalities are standardly explained on the unit circle
+2. `vec` — a vector *is* an arrow
+3. `numberLine` — inequalities and absolute values. The most basic figure of all
+4. `region` — the region an inequality defines (half-planes, circle interiors, systems)
+5. `boxplot` `histogram` `scatter` — data analysis is an entire unit of figures
+6. `tree` — tree diagrams
+7. `venn` — sets, propositions, probability
+8. `lattice` — lattice points
+9. `normal` — the normal curve and its shaded region
+10. `conic` — a conic's foci, directrix and asymptotes
+11. `complexPlane` — the complex plane
+12. `polar` — polar equations
+13. `asymptote` — asymptotes
+14. `riemann` — Riemann rectangles
+15. Concavity (f'') in `signTable`
+16. `bisect` `perpBisect` — angle bisectors and perpendicular bisectors
+17. `groups` — group-sequence boundaries
 
-## 足す条件(D-19)
+## The condition for adding one (D-19)
 
-**機械で検算できる不変量が1本書けること。** 書けないものは足さない。
+**You can write one machine-checkable invariant.** If you cannot, do not add it.
 
-| 語彙 | 不変量 |
+| Vocabulary | Invariant |
 |---|---|
-| `unitCircle` | 印をつけた点が (cos θ, sin θ) と一致する |
-| `vec` | 矢印の始点・終点が名前つきの点と一致する |
-| `numberLine` | 塗った区間の端が解と一致し、白丸/黒丸が不等号と合う |
-| `region` | 標本点を内外に分類した結果が式と合う |
-| `boxplot` | 五数要約が**データから計算した値**と一致する |
-| `histogram` | 各階級の度数がデータの数え上げと一致する |
-| `scatter` | 相関係数がデータから計算した値と一致する |
-| `tree` | 葉の数が場合の数と一致する |
-| `venn` | 各領域の個数の合計が全体と一致する |
-| `lattice` | 条件を満たす格子点の個数が数え上げと一致する |
-| `normal` | 斜線部の面積が確率と一致する |
-| `conic` | c² = a² ∓ b²、焦点・漸近線が標準形と一致する |
-| `complexPlane` | 回転・拡大した点が計算値と一致する |
-| `polar` | 曲線上の点が r = f(θ) を満たす |
-| `riemann` | 短冊の本数と面積の和が区分求積の値と一致する |
-| `signTable`(凹凸) | 変曲点で f″ = 0、区間の凹凸が f″ の符号と一致する |
-| `bisect` | 二等分線上の点が2辺から等距離 / 角が等しい |
+| `unitCircle` | The marked point equals (cos θ, sin θ) |
+| `vec` | The arrow's start and end match named points |
+| `numberLine` | The shaded interval's ends match the solution, and open/closed circles match the inequality |
+| `region` | Classifying sample points as inside/outside matches the expression |
+| `boxplot` | The five-number summary matches **the value computed from the data** |
+| `histogram` | Each class's frequency matches the count from the data |
+| `scatter` | The correlation coefficient matches the value computed from the data |
+| `tree` | The number of leaves matches the count of cases |
+| `venn` | The region counts sum to the whole |
+| `lattice` | The number of lattice points satisfying the condition matches the count |
+| `normal` | The shaded area matches the probability |
+| `conic` | c² = a² ∓ b², and the foci and asymptotes match the standard form |
+| `complexPlane` | A rotated or scaled point matches the computed value |
+| `polar` | Points on the curve satisfy r = f(θ) |
+| `riemann` | The rectangle count and the area sum match the Riemann value |
+| `signTable` (concavity) | f'' = 0 at the inflection point, and each interval's concavity matches the sign of f'' |
+| `bisect` | A point on the bisector is equidistant from the two sides / the angles are equal |
 
-**どれも「モデルが書いた数字」ではなく「こちらが計算した値」と突き合わせる。**
-モデルに書かせるのは、データ・式・条件だけ。
+**Every one of them compares against a value *we* computed, never a number the model
+wrote.** The model writes only the data, the expression and the condition.
 
-## 出典
+## Sources
 
-- [第4節 数学(文部科学省)](https://www.mext.go.jp/a_menu/shotou/old-cs/1322525.htm)
-- [数学A 図形の性質(受験の月)](https://examist.jp/mathematics/plane-figure/ceva-menelaus/)
-- [数学II 軌跡と領域(受験の月)](https://examist.jp/category/mathematics/locus-area/)
-- [数学C 2次曲線(受験の月)](https://examist.jp/category/mathematics/quadratic-curve/)
-- [数学III 積分法の応用(受験の月)](https://examist.jp/category/mathematics/sum-volume-length1/)
-- [数学C 位置ベクトル(受験の月)](https://examist.jp/mathematics/planar-vector/bunten-itivector/)
-- [高等学校数学I/データの分析(Wikibooks)](https://ja.wikibooks.org/wiki/%E9%AB%98%E7%AD%89%E5%AD%A6%E6%A0%A1%E6%95%B0%E5%AD%A6I/%E3%83%87%E3%83%BC%E3%82%BF%E3%81%AE%E5%88%86%E6%9E%90)
-- [高等学校数学A/場合の数と確率(Wikibooks)](https://ja.wikibooks.org/wiki/%E9%AB%98%E7%AD%89%E5%AD%A6%E6%A0%A1%E6%95%B0%E5%AD%A6A/%E5%A0%B4%E5%90%88%E3%81%AE%E6%95%B0%E3%81%A8%E7%A2%BA%E7%8E%87)
-- [数学B 統計的な推測(数学の時間)](https://akiyamath.com/2023/10/statistics_in_high-school/)
-- [三角不等式と単位円(linky塾)](https://linky-juku.com/trigonometric-inequality/)
-- [命題の真偽と集合の包含関係(受験の月)](https://examist.jp/mathematics/class/meidai-syuugou/)
+- [Section 4, Mathematics (MEXT)](https://www.mext.go.jp/a_menu/shotou/old-cs/1322525.htm)
+- [Math A, properties of figures (Juken no Tsuki)](https://examist.jp/mathematics/plane-figure/ceva-menelaus/)
+- [Math II, loci and regions (Juken no Tsuki)](https://examist.jp/category/mathematics/locus-area/)
+- [Math C, conics (Juken no Tsuki)](https://examist.jp/category/mathematics/quadratic-curve/)
+- [Math III, applications of integration (Juken no Tsuki)](https://examist.jp/category/mathematics/sum-volume-length1/)
+- [Math C, position vectors (Juken no Tsuki)](https://examist.jp/mathematics/planar-vector/bunten-itivector/)
+- [High-school Math I / data analysis (Wikibooks)](https://ja.wikibooks.org/wiki/%E9%AB%98%E7%AD%89%E5%AD%A6%E6%A0%A1%E6%95%B0%E5%AD%A6I/%E3%83%87%E3%83%BC%E3%82%BF%E3%81%AE%E5%88%86%E6%9E%90)
+- [High-school Math A / counting and probability (Wikibooks)](https://ja.wikibooks.org/wiki/%E9%AB%98%E7%AD%89%E5%AD%A6%E6%A0%A1%E6%95%B0%E5%AD%A6A/%E5%A0%B4%E5%90%88%E3%81%AE%E6%95%B0%E3%81%A8%E7%A2%BA%E7%8E%87)
+- [Math B, statistical inference (Sugaku no Jikan)](https://akiyamath.com/2023/10/statistics_in_high-school/)
+- [Trigonometric inequalities and the unit circle (linky juku)](https://linky-juku.com/trigonometric-inequality/)
+- [Truth of propositions and set inclusion (Juken no Tsuki)](https://examist.jp/mathematics/class/meidai-syuugou/)
