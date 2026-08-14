@@ -27,14 +27,14 @@ import 'package:go_router/go_router.dart';
 
 import 'support/harness.dart';
 
-/// 導線のテスト。
+/// Navigation tests.
 ///
-/// 見ているのは見た目ではなく **どの画面からも出られるか**。
-/// 実装当初はすべての遷移が `context.go()` で、スタックの深さが常に1だった。
-/// その結果どの画面にも戻るボタンが出ず、復習画面が行き止まりになっていた。
-/// ここが落ちたら、また同じ形に戻っている。
+/// What is checked is not appearance but whether every screen has a way out.
+/// Originally every transition used `context.go()`, so the stack was always one
+/// deep: no screen showed a back button and review was a dead end. A failure here
+/// means it has regressed to that shape.
 void main() {
-  /// 起動時に確定する値。本番は main() が差し込む。
+  /// Values resolved at startup; in production main() injects them.
   List<Object?> bootOverrides({
     bool onboarded = true,
     bool premium = false,
@@ -65,8 +65,8 @@ void main() {
     WidgetTester tester, {
     List<Object?> overrides = const <Object?>[],
   }) async {
-    // 設定画面が学校段階を読む。`preferencesProvider` は main() で override する
-    // 前提なので、ここでも入れないと設定タブを開いた瞬間に落ちる。
+    // Settings reads the school stage. `preferencesProvider` is meant to be
+    // overridden in main(), so without it here the settings tab crashes on open.
     SharedPreferences.setMockInitialValues(<String, Object>{});
     final SharedPreferences preferences = await SharedPreferences.getInstance();
     final ProviderContainer container = ProviderContainer(
@@ -111,8 +111,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(SettingsScreen), findsOneWidget);
 
-    // 設定はもうホームへ積む寄り道ではなく、常設の枝。戻るスタックを
-    // 捏造せず、同じ下部ナビゲーションからホームを選べることを出口にする。
+    // Settings is now a permanent branch, not a detour stacked on home. Rather
+    // than fabricating a back stack, the exit is choosing home from the same
+    // bottom navigation.
     await tester.tap(find.byKey(const ValueKey<String>('navigation-home')));
     await tester.pumpAndSettle();
     expect(find.byType(HomeScreen), findsOneWidget);
@@ -121,8 +122,8 @@ void main() {
   testWidgets('ホーム → 親レポート は戻れる', (WidgetTester tester) async {
     final GoRouter router = await pumpRouter(tester, overrides: bootOverrides());
 
-    // 穴の数は既存の進捗表示なので、課金の広告をホームへ増やさずに
-    // 「今月できるようになったこと」の詳細へ自然につなげられる。
+    // The gap count is already a progress display, so it leads naturally into
+    // this month's detail without adding a billing ad to home.
     await tester.tap(find.byKey(const ValueKey<String>('parent-report-link')));
     await tester.pumpAndSettle();
     expect(find.byType(ParentReportScreen), findsOneWidget);
@@ -156,8 +157,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(PaywallScreen), findsOneWidget);
 
-    // すでにPremiumだったため entitlement の false → true 通知は来ない。
-    // この場合も、ペイウォールを閉じた境界でロック応答を捨てる必要がある。
+    // Already Premium, so no false -> true entitlement notification arrives. The
+    // locked response must still be discarded when the paywall closes.
     router.pop();
     await tester.pumpAndSettle();
 
@@ -180,8 +181,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(PlanScreen), findsOneWidget);
 
-    // 計画は独立した常設の枝になったので、ホームを下へ積む必要はない。
-    // それでも直接着地が行き止まりにならないことは、タブそのもので固定する。
+    // Plan is its own permanent branch, so home need not be stacked beneath. The
+    // tabs themselves pin that landing directly is not a dead end.
     await tester.tap(find.byKey(const ValueKey<String>('navigation-home')));
     await tester.pumpAndSettle();
     expect(find.byType(HomeScreen), findsOneWidget);
@@ -208,15 +209,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(ReviewScreen), findsOneWidget, reason: '枝を作り直すと復習画面が失われる');
 
-    // 選択中のホームをもう一度押したときは、枝の根へ戻れる。
+    // Re-tapping the selected home tab returns to the branch's root.
     await tester.tap(find.byKey(const ValueKey<String>('navigation-home')));
     await tester.pumpAndSettle();
     expect(find.byType(HomeScreen), findsOneWidget);
   });
 
   testWidgets('撮影と祝福にはタブを出さない', (WidgetTester tester) async {
-    // 撮影画面は初回フレームでカメラを開く。ここで見たいのは撮影結果ではなく
-    // シェルの外にいることなので、撮らずに戻った結果だけを端末の代わりに返す。
+    // Capture opens the camera on the first frame. What matters here is being
+    // outside the shell, not the shot, so the stub just returns "cancelled".
     const MethodChannel pickerChannel = MethodChannel('plugins.flutter.io/image_picker');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
       pickerChannel,
@@ -253,8 +254,8 @@ void main() {
   });
 
   testWidgets('通知から復習画面へ直接着地しても、下にホームが積まれている', (WidgetTester tester) async {
-    // コールドスタートで go('/review') される経路。push ではないので、
-    // ルートを入れ子にしていないとスタックの深さが1になり行き止まりになる。
+    // The cold-start path where go('/review') fires. It is not a push, so without
+    // nested routes the stack is one deep and becomes a dead end.
     final GoRouter router = await pumpRouter(tester, overrides: bootOverrides());
 
     router.go(AppRoute.review.path);
@@ -305,8 +306,9 @@ void main() {
     expect(find.text(strings.homeUnlock), findsOneWidget);
     expect(find.byType(PaywallScreen), findsNothing);
 
-    // 無料なのは自己申告の小テストまで。音声授業を直接始める旧導線を
-    // ナビゲーションテストに残すと、サーバのPremium境界との不一致を再導入してしまう。
+    // Free covers the self-reported quiz only. Keeping the old path that starts a
+    // voice lesson directly would reintroduce a mismatch with the server's
+    // Premium boundary.
     await tester.tap(find.text(strings.homeUnlock));
     await tester.pumpAndSettle();
     expect(find.byType(PaywallScreen), findsOneWidget);
@@ -334,8 +336,8 @@ void main() {
     expect(find.byType(KarteScreen), findsOneWidget);
   });
 
-  // 決済は通ったのに entitlement が付いていない(ダッシュボードの設定漏れ)と、
-  // ここへ来る。紙吹雪を見せてから使えないのが、いちばん落差が大きい。
+  // Payment succeeded without an entitlement (a dashboard misconfiguration) lands
+  // here. Confetti followed by a locked app is the worst drop.
   testWidgets('契約が無いのにお礼へ行くと、ホームへ戻す', (WidgetTester tester) async {
     final GoRouter router = await pumpRouter(tester, overrides: bootOverrides());
 
@@ -359,7 +361,7 @@ void main() {
     expect(find.byType(HomeScreen), findsOneWidget);
   });
 
-  // 買ったあとにペイウォールへ戻れても、戻る先は「もう一度買う画面」しかない。
+  // After buying, the only thing to go back to would be the buy screen.
   testWidgets('お礼はペイウォールを差し替える(閉じても買う画面に戻らない)', (WidgetTester tester) async {
     final GoRouter router = await pumpRouter(tester, overrides: bootOverrides(premium: true));
 
@@ -367,7 +369,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(PaywallScreen), findsOneWidget);
 
-    // 購入が通ったところ。SDKを呼ばずに、画面が呼ぶのと同じ導線だけ動かす。
+    // The purchase just succeeded. No SDK call; only the path the screen uses.
     tester.element(find.byType(PaywallScreen)).replaceWithThanks();
     await tester.pumpAndSettle();
     expect(find.byType(ThanksScreen), findsOneWidget);
@@ -380,7 +382,7 @@ void main() {
     expect(find.byType(HomeScreen), findsOneWidget);
   });
 
-  // 機種変更で戻ってきた人。「おかえりなさい」を出したあと、設定に戻す。
+  // Someone back after a device change: welcome them, then return to settings.
   testWidgets('設定からの復元は、お礼を重ねて出して設定に戻る', (WidgetTester tester) async {
     final GoRouter router = await pumpRouter(tester, overrides: bootOverrides(premium: true));
 

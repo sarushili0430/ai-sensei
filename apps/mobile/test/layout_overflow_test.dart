@@ -15,25 +15,27 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
 
-/// **狭い端末で、画面から中身がこぼれていないか。**
+/// Whether content overflows the screen on a narrow device.
 ///
-/// 同じ壊れ方を3回やった: `Column` を `Spacer` で下端に押し付ける形は、
-/// 文言が伸びた瞬間に**中身が切り落とされ、操作が押せなくなる**。
-/// しかも `RenderFlex overflowed` は**縞模様が出るだけで、テストは緑のまま**
-/// (寸法を固定していなければ、そもそも再現しない)。
+/// The same break happened three times: a `Column` pushed to the bottom with a
+/// `Spacer` clips its children the moment the copy grows, leaving controls
+/// unreachable. And `RenderFlex overflowed` only paints stripes — the test stays
+/// green (and without a pinned surface size it does not reproduce at all).
 ///
-///   - オンボーディング1・2枚目 … 英語の見出しが伸びて 375×667 で 145px 溢れた
-///   - リハーサル … 板書を積んで操作が折り返しの下へ
-///   - 撮影の確認画面 … 契約上限(問題文600字)で 557px 溢れた
+///   - onboarding pages 1 and 2 … English headings overflowed 145px at 375x667
+///   - the rehearsal … the board pushed controls below the fold
+///   - capture confirmation … the contract's 600-character problem overflowed
+///     557px
 ///
-/// 起きる条件は決まっている: **いちばん狭い実機 × いちばん長い文言**。
-/// だから全画面をその条件で1回ずつ描いて、例外が出ないことだけを見る。
-/// 見た目は golden の仕事で、ここは**切り落とされていないこと**だけを見る。
+/// The trigger is always the same: the narrowest device with the longest copy.
+/// So every screen is rendered once under those conditions and only checked for
+/// the absence of an exception. Appearance is the goldens' job; this checks only
+/// that nothing is clipped.
 void main() {
-  /// [screen] を狭い端末で描いて、こぼれていないことを確かめる。
+  /// Renders [screen] on a narrow device and checks nothing overflows.
   ///
-  /// `RenderFlex overflowed` は `FlutterError` として上がるので、
-  /// `takeException()` で拾える。
+  /// `RenderFlex overflowed` surfaces as a `FlutterError`, so `takeException()`
+  /// catches it.
   Future<void> expectNoOverflow(
     WidgetTester tester,
     Widget screen, {
@@ -55,8 +57,8 @@ void main() {
     );
   }
 
-  // 英語は日本語の1.5〜2倍の長さになる。日本語で組んだ余白は英語で必ず破れるので、
-  // 両方通す(審査員が見るのは英語版)。
+  // English runs 1.5-2x longer than Japanese, so spacing designed for Japanese
+  // always breaks in English. Both are covered (reviewers see the English build).
   for (final Locale locale in <Locale>[const Locale('ja'), const Locale('en')]) {
     final String lang = locale.languageCode;
 
@@ -76,7 +78,7 @@ void main() {
         expect(tester.takeException(), isNull, reason: page);
       }
 
-      // 4枚目は3枚目を通らないと出ない。パスでも通れる(約束3)。
+      // Page 4 requires passing through page 3; a pass gets there too.
       await tester.tap(find.text(strings.sessionPass));
       await tester.pumpAndSettle();
       await tester.tap(find.text(strings.onboardingNext));
@@ -96,7 +98,8 @@ void main() {
       );
     });
 
-    // 上限に当たった日のホーム。**先輩の判断**の文が長いので、ここが伸びやすい。
+    // Home on a day the limit was hit. Senpai's judgement runs long, so this
+    // grows most easily.
     testWidgets('ホーム(今日はここまで) ($lang)', (WidgetTester tester) async {
       await expectNoOverflow(
         tester,

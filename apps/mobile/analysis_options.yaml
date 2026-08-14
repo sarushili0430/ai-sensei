@@ -2,12 +2,11 @@ include: package:flutter_lints/flutter.yaml
 
 analyzer:
   exclude:
-    # ビルド生成物。CIでは iOS の署名ステップ(xcode-project use-profiles が
-    # 内部で xcodebuild を叩く)が flutter analyze より前に Swift Package を
-    # build/ios/SourcePackages/ へ展開する。その中には依存パッケージ自身の
-    # example アプリが入っていて、こちらの pubspec に無い依存
-    # (google_fonts / flutter_svg など)を import しているため、
-    # 除外しないと他人のコードで analyze が落ちる。
+    # Build output. In CI the iOS signing step (xcode-project use-profiles runs
+    # xcodebuild internally) expands Swift Packages into
+    # build/ios/SourcePackages/ before flutter analyze. Those include the
+    # dependencies' own example apps, which import packages our pubspec does not
+    # have, so without this exclusion analyze fails on someone else's code.
     - build/**
   language:
     strict-casts: true

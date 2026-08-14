@@ -14,11 +14,11 @@ import 'package:purchases_flutter/purchases_flutter.dart';
 
 import 'support/harness.dart';
 
-/// 課金まわりの純関数ユニット(テスト方針①)。
+/// Pure unit tests for billing.
 ///
-/// 見ているのは「SDKが動くか」ではなく、**SDKの返した値をこちらが
-/// 取り違えていないか**。取り違えると「課金したのに使えない」という、
-/// もっとも気づきにくい壊れ方をする。
+/// They check not that the SDK works but that we do not misread what it
+/// returns — a misread produces "paid but unusable", the hardest failure to
+/// notice.
 
 const PresentedOfferingContext _context = PresentedOfferingContext('default', null, null);
 
@@ -77,14 +77,14 @@ EntitlementInfo _entitlementInfo({
 );
 
 void main() {
-  /// **SDKの既定のまま何が送られるか**(計画書 §10-7 で Sentry を塞いだのと同じ観点)。
+  /// What the SDK sends at its defaults (the same lens as closing Sentry).
   ///
-  /// ユーザーは未成年で、問題文はR2にすら保存しないと決めている。
-  /// 課金SDKに個人情報が流れたら、その決定は無効になる。
+  /// Users are minors, and we decided not to store problem text even in R2.
+  /// Personal data leaking into the billing SDK would void that decision.
   group('RevenueCat の送信設定', () {
-    /// **SDKの既定は true。** アトリビューションIDを設定した瞬間に
-    /// 広告識別子(`$idfa` / `$gpsAdId` / `$androidId` / `$ip` など)が流れ始める。
-    /// いまは使っていないが、**1行足しただけで未成年の端末から流れ出す**のは重すぎる。
+    /// The SDK default is true: setting an attribution ID starts sending ad
+    /// identifiers (`$idfa`, `$gpsAdId`, `$androidId`, `$ip`). We use none today,
+    /// but one added line streaming them off minors' devices is too much.
     test('広告識別子の自動収集は、明示的に切ってある', () {
       expect(
         PurchasesRepository.configurationFor('device-1')
@@ -93,8 +93,8 @@ void main() {
       );
     });
 
-    /// 既定でも false。**既定で安全なものも明示する** —— 既定に頼ると、
-    /// SDKの更新で既定が変わったときに誰も気づけない。
+    /// Already false by default, but stated explicitly: relying on a default
+    /// means nobody notices when an SDK update changes it.
     test('診断情報の送信も、明示的に切ってある', () {
       expect(PurchasesRepository.configurationFor('device-1').diagnosticsEnabled, isFalse);
     });
@@ -128,8 +128,8 @@ void main() {
       expect(entitlement.isCancelled, isFalse);
     });
 
-    // ダッシュボードの identifier とアプリの定数がずれた場合。
-    // 課金は成立しているのに何も解放されない、という壊れ方をする。
+    // When the dashboard identifier and the app constant disagree: the purchase
+    // succeeds and nothing unlocks.
     test('identifier がずれていれば Premium にならない', () {
       final Entitlement entitlement = Entitlement.from(
         info: _customerInfo(
@@ -149,7 +149,7 @@ void main() {
         entitlementId: 'premium',
       );
 
-      // backend の CANCELLATION の扱い(期限まで有効)と揃えてある。
+      // Matches the backend's CANCELLATION handling (valid until expiry).
       expect(entitlement.isPremium, isTrue);
       expect(entitlement.isCancelled, isTrue);
     });
@@ -173,7 +173,7 @@ void main() {
       expect(entitlement.plans, isEmpty);
     });
 
-    // ここを取り違えると、1円も払っていない人に「ご購入ありがとう」と出る。
+    // Misreading this thanks someone who has paid nothing for their purchase.
     test('無料トライアル中を見分ける', () {
       final Entitlement entitlement = Entitlement.from(
         info: _customerInfo(
@@ -187,8 +187,8 @@ void main() {
       expect(entitlement.isTrial, isTrue);
     });
 
-    // intro は「初月100円」のような**有料の**入会キャンペーン。
-    // 無料と一緒にすると、払っている人に「まだ無料です」と出る。
+    // intro is a paid intro offer. Lumping it in with free tells someone who is
+    // paying that they are still on a free trial.
     test('有料の入会キャンペーンは無料トライアルにしない', () {
       for (final PeriodType type in <PeriodType>[
         PeriodType.intro,
@@ -209,14 +209,14 @@ void main() {
     });
   });
 
-  // 無料期間の見出し(「7日間、ぜんぶ使えます」)に出る数。
+  // The number shown in the trial heading.
   group('期限までの残り日数', () {
     final DateTime now = DateTime(2026, 8, 8, 21, 30);
 
     Entitlement until(DateTime? expiresAt) =>
         Entitlement(isPremium: true, expiresAt: expiresAt);
 
-    // 7日ちょうどに数分足りないだけで「あと6日」と出ていた、を防ぐ。
+    // Prevents "6 days left" when it is minutes short of exactly 7.
     test('端数は切り上げる', () {
       expect(until(now.add(const Duration(days: 7))).daysLeft(now), 7);
       expect(
@@ -230,7 +230,8 @@ void main() {
       expect(until(now.subtract(const Duration(days: 1))).daysLeft(now), 0);
     });
 
-    // 期限が読めないときは数を作らない。画面側は日数の無い見出しに落とす。
+    // With no readable expiry, invent no number; the screen drops to a heading
+    // without days.
     test('期限が無ければ0', () {
       expect(until(null).daysLeft(now), 0);
     });
@@ -248,7 +249,8 @@ void main() {
         Offering('default', '', const <String, Object>{}, packages);
 
     test('ダッシュボードの並びによらず 週 → 月 → 年 の順で出す', () {
-      // わざと逆順(高い順)で渡す。年額へ誘導する並びにしないため。
+      // Passed deliberately in reverse (most expensive first), so the ordering
+      // cannot steer towards the annual plan.
       final List<SubscriptionPlan> plans =
           plansOf(offering(<Package>[yearly, monthly, weekly]));
 
@@ -307,7 +309,7 @@ void main() {
       );
     });
 
-    // 「初月100円」を「無料」と書かないための分岐。
+    // The branch that stops a discounted intro price being called "free".
     test('有料の導入価格は無料トライアルにしない', () {
       final SubscriptionPlan discounted =
           plan(const IntroductoryPrice(100, '¥100', 'P1M', 1, PeriodUnit.month, 1));
@@ -325,7 +327,7 @@ void main() {
     PlatformException error(PurchasesErrorCode code) =>
         PlatformException(code: PurchasesErrorCode.values.indexOf(code).toString());
 
-    // これを失敗として扱うと、閉じただけの人にエラーを見せてしまう。
+    // Treating this as failure shows an error to someone who merely closed it.
     test('キャンセルは失敗ではない', () {
       expect(
         PurchaseOutcome.fromException(error(PurchasesErrorCode.purchaseCancelledError)),
@@ -348,7 +350,7 @@ void main() {
       expect((outcome as PurchaseFailed).failure, PurchaseFailure.alreadyOwned);
     });
 
-    // 商品IDやEntitlementの取り違え。開発中に気づきたいので独立させている。
+    // Wrong product ID or entitlement. Kept separate so it is caught in dev.
     test('設定ミスは configuration にまとめる', () {
       for (final PurchasesErrorCode code in <PurchasesErrorCode>[
         PurchasesErrorCode.configurationError,
@@ -379,7 +381,7 @@ void main() {
     });
   });
 
-  // 押した瞬間に課金されるのに「無料でためす」と書いてある、を防ぐ。
+  // Prevents "try it free" on a button that bills on the first tap.
   group('ペイウォールの購入ボタン', () {
     Future<void> pumpPaywall(WidgetTester tester, Offering offering) => pumpApp(
       tester,
@@ -423,7 +425,7 @@ void main() {
       expect(find.textContaining('日間は無料'), findsNothing);
     });
 
-    // 0円でない導入価格は割引であって無料ではない。
+    // A non-zero intro price is a discount, not free.
     testWidgets('割引価格の商品にも「無料」と書かない', (WidgetTester tester) async {
       await pumpPaywall(
         tester,
@@ -435,7 +437,8 @@ void main() {
     });
   });
 
-  // Offering と違う据え置きの価格を約束したまま購入判断をさせない、を防ぐ。
+  // Prevents deciding to buy against a hard-coded price the Offering disagrees
+  // with.
   group('祝福画面の Premium の一行', () {
     const AppStrings ja = AppStrings(Locale('ja'));
 
@@ -527,8 +530,8 @@ void main() {
     });
   });
 
-  // 「ご購入ありがとうございます」と書けない場合がある(§6 誠実さ)。
-  // 見出しの出し分けが、いちばん壊れても気づきにくいところ。
+  // There are cases where "thank you for your purchase" cannot be written.
+  // Choosing between the headings is the easiest thing to break unnoticed.
   group('購入のお礼', () {
     const AppStrings ja = AppStrings(Locale('ja'));
 
@@ -549,7 +552,7 @@ void main() {
       expect(find.text(ja.thanksRenewsOn('2026年9月8日')), findsOneWidget);
     });
 
-    // まだ1円も払っていない。お礼を言うと事実として嘘になる。
+    // Nothing has been paid, so thanks would be factually false.
     testWidgets('無料トライアルにはお礼を言わず、課金が始まる日を先に出す', (WidgetTester tester) async {
       final Entitlement trial = trialEntitlement();
       await pumpThanks(tester, entitlement: trial);
@@ -562,7 +565,7 @@ void main() {
       );
     });
 
-    // 買い直していない。お礼を言うと二重に払ったのかと思わせる。
+    // Nothing was re-bought; thanks would suggest they paid twice.
     testWidgets('復元にはお礼を言わない', (WidgetTester tester) async {
       await pumpThanks(tester, entitlement: premiumEntitlement, restored: true);
 
@@ -570,14 +573,14 @@ void main() {
       expect(find.text(ja.thanksTitle), findsNothing);
     });
 
-    // 復元した相手がトライアル中でも、買い直してはいない。
+    // Even restoring into a trial, nothing was re-bought.
     testWidgets('復元はトライアルより優先する', (WidgetTester tester) async {
       await pumpThanks(tester, entitlement: trialEntitlement(), restored: true);
 
       expect(find.text(ja.thanksRestoredTitle), findsOneWidget);
     });
 
-    // 「Premiumになりました」だけでは、何が変わったのか分からない。
+    // "You're Premium now" alone does not say what changed.
     testWidgets('解放されたものを、ペイウォールと同じ3つ出す', (WidgetTester tester) async {
       await pumpThanks(tester, entitlement: premiumEntitlement);
 
@@ -587,8 +590,8 @@ void main() {
     });
   });
 
-  // 契約している印。**ランクや称号に見えたら失敗**(数えるのは連続日数と
-  // 埋めた穴だけ)。ここでは出る/出ないだけを見る。
+  // The subscribed marker. Looking like a rank or title is a failure; we count
+  // only streak days and filled gaps. These check only whether it shows.
   group('Premium の印', () {
     const AppStrings ja = AppStrings(Locale('ja'));
 
@@ -625,8 +628,8 @@ void main() {
       expect(find.text(ja.premiumBadge), findsNothing);
     });
 
-    // 設定の契約カード。画面ごと組まないのは、鍵の無いビルドでは
-    // 「契約」セクションごと出さないため(押しても何も起きない行を置かない)。
+    // The subscription card in settings. The whole screen is not built because
+    // key-less builds omit the section entirely, so no row does nothing on tap.
     Future<void> pumpCard(WidgetTester tester, Entitlement entitlement) => pumpApp(
       tester,
       const Scaffold(body: SubscriptionStatusCard()),
@@ -640,7 +643,8 @@ void main() {
       expect(find.text(ja.premiumRenewsOn('2026年9月8日')), findsOneWidget);
     });
 
-    // 「あと◯日で終わります」と急かさない。終わる日と、それまで使えることを書く。
+    // No "X days left" countdown; it states the end date and that access lasts
+    // until then.
     testWidgets('解約予約済みなら終わる日に差し替える', (WidgetTester tester) async {
       await pumpCard(tester, cancelledEntitlement);
 
@@ -648,7 +652,7 @@ void main() {
       expect(find.text(ja.premiumRenewsOn('2026年9月8日')), findsNothing);
     });
 
-    // 無料期間は更新日ではなく、**課金が始まる日**を言う。
+    // A trial states the billing start date, not the renewal date.
     testWidgets('無料トライアル中は課金の開始日を出す', (WidgetTester tester) async {
       final Entitlement trial = trialEntitlement();
       await pumpCard(tester, trial);
@@ -660,8 +664,8 @@ void main() {
       );
     });
 
-    // 契約していない人に「無料プランです」と書かない。
-    // 設定を開くたびに売り込まれているように読める。
+    // Never tell a non-subscriber "you're on the free plan"; it reads as a pitch
+    // every time settings is opened.
     testWidgets('契約が無ければカードごと出さない', (WidgetTester tester) async {
       await pumpApp(tester, const Scaffold(body: SubscriptionStatusCard()));
 

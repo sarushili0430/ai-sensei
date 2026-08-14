@@ -8,16 +8,17 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
 
-/// ホームの「今日の1手」(ADR 0006)。
+/// Home's "today's move" (ADR 0006).
 ///
-/// 見るのは**下に押せる操作がいくつあるか**。並べ直すPRはここで落ちる。
+/// It checks how many tappable actions sit at the bottom; a PR that stacks them
+/// fails here.
 void main() {
   const AppStrings ja = AppStrings(Locale('ja'));
   const ValueKey<String> lessonKey = ValueKey<String>('home-primary-lesson');
   const ValueKey<String> reviewKey = ValueKey<String>('home-primary-review');
 
-  /// 締めたうえで、埋める穴も残っていない日。
-  /// `exhaustedSummary` は穴が2つあるので、この経路はこちらでしか通せない。
+  /// A closed-out day with no gaps left either. `exhaustedSummary` has two gaps,
+  /// so this path is only reachable here.
   const ProgressSummary exhaustedWithoutHoles = ProgressSummary(
     progress: Progress(streakDays: 3, filledHoles: 4, openHoles: 0),
     isPremium: false,
@@ -39,7 +40,7 @@ void main() {
     expect(find.byKey(lessonKey), findsOneWidget);
     expect(find.byKey(reviewKey), findsNothing);
     expect(find.text(ja.homeGreeting), findsOneWidget);
-    // 締めていない日に「今日はここまで」を先出ししない(残数の匂わせになる)。
+    // Do not pre-empt "done for today" on an open day; it hints at a remainder.
     expect(find.text(ja.lessonEnoughForToday), findsNothing);
   });
 
@@ -47,10 +48,10 @@ void main() {
     await pumpHome(tester, exhaustedSummary);
 
     expect(find.byKey(reviewKey), findsOneWidget);
-    // 押せないボタンを並べて残さない。同じ場所の中身が入れ替わる。
+    // No stacked disabled buttons; the same place swaps its contents.
     expect(find.byKey(lessonKey), findsNothing);
     expect(find.text(ja.lessonEnoughForToday), findsOneWidget);
-    // 撮らせない画面で「どこでつまずいた?」と聞かない。
+    // A screen that refuses the photo never asks "where did you get stuck?".
     expect(find.text(ja.homeGreetingDone), findsOneWidget);
     expect(find.text(ja.homeGreeting), findsNothing);
   });
@@ -68,7 +69,7 @@ void main() {
     );
   });
 
-  // Premium のフェアユース上限では、すでに契約している人へ課金導線を重ねない(§6-3)。
+  // At the Premium fair-use cap, no billing prompt is stacked on a subscriber.
   testWidgets('Premiumが締められた日は、契約への道を出さない', (WidgetTester tester) async {
     await pumpHome(tester, premiumExhaustedSummary);
 

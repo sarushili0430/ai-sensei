@@ -16,15 +16,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../support/harness.dart';
 
-/// 主要画面の golden test。
+/// Golden tests for the main screens.
 ///
-/// 見ているのは「崩れていないか」よりも **設計上の約束が画面に出ているか**:
-/// 点数が出ていないか、穴がピンクのマーカーで示されているか、
-/// ペイウォールに無料継続の導線が残っているか。
+/// They check less that nothing is broken than that the design promises appear
+/// on screen: no scores, gaps marked with a pink highlighter, and the paywall
+/// still offering a way to stay free.
 ///
-/// 生成はCI(Linux)を正とする:
+/// CI (Linux) is authoritative for generation:
 ///   flutter test --update-goldens
-/// 端末やOSが違うとフォントラスタライズが変わるので、手元の差分はコミットしない。
+/// Font rasterization differs by device and OS, so local diffs are not committed.
 void main() {
   setUpAll(loadAppFonts);
 
@@ -43,11 +43,11 @@ void main() {
     await capture(tester, name);
   }
 
-  /// 常設タブ配下の画面を、本番と同じルータ込みで撮る。
+  /// Shoots screens under the permanent tabs with the production router.
   ///
-  /// 画面だけを `MaterialApp.home` に置くと、下部ナビゲーションが丸ごと
-  /// テスト対象から抜ける。ホームの高さがタブぶん縮んで操作が押し出される壊れ方も
-  /// 見えなくなるので、シェル配下の既存goldenだけはこちらを通す。
+  /// Putting a screen alone in `MaterialApp.home` drops the bottom navigation
+  /// from the test entirely, hiding the break where home shrinks by the tab
+  /// height and pushes controls out. So goldens under the shell take this path.
   Future<void> expectRoutedGolden(
     WidgetTester tester,
     String location,
@@ -57,8 +57,8 @@ void main() {
     List<Object?> overrides = const <Object?>[],
   }) async {
     await setSurface(tester);
-    // 設定画面が学校段階を読む。`preferencesProvider` は main() で override する
-    // 前提なので、ここでも入れないと設定の golden を撮る瞬間に落ちる。
+    // Settings reads the school stage. `preferencesProvider` is meant to be
+    // overridden in main(), so without it here the settings golden crashes.
     SharedPreferences.setMockInitialValues(<String, Object>{});
     final SharedPreferences preferences = await SharedPreferences.getInstance();
     final ProviderContainer container = ProviderContainer(
@@ -91,8 +91,8 @@ void main() {
     await expectGolden(tester, const OnboardingScreen(), 'onboarding');
   });
 
-  // リハーサル。ここで見たいのは、**答えが1文字も出ていない**こと。
-  // 出ているのは質問と、説明する/言えない の2つの道だけ。
+  // The rehearsal. What matters here is that not one character of the answer is
+  // shown: only the question and the two paths (explain / can't say it).
   testWidgets('01b オンボーディング(リハーサル)', (WidgetTester tester) async {
     await setSurface(tester);
     await tester.pumpWidget(wrapApp(const OnboardingScreen()));
@@ -103,8 +103,8 @@ void main() {
     await capture(tester, 'onboarding_rehearsal');
   });
 
-  // パスしたあとのカルテ見本。穴がピンクで残り、責める言葉が無く、
-  // 「また来る」ことが線で見えているか。
+  // The sample karte after a pass: the gap stays pink, no blaming wording, and
+  // the return visits are visible as a line.
   testWidgets('01c オンボーディング(カルテの見本)', (WidgetTester tester) async {
     await setSurface(tester);
     await tester.pumpWidget(wrapApp(const OnboardingScreen()));
@@ -128,7 +128,7 @@ void main() {
     );
   });
 
-  // 初回起動のホーム。押すもののない空白にせず、次の一歩を出しているか。
+  // Home on first launch: not a blank with nothing to press, but a next step.
   testWidgets('02b ホーム(初回起動)', (WidgetTester tester) async {
     await expectRoutedGolden(
       tester,
@@ -138,8 +138,8 @@ void main() {
     );
   });
 
-  // 契約している人のホーム。右上に印が出ているか、
-  // それが数えている2つ(連続日数・埋めた穴)を押し出していないか。
+  // Home for a subscriber: the marker appears top right without pushing out the
+  // two counters (streak days, filled gaps).
   testWidgets('02c ホーム(Premium)', (WidgetTester tester) async {
     await expectRoutedGolden(
       tester,
@@ -180,8 +180,8 @@ void main() {
     );
   });
 
-  // 「埋めにいく穴」と「埋めた穴」が同じ画面に並んでいるか。
-  // 後者がペイウォールの謳う「履歴」で、別画面は作らない。
+  // Gaps to fill and filled gaps sit on the same screen. The latter is the
+  // "history" the paywall advertises, and gets no screen of its own.
   testWidgets('05 復習(Premium)', (WidgetTester tester) async {
     await expectRoutedGolden(
       tester,
@@ -210,11 +210,11 @@ void main() {
     await expectRoutedGolden(tester, AppRoute.settings.path, 'settings');
   });
 
-  // 購入のお礼。見たいのは、祝っている画面でも
-  // **更新日と解約できることが消えていない**こと(Guideline 3.1.2)。
+  // The thank-you screen: even while celebrating, the renewal date and the
+  // ability to cancel must not disappear (guideline 3.1.2).
   //
-  // 無料トライアルの見出しは残り日数で変わる = 撮る日で変わるので、
-  // golden では撮らない(文言の出し分けは monetization_test.dart で見る)。
+  // The trial heading varies with days remaining, so it changes with the shoot
+  // date and is not captured here (monetization_test.dart covers the wording).
   testWidgets('08 購入のお礼', (WidgetTester tester) async {
     await expectRoutedGolden(
       tester,

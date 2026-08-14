@@ -1,16 +1,16 @@
 import 'package:ai_sensei/src/features/notifications/data/push_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// プッシュまわりの純関数ユニット(テスト方針①)。
+/// Pure unit tests for push.
 ///
-/// 見ているのは「通知が届くか」ではなく、**登録できたかどうかの判定を
-/// こちらが取り違えていないか**。取り違えると「登録できたことにしたのに、
-/// 実際には一通も届かない」という、手元では気づけない壊れ方をする。
+/// They check not whether notifications arrive but whether we misread the
+/// registration verdict. A misread produces "we recorded it as registered and
+/// not a single one is delivered", which is invisible locally.
 void main() {
   group('設定', () {
     test('App ID を渡さないビルドでは通知ごと無効になる', () {
-      // ここが true に転ぶと、通知と関係ない画面(カルテのトグル)まで
-      // 描画が変わって golden が巻き添えで落ちる。既定値を持たせない理由。
+      // If this flipped true, unrelated screens (the karte toggle) would render
+      // differently and take goldens down with them. Hence no default value.
       expect(PushConfig.appId, isEmpty);
       expect(PushConfig.isConfigured, isFalse);
     });
@@ -25,8 +25,8 @@ void main() {
     });
 
     test('local- で始まる仮のIDは登録済みにしない', () {
-      // SDKは初期化直後にこの仮IDを入れる。ここを登録済みと数えると、
-      // 端末がOneSignalに載る前に「登録できた」と判断してしまう。
+      // The SDK stores this placeholder right after init. Counting it as
+      // registered decides success before the device reaches OneSignal.
       expect(PushRepository.isRegistered('local-abc123'), isFalse);
     });
 

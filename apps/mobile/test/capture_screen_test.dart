@@ -13,19 +13,21 @@ import 'package:http/testing.dart';
 
 import 'support/harness.dart';
 
-/// 1x1 のPNG。サムネイルが描ければよいので、これ以上小さくする必要はない。
+/// A 1x1 PNG. It only has to render as a thumbnail, so nothing smaller is needed.
 final Uint8List _onePixelPng = base64Decode(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
 );
 
-/// 撮影画面。見ているのは見た目ではなく、**3つの約束が画面として成立しているか**。
+/// The capture screen. What is checked is not appearance but whether three
+/// promises hold as a screen:
 ///
-///   - **カメラを勝手に開かない。** 何を撮るかを先に選ばせる。ノートが無い生徒が
-///     「ノートは無い」をシャッターの前に言えるのは、ここしかない
-///   - どちらか1枚で授業を始められる(§4-1)
-///   - 読み取った問題文は**授業の前に見せる**。読めなかったときは黙って進める
+///   - the camera never opens on its own; what to shoot is chosen first, which
+///     is the only place a student without notes can say so before the shutter
+///   - either photo alone can start a lesson
+///   - the problem text that was read is shown before the lesson, and a failed
+///     read carries on silently
 ///
-/// カメラは `plugins.flutter.io/image_picker` を差し替えて、撮ったことにする。
+/// The camera is stubbed by replacing `plugins.flutter.io/image_picker`.
 void main() {
   const MethodChannel pickerChannel = MethodChannel('plugins.flutter.io/image_picker');
   const AppStrings ja = AppStrings(Locale('ja'));
@@ -33,7 +35,7 @@ void main() {
   late Directory tempDir;
   late List<String> pickedPaths;
 
-  /// カメラを閉じるまでに撮らずに帰る回数。0なら毎回撮る。
+  /// How many times to return without shooting; 0 shoots every time.
   late int cancelCount;
 
   setUp(() {
@@ -41,14 +43,15 @@ void main() {
     pickedPaths = <String>[];
     cancelCount = 0;
 
-    // カメラを開くたびに別のファイルを返す(ノートと問題を取り違えないため)。
+    // Return a different file each time the camera opens, so notes and problem
+    // cannot be confused.
     //
-    // **中身は本物の画像でないといけない。** 撮ったものは画面にサムネイルとして
-    // 出るので、デコードできないバイト列を返すと `Image.file` がそこで落ちる。
+    // The bytes must be a real image: the shot appears as a thumbnail, so
+    // undecodable bytes crash `Image.file` there.
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
       pickerChannel,
       (MethodCall call) async {
-        // 撮らずに帰る(image_picker は null を返す)。
+        // Return without shooting (image_picker returns null).
         if (cancelCount > 0) {
           cancelCount -= 1;
           return null;
@@ -60,7 +63,7 @@ void main() {
       },
     );
 
-    // 許可の照会は差し替えないと返ってこない(理由は `mockPermissionHandler`)。
+    // Permission queries never return unstubbed (see `mockPermissionHandler`).
     mockPermissionHandler();
   });
 
@@ -70,14 +73,15 @@ void main() {
     tempDir.deleteSync(recursive: true);
   });
 
-  /// `problem` を返すAPIクライアント。null なら「読めなかった」。
+  /// An API client returning `problem`; null means it could not be read.
   List<Object?> apiOverrides({
     Map<String, dynamic>? problem,
     List<Map<String, dynamic>>? topics,
     List<http.BaseRequest>? calls,
     String? errorCode,
     String? errorMessage,
-    /// 会話の開始だけを落とす(解析は通る)。通信が切れた状況を作る。
+    /// Fail only the conversation start (analysis succeeds), reproducing a
+    /// dropped connection.
     bool failStart = false,
   }) {
     final MockClient client = MockClient((http.Request request) async {
@@ -103,9 +107,9 @@ void main() {
           headers: <String, String>{'content-type': 'application/json; charset=utf-8'},
         );
       }
-      // 部屋の鍵が出るのは会話の開始だけ。**解析の応答には載せない** —
-      // 載せると、鍵を持っている = いつでも始められる になり、
-      // 回数を会話の開始で数える形が画面のテストからも見えなくなる。
+      // The room key comes only from starting the conversation, never from the
+      // analysis response: including it would make holding a key equal being able
+      // to start any time, hiding where the use is counted even from these tests.
       final Map<String, dynamic> body = request.url.path.endsWith('/start')
           ? <String, dynamic>{
               'session_id': 'ses_1',
@@ -172,37 +176,37 @@ void main() {
     );
   }
 
-  /// ノートの枠から撮る。**画面に入っただけではカメラが開かない**ので、
-  /// 写真が要るテストはここを通る。
+  /// Shoots from the notes slot. Entering the screen does not open the camera,
+  /// so any test needing a photo goes through here.
   Future<void> takeNotes(WidgetTester tester) async {
     await tester.tap(find.text(ja.captureTakeNotes));
     await tester.pumpAndSettle();
   }
 
-  /// 問題の枠から撮る。ノートが無い生徒はこちらだけを通る。
+  /// Shoots from the problem slot; a student without notes takes only this path.
   Future<void> takeProblem(WidgetTester tester) async {
     await tester.tap(find.text(ja.captureAddProblem));
     await tester.pumpAndSettle();
   }
 
-  /// 「授業をはじめる」を押して、解析が返るまで進める。
+  /// Taps "start the lesson" and pumps until analysis returns.
   ///
-  /// **[WidgetTester.runAsync] を挟むのは手抜きではない。** 送っているのは
-  /// multipart で、`MockClient` は本文を組み立てるときに**実際にファイルを読む**。
-  /// これは widget test の擬似時間では進まないので、`pumpAndSettle` だけだと
-  /// スピナーのまま返ってこない(`capture_flow_test.dart` が素の `test()` で
-  /// 動いているのは、あちらが最初から実時間だから)。
+  /// [WidgetTester.runAsync] is not a shortcut: the upload is multipart and
+  /// `MockClient` actually reads the file while composing the body, which does
+  /// not advance under a widget test's fake time. `pumpAndSettle` alone would
+  /// hang on the spinner (`capture_flow_test.dart` is fine because plain `test()`
+  /// runs on real time from the start).
   Future<void> startLesson(WidgetTester tester) async {
     await tester.tap(find.text(ja.captureStart));
-    // multipart の送信は `MockClient` が実際にファイルを読むので、
-    // `pumpAndSettle` では進まない(理由は `pumpUntil`)。
+    // `MockClient` really reads the file for a multipart send, so
+    // `pumpAndSettle` does not advance it (see `pumpUntil`).
     await pumpUntil(tester, find.text(ja.captureConfirmHint));
   }
 
-  /// **ここが崩れると、ノートが無い生徒は問題の枠を見ないままシャッターの前に立つ。**
-  /// 手元にあるのは問題集だけなので、そこで撮れば紙面がノート枠に入り、
-  /// 「解析後に破棄する」という約束が自分たちのUIで破れる
-  /// (`api.ts` の `sessionPhotoParts` が「残る穴」と書いたもの)。
+  /// If this breaks, a student without notes stands at the shutter never having
+  /// seen the problem slot. With only a workbook to hand, shooting there puts the
+  /// page in the notes slot and our own UI breaks the discard-after-analysis
+  /// promise (the "remaining hole" in `api.ts`).
   testWidgets('入っただけではカメラを開かない(何を撮るか先に選ばせる)', (WidgetTester tester) async {
     await pumpCapture(tester);
 
@@ -217,11 +221,11 @@ void main() {
     await pumpCapture(tester, calls: calls);
     await takeNotes(tester);
 
-    // 撮っただけでは、まだサーバへ行っていない。
+    // Shooting alone has not reached the server yet.
     expect(calls, isEmpty);
     expect(find.text(ja.capturePhotoNotes), findsOneWidget);
     expect(find.text(ja.capturePhotoProblem), findsOneWidget);
-    // ヒントであって要求ではないので、撮っていなくても始められる。
+    // A hint, not a requirement, so it starts without the second photo.
     expect(find.text(ja.captureProblemHint), findsOneWidget);
   });
 
@@ -249,7 +253,7 @@ void main() {
       (calls.single as http.Request).bodyBytes,
       allowMalformed: true,
     );
-    // 枠が分かれていることが、問題の紙面が保存されない唯一の根拠。
+    // Separate parts are the only guarantee the problem page is not stored.
     expect(body, contains('name="photo"'));
     expect(body, contains('name="problem_photo"'));
   });
@@ -270,9 +274,10 @@ void main() {
     expect(find.textContaining('共有点の個数'), findsOneWidget);
   });
 
-  // 契約の上限(`problemTextMaxLength` = 600字)。**例外ではなく仕様の一部**なので、
-  // 収まる前提にはできない。ここを固定しないと、長い問題文が来た瞬間に
-  // 「授業をはじめる」が画面の外へ出る(実測で 375×667 で557pxはみ出していた)。
+  // The contract's limit (`problemTextMaxLength` = 600) is part of the spec, not
+  // an edge case, so we cannot assume it fits. Without pinning this, a long
+  // problem pushes "start the lesson" off screen (measured: 557px overflow at
+  // 375x667).
   testWidgets('600字の問題文でも、始めるボタンが画面の外に出ない', (WidgetTester tester) async {
     final String longProblem =
         ('円 x^2 + y^2 = 5 と直線 y = x + k について共有点の個数を求めよ。' * 30).substring(0, 600);
@@ -292,9 +297,9 @@ void main() {
     );
   });
 
-  // 学年ラベルが付いたぶん、チップは横に伸びた。「中1 データの分布とヒストグラム」は
-  // 375px の端末で1チップが画面幅を超える。切り詰めるとどの単元か読めなくなるので
-  // 折り返す — その結果、**縦にも横にも溢れていない**ことをここで固定する。
+  // Grade labels made chips wider, and a long topic name exceeds the screen width
+  // on a 375px device. Truncating would hide which topic it is, so it wraps — and
+  // this pins that nothing overflows vertically or horizontally.
   testWidgets('長い単元名のチップでも、横に溢れず始めるボタンも画面内に残る', (WidgetTester tester) async {
     await pumpCapture(
       tester,
@@ -329,16 +334,16 @@ void main() {
     );
   });
 
-  /// ノートの必須をやめた(PM判断)。**必須にしているかぎり、手も付けていない
-  /// 問題を持ってきた生徒は紙面をノート枠に入れるしかなく**、解析後破棄の約束が
-  /// 自分たちのUI制約で破られる。
+  /// Notes are no longer required. While they were, a student who brought a
+  /// problem they had not touched had to put the page in the notes slot, and our
+  /// own UI constraint broke the discard-after-analysis promise.
   group('ノートが無い経路', () {
     testWidgets('カメラを開いてやめても、画面に留まって選び直せる', (WidgetTester tester) async {
       cancelCount = 1;
       await pumpCapture(tester);
-      await takeNotes(tester); // 開いて、撮らずに帰る
+      await takeNotes(tester); // open, then return without shooting
 
-      // 以前はここでホームへ降ろしていた。降ろすと選び直せない。
+      // This used to drop back to home, which removed the chance to choose again.
       expect(find.text(ja.capturePhotoNotes), findsOneWidget);
       expect(find.text(ja.captureTakeNotes), findsOneWidget);
       expect(find.text(ja.captureAddProblem), findsOneWidget);
@@ -349,13 +354,13 @@ void main() {
 
       final ChunkyButton button = tester.widget(find.byType(ChunkyButton));
       expect(button.onPressed, isNull);
-      // **押せない理由は書かない。** 空の枠が2つ見えていれば足りる。
+      // The reason it is disabled is not written out; two empty slots suffice.
       expect(find.textContaining('ノートがありません'), findsNothing);
     });
 
-    /// ノートのカメラを一度も開かずに、問題だけで始められること。
-    /// **キャンセルを経由しないのが要点** — 以前はここを通らないと
-    /// 問題の枠にたどり着けず、キャンセルは「やめる」に読めていた。
+    /// Starting from the problem alone, without ever opening the notes camera.
+    /// The point is not going through cancel: it used to be the only route to the
+    /// problem slot, and cancel reads as "give up".
     testWidgets('問題だけでも授業を始められる', (WidgetTester tester) async {
       final List<http.BaseRequest> calls = <http.BaseRequest>[];
       await pumpCapture(tester, calls: calls);
@@ -376,13 +381,13 @@ void main() {
       );
     });
 
-    /// **ノートが無いことを、撮る前に許しておく。** ここで黙っていると、
-    /// 解けなかった生徒には紙面をノート枠に入れる以外の道が見えない。
+    /// Grant permission to have no notes before shooting. Silence here leaves a
+    /// stuck student no path but the notes slot.
     testWidgets('1枚も撮っていないうちに、問題だけでいいと言う', (WidgetTester tester) async {
       await pumpCapture(tester);
 
       expect(find.text(ja.captureEitherIsFine), findsOneWidget);
-      // 2枚目の促しはノートを撮った人へのもの。まだ出さない。
+      // The second-photo nudge is for people who shot notes; not yet.
       expect(find.text(ja.captureProblemHint), findsNothing);
     });
 
@@ -394,7 +399,7 @@ void main() {
       expect(find.text(ja.captureEitherIsFine), findsNothing);
     });
 
-    // ノートがあるほうが良いことは変わっていない。見出しは据え置く。
+    // Having notes is still better, so the heading is unchanged.
     testWidgets('どちらの枠にも「任意」と書かない', (WidgetTester tester) async {
       await pumpCapture(tester);
 
@@ -409,7 +414,8 @@ void main() {
     });
   });
 
-  // 読めなかったことを警告として出すと、任意のはずの2枚目が事実上の必須になる。
+  // Warning about a failed read makes the optional second photo effectively
+  // mandatory.
   testWidgets('読み取れなかったときは、何も言わずに進める', (WidgetTester tester) async {
     await pumpCapture(tester);
     await takeNotes(tester);
@@ -417,14 +423,14 @@ void main() {
     await startLesson(tester);
 
     expect(find.text(ja.captureProblemTitle), findsNothing);
-    // 行き止まりにもしない。単元の確認まで進んでいる。
+    // Nor is it a dead end: it reaches topic confirmation.
     expect(find.text(ja.captureConfirmHint), findsOneWidget);
   });
 
-  /// `/start` が指定の回数だけ飛ぶまで進める。
+  /// Pumps until `/start` has fired the given number of times.
   ///
-  /// **画面の変化では待てない。** ここでは開始をずっと失敗させているので、
-  /// 出ている「もう一度」は押す前と押したあとで見分けがつかない。
+  /// It cannot wait on a screen change: start keeps failing here, so the "try
+  /// again" on screen looks identical before and after the tap.
   Future<void> pumpUntilStartCalls(
     WidgetTester tester,
     List<http.BaseRequest> calls,
@@ -440,11 +446,12 @@ void main() {
     fail('会話の開始が $count 回飛びませんでした(実際は ${startCalls()} 回)');
   }
 
-  /// **「もう一度」が撮り直しに戻ると、行き止まりになる。**
+  /// "Try again" returning to a retake is a dead end.
   ///
-  /// 解析済みの状態では [CaptureController.setPhoto] が新しい写真を捨てるので、
-  /// カメラだけが何度も開いてエラーが消えない。しかも会話の開始で落ちた場合は、
-  /// サーバ側で今日の枠を押さえていることがあり、撮り直すとその1回を捨てる。
+  /// Once analyzed, [CaptureController.setPhoto] discards the new photo, so the
+  /// camera reopens forever and the error never clears. And when the failure was
+  /// at conversation start, the server may already hold today's slot, so retaking
+  /// throws that use away.
   testWidgets('会話の開始で落ちたら、「もう一度」は開始をやり直す(カメラを開かない)',
       (WidgetTester tester) async {
     final List<http.BaseRequest> calls = <http.BaseRequest>[];
@@ -454,7 +461,7 @@ void main() {
 
     final int picksBeforeRetry = pickedPaths.length;
 
-    // 単元の確認画面の「はじめる」→ 会話の開始が落ちる
+    // "Start" on the topic confirmation screen; the conversation start fails.
     await tester.tap(find.text(ja.captureStart));
     await pumpUntil(tester, find.text(ja.errorRetry));
 

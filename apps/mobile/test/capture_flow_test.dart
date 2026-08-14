@@ -11,14 +11,15 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// 撮影 → 単元の確認 → 会話開始。
+/// Capture -> topic confirmation -> conversation start.
 ///
-/// 不具合報告: 写真を撮って単元を確かめただけで「今日のセッションは終わり」と出た。
-/// **今日の1回を数えるのは会話が始まったとき**(`POST /v1/sessions/{id}/start`)に
-/// 変えてあるので、ここで見るのは「どの操作でどの入口を叩くか」。
+/// Reported bug: shooting a photo and confirming the topic alone reported
+/// "today's session is over". The day's use is now counted when the conversation
+/// starts (`POST /v1/sessions/{id}/start`), so these tests check which action
+/// hits which endpoint.
 
-/// 写真を読んだ応答。**部屋の鍵は入らない。** 入っていたら、鍵を持っている =
-/// いつでも始められる になり、数える位置を移した意味が消える。
+/// The photo-analysis response. It carries no room key: holding one would mean
+/// being able to start any time, defeating the move of where use is counted.
 Map<String, dynamic> _analysisJson(
   String sessionId,
   List<String> topicIds, {
@@ -36,14 +37,14 @@ Map<String, dynamic> _analysisJson(
           'unit': '2次関数',
           'topic': topicId,
           'label': '数学I',
-          // 2つ目以降は確信度を低くして、はじめから外れている状態を作る
+          // Lower confidence from the second onwards, so they start deselected.
           'confidence': topicId == topicIds.first ? 0.92 : 0.41,
         },
     ],
   };
 }
 
-/// 会話を始めた応答。**この応答が返った時点で今日の1回を使っている。**
+/// The conversation-start response. Receiving it spends the day's use.
 Map<String, dynamic> _startJson(String sessionId) {
   return <String, dynamic>{
     'session_id': sessionId,
@@ -62,8 +63,9 @@ void main() {
   late File photo;
   late File problemPhoto;
 
-  /// 学校段階の保存先。セッション作成時に `school_stage` として送るので、
-  /// ここが無いと `schoolStageControllerProvider` が起動できずリクエストが飛ばない。
+  /// Where the school stage is stored. It is sent as `school_stage` at session
+  /// creation, so without it `schoolStageControllerProvider` cannot start and no
+  /// request goes out.
   late SharedPreferences preferences;
 
   setUp(() async {
@@ -77,10 +79,11 @@ void main() {
 
   tearDown(() => tempDir.deleteSync(recursive: true));
 
-  /// 呼ばれたリクエストを順に記録するAPIクライアント。
+  /// An API client recording requests in order.
   ///
-  /// [failStartTimes] は「会話の開始が最初の n 回だけ落ちる」= 通信が切れた状況。
-  /// 押し直したときにセッションを作り直さないことを、ここで作って見る。
+  /// [failStartTimes] fails the conversation start for the first n attempts,
+  /// reproducing a dropped connection, so a retry can be checked not to recreate
+  /// the session.
   ProviderContainer containerWith(
     List<http.BaseRequest> calls, {
     Map<String, dynamic>? problem,
@@ -88,8 +91,8 @@ void main() {
     String? startErrorCode,
   }) {
     int startCalls = 0;
-    // サーバは UTF-8 で返す(単元名に日本語が入る)。`http.Response` の文字列版は
-    // latin1 なので、バイト列で返さないとここで落ちる。
+    // The server returns UTF-8 (topic names contain Japanese). `http.Response`'s
+    // string form is latin1, so it must be returned as bytes or this breaks.
     http.Response json(Map<String, dynamic> body, int status) =>
         http.Response.bytes(utf8.encode(jsonEncode(body)), status, headers: <String, String>{
           'content-type': 'application/json; charset=utf-8',
@@ -105,7 +108,8 @@ void main() {
       if (request.url.path.endsWith('/start')) {
         startCalls += 1;
         if (startCalls <= failStartTimes) {
-          // code が無い応答は ApiClient 側で internal_error になる(圏外と同じ扱い)。
+          // A response with no code becomes internal_error in ApiClient, the
+          // same as being offline.
           return json(
             startErrorCode == null
                 ? <String, dynamic>{}
@@ -130,8 +134,8 @@ void main() {
       );
     });
 
-    // Riverpod 3 は `Override` 型を公開APIに出していないので、`cast()` の型は
-    // ProviderContainer 側から推論させる(test/support/harness.dart と同じ理由)。
+    // Riverpod 3 does not expose the `Override` type, so `cast()`'s type is
+    // inferred from ProviderContainer (as in test/support/harness.dart).
     final List<Object?> overrides = <Object?>[
       apiClientProvider.overrideWithValue(
         ApiClient(baseUrl: 'http://test', deviceId: 'device-1', client: client),
@@ -150,7 +154,7 @@ void main() {
     controller.setPhoto(photo);
     await controller.analyze();
 
-    // 確信度の低い候補は、はじめから外れている = 会話開始時に必ず反映が要る
+    // Low-confidence candidates start deselected, so the start must push them.
     expect(container.read(captureControllerProvider).excludedTopicIds, <String>{
       'M1-NIJI-HANBETSU',
     });
@@ -158,15 +162,15 @@ void main() {
     final SessionStart? session = await controller.confirmAndStart();
 
     expect(session, isNotNull);
-    // 同じセッションのまま。ここが2本目の POST /v1/sessions だと、同じ写真を
-    // もう一度Vision LLMに通すことになる
+    // Still the same session. A second POST /v1/sessions here would re-run the
+    // same photo through the vision LLM.
     expect(session!.sessionId, 'ses_1');
     expect(calls.length, 3);
     expect(calls[0].method, 'POST');
     expect(calls[0].url.path, '/v1/sessions');
     expect(calls[1].method, 'PATCH');
     expect(calls[1].url.path, '/v1/sessions/ses_1/topics');
-    // 部屋の鍵はここでしか出ない = 今日の1回を使うのもここ
+    // The room key comes only from here, so this is where the day's use is spent.
     expect(calls[2].method, 'POST');
     expect(calls[2].url.path, '/v1/sessions/ses_1/start');
   });
@@ -179,7 +183,7 @@ void main() {
     final CaptureController controller = container.read(captureControllerProvider.notifier);
     controller.setPhoto(photo);
     await controller.analyze();
-    // 外れていた候補を戻して、解析どおりの状態にする
+    // Re-select the deselected candidate, matching the analysis exactly.
     controller.toggleTopic('M1-NIJI-HANBETSU');
 
     await controller.confirmAndStart();
@@ -190,10 +194,11 @@ void main() {
     ]);
   });
 
-  /// 会話の開始だけが落ちた(通信が切れた)場合。
+  /// Only the conversation start failed (a dropped connection).
   ///
-  /// **押し直しでセッションを作り直さない。** サーバは同じIDなら二重に数えないので、
-  /// 作り直すほうが危ない — 最初の開始が届いていたら、その1回を捨てることになる。
+  /// A retry must not recreate the session. The server does not double-count the
+  /// same ID, so recreating is the risky path: if the first start had arrived, it
+  /// throws that use away.
   group('会話の開始で切れたとき', () {
     test('押し直しは、同じセッションを始め直す', () async {
       final List<http.BaseRequest> calls = <http.BaseRequest>[];
@@ -205,7 +210,7 @@ void main() {
       await controller.analyze();
 
       expect(await controller.confirmAndStart(), isNull);
-      // 解析は握ったまま。ここを捨てると撮り直しからやり直しになる。
+      // The analysis is retained; discarding it would force a retake.
       expect(container.read(captureControllerProvider).analysis, isNotNull);
 
       final SessionStart? session = await controller.confirmAndStart();
@@ -238,8 +243,8 @@ void main() {
       );
     });
 
-    /// 上限時間を過ぎた押し直しはサーバが404にする。同じIDを握ったままだと、
-    /// 押し直しが同じ404を繰り返すだけの行き止まりになる。
+    /// A retry past the time limit gets a 404. Holding the same ID would make
+    /// every retry repeat that 404, a dead end.
     test('セッションが消えていたら、握っている解析ごと捨てる', () async {
       final List<http.BaseRequest> calls = <http.BaseRequest>[];
       final ProviderContainer container = containerWith(
@@ -257,13 +262,14 @@ void main() {
       final CaptureState state = container.read(captureControllerProvider);
       expect(state.analysis, isNull);
       expect(state.error?.isSessionNotFound, isTrue);
-      // 撮った写真は残す。撮り直しではなく、そのまま解析からやり直せる。
+      // The photo is kept, so it restarts from analysis rather than a retake.
       expect(state.photo, isNotNull);
     });
   });
 
-  /// **不具合報告そのもの。** 撮って単元を確かめただけで今日の1回が消えていた。
-  /// 会話を始めるまで `/start` を叩かないことが、そのまま「数えない」の中身。
+  /// The reported bug itself: shooting and confirming the topic consumed the
+  /// day's use. Not calling `/start` until the conversation begins is exactly
+  /// what "not counted" means.
   test('撮って単元を確かめただけでは、会話の開始を呼ばない', () async {
     final List<http.BaseRequest> calls = <http.BaseRequest>[];
     final ProviderContainer container = containerWith(calls);
@@ -278,14 +284,15 @@ void main() {
     expect(container.read(captureControllerProvider).session, isNull);
   });
 
-  /// 2枚の写真の**枠**(計画書 §4-1・`api.ts` の `sessionPhotoParts`)。
+  /// The two photos' parts (`sessionPhotoParts` in `api.ts`).
   ///
-  /// ノートは本人の著作物なのでR2に保存され、問題の紙面は他者の著作物なので
-  /// 解析後に破棄される。**サーバはどちらの枠に入っていたかでしか区別できない。**
-  /// つまりここが崩れると、教科書の紙面が黙って保存され続ける。
+  /// Notes are the student's own work and are stored in R2; the problem page is
+  /// someone else's and is discarded after analysis. The part is the only thing
+  /// the server can tell them apart by, so if this breaks, textbook pages are
+  /// silently stored forever.
   group('問題の写真の枠', () {
-    /// multipart の本文からパート名を拾う。`MockClient` は `BaseRequest` を
-    /// 確定させて `Request` に詰め直すので、本文は生のmultipartのまま届く。
+    /// Extracts part names from the multipart body. `MockClient` finalizes the
+    /// `BaseRequest` into a `Request`, so the body arrives as raw multipart.
     Set<String> partNames(http.BaseRequest request) {
       final String body = utf8.decode(
         (request as http.Request).bodyBytes,
@@ -324,11 +331,11 @@ void main() {
       expect(names, isNot(contains('problem_photo')));
     });
 
-    /// **ノートの必須をやめた**(PM判断。`api.ts` の `sessionPhotoParts` 参照)。
+    /// Notes are no longer required (see `sessionPhotoParts` in `api.ts`).
     ///
-    /// 必須にしているかぎり、手も付けていない問題を持ってきた生徒は
-    /// 紙面をノート枠に入れる以外に送る手段がなく、**解析後破棄の約束が
-    /// 自分たちのUI制約で破られていた**。
+    /// While they were, a student who brought an untouched problem had no way to
+    /// send it but the notes slot, and our own UI constraint broke the
+    /// discard-after-analysis promise.
     test('問題だけでも解析に出せる(ノート枠は送らない)', () async {
       final List<http.BaseRequest> calls = <http.BaseRequest>[];
       final ProviderContainer container = containerWith(calls);
@@ -358,7 +365,7 @@ void main() {
       expect(container.read(captureControllerProvider).hasAnyPhoto, isFalse);
     });
 
-    /// 先に問題を撮ってからノートを撮り直したときに、2枚目が消えないこと。
+    /// Shooting the problem first and then retaking notes must not lose it.
     test('ノートを撮り直しても、問題の写真は残る', () async {
       final ProviderContainer container = containerWith(<http.BaseRequest>[]);
       addTearDown(container.dispose);
@@ -372,7 +379,8 @@ void main() {
       expect(state.problemPhoto, isNotNull);
     });
 
-    /// あとから足しても写真は読み直されないので、足せるのは解析の前だけにしてある。
+    /// Adding one later would not be re-read, so it is only allowed before
+    /// analysis.
     test('解析したあとは、問題の写真を足せない', () async {
       final List<http.BaseRequest> calls = <http.BaseRequest>[];
       final ProviderContainer container = containerWith(calls);
@@ -409,8 +417,8 @@ void main() {
       expect(problem.source, ProblemSource.problemPhoto);
     });
 
-    /// **読めなかったことを画面に出さない**(黙って進める)。
-    /// 警告として出すと、任意のはずの2枚目が事実上の必須になる。
+    /// A failed read is not surfaced; it carries on silently. As a warning it
+    /// would make the optional second photo effectively mandatory.
     test('読めなければ null のまま。撮影をやり直させない', () async {
       final ProviderContainer container = containerWith(<http.BaseRequest>[]);
       addTearDown(container.dispose);
@@ -421,7 +429,7 @@ void main() {
 
       final CaptureState state = container.read(captureControllerProvider);
       expect(state.problem, isNull);
-      // 会話には進める。問題文が読めないことは行き止まりの理由にしない。
+      // The conversation still starts; an unreadable problem is not a dead end.
       expect(state.canStart, isTrue);
     });
   });

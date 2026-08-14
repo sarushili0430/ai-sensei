@@ -10,14 +10,14 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../support/harness.dart';
 
-/// 板書の要素ごとの golden test。
+/// Golden tests per board element.
 ///
-/// `screens_golden_test.dart` が画面単位なのに対し、こちらは要素単位。
-/// 「1つ1つの `BoardElement` が読める形で描けているか」だけを見る
-/// (`BoardChannelReceiver` やLiveKitは絡めない。渡すデータは全部その場で作る)。
+/// Where `screens_golden_test.dart` works per screen, this works per element,
+/// checking only that each `BoardElement` renders readably. Neither
+/// `BoardChannelReceiver` nor LiveKit is involved; all data is built inline.
 ///
-/// 生成はCI(Linux)を正とする方針は `test/golden/README.md` と同じ。
-/// 手元(macOS)で撮ったPNGはコミットしない。
+/// As in `test/golden/README.md`, CI (Linux) is authoritative for generation and
+/// PNGs shot locally on macOS are not committed.
 void main() {
   setUpAll(loadAppFonts);
 
@@ -32,10 +32,9 @@ void main() {
     await setSurface(tester, size: const Size(360, 220));
     await tester.pumpWidget(
       wrapApp(
-        // **板の上に置いて撮る。**要素は必ず [BoardView] の中に置かれる
-        // (`board_view.dart` が板を持っている)ので、地の上で撮ると
-        // **アプリに存在しない見え方**を正として焼くことになる。
-        // チョーク色は白地では読めないので、そこも見逃せない。
+        // Shot on the board. Elements always sit inside [BoardView], which owns
+        // the surface, so shooting them on the page background would bake in a
+        // look the app never shows — and chalk colors are unreadable on white.
         ColoredBox(
           color: BoardStyle.surface,
           child: Padding(
@@ -111,8 +110,8 @@ void main() {
     );
   });
 
-  // 英語の板書。**数学とは1枝も重ならない**ので、見た目の回帰はここでしか捕まらない。
-  // `focus` の下線が引かれているか、対比表の2列が等分されているかを見る。
+  // The English board. It shares no branch with maths, so visual regressions are
+  // caught only here: the `focus` underline and the comparison's even columns.
   testWidgets('sentence要素(focus に下線。board-lesson.english.json と同じ文)', (
     WidgetTester tester,
   ) async {
@@ -142,7 +141,8 @@ void main() {
     );
   });
 
-  // 縮小率70%を下回る、意図的に長すぎる式。フォールバック(横スクロール固定)を確認する。
+  // A deliberately over-long formula below the 70% floor, checking the fallback
+  // (pinned scale plus horizontal scrolling).
   testWidgets('latex要素(実効幅を大きく超える。70%フロアのフォールバック)', (WidgetTester tester) async {
     await expectElementGolden(
       tester,
@@ -153,9 +153,9 @@ void main() {
     );
   });
 
-  // 「3手順積んだ最終状態」。タイミングではなく最終状態を検証対象にする
-  // (team-leadの指定どおり)。判別式の授業(board-lesson.jsonのfixture)の
-  // 最初の3手順を模している。
+  // The final state after three steps. The subject is the end state, not the
+  // timing. It mirrors the first three steps of the discriminant lesson in the
+  // board-lesson.json fixture.
   testWidgets('3手順積んだ最終状態(latex→text→latex)', (WidgetTester tester) async {
     const List<BoardStep> steps = <BoardStep>[
       BoardStep(
@@ -177,8 +177,8 @@ void main() {
 
     await setSurface(tester, size: const Size(393, 500));
     await tester.pumpWidget(
-      // **板書の外側にだけ余白を置く。**[BoardView] が板と内側の余白を持っているので、
-      // ここで内側にもう一段付けると実効幅が二重に削られる。
+      // Padding only outside the board. [BoardView] owns the surface and inner
+      // padding, so another layer here would eat the effective width twice.
       wrapApp(
         const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: BoardView(steps: steps)),
       ),

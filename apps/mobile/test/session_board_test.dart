@@ -17,14 +17,15 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
 
-/// 板書が会話画面に出るまで(計画書§3-2 / §3-5)。
+/// Getting the board onto the conversation screen.
 ///
-/// ここで見ているのは描画の出来ではなく、**板書の寿命**:
-///   - 1行ずつ積まれ、**前の行は消えない**
-///   - 消えるのは別の問題に移るとき(`board_open`)だけ。`board_close` では消えない
-///   - 欠落したら**黙って虫食いにせず**、そこで止めて画面に出す
+/// What is checked here is the board's lifetime, not how it looks:
+///   - lines stack one at a time and earlier lines are never erased
+///   - only moving to another problem (`board_open`) clears it; `board_close`
+///     does not
+///   - on a gap, it stops there and says so rather than silently leaving holes
 ///
-/// 描画そのもの(数式・図形の見た目)は golden の担当なので、ここでは触らない。
+/// Rendering itself (how formulas and figures look) is the goldens' job.
 void main() {
   const AppStrings ja = AppStrings(Locale('ja'));
   const String sessionId = 'ses_1';
@@ -69,7 +70,8 @@ void main() {
       expect(inbox.snapshot.hasBoard, isFalse);
       inbox.accept(open(0));
       expect(inbox.snapshot.title, '判別式');
-      // 見出しだけで授業モードに入る(1手順目が届くまで顔のままにしない)。
+      // The heading alone enters lesson mode, rather than staying on the face
+      // until the first step arrives.
       expect(inbox.snapshot.hasBoard, isTrue);
 
       inbox.accept(step(1, 0, body: 'x^2 の係数'));
@@ -78,8 +80,8 @@ void main() {
       expect((inbox.snapshot.steps.first.board! as TextElement).body, 'x^2 の係数');
     });
 
-    /// 板書の寿命は「1回の説明」ではなく **「1つの問題」**(契約 `board.ts`)。
-    /// ここで消すと、会話が1往復するたびに板書が消える。
+    /// A board lives for one problem, not one explanation (`board.ts`). Clearing
+    /// here would wipe it on every conversational turn.
     test('board_close では何も消えない', () {
       final BoardInbox inbox = BoardInbox(sessionId: sessionId);
       inbox.accept(open(0));
@@ -103,26 +105,26 @@ void main() {
       expect(inbox.snapshot.title, '三角比');
     });
 
-    /// **黙って握りつぶさない。**抜けたまま積むと、生徒は
-    /// 「抜けている」ことに気づけないまま間違ったやり方を覚える。
+    /// Never swallowed. Stacking past a gap leaves the student learning a method
+    /// with a hole in it, unable to tell anything is missing.
     test('seq が飛んだら、とぎれた印がついて、そこから先は積まれない', () {
       final BoardInbox inbox = BoardInbox(sessionId: sessionId);
       inbox.accept(open(0));
       inbox.accept(step(1, 0));
 
-      // seq=2 が落ちた。
+      // seq=2 was lost.
       expect(inbox.accept(step(3, 1)), isTrue);
       expect(inbox.snapshot.hasGap, isTrue);
       expect(inbox.snapshot.gapReason, contains('seq'));
 
-      // 積まれた行は残る。とぎれた先は積まれない。
+      // Stacked lines remain; nothing past the gap is added.
       expect(inbox.snapshot.steps.length, 1);
       expect(inbox.accept(step(4, 2)), isFalse);
       expect(inbox.snapshot.steps.length, 1);
     });
 
-    /// 末尾が落ちた場合は `seq` では分からない(「まだ来ていない」と区別できない)。
-    /// 締めの `step_count` で突き合わせる。
+    /// A lost tail cannot be seen from `seq` (it is indistinguishable from "not
+    /// arrived yet"), so the closing `step_count` is reconciled instead.
     test('締めの step_count が合わなければ、末尾の欠落として検知する', () {
       final BoardInbox inbox = BoardInbox(sessionId: sessionId);
       inbox.accept(open(0));
@@ -137,7 +139,7 @@ void main() {
       final BoardInbox inbox = BoardInbox(sessionId: sessionId);
       inbox.accept(open(0));
       inbox.accept(step(1, 0));
-      inbox.accept(step(3, 1)); // seq=2 が落ちた
+      inbox.accept(step(3, 1)); // seq=2 was lost
       expect(inbox.snapshot.hasGap, isTrue);
 
       inbox.accept(open(9, boardId: 'brd_2', title: '三角比'));
@@ -145,7 +147,8 @@ void main() {
       expect(inbox.snapshot.title, '三角比');
       expect(inbox.snapshot.steps, isEmpty);
 
-      // 復帰後の欠落もひきつづき検知できること(数え直しただけで、検査は生きている)。
+      // Gaps after recovery are still detected; recounting does not disable the
+      // check.
       inbox.accept(step(10, 0, boardId: 'brd_2'));
       expect(inbox.snapshot.steps.length, 1);
       inbox.accept(step(12, 1, boardId: 'brd_2'));
@@ -221,11 +224,11 @@ void main() {
 
       expect(find.byType(BoardElementView), findsNWidgets(2));
       expect(find.text('x^2 - 3x + 2 = 0'), findsOneWidget);
-      // 見出し(何の問題か)も出る。
+      // The heading (which problem it is) appears too.
       expect(find.text('判別式'), findsOneWidget);
     });
 
-    /// **前の行は消さない**(計画書§3-2)。板書の価値そのもの。
+    /// Earlier lines are never erased — that is the board's whole value.
     testWidgets('行が増えても、前の行は消えない', (WidgetTester tester) async {
       final FakeSessionController controller = await pumpSession(
         tester,
@@ -241,7 +244,7 @@ void main() {
       expect(find.text('3行目'), findsOneWidget);
     });
 
-    /// 教え返し(コアループ §2)。**板書を残したまま**マイクに向かわせる。
+    /// Teaching back: it hands over to the mic with the board still up.
     testWidgets('教え返し中も板書は残り、「説明してみて」が出る', (WidgetTester tester) async {
       final SessionState taught = teaching(<String>['D = 9 - 8 = 1 > 0']);
       await pumpSession(
@@ -255,17 +258,16 @@ void main() {
 
       expect(find.byType(BoardElementView), findsOneWidget);
       expect(find.text(ja.sessionExplainBack), findsOneWidget);
-      // 聞いている顔で待つ(試験官にはしない)。
+      // It waits with a listening face, not an examiner's.
       final SenpaiFace face = tester.widget(find.byType(SenpaiFace));
       expect(face.mood, SenpaiMood.listening);
     });
 
-    /// **何を解いているかが画面のどこにも無かった。**
+    /// Nothing on screen said what was being solved.
     ///
-    /// 出ていたのは `board.title`(先輩が付けた見出し)だけで、問題そのものは
-    /// 撮影画面を離れた瞬間に見えなくなる。教え返しの最中にいちばん見返したいのが
-    /// 問題文なので、板書の上に置いて授業のあいだ残す
-    /// (`docs/wireframe_board_v2.html` の1つ目)。
+    /// Only `board.title` (senpai's heading) was shown, and the problem itself
+    /// vanished on leaving capture. It is what people most want to re-read while
+    /// teaching back, so it sits above the board for the whole lesson.
     testWidgets('解いている問題が、板書の上に出る', (WidgetTester tester) async {
       await pumpSession(
         tester,
@@ -278,20 +280,20 @@ void main() {
 
       expect(find.text(ja.sessionProblemTitle), findsOneWidget);
       expect(find.textContaining('異なる2つの実数解'), findsOneWidget);
-      // 板書はそのまま主役。問題文を足したぶんで実効幅を削らない。
+      // The board still leads; adding the problem must not eat its width.
       expect(tester.getSize(find.byType(BoardView)).width, greaterThanOrEqualTo(340));
     });
 
-    /// **読めなかったことを画面で騒がない。**「問題が読み取れませんでした」と出すと、
-    /// 先輩が読み上げを頼む前に、生徒は撮り直しに行ってしまう。
+    /// A failed read is never announced. "Could not read the problem" sends the
+    /// student off to retake before senpai can ask them to read it out.
     testWidgets('問題文が読めていなければ、何も出さない', (WidgetTester tester) async {
       await pumpSession(tester, teaching(<String>['x^2 - 3x + 2 = 0']));
 
       expect(find.text(ja.sessionProblemTitle), findsNothing);
     });
 
-    /// 契約の上限は600字。全文をそのまま出すと**板書が画面の外へ出る**ので、
-    /// 3行で畳んで「続きを読む」を出す。
+    /// The contract allows 600 characters; showing all of it would push the board
+    /// off screen, so it collapses to three lines with "read more".
     testWidgets('長い問題文は畳まれ、開いても板書が残る', (WidgetTester tester) async {
       await pumpSession(
         tester,
@@ -307,7 +309,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text(ja.sessionProblemCollapse), findsOneWidget);
-      // 開いても板書は画面に残る(押し出さない)。
+      // Expanding keeps the board on screen rather than pushing it out.
       expect(find.byType(BoardElementView), findsOneWidget);
     });
 
@@ -319,17 +321,17 @@ void main() {
 
       expect(find.byType(BoardElementView), findsOneWidget);
       expect(find.text(ja.sessionBoardGap), findsOneWidget);
-      // 技術的な理由はそのまま画面に出さない。
+      // The technical reason never reaches the screen.
       expect(find.textContaining('seq'), findsNothing);
     });
 
-    /// **画面側で板書の幅を殺していないこと**(計画書§3-6b)。
+    /// The screen must not eat the board's width.
     ///
-    /// `board_style.dart` の縮小率の下限70%は、**実効幅340pt**
-    /// (iPhone 15 の393pt − 板書の余白)で測った結果から決めた値。ここに
-    /// カードや内側パディングを足して実効幅が340ptを割ると、実測では
-    /// 収まっていた式まで横スクロールに落ちる — しかも**落ちたことは
-    /// 見た目では気づけない**(`debugPrint` にしか出ない)ので、幅で見張る。
+    /// The 70% floor in `board_style.dart` was measured at an effective width of
+    /// 340pt (iPhone 15's 393pt minus board padding). Adding a card or inner
+    /// padding drops below that and pushes formulas that measured as fitting into
+    /// horizontal scrolling — invisible by eye (it only reaches `debugPrint`), so
+    /// the width itself is watched.
     testWidgets('板書の実効幅は、実測の前提(340pt)を下回らない', (WidgetTester tester) async {
       await setSurface(tester);
       await pumpSession(tester, teaching(<String>['x^2 - 3x + 2 = 0']));
@@ -337,11 +339,11 @@ void main() {
       expect(tester.getSize(find.byType(BoardView)).width, greaterThanOrEqualTo(340));
     });
 
-    /// **板書が読み上げから欠けていないこと。**
+    /// The board must not be missing from narration.
     ///
-    /// `Math.tex` も `CustomPaint` も、包まなければ VoiceOver から不可視。
-    /// 板書はプロダクトの中心なので、ここが欠けると目が見えない生徒には
-    /// **授業が存在しないのと同じ**になる。
+    /// Both `Math.tex` and `CustomPaint` are invisible to VoiceOver unwrapped.
+    /// The board is the heart of the product, so missing it means a blind student
+    /// has no lesson at all.
     testWidgets('板書の1行ごとに、読み上げ用の1文が付いている', (WidgetTester tester) async {
       await pumpSession(
         tester,
@@ -370,21 +372,21 @@ void main() {
         ),
       );
 
-      // 数式は記号ごとにバラバラに読まれず、1文になっている。
+      // Formulas narrate as one sentence, not symbol by symbol.
       expect(
         find.bySemanticsLabel('x の 2 乗 マイナス 3x プラス 2 イコール 0'),
         findsOneWidget,
       );
-      // 図形は「何が描かれているか」。包まなければ1文字も読まれない。
+      // Figures narrate what is drawn; unwrapped, not a character is read.
       expect(find.bySemanticsLabel(RegExp(r'円。半径 5')), findsOneWidget);
     });
 
-    /// **狭い端末では「幅が足りない」を送らない。**
+    /// Narrow devices must not report "not enough width".
     ///
-    /// 実測の前提 340pt は iPhone 15(393pt)基準の値。iPhone SE(375pt)は
-    /// どう組んでも 375 − 48 = **327pt** にしかならないので、340 をそのまま
-    /// 閾値にすると**SEの利用者ぶんが毎回飛ぶ**。端末が狭いのは版組の落ち度では
-    /// ないし、それを送ると本当に見たい「こちらが幅を食った」が件数に埋もれる。
+    /// The 340pt premise assumes iPhone 15 (393pt). An iPhone SE (375pt) can only
+    /// ever reach 375 - 48 = 327pt, so using 340 as the threshold would report on
+    /// every SE user. A narrow device is not a layout fault, and reporting it
+    /// would bury what we actually want to see: our own layout eating the width.
     group('板書の幅の見張り', () {
       test('iPhone 15 では実測の前提(340pt)がそのまま閾値', () {
         expect(BoardStyle.expectedWidth(393), 340);
@@ -394,28 +396,32 @@ void main() {
         expect(BoardStyle.expectedWidth(375), 327);
       });
 
-      // 授業の外で板書をカードに入れていたときの実測値。**これは版組が食った幅**
-      // なので、どの端末でも閾値を下回る = 送られる。
+      // Measured when the board sat in a card outside a lesson. That is layout
+      // eating the width, so it falls below the threshold on any device and is
+      // reported.
       test('版組が食った幅は、狭い端末でも閾値を下回る', () {
         expect(311, lessThan(BoardStyle.expectedWidth(375)));
         expect(311, lessThan(BoardStyle.expectedWidth(393)));
       });
     });
 
-    /// **狭い端末で、板書が画面からこぼれていないか**(`layout_overflow_test.dart` の続き)。
+    /// Whether the board overflows on a narrow device (continuing
+    /// `layout_overflow_test.dart`).
     ///
-    /// 掃きテストは全画面を1枚ずつ描いているが、会話画面だけはそこに入れていない
-    /// (会話の状態を組む足場がこちらにあるため)。**入れる価値はいちばん高い**:
+    /// The sweep test renders every screen but this one, because the scaffolding
+    /// for conversation state lives here. It is also the most valuable to cover:
     ///
-    ///   - 板書は手順が積み上がる = **高さが実行時に決まる唯一の画面**
-    ///   - 教え返し中は板書を残したまま下にマイクUIが乗る = **固定ブロックが最も厚い**
-    ///   - とぎれた一行が、そこにさらに乗る
+    ///   - the board stacks steps, so this is the only screen whose height is
+    ///     decided at runtime
+    ///   - teaching back keeps the board and adds the mic UI below, making the
+    ///     fixed block thickest
+    ///   - a truncation line stacks on top of that
     ///
-    /// ここに残っていれば、それが出るのは 8/16 のゲートの最中になる。
+    /// Leaving it uncovered means it surfaces during the release gate instead.
     for (final Locale locale in <Locale>[const Locale('ja'), const Locale('en')]) {
       final String lang = locale.languageCode;
 
-      /// 手順を積めるだけ積んだ授業。実際の板書は12手順まで(`board.ts`)。
+      /// A lesson with as many steps as possible; a real board caps at 12.
       SessionState packed({SessionPhase phase = SessionPhase.senpaiTeaching, String? gapReason}) =>
           SessionState(
             phase: phase,
@@ -445,13 +451,13 @@ void main() {
 
       testWidgets('狭い端末: 授業中に板書が積まれても溢れない ($lang)', (WidgetTester tester) async {
         await pumpSession(tester, packed(), locale: locale, size: smallPhoneSurface);
-        // **空振りで緑にならないこと。** 板書が1行も描かれていなければ、
-        // 溢れないのは当たり前で、この検査は何も見ていない。
+        // Do not pass vacuously: with no board lines drawn, not overflowing is
+        // trivial and this check sees nothing.
         expect(find.byType(BoardElementView), findsNWidgets(12));
         expectNoOverflow(tester, '授業中');
       });
 
-      // 固定ブロックがいちばん厚くなる状態(板書 + マイクUI)。
+      // The state with the thickest fixed block (board plus mic UI).
       testWidgets('狭い端末: 教え返し中も溢れない ($lang)', (WidgetTester tester) async {
         await pumpSession(
           tester,
@@ -462,7 +468,7 @@ void main() {
         expectNoOverflow(tester, '教え返し中');
       });
 
-      // とぎれた一行が、いちばん厚い状態の上にさらに乗る。
+      // A truncation line stacks on top of the thickest state.
       testWidgets('狭い端末: とぎれた一行が乗っても溢れない ($lang)', (WidgetTester tester) async {
         await pumpSession(
           tester,
@@ -473,11 +479,12 @@ void main() {
         expectNoOverflow(tester, 'とぎれた状態');
       });
 
-      /// **実機で踏んだ溢れ**(「今日はここまで」に BOTTOM OVERFLOWED が重なった)。
+      /// An overflow hit on device (BOTTOM OVERFLOWED landed on "done for today").
       ///
-      /// 板書が無い会話では顔と字幕を `Spacer` で挟んでいた。授業中の `speech` は
-      /// 契約で120字までだが、**教え返しに入ると相手は会話LLMで上限が無い**。
-      /// 長い返事がそのまま固定の高さになり、下の操作を画面の外へ押し出していた。
+      /// Board-less conversations sandwiched face and captions between `Spacer`s.
+      /// In-lesson `speech` is capped at 120 characters by the contract, but once
+      /// teaching back begins the other side is a conversational LLM with no cap.
+      /// A long reply became fixed height and pushed the controls off screen.
       testWidgets('狭い端末: 板書が無いまま長く喋られても溢れない ($lang)', (WidgetTester tester) async {
         await pumpSession(
           tester,
@@ -494,7 +501,7 @@ void main() {
         expectNoOverflow(tester, '板書なしで長い字幕');
       });
 
-      /// 板書があるときも、下の帯が伸びて板書を押し出さないこと。
+      /// With a board too, the bottom bar must not grow and push it out.
       testWidgets('狭い端末: 板書つきで長く喋られても溢れない ($lang)', (WidgetTester tester) async {
         final SessionState state = packed(phase: SessionPhase.explainBack);
         await pumpSession(
@@ -514,7 +521,7 @@ void main() {
       });
     }
 
-    /// 板書を受け取らない会話(既存の復習)は、今までどおり顔が主役。
+    /// Conversations with no board (existing review) still lead with the face.
     testWidgets('板書が無ければ、画面はこれまでのまま', (WidgetTester tester) async {
       await pumpSession(
         tester,
@@ -528,9 +535,9 @@ void main() {
   });
 }
 
-/// 会話画面が「セッションはある」と読めるようにするだけの差し替え。
+/// A stand-in that only lets the conversation screen see a session.
 ///
-/// [problem] を渡すと、解析が問題文を読み取れた状態になる。
+/// Passing [problem] puts the analysis in a state where it read the text.
 class FakeCaptureController extends CaptureController {
   FakeCaptureController([this.problem]);
 
@@ -553,7 +560,7 @@ class FakeCaptureController extends CaptureController {
   );
 }
 
-/// 状態を外から差し替えられる差し替え。LiveKitにはつなぎに行かせない。
+/// A stand-in whose state can be set from outside; it never connects LiveKit.
 class FakeSessionController extends SessionController {
   FakeSessionController(this._initial);
 
@@ -565,6 +572,6 @@ class FakeSessionController extends SessionController {
   @override
   Future<void> connect(SessionStart session, {required String locale}) async {}
 
-  /// 板書が1行増えた、を再現する。
+  /// Reproduces one more board line arriving.
   void push(SessionState next) => state = next;
 }

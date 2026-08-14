@@ -14,24 +14,24 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
 
-/// 会話の終わり(「今日はここまで」→ 祝福 → カルテ)のテスト。
+/// The end of a conversation ("done for today" -> celebration -> karte).
 ///
-/// ここに並べてあるのは、実機のユーザーテストで出た3つの報告のうち
-/// アプリ側の2つ:
-///   - 最後の画面が黒くなって固まる
-///   - 「今日はここまで」を押しても反応しないので連打してしまう
+/// These cover the two app-side issues of the three raised in on-device user
+/// testing:
+///   - the last screen turns black and appears frozen
+///   - "done for today" gives no response, so people tap it repeatedly
 void main() {
   const AppStrings ja = AppStrings(Locale('ja'));
 
-  /// 画面の地は**不透明**でなければならない。
+  /// Screen backgrounds must be opaque.
   ///
-  /// 半透明の色を `Scaffold.backgroundColor` に渡すと、遷移が終わって
-  /// 下のルートがツリーから外れた瞬間、透けた先には何も無くなる
-  /// (端末の地の色 = 黒)。本文は ink(ほぼ黒)なので黒に沈み、
-  /// 画面全体が真っ黒で固まったように見える。
+  /// Passing a translucent color to `Scaffold.backgroundColor` leaves nothing
+  /// behind it once the transition ends and the route underneath leaves the tree
+  /// (the device background, i.e. black). Body text is ink (nearly black) and
+  /// sinks into it, so the whole screen looks black and frozen.
   ///
-  /// 祝福画面は `go()` で来る = 下に何も積まない画面なので、ここを
-  /// 半透明に戻すと必ず黒くなる。
+  /// The celebration screen arrives via `go()` with nothing stacked underneath,
+  /// so making this translucent again always turns it black.
   group('画面の地', () {
     testWidgets('祝福画面の地は不透明', (WidgetTester tester) async {
       await pumpApp(
@@ -53,20 +53,20 @@ void main() {
 
     test('トークンの祝福色そのものが不透明', () {
       expect(AppColors.celebration.a, 1.0);
-      // 敷きたかったのは色であって透明度。見た目は据え置きであること。
+      // The intent was the tint, not transparency; the look is unchanged.
       expect(
         AppColors.celebration,
         Color.alphaBlend(AppColors.streak.withValues(alpha: 0.08), AppColors.background),
       );
-      // テーマの地も同様(こちらは元から不透明)。
+      // The theme's background too (already opaque).
       expect(AppTheme.light().scaffoldBackgroundColor.a, 1.0);
     });
   });
 
-  /// カルテを待っている祝福画面には、必ず出口がある。
+  /// The celebration screen waiting on the karte always has an exit.
   ///
-  /// この画面は `go()` で来るので戻る先が無い。カルテが届くまで
-  /// 押せるものが1つも無いと、待つ以外にできることがない行き止まりになる。
+  /// It arrives via `go()`, so there is nothing to go back to. With nothing
+  /// tappable until the karte lands, it would be a dead end.
   group('祝福画面', () {
     Future<void> pumpWaiting(WidgetTester tester) => pumpApp(
           tester,
@@ -96,7 +96,8 @@ void main() {
       );
 
       expect(find.text(ja.karteTitle), findsOneWidget);
-      // 届いているのに「ホームにもどる」を出すと、逃げ道のほうが目立つ。
+      // Showing "back home" once it has arrived makes the exit the loudest thing
+      // on screen.
       expect(find.text(ja.sessionBackHome), findsNothing);
     });
 
@@ -105,10 +106,10 @@ void main() {
       expect(find.text(ja.sessionBackHome), findsOneWidget);
     });
 
-    /// 待っているあいだ、**押せないボタン以外のもの**を出す。
+    /// While waiting, show something other than a disabled button.
     ///
-    /// 文言の変わらない無効なボタンだけが置いてあると、待っているのか
-    /// 壊れたのかが読めない。何を待っているのかを言葉で出す。
+    /// A disabled button with unchanging wording gives no way to tell waiting
+    /// from broken, so what is being waited for is said in words.
     testWidgets('カルテを待っているあいだ、何を待っているのかを出す', (WidgetTester tester) async {
       await pumpWaiting(tester);
 
@@ -118,10 +119,10 @@ void main() {
       expect(button.onPressed, isNull);
     });
 
-    /// 待たせる画面から**動きを消さない**。
+    /// A waiting screen never goes still.
     ///
-    /// 紙吹雪は一度きりだと2秒で止まる。そのあとカルテを待つ数十秒は
-    /// 画面がまったく動かなくなり、固まったようにしか見えない。
+    /// A one-shot burst stops after two seconds, and the tens of seconds spent
+    /// waiting on the karte then look frozen.
     testWidgets('カルテを待っているあいだ、紙吹雪は降り続ける', (WidgetTester tester) async {
       await pumpWaiting(tester);
 
@@ -147,10 +148,10 @@ void main() {
     });
   });
 
-  /// 残り時間は**0まで見せる**。
+  /// The countdown is shown all the way to 0.
   ///
-  /// 0を飛ばして打ち切ると、時間切れで終わった会話が「のこり 0:01」の
-  /// まま止まる。まだ1秒あるのに動かない画面は、固まったようにしか見えない。
+  /// Cutting off before 0 freezes a timed-out conversation at "0:01 left", and a
+  /// still screen with a second apparently remaining reads as frozen.
   group('残り時間', () {
     test('0秒は 0:00 と出る', () {
       expect(ja.remaining(0), 'のこり 0:00');
@@ -175,11 +176,11 @@ void main() {
     });
   });
 
-  /// 「今日はここまで」は、**押した瞬間に**押せなくなること。
+  /// "Done for today" must disable the moment it is tapped.
   ///
-  /// 以前は `finish()` が先に片付け(切断の完了待ち)をしてから状態を変えて
-  /// いたため、押しても数秒間、画面が押す前とまったく同じままだった。
-  /// 反応が無いので連打される。
+  /// `finish()` used to tear down (waiting on the disconnect) before changing
+  /// state, leaving the screen identical for seconds after the tap. With no
+  /// feedback, people tap repeatedly.
   group('会話画面の「今日はここまで」', () {
     Future<void> pumpSession(WidgetTester tester, SessionPhase phase) => pumpApp(
           tester,
@@ -203,7 +204,7 @@ void main() {
       await pumpSession(tester, SessionPhase.listening);
       expect(find.text(ja.sessionEnd), findsOneWidget);
       expect(endButtonEnabled(tester), isTrue);
-      // まだ聞いているので「うまく言えない」も押せる。
+      // Still listening, so "I can't explain it" is tappable too.
       expect(find.widgetWithText(GhostButton, ja.sessionPass), findsOneWidget);
       final GhostButton pass = tester.widget(find.byType(GhostButton));
       expect(pass.onPressed, isNotNull);
@@ -212,22 +213,22 @@ void main() {
     testWidgets('押したあとは押せなくなり、何をしているかを出す', (WidgetTester tester) async {
       await pumpSession(tester, SessionPhase.summarizing);
 
-      // 文言が変わる = 受け取ってあることが読んで分かる。
+      // The wording changes, so it reads as received.
       expect(find.text(ja.sessionEnd), findsNothing);
       expect(find.text(ja.sessionSummarizing), findsWidgets);
       expect(endButtonEnabled(tester), isFalse);
 
-      // 会話は終わっているので、パスも押させない。
+      // The conversation is over, so passing is disabled too.
       final GhostButton pass = tester.widget(find.byType(GhostButton));
       expect(pass.onPressed, isNull);
 
-      // 待たせている場所を出す。
+      // Show where the wait is.
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
     });
   });
 }
 
-/// 会話画面が「セッションはある」と読めるようにするだけの差し替え。
+/// A stand-in that only lets the conversation screen see a session.
 class FakeCaptureController extends CaptureController {
   @override
   CaptureState build() => const CaptureState(
@@ -245,7 +246,7 @@ class FakeCaptureController extends CaptureController {
       );
 }
 
-/// 状態を固定して画面だけを見る。LiveKitにはつなぎに行かせない。
+/// Pins state to inspect the screen alone; it never connects LiveKit.
 class FakeSessionController extends SessionController {
   FakeSessionController(this._state);
 

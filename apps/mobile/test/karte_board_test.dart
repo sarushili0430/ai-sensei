@@ -10,22 +10,23 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
 
-/// カルテに残る板書(ADR 0006)。
+/// The board kept in the karte (ADR 0006).
 ///
-/// - 見るのは「残っているか」「とぎれていると分かるか」「幅が痩せていないか」
-/// - golden は置かない(比較対象のPNGはCI/Linuxで作る)
+/// - It checks that it survives, that truncation is visible, and that the width
+///   is not eaten
+/// - No goldens here (reference PNGs are produced on CI/Linux)
 void main() {
   const AppStrings ja = AppStrings(Locale('ja'));
 
   const BoardStep sampleStep = BoardStep(
     index: 0,
     speech: 'ここ、Dを見てほしいんだけど',
-    // 数式ではなく text にしてあるのは、フォントを読み込まない widget test で
-    // LaTeX が tofu になっても意味のある検証にならないため(計画書§3-6c)。
+    // Text rather than a formula: in a widget test without fonts loaded, LaTeX
+    // renders as tofu and the check would be meaningless.
     board: BoardElement.text(body: '解が2つ ⇔ D > 0'),
   );
 
-  /// 板書を手元に置いた状態を作る。見るのは書き込み口ではなく見せ方。
+  /// Puts a board in place. What is checked is presentation, not the writer.
   List<Object?> overridesWith(LastBoard board) => <Object?>[
         latestKarteControllerProvider.overrideWith(FakeLatestKarteController.new),
         lastBoardControllerProvider.overrideWith(() => _FakeLastBoardController(board)),
@@ -44,8 +45,8 @@ void main() {
     expect(find.text(ja.karteBoardTruncated), findsNothing);
   });
 
-  // 音声だけで終わった会話や、授業が1回も無い状態。空の見出しだけが残ると、
-  // 何も起きていないのに壊れて見える。
+  // A voice-only conversation, or no lesson at all. An empty heading alone looks
+  // broken even though nothing went wrong.
   testWidgets('板書が無ければ、見出しごと出さない', (WidgetTester tester) async {
     await pumpApp(
       tester,
@@ -57,9 +58,9 @@ void main() {
     expect(find.byType(BoardView), findsNothing);
   });
 
-  // 配送が欠落した板書は、手順の列だけ見ても健全なものと区別がつかない。
-  // 黙って出すと、計画書§3-6b が横スクロールを却下した理由
-  // 「これで全部だ」と誤読させる — をそのまま再現する。
+  // A board with a delivery gap is indistinguishable from a healthy one by its
+  // step list alone. Showing it silently reproduces exactly the problem that got
+  // horizontal scrolling rejected: being misread as "that's all".
   testWidgets('とぎれた板書は、とぎれていると分かる', (WidgetTester tester) async {
     await pumpApp(
       tester,
@@ -83,9 +84,9 @@ void main() {
     expect(find.text(ja.karteBoardTruncated), findsNothing);
   });
 
-  /// 板書の実効幅は授業モードと同じでなければならない。
-  /// カードに入れると 345pt → 311pt へ落ち、収まる式が横スクロールになる。
-  /// 落ちたことは `debugPrint` にしか出ないので、幅で見張る。
+  /// The board's effective width must match lesson mode. In a card it drops from
+  /// 345pt to 311pt and formulas that fit start scrolling horizontally. That only
+  /// reaches `debugPrint`, so the width itself is watched.
   testWidgets('板書の実効幅は、実測の前提(340pt)を下回らない', (WidgetTester tester) async {
     await pumpApp(
       tester,

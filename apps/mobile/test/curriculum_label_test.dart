@@ -5,21 +5,23 @@ import 'package:ai_sensei/src/l10n/strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// **課程コードの二重管理を、忘れた側で捕まえる。**
+/// Catches the duplicated course-code mapping on whichever side was forgotten.
 ///
-/// topic_id の接頭辞は3か所にある:
+/// The topic_id prefix lives in three places:
 ///
-///   1. `packages/curriculum/src/schema.ts` の `trackByCourseCode`(正)
-///   2. `packages/contract/src/karte.ts` の `topicIdSchema` の正規表現
-///   3. ここ、`strings.dart` の `planSubject()`
+///   1. `trackByCourseCode` in `packages/curriculum/src/schema.ts` (source of
+///      truth)
+///   2. the `topicIdSchema` regex in `packages/contract/src/karte.ts`
+///   3. here, in `planSubject()` in `strings.dart`
 ///
-/// 2 は contract が依存を持たない層である以上ほどけない(README に明記)。
-/// 3 は計画画面が `topic_id` しか持たないため必要になる。
+/// 2 cannot be untangled while contract is a dependency-free layer (documented
+/// in its README). 3 is needed because the plan screen has only the `topic_id`.
 ///
-/// 忘れると `planSubject` が既定の「数学」に落ちる。**画面は壊れず、
-/// 英語の単元に「数学」と出るだけ**なので、テストが無いと誰も気づけない。
+/// Forgetting one makes `planSubject` fall back to the default "math". The
+/// screen does not break — English topics are just labelled maths — so without
+/// this test nobody notices.
 ///
-/// カリキュラムのJSONを直接読むのは `contract_fixture_test.dart` と同じ方式。
+/// Reading the curriculum JSON directly matches `contract_fixture_test.dart`.
 void main() {
   final Directory dataDir = Directory('../../packages/curriculum/data');
 
@@ -33,7 +35,7 @@ void main() {
   });
 
   test('すべての課程コードで、計画画面の科目名が既定に落ちない', () {
-    // 既定はどの課程にも属さない値。ここに落ちているコードが「足し忘れ」。
+    // The default belongs to no curriculum; a code landing here was forgotten.
     const AppStrings ja = AppStrings(Locale('ja'));
     const AppStrings en = AppStrings(Locale('en'));
     final String jaFallback = ja.planSubject('XX-UNKNOWN');
@@ -59,8 +61,8 @@ void main() {
     );
   });
 
-  // 中学は学年、高校は科目。学習指導要領の区切りがそうなっているため、
-  // ラベルが非対称になるのは意図どおり(ADR 0007)。
+  // Junior high uses the school year, senior high the subject. The curriculum is
+  // divided that way, so the asymmetry is intended (ADR 0007).
   test('中学の単元は学年、高校の単元は科目名で出る', () {
     const AppStrings ja = AppStrings(Locale('ja'));
     expect(ja.planSubject('J1-KAZUSHIKI-SEIFU'), '中1 数学');

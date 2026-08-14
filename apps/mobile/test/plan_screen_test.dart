@@ -61,7 +61,7 @@ void main() {
       findsOneWidget,
     );
 
-    // 完了した項目の事実は見せても、そこから割合や点数を作らない。
+    // Completed items are shown as facts, never turned into rates or scores.
     final Iterable<String> visibleText = tester
         .widgetList<Text>(find.byType(Text))
         .map((Text text) => text.data ?? '')

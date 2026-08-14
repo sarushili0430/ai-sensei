@@ -10,27 +10,28 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
 
-/// オンボーディングのリハーサル(3枚目)。
+/// The onboarding rehearsal (page 3).
 ///
-/// ここで見ているのは見た目ではなく、**約束が操作として成立しているか**。
-///   - 先輩が板書で教えたうえで、教え返すところまで1往復できるか
-///   - パスしても先へ進めるか。パスが穴として**価値化**されているか
-///   - 声も写真も使わないまま1往復できるか(権限を先に要求していないか)
+/// What is checked is not appearance but whether the promise holds as an
+/// interaction:
+///   - senpai teaches on the board, and one full round reaches teaching back
+///   - passing still advances, and a pass is recorded as a gap
+///   - the round completes without voice or photos (no permission asked first)
 void main() {
   const AppStrings ja = AppStrings(Locale('ja'));
 
-  /// 寸法は [pumpApp] が実機のものに固定する。
+  /// [pumpApp] pins the surface to a real device size.
   ///
-  /// 既定の 800×600 のままだと、板書を積んで縦に伸びたリハーサルの枚で
-  /// 「うまく言えない」がビューポートの外に出て、`tap` が当たらないまま
-  /// **黙って何も起きない**(それでもテストは緑になる)。
+  /// At the 800x600 default, the rehearsal page grown tall by the board pushes
+  /// "I can't explain it" outside the viewport, and `tap` silently does nothing
+  /// while the test still passes.
   Future<void> pumpOnboarding(
     WidgetTester tester, {
     Locale locale = const Locale('ja'),
     Size size = phoneSurface,
   }) => pumpApp(tester, const OnboardingScreen(), locale: locale, size: size);
 
-  /// 「つぎへ」で [page] 枚目(0始まり)まで進める。
+  /// Advances to page [page] (0-based) via "next".
   Future<void> advanceTo(WidgetTester tester, int page, {AppStrings strings = ja}) async {
     for (int i = 0; i < page; i++) {
       await tester.tap(find.text(strings.onboardingNext));
@@ -38,8 +39,8 @@ void main() {
     }
   }
 
-  /// 長押しして教え返す。押している時間は操作なので、
-  /// アニメーションを止めても短くならない(だから実時間ぶん進める)。
+  /// Holds to teach back. The hold is interaction time, so disabling animation
+  /// does not shorten it — hence advancing real time.
   Future<void> holdToExplain(WidgetTester tester) async {
     final TestGesture gesture = await tester.startGesture(
       tester.getCenter(find.text(ja.onboardingTryHold)),
@@ -63,11 +64,11 @@ void main() {
     expect(find.text(ja.onboardingTryNotRecording), findsOneWidget);
   });
 
-  // 改正後の約束(§0)の前半 —「教える」がリハーサルにも出ていること。
-  // 板書を出さずに聞くだけに戻ると、この枚は改正前の台本に逆戻りする。
+  // The first half of the promise — teaching — must appear in the rehearsal too.
+  // Reverting to listening without a board puts this page back on the old script.
   //
-  // 本番と同じ `BoardView` を使っているかまで見るのは、見た目を作り直した
-  // 別物にすり替わると、リハーサルが授業モードの下見として機能しなくなるため。
+  // It also checks the production `BoardView` is used: swapping in a rebuilt
+  // lookalike stops the rehearsal working as a preview of lesson mode.
   testWidgets('リハーサルは、聞く前に先輩が板書で教える', (WidgetTester tester) async {
     await pumpOnboarding(tester);
     await advanceTo(tester, 2);
@@ -80,10 +81,10 @@ void main() {
     expect(find.byType(LatexElementView), findsOneWidget);
   });
 
-  // **この枚は「読ませる枚」ではなく「やらせる枚」。**
-  // 板書が全部見えないことより、操作が初期表示に無いことのほうが重い
-  // (やることがある枚だと気づかれないまま、そのままスワイプされる)。
-  // 板書を積んで縦に伸びたぶん、いちばん狭い実機でここが破れやすい。
+  // This page exists to be done, not read. Controls missing from the initial
+  // view matters more than a partly hidden board: the page gets swiped past
+  // without anyone realising there is something to do. Grown tall by the board,
+  // it breaks most easily on the narrowest device.
   for (final Locale locale in <Locale>[const Locale('ja'), const Locale('en')]) {
     final AppStrings s = AppStrings(locale);
 
@@ -91,7 +92,7 @@ void main() {
       await pumpOnboarding(tester, locale: locale, size: smallPhoneSurface);
       await advanceTo(tester, 2, strings: s);
 
-      // スクロールさせずに押せること。`ensureVisible` を挟んだら意味がない。
+      // Tappable without scrolling; inserting `ensureVisible` would void it.
       expect(tester.getRect(find.text(s.onboardingTryHold)).bottom, lessThan(smallPhoneSurface.height));
       expect(tester.getRect(find.text(s.sessionPass)).bottom, lessThan(smallPhoneSurface.height));
 
@@ -102,9 +103,9 @@ void main() {
     });
   }
 
-  // 切れているのに手がかりが無いのが、いちばん悪い状態
-  // (計画書§3-6b が横スクロールを不採用にした理由の縦版)。
-  // 逆に、切れていないのに出続けるのは嘘なので、両方向を見る。
+  // Cut off with no cue is the worst state (the vertical version of why
+  // horizontal scrolling was rejected). Showing the cue when nothing is cut is a
+  // lie, so both directions are checked.
   testWidgets('板書が切れる端末でだけ、下に続く手がかりを出す', (WidgetTester tester) async {
     await pumpOnboarding(tester, size: smallPhoneSurface);
     await advanceTo(tester, 2);
@@ -117,15 +118,15 @@ void main() {
     expect(find.byKey(onboardingBoardMoreBelowKey), findsNothing);
   });
 
-  // 操作(長押し)と「つぎへ」が縦に2つ並ぶので、主従が見分けられること。
-  // 見た目の重さは `つぎへ` のほうが上(塗りつぶしの厚いボタン)だが、
-  // **教え返す前は `つぎへ` が無効**なので、色がついているのは操作だけになる。
-  // その保証がこのテスト。
+  // The hold control and "next" sit one above the other, so which leads must be
+  // clear. "Next" carries more visual weight (a filled chunky button), but it is
+  // disabled until the teach-back, so only the control is colored. That is what
+  // this pins.
   testWidgets('リハーサルを通るまで「つぎへ」は押せない', (WidgetTester tester) async {
     await pumpOnboarding(tester);
     await advanceTo(tester, 2);
 
-    // 行き止まりにはしない。パスも「とばす」も出ている。
+    // Never a dead end: both pass and skip are present.
     expect(find.text(ja.sessionPass), findsOneWidget);
     expect(find.text(ja.onboardingSkip), findsOneWidget);
 
@@ -150,7 +151,7 @@ void main() {
     expect(marker.text, ja.onboardingTrySaid);
   });
 
-  // §0 の約束3。パスは失敗ではなく、穴という**持ち帰るもの**になる。
+  // Passing is not failure; it becomes a gap, something to take away.
   testWidgets('うまく言えなくても進める。穴はピンクで残り、責める文言を出さない', (WidgetTester tester) async {
     await pumpOnboarding(tester);
     await advanceTo(tester, 2);
@@ -162,7 +163,7 @@ void main() {
     expect(marker.marker, MarkerColor.hole);
     expect(find.text(ja.onboardingTryHoleReaction), findsOneWidget);
 
-    // パスしたあとも先へ進める。
+    // It still advances after a pass.
     await tester.tap(find.text(ja.onboardingNext));
     await tester.pumpAndSettle();
     expect(find.text(ja.onboardingKarteTitle), findsOneWidget);
@@ -176,14 +177,14 @@ void main() {
     await tester.tap(find.text(ja.onboardingNext));
     await tester.pumpAndSettle();
 
-    // 説明できた人に、やっていない「穴」を書かない。
+    // Someone who explained is never shown a gap they did not have.
     expect(find.text(ja.onboardingTrySaid), findsOneWidget);
     expect(find.text(ja.onboardingTryHole), findsNothing);
     expect(find.text(ja.onboardingCta), findsOneWidget);
   });
 
-  // 審査員が見るのは英語版。日本語で組んだ余白に
-  // 長い英文を流し込むとはみ出す。4枚とも通しで踏む。
+  // Reviewers see the English build, and long English in spacing designed for
+  // Japanese overflows. All four pages are walked through.
   testWidgets('英語ロケールでも4枚とも組める', (WidgetTester tester) async {
     const AppStrings en = AppStrings(Locale('en'));
     await pumpOnboarding(tester, locale: const Locale('en'));

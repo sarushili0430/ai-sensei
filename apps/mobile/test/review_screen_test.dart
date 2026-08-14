@@ -19,9 +19,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
 
-/// 1/3/7日後の小テスト。
+/// The quiz after 1/3/7 days.
 ///
-/// 採点画面ではなく本人の二択で、無料のテキストから原価のある音声へ渡す境界だけを見る。
+/// Not a grading screen but the student's own two-way choice; these check only
+/// the boundary from free text to metered voice.
 void main() {
   const AppStrings ja = AppStrings(Locale('ja'));
 
@@ -91,7 +92,8 @@ void main() {
   });
 
   testWidgets('「まだ言えない」だけではサーバへ送らず、咎める文言も出さない', (WidgetTester tester) async {
-    // 通知文に「もう一度」が入っていても、「まだ」のあとは引き取る文だけに切り替える。
+    // Even when the notification text says "again", after "not yet" it switches
+    // to wording that takes it on.
     final ReviewQueue queue = sampleReviewQueue.copyWith(
       items: <ReviewQueueItem>[sampleReviewQueue.items.last],
     );
@@ -234,7 +236,7 @@ void main() {
   });
 }
 
-/// 復習セッション作成だけを記録し、LiveKitには接続しない。
+/// Records review session creation only; it never connects LiveKit.
 class _RecordingCaptureController extends CaptureController {
   _RecordingCaptureController({this.failure});
 
@@ -271,7 +273,7 @@ class _RecordingCaptureController extends CaptureController {
   }
 }
 
-/// セッション画面への遷移だけを見たいので、LiveKit接続を止める。
+/// Only the transition to the session screen matters, so LiveKit is stubbed out.
 class _FakeSessionController extends SessionController {
   @override
   SessionState build() => const SessionState(

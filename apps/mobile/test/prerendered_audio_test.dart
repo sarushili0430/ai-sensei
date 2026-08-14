@@ -105,7 +105,7 @@ void main() {
       opening.arm(lessonMode: true, languageCode: 'ja');
       await opening.start();
 
-      // board_open は見出しだけ。この時点では firstBoardStepArrived を呼ばない。
+      // `board_open` is only a heading; firstBoardStepArrived is not called yet.
       expect(player.stopCount, 0);
       await opening.firstBoardStepArrived();
       expect(player.stopCount, 1);
@@ -134,7 +134,7 @@ void main() {
       gate.complete();
       await starting;
 
-      // 読み込み完了で返ってきた停止札を、その場で止め直している。
+      // The stop token returned once loading finished is used to stop again.
       expect(player.stopCount, 1);
     });
   });

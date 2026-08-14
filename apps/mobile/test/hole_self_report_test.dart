@@ -33,8 +33,8 @@ final Karte lessonKarte = sampleKarte.copyWith(
   createdAt: DateTime.utc(2026, 8, 3, 12),
   topicIds: const <String>['M1-NIJI-HANBETSU'],
   saidWell: const <String>['判別式を使うと、二次方程式の解の個数がわかると説明できた'],
-  // 今回できた穴は自己申告の候補ではない。画面テストでは通知カードも出さず、
-  // 過去の穴だけに焦点を当てる。
+  // Gaps created this time are not self-report candidates. These screen tests
+  // show no notification card and focus on past gaps only.
   holes: const <Hole>[],
   termNotes: const <String>[],
 );

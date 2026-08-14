@@ -1,15 +1,15 @@
-/// アプリアイコンを `lib/src/brand/app_mark.dart` から書き出す。
+/// Exports the app icon from `lib/src/brand/app_mark.dart`.
 ///
 /// ```bash
 /// cd apps/mobile
 /// fvm flutter test tool/generate_app_icon.dart
 /// ```
 ///
-/// 画像ファイルを直接描き直さないこと。**絵の正はコード側**で、
-/// ここはそれをプラットフォームの要求する形に配るだけ。
+/// Never redraw the image files by hand: the code is the source of the artwork,
+/// and this only distributes it in the shapes each platform requires.
 ///
-/// Flutterのラスタライザを使うので、実行は `flutter test` 経由になる
-/// (`dart run` にはCanvasが無い)。生成物はコミットする。
+/// It uses Flutter's rasterizer, so it runs through `flutter test` (`dart run`
+/// has no Canvas). The output is committed.
 library;
 
 import 'dart:convert';
@@ -25,16 +25,16 @@ import 'package:flutter_test/flutter_test.dart';
 const String _ios = 'ios/Runner/Assets.xcassets/AppIcon.appiconset';
 const String _android = 'android/app/src/main/res';
 
-/// Play Console の「ストアの掲載情報 > アプリアイコン」に貼る1枚。
-/// 端末に入るアイコンではなくストアページの絵で、リポジトリ側の置き場は
-/// スクリーンショットと揃えて `docs/store/` にする。
+/// The image for Play Console's "store listing > app icon". It is the store
+/// page's artwork rather than the icon installed on a device, so it lives under
+/// `docs/store/` alongside the screenshots.
 const String _playStore = '../../docs/store/icon';
 
-/// Androidのアダプティブアイコンで、絵柄を108dpキャンバスのどれだけに収めるか。
-/// 中央72dp(=0.667)が可視保証なので、輪郭がそこに入る値にする。
+/// How much of Android's 108dp adaptive icon canvas the artwork occupies. The
+/// middle 72dp (0.667) is the guaranteed-visible area, so the outline fits there.
 const double _adaptiveContentScale = 0.80;
 
-/// legacy(API 25以下)のランチャーアイコン。角丸で焼き込む。
+/// The legacy launcher icon (API 25 and below), baked with rounded corners.
 const double _legacyCornerRadius = 0.20;
 
 void main() {
@@ -42,8 +42,8 @@ void main() {
     TestWidgetsFlutterBinding.ensureInitialized();
 
     // --- iOS ---
-    // Xcode 14以降の単一サイズ形式。1024だけ置けば残りはビルド時に作られる。
-    // ダーク/ティントはこの形式でしか指定できない。
+    // The single-size format from Xcode 14 on: only 1024 is needed and the rest
+    // is generated at build time. Dark and tinted variants exist only here.
     await _writeOpaquePng(
       '$_ios/Icon-App-1024x1024@1x.png',
       await AppMark.rasterize(1024),
@@ -57,8 +57,8 @@ void main() {
       await AppMark.rasterize(1024, skin: AppMarkSkin.tinted),
     );
 
-    // 旧形式のサイズ別pngは単一サイズ形式では参照されない。残すと
-    // 「古い絵のまま」のファイルがリポジトリに居座るので消す。
+    // The old per-size pngs are unreferenced in the single-size format, and
+    // leaving them keeps stale artwork in the repo, so they are removed.
     for (final FileSystemEntity entity in Directory(_ios).listSync()) {
       final String name = entity.path.split('/').last;
       if (entity is File && name.startsWith('Icon-App-') && !name.startsWith('Icon-App-1024')) {
@@ -75,7 +75,7 @@ void main() {
       'xxhdpi': 144,
       'xxxhdpi': 192,
     };
-    // アダプティブの前景・モノクロは108dp基準。
+    // Adaptive foreground and monochrome are based on 108dp.
     const Map<String, int> adaptiveDp = <String, int>{
       'mdpi': 108,
       'hdpi': 162,
@@ -83,8 +83,9 @@ void main() {
       'xxhdpi': 324,
       'xxxhdpi': 432,
     };
-    // Androidの通知欄に出すsmall iconは24dp基準。OneSignalが既定で探す
-    // `ic_stat_onesignal_default` として、ランチャーとは別サイズで配る。
+    // Android's notification small icon is based on 24dp. It ships as
+    // `ic_stat_onesignal_default`, which OneSignal looks for by default, at a
+    // different size from the launcher icon.
     const Map<String, int> notificationDp = <String, int>{
       'mdpi': 24,
       'hdpi': 36,
@@ -146,16 +147,16 @@ void main() {
       _notificationAccentColorXml(AppColors.blue),
     );
 
-    // --- Play Console のストア掲載アイコン ---
-    // 512x512 の32bit PNG・1MB以内。角丸とドロップシャドウはGoogleが
-    // 付けるので、こちらは**角を落とさず**四角いまま渡す(iOSの1024と同じ扱い)。
-    // アルファは許されているので、透過を落とす手心は要らない。
+    // --- Play Console store listing icon ---
+    // 512x512, 32-bit PNG, under 1MB. Google adds the rounded corners and drop
+    // shadow, so it is handed over square with corners intact (as with iOS's
+    // 1024). Alpha is allowed, so transparency need not be stripped.
     Directory(_playStore).createSync(recursive: true);
     await _writePng('$_playStore/play-store-512.png', await AppMark.rasterize(512));
   });
 }
 
-/// 角を落として焼き込む(legacyランチャー用。マスクが掛からない端末がある)。
+/// Bakes in rounded corners for the legacy launcher; some devices apply no mask.
 Future<ui.Image> _rasterizeClipped(int size, {required double radius}) async {
   final ui.PictureRecorder recorder = ui.PictureRecorder();
   final Canvas canvas = Canvas(recorder);
@@ -172,10 +173,10 @@ Future<void> _writePng(String path, ui.Image image) async {
   File(path).writeAsBytesSync(data.buffer.asUint8List(), flush: true);
 }
 
-/// **アルファチャンネルごと落として**書く。
+/// Writes with the alpha channel stripped entirely.
 ///
-/// App Store は1024のアイコンに透過を許さない(ITMS-90717)。中身が
-/// 完全に不透明でも、アルファチャンネルが在るだけで弾かれることがある。
+/// The App Store forbids transparency on the 1024 icon (ITMS-90717), and even
+/// fully opaque content can be rejected merely for having an alpha channel.
 Future<void> _writeOpaquePng(String path, ui.Image image) async {
   final ByteData data = (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
   File(path).writeAsBytesSync(
@@ -184,15 +185,15 @@ Future<void> _writeOpaquePng(String path, ui.Image image) async {
   );
 }
 
-// --- 最小のPNGエンコーダ(カラータイプ2 = RGB。アルファを持たない) ---
+// --- Minimal PNG encoder (color type 2 = RGB, no alpha) ---
 //
-// `image` パッケージを足さないのは、生成物をコミットする都合上
-// このツールが依存を1つも増やさずに動くほうが安全なため。
+// The `image` package is not added: since the output is committed, it is safer
+// for this tool to run without adding a single dependency.
 
 Uint8List _encodeRgbPng(Uint8List rgba, int width, int height) {
   final BytesBuilder raw = BytesBuilder(copy: false);
   for (int y = 0; y < height; y++) {
-    raw.addByte(0); // フィルタ: なし
+    raw.addByte(0); // filter: none
     for (int x = 0; x < width; x++) {
       final int i = (y * width + x) * 4;
       raw.add(<int>[rgba[i], rgba[i + 1], rgba[i + 2]]);
@@ -207,7 +208,7 @@ Uint8List _encodeRgbPng(Uint8List rgba, int width, int height) {
     ..setUint32(0, width)
     ..setUint32(4, height);
   ihdr[8] = 8; // bit depth
-  ihdr[9] = 2; // color type: truecolor(アルファなし)
+  ihdr[9] = 2; // color type: truecolor (no alpha)
   out.add(_chunk('IHDR', ihdr));
   out.add(_chunk('IDAT', Uint8List.fromList(ZLibCodec(level: 9).encode(raw.takeBytes()))));
   out.add(_chunk('IEND', Uint8List(0)));

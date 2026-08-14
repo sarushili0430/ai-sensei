@@ -16,13 +16,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// テストで画面を組み立てるための足場。
+/// Scaffolding for building screens in tests.
 ///
-/// 本番の `AiSenseiApp` と同じデリゲートを渡す。ここを削ると
-/// 「MaterialLocalizations が ja に対応していない」で落ちる。
+/// It passes the same delegates as the production `AiSenseiApp`; removing them
+/// fails with "MaterialLocalizations does not support ja".
 ///
-/// `overrides` を `List<Object?>` で受けているのは、Riverpod 3 が `Override` 型を
-/// 公開APIに出していないため。`cast()` の型は ProviderScope 側から推論される。
+/// `overrides` is `List<Object?>` because Riverpod 3 does not expose the
+/// `Override` type publicly; `cast()`'s type is inferred from ProviderScope.
 Widget wrapApp(
   Widget child, {
   List<Object?> overrides = const <Object?>[],
@@ -47,15 +47,15 @@ Widget wrapApp(
   );
 }
 
-/// テストのあいだ、装飾のアニメーションを止める。
+/// Stops decorative animation for the duration of a test.
 ///
-/// 端末の「アニメーションを減らす」と同じ経路(`AppMotion`)を通すので、
-/// 入場アニメーションは**終わった状態**で描かれ、呼吸やまばたきのような
-/// ループは始まらない。goldenが撮った瞬間で変わらなくなり、
-/// `pumpAndSettle` も返る。
+/// It takes the same path (`AppMotion`) as the device's "reduce animations", so
+/// entrances are drawn in their finished state and loops like breathing and
+/// blinking never start. Goldens stop changing between frames and
+/// `pumpAndSettle` returns.
 ///
-/// 逆に言うと、ここを通していないアニメーションを足すと
-/// `pumpAndSettle` が返らずにテストが落ちる。それが検知そのものになる。
+/// Conversely, adding an animation that skips this path hangs `pumpAndSettle`
+/// and fails the test — which is the detection itself.
 Widget reduceMotion(BuildContext context, Widget? child) {
   return MediaQuery(
     data: MediaQuery.of(context).copyWith(disableAnimations: true),
@@ -63,17 +63,18 @@ Widget reduceMotion(BuildContext context, Widget? child) {
   );
 }
 
-/// 本物のルータで組み立てる。
+/// Builds with the real router.
 ///
-/// 画面単体では見えない「戻れるか」を見るために使う。`go` と `push` の
-/// 使い分けとルートの入れ子が壊れると、行き止まりはここで落ちる。
+/// Used to check what a single screen cannot show: whether you can get back.
+/// When `go` vs `push` or route nesting breaks, dead ends fail here.
 ///
-/// ルータを先に取り出せるように、コンテナは呼び出し側で作って渡す。
-/// `ProviderScope` で作り直すと、ルータの `redirect` が見ている provider と
-/// 画面が見ている provider が別のコンテナになってしまう。
+/// The container is created by the caller and passed in so the router can be
+/// pulled out first; rebuilding it in `ProviderScope` would put the router's
+/// `redirect` and the screen on different containers.
 ///
-/// [locale] を受けるのは、ストア掲載スクショ(`tool/generate_store_screenshots.dart`)が
-/// 日英の同じ画面を**下部タブごと**撮るため。テストは既定の日本語のままでよい。
+/// [locale] exists because the store screenshot tool
+/// (`tool/generate_store_screenshots.dart`) shoots the same screens in both
+/// languages, tab by tab. Tests keep the Japanese default.
 Widget wrapRouter(ProviderContainer container, {Locale locale = const Locale('ja')}) {
   return UncontrolledProviderScope(
     container: container,
@@ -94,30 +95,30 @@ Widget wrapRouter(ProviderContainer container, {Locale locale = const Locale('ja
   );
 }
 
-/// 画面を組み立てて、描画が落ち着くまで進める。
+/// Builds a screen and pumps until rendering settles.
 ///
-/// GlobalMaterialLocalizations のデリゲートは**非同期に読み込まれる**ので、
-/// pumpWidget の1フレーム目には本文がまだ出ていない。ここを忘れると
-/// 「Found 0 widgets」で落ちる。
+/// GlobalMaterialLocalizations' delegates load asynchronously, so the first frame
+/// after pumpWidget has no body text yet. Forgetting that fails with "Found 0
+/// widgets".
 ///
-/// ## 寸法を必ず固定する
+/// ## Always pin the surface size
 ///
-/// **widget test の既定は 800×600 で、どの端末でもない横長。**
-/// 縦が実機より250pt以上短いので、画面の下のほうにあるボタンがビューポートの
-/// 外に出る。そして `tap` は画面外の座標を叩いても**例外にならず、静かに何も
-/// 起きない** —— テストは通るのに操作が届いていない状態ができる。
+/// A widget test defaults to 800x600 — landscape, and no real device. It is over
+/// 250pt shorter than a phone, so buttons near the bottom fall outside the
+/// viewport. And `tap` on off-screen coordinates does not throw: it silently does
+/// nothing, so the test passes while the interaction never lands.
 ///
-/// 実際、オンボーディングでこれが起きた。「うまく言えない」が折り返しの下に
-/// 落ちたあとも3本のテストが緑のままで、**板書を積んで画面が伸びたことに
-/// 誰も気づけなかった**。既定を実機の寸法にしておけば、同じ壊れ方は
-/// 「ボタンが見つからない」として落ちる。
+/// That happened in onboarding: "I can't explain it" dropped below the fold and
+/// three tests stayed green, so nobody noticed the board had grown the screen.
+/// With a real device size as the default, the same break fails as "button not
+/// found".
 ///
-/// ## 端末に保存する設定
+/// ## Device-stored settings
 ///
-/// `preferencesProvider` は `main()` で override する前提なので、テストでは
-/// **必ずここで入れる**。入っていないと、それを読むプロバイダ(学校段階など)が
-/// 起動できず、画面は描けるのに**通信だけが静かに飛ばない**状態になる。
-/// 毎回空から始めるので、既定値(高校生)で描かれる。
+/// `preferencesProvider` is meant to be overridden in `main()`, so tests must
+/// always inject it here. Without it, providers that read it (school stage and so
+/// on) cannot start, and the screen renders while the requests silently never go
+/// out. Each test starts empty, so it renders at the default (senior high).
 Future<void> pumpApp(
   WidgetTester tester,
   Widget child, {
@@ -131,7 +132,7 @@ Future<void> pumpApp(
   await tester.pumpWidget(
     wrapApp(
       child,
-      // 呼び出し側の override を後ろに置く(同じプロバイダなら後勝ち)。
+      // Caller overrides go last, so the same provider wins there.
       overrides: <Object?>[preferencesProvider.overrideWithValue(preferences), ...overrides],
       locale: locale,
     ),
@@ -139,40 +140,37 @@ Future<void> pumpApp(
   await tester.pumpAndSettle();
 }
 
-/// 既定の描画サイズ。iPhone 15 相当の論理ピクセル。
+/// Default surface size, in logical pixels for an iPhone 15.
 ///
-/// golden もこの寸法で撮る(だから以前は `goldenSurface` という名前だった)が、
-/// **golden 専用の値ではない。** 名前が golden 専用に見えると、
-/// 普通の widget test で寸法を固定する動機が消えてしまう。
+/// Goldens are shot at this size too (hence its old name `goldenSurface`), but it
+/// is not golden-specific: a golden-sounding name removes the motivation to pin
+/// the size in ordinary widget tests.
 const Size phoneSurface = Size(393, 852);
 
-/// いちばん狭い実機(iPhone SE 級)。
+/// The narrowest real device (iPhone SE class).
 ///
-/// 折り返しの下に操作が落ちていないかは、この寸法で見る。
-/// [phoneSurface] で収まっても、ここで溢れる画面がある。
+/// Use it to check that controls have not fallen below the fold. Screens that fit
+/// at [phoneSurface] can still overflow here.
 const Size smallPhoneSurface = Size(375, 667);
 
-/// 実フォントを読み込む。
+/// Loads the real fonts.
 ///
-/// widget test は既定でAhem(四角)で描画するので、そのままgoldenを撮ると
-/// 字形の崩れに気づけない。丸ゴシックはブランドの一部なので実物を読ませる。
+/// Widget tests render with Ahem (blank boxes) by default, so goldens shot that
+/// way hide broken glyphs. The rounded gothic is part of the brand, so the real
+/// file is loaded.
 ///
-/// パスを直書きせず FontManifest から読むのは、**MaterialIcons も一緒に
-/// 載せる**ため。アイコンが四角のままだと、戻るボタンや設定アイコンが
-/// 出ているかどうかを golden で確かめられない(導線が消えても気づけない)。
+/// Fonts come from the FontManifest rather than hard-coded paths so MaterialIcons
+/// loads too: with square icons, goldens cannot confirm the back button or the
+/// settings icon is present, and a vanished route would go unnoticed.
 ///
-/// **family名はプレフィックスを剥がさず、そのまま登録する。**
-/// 以前は `packages/foo/MyFont` 形式のとき末尾だけ取り出していたが、これは
-/// このアプリ自身のフォント(`ZenMaruGothic`。プレフィックス無し)にしか
-/// 当てはまらない前提だった。サードパーティのフォントパッケージ(例:
-/// `flutter_math_fork` のKaTeXフォント一式)は、パッケージ自身のコードの中で
-/// `'packages/flutter_math_fork/KaTeX_Main'` のようにプレフィックス込みの
-/// family名で参照している(該当パッケージの `make_symbol.dart` で確認済み)。
-/// 剥がして登録すると、その名前で探しにいくwidgetからは見つからず、
-/// フォントが無いのと同じ状態(golden上は黒塗りの四角=tofu)になる。
-/// `FontManifest.json` を実際に読ませて確認したところ、`MaterialIcons` と
-/// `ZenMaruGothic` はもともとプレフィックスを持たないので、剥がすのをやめても
-/// 既存のgoldenの見た目は変わらない(登録名がそのまま変わらないため)。
+/// Family names are registered as-is, prefix included. We used to keep only the
+/// last segment of `packages/foo/MyFont`, which assumed the app's own font
+/// (`ZenMaruGothic`, unprefixed). Third-party font packages — the KaTeX fonts in
+/// `flutter_math_fork`, for instance — reference their families with the prefix
+/// (`'packages/flutter_math_fork/KaTeX_Main'`) in their own code. Stripping it
+/// leaves those widgets unable to find the font, which renders as tofu in
+/// goldens. Reading `FontManifest.json` confirmed `MaterialIcons` and
+/// `ZenMaruGothic` carry no prefix, so keeping it changes no existing golden.
 Future<void> loadAppFonts() async {
   final String manifest = await rootBundle.loadString('FontManifest.json');
 
@@ -188,10 +186,11 @@ Future<void> loadAppFonts() async {
   }
 }
 
-/// 描画サイズを固定する。
+/// Pins the surface size.
 ///
-/// golden では端末差で絵が揺れないように、普通の widget test では
-/// **既定の 800×600(どの端末でもない横長)で走らせないように**使う。
+/// For goldens it stops device differences shifting the image; for ordinary
+/// widget tests it stops them running at the 800x600 landscape default, which
+/// matches no device.
 Future<void> setSurface(WidgetTester tester, {Size size = phoneSurface}) async {
   await tester.binding.setSurfaceSize(size);
   tester.view.physicalSize = size;
@@ -203,24 +202,25 @@ Future<void> setSurface(WidgetTester tester, {Size size = phoneSurface}) async {
   });
 }
 
-/// 実時間と擬似時間を交互に進めて、[finder] が現れるまで待つ。
+/// Alternates real and fake time until [finder] appears.
 ///
-/// ## `pumpAndSettle` が返らなくなる形
+/// ## How `pumpAndSettle` stops returning
 ///
-/// **「スピナーを出しているあいだに、未解決の非同期がある」**と固まる。
-/// `CircularProgressIndicator` は終わらないアニメーションなので
-/// `pumpAndSettle` は「まだフレームが来る」と判断して回り続け、
-/// その裏の非同期は擬似時間では進まない。踏んだ例が2つある:
+/// It hangs when a spinner is on screen while an async operation is pending.
+/// `CircularProgressIndicator` animates forever, so `pumpAndSettle` keeps
+/// deciding another frame is coming, and the async work behind it does not
+/// advance under fake time. Two cases hit this:
 ///
-///   - **multipart の送信。** `MockClient` は本文を組み立てるときに
-///     **実際にファイルを読む**。これは `runAsync` の中でしか進まない
-///     (素の `test()` で書かれたテストが平気なのは、最初から実時間だから)
-///   - **`permission_handler` の照会。** チャンネルを差し替えていないと
-///     応答が返らず、許可を待つあいだスピナーが回り続ける
-///     → こちらは [mockPermissionHandler] で塞ぐ
+///   - multipart uploads: `MockClient` actually reads the file while composing
+///     the body, which only progresses inside `runAsync` (plain `test()` cases
+///     are fine because they are on real time from the start)
+///   - `permission_handler` queries: without a channel stub, no response arrives
+///     and the spinner keeps turning while permission is awaited — covered by
+///     [mockPermissionHandler]
 ///
-/// だから `pumpAndSettle` ではなく、**実時間([WidgetTester.runAsync])と
-/// 擬似時間([WidgetTester.pump])を交互に**進めて、目印が出たら止める。
+/// So instead of `pumpAndSettle`, this alternates real time
+/// ([WidgetTester.runAsync]) and fake time ([WidgetTester.pump]) and stops once
+/// the marker appears.
 Future<void> pumpUntil(
   WidgetTester tester,
   Finder finder, {
@@ -235,14 +235,14 @@ Future<void> pumpUntil(
   fail('${finder.describeMatch(Plurality.one)} が ${step * maxSteps} 待っても現れませんでした');
 }
 
-/// `permission_handler` のチャンネルを差し替える。
+/// Stubs the `permission_handler` channel.
 ///
-/// **差し替えないと照会が返ってこない。** 許可を待つあいだ画面に出ているのが
-/// スピナーだと、そのまま `pumpAndSettle` が返らなくなる([pumpUntil] 参照)。
-/// 実機では必ず答えが返る問い合わせなので、テストでも返す。
+/// Without it the query never returns, and if a spinner is on screen while
+/// permission is awaited, `pumpAndSettle` hangs (see [pumpUntil]). On device the
+/// query always answers, so it answers in tests too.
 ///
-/// [status] は `PermissionStatus` の並び順(0=denied / 1=granted / 2=restricted /
-/// 3=limited / 4=permanentlyDenied)。既定は granted。
+/// [status] follows `PermissionStatus`'s order (0=denied, 1=granted,
+/// 2=restricted, 3=limited, 4=permanentlyDenied). Defaults to granted.
 void mockPermissionHandler({int status = permissionGranted}) {
   const MethodChannel channel = MethodChannel('flutter.baseflow.com/permissions/methods');
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -253,13 +253,13 @@ void mockPermissionHandler({int status = permissionGranted}) {
   );
 }
 
-/// `PermissionStatus.granted`(enum の2番目)。
+/// `PermissionStatus.granted` (second in the enum).
 const int permissionGranted = 1;
 
-/// `PermissionStatus.denied`(enum の先頭)。
+/// `PermissionStatus.denied` (first in the enum).
 const int permissionDenied = 0;
 
-// --- テスト用のデータ ---
+// --- Test data ---
 
 final Karte sampleKarte = Karte(
   id: 'kar_1',
@@ -296,42 +296,42 @@ const ProgressSummary sampleSummary = ProgressSummary(
   limits: SessionLimits(maxSeconds: 1200, lessonAllowedToday: true),
 );
 
-/// 初回起動のホーム。数えるものが何も無い状態。
+/// Home on first launch, with nothing yet to count.
 const ProgressSummary firstRunSummary = ProgressSummary(
   progress: Progress.empty,
   isPremium: false,
   limits: SessionLimits(maxSeconds: 1200, lessonAllowedToday: true),
 );
 
-/// 今日はもう授業をしない日のホーム(§6-3「先輩の判断」)。
+/// Home on a day senpai has closed out.
 ///
-/// **いちばん長い文が出る状態。** 「今日はここまでにしよっか。詰め込みすぎても
-/// 入らないから、明日また続きやろう」が画面に乗るので、
-/// 狭い端末で溢れるならまずここから溢れる。
+/// The state with the longest copy on screen, so if anything overflows on a
+/// narrow device it overflows here first.
 const ProgressSummary exhaustedSummary = ProgressSummary(
   progress: sampleProgress,
   isPremium: false,
   limits: SessionLimits(maxSeconds: 1200, lessonAllowedToday: false),
 );
 
-/// 契約していて、まだ授業を始められる人のホーム。
+/// Home for a subscriber who can still start a lesson.
 const ProgressSummary premiumSummary = ProgressSummary(
   progress: sampleProgress,
   isPremium: true,
   limits: SessionLimits(maxSeconds: 1200, lessonAllowedToday: true),
 );
 
-/// Premium のフェアユース上限。締めの言葉は出すが、課金導線は出してはいけない。
+/// Premium's fair-use cap: it shows the closing line but must not show a billing
+/// prompt.
 const ProgressSummary premiumExhaustedSummary = ProgressSummary(
   progress: sampleProgress,
   isPremium: true,
   limits: SessionLimits(maxSeconds: 1200, lessonAllowedToday: false),
 );
 
-/// 親が読む今月のレポート。
+/// This month's report, as a parent reads it.
 ///
-/// 引用は画面上のプレビューとメール本文が同じかを検査する核なので、要約に
-/// 置き換えず、本人が授業中に説明した形の文章をそのまま入れる。
+/// The quotes are the core of checking that the on-screen preview matches the
+/// mail body, so they stay as the student phrased them rather than a summary.
 final ParentReportResponse sampleParentReportResponse = ParentReportResponse(
   requiresPremium: false,
   report: ParentReport(
@@ -352,26 +352,26 @@ final ParentReportResponse sampleParentReportResponse = ParentReportResponse(
   ),
 );
 
-/// 契約している状態。
+/// Subscribed.
 ///
-/// 期限は固定の**ローカル日時**にする。`DateTime.utc` にすると、走らせる
-/// 端末のタイムゾーン次第で日付が1日ずれて golden が揺れる。
+/// The expiry is a fixed local date-time. `DateTime.utc` would shift the date by
+/// a day depending on the runner's timezone and make goldens flap.
 final Entitlement premiumEntitlement = Entitlement(
   isPremium: true,
   willRenew: true,
   expiresAt: DateTime(2026, 9, 8),
 );
 
-/// 解約予約済み。期限までは使える。
+/// Cancelled, but usable until expiry.
 final Entitlement cancelledEntitlement = Entitlement(
   isPremium: true,
   expiresAt: DateTime(2026, 9, 8),
 );
 
-/// 無料トライアル中。**まだ1円も払っていない。**
+/// In a free trial, with nothing paid yet.
 ///
-/// 残り日数は「今から」数えるので、期限も今からの相対で作る
-/// (固定日にすると、その日を過ぎた瞬間にテストが落ちる)。
+/// Days left count from now, so the expiry is relative to now too — a fixed date
+/// would start failing the moment it passed.
 Entitlement trialEntitlement({int days = 7}) => Entitlement(
   isPremium: true,
   willRenew: true,
@@ -392,7 +392,8 @@ final FilledHole sampleFilledHole = FilledHole(
   daysSinceFilled: 1,
 );
 
-/// ホームに出す復習候補。古い穴も混ぜ、カードが件数ではなく直近の内容を選ぶ状態にする。
+/// Review candidates for home. Older gaps are mixed in so the card is shown
+/// picking recent content rather than a count.
 final ReviewQueue sampleReviewQueue = ReviewQueue(
   items: <ReviewQueueItem>[
     ReviewQueueItem(
@@ -417,7 +418,7 @@ final ReviewQueue sampleReviewQueue = ReviewQueue(
   ],
 );
 
-// --- プロバイダの差し替え ---
+// --- Provider overrides ---
 
 class FakeProgressController extends ProgressController {
   FakeProgressController([this._summary = sampleSummary]);
@@ -437,7 +438,8 @@ class FakeLatestKarteController extends LatestKarteController {
   Karte? build() => _karte ?? sampleKarte;
 }
 
-/// カルテがまだ手元に無い状態。会話直後(生成待ち)の祝福画面で使う。
+/// No karte yet; used for the celebration screen right after a conversation,
+/// while generation is pending.
 class EmptyLatestKarteController extends LatestKarteController {
   @override
   Karte? build() => null;
@@ -448,13 +450,13 @@ class FakeSessionOutcomeController extends SessionOutcomeController {
 
   final SessionOutcome _outcome;
 
-  /// 取りに行ったらカルテがあるか。
+  /// Whether fetching finds a karte.
   final bool karteArrives;
 
   @override
   SessionOutcome build() => _outcome;
 
-  /// 取りに行くのをここで止める。テストからネットワークへ出さないため。
+  /// Stops the fetch here, so tests never reach the network.
   @override
   Future<bool> retrieveKarte() async => karteArrives;
 }
@@ -468,17 +470,18 @@ class FakeReviewController extends ReviewController {
 
   ReviewQueue _queue;
 
-  /// 回答後に画面へ返すキュー。テストごとに「次の1問」や空の状態を差し替える。
+  /// Queue returned after answering; each test swaps in a next question or an
+  /// empty state.
   ReviewQueue? queueAfterAnswer;
   bool answerSucceeds;
 
-  /// 画面が送った自己申告。`notYet` を送っていないこともここで確認できる。
+  /// Self-reports the screen sent; also confirms `notYet` was not sent.
   final List<(String, ReviewOutcome)> answerCalls = <(String, ReviewOutcome)>[];
 
   @override
   Future<ReviewQueue> build() async => _queue;
 
-  /// 本物のAPIへ落とさず、呼び出し内容と回答後のキューだけを再現する。
+  /// Reproduces only the call and the post-answer queue, never hitting the API.
   @override
   Future<bool> answer(String holeId, ReviewOutcome outcome) async {
     answerCalls.add((holeId, outcome));
@@ -498,12 +501,12 @@ class FakeParentReportController extends ParentReportController {
 
   final ParentReportResponse _response;
 
-  /// 共有内容を固定し、widget test がネットワークへ出ないようにする。
+  /// Pins the shared content so widget tests never reach the network.
   @override
   Future<ParentReportResponse> build() async => _response;
 }
 
-/// 契約の状態を差し替える。SDKを呼ばずに Premium の画面を組むために使う。
+/// Overrides subscription state, so Premium screens can be built without the SDK.
 class FakeEntitlementController extends EntitlementController {
   FakeEntitlementController(this._entitlement);
 
@@ -513,7 +516,7 @@ class FakeEntitlementController extends EntitlementController {
   Future<Entitlement> build() async => _entitlement;
 }
 
-/// Premium で画面を組むときの差し替え一式。
+/// The full set of overrides for building screens as Premium.
 List<Object?> premiumOverrides([Entitlement? entitlement]) => <Object?>[
   entitlementControllerProvider.overrideWith(
     () => FakeEntitlementController(entitlement ?? premiumEntitlement),

@@ -4,17 +4,17 @@ import 'package:ai_sensei/src/l10n/strings.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// 板書の読み上げ(計画書 §3-1 と両立する形)。
+/// Board narration, in a form compatible with "do not read formulas aloud".
 ///
-/// 板書は `Math.tex` と `CustomPaint` で描かれていて、そのままでは
-/// **VoiceOver から1文字も読まれない**。板書はプロダクトの中心なので、
-/// そこが欠けると目が見えない生徒には**授業が存在しないのと同じ**になる。
+/// The board is drawn with `Math.tex` and `CustomPaint`, so VoiceOver reads not
+/// one character of it. The board is the heart of the product, so missing it
+/// means a blind student has no lesson at all.
 ///
-/// ここで見ているのは「完璧な読み上げ」ではなく、**意味が通ること**:
-///   - 構造(分数・根号・指数・添字)が言葉になっていること
-///   - 記号が読み飛ばされないこと
-///   - **英字はそのまま残る**こと(スクリーンリーダーがロケールなりに読むので、
-///     こちらで「エックス」と書くと二重に読まれる)
+/// What is checked is not perfect narration but that it makes sense:
+///   - structure (fractions, roots, exponents, subscripts) becomes words
+///   - symbols are not skipped
+///   - Latin letters stay as they are (a screen reader reads them per its locale,
+///     and spelling them out here would double them up)
 void main() {
   const AppStrings ja = AppStrings(Locale('ja'));
   const AppStrings en = AppStrings(Locale('en'));
@@ -24,8 +24,8 @@ void main() {
       expect(describeTex('x^2 - 3x + 2 = 0', ja), 'x の 2 乗 マイナス 3x プラス 2 イコール 0');
     });
 
-    /// **日本語は「B分のA」で順序が逆になる。** 英語と同じ順に読むと
-    /// 分母と分子が入れ替わって聞こえる。
+    /// Japanese states the denominator first. Reading it in English order swaps
+    /// numerator and denominator to the ear.
     test('分数は日本語だけ順序が逆になる', () {
       expect(describeTex(r'\frac{a}{b}', ja), 'b 分の a');
       expect(describeTex(r'\frac{a}{b}', en), 'a over b');
@@ -56,14 +56,15 @@ void main() {
       expect(describeTex(r'\overrightarrow{AB}', ja), 'ベクトル AB');
     });
 
-    /// **英字はそのまま残す。** 「エックス」と書き換えない。
+    /// Latin letters stay as they are; they are never spelled out.
     test('英字は書き換えない(スクリーンリーダーが読む)', () {
       expect(describeTex('y = ax + b', ja), contains('y'));
       expect(describeTex('y = ax + b', ja), isNot(contains('ワイ')));
     });
 
     test('未知のコマンドが残ってもゴミを読み上げない', () {
-      // ホワイトリスト外は本来ここまで来ないが、来ても `\hoge` とは読ませない。
+      // Non-whitelisted commands should never get here, but if they do they are
+      // not narrated as raw backslash commands.
       expect(describeTex(r'\unknowncmd{x}', ja), isNot(contains(r'\')));
     });
   });
@@ -96,7 +97,7 @@ void main() {
         labels: <String>['O', 'r = 5'],
       );
 
-      // 半径が「5.0」と読まれない(整数はそのまま)。
+      // The radius is not narrated as "5.0"; integers stay integers.
       expect(describeElement(element, ja), contains('半径 5。'));
     });
 
@@ -115,7 +116,7 @@ void main() {
       expect(said, contains('x = 1、x = 2'));
     });
 
-    /// 日本語の一行(`text` 要素)は、そのまま読める。
+    /// A prose line (a `text` element) reads as it is.
     test('text要素は素通し', () {
       expect(describeElement(const BoardElement.text(body: 'a = 1, b = -3'), ja), 'a = 1, b = -3');
     });

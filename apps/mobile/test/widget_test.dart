@@ -9,8 +9,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
 
-/// 設計上の約束が画面から消えていないかを構造で確かめる。
-/// 見た目そのものは test/golden/ が見る。
+/// Structurally verifies that the design promises have not left the screens.
+/// Appearance itself is test/golden/'s job.
 Future<void> pump(WidgetTester tester, Widget child) =>
     pumpApp(tester, Scaffold(body: child));
 
@@ -55,9 +55,10 @@ void main() {
   });
 
   group('ペイウォール', () {
-    // HAMMは誠実さを見る。無料継続の導線と解約可能の明記を消させない。
-    // 「自動更新される」は Guideline 3.1.2 の必須表記。解約できることだけを
-    // 書いて更新に触れないのは、誠実さ(§6)の面でもリジェクトの面でもだめ。
+    // Honesty is what matters: neither the stay-free path nor the statement that
+    // it can be cancelled may disappear. "Auto-renews" is required by guideline
+    // 3.1.2; saying only that it can be cancelled, without mentioning renewal,
+    // fails both on honesty and on review.
     testWidgets('無料のまま続ける導線と、自動更新・解約の明示を同じ画面に置く', (WidgetTester tester) async {
       await pumpApp(tester, const PaywallScreen());
 
@@ -65,15 +66,17 @@ void main() {
       expect(find.text('登録は自動更新されます。いつでも解約できます'), findsOneWidget);
       expect(find.text('毎日1問'), findsOneWidget);
       expect(find.text('毎日、続けて何問も'), findsOneWidget);
-      // 無制限を約束しない。フェアユース上限があるので、買ったあとにAPIが断る。
+      // Never promise unlimited: a fair-use cap means the API refuses after
+      // purchase.
       expect(find.text('無制限'), findsNothing);
       expect(find.text('毎日、何問でも'), findsNothing);
     });
   });
 
   group('セッションの結果', () {
-    // レビュー指摘: 会話画面はAutoDisposeなので、祝福・カルテに着いた時点で
-    // 破棄されている。ペイウォールの判断(サーバ由来)はここに持ち回る。
+    // From review: the conversation screen is AutoDispose and is already gone by
+    // the time celebration and karte appear, so the server's paywall verdict is
+    // carried here.
     test('既定ではペイウォールを出さない', () {
       const SessionOutcome outcome = SessionOutcome();
       expect(outcome.showPaywall, isFalse);

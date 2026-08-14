@@ -8,20 +8,19 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// 作図(`figure`)の端末側。
+/// The device side of constructions (`figure`).
 ///
-/// **端末は解かない。**SVGはサーバが検証済みの `items` から解いて描いたもので、
-/// ここは表示するだけ(`docs/wireframe_board_v2.html` D-19/D-21)。
-/// なのでここで見るのは「正しい図か」ではなく、
-///   - 板書の1手順として収まる大きさか
-///   - 読み上げが1つ付くか(`Math.tex` と同じ理由。§3-1)
-///   - 壊れたものが来たときに画面ごと落ちないか
-/// の3つ。
+/// The device does not solve anything: the SVG was solved and drawn on the
+/// server from validated `items`, and this only displays it. So what is checked
+/// is not whether the figure is correct but:
+///   - whether it fits as one board step
+///   - whether it gets one narration (same reason as `Math.tex`)
+///   - whether malformed input takes the screen down
 void main() {
   const AppStrings ja = AppStrings(Locale('ja'));
   const AppStrings en = AppStrings(Locale('en'));
 
-  /// サーバが返すのと同じ形の、小さなSVG。
+  /// A small SVG in the same shape the server returns.
   const String svg =
       '<svg viewBox="0 0 320 224" xmlns="http://www.w3.org/2000/svg">'
       '<rect width="320" height="224" fill="#2f3a35"/>'
@@ -49,11 +48,12 @@ void main() {
       );
 
   group('描画', () {
-    /// **式や注記と横幅をそろえる。**
+    /// Match the width of formulas and notes.
     ///
-    /// 以前は高さを他のプリミティブに合わせ、横は比率のまま中央に
-    /// 置いていたので、板書の実効幅より細い箱に収まっていた。式は左端から
-    /// 幅いっぱいに並ぶので、**図だけが一段内側に浮いて見えた**(実機の指摘)。
+    /// It used to match the other primitives' height and centre at its own ratio,
+    /// so it sat in a box narrower than the board's effective width. Formulas run
+    /// full width from the left, so the figure alone looked inset (raised on
+    /// device).
     testWidgets('SVGが描かれ、板書の幅いっぱいに広がる', (WidgetTester tester) async {
       await tester.pumpWidget(host(element));
       await tester.pumpAndSettle();
@@ -62,20 +62,20 @@ void main() {
       expect(tester.getSize(find.byType(FigureElementView)).width, 340);
     });
 
-    /// 幅にそろえた結果、縦は比率のぶんだけ伸びる。**それでも1手順が
-    /// 画面を占めない**ように上限を持たせてある(板書は積み上がるので、
-    /// 1手順が大きすぎると前の行が押し出される)。
+    /// Matching the width stretches the height by the ratio, with a cap so one
+    /// step cannot fill the screen — the board stacks, and an oversized step
+    /// pushes earlier lines out.
     testWidgets('縦は比率のまま伸び、上限を超えない', (WidgetTester tester) async {
       await tester.pumpWidget(host(element));
       await tester.pumpAndSettle();
 
       final double height = tester.getSize(find.byType(FigureElementView)).height;
-      // 320x224 の図を340ptに合わせると238pt。比率どおりに伸びていること。
+      // A 320x224 figure at 340pt is 238pt; the ratio is preserved.
       expect(height, closeTo(340 * 224 / 320, 1));
       expect(height, lessThanOrEqualTo(FigureElementView.maxHeight));
     });
 
-    /// 縦長の図でも、1手順で画面を埋めない。
+    /// Even a tall figure must not fill the screen in one step.
     testWidgets('縦長のSVGは上限で止める', (WidgetTester tester) async {
       await tester.pumpWidget(
         host(
@@ -95,8 +95,8 @@ void main() {
       );
     });
 
-    /// 壊れたSVGで**画面ごと落とさない**。板書の1行が抜けるほうが軽い
-    /// (`board.ts` の「壊れたら止まる。ただし今あるものは消さない」と同じ判断)。
+    /// A malformed SVG must not take the screen down; losing one board line costs
+    /// less (the same call as "stop on breakage, never erase").
     testWidgets('壊れたSVGが来ても例外画面にしない', (WidgetTester tester) async {
       await tester.pumpWidget(
         host(
@@ -113,8 +113,8 @@ void main() {
   });
 
   group('読み上げ', () {
-    /// 図は `CustomPaint` と同じく**1文字も読まれない**ので、
-    /// サーバが送ってきた `alt` をそのまま1つの文にする。
+    /// Like `CustomPaint`, a figure is not read at all, so the `alt` the server
+    /// sent becomes the single sentence, unchanged.
     test('alt をそのまま読む(端末側で組み立て直さない)', () {
       expect(describeElement(element, ja), '多角形(点 A・B・C)');
     });
@@ -139,8 +139,9 @@ void main() {
   });
 
   group('契約', () {
-    /// `svg` はワイヤーに出る時点で必ず入っている。無いまま描画へ渡すと
-    /// 図の場所が**黙って空白**になるので、検査で落とす。
+    /// `svg` is always present by the time it reaches the wire. Passing one
+    /// without it leaves the figure's place silently blank, so validation rejects
+    /// it.
     test('svg の無い figure は契約違反', () {
       expect(() => ensureValidFigure(null), throwsA(isA<BoardContractViolation>()));
       expect(() => ensureValidFigure(''), throwsA(isA<BoardContractViolation>()));

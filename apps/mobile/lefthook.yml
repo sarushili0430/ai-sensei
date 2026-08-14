@@ -1,17 +1,17 @@
-# apps/mobile/ の pre-commit。ルートの lefthook.yml から extends で読まれる。
+# pre-commit for apps/mobile/, pulled in from the root lefthook.yml via extends.
 #
-# root: を切ってあるので、`apps/mobile/` 配下にステージされたファイルが1つも
-# 無ければこのジョブはスキップされる(backend だけ触ったコミットでは走らない)。
+# `root:` is set, so the job is skipped when nothing under `apps/mobile/` is
+# staged (it does not run on backend-only commits).
 #
-# flutter analyze はファイル単位ではなくパッケージ単位で見るものなので、
-# {staged_files} は渡さず、変更の有無だけを glob で判定している。
+# flutter analyze works per package rather than per file, so {staged_files} is
+# not passed; the glob only decides whether anything changed.
 pre-commit:
   jobs:
     - name: mobile-lint
       root: "apps/mobile/"
       glob: "*.{dart,yaml}"
-      # SDKは fvm で固定している(.fvmrc)。fvm でSDKを入れてあればそれを使い、
-      # 手でFlutterを入れている人・CI用コンテナでは素の flutter に落とす。
+      # The SDK is pinned with fvm (.fvmrc). Use fvm's SDK when installed, and
+      # fall back to plain flutter for manual installs and CI containers.
       run: |
         if [ -d .fvm/flutter_sdk ] && command -v fvm >/dev/null 2>&1; then
           fvm flutter analyze

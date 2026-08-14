@@ -1,29 +1,30 @@
-/// ストア掲載用のスクリーンショットを**実画面から**書き出す。
+/// Exports store screenshots from the real screens.
 ///
 /// ```bash
 /// cd apps/mobile
 /// fvm flutter test tool/generate_store_screenshots.dart
 /// ```
 ///
-/// 手描きのモックを出さないのは、App Review が「スクリーンショットは
-/// 実際のアプリを表していること」を要求するため(Guideline 2.3.3)。
-/// golden test と同じ仕組みで本物のWidgetツリーを描いている。
+/// Hand-drawn mockups are not used because App Review requires screenshots to
+/// represent the actual app (guideline 2.3.3). This renders the real widget tree
+/// through the same mechanism as the golden tests.
 ///
-/// 出力(`docs/store/screenshots/`):
-///   plain/     1179x2556 端末フレームなしの素のまま。Shipaton提出用の指定サイズ
-///   captioned/ 1290x2796 App Store Connect の 6.9インチ必須サイズ。見出し付き
-///   play/      1080x1920 Google Play の「スマートフォン」。見出し付き
-///   play-tablet-7/  1200x1920 Google Play の「7インチ タブレット」(600dp幅で描画)
-///   play-tablet-10/ 1600x2560 Google Play の「10インチ タブレット」(800dp幅で描画)
+/// Output (`docs/store/screenshots/`):
+///   plain/     1179x2556, no device frame. The size required for submission
+///   captioned/ 1290x2796, App Store Connect's mandatory 6.9-inch size, captioned
+///   play/      1080x1920, Google Play "phone", captioned
+///   play-tablet-7/  1200x1920, Google Play "7-inch tablet" (rendered at 600dp)
+///   play-tablet-10/ 1600x2560, Google Play "10-inch tablet" (rendered at 800dp)
 ///
-/// **Play に captioned を流用しないこと。** Play は縦横比を 16:9〜9:16 に
-/// 制限していて、1290x2796(1:2.17)は 9:16(1:1.78)より縦長なので弾かれる。
+/// Do not reuse captioned for Play: Play restricts the aspect ratio to 16:9-9:16,
+/// and 1290x2796 (1:2.17) is taller than 9:16 (1:1.78), so it is rejected.
 ///
-/// あわせてフィーチャーグラフィック(`docs/store/feature-graphic/`・1024x500)も
-/// ここで描く。Playでは**必須**で、これが無いと公開できない。
+/// The feature graphic (`docs/store/feature-graphic/`, 1024x500) is drawn here
+/// too. Play requires it; without it the app cannot be published.
 ///
-/// 並び順は inception-deck §3。①授業(板書)②祝福 ③カルテ ④連続日数 ⑤復習。
-/// **デッキ §3 と同期していること。**片方だけ直すと、ストア素材と正文がずれる。
+/// The order follows the deck: lesson (board), celebration, karte, streak,
+/// review. Keep it in sync with the deck, or the store assets and the canonical
+/// text drift apart.
 library;
 
 import 'dart:io';
@@ -37,8 +38,8 @@ import 'package:ai_sensei/src/features/capture/application/capture_controller.da
 import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
 import 'package:ai_sensei/src/features/karte/application/last_board_controller.dart';
 import 'package:ai_sensei/src/features/karte/domain/last_board.dart';
-// `SessionLimits` は karte / session の両方に別々の定義がある。ここで要るのは
-// `SessionStart` が持つ session 側なので、karte 側を隠す。
+// `SessionLimits` is defined separately in karte and session. What is needed
+// here is the session one held by `SessionStart`, so the karte one is hidden.
 import 'package:ai_sensei/src/features/karte/domain/karte.dart'
     hide SessionLimits;
 import 'package:ai_sensei/src/features/session/application/board_inbox.dart';
@@ -60,16 +61,17 @@ import '../test/support/harness.dart';
 const String _outDir = '../../docs/store/screenshots';
 const String _featureDir = '../../docs/store/feature-graphic';
 
-/// 素のスクショ。iPhone 15 Pro の論理サイズ。×3で 1179x2556 になる。
+/// The plain screenshot, at iPhone 15 Pro logical size; x3 gives 1179x2556.
 const Size _plainLogical = Size(393, 852);
 
-/// フィーチャーグラフィック。Playが指定する唯一のサイズ。
+/// The feature graphic, at the one size Play specifies.
 const Size _featurePixels = Size(1024, 500);
 
 const double _pixelRatio = 3;
 
-/// 見出しつきで書き出す枠。**中の画面はこの `logical` で本当に描く**ので、
-/// タブレットの絵はタブレット幅のレイアウトになる(実機と違う絵を出さない)。
+/// A captioned output frame. The screen inside really is rendered at this
+/// `logical` size, so tablet shots use the tablet-width layout and never show a
+/// picture the device would not.
 @immutable
 class _Frame {
   const _Frame({
@@ -79,39 +81,40 @@ class _Frame {
     required this.topRatio,
   });
 
-  /// `docs/store/screenshots/{locale}/` の下のディレクトリ名。
+  /// Directory name under `docs/store/screenshots/{locale}/`.
   final String dir;
   final Size logical;
   final Size pixels;
 
-  /// 見出しの下に空ける量(地の高さに対する比)。地が横長になるほど詰める。
+  /// Space below the caption, as a fraction of canvas height. Wider canvases get
+  /// less.
   final double topRatio;
 }
 
-/// 縦長すぎる地は見出しと端末画像が離れるので `topRatio` で吸収する。
+/// A very tall canvas separates caption and device image, absorbed by `topRatio`.
 const List<_Frame> _frames = <_Frame>[
-  // App Store Connect の 6.9インチ必須サイズ。
+  // App Store Connect's mandatory 6.9-inch size.
   _Frame(
     dir: 'captioned',
     logical: Size(430, 932),
     pixels: Size(1290, 2796),
     topRatio: 0.185,
   ),
-  // Google Play「スマートフォン」。9:16 ちょうど。
+  // Google Play "phone", exactly 9:16.
   _Frame(
     dir: 'play',
     logical: _plainLogical,
     pixels: Size(1080, 1920),
     topRatio: 0.135,
   ),
-  // Google Play「7インチ タブレット」。600dp幅 = 7インチ級のレイアウト。
+  // Google Play "7-inch tablet": 600dp wide, a 7-inch-class layout.
   _Frame(
     dir: 'play-tablet-7',
     logical: Size(600, 960),
     pixels: Size(1200, 1920),
     topRatio: 0.135,
   ),
-  // Google Play「10インチ タブレット」。800dp幅。
+  // Google Play "10-inch tablet", 800dp wide.
   _Frame(
     dir: 'play-tablet-10',
     logical: Size(800, 1280),
@@ -126,8 +129,8 @@ void main() {
   for (final _Shot shot in _shots) {
     for (final _Copy copy in shot.copy) {
       testWidgets('${copy.locale} ${shot.slug}', (WidgetTester tester) async {
-        // ラスタライズ(toImage)は本物の非同期を要るので、pumpと分けて
-        // runAsync の中で回す。fake_async のゾーンで呼ぶと完了しない。
+        // Rasterizing (toImage) needs real async, so it runs inside runAsync,
+        // separate from pump; called in a fake_async zone it never completes.
         final GlobalKey plainKey =
             await _pump(tester, shot, copy.locale, _plainLogical);
         await tester.runAsync(() async {
@@ -168,7 +171,7 @@ void main() {
   }
 }
 
-// --- 実画面のレンダリング ---
+// --- Rendering the real screens ---
 
 Future<GlobalKey> _pump(
     WidgetTester tester, _Shot shot, String locale, Size logical) async {
@@ -195,8 +198,9 @@ Future<GlobalKey> _pump(
     return key;
   }
 
-  // 常設タブの下の画面。ルータの redirect と画面が同じコンテナを見るよう、
-  // golden の `expectRoutedGolden` と同じ形でコンテナを外から渡す。
+  // Screens under the permanent tabs. The container is passed in, as in the
+  // goldens' `expectRoutedGolden`, so the router's redirect and the screen share
+  // one container.
   final ProviderContainer container = ProviderContainer(
     overrides: <Object?>[..._bootOverrides(), ...shot.overrides].cast(),
   );
@@ -220,15 +224,16 @@ Future<ui.Image> _capture(GlobalKey key) {
   return boundary.toImage(pixelRatio: _pixelRatio);
 }
 
-// --- 見出しつきの合成 ---
+// --- Captioned composition ---
 
-/// 淡い青の地。ストアの一覧で5枚が1つの帯に見えるように全枚数で共通。
+/// The pale blue canvas, shared by every shot so the five read as one band in
+/// the store listing.
 const Color _canvasTop = Color(0xFFE6F4FE);
 const Color _canvasBottom = Color(0xFFFBFAF7);
 
-/// [topRatio] は見出しの下に空ける量(地の高さに対する比)。
-/// 地の縦横比が変わると見出しと端末画像のあいだが空きすぎるので、
-/// **Play(9:16)は captioned(1:2.17)より詰める**。
+/// [topRatio] is the space below the caption as a fraction of canvas height.
+/// A different aspect ratio leaves too much room between caption and device
+/// image, so Play (9:16) uses less than captioned (1:2.17).
 Future<ui.Image> _compose(
   ui.Image screen,
   _Copy copy,
@@ -256,11 +261,12 @@ Future<ui.Image> _compose(
     fontSize: w * 0.052,
   );
 
-  // 端末フレーム(ベゼル)は描かない。角丸は写真の切り抜きとして最小限。
+  // No device bezel is drawn; the corner radius is the minimum for a crop.
   //
-  // [topRatio] は下限で、**見出しが実際に何行になったか**で押し下げる。
-  // 地が横長になるほど1行に入る字数が減り、比だけで決めると2行の見出しが
-  // 端末画像に食い込む(タブレットの日本語で最初に出た)。
+  // [topRatio] is a floor, pushed down by how many lines the caption actually
+  // took. A wider canvas fits fewer characters per line, so deciding by ratio
+  // alone lets a two-line caption bite into the device image (first seen with
+  // Japanese on tablets).
   final double top = math.max(h * topRatio, captionBottom + h * 0.03);
   final double bottomPad = h * 0.024;
   double height = h - top - bottomPad;
@@ -292,9 +298,9 @@ Future<ui.Image> _compose(
   return recorder.endRecording().toImage(w.toInt(), h.toInt());
 }
 
-/// 見出し。蛍光マーカー(黄=言えた / ピンク=穴)がこのアプリの署名なので、
-/// 強調はboldではなくマーカーで引く。**下端のyを返す** —— 呼び側は
-/// これを見て端末画像の位置を決める(行数で高さが変わる)。
+/// The caption. The highlighter (yellow = said it, pink = a gap) is the app's
+/// signature, so emphasis is a marker rather than bold. It returns the bottom y,
+/// which the caller uses to place the device image (height varies with lines).
 double _drawCaption(
   Canvas canvas,
   _Copy copy, {
@@ -341,16 +347,16 @@ double _drawCaption(
   return origin.dy + painter.height;
 }
 
-// --- フィーチャーグラフィック(1024x500) ---
+// --- Feature graphic (1024x500) ---
 
-/// Playの「フィーチャーグラフィック」。ストアページの一番上に出る1枚。
+/// Play's feature graphic, the image at the top of the store page.
 ///
-/// 地はスクショ5枚と同じ淡い青のグラデーションにする(掲載ページで
-/// フィーチャーグラフィックとスクショの帯が地続きに見えるように)。
-/// 絵柄はアイコンと同じマーク。**別の絵を新しく描かない** —— ストアで
-/// 最初に目に入る2つ(アイコンとこの1枚)が違う絵だと結びつかない。
+/// It uses the same pale blue gradient as the five screenshots, so the graphic
+/// and the screenshot band read as continuous on the listing. The artwork is the
+/// same mark as the icon: no new picture, because the two things seen first in
+/// the store must connect.
 ///
-/// 端に寄せた要素はデバイスによって切られるので、内側 72px は空ける。
+/// Edge-aligned elements get cropped on some devices, so 72px is kept clear.
 Future<ui.Image> _featureGraphic(_FeatureCopy copy) async {
   final ui.PictureRecorder recorder = ui.PictureRecorder();
   final Canvas canvas = Canvas(recorder);
@@ -386,8 +392,9 @@ Future<ui.Image> _featureGraphic(_FeatureCopy copy) async {
       style: const TextStyle(
         fontFamily: 'ZenMaruGothic',
         fontWeight: FontWeight.w700,
-        // 日本語の見出しが2行に収まる上限。全角14字 × 40 = 560 で、
-        // 使える幅(592)に収まる。上げると「もらう。」だけが3行目に落ちる。
+        // The largest size keeping the Japanese caption to two lines: 14
+        // full-width characters at 40 gives 560, inside the usable 592. Any
+        // larger and the last word drops to a third line.
         fontSize: 40,
         height: 1.4,
         color: AppColors.ink,
@@ -414,7 +421,7 @@ Future<ui.Image> _featureGraphic(_FeatureCopy copy) async {
   final double blockHeight = headline.height + gap + sub.height;
   final Offset origin = Offset(textLeft, (h - blockHeight) / 2);
 
-  // 強調はboldではなくマーカー(captioned の見出しと同じ作法)。
+  // Emphasis is a marker, not bold (as in the captioned headings).
   final int start = copy.headline.indexOf(copy.marker);
   if (start >= 0) {
     for (final TextBox box in headline.getBoxesForSelection(
@@ -447,19 +454,20 @@ class _FeatureCopy {
   final String locale;
   final String headline;
 
-  /// マーカーを引く部分文字列。
+  /// The substring the marker is drawn under.
   final String marker;
   final String sub;
 }
 
-/// 一行はLPとPlayの短い説明と同じ言葉にする(媒体ごとに言い方を変えない)。
+/// The one-liner matches the landing page and Play's short description; the
+/// wording does not change per medium.
 const List<_FeatureCopy> _featureCopy = <_FeatureCopy>[
   _FeatureCopy(
     locale: 'ja',
     headline: '答えを教える。\nそのあと、教え返してもらう。',
     marker: '教え返してもらう',
-    // 4課程(中学数学・高校数学・中学英語・高校英語)を1行で。
-    // 「数I・A…」まで並べると科目名だけで行が埋まって英語が消える。
+    // All four curricula on one line. Listing individual subject names fills the
+    // line and English disappears.
     sub: '中学・高校の数学と英語',
   ),
   _FeatureCopy(
@@ -481,7 +489,7 @@ void _write(String path, Uint8List bytes) {
   file.writeAsBytesSync(bytes, flush: true);
 }
 
-// --- 5枚の中身 ---
+// --- The five shots ---
 
 @immutable
 class _Copy {
@@ -495,16 +503,19 @@ class _Copy {
   final String locale;
   final String headline;
 
-  /// マーカーを引く部分文字列。
+  /// The substring the marker is drawn under.
   final String? marker;
   final Color markerColor;
 }
 
-/// スクショ1枚ぶん。[screen] か [location] のどちらか一方だけを渡す。
+/// One screenshot. Pass exactly one of [screen] or [location].
 ///
-/// - 常設タブの下の画面は [location] でルータ経由。下部タブごと撮る
-/// - `MaterialApp.home` に置くとタブが写らず、実機と違う絵になる(2.3.3)
-/// - 授業の線(撮影 → 会話 → 祝福)はシェルの外。実機にもタブが無い
+/// - Screens under the permanent tabs use [location] and go through the router,
+///   so the bottom tabs are captured
+/// - Placed in `MaterialApp.home` the tabs are missing, giving a picture the
+///   device never shows (2.3.3)
+/// - The lesson line (capture, conversation, celebration) sits outside the shell,
+///   and has no tabs on device either
 @immutable
 class _Shot {
   const _Shot({
@@ -520,25 +531,25 @@ class _Shot {
 
   final String slug;
 
-  /// シェルの外の画面。そのまま `MaterialApp.home` に置く。
+  /// A screen outside the shell, placed directly in `MaterialApp.home`.
   final Widget? screen;
 
-  /// 常設タブの下にある画面のルート。下部ナビゲーションごと撮る。
+  /// The route of a screen under the permanent tabs; shot with the navigation.
   final String? location;
 
   final List<_Copy> copy;
   final List<Object?> overrides;
 }
 
-/// ルータ経由で撮るときの起動時の値。
-/// 渡さないと初回起動と見なされ、オンボーディングが出る。
+/// Startup values for router-based shots. Without them it looks like a first
+/// launch and onboarding appears.
 List<Object?> _bootOverrides() => <Object?>[
       onboardedProvider.overrideWithValue(true),
       deviceIdProvider.overrideWithValue('11111111-2222-3333-4444-555555555555'),
     ];
 
-/// 会話画面は撮影から渡されたセッションが無いとホームへ戻る。
-/// スクショでは通信しないので、繋がった体の状態を差し込む。
+/// The conversation screen returns home without a session passed from capture.
+/// Screenshots make no requests, so a connected-looking state is injected.
 const SessionStart _sampleSessionStart = SessionStart(
   sessionId: 'ses_1',
   kind: 'realtime',
@@ -547,7 +558,8 @@ const SessionStart _sampleSessionStart = SessionStart(
   limits: SessionLimits(maxSeconds: 300, lessonAllowedToday: true),
 );
 
-/// 撮影から渡される解析の結果(単元と問題文)。会話の開始とは別の値。
+/// The analysis result passed from capture (topic and problem text); separate
+/// from the conversation start.
 const SessionAnalysis _sampleSessionAnalysis = SessionAnalysis(
   sessionId: 'ses_1',
   kind: 'realtime',
@@ -583,7 +595,7 @@ class _FakeCaptureController extends CaptureController {
   );
 }
 
-/// カルテに残る板書。3枚目の「根拠」の節をここで埋める。
+/// The board kept in the karte, filling the third shot's evidence section.
 class _FakeLastBoardController extends LastBoardController {
   @override
   LastBoard build() => const LastBoard(
@@ -603,10 +615,11 @@ class _FakeLastBoardController extends LastBoardController {
 }
 
 final List<_Shot> _shots = <_Shot>[
-  // 1枚目は**授業モード(板書つき)**。ピボット前は「後輩が答えを知らないまま
-  // 聞いてくる」画面だったが、それは改正前の約束1(答えを教えない)そのもので、
-  // いまのプロダクトではない。板書が出ている画面は静止画でいちばん映えるので、
-  // ストアの1枚目もここに変える(ADR 0006 でコアループの中心と定義した画面)。
+  // The first shot is lesson mode, with the board. Before the pivot it was a
+  // junior asking without knowing the answer, which was the old promise not to
+  // give the answer and is no longer the product. A screen with a board also
+  // reads best as a still, so it leads the store listing (ADR 0006 defines it as
+  // the core loop's centre).
   _Shot(
     slug: '01-lesson',
     screen: const SessionScreen(),
@@ -617,8 +630,8 @@ final List<_Shot> _shots = <_Shot>[
           const SessionState(
             phase: SessionPhase.senpaiTeaching,
             remainingSeconds: 214,
-            // 数式は板書、声は問いかけだけ(計画書§3-1)。
-            // 見出しの言葉と同じものを喋らせない。
+            // Formulas on the board, voice for questions only, and never the
+            // same words as the caption.
             lastSenpaiText: 'ここ、D を見てほしいんだけど — プラスだよね。だから?',
             board: BoardSnapshot(
               title: '判別式で解の個数を見る',
@@ -673,7 +686,8 @@ final List<_Shot> _shots = <_Shot>[
       ),
     ],
   ),
-  // ここから3枚は常設タブの下。ルータ経由で撮って、下部ナビゲーションを写す。
+  // The next three sit under the permanent tabs, shot through the router so the
+  // bottom navigation appears.
   _Shot(
     slug: '03-karte',
     location: AppRoute.karte.path,
@@ -682,7 +696,8 @@ final List<_Shot> _shots = <_Shot>[
       sessionOutcomeControllerProvider.overrideWith(
         () => FakeSessionOutcomeController(const SessionOutcome()),
       ),
-      // 「先輩が書いたもの」の節(ADR 0006)。カルテの「根拠」なので落とさない。
+      // The "what senpai wrote" section (ADR 0006): the karte's evidence, so it
+      // is never dropped.
       lastBoardControllerProvider.overrideWith(_FakeLastBoardController.new),
       progressControllerProvider.overrideWith(FakeProgressController.new),
       reviewControllerProvider.overrideWith(
@@ -709,7 +724,7 @@ final List<_Shot> _shots = <_Shot>[
     location: AppRoute.home.path,
     overrides: <Object?>[
       progressControllerProvider.overrideWith(FakeProgressController.new),
-      // 「きのうの続き」のカードに、件数ではなく単元の中身を出すため。
+      // So the "yesterday's thread" card shows topic content rather than a count.
       reviewControllerProvider.overrideWith(
         () => FakeReviewController(sampleReviewQueue),
       ),

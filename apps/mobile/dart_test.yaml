@@ -1,6 +1,7 @@
 tags:
-  # golden test は **Linuxのラスタライズを正** とする(test/golden/README.md)。
-  # 他OSで走らせるとフォントの描画差でかならず落ちるので、
-  # macOSで動く Codemagic 側は `flutter test --exclude-tags golden` で外す。
-  # 正となる実行は GitHub Actions(ubuntu-latest)。
+  # Golden tests treat Linux rasterization as authoritative (see
+  # test/golden/README.md). Other OSes always fail on font rendering differences,
+  # so Codemagic (macOS) excludes them with
+  # `flutter test --exclude-tags golden`. The authoritative run is GitHub Actions
+  # on ubuntu-latest.
   golden:

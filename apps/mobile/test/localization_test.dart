@@ -8,17 +8,18 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
 
-/// 日本語と英語の2ロケール。
+/// The Japanese and English locales.
 ///
-/// 見ているのは訳の出来ではなく、**日本語が海外のユーザーに出ないこと**と、
-/// 画面に出る単元名がサーバ(カリキュラム)の言語のまま素通しされること。
+/// What is checked is not translation quality but that Japanese never reaches
+/// overseas users, and that topic names pass through in the language the
+/// server's curriculum returned.
 void main() {
   const AppStrings ja = AppStrings(Locale('ja'));
   const AppStrings en = AppStrings(Locale('en'));
 
   group('端末の言語の解決', () {
-    // Flutter の既定は「一致しなければ supportedLocales の先頭」。
-    // 何もしないとスペイン語の端末に日本語が出る。
+    // Flutter defaults to the first supportedLocales entry on no match, so doing
+    // nothing shows Japanese on a Spanish device.
     test('日本語を望んだ端末にだけ日本語を出す', () {
       expect(AppStrings.resolve(<Locale>[const Locale('ja', 'JP')]), const Locale('ja'));
       expect(AppStrings.resolve(<Locale>[const Locale('en', 'US')]), const Locale('en'));
@@ -57,8 +58,8 @@ void main() {
   });
 
   group('カルテ画面(英語)', () {
-    // 単元名はサーバのカリキュラムが持っている。海外の課程で始めた
-    // セッションなら "Algebra 1 / ..." が返り、アプリはそれをそのまま出す。
+    // Topic names come from the server's curriculum: a session started on an
+    // international curriculum returns "Algebra 1 / ...", shown unchanged.
     final Karte englishKarte = Karte(
       id: 'kar_en',
       sessionId: 'ses_en',

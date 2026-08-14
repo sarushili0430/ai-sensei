@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
 # =============================================================================
-# apps/mobile を --dart-define 付きで起動する
+# Run apps/mobile with --dart-define
 # =============================================================================
 #   tool/run.sh                                        debug + dart_defines/local.json
-#   tool/run.sh --debug --dart_define=local            同上(明示)
+#   tool/run.sh --debug --dart_define=local            the same, stated explicitly
 #   tool/run.sh --release --dart_define=prod
 #   tool/run.sh --debug --dart_define=dart_defines/staging.json
 #   tool/run.sh --debug --dart_define=API_BASE_URL=http://192.168.1.10:8787
 #   tool/run.sh --debug --dart_define=local -d "iPhone 15"
 #
-# --dart_define / --dart-define / --dart-define-from-file はすべて同じ意味で
-# 受ける(手癖でどれを打っても通るように)。値の形で振る舞いが決まる:
+# --dart_define / --dart-define / --dart-define-from-file all mean the same
+# thing (so any habit works). The value's shape decides the behaviour:
 #
-#   KEY=VALUE の形     → そのまま --dart-define=KEY=VALUE に渡す
-#   それ以外           → ファイルとして解決し --dart-define-from-file に渡す
-#                        (local → dart_defines/local.json のように補完する)
+#   KEY=VALUE      -> passed straight through as --dart-define=KEY=VALUE
+#   anything else  -> resolved as a file and passed to --dart-define-from-file
+#                     (local -> dart_defines/local.json)
 #
-# 何度でも書ける。Flutterは後に来たものを優先するので、
+# It can be repeated. Flutter prefers the last one, so
 #   --dart_define=local --dart_define=API_BASE_URL=http://192.168.1.10:8787
-# はファイルを読んだうえで API_BASE_URL だけ上書き、になる。
+# reads the file and then overrides only API_BASE_URL.
 #
-# 知らないオプションは flutter run にそのまま素通しする(-d / --flavor / など)。
+# Unknown options are passed straight to flutter run (-d, --flavor, and so on).
 # =============================================================================
 set -euo pipefail
 
@@ -28,9 +28,9 @@ cd "$(dirname "$0")/.."
 
 mode="debug"
 use_fvm="auto"
-defines=()      # flutter に渡す --dart-define 系のフラグ
-explicit=0      # --dart_define が1つでも指定されたか
-passthrough=()  # そのまま flutter run に渡す残り
+defines=()      # --dart-define flags passed to flutter
+explicit=0      # whether any --dart_define was given
+passthrough=()  # the rest, passed straight to flutter run
 
 die() {
   echo "$@" >&2
@@ -42,7 +42,7 @@ usage() {
   exit 0
 }
 
-# 置いてある定義ファイルを一覧する(エラーメッセージ用)
+# List the available define files (for error messages).
 list_define_files() {
   # shellcheck disable=SC2012
   ls dart_defines/*.json dart_defines/*.env dart_defines.json dart_defines.env 2>/dev/null |
@@ -50,7 +50,7 @@ list_define_files() {
     sed 's/^/  /'
 }
 
-# 受け取った文字列をファイルパスに解決する。見つからなければ 1 を返す。
+# Resolve the given string to a file path; returns 1 if not found.
 resolve_define_file() {
   raw="$1"
   for candidate in \
@@ -67,8 +67,8 @@ resolve_define_file() {
   return 1
 }
 
-# Flutterは壊れたJSONに対して素っ気ない落ち方をするので、先にこちらで見る。
-# 入れ子(オブジェクト/配列)も --dart-define では表現できないのでここで落とす。
+# Flutter fails unhelpfully on malformed JSON, so check it here first. Nested
+# objects and arrays cannot be expressed by --dart-define, so reject those too.
 validate_define_file() {
   file="$1"
   case "$file" in
@@ -111,7 +111,7 @@ add_define() {
       die "--dart_define= の値が空。ファイル名(例 local)か KEY=VALUE を渡すこと。"
       ;;
     *=*)
-      # KEY=VALUE。そのまま渡す
+      # KEY=VALUE: pass it straight through.
       defines+=("--dart-define=$value")
       ;;
     *)
@@ -173,9 +173,9 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-# --dart_define を1つも書かなかったときの既定。
-# 黙って何も渡さずに起動すると、API_BASE_URL は localhost、ONESIGNAL_APP_ID は空
-# (= 通知機能ごと無効)で動くことになる。原因を後から探すことになるので先に落とす。
+# Default when no --dart_define was given. Launching with nothing passed would
+# silently run with API_BASE_URL at localhost and an empty ONESIGNAL_APP_ID (so
+# notifications are disabled). Fail up front rather than debugging it later.
 if [ "$explicit" -eq 0 ]; then
   if default_file="$(resolve_define_file local)"; then
     validate_define_file "$default_file"
@@ -192,7 +192,7 @@ if [ "$explicit" -eq 0 ]; then
   fi
 fi
 
-# fvm がありSDKが固定されているならそちらを使う(.fvmrc = 正)。
+# Use fvm's SDK when it is present and pinned (.fvmrc is authoritative).
 if [ "$use_fvm" = "auto" ]; then
   if command -v fvm >/dev/null 2>&1 && [ -f .fvmrc ]; then
     use_fvm="yes"
@@ -208,6 +208,6 @@ cmd+=(run "--$mode")
 cmd+=(${defines[@]+"${defines[@]}"})
 cmd+=(${passthrough[@]+"${passthrough[@]}"})
 
-# 何で起動したかが分からないと、値がずれていたときに追えない
+# Without knowing what was launched, a wrong value cannot be traced.
 printf '==> %s\n' "${cmd[*]}"
 exec "${cmd[@]}"

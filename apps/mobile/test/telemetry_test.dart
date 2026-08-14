@@ -2,17 +2,20 @@ import 'package:ai_sensei/src/telemetry/telemetry.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
-/// 縮退の監視(計画書 §10-7)。
+/// Degradation monitoring.
 ///
-/// ここで見ているのは「Sentryに届いたか」ではなく、**届く前に守るべき約束**:
+/// These check not whether Sentry received anything but the promises that hold
+/// before it is sent:
 ///
-///   - DSN が無いビルドでは何もしない(手元とCIの挙動を変えない)
-///   - 同じことを連発しない(1回の授業で何十手順も流れる)
-///   - **本文を送らない**(ユーザーは未成年。写真・発話・カルテ・問題文)
+///   - builds without a DSN do nothing (local and CI behave the same)
+///   - the same thing is not reported repeatedly (a lesson streams dozens of
+///     steps)
+///   - content is never sent (users are minors: photos, speech, kartes, problem
+///     text)
 void main() {
   group('DSN が無いビルド', () {
     test('監視は無効。初期化も送信もしない', () {
-      // `--dart-define=SENTRY_DSN` を渡さずに走らせているので、常にこちら。
+      // Run without `--dart-define=SENTRY_DSN`, so this is always the case.
       expect(SentryConfig.dsn, isEmpty);
       expect(SentryConfig.isConfigured, isFalse);
     });
@@ -61,8 +64,8 @@ void main() {
       expect(throttle.allow('latex_scale_floor/brd_1'), isTrue);
     });
 
-    // 無制限に覚えると、長く使った人の端末でここだけが太り続ける。
-    // 上限に達したら忘れる(= そこから先はもう一度だけ送る)。
+    // Remembering without bound grows only this on a long-running device, so at
+    // the cap it forgets and each key sends once more.
     test('覚える鍵には上限があり、超えたら忘れる', () {
       final DegradationThrottle throttle = DegradationThrottle(limit: 3);
 
@@ -71,16 +74,17 @@ void main() {
       expect(throttle.allow('c'), isTrue);
       expect(throttle.allow('a'), isFalse, reason: 'まだ覚えている');
 
-      // 4件目で忘れる。そのあとは a も通る = 送りすぎより「何も飛ばなくなる」を避ける。
+      // It forgets at the fourth, so `a` passes again: over-reporting beats going
+      // silent.
       expect(throttle.allow('d'), isTrue);
       expect(throttle.allow('a'), isTrue);
     });
   });
 
   group('本文を送らない(ユーザーは未成年)', () {
-    // `enablePrintBreadcrumbs` の既定は true で、`debugPrint` の出力が
-    // そのままパンくずになる。このアプリの `debugPrint` には `tex` の全文や
-    // カルテ取得の失敗理由が入っているので、**ここが最後の関門**。
+    // `enablePrintBreadcrumbs` defaults to true, turning `debugPrint` output into
+    // breadcrumbs. Ours carries full `tex` and karte fetch failures, so this is
+    // the last gate.
     test('パンくずは1つ残らず落とす', () {
       final SentryEvent event = SentryEvent(
         breadcrumbs: <Breadcrumb>[
@@ -103,25 +107,26 @@ void main() {
       expect(scrubEvent(event, Hint())!.request, isNull);
     });
 
-    // イベントごと落とすと縮退が観測できなくなる。落とすのは中身だけ。
+    // Dropping the event would make degradations unobservable; drop the contents
+    // only.
     test('イベントそのものは落とさない', () {
       expect(scrubEvent(SentryEvent(), Hint()), isNotNull);
     });
   });
 
-  /// **固定したいのは「パスの文言を送っていない」ではない。**
-  /// 「縮退の payload に、ユーザー由来の自由文が1つも入らない」ほう。
-  /// 前者は1か所を守るが、後者は**これから足される5種目も守る**。
+  /// What is pinned is not "the pass wording is not sent" but "no user-authored
+  /// free text reaches a degradation payload at all". The former guards one
+  /// place; the latter guards the fifth kind we have not written yet.
   ///
-  /// 構造としては `DegradationEvent` のコンストラクタが private で、
-  /// 名前つきの生成子からしか作れないことが担保になっている
-  /// (`Telemetry.report` は生のMapを受け取らない)。ここではその生成子が
-  /// 実際に何を通すかを見る。
+  /// Structurally, `DegradationEvent`'s constructor is private and only the named
+  /// factories can build one (`Telemetry.report` takes no raw Map). These tests
+  /// check what those factories actually let through.
   group('payload に自由文が入らない', () {
-    /// 発話・カルテ・問題文のつもりの毒。**どこにも現れてはいけない。**
+    /// Poison standing in for speech, karte and problem text. It must appear
+    /// nowhere.
     const String poison = '判別式は、解が何個あるか調べるやつです。円 x^2 + y^2 = 5 と直線 y = x + k について…';
 
-    /// 生成子が作れる全種類。**5種目を足したらここにも足すこと。**
+    /// Every kind the factories can build. Adding a fifth means adding it here.
     List<DegradationEvent> allEvents() => <DegradationEvent>[
       DegradationEvent.boardGap(
         sessionId: 'ses_1',
@@ -162,15 +167,15 @@ void main() {
           if (entry.value is! String) continue;
           expect(
             (entry.value! as String).length,
-            lessThanOrEqualTo(maxFieldLength + 1), // 切ったときの「…」ぶん
+            lessThanOrEqualTo(maxFieldLength + 1), // allows for the ellipsis
             reason: '${event.kind.id} の ${entry.key}',
           );
         }
       }
     });
 
-    // 契約違反の理由は**こちらが組み立てた診断文**(seq と index の話)だが、
-    // 将来そこに本文が混ざる書き方をしても、流れる量は切り落とされる。
+    // The violation reason is a diagnostic we assembled (seq and index), but if
+    // content ever slips in, the amount that escapes is still capped.
     test('長すぎる診断文は切り落とす', () {
       final DegradationEvent event = DegradationEvent.boardGap(
         sessionId: 'ses_1',
@@ -184,8 +189,9 @@ void main() {
       expect(reason.endsWith('…'), isTrue);
     });
 
-    /// **唯一の例外が `tex`。** 中身は数式なので送ってよいが、それでも切る。
-    /// 切るのは生成子の内側なので、**呼び出し側が全文を渡しても外には出ない。**
+    /// `tex` is the one exception: it is a formula, so it may be sent, but it is
+    /// still truncated inside the factory, so a caller passing the whole string
+    /// leaks nothing.
     test('tex だけが本文を持てる。それでも先頭だけに切られる', () {
       final DegradationEvent event = DegradationEvent.latexScaleFloor(
         tex: 'x' * 500,
@@ -200,8 +206,8 @@ void main() {
       expect(tex.endsWith('…'), isTrue);
     });
 
-    // 生成子が `Type` しか受け取らないので、例外の `toString()`
-    // (接続先URLやトークンの断片を含みうる)は渡しようがない。
+    // The factory accepts only a `Type`, so an exception's `toString()` (which
+    // can contain endpoint URLs or token fragments) cannot be passed.
     test('パスの失敗は、例外の型名しか持たない', () {
       final DegradationEvent event = DegradationEvent.passNotSent(
         sessionId: 'ses_1',
@@ -210,7 +216,7 @@ void main() {
       );
 
       expect(event.data['error'], 'StateError');
-      // パスの文言を渡す引数が無い = 渡しようがない。
+      // There is no parameter for the pass wording, so it cannot be passed.
       expect(event.data.keys, <String>['session_id', 'phase', 'error']);
     });
 
@@ -233,7 +239,8 @@ void main() {
         ).dedupeKey,
         'brd_1',
       );
-      // `board_open` すら読めずに壊れた場合。1セッションに1件へ落ちる。
+      // Broken before even `board_open` was readable; falls back to one per
+      // session.
       expect(
         DegradationEvent.boardGap(
           sessionId: 'ses_1',
@@ -245,8 +252,8 @@ void main() {
       );
     });
 
-    // 同じ会話で何度も詰まるのは**正常**。詰まるたびに飛ばすと、
-    // 本当に見たい「送信経路が壊れている」が件数に埋もれる。
+    // Getting stuck repeatedly in one conversation is normal; reporting each time
+    // would bury the real signal that the send path is broken.
     test('パスの失敗は1セッションに1件', () {
       expect(
         DegradationEvent.passNotSent(
@@ -275,7 +282,7 @@ void main() {
   });
 
   group('縮退の種類', () {
-    // Sentry 上の検索とグルーピングに使うので、日本語にしない。
+    // Used for search and grouping in Sentry, so it stays ASCII.
     test('IDは英数字のまま', () {
       for (final Degradation kind in Degradation.values) {
         expect(kind.id, matches(RegExp(r'^[a-z_]+$')), reason: '${kind.name} の id');
@@ -287,9 +294,9 @@ void main() {
       expect(ids, hasLength(Degradation.values.length));
     });
 
-    /// 約束3(パスを恥にしない)は、パスが**残る**ことで成立している。
-    /// 送信が失敗すると穴として価値化されず、しかも**画面は何事もなく進む**ので、
-    /// 本人にもこちらにも見えない。それを見えるようにする種類。
+    /// The promise that passing is not shameful holds only because a pass is
+    /// recorded. A failed send never becomes a gap, and the screen carries on as
+    /// if fine, so neither side can see it. This kind makes it visible.
     test('パスが送れなかったことを記録する種類がある', () {
       expect(Degradation.values, contains(Degradation.passNotSent));
       expect(Degradation.passNotSent.id, 'pass_not_sent');

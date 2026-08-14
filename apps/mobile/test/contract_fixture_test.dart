@@ -8,11 +8,11 @@ import 'package:ai_sensei/src/features/session/domain/board.dart';
 import 'package:ai_sensei/src/features/session/domain/session.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// 契約ドリフトの検知(Dart側)。
+/// Contract drift detection, Dart side.
 ///
-/// TypeScript側は `packages/contract/src/fixtures.test.ts` が同じファイルを
-/// zodでパースしている。**両方が通って初めて契約が揃っている**と言える。
-/// 片側だけスキーマを変えると、ここか向こうが落ちる。
+/// On the TypeScript side, `packages/contract/src/fixtures.test.ts` parses the
+/// same files with zod. The contract is only aligned when both pass; changing
+/// the schema on one side alone fails here or there.
 Map<String, dynamic> loadFixture(String name) {
   final File file = File('../../packages/contract/fixtures/$name.json');
   expect(file.existsSync(), isTrue, reason: '${file.path} が見つかりません');
@@ -37,8 +37,9 @@ void main() {
       expect(Karte.fromJson(loadFixture('karte')).followupQuestion, isNull);
     });
 
-    // 海外向けの課程(Algebra 1 / Algebra 2 ...)。topic_idの接頭辞が別なので、
-    // ここが落ちたら英語のセッションのカルテが画面に出せていない。
+    // The international curricula (Algebra 1, Algebra 2, ...). Their topic_id
+    // prefixes differ, so a failure here means English sessions' kartes cannot
+    // render.
     test('karte.en.json をパースできる', () {
       final Karte karte = Karte.fromJson(loadFixture('karte.en'));
 
@@ -61,14 +62,15 @@ void main() {
       expect(analysis.detectedTopics, hasLength(2));
     });
 
-    // **解析の応答に部屋の鍵は入らない。**入れると「鍵を持っている = いつでも
-    // 始められる」になり、回数を会話の開始で数える意味が消える。
+    // The analysis response carries no room key: including it would make holding
+    // a key mean being able to start any time, defeating counting at the start.
     test('start-session-response.json をパースできる(部屋の鍵はこちらだけ)', () {
       final SessionStart session = SessionStart.fromJson(loadFixture('start-session-response'));
 
       expect(session.sessionId, isNotEmpty);
       expect(session.livekit.room, session.sessionId);
-      // 共有fixtureは契約の形を確かめるもの。運用上限の既定値はサーバ設定が正なので固定しない。
+      // Shared fixtures verify the contract's shape; operational defaults belong
+      // to server config, so they are not pinned.
       expect(session.limits.maxSeconds, isPositive);
       expect(session.limits.lessonAllowedToday, isFalse);
     });
@@ -79,12 +81,12 @@ void main() {
       );
 
       expect(analysis.detectedTopics.first.topicId, 'A2-COORD-CIRCLE');
-      // チップに出るのはサーバが返す科目名。訳さずそのまま出す。
+      // The chip shows the subject name the server returned, untranslated.
       expect(analysis.detectedTopics.first.course, 'Algebra 2');
     });
 
-    // 問題文(§4-1 グラウンディング)。ここが落ちていると、授業の前に
-    // 読み合わせる画面に何も出ず、誤読が15分後まで表面化しない。
+    // The problem text. A failure here leaves the pre-lesson read-back empty and a
+    // misreading does not surface until 15 minutes in.
     test('読み取った問題文を、出どころつきで読める', () {
       final SessionAnalysis analysis = SessionAnalysis.fromJson(
         loadFixture('create-session-response'),
@@ -92,7 +94,8 @@ void main() {
 
       expect(analysis.problem, isNotNull);
       expect(analysis.problem!.text, contains('共有点の個数'));
-      // 2枚目(問題の写真)から読めた場合。**この写真は解析後に破棄される。**
+      // Read from the second photo (the problem), which is discarded after
+      // analysis.
       expect(analysis.problem!.source, ProblemSource.problemPhoto);
     });
 
@@ -105,10 +108,10 @@ void main() {
       expect(analysis.problem!.text, contains('number of intersection points'));
     });
 
-    // 読めなかったとき。**fixtureが無いのでキーを落として作る。**
-    // `packages/contract` は読むだけなので、ここでfixtureを増やさない。
-    // 見たいのは「値が無くても組み立てが止まらないこと」で、
-    // 契約上のキーの有無(`nullable()`)はTypeScript側が見ている。
+    // The unreadable case. There is no fixture, so the key is dropped instead:
+    // `packages/contract` is read-only here, so no fixture is added. What matters
+    // is that assembly does not stop without a value; the key's presence
+    // (`nullable()`) is checked on the TypeScript side.
     test('問題文が読めなくても、セッションは組み立てられる', () {
       final Map<String, dynamic> json = loadFixture('create-session-response')
         ..['problem'] = null;
@@ -197,9 +200,10 @@ void main() {
       expect(plan.revisions.single.said, '風邪ひいて3日できなかった');
     });
 
-    // テンプレートへの縮退は失敗ではなく、先輩が定型案を出して会話を終えられる
-    // 正式な経路。Flutter側が `senpai` しか読めないと、最も必要な障害時だけ
-    // 保存済みの計画を表示できなくなるので英語fixtureでも固定する。
+    // Falling back to a template is not a failure but a supported path where
+    // senpai offers a standard plan and ends the conversation. If Flutter could
+    // read only `senpai`, the saved plan would be unreadable exactly when it is
+    // needed most, so the English fixture pins it too.
     test('英語のテンプレート計画を読める', () {
       final StudyPlan plan = StudyPlan.fromJson(loadFixture('study-plan.en'));
 
@@ -229,7 +233,7 @@ void main() {
   });
 
   group('設計上の約束', () {
-    // 点数のフィールドが生えたら、fixtureに現れる前にここで気づきたい
+    // If a score field appears, catch it here before it reaches a fixture.
     test('カルテのfixtureに点数・正答率のキーがない', () {
       final Map<String, dynamic> karte = loadFixture('karte');
 
@@ -298,21 +302,22 @@ void main() {
       expect(lesson.topicIds, <String>['M1-NIJI-HANBETSU']);
       expect(lesson.steps, hasLength(7));
 
-      // board が null の手順(相づち・確認)が読めているか。
+      // Steps with a null board (acknowledgements, checks) parse.
       expect(lesson.steps[2].board, isNull);
 
-      // kind の discriminated union が正しく振り分けられているか。
+      // The `kind` discriminated union dispatches correctly.
       expect(lesson.steps[0].board, isA<LatexElement>());
       expect((lesson.steps[0].board! as LatexElement).tex, 'x^2 - 3x + 2 = 0');
       expect(lesson.steps[1].board, isA<TextElement>());
       expect((lesson.steps[1].board! as TextElement).body, 'a = 1, b = -3, c = 2');
 
-      // 不変条件(index の連番)は壊れていないはず。
+      // The invariant (sequential index) should be intact.
       expect(() => ensureSequentialStepIndices(lesson), returnsNormally);
     });
 
-    // 英語の課程の板書。数学とは使える要素が重ならない(sentence / compare)ので、
-    // ここが無いと新要素の形を Dart 側で誰も検査しない。
+    // The board for English curricula. Its elements (sentence, compare) do not
+    // overlap with maths, so without this nothing on the Dart side checks their
+    // shape.
     test('board-lesson.english.json をパースできる(sentence / compare)', () {
       final BoardLesson lesson = BoardLesson.fromJson(loadFixture('board-lesson.english'));
       final List<BoardElement> elements =
@@ -321,7 +326,7 @@ void main() {
       expect(elements.whereType<CompareElement>(), isNotEmpty);
 
       final SentenceElement sentence = elements.whereType<SentenceElement>().first;
-      // focus は text の一部(README「JSON Schema に現れない不変条件」)。
+      // focus is part of text (an invariant JSON Schema cannot carry).
       expect(sentence.focus, isNotNull);
       expect(sentence.text.contains(sentence.focus!), isTrue);
 
@@ -346,7 +351,7 @@ void main() {
       expect(plot.marks, hasLength(2));
       expect(plot.marks!.first.label, 'x = 1');
 
-      // fixtureのdomainは壊れていないはず(min < max)。
+      // The fixture's domain should be intact (min < max).
       expect(() => ensureValidDomain(plot.domain), returnsNormally);
     });
 
@@ -375,12 +380,12 @@ void main() {
       expect(log.messages.first, isA<BoardOpenMessage>());
       expect((log.messages.first as BoardOpenMessage).title, '判別式で解の個数を見る');
 
-      // 1枚目の板書は3手順→close(step_count=3・completed)。
+      // The first board: three steps, then close (step_count=3, completed).
       final BoardCloseMessage firstClose = log.messages[4] as BoardCloseMessage;
       expect(firstClose.stepCount, 3);
       expect(firstClose.reason, BoardCloseReason.completed);
 
-      // 2枚目の板書は2手順→close(step_count=2・interrupted。割り込みで途中終了)。
+      // The second board: two steps, then close (step_count=2, interrupted).
       final BoardCloseMessage secondClose = log.messages.last as BoardCloseMessage;
       expect(secondClose.stepCount, 2);
       expect(secondClose.reason, BoardCloseReason.interrupted);
@@ -396,17 +401,19 @@ void main() {
         receiver.accept(message);
       }
 
-      // 最後は2枚目の板書がclose済みなので、受信側は「板書は閉じている」状態のはず。
+      // The second board closed last, so the receiver should be in the closed
+      // state.
       expect(receiver.isOpen, isFalse);
     });
   });
 
   // ---------------------------------------------------------------------
-  // JSON Schema に現れない不変条件(packages/contract/README.md の表)。
+  // Invariants JSON Schema cannot carry (the table in
+  // packages/contract/README.md).
   //
-  // ここから下は「パースできる」ではなく「壊れた入力を壊れていると
-  // 判定できる」ことを示すテスト。正常系だけでは合格にならない
-  // (team-leadの依頼どおり、壊し方ごとに個別のテストを書く)。
+  // From here on the tests show not that valid input parses but that broken
+  // input is judged broken. Happy paths alone are not enough, so each way of
+  // breaking it gets its own test.
   // ---------------------------------------------------------------------
   group('不変条件: plot.domain は min < max', () {
     test('min < max なら通る', () {
@@ -498,7 +505,7 @@ void main() {
   });
 
   group('BoardChannelReceiver: 封筒の順序規約(欠落検知そのもの)', () {
-    // fixtureの1枚目の板書(判別式)だけを使い回す。正常な3件のstepメッセージ。
+    // Reuses only the fixture's first board, with three valid step messages.
     const BoardChannelMessage open = BoardChannelMessage.boardOpen(
       v: 1,
       sessionId: 'ses_1',
@@ -551,7 +558,7 @@ void main() {
       final BoardChannelReceiver receiver = BoardChannelReceiver(sessionId: 'ses_1');
       receiver.accept(open); // seq=0
       expect(
-        () => receiver.accept(step(2, 0)), // seq=1 が欠落。いきなり2が来た
+        () => receiver.accept(step(2, 0)), // seq=1 missing; 2 arrived first
         throwsA(isA<BoardContractViolation>()),
       );
     });
@@ -561,7 +568,7 @@ void main() {
       receiver.accept(open); // seq=0
       receiver.accept(step(1, 0)); // seq=1
       expect(
-        () => receiver.accept(step(1, 1)), // seqが1のまま(重複送信)
+        () => receiver.accept(step(1, 1)), // seq still 1 (duplicate send)
         throwsA(isA<BoardContractViolation>()),
       );
     });
@@ -570,7 +577,7 @@ void main() {
       final BoardChannelReceiver receiver = BoardChannelReceiver(sessionId: 'ses_1');
       receiver.accept(open); // seq=0
       expect(
-        () => receiver.accept(step(1, 1)), // index=0を期待しているのにindex=1が来た
+        () => receiver.accept(step(1, 1)), // expected index=0, got index=1
         throwsA(isA<BoardContractViolation>()),
       );
     });
@@ -578,9 +585,9 @@ void main() {
     test('末尾の手順が欠落すると step_count の不一致で検知できる', () {
       final BoardChannelReceiver receiver = BoardChannelReceiver(sessionId: 'ses_1');
       receiver.accept(open); // seq=0
-      receiver.accept(step(1, 0)); // seq=1, index=0(本来は2手順あるうちの1つ目)
-      // 2つ目のstep(index=1)が丸ごと欠落したまま close が来た場合。
-      // step_countだけは「本来2手順あった」と正直に申告してくる想定。
+      receiver.accept(step(1, 0)); // seq=1, index=0 (the first of two steps)
+      // The second step (index=1) is missing entirely when close arrives, while
+      // step_count still honestly reports that there were two steps.
       expect(
         () => receiver.accept(close(2, 2)),
         throwsA(isA<BoardContractViolation>()),
@@ -591,7 +598,7 @@ void main() {
       final BoardChannelReceiver receiver = BoardChannelReceiver(sessionId: 'ses_1');
       const BoardChannelMessage otherSessionOpen = BoardChannelMessage.boardOpen(
         v: 1,
-        sessionId: 'ses_other', // 期待しているセッションと違う
+        sessionId: 'ses_other', // not the expected session
         boardId: 'brd_1',
         seq: 0,
         title: '判別式で解の個数を見る',
@@ -606,7 +613,7 @@ void main() {
       const BoardChannelMessage wrongBoardStep = BoardChannelMessage.boardStep(
         v: 1,
         sessionId: 'ses_1',
-        boardId: 'brd_other', // 開いていない板書宛て
+        boardId: 'brd_other', // addressed to a board that is not open
         seq: 1,
         step: BoardStep(index: 0, speech: 'てすと', board: null),
       );
@@ -615,7 +622,7 @@ void main() {
 
     test('board_closeされる前に次のboard_openが来ると検知できる', () {
       final BoardChannelReceiver receiver = BoardChannelReceiver(sessionId: 'ses_1');
-      receiver.accept(open); // brd_1 を開いたまま
+      receiver.accept(open); // brd_1 left open
       const BoardChannelMessage secondOpen = BoardChannelMessage.boardOpen(
         v: 1,
         sessionId: 'ses_1',
@@ -632,7 +639,7 @@ void main() {
       receiver.accept(open); // brd_1
       receiver.accept(step(1, 0));
       receiver.accept(step(2, 1));
-      expect(receiver.currentSteps, hasLength(2)); // close前は積まれたまま残る(消えない)
+      expect(receiver.currentSteps, hasLength(2)); // kept until close
       receiver.accept(close(3, 2));
 
       const BoardChannelMessage secondOpen = BoardChannelMessage.boardOpen(
@@ -645,24 +652,22 @@ void main() {
       );
       receiver.accept(secondOpen);
 
-      // 前の板書の2手順が残っていたら、新しい板書に前の内容が混ざって見えてしまう。
+      // Leaving the previous board's two steps would mix old content into the new
+      // board.
       expect(receiver.currentSteps, isEmpty);
     });
 
     // ---------------------------------------------------------------------
-    // 要素レベルの不変条件は accept() 自身が弾くこと。
+    // accept() itself must reject element-level invariant violations.
     //
-    // 【この3件を「検査: plot.domain は min < max」「検査: triangle.vertices は
-    // ちょうど3点」グループと重複していると判断して消さないこと。】
-    // 上の2グループは ensureValidDomain / ensureValidTriangle を直接呼び、
-    // 「検査関数そのものが正しく判定するか」を見ている。
-    // ここではその関数を直接呼ばず、壊れた要素を積んだ BoardStepMessage を
-    // accept() に渡して確認する。見ているのは判定の正しさではなく
-    // 「accept() の内部で _ensureValidElement(step.board) の呼び出しが
-    // 外れていないか」——つまり関門に繋がっていること。
-    // board.dart の accept() から _ensureValidElement(step.board) の1行を
-    // 消しても、上の2グループは全部緑のまま通ってしまう。この3件だけが
-    // その退行を検知する。
+    // Do not delete these three as duplicates of the "plot.domain min < max" and
+    // "triangle.vertices exactly 3 points" groups. Those two call
+    // ensureValidDomain / ensureValidTriangle directly and check that the
+    // validators judge correctly. These pass a BoardStepMessage carrying a broken
+    // element to accept() instead, checking not the judgement but that the gate
+    // is still wired up — that _ensureValidElement(step.board) has not fallen out
+    // of accept(). Deleting that one line from accept() in board.dart leaves the
+    // other two groups entirely green; only these three catch that regression.
     // ---------------------------------------------------------------------
 
     test('accept() は domain が min>=max の plot要素を弾く(検査関数を直接呼ばない)', () {
@@ -671,7 +676,7 @@ void main() {
 
       const BoardElement brokenPlot = BoardElement.plot(
         fn: 'x',
-        domain: BoardDomain(min: 5, max: 1), // 取り違え。min > max
+        domain: BoardDomain(min: 5, max: 1), // swapped: min > max
       );
       expect(
         () => receiver.accept(stepWithBoard(1, 0, brokenPlot)),
@@ -691,9 +696,10 @@ void main() {
       );
     });
 
-    /// `sentence.focus` は `text` の部分文字列(README「JSON Schema に現れない不変条件」)。
-    /// **`.refine()` で書けなかった条件**なので contract は形しか見ておらず、
-    /// 受信側のこの検査が唯一の防波堤。無いと「下線が引かれないだけ」で静かに残る。
+    /// `sentence.focus` must be a substring of `text`. It could not be written
+    /// with `.refine()`, so the contract checks shape only and this
+    /// receiver-side check is the only guard; without it, it silently degrades to
+    /// "the underline just isn't drawn".
     test('accept() は focus が text に無い sentence要素を弾く', () {
       expect(
         () => ensureValidSentence('I have lived here.', '現在完了'),

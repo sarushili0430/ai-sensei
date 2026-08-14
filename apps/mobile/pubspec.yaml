@@ -4,8 +4,7 @@ publish_to: "none"
 version: 0.1.0+1
 
 environment:
-  # Flutterのバージョンは .fvmrc で固定する(fvm use)。
-  # ここは「このSDK以上なら動く」下限。
+  # The Flutter version is pinned in .fvmrc (fvm use); this is the lower bound.
   sdk: ">=3.12.0 <4.0.0"
   flutter: ">=3.44.0"
 
@@ -15,65 +14,65 @@ dependencies:
   flutter_localizations:
     sdk: flutter
 
-  # 状態管理 / DI
+  # State management / DI
   flutter_riverpod: ^3.0.0
   riverpod_annotation: ^4.0.0
 
-  # モデル定義(freezed + json_serializable)
+  # Models (freezed + json_serializable)
   freezed_annotation: ^3.0.0
   json_annotation: ^4.11.0
 
-  # 画面遷移
+  # Navigation
   go_router: ^17.4.0
 
-  # 撮影
+  # Camera
   camera: ^0.12.0
   image_picker: ^1.1.2
 
-  # リアルタイム会話
-  # 板書の受信は Text Streams API(registerTextStreamHandler)に乗っている。
-  # 生の publishData は reliable の既定が false で、書き忘れると板書が欠落・順不同で
-  # 届く(docs/pivot_plan_v1.md §3-5)。そのAPIを 2.10.0 のソースで確認して設計したので、
-  # 宣言の下限も 2.10.0 に合わせる。^2.3.5 のままだとクリーンな pub get で
-  # 古い版に解決されうる。
+  # Realtime conversation.
+  # Board delivery rides the Text Streams API (registerTextStreamHandler). Raw
+  # publishData defaults reliable to false, and forgetting that delivers board
+  # lines missing or out of order. The design was checked against 2.10.0's
+  # source, so the lower bound matches; ^2.3.5 could resolve to an older version
+  # on a clean pub get.
   livekit_client: ^2.10.0
   permission_handler: ^13.0.0
 
-  # 課金 / 通知 / 監視
+  # Billing / notifications / monitoring
   purchases_flutter: ^10.7.0
-  # RevenueCatのペイウォールとCustomer Center。
-  # コアと同じバージョンで揃える(片方だけ上げるとネイティブ側が食い違う)。
+  # RevenueCat's paywall and Customer Center. Kept at the same version as the
+  # core; bumping one alone desyncs the native side.
   purchases_ui_flutter: ^10.7.0
   onesignal_flutter: ^5.2.6
-  # 8.x はSPM経由だとsentry-cocoaを上限なしで解決してビルドが壊れる。
-  # 9.x はcocoaを exact 指定しているのでそれ以降に上げる。
+  # 8.x resolves sentry-cocoa without an upper bound over SPM and breaks the
+  # build; 9.x pins cocoa exactly, so we stay on 9 or later.
   sentry_flutter: ^9.26.0
 
   http: ^1.2.2
-  # 写真を送るときの Content-Type を明示するため(MediaType)。
-  # http の推移的依存だが、直接使うので自分でも宣言しておく。
+  # For setting the Content-Type on photo uploads (MediaType). A transitive
+  # dependency of http, but declared here because we use it directly.
   http_parser: ^4.1.2
   shared_preferences: ^2.3.3
   uuid: ^4.5.1
 
-  # 設定画面から外に出るための最小限。
-  # プライバシーポリシー・利用規約・不適切な質問の報告(mailto)を開く。
+  # The minimum needed to leave settings: privacy policy, terms, and the mailto
+  # for reporting inappropriate questions.
   url_launcher: ^6.3.1
-  # 問い合わせのときに聞かれるので、設定画面にバージョンを出す。
+  # Support asks for it, so the version is shown in settings.
   package_info_plus: ^9.0.0
 
-  # 板書レイヤーのLaTeX描画(計画書§3-5・§3-6)。
-  # 実測スパイクで採否判定済み(§3-6。約30式を目視確認・崩れ0件)。
-  # メンテが薄いリスクへの保険は `packages/guardrail` の許可コマンド照合と
-  # agent側のKaTeXパースで取る(§3-6の三段構え。このパッケージ自体は縛らない)。
+  # LaTeX rendering for the board layer. Chosen after a measured spike (about 30
+  # formulas checked by eye, none broken). The thin-maintenance risk is covered
+  # by the allowed-command check in `packages/guardrail` and the agent's KaTeX
+  # parse, rather than by constraining this package.
   flutter_math_fork: ^0.7.4
-  # 板書の作図(`figure`)。**SVGはサーバが解いて描いたものだけが届く**
-  # (先輩が書いたSVGはどの経路でも入らない。`packages/contract/src/board.ts`)。
-  # 端末側はこれを描くだけなので、図の語彙が増えてもここは変わらない
-  # (docs/wireframe_board_v2.html D-21)。
+  # Board constructions (`figure`). Only SVG the server solved and rendered ever
+  # arrives — senpai's own SVG cannot enter by any path
+  # (`packages/contract/src/board.ts`). The device only draws it, so this does
+  # not change as the figure vocabulary grows.
   flutter_svg: ^2.0.10
-  # 授業冒頭の短い一言は、同梱アセットだけを再生する。
-  # URLを渡さないので通信もTTS従量原価も発生しない(計画書§3-2)。
+  # The lesson's short opening line plays a bundled asset only. No URL is passed,
+  # so there is neither a request nor metered TTS cost.
   just_audio: ^0.10.6
 
 dev_dependencies:
@@ -81,27 +80,28 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^6.0.0
 
-  # コード生成
+  # Code generation
   build_runner: ^2.4.13
-  # 3.2.6 はまだ dev プレリリースしか無い。安定版だけを使いたいので上限を切る。
+  # 3.2.6 is dev-prerelease only; capped so we stay on stable releases.
   freezed: ">=3.0.0 <3.2.6"
   json_serializable: ^6.9.0
   riverpod_generator: ^4.0.0
 
-  # riverpod_lint 3.1 で custom_lint から analysis_server_plugin に移行したので
-  # custom_lint は不要。残しておくと analyzer 8 系に固定されて他が上げられない。
+  # riverpod_lint 3.1 moved from custom_lint to analysis_server_plugin, so
+  # custom_lint is unnecessary; keeping it pins analyzer to 8.x and blocks other
+  # upgrades.
   riverpod_lint: ^3.1.0
 
 flutter:
   uses-material-design: true
   assets:
-    # 現在の m4a は無音プレースホルダ。実音声への差し替え手順は同ディレクトリの
-    # README に置く。ディレクトリ指定なので、日英の片方を宣言し忘れない。
+    # The current m4a files are silent placeholders; the README in that directory
+    # covers swapping in real audio. Declaring the directory means neither locale
+    # can be forgotten.
     - assets/audio/
   fonts:
-    # 丸ゴシック。SIL OFL 1.1。
-    # golden test はこのフォントを読み込んで描画するので、
-    # ファイルが欠けるとテストが落ちる(= 気づける)。
+    # Rounded gothic, SIL OFL 1.1. Golden tests render with this font, so a
+    # missing file fails them — which is how we find out.
     - family: ZenMaruGothic
       fonts:
         - asset: assets/fonts/ZenMaruGothic-Regular.ttf

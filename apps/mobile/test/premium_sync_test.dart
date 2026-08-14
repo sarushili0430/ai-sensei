@@ -13,16 +13,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-/// 課金が通ったあと、サーバ側のPremium判定を読み直せているか。
+/// Whether the server's Premium verdict is re-read after a purchase.
 ///
-/// これが無いと **webhookが200で届いていてもアプリは無料のまま**になる。
-/// 画面が出し分けに使っているのはサーバの `is_premium` で、それを持つ
-/// Controller は keepAlive = 起動時に一度読んだきりだから。
-/// 「課金したのに使えない」の実体がここなので、経路ごと押さえておく。
+/// Without it, the app stays free even when the webhook was delivered with a
+/// 200. Screens gate on the server's `is_premium`, and the controller holding it
+/// is keepAlive — read once at startup and never again. This is what "paid but
+/// unusable" actually is, so every path is covered.
 
 const String _deviceId = '11111111-2222-4333-8444-555555555555';
 
-/// webhookを待つ間隔。テストでは実時間を使わない。
+/// Webhook poll intervals; tests never use real time.
 const List<Duration> _noWait = <Duration>[
   Duration.zero,
   Duration.zero,
@@ -30,10 +30,10 @@ const List<Duration> _noWait = <Duration>[
   Duration.zero,
 ];
 
-/// `/v1/me/progress` を返す偽サーバ。
+/// A fake server for `/v1/me/progress`.
 ///
-/// [freeResponses] 回目までは無料で返し、それ以降はPremiumで返す。
-/// webhookが届くまでの遅れを、回数で作るためのもの。
+/// It returns free for the first [freeResponses] calls and Premium after, using
+/// a call count to reproduce the webhook's delay.
 class _FakeServer {
   _FakeServer({this.freeResponses = 1});
 
@@ -92,23 +92,24 @@ class _FakeServer {
   );
 }
 
-/// entitlement を手で動かせるようにしたもの。SDKは呼ばない。
+/// Lets the entitlement be driven by hand; the SDK is never called.
 class FakeEntitlementController extends EntitlementController {
   @override
   Future<Entitlement> build() async => Entitlement.free;
 
-  /// 購入・復元・失効で SDK が push してくるのと同じ形の更新。
+  /// The same shape of update the SDK pushes on purchase, restore or expiry.
   void emit({required bool isPremium}) =>
       state = AsyncValue<Entitlement>.data(Entitlement(isPremium: isPremium));
 
-  /// 購入中に挟まる loading。直前の値を保つかどうかは実装依存なので、
-  /// **保たない**ほうを再現しておく(取りこぼすならここで出る)。
+  /// The loading state during a purchase. Whether the prior value is kept is
+  /// implementation-dependent, so the not-kept case is reproduced — if anything
+  /// is missed, it shows here.
   void emitLoading() => state = const AsyncValue<Entitlement>.loading();
 }
 
 ProviderContainer _container(_FakeServer server) {
   final ProviderContainer container = ProviderContainer(
-    // `Override` 型は Riverpod 3 の公開APIに出ていない(harness.dart と同じ理由)。
+    // The `Override` type is not in Riverpod 3's public API (as in harness.dart).
     overrides: <Object?>[
       deviceIdProvider.overrideWithValue(_deviceId),
       apiClientProvider.overrideWithValue(
@@ -121,7 +122,8 @@ ProviderContainer _container(_FakeServer server) {
   return container;
 }
 
-/// 起動直後の状態を作る。ホームが進捗を一度読み、entitlement が確定したところ。
+/// Builds the post-startup state: home has read progress once and the
+/// entitlement has settled.
 Future<void> _boot(ProviderContainer container) async {
   container.read(premiumSyncProvider);
   await container.read(progressControllerProvider.future);
@@ -131,7 +133,7 @@ Future<void> _boot(ProviderContainer container) async {
 FakeEntitlementController _entitlement(ProviderContainer container) =>
     container.read(entitlementControllerProvider.notifier) as FakeEntitlementController;
 
-/// listener が動き出してから、同期が終わるまで待つ。
+/// Waits from the listener starting until the sync completes.
 Future<void> _settle(ProviderContainer container) async {
   await Future<void>.delayed(Duration.zero);
   await container.read(premiumSyncProvider.notifier).settled;
@@ -143,14 +145,14 @@ void main() {
       final _FakeServer server = _FakeServer();
       final ProviderContainer container = _container(server);
 
-      // 起動時の1回目。webhookはまだ書いていない。
+      // The first read at startup; the webhook has not written yet.
       expect((await container.read(progressControllerProvider.future)).isPremium, isFalse);
 
       await container
           .read(premiumSyncProvider.notifier)
           .sync(expectPremium: true, backoff: _noWait);
 
-      // ここが false のままなのが、報告されたバグそのもの。
+      // Staying false here is the reported bug itself.
       expect(container.read(progressControllerProvider).value?.isPremium, isTrue);
     });
 
@@ -159,8 +161,8 @@ void main() {
       final ProviderContainer container = _container(server);
       await container.read(progressControllerProvider.future);
 
-      // ペイウォールが上に載っても画面は破棄されないので、ロック済みproviderを
-      // listenしたままにして実際のスタックと同じ寿命を作る。
+      // The screen survives the paywall being pushed on top, so the locked
+      // provider stays listened to, matching the real stack's lifetime.
       final ProviderSubscription<AsyncValue<ParentReportResponse>> subscription =
           container.listen<AsyncValue<ParentReportResponse>>(
         parentReportControllerProvider,
@@ -185,7 +187,8 @@ void main() {
       expect(server.parentReportCalls, 2);
     });
 
-    // webhookは購入の数秒後に届く。1回読んで諦めると、届く前のものを掴む。
+    // The webhook lands seconds after purchase; reading once and giving up grabs
+    // the pre-webhook value.
     test('webhookが遅れていたら、追いつくまで読み直す', () async {
       final _FakeServer server = _FakeServer(freeResponses: 3);
       final ProviderContainer container = _container(server);
@@ -200,7 +203,7 @@ void main() {
       expect(server.progressCalls - before, 3, reason: '1回で諦めている');
     });
 
-    // webhookが恒久的に壊れている場合。クライアントの申告で解放はしない。
+    // A permanently broken webhook. Never unlock on the client's claim.
     test('追いつかなければ諦める。無料のまま倒して、Premiumを騙らない', () async {
       final _FakeServer server = _FakeServer(freeResponses: 9999);
       final ProviderContainer container = _container(server);
@@ -212,15 +215,15 @@ void main() {
           .sync(expectPremium: true, backoff: _noWait);
 
       expect(container.read(progressControllerProvider).value?.isPremium, isFalse);
-      // 試行は使い切るが、無限には読まない
+      // It exhausts the attempts but does not read forever.
       expect(server.progressCalls - before, _noWait.length + 1);
     });
 
-    // 課金直後は webhook が届くまで数回続けて読む。そのあいだ読み込み中の値が
-    // 空に落ちると、ホームの連続日数と埋めた穴が点滅して見える
-    // (ホームは `summary.value ?? empty` で描いている)。
-    // いまの `refresh()` は直前の値を保つので落ちない。retry を足すこの変更で
-    // 「何度も読む」ようになったぶん、保たなくなったら目に見えて壊れる。
+    // Right after a purchase it reads repeatedly until the webhook lands. If the
+    // loading value dropped to empty in between, home's streak days and filled
+    // gaps would flicker (home renders `summary.value ?? empty`). Today's
+    // `refresh()` keeps the prior value, so it does not. Adding retries made it
+    // read many times, so losing that would break visibly.
     test('読み直しているあいだ、ホームのカウンターは0に落ちない', () async {
       final _FakeServer server = _FakeServer(freeResponses: 3);
       final ProviderContainer container = _container(server);
@@ -231,7 +234,7 @@ void main() {
         AsyncValue<ProgressSummary>? _,
         AsyncValue<ProgressSummary> next,
       ) {
-        // ホームと同じ読み方。0 に落ちると連続日数と埋めた穴が点滅して見える。
+        // Read the same way home does; dropping to 0 makes both counters flicker.
         seen.add((next.value ?? ProgressSummary.empty).progress.streakDays);
       });
 
@@ -244,8 +247,9 @@ void main() {
     });
   });
 
-  // 呼び忘れで壊れないように、購入の各入口ではなく entitlement の変化で拾う。
-  // ペイウォールの中で完結した購入・Customer Center・SDKのpushも同じ経路。
+  // Driven by entitlement changes rather than each purchase entry point, so a
+  // forgotten call cannot break it. Purchases completed inside the paywall,
+  // Customer Center and SDK pushes all take the same path.
   group('entitlement の変化を拾う配線', () {
     test('SDKがPremiumをpushしたら、こちらから呼ばなくても同期が走る', () async {
       final _FakeServer server = _FakeServer();
@@ -262,23 +266,23 @@ void main() {
       expect(container.read(progressControllerProvider).value?.isPremium, isTrue);
     }, timeout: const Timeout(Duration(seconds: 10)));
 
-    // 起動直後に entitlement が確定するだけでは走らせない。
-    // 各 Controller の build() がこれから読むので、二重に取りに行くだけになる。
+    // The entitlement merely settling at startup does not trigger it: each
+    // controller's build() is about to read anyway, so it would just fetch twice.
     test('起動時の1回目では走らない', () async {
       final _FakeServer server = _FakeServer();
       final ProviderContainer container = _container(server);
       await _boot(container);
       final int before = server.progressCalls;
 
-      // 起動時と同じ「はじめて値が入る」遷移(無料のまま)
+      // The same first-value transition as startup, still free.
       _entitlement(container).emit(isPremium: false);
       await _settle(container);
 
       expect(server.progressCalls, before);
     }, timeout: const Timeout(Duration(seconds: 10)));
 
-    // 期限切れ・返金でPremiumが外れた場合。開いたままのアプリが
-    // Premium画面を出し続けないように、こちらもサーバへ揃えにいく。
+    // Premium dropping on expiry or refund. The app also re-syncs to the server
+    // so an open app does not keep showing Premium screens.
     test('Premiumが外れたときも読み直す', () async {
       final _FakeServer server = _FakeServer();
       final ProviderContainer container = _container(server);
@@ -288,7 +292,7 @@ void main() {
       await _settle(container);
       expect(container.read(progressControllerProvider).value?.isPremium, isTrue);
 
-      // サーバ側も失効した状態にする(EXPIRATION webhookが書いたあと)
+      // Put the server into the expired state too (after the EXPIRATION webhook).
       server.freeResponses = 9999;
       final int before = server.progressCalls;
 
