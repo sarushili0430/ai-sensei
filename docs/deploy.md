@@ -1,49 +1,51 @@
-# backend/api のデプロイ
+# Deploying backend/api
 
-Cloudflare Workers に **develop / production の2本**を立てる手順。
-設定の実体は [`backend/api/wrangler.toml`](../backend/api/wrangler.toml)、
-自動デプロイは [`docs/ci/deploy.yml`](ci/deploy.yml)
-(GitHub App は `.github/workflows/` へpushできないため、ここはテンプレート置き場。
-[§4-0](#4-0-ワークフローを配置する) で1度だけ手元からコピーする)。
+How to stand up **two deployments, develop and production**, on Cloudflare Workers.
+The configuration itself is [`backend/api/wrangler.toml`](../backend/api/wrangler.toml),
+and automatic deployment is [`docs/ci/deploy.yml`](ci/deploy.yml)
+(a GitHub App cannot push into `.github/workflows/`, so that directory is a template
+store; [§4-0](#4-0-place-the-workflow) copies it by hand once).
 
 | | develop | production |
 | --- | --- | --- |
-| ブランチ | `develop` | `main` |
-| ワーカー名 | `ai-sensei-api-develop` | `ai-sensei-api-production` |
+| Branch | `develop` | `main` |
+| Worker name | `ai-sensei-api-develop` | `ai-sensei-api-production` |
 | D1 | `ai-sensei-develop` | `ai-sensei-production` |
 | R2 | `ai-sensei-photos-develop` | `ai-sensei-photos-production` |
-| KV | 別ネームスペース | 別ネームスペース |
-| secret | `--env develop` で登録 | `--env production` で登録 |
+| KV | A separate namespace | A separate namespace |
+| Secrets | Registered with `--env develop` | Registered with `--env production` |
 
-**バインディング名(`DB` / `PHOTOS` / `METER`)は両環境で同じ**にしてある。
-コードは環境を意識せず、実体だけが分かれる。develop で流したテストデータや
-消し損ねたカルテが本番に混ざらないように、D1もR2もKVも共有しない。
+**The binding names (`DB` / `PHOTOS` / `METER`) are identical in both environments.**
+The code is unaware of the environment; only the resources differ. D1, R2 and KV are
+never shared, so test data or a karte you forgot to delete on develop cannot leak into
+production.
 
-`backend/agent`(LiveKit Agents)のデプロイは [`docs/deploy-agent.md`](deploy-agent.md)。
-ここでは扱わないが、**agentから見た接続先は環境ごとに変わる**ので
-[§6](#6-まわりの設定) に書いてある。
+Deploying `backend/agent` (LiveKit Agents) is covered in
+[`docs/deploy-agent.md`](deploy-agent.md). It is not handled here, but **what the agent
+connects to changes per environment**, which is in [§6](#6-the-surrounding-settings).
 
 ---
 
-## 0. 前提
+## 0. Prerequisites
 
 ```bash
 pnpm install
-pnpm --filter @ai-sensei/api exec wrangler login   # ブラウザでCloudflareにログイン
+pnpm --filter @ai-sensei/api exec wrangler login   # log in to Cloudflare in a browser
 ```
 
-Cloudflareの無料プランで足りる範囲だが、**D1・R2・KVはアカウントで初回に
-有効化が要る**ことがある。以下の `create` が権限エラーになったら、
-ダッシュボードで各プロダクトを一度開いて有効化する。
+Everything fits Cloudflare's free plan, but **D1, R2 and KV sometimes need enabling once
+per account**. If a `create` below fails with a permission error, open each product once
+in the dashboard to enable it.
 
-> このリポジトリには実際のCloudflareアカウントの値は入っていない。
-> 以下は**まだ実行されていない手順**で、リソースIDは自分で作って差し替える。
+> This repository contains no real Cloudflare account values.
+> The steps below **have not been run**; create the resources yourself and substitute the
+> ids.
 
 ---
 
-## 1. リソースを作る(環境ごとに1回)
+## 1. Create the resources (once per environment)
 
-`develop` と `production` で、同じことを2回やる。以下は develop の例。
+Do the same thing twice, for `develop` and `production`. The example below is develop.
 
 ### D1
 
@@ -52,48 +54,48 @@ cd backend/api
 pnpm exec wrangler d1 create ai-sensei-develop
 ```
 
-出力の `database_id` を `wrangler.toml` の
-`[[env.develop.d1_databases]]` の `REPLACE_ME` に貼る。
+Paste the output's `database_id` over the `REPLACE_ME` in `wrangler.toml`'s
+`[[env.develop.d1_databases]]`.
 
-### KV(無料枠のメータリング)
+### KV (free-tier metering)
 
 ```bash
 pnpm exec wrangler kv namespace create METER --env develop
 ```
 
-出力の `id` を `[[env.develop.kv_namespaces]]` の `REPLACE_ME` に貼る。
+Paste the output's `id` over the `REPLACE_ME` in `[[env.develop.kv_namespaces]]`.
 
-### R2(ノート写真)
+### R2 (notes photos)
 
 ```bash
 pnpm exec wrangler r2 bucket create ai-sensei-photos-develop
 ```
 
-R2はバケット名で引くのでIDの差し替えは要らない。
+R2 is looked up by bucket name, so no id substitution is needed.
 
-### production 側
+### The production side
 
-`develop` を `production` に読み替えて同じ3つを作り、
-`[[env.production.*]]` の `REPLACE_ME` を埋める。
+Read `develop` as `production`, create the same three, and fill in the `REPLACE_ME`s
+under `[[env.production.*]]`.
 
-埋まっているかは、環境ごとに手元で確かめられる。
+Whether they are filled in can be checked locally, per environment.
 
 ```bash
 pnpm run verify:bindings develop
-# ✔ [env.develop] のバインディングは設定済み
+# ✔ [env.develop]'s bindings are configured
 ```
 
-**`REPLACE_ME` が残っている環境へはデプロイできない**(GitHub Actions の
-`Check bindings are filled in` が同じチェックで落とす)。見るのは
-**対象環境のセクションだけ**なので、**develop を先に立ち上げて production は
-あとから作る、という順番で問題ない。**
+**No deploy is possible to an environment with a remaining `REPLACE_ME`** (GitHub
+Actions' `Check bindings are filled in` fails on the same check). It only inspects
+**the target environment's sections**, so **bringing up develop first and creating
+production later is perfectly fine.**
 
 ---
 
-## 2. secret を入れる
+## 2. Registering secrets
 
-`wrangler.toml` の `[vars]` に置くのは**公開してよい設定だけ**。
-鍵は環境ごとに `wrangler secret put` で入れる。
+`wrangler.toml`'s `[vars]` holds **only configuration that may be public**.
+Keys go in per environment with `wrangler secret put`.
 
 ```bash
 cd backend/api
@@ -104,93 +106,98 @@ for name in LIVEKIT_URL LIVEKIT_API_KEY LIVEKIT_API_SECRET \
 done
 ```
 
-任意で2つ。
+Two optional ones.
 
 ```bash
-pnpm exec wrangler secret put SENTRY_DSN --env develop          # エラーをSentryへ
-pnpm exec wrangler secret put LIVEKIT_AGENT_NAME --env develop  # agentが名前つきのとき
+pnpm exec wrangler secret put SENTRY_DSN --env develop          # errors to Sentry
+pnpm exec wrangler secret put LIVEKIT_AGENT_NAME --env develop  # when the agent is named
 ```
 
-**`LIVEKIT_AGENT_NAME` は、agentワーカーを名前つきで動かしているときだけ**入れる
-(LiveKit Cloud のエージェントホスティングは自動で名前が付く)。名前つきワーカーは
-自動ディスパッチの対象外なので、ここが空だと部屋は作られるのに後輩が来ず、
-アプリは「聞いています」のまま止まる。詳細は
-[backend/api/README.md](../backend/api/README.md#会話の相手agentをどう呼ぶか)。
+**Set `LIVEKIT_AGENT_NAME` only when the agent worker runs with a name** (LiveKit Cloud's
+agent hosting names it automatically). Named workers are excluded from auto dispatch, so
+if this is empty the room is created and nobody arrives - the app sits on "listening".
+Details in
+[backend/api/README.md](../backend/api/README.md).
 
-`pnpm run secret:develop <NAME>` / `secret:production <NAME>` でも同じ
-(`--env` の付け忘れを防ぐためのショートカット)。
-中身の説明は [`backend/api/.dev.vars.example`](../backend/api/.dev.vars.example)。
+`pnpm run secret:develop <NAME>` / `secret:production <NAME>` do the same
+(a shortcut that prevents forgetting `--env`).
+What each value is is documented in
+[`backend/api/.dev.vars.example`](../backend/api/.dev.vars.example).
 
-**値は引数では渡せない。** `wrangler secret put` の positional は `<key>` だけで、
-値はプロンプト(stdin)から入れる。CLIに書くとシェル履歴に残るための設計なので、
-基本は聞かれてから貼る。5個まとめて入れたいときは
-`wrangler secret bulk <file>.json --env develop`(平文なのでリポジトリの外に置き、
-使ったら消す)。
+**The value cannot be passed as an argument.** `wrangler secret put` takes only `<key>`
+positionally, and the value comes from a prompt (stdin). That design keeps it out of
+shell history, so paste it when asked. To load five at once, use
+`wrangler secret bulk <file>.json --env develop` (plain text, so keep it outside the
+repository and delete it afterwards).
 
-初回は **「There doesn't seem to be a Worker called "ai-sensei-api-develop".
-Do you want to create a new Worker with that name...?」** と聞かれる。**yes でよい。**
-secretの置き場所としてワーカーの箱が先に作られ、あとで `deploy:develop` が
-そこへコードを載せる。secretはデプロイをまたいで残るので入れ直しは要らない。
+The first time you will be asked **"There doesn't seem to be a Worker called
+'ai-sensei-api-develop'. Do you want to create a new Worker with that name...?"**.
+**Answer yes.** The worker's shell is created first as a place for secrets, and
+`deploy:develop` later puts the code into it. Secrets survive deploys, so they need not
+be re-entered.
 
-いくつか注意:
+A few notes:
 
-- **`REVENUECAT_WEBHOOK_AUTH` を空のままにするとwebhookは全部拒否される。**
-  空文字で認可しないための仕様なので、未設定=閉じている、で正しい。
-- **`INTERNAL_API_TOKEN` は agent 側と同じ値**にする。**環境ごとに必ず別の値にすること**
-  (develop の agent が本番の `/complete` を叩けてしまうため)。この値は静的で
-  スコープが無く、持っていれば任意のセッションにカルテを書ける。
-  セッションスコープの短命トークンへ移す予定と、その理由は
-  [ADR 0003](adr.md#adr-0003)。
-- `ONESIGNAL_*` は未設定でも動く(プッシュの予約をスキップする)。
-  develop では入れない、という運用もできる。
+- **Leaving `REVENUECAT_WEBHOOK_AUTH` empty rejects every webhook.** It is designed not
+  to authorize on an empty string, so unset = closed is correct.
+- **`INTERNAL_API_TOKEN` must match the agent's value**, and **must differ per
+  environment** (otherwise the develop agent can call production's `/complete`). The
+  value is static and unscoped: holding it lets you write a karte to any session. The
+  plan to move to a short-lived session-scoped token, and why, are in
+  [ADR 0003](adr.md#adr-0003).
+- `ONESIGNAL_*` may be unset (notification bookings are skipped). Leaving them out on
+  develop is a valid way to operate.
 
-登録済みの一覧は `pnpm exec wrangler secret list --env develop`。
+List what is registered with `pnpm exec wrangler secret list --env develop`.
 
 ---
 
-## 3. マイグレーションと初回デプロイ
+## 3. Migrations and the first deploy
 
-**LiveKit metadata の契約を変えるリリースでは、APIより先にagentをデプロイする。**
-手順と理由は [`docs/deploy-agent.md` §2-3](deploy-agent.md#2-3-2回目以降)。APIを先に
-出すと、新しいキーを含むmetadataを `.strict()` な古いagentが拒否し、
-`context_unreadable` で全セッションを切断しうる。今回の `review_hole` も新規授業には
-`null` で載るため、影響は復習だけに限られない。先に新しいagentの稼働を確認すれば、
-古いAPIがキーを省略する窓は復習だけが警告つきの板書なし会話へ縮退し、接続は切れない。
-agentとAPIのGitHub Actionsは独立しており、同じpushでも順序は保証されない。契約変更時は
-対象コミットのagentをCLIで先行デプロイするかリリースを2段に分け、agentの稼働確認後に
-APIを開始する。
+**For a release that changes the LiveKit metadata contract, deploy the agent before the
+API.** The procedure and reasoning are in
+[`docs/deploy-agent.md` §2-3](deploy-agent.md). Shipping the API first means a
+`.strict()` old agent rejects metadata containing new keys and could disconnect every
+session with `context_unreadable`. The recent `review_hole` also rides new lessons as
+`null`, so the impact is not limited to reviews. Confirm the new agent is running first,
+and the window where an old API omits the key degrades only reviews to a board-less
+conversation with a warning, without dropping connections.
+The agent's and the API's GitHub Actions are independent, and even one push guarantees no
+ordering. For a contract change, deploy that commit's agent ahead of time via the CLI or
+split the release in two, and start the API only after confirming the agent is live.
 
 ```bash
 cd backend/api
-pnpm run migrate:develop     # D1にスキーマを流す
+pnpm run migrate:develop     # apply the schema to D1
 pnpm run deploy:develop
 ```
 
-`wrangler deploy` が出す `https://ai-sensei-api-develop.<subdomain>.workers.dev` を控える。
+Note the `https://ai-sensei-api-develop.<subdomain>.workers.dev` that `wrangler deploy`
+prints.
 
 ```bash
 curl https://ai-sensei-api-develop.<subdomain>.workers.dev/health
 # {"ok":true,"environment":"develop"}
 ```
 
-`environment` が返るのは、**develop と production を取り違えていないか**を
-1回のcurlで確かめられるようにするため。production も同じ手順で。
+`environment` is returned so **a mixed-up develop and production** can be caught with one
+curl. Production follows the same steps.
 
-> `--env` を付けない `wrangler deploy` は、トップレベルの名前(`ai-sensei-api`)で
-> **3本目のワーカー**を作ってしまう。`pnpm run deploy` は付け忘れとみなして
-> 落ちるようにしてあるので、`deploy:develop` / `deploy:production` を使う。
+> `wrangler deploy` without `--env` creates **a third worker** under the top-level name
+> (`ai-sensei-api`). `pnpm run deploy` treats a missing flag as a mistake and fails, so
+> use `deploy:develop` / `deploy:production`.
 
 ---
 
-## 4. GitHub Actions から自動デプロイする
+## 4. Automatic deploys from GitHub Actions
 
-ここまで通れば、あとは `develop` / `main` へのpushで自動デプロイできる。
+Once the above works, a push to `develop` / `main` deploys automatically.
 
-### 4-0. ワークフローを配置する
+### 4-0. Place the workflow
 
-GitHub App(Claude Code等)は `.github/workflows/` 配下をpushできないため、
-YAMLは [`docs/ci/`](ci/README.md) にテンプレートとして置いてある。
-**リポジトリオーナーが手元で1度だけコピーする。**
+A GitHub App (Claude Code and the like) cannot push under `.github/workflows/`, so the
+YAML lives in [`docs/ci/`](ci/README.md) as a template.
+**The repository owner copies it by hand, once.**
 
 ```bash
 cp docs/ci/deploy.yml .github/workflows/deploy.yml
@@ -198,157 +205,161 @@ git add .github/workflows/deploy.yml
 git commit -m "ci: enable backend deploy workflow"
 ```
 
-### 4-1. APIトークンを作る
+### 4-1. Create an API token
 
-Cloudflare ダッシュボード > My Profile > **API Tokens** > Create Token。
-テンプレート **"Edit Cloudflare Workers"** をベースに、以下の権限があること:
+Cloudflare dashboard > My Profile > **API Tokens** > Create Token.
+Base it on the **"Edit Cloudflare Workers"** template, and make sure it has:
 
-| 種別 | 権限 | 用途 |
+| Kind | Permission | Purpose |
 | --- | --- | --- |
 | Account | Workers Scripts : Edit | `wrangler deploy` |
-| Account | D1 : Edit | マイグレーション適用 |
-| Account | Workers KV Storage : Edit | KVバインディング |
-| Account | Workers R2 Storage : Edit | R2バインディング |
-| Account | Account Settings : Read | workers.dev のサブドメイン解決 |
+| Account | D1 : Edit | Applying migrations |
+| Account | Workers KV Storage : Edit | The KV binding |
+| Account | Workers R2 Storage : Edit | The R2 binding |
+| Account | Account Settings : Read | Resolving the workers.dev subdomain |
 
-### 4-2. リポジトリに登録する
+### 4-2. Register it in the repository
 
 Settings > Secrets and variables > Actions > **Secrets**:
 
-| 名前 | 中身 |
+| Name | Content |
 | --- | --- |
-| `CLOUDFLARE_API_TOKEN` | 4-1 で作ったトークン |
-| `CLOUDFLARE_ACCOUNT_ID` | ダッシュボード右側の Account ID |
+| `CLOUDFLARE_API_TOKEN` | The token from 4-1 |
+| `CLOUDFLARE_ACCOUNT_ID` | The Account ID on the right of the dashboard |
 
-develop と production でCloudflareアカウントを分けるなら、リポジトリ共通ではなく
-Settings > **Environments** の `develop` / `production` にそれぞれ登録する
-(ワークフローが `environment:` を指定しているので、環境側の値が優先される)。
+To use different Cloudflare accounts for develop and production, register them under
+Settings > **Environments** > `develop` / `production` rather than repository-wide (the
+workflow specifies `environment:`, so the environment's values win).
 
-### 4-3. production に承認を挟む(任意)
+### 4-3. Require approval for production (optional)
 
-Settings > Environments > `production` > **Required reviewers** に自分を入れると、
-`main` へのpushでデプロイが一旦止まり、GitHub上で承認してから流れる。
+Adding yourself to Settings > Environments > `production` > **Required reviewers** pauses
+the deploy on a push to `main` until you approve it on GitHub.
 
-### ワークフローがやること
+### What the workflow does
 
-1. デプロイ先の環境のバインディングが埋まっているか確認する(`verify:bindings`)
-2. `pnpm run verify`(lint / typecheck / シークレット走査 / テスト)
+1. Checks the target environment's bindings are filled in (`verify:bindings`)
+2. `pnpm run verify` (lint / typecheck / secret scan / tests)
 3. `wrangler d1 migrations apply --remote`
 4. `wrangler deploy --env <target>`
-5. `/health` を叩いて、名乗る環境名が一致するか確かめる
+5. Hits `/health` and checks the reported environment name matches
 
-CI(`ci.yml`)と検査が重複するが、デプロイジョブは単体で完結させている。
-CIが緑だった時点と実際にデプロイするコミットは別物になりうるため。
+The checks overlap with CI (`ci.yml`), but the deploy job is self-contained, because the
+commit that was green in CI and the commit actually being deployed can differ.
 
-コード変更なしで流し直したいとき(secretを入れ替えた後など)は、
-Actions > Deploy (backend/api) > **Run workflow** から環境を選ぶ。
+To re-run with no code change (after swapping a secret, say), use
+Actions > Deploy (backend/api) > **Run workflow** and pick the environment.
 
 ---
 
-## 5. 運用
+## 5. Operations
 
 ```bash
 cd backend/api
-pnpm run tail:develop        # ログを流し見る (wrangler tail)
+pnpm run tail:develop        # watch the logs (wrangler tail)
 pnpm run tail:production
 ```
 
-**ロールバック**は Cloudflare ダッシュボード > Workers > 該当ワーカー >
-Deployments から前のバージョンに戻すのが速い
-(`wrangler rollback --env production` でも戻せる)。
-**ただしD1のマイグレーションは戻らない。** 列を消す・型を変える類の変更は、
-「足す → 両対応で動かす → 後で消す」の順に分けること。
+**Rolling back** is fastest from the Cloudflare dashboard > Workers > the worker >
+Deployments, reverting to a previous version
+(`wrangler rollback --env production` also works).
+**D1 migrations do not roll back.** Changes that drop a column or change a type must be
+split into "add -> run with both -> drop later".
 
-### クローズドβのあいだ無料で開放する
+### Opening everything for free during the closed beta
 
-`wrangler.toml` の2つの `vars` だけで切り替わる。**アプリ側の変更もリリースも要らない**。
+Two `vars` in `wrangler.toml` switch it. **No app change and no release are needed.**
 
-| 変数 | 意味 |
+| Variable | Meaning |
 | --- | --- |
-| `BETA_OPEN_ACCESS_UNTIL` | 開放の期限(ISO8601)。**この時刻まで全員がPremium相当**。無いか読めない値なら通常営業 |
-| `BETA_SESSIONS_PER_DAY` | 開放中の1日の授業本数(既定10)。会話の長さは通常と同じ最長20分 |
+| `BETA_OPEN_ACCESS_UNTIL` | The open-access deadline (ISO8601). **Everyone is Premium-equivalent until then.** Absent or unreadable means business as usual |
+| `BETA_SESSIONS_PER_DAY` | The daily lesson count while open (default 10). Conversation length is the usual 20-minute maximum |
 
 ```bash
 cd backend/api
-# 期限を伸ばす/縮める → wrangler.toml を書き換えてデプロイするだけ
+# to extend or shorten it, edit wrangler.toml and deploy
 pnpm run deploy:production
 ```
 
-なぜこれで足りるのか。**この期間にアプリを入れられるのは、Play の限定公開テストか
-TestFlight の名簿に載っている人だけ**なので、「全員」と「テスター」が同じ集合になる。
-端末IDを集めて1人ずつ付けて回る必要も、機種変更で付け直す必要も無い。
+Why that suffices: **during this period the only people who can install the app are those
+on Play's closed-testing list or in TestFlight**, so "everyone" and "testers" are the same
+set. There is no need to collect device ids and grant them one by one, nor to re-grant
+after a new device.
 
-開放中は、判定を通る場所すべてが同じ答えになる(`lib/entitlement.ts` の
-`hasPremiumAccess`)。復習の音声授業・学習プラン・親レポート・あと追い質問が開き、
-**カルテ後のペイウォールも出ない** —— テスターは購入画面に一度も触れないので、
-「無料」は導線として本当に無料になる。日次の上限に当たったときも
-`fair_use_limit_reached`(=課金を勧めない文言)を返す。
+While open, every place the check runs answers the same
+(`hasPremiumAccess` in `lib/entitlement.ts`). Voice review lessons, study plans, the
+parent report and follow-up questions all unlock, and **the post-karte paywall never
+appears** - testers never touch a purchase screen, so "free" really is free as a route.
+Hitting the daily cap also returns `fair_use_limit_reached` (wording that does not
+suggest paying).
 
-注意:
+Notes:
 
-- **一般公開の前に必ず消すこと。** 残っていると、課金できるのに誰も課金画面を見ない、
-  という形でしか気づけない。期限を入れてあるのは、消し忘れても勝手に終わるようにするため。
-- **`isPremiumNow` は変わらない。** β開放は「機能を開けてよいか」の判定で、
-  支払いの記録ではない。RevenueCatのwebhook同期とTRANSFERの引き継ぎは、
-  いままでどおり本当に払った人だけを見ている。
-- **上限は外れない。** 使い放題と言っても LiveKit・STT・LLM・TTS の従量原価は
-  テスターでも同じだけ動くので、`BETA_SESSIONS_PER_DAY` が異常利用を止める。
-- テスターが自分から購入画面まで行くことは無いが、**Play Console の
-  「ライセンステスト」にテスターのアカウントを入れておく**と、
-  万一の購入もテスト購入(無課金)になる。
+- **Always remove it before public launch.** Left in, the only way it is noticed is that
+  billing works and nobody sees the purchase screen. The deadline exists so it ends by
+  itself if forgotten.
+- **`isPremiumNow` does not change.** Beta access decides whether to unlock features, not
+  whether payment happened. RevenueCat's webhook sync and TRANSFER inheritance still look
+  only at people who really paid.
+- **The cap is not removed.** However unlimited it feels, LiveKit, STT, LLM and TTS costs
+  run the same for testers, so `BETA_SESSIONS_PER_DAY` stops abuse.
+- Testers never reach the purchase screen on their own, but **adding their accounts to
+  Play Console's "License testing"** makes any accidental purchase a test purchase (no
+  charge).
 
 ---
 
-## 6. まわりの設定
+## 6. The surrounding settings
 
-APIを2環境に分けると、つながる側も2つ要る。
+Splitting the API into two environments means the things it connects to come in twos too.
 
 | | develop | production |
 | --- | --- | --- |
-| LiveKit | 開発用プロジェクト | 本番用プロジェクト |
-| agent の `API_BASE_URL` | develop のワーカーURL | production のワーカーURL |
-| agent の `INTERNAL_API_TOKEN` | develop のsecretと同じ値 | production のsecretと同じ値 |
-| RevenueCat webhook | develop の `/v1/webhooks/revenuecat` | production の `/v1/webhooks/revenuecat` |
-| Codemagic の `API_BASE_URL` | — | production のワーカーURL |
+| LiveKit | A development project | A production project |
+| The agent's `API_BASE_URL` | develop's worker URL | production's worker URL |
+| The agent's `INTERNAL_API_TOKEN` | The same value as develop's secret | The same value as production's secret |
+| RevenueCat webhook | develop's `/v1/webhooks/revenuecat` | production's `/v1/webhooks/revenuecat` |
+| Codemagic's `API_BASE_URL` | — | production's worker URL |
 
-- **LiveKitのプロジェクトは分ける。** 同じプロジェクトを共有すると、develop の
-  agent が本番のルームのジョブを拾いうる。`LIVEKIT_URL` / `API_KEY` / `API_SECRET`
-  を環境ごとに別のものにして、agentもAPIも同じ組を見るようにする。
-- **RevenueCatのwebhookは環境ごとに宛先を分ける。** Sandboxのイベントを本番の
-  D1に書かないため。`REVENUECAT_WEBHOOK_AUTH` も別の値にする。
-- **Codemagicのビルドは production を向ける。** TestFlightに出るビルドが
-  develop のAPIを叩くと、テスターの操作が開発用D1に入る
-  (変数グループ `mobile-dart-defines` の `API_BASE_URL`。[codemagic.md](ci/codemagic.md))。
-  手元の `flutter run` は `--dart-define=API_BASE_URL=http://localhost:8787`。
+- **Split the LiveKit projects.** Sharing one would let the develop agent pick up jobs
+  from production rooms. Use different `LIVEKIT_URL` / `API_KEY` / `API_SECRET` per
+  environment, with the agent and the API looking at the same set.
+- **Point the RevenueCat webhook at a different destination per environment**, so sandbox
+  events are not written into production's D1. `REVENUECAT_WEBHOOK_AUTH` differs too.
+- **Point Codemagic's builds at production.** A TestFlight build hitting develop's API
+  would put testers' activity into the development D1
+  (`API_BASE_URL` in the `mobile-dart-defines` variable group;
+  [codemagic.md](ci/codemagic.md)).
+  Local `flutter run` uses `--dart-define=API_BASE_URL=http://localhost:8787`.
 
 ---
 
-## 7. 動かなくなったときに見るもの
+## 7. What to look at when it stops working
 
-バックエンドは**静かに壊れる**(アプリ側には「聞いています」のまま止まる、
-「カルテが出ない」としか出ない)。ログは1行1JSONなので、フィールドで絞る。
+The backend **breaks quietly** (the app only ever shows "listening" forever, or "no
+karte"). Logs are one JSON per line, so filter by field.
 
 ```bash
-pnpm --filter @ai-sensei/api tail:develop     # Workers Logs を流し見る
+pnpm --filter @ai-sensei/api tail:develop     # watch Workers Logs
 ```
 
-| 症状 | 見るもの |
+| Symptom | What to look at |
 | --- | --- |
-| 写真を撮ったあと進まない | `session_created` が出ているか。無ければ `photo_analysis_failed` / `session_rejected` |
-| 会話が始まらない(後輩が来ない) | agent側の `job_started`。無ければディスパッチ(`session_created` の `agent_dispatch`)を疑う |
-| 会話はできたがカルテが出ない | agent側の `karte_failed` / `complete_failed`、API側の `complete_unauthorized` / `karte_stored` |
-| ユーザーからの問い合わせ | レスポンスの `x-trace-id`。この値でログを引く |
+| Nothing happens after taking a photo | Is `session_created` present? If not, `photo_analysis_failed` / `session_rejected` |
+| The conversation never starts (nobody arrives) | The agent's `job_started`. Without it, suspect dispatch (`agent_dispatch` in `session_created`) |
+| The conversation worked but there is no karte | The agent's `karte_failed` / `complete_failed`, the API's `complete_unauthorized` / `karte_stored` |
+| A user report | The response's `x-trace-id`. Look up the logs by that value |
 
-`SENTRY_DSN` を入れてあれば、`unhandled_error` と各 `*_failed` はSentryにも届く。
-APIとagentは `session_id` を共通のキーにしているので、両方のログを並べられる。
+With `SENTRY_DSN` set, `unhandled_error` and each `*_failed` also reach Sentry.
+The API and the agent share `session_id` as a key, so both sets of logs can be lined up.
 
 ---
 
-## まだやっていないこと
+## Not done yet
 
-- **独自ドメイン。** いまは両環境とも `*.workers.dev`。production に独自ドメインを
-  当てたら `wrangler.toml` の `[env.production]` を `workers_dev = false` にして
-  `[[env.production.routes]]` を足す(workers.dev のURLを残すと、そちらが
-  野良のエンドポイントとして生き続ける)。
-- **トレース。** Sentryは入れたがエラーだけ(`tracesSampleRate: 0`)。
-  どこで時間を使っているかは、いまは `http_request` の `duration_ms` で見る。
+- **A custom domain.** Both environments are on `*.workers.dev`. After pointing a custom
+  domain at production, set `workers_dev = false` in `wrangler.toml`'s
+  `[env.production]` and add `[[env.production.routes]]` (leaving the workers.dev URL
+  keeps it alive as a stray endpoint).
+- **Tracing.** Sentry is in place but for errors only (`tracesSampleRate: 0`). Where time
+  is spent is currently read from `http_request`'s `duration_ms`.

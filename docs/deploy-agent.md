@@ -1,115 +1,121 @@
-# backend/agent のデプロイ
+# Deploying backend/agent
 
-後輩AIの会話パイプライン(LiveKit Agents)を、手元の `pnpm dev` から**常駐するコンテナ**へ
-移すための手順。`backend/api`(Cloudflare Workers)は [`docs/deploy.md`](deploy.md)、
-言語選定の経緯は [ADR 0002](adr.md#adr-0002)。
+How to move the AI's conversation pipeline (LiveKit Agents) from a local `pnpm dev` into
+a **long-lived container**. `backend/api` (Cloudflare Workers) is in
+[`docs/deploy.md`](deploy.md); the language choice is in [ADR 0002](adr.md#adr-0002).
 
 | | develop | production |
 | --- | --- | --- |
-| ブランチ | `develop` | `main` |
-| LiveKitプロジェクト | 開発用 | 本番用 |
-| agent名 | `ai-sensei-agent-develop` | `ai-sensei-agent-production` |
-| `API_BASE_URL` | develop のワーカーURL | production のワーカーURL |
-| `INTERNAL_API_TOKEN` | develop のsecretと同じ値 | production のsecretと同じ値 |
+| Branch | `develop` | `main` |
+| LiveKit project | Development | Production |
+| Agent name | `ai-sensei-agent-develop` | `ai-sensei-agent-production` |
+| `API_BASE_URL` | develop's worker URL | production's worker URL |
+| `INTERNAL_API_TOKEN` | The same value as develop's secret | The same value as production's secret |
 
-**LiveKitのプロジェクトは環境ごとに分ける。** 同じプロジェクトを共有すると、develop の
-agentが本番のルームのジョブを拾いうる(そのとき会話は成立してしまうので、気づくのは
-「本番のカルテがdevelopのD1に入っている」のを見つけたときになる)。
+**Split the LiveKit projects per environment.** Sharing one lets the develop agent pick
+up jobs from production rooms (the conversation succeeds, so it is noticed only when
+someone spots "a production karte in develop's D1").
 
 ---
 
-## 0. 何を動かすのか
+## 0. What actually runs
 
-`backend/agent` はビルド手順を持たず、`node --experimental-strip-types` で `.ts` を
-直接実行する([ADR 0002](adr.md#adr-0002))。デプロイの実体は
-**「Node 22のコンテナを1つ以上、常時起動しておく」**だけ。
+`backend/agent` has no build step and runs `.ts` directly with
+`node --experimental-strip-types` ([ADR 0002](adr.md#adr-0002)). Deployment amounts to
+**keeping one or more Node 22 containers running**.
 
-ワーカーはLiveKitへWebSocketで登録し、ジョブが割り当てられるのを待つ。
-HTTPを受けるサーバではないので、ロードバランサもURLも要らない。
-代わりに **`0.0.0.0:8081` にヘルスチェック**が立つ。
+The worker registers with LiveKit over a WebSocket and waits to be assigned a job.
+It is not an HTTP server, so it needs no load balancer and no URL.
+Instead, **a health check listens on `0.0.0.0:8081`**.
 
-| パス | 返るもの |
+| Path | Returns |
 | --- | --- |
-| `GET /` | LiveKitに登録できていれば `200`、まだなら `503` |
+| `GET /` | `200` once registered with LiveKit, `503` until then |
 | `GET /worker` | `{"agent_name":"...","active_jobs":0,"sdk_version":"1.6.1",...}` |
 
-**`503` は「プロセスが落ちている」ではなく「LiveKitに繋がっていない」。**
-後輩が来ない調査では、まずここが `200` かを見る。
+**`503` does not mean "the process is down" but "not connected to LiveKit".**
+When investigating "nobody arrives", check this is `200` first.
 
 ---
 
-## 1. イメージを焼く
+## 1. Building the image
 
-Dockerfileは**リポジトリのルート**([`Dockerfile`](../Dockerfile))。中身は
-`backend/agent` なのにルートにあるのは、動かせない理由が2つあるため:
+The Dockerfile is at the **repository root** ([`Dockerfile`](../Dockerfile)). It sits
+there rather than in `backend/agent` for two reasons:
 
-1. agentは `packages/*` を `workspace:*` で参照しているので、**ビルドコンテキストが
-   リポジトリのルートでないとインストールが解けない**。
-2. `lk agent create/deploy` は**作業ディレクトリをそのままビルドコンテキストにし、
-   その直下の `Dockerfile` を読む**。パスを指定するフラグが無い([§2](#2-livekit-cloud-のエージェントホスティングに載せる))。
+1. The agent references `packages/*` via `workspace:*`, so **the install only resolves
+   when the build context is the repository root**.
+2. `lk agent create/deploy` **uses the working directory as the build context and reads
+   the `Dockerfile` directly inside it.** There is no flag to point elsewhere
+   ([§2](#2-hosting-on-livekit-cloud-agent-hosting)).
 
 ```bash
 docker build -t ai-sensei-agent:local .
-# 同じことをするショートカット
+# a shortcut that does the same
 pnpm --filter @ai-sensei/agent run docker:build
 ```
 
-手元で動かす(`.env` はローカル用のまま。`backend/api` は `pnpm --filter @ai-sensei/api dev` で別途起動しておく):
+Run it locally (with the local `.env`; start `backend/api` separately via
+`pnpm --filter @ai-sensei/api dev`):
 
 ```bash
 pnpm --filter @ai-sensei/agent run docker:run
-curl -i http://localhost:8081/          # 200 になれば LiveKit に登録できている
+curl -i http://localhost:8081/          # 200 means it registered with LiveKit
 curl -s http://localhost:8081/worker
 ```
 
-> `API_BASE_URL=http://localhost:8787` のままコンテナで動かすと、コンテナの中の
-> localhostを見にいってカルテのPOSTだけ失敗する。手元で通しで試すなら
-> `--env API_BASE_URL=http://host.docker.internal:8787` を足す。
+> Running the container with `API_BASE_URL=http://localhost:8787` unchanged makes it look
+> at the container's own localhost, so only the karte POST fails. To try the whole flow
+> locally, add `--env API_BASE_URL=http://host.docker.internal:8787`.
 
-**`.env` の値をクォートで囲まないこと。** `pnpm dev` が使うNodeの `--env-file` は
-`KEY="値"` の引用符を外すが、**`docker run --env-file` は外さない**(引用符も値の一部として
-渡す)。同じ `.env` で **`pnpm dev` は通るのに `docker:run` だけ 401 になる**という、
-いちばん時間を取られる形で出る。行末の空白も同じ。疑ったら中身を見る:
+**Do not quote values in `.env`.** Node's `--env-file`, used by `pnpm dev`, strips the
+quotes from `KEY="value"`, but **`docker run --env-file` does not** (the quotes become
+part of the value). It shows up in the most time-consuming way possible: the same `.env`
+**works under `pnpm dev` and only `docker:run` returns 401**. Trailing whitespace does
+the same. When in doubt, look:
 
 ```bash
 docker run --rm --env-file backend/agent/.env --entrypoint sh ai-sensei-agent:local -c \
   'printf "URL=[%s]\nKEY=[%s]\nSECRET_LEN=%s\n" "$LIVEKIT_URL" "$LIVEKIT_API_KEY" "${#LIVEKIT_API_SECRET}"'
 ```
 
-`[]` の中に引用符や空白が見えたら `.env` 側を直す(秘密そのものは出さず、長さだけ見る)。
+Quotes or spaces inside the `[]` mean fixing `.env` (the secret itself is never printed,
+only its length).
 
-起動時に出る `onnxruntime cpuid_info warning: Unknown CPU vendor` は**無視してよい**。
-CPUの銘柄を読めなかっただけで、推論はCPUで通っている(Apple Silicon上でamd64の
-イメージをエミュレーションしているときによく出る)。
+The `onnxruntime cpuid_info warning: Unknown CPU vendor` at startup **can be ignored**.
+It only failed to read the CPU brand; inference still runs on the CPU (common when
+emulating an amd64 image on Apple Silicon).
 
-Dockerfileで効かせてあることのうち、外から見て分かりにくいものは3つ:
+Three things the Dockerfile does that are hard to see from outside:
 
-- **`ca-certificates` を入れている。** LiveKitのネイティブコア(Rust)はシステムの
-  CA束を実行時に読む。slimイメージには入っていないので、入れないとLiveKitへの
-  TLS接続だけがその場で失敗する。**コンテナにして初めて出る壊れ方**なので先に潰してある。
-- **`ONNXRUNTIME_NODE_INSTALL=skip`。** onnxruntime-node の postinstall は既定で
-  CUDA/TensorRTの実行プロバイダを **302MB** 取りに行くが、Silero VADはCPUで回すので
-  使わない。CPU実行に要るぶんはnpmパッケージに同梱されている。
-- **`pnpm` を挟まず `node` をPID 1にしている。** SIGTERMが来るとワーカーはdrain
-  (進行中の会話を終わらせてから終了)する。間にプロセスを挟むとシグナルが素通りせず、
-  **話している最中に切れる**。
+- **It installs `ca-certificates`.** LiveKit's native core (Rust) reads the system CA
+  bundle at runtime. The slim image does not have it, and without it only the TLS
+  connection to LiveKit fails. **That breakage appears only in a container**, so it is
+  headed off in advance.
+- **`ONNXRUNTIME_NODE_INSTALL=skip`.** onnxruntime-node's postinstall fetches **302MB** of
+  CUDA/TensorRT execution providers by default, which Silero VAD does not use (it runs on
+  the CPU). What CPU execution needs ships with the npm package.
+- **`node` is PID 1, with no `pnpm` in between.** On SIGTERM the worker drains (finishing
+  conversations in progress before exiting). A process in between blocks the signal and
+  **cuts people off mid-sentence**.
 
 ---
 
-## 2. LiveKit Cloud のエージェントホスティングに載せる
+## 2. Hosting on LiveKit Cloud agent hosting
 
-第一候補。LiveKitのグローバル網の上で動き、スケールとログ転送が付いてくる。
+The first choice. It runs on LiveKit's global network, with scaling and log forwarding
+included.
 
-### 2-1. ソースを送って、向こうでビルドさせる
+### 2-1. Send the source and let them build
 
-**`lk` はリポジトリのルートから叩く。** CLIは作業ディレクトリをそのまま
-ビルドコンテキストにし、その直下の `Dockerfile` を読む。`Dockerfile` をルートに
-置いてあるのはこのため([§1](#1-イメージを焼く))。
+**Run `lk` from the repository root.** The CLI uses the working directory as the build
+context and reads the `Dockerfile` directly inside it. That is why the `Dockerfile` is at
+the root ([§1](#1-building-the-image)).
 
-> ⚠️ **焼いたイメージを渡す道(`--image` / `--image-tar`)は使えない。**
-> あれは**手元のDockerデーモンのイメージをLiveKitのレジストリへpushする**フラグで、
-> その push 先が Enterprise プラン限定になっている。使うと
-> `Bring Your Own Container is only available for Enterprise projects` で断られる。
+> ⚠️ **Handing over a baked image (`--image` / `--image-tar`) does not work.**
+> Those flags **push an image from your local Docker daemon to LiveKit's registry**, and
+> that push target is Enterprise-only. Using them is refused with
+> `Bring Your Own Container is only available for Enterprise projects`.
 >
 > ```
 > failed to get push target: push-target returned 403:
@@ -117,129 +123,136 @@ Dockerfileで効かせてあることのうち、外から見て分かりにく�
 > only available for Enterprise projects. ..."}]}
 > ```
 
-`backend/agent` を切り出して別リポジトリにする案は取らない
-(`packages/guardrail` の二重実装を避けることがTypeScriptを選んだ理由そのものなので、
-デプロイの都合でそこを崩すと本末転倒になる)。
+Splitting `backend/agent` into its own repository is rejected (avoiding a duplicate
+implementation of `packages/guardrail` is the very reason TypeScript was chosen, so
+breaking that for deployment convenience would defeat the purpose).
 
-### 2-2. 初回
+### 2-2. The first time
 
 ```bash
-# CLIを入れて、LiveKitのアカウントに繋ぐ
+# install the CLI and connect to the LiveKit account
 curl -sSL https://get.livekit.io/cli | bash
 lk cloud auth
 
-# リポジトリのルートから。secretは .env の形式のファイルから渡す
-cd <リポジトリのルート>
-lk agent create --secrets-file <secretsファイル> --skip-sdk-check
+# from the repository root. Secrets come from a file in .env format
+cd <repository root>
+lk agent create --secrets-file <secrets file> --skip-sdk-check
 ```
 
-`--skip-sdk-check` が要るのは、CLIが**作業ディレクトリの `package.json` に
-`@livekit/agents` が入っているか**を見るため。ルートはワークスペースの器で、
-依存を持っているのは `backend/agent/package.json` のほうなので、素通しすると
-「SDKが無い」と言われる。**警告に落として先へ進めるだけ**で、ビルドには影響しない。
+`--skip-sdk-check` is needed because the CLI checks whether **the working directory's
+`package.json` contains `@livekit/agents`**. The root is the workspace container, and the
+dependency lives in `backend/agent/package.json`, so without the flag it says the SDK is
+missing. It **only downgrades that to a warning** and does not affect the build.
 
-成功すると **`livekit.toml` が書き出され、そこにagentのIDが入る**。
-IDは環境ごとに違うので、このファイルは**コミットしない**(`.gitignore` 済み)。
-develop用のIDが乗ったまま `main` で deploy すると、本番のつもりでdevelopを上書きする。
+On success, **`livekit.toml` is written out with the agent's id in it**.
+The id differs per environment, so **do not commit that file** (it is gitignored).
+Deploying from `main` with develop's id still in it would overwrite develop while
+believing it was production.
 
-> `lk` はまだ動きの変わりやすいCLIなので、**初回だけ `lk agent create --help` で
-> フラグ名を確かめてから**流すこと。ここに書いてあるのは 2026-08 時点の形。
+> `lk` is still a fast-moving CLI, so **check the flag names with `lk agent create --help`
+> before the first run**. What is written here is the shape as of 2026-08.
 
-### 2-3. 2回目以降
+### 2-3. Subsequent times
 
-**LiveKit metadata の契約を変えるリリースは、必ず agent を先にデプロイし、稼働を
-確認してから `backend/api` をデプロイする。** APIとagentは別々に更新されるため、
-同じコミットでも2つのデプロイの間には新旧が混在する窓がある。たとえば
-`review_hole` を追加したAPIを先に出すと、古いagentの `sessionMetadataSchema` は
-`.strict()` なので未知のキーを拒否し、`context_unreadable` で切断する。新規授業にも
-`review_hole: null` が載るため、この窓では復習だけでなく**全セッションで先輩が来ない**。
+**A release that changes the LiveKit metadata contract must deploy the agent first,
+confirm it is live, and only then deploy `backend/api`.** The API and the agent update
+separately, so even one commit leaves a window where old and new coexist. For example,
+shipping an API that added `review_hole` first means an old agent's
+`sessionMetadataSchema` - which is `.strict()` - rejects the unknown key and disconnects
+with `context_unreadable`. New lessons carry `review_hole: null` too, so in that window
+**no senpai arrives in any session**, not just reviews.
 
-agentを先に出した場合、新しいagentは古いAPIが `review_hole` を省略したmetadataも読める。
-その窓の復習だけは `review_hole_missing` を記録して従来の板書なし会話へ縮退し、APIの
-デプロイ後は自然に板書つきへ戻る。`lk agent status` で新しいレプリカの稼働を確認してから、
-API側のデプロイを開始すること。2つのGitHub Actionsには依存関係がなく、同じpushで
-起動しても順序は保証されない。契約変更時はこの節のCLIで対象コミットのagentを先に出すか、
-リリースを2段に分け、稼働確認前にAPIのデプロイを開始してはいけない。
+Deploying the agent first, the new agent can also read metadata where an old API omitted
+`review_hole`. Only reviews in that window log `review_hole_missing` and degrade to the
+old board-less conversation, returning to board lessons naturally once the API deploys.
+Confirm the new replicas are live with `lk agent status`, then start the API's deploy.
+The two GitHub Actions have no dependency and are not ordered even when triggered by the
+same push. For a contract change, deploy that commit's agent first with the CLI in this
+section, or split the release in two - never start the API's deploy before confirming
+the agent is live.
 
 ```bash
-cd <リポジトリのルート>
+cd <repository root>
 lk agent deploy --id <agent-id>
 ```
 
-ビルドは向こうで走る。**手元で `docker build` が通ることを先に確かめておく**と、
-向こうのビルドログを読む回数が減る([§1](#1-イメージを焼く))。
+The build runs on their side. **Confirming `docker build` works locally first**
+reduces how often you have to read their build log ([§1](#1-building-the-image)).
 
 ```bash
-lk agent status --id <agent-id>    # レプリカ数・CPU・状態
-lk agent logs   --id <agent-id>    # 1行1JSONのログがそのまま出る
+lk agent status --id <agent-id>    # replica count, CPU, state
+lk agent logs   --id <agent-id>    # the one-JSON-per-line logs, verbatim
 ```
 
 ### 2-4. production
 
-`--id` と `--secrets-file` を production のものに差し替えて、同じことを2回やる。
-**`livekit.toml` を使い回さない**のがいちばんの事故防止になる。
+Swap `--id` and `--secrets-file` for production's and do the same thing twice.
+**Not reusing `livekit.toml`** is the single best accident prevention.
 
 ---
 
-## 3. secret
+## 3. Secrets
 
-agentが読む環境変数は [`backend/agent/.env.example`](../backend/agent/.env.example) が正。
-デプロイ先には**同じキーをそのまま**入れる。
+[`backend/agent/.env.example`](../backend/agent/.env.example) is authoritative for the
+environment variables the agent reads. Put **the same keys, unchanged**, into the
+deployment target.
 
-| 名前 | 要否 | 中身 |
+| Name | Required | Content |
 | --- | --- | --- |
-| `API_BASE_URL` | 必須 | 環境に対応する `backend/api` のワーカーURL |
-| `INTERNAL_API_TOKEN` | 必須 | **同じ環境の** `backend/api` のsecretと同じ値 |
-| `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | 必須 | 環境に対応するLiveKitプロジェクトのもの |
-| `ANTHROPIC_API_KEY` | 必須 | 会話とカルテのLLM |
-| `DEEPGRAM_API_KEY` | 必須 | STTとTTSで共通 |
-| `LLM_MODEL_CONVERSATION` / `LLM_MODEL_KARTE` | 任意 | 未設定なら `config.ts` の既定値 |
-| `DEEPGRAM_TTS_MODEL_JA` / `_EN` | 任意 | **ふつうは触らない**(声はキャラクターそのもの) |
-| `SENTRY_DSN` | 任意 | 未設定ならSentryへは何も送らない |
-| `ENVIRONMENT` | 任意 | Sentryに出る名前。`develop` / `production` |
-| `LIVEKIT_AGENT_NAME` | 環境次第 | [§4](#4-ディスパッチ) |
+| `API_BASE_URL` | Yes | The `backend/api` worker URL for that environment |
+| `INTERNAL_API_TOKEN` | Yes | The same value as `backend/api`'s secret **in the same environment** |
+| `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | Yes | From that environment's LiveKit project |
+| `ANTHROPIC_API_KEY` | Yes | The conversation and karte LLMs |
+| `DEEPGRAM_API_KEY` | Yes | Shared by STT and TTS |
+| `LLM_MODEL_CONVERSATION` / `LLM_MODEL_KARTE` | Optional | Unset means `config.ts`'s defaults |
+| `DEEPGRAM_TTS_MODEL_JA` / `_EN` | Optional | **Normally left alone** (the voice is the character) |
+| `SENTRY_DSN` | Optional | Unset sends nothing to Sentry |
+| `ENVIRONMENT` | Optional | The name shown in Sentry. `develop` / `production` |
+| `LIVEKIT_AGENT_NAME` | Depends | [§4](#4-dispatch) |
 
-**足りない値があると起動時に落ちる**(`loadConfig` が起動時に1度だけ検証する)。
-会話の途中で気づくのがいちばん高くつくので、そう作ってある。
+**A missing value fails at startup** (`loadConfig` validates once at boot).
+Noticing mid-conversation is the most expensive outcome, hence the design.
 
-- **`INTERNAL_API_TOKEN` は環境ごとに必ず別の値にする。** developのagentが本番の
-  `/complete` を叩けてしまう([ADR 0003](adr.md#adr-0003))。
-- **LiveKit Cloud のホスティングは `LIVEKIT_URL` / `LIVEKIT_API_KEY` /
-  `LIVEKIT_API_SECRET` を自分で注入する。** 自前で入れると食い違うことがあるので、
-  そちらに載せるときは `--secrets-file` から3つを外してよい。
+- **`INTERNAL_API_TOKEN` must differ per environment.** Otherwise the develop agent can
+  call production's `/complete` ([ADR 0003](adr.md#adr-0003)).
+- **LiveKit Cloud hosting injects `LIVEKIT_URL` / `LIVEKIT_API_KEY` /
+  `LIVEKIT_API_SECRET` itself.** Supplying your own can conflict, so when hosting there
+  you may drop those three from `--secrets-file`.
 
-secretを入れ替えたら、**コードが変わっていなくてもデプロイし直す**(既に動いている
-ワーカーのプロセスには新しい値が入らない)。
+After swapping a secret, **redeploy even with no code change** (an already-running
+worker's process does not pick up the new value).
 
 ---
 
-## 4. ディスパッチ
+## 4. Dispatch
 
-ワーカーの登録の仕方で、呼ばれ方が変わる。ここが `backend/api` 側の設定と噛み合っていないと、
-**部屋は作られるのに後輩が来ない**(アプリは「聞いています」のまま止まる)。
+How the worker registers changes how it is called. When this does not mesh with
+`backend/api`'s configuration, **the room is created and nobody arrives** (the app sits on
+"listening").
 
-| agent側 | 呼ばれ方 | `backend/api` の `LIVEKIT_AGENT_NAME` |
+| Agent side | How it is called | `backend/api`'s `LIVEKIT_AGENT_NAME` |
 | --- | --- | --- |
-| `LIVEKIT_AGENT_NAME` なし | 自動ディスパッチ。プロジェクトの全ルームに入る | 空のまま |
-| `LIVEKIT_AGENT_NAME` あり | 明示ディスパッチのみ | **同じ名前を入れる** |
+| No `LIVEKIT_AGENT_NAME` | Auto dispatch; it joins every room in the project | Leave it empty |
+| `LIVEKIT_AGENT_NAME` set | Explicit dispatch only | **Put the same name in** |
 
-**LiveKit Cloud のエージェントホスティングは `LIVEKIT_AGENT_NAME` を自動で入れる。**
-つまり載せ替えた瞬間に「名前つき」に変わるので、`backend/api` 側にも同じ名前を
-入れないと後輩が来なくなる。
+**LiveKit Cloud's agent hosting sets `LIVEKIT_AGENT_NAME` automatically.**
+So the moment you move there it becomes "named", and without the same name on the
+`backend/api` side, nobody arrives.
 
 ```bash
-lk agent status --id <agent-id>                     # 名乗っている名前を確認する
-curl -s http://localhost:8081/worker                # 手元なら agent_name を見る
+lk agent status --id <agent-id>                     # check the name it reports
+curl -s http://localhost:8081/worker                # locally, read agent_name
 cd backend/api && pnpm exec wrangler secret put LIVEKIT_AGENT_NAME --env develop
 ```
 
 ---
 
-## 5. GitHub Actions から自動デプロイする
+## 5. Automatic deploys from GitHub Actions
 
-テンプレートは [`docs/ci/deploy-agent.yml`](ci/deploy-agent.yml)。
-GitHub Appは `.github/workflows/` へpushできないため、**リポジトリオーナーが手元で
-1度だけコピーする**(`backend/api` 側と同じ事情。[`docs/ci/README.md`](ci/README.md))。
+The template is [`docs/ci/deploy-agent.yml`](ci/deploy-agent.yml).
+A GitHub App cannot push into `.github/workflows/`, so **the repository owner copies it by
+hand, once** (the same situation as `backend/api`; see
+[`docs/ci/README.md`](ci/README.md)).
 
 ```bash
 cp docs/ci/deploy-agent.yml .github/workflows/deploy-agent.yml
@@ -247,68 +260,72 @@ git add .github/workflows/deploy-agent.yml
 git commit -m "ci: enable agent deploy workflow"
 ```
 
-必要な Secrets / Variables(Settings > Secrets and variables > Actions)。
-develop と production を分けるなら、リポジトリ共通ではなく **Environments** 側に置く。
+The required Secrets and Variables (Settings > Secrets and variables > Actions).
+To split develop and production, put them under **Environments** rather than
+repository-wide.
 
-| 種別 | 名前 | 中身 |
+| Kind | Name | Content |
 | --- | --- | --- |
-| Secret | `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | `lk` の認証に使う。環境に対応するLiveKitプロジェクトのもの |
-| Secret | `LIVEKIT_URL` | 同上 |
-| Variable | `LIVEKIT_AGENT_ID` | `lk agent create` が返したID(`CA_...`) |
+| Secret | `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | Used to authenticate `lk`. From that environment's LiveKit project |
+| Secret | `LIVEKIT_URL` | As above |
+| Variable | `LIVEKIT_AGENT_ID` | The id returned by `lk agent create` (`CA_...`) |
 
-**イメージのレジストリは要らない。** ワークフローがやるのはソースを送ることだけで、
-ビルドはLiveKit側で走る。
+**No image registry is needed.** The workflow only sends the source; the build runs on
+LiveKit's side.
 
 ---
 
-## 6. LiveKit Cloud を使わない場合
+## 6. Without LiveKit Cloud
 
-コンテナが常駐できればどこでもよい(Fly.io / Render / ECS / Cloud Run の常時起動 /
-自前のNode 22)。ADR 0002 でいう「不可の場合」の道で、**イメージはまったく同じ**。
+Anywhere a container can stay resident works (Fly.io / Render / ECS / an always-on Cloud
+Run / your own Node 22). This is ADR 0002's "if unavailable" path, and **the image is
+exactly the same**.
 
-押さえるのは4つだけ:
+Only four things matter:
 
-| 項目 | 値 | なぜ |
+| Item | Value | Why |
 | --- | --- | --- |
-| ヘルスチェック | `GET :8081/` が200 | LiveKitに登録できて初めて200になる |
-| 停止時の猶予 | **60秒以上** | SIGTERMからdrain。短いと会話中に切れる |
-| スケールの向き | 台数を増やす(1台を大きくしない) | ワーカーは負荷70%で新規ジョブを断る |
-| メモリ | 1レプリカあたり 2GB を目安 | productionモードは `min(CPU数, 4)` 個の子プロセスを常駐させ、それぞれがVADモデルを持つ |
+| Health check | `GET :8081/` returns 200 | It only returns 200 once registered with LiveKit |
+| Shutdown grace | **60 seconds or more** | Draining after SIGTERM. Too short cuts conversations off |
+| Scaling direction | Add replicas (do not grow one) | A worker refuses new jobs at 70% load |
+| Memory | About 2GB per replica | Production mode keeps `min(CPU count, 4)` child processes resident, each holding a VAD model |
 
-**スケールインしてゼロ台になる設定にはしない**(Cloud Run のように0台まで縮む構成だと、
-ジョブが来た時点で誰も待ち受けていない)。
+**Never configure it to scale in to zero** (a Cloud Run-style scale-to-zero setup means
+nobody is listening when a job arrives).
 
 ---
 
-## 7. 動かなくなったときに見るもの
+## 7. What to look at when it stops working
 
-agentは**静かに壊れる**。アプリからは「後輩が来ない」「カルテが出ない」としか見えない。
-ログは1行1JSONで、全行に `session_id` が入るので `backend/api` 側と突き合わせられる。
+The agent **breaks quietly**. The app only ever shows "nobody arrives" or "no karte".
+Logs are one JSON per line and every line carries `session_id`, so they can be lined up
+with `backend/api`'s.
 
-| 症状 | 見るもの |
+| Symptom | What to look at |
 | --- | --- |
-| 後輩が来ない | まず `GET :8081/` が200か。200なら `job_started` の有無 → 無ければ[§4のディスパッチ](#4-ディスパッチ) |
-| 起動直後に落ちる | `agentの環境変数を読めません: <名前>(<理由>)` が出る。名前と理由がそのまま原因。[§3](#3-secret) |
-| `closing worker due to error.` としか出ない | フレームワークが起動中の例外を握り潰している。**環境変数はその手前で見ているので、ここまで来たら環境変数以外**(ポートの衝突など)を疑う |
-| LiveKitに繋がらない(`401`) | 鍵が拒否されている。**`LIVEKIT_URL` のプロジェクトと `LIVEKIT_API_KEY`/`SECRET` の出どころが揃っているか**(環境を分けた直後の取り違えが定番)。次に `.env` のクォート・行末の空白([§1](#1-イメージを焼く)) |
-| LiveKitに繋がらない(TLSで落ちる) | `ca-certificates` の有無(自前のイメージに差し替えたとき) |
-| 会話は始まるがすぐ切れる | `context_unreadable`。APIが載せたトークンのmetadataを疑う |
-| カルテが出ない | `karte_failed` / `complete_failed`、API側の `complete_unauthorized`。`INTERNAL_API_TOKEN` の環境違いが定番 |
-| デプロイ直後だけ会話が切れる | 停止時の猶予が短くてdrainしきれていない([§6](#6-livekit-cloud-を使わない場合)) |
+| Nobody arrives | First, is `GET :8081/` 200? If so, is `job_started` present? If not, see [§4, dispatch](#4-dispatch) |
+| Crashes right after startup | It prints "cannot read the agent's environment variable: `<name>` (`<reason>`)". The name and reason are the cause. [§3](#3-secrets) |
+| Only `closing worker due to error.` | The framework swallowed a startup exception. **Environment variables are checked before that point, so if you got here, suspect something else** (a port clash, say) |
+| Cannot connect to LiveKit (`401`) | The key is being rejected. **Check `LIVEKIT_URL`'s project and where `LIVEKIT_API_KEY`/`SECRET` came from line up** (a classic mix-up right after splitting environments). Then check `.env` for quotes and trailing whitespace ([§1](#1-building-the-image)) |
+| Cannot connect to LiveKit (TLS failure) | Whether `ca-certificates` is present (after swapping in your own image) |
+| The conversation starts and immediately drops | `context_unreadable`. Suspect the token metadata the API attached |
+| No karte | `karte_failed` / `complete_failed`, and the API's `complete_unauthorized`. A cross-environment `INTERNAL_API_TOKEN` is the classic cause |
+| Conversations drop only right after a deploy | The shutdown grace is too short to drain ([§6](#6-without-livekit-cloud)) |
 
-イベントの一覧は [`backend/agent/README.md`](../backend/agent/README.md#ログと監視)。
-`SENTRY_DSN` を入れてあれば `*_failed` はSentryにも届く(会話の中身と写真の要約は送らない)。
+The event list is in [`backend/agent/README.md`](../backend/agent/README.md).
+With `SENTRY_DSN` set, `*_failed` also reaches Sentry (conversation content and photo
+summaries are never sent).
 
 ---
 
-## まだやっていないこと
+## Not done yet
 
-- **実際のデプロイ。** ここに書いてあるのは手順で、まだ一度も流していない。
-  最初に確かめるのは、[ADR 0002](adr.md#adr-0002) が挙げていたとおり
-  **`prewarm`(Silero VADのロード)がコンテナで通ること**。`GET :8081/` が200に
-  なれば通っている。
-- **オートスケールの調整。** いまは1レプリカ想定。同時セッション数が読めるのは
-  W2のGo/No-Go以降なので、それまでは台数を手で決める。
-- **ロールバック。** LiveKit側でビルドするので、こちらにはイメージが残らない。
-  いまは**戻したいコミットを checkout して deploy し直す**しかない
-  (`lk agent rollback` があるかは未確認。`lk agent --help` で見ること)。
+- **The actual deployment.** What is written here is the procedure; it has never been
+  run. The first thing to confirm is what [ADR 0002](adr.md#adr-0002) flagged:
+  **that `prewarm` (loading Silero VAD) works in a container.** `GET :8081/` returning
+  200 means it does.
+- **Autoscale tuning.** One replica is assumed for now. Concurrent session counts are
+  only readable after W2's Go/No-Go, so until then the replica count is set by hand.
+- **Rollback.** The build happens on LiveKit's side, so no image remains here. For now
+  the only way is **checking out the commit to revert to and deploying again**
+  (whether `lk agent rollback` exists is unverified; check `lk agent --help`).
