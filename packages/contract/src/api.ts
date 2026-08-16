@@ -17,6 +17,7 @@ import { planDateSchema, planSourceSchema, studyPlanDraftSchema, studyPlanSchema
 export const apiPaths = {
   createSession: "/v1/sessions",
   updateSessionTopics: (sessionId: string) => `/v1/sessions/${sessionId}/topics`,
+  updateSessionProblem: (sessionId: string) => `/v1/sessions/${sessionId}/problem`,
   startSession: (sessionId: string) => `/v1/sessions/${sessionId}/start`,
   completeSession: (sessionId: string) => `/v1/sessions/${sessionId}/complete`,
   progress: "/v1/me/progress",
@@ -121,10 +122,49 @@ export const problemTextMaxLength = 600;
  * この欄はいま**観測のため**にある。
  *
  * どれくらいの生徒が実際に2枚送るかは、この値でしか観測できない。
+ *
+ * **`typed` は写真ではない。** 読み取れなかった問題文を生徒が自分で打ったもので、
+ * 出どころが写真かどうかの境目もここに入る({@link updateSessionProblemRequestSchema})。
+ * 写真の2枚に混ぜて数えると、上の観測が「2枚送った率」ではなく
+ * 「問題文が埋まった率」に化ける — 手入力が増えるほど、撮影の改善が効いているように見える。
  */
-export const problemSources = ["problem_photo", "notes_photo"] as const;
+export const problemSources = ["problem_photo", "notes_photo", "typed"] as const;
 export const problemSourceSchema = z.enum(problemSources);
 export type ProblemSource = (typeof problemSources)[number];
+
+/**
+ * 問題文の読み取りが、どう決着したか。
+ *
+ * **`read` 以外はすべて「問題文なし」で、セッションはそのまま成立する。**
+ * それでも1つにまとめないのは、**落ち方でユーザーに言うことが変わる**から:
+ * `too_long` は紙面を丸ごと撮っている(問題の部分だけを撮れば読める)、
+ * `solution_included` は答えが写り込んでいる、`not_a_problem` は式だけで
+ * 設問が写っていない。`not_found` に畳むと、どれも「読めませんでした」になり、
+ * **直せたはずの人が直し方を知らないまま授業に入る。**
+ *
+ * 判定そのものは backend/api(長さ)と `@ai-sensei/guardrail`(中身)の
+ * 分担で、ここに置いてあるのは**アプリと共有する語彙**だけ。
+ * `solution_included` / `not_a_problem` は guardrail の
+ * `problemRejectionReasons` と同じ綴りで、代入の型検査がずれを拾う。
+ *
+ * `null` は**写真を1枚も読んでいない**という意味(復習セッション)。
+ * `not_found` と分けるのは、あちらが「読んだが写っていなかった」だから —
+ * 復習に「問題が読めませんでした」と出しても、その生徒は写真を撮っていない。
+ */
+export const problemOutcomes = [
+  /** 読めた。`problem` が入る。 */
+  "read",
+  /** 写っていない(または解析器が空で返した)。 */
+  "not_found",
+  /** 上限超過 = 紙面を丸ごと書き起こしている。切らずに捨てる。 */
+  "too_long",
+  /** 解答・解説が混ざっている(guardrail)。 */
+  "solution_included",
+  /** 設問が見当たらない、式だけの断片(guardrail)。 */
+  "not_a_problem",
+] as const;
+export const problemOutcomeSchema = z.enum(problemOutcomes);
+export type ProblemOutcome = (typeof problemOutcomes)[number];
 
 /**
  * セッションが扱う問題。**読み取れたときだけ存在する。**
@@ -263,8 +303,34 @@ export const createSessionResponseSchema = z
      *      授業が始まる前の手当て。
      */
     problem: sessionProblemSchema.nullable(),
+    /**
+     * `problem` がその値になった理由({@link problemOutcomes})。
+     *
+     * **`problem` の有無だけでは、画面が言うべきことが決まらない。** 読めなかった
+     * セッションは今まで確認画面で**黙って通していた**(警告を出すと任意のはずの
+     * 2枚目が事実上の必須になる、という判断)。その結果、失敗が最初に露呈するのは
+     * 会話の中 — 先輩の「問題、読んでもらってもいい?」だった。画面に見えている
+     * 問題を声で言い直させられるところで、体験がもたつく。
+     *
+     * ここを返すのは、**警告に格上げするためではなく**、控えめな一言と
+     * 落ち方に合った直し方(`too_long` なら「問題の部分だけを撮る」)を
+     * 出せるようにするため。撮り直しを促さない道(手入力)は
+     * {@link updateSessionProblemRequestSchema} にあるので、2枚目は任意のまま。
+     */
+    problem_outcome: problemOutcomeSchema.nullable(),
   })
-  .strict();
+  .strict()
+  /**
+   * **「本文はあるのに read ではない」を作らせない。**
+   *
+   * 2つの欄は同じ1つの決着を別の角度から言っているだけで、食い違う組み合わせは
+   * 存在しない(`sessionProblemSchema` が `text` と `source` を1つに縛ったのと同じ考え方)。
+   * ずれたまま通すと、画面は問題文を出しながら「読み取れませんでした」と言う。
+   */
+  .refine((response) => (response.problem !== null) === (response.problem_outcome === "read"), {
+    message: "problem と problem_outcome が食い違っています(read のときだけ problem が入る)",
+    path: ["problem_outcome"],
+  });
 export type CreateSessionResponse = z.infer<typeof createSessionResponseSchema>;
 
 /**
@@ -327,6 +393,49 @@ export type UpdateSessionTopicsRequestInput = z.input<typeof updateSessionTopics
  * **ここでもトークンは出さない** — 部屋の鍵が出るのは `/start` だけ。
  */
 export type UpdateSessionTopicsResponse = CreateSessionResponse;
+
+/**
+ * PATCH /v1/sessions/{id}/problem のリクエスト。**問題文を、生徒が自分で確定させる口。**
+ *
+ * 効く先が2つある:
+ *
+ *   1. **読めなかったときの救済。** 写真から読めないと `problem` は `null` のままで、
+ *      その授業は先輩の「問題、読んでもらってもいい?」から始まる —
+ *      **画面に問題が見えているのに、声で言い直させられる**。打てば済む
+ *   2. **誤読の訂正。** これまでの保険は「ちがっていれば会話の最初に本人が言う」だけで、
+ *      訂正のために授業の頭を1往復使っていた
+ *
+ * **写真は読み直さない。** 紙面は解析後に破棄してあり(`sessionPhotoParts`)、
+ * 機械が読み直す手段がそもそも無い。ここで受け取るのは**確定したテキスト**で、
+ * これが `problem` の新しい正本になる(`source` は `typed`)。
+ *
+ * **会話が始まる前だけ。** 文脈がエージェントへ渡るのは `/start` がトークンを
+ * 出す1回きりなので、始まったあとに書き換えても授業には反映されない。
+ * 反映されない更新を受け付けると、生徒には「直したのに直っていない」に見える。
+ *
+ * 中身は `@ai-sensei/guardrail` の `checkProblemText` を通す。**解析器の出力に
+ * 掛けているのと同じ関門で、緩急もそのまま**(迷ったら通す) — 手入力にだけ
+ * 厳しくすると、読めなかった生徒が今度は自分の入力で弾かれる。
+ */
+export const updateSessionProblemRequestSchema = z
+  .object({
+    locale: localeSchema.default("ja"),
+    /**
+     * 問題文。**空では送れない**(消す操作ではない)。
+     * 上限は解析と同じ {@link problemTextMaxLength} — 手で打つ量としては十分すぎるが、
+     * 別の数字を持つと「打てたのに解析なら弾かれる長さ」が生まれる。
+     */
+    text: z.string().trim().min(1).max(problemTextMaxLength),
+  })
+  .strict();
+export type UpdateSessionProblemRequest = z.infer<typeof updateSessionProblemRequestSchema>;
+export type UpdateSessionProblemRequestInput = z.input<typeof updateSessionProblemRequestSchema>;
+
+/**
+ * 返るものは作成時と同じ形。**単元も一緒に返す** — 画面はこの応答で
+ * 確認画面の状態をまるごと置き換えるので、問題文だけを返すと単元が消える。
+ */
+export type UpdateSessionProblemResponse = CreateSessionResponse;
 
 /**
  * **LiveKitトークンに載せて agent に渡す会話文脈。**
@@ -553,6 +662,13 @@ export const apiErrorCodes = [
   "fair_use_limit_reached",
   "premium_required",
   "photo_unreadable",
+  /**
+   * 手で打った問題文が、問題文として通らなかった(`checkProblemText`)。
+   *
+   * **`photo_unreadable` と分ける。** 向こうは「もう一度撮ってみてください」と
+   * 言う文言で、打ち込んだ人には的外れ。ここに来た人の手元には、直せるテキストがある。
+   */
+  "problem_text_rejected",
   "out_of_scope",
   "session_not_found",
   "hole_not_found",

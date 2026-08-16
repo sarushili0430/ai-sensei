@@ -22,9 +22,11 @@ import {
   planDayMinutesMax,
   planDaysMaxCount,
   planTurnSchema,
+  problemTextMaxLength,
   sessionMetadataSchema,
   studyPlanDraftSchema,
   studyPlanSchema,
+  updateSessionProblemRequestSchema,
 } from "./index.ts";
 
 const repoRoot = resolve(import.meta.dirname, "..", "..", "..");
@@ -56,6 +58,14 @@ describe("fixture", () => {
     expect(fixtureFileNames).toContain("study-plan.en");
     expect(fixtureFileNames).toContain("parent-report");
     expect(fixtureFileNames).toContain("parent-report.en");
+  });
+
+  // 読めた側だけを持っていると、**読めなかったセッションの形を誰も検査しない。**
+  // そこがこのIssueの本体(問題が画面に見えているのに先輩が聞き直す)なので、
+  // 対のfixtureが消えたら落ちるようにしておく。
+  it("問題文が読めた形と、読めなかった形の両方を持っている", () => {
+    expect(fixtureFileNames).toContain("create-session-response");
+    expect(fixtureFileNames).toContain("create-session-response.unread");
   });
 
   it("fixturePath がリポジトリ相対パスを返す", () => {
@@ -674,6 +684,53 @@ describe("APIスキーマ", () => {
     const response = loadFixture("create-session-response") as Record<string, unknown>;
     expect(
       createSessionResponseSchema.safeParse({ ...response, detected_topics: [] }).success,
+    ).toBe(false);
+  });
+
+  // 画面が問題文を出しながら「読み取れませんでした」と言う組み合わせを、
+  // 契約の側で作れなくしておく(`sessionProblemSchema` が text と source を
+  // 1つに縛っているのと同じ考え方)。
+  it("problem と problem_outcome が食い違う応答は無効", () => {
+    const read = loadFixture("create-session-response") as Record<string, unknown>;
+    const unread = loadFixture("create-session-response.unread") as Record<string, unknown>;
+
+    expect(createSessionResponseSchema.safeParse(read).success).toBe(true);
+    expect(createSessionResponseSchema.safeParse(unread).success).toBe(true);
+
+    // 本文はあるのに「読めなかった」
+    expect(
+      createSessionResponseSchema.safeParse({ ...read, problem_outcome: "not_found" }).success,
+    ).toBe(false);
+    // 「読めた」のに本文が無い
+    expect(
+      createSessionResponseSchema.safeParse({ ...unread, problem_outcome: "read" }).success,
+    ).toBe(false);
+  });
+
+  // 復習セッションは写真を1枚も読んでいない。`not_found`(読んだが写っていない)を
+  // 返すと、写真を撮っていない生徒に「問題が読めませんでした」と言うことになる。
+  it("写真を読んでいないセッションは problem_outcome が null", () => {
+    const unread = loadFixture("create-session-response.unread") as Record<string, unknown>;
+    expect(
+      createSessionResponseSchema.safeParse({
+        ...unread,
+        kind: "review",
+        problem_outcome: null,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("手入力の問題文は、解析と同じ上限で受ける", () => {
+    const ok = updateSessionProblemRequestSchema.safeParse({
+      text: "x^2 - 3x + 2 = 0 を解け。",
+    });
+    expect(ok.success && ok.data.locale).toBe("ja");
+
+    // 空は「消す操作」になってしまうので受けない。
+    expect(updateSessionProblemRequestSchema.safeParse({ text: "   " }).success).toBe(false);
+    expect(
+      updateSessionProblemRequestSchema.safeParse({ text: "あ".repeat(problemTextMaxLength + 1) })
+        .success,
     ).toBe(false);
   });
 

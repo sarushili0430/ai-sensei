@@ -105,17 +105,47 @@ void main() {
       expect(analysis.problem!.text, contains('number of intersection points'));
     });
 
-    // 読めなかったとき。**fixtureが無いのでキーを落として作る。**
-    // `packages/contract` は読むだけなので、ここでfixtureを増やさない。
-    // 見たいのは「値が無くても組み立てが止まらないこと」で、
-    // 契約上のキーの有無(`nullable()`)はTypeScript側が見ている。
-    test('問題文が読めなくても、セッションは組み立てられる', () {
+    /// 読めなかったとき。**「読めなかった」だけでなく、落ち方まで届く。**
+    ///
+    /// ここが落ちると、確認画面は読めなかったセッションを黙って通す側へ戻り、
+    /// 失敗が最初に表に出るのは会話の中 — 先輩の「問題、読んでもらってもいい?」
+    /// になる(アプリに問題が見えているのに、声で言い直させられる)。
+    test('問題文が読めなかったセッションを、落ち方つきで読める', () {
+      final SessionAnalysis analysis = SessionAnalysis.fromJson(
+        loadFixture('create-session-response.unread'),
+      );
+
+      expect(analysis.problem, isNull);
+      expect(analysis.problemOutcome, ProblemOutcome.tooLong);
+      // 画面はこの1つで「控えめに言う」側へ分岐する。
+      expect(analysis.problemUnread, isTrue);
+      // 読めなくても授業は始められる(単元は取れている)。
+      expect(analysis.detectedTopics, isNotEmpty);
+    });
+
+    test('読めたセッションは、読み合わせの側に分岐する', () {
+      final SessionAnalysis analysis = SessionAnalysis.fromJson(
+        loadFixture('create-session-response'),
+      );
+
+      expect(analysis.problemOutcome, ProblemOutcome.read);
+      expect(analysis.problemUnread, isFalse);
+    });
+
+    /// 欄が無い応答(復習セッション・古いサーバ)。**値が無くても組み立てが止まらない**
+    /// ことと、そこで「読み取れませんでした」を出さないことを見る —
+    /// 写真を撮っていない生徒に、直しようのない指摘をすることになる。
+    test('問題文の欄が無くても、セッションは組み立てられる', () {
       final Map<String, dynamic> json = loadFixture('create-session-response')
-        ..['problem'] = null;
+        ..['problem'] = null
+        ..['problem_outcome'] = null;
       expect(SessionAnalysis.fromJson(json).problem, isNull);
+      expect(SessionAnalysis.fromJson(json).problemUnread, isFalse);
 
       json.remove('problem');
+      json.remove('problem_outcome');
       expect(SessionAnalysis.fromJson(json).problem, isNull);
+      expect(SessionAnalysis.fromJson(json).problemUnread, isFalse);
     });
 
     test('確信度の低い候補を見分けられる(チップの初期選択に使う)', () {

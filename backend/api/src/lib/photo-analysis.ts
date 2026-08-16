@@ -1,4 +1,9 @@
-import { type SessionProblem, problemTextMaxLength } from "@ai-sensei/contract";
+import {
+  type ProblemOutcome,
+  type SessionProblem,
+  problemOutcomes,
+  problemTextMaxLength,
+} from "@ai-sensei/contract";
 import {
   type CurriculumLocale,
   type SchoolStage,
@@ -274,19 +279,18 @@ export function resolveDetectedTopics(
  * **同じ写真をもう一度投げても同じものが返る**。Vision の課金とセッション開始の
  * 数秒を払って、同じ結果を得るだけになりやすい。
  *
- * 落ち方を `not_found` にまとめないのは、**観測のため**。
+ * 落ち方を `not_found` にまとめないのは、**観測のためだけではない。**
  * `too_long` が続けば `prompts/photo_analysis.*.md` の600字の指示が効いていない、
- * `solution_included` が続けば「解答は取らない」の指示が効いていない、と読み分けられる。
- * ログで区別できないと、どちらも永遠に気づけない。
+ * `solution_included` が続けば「解答は取らない」の指示が効いていない、と読み分けられる —
+ * それに加えて、**この値はアプリまで届いて、生徒に言う直し方を決める**
+ * (`contract` の `problemOutcomes`。`too_long` なら「問題の部分だけを撮る」)。
+ * 畳んだ瞬間に、直せたはずの人が直し方を知らないまま授業へ入る。
+ *
+ * 語彙は契約側にある。ここで別に定義すると、**アプリが知らない落ち方**を
+ * 作れてしまう(画面には「読み取れませんでした」しか出せない値が増える)。
  */
-export const problemOutcomes = [
-  "read",
-  "not_found",
-  "too_long",
-  "solution_included",
-  "not_a_problem",
-] as const;
-export type ProblemOutcome = (typeof problemOutcomes)[number];
+export type { ProblemOutcome };
+export { problemOutcomes };
 
 export function resolveSessionProblem(input: {
   analysis: PhotoAnalysis | null;

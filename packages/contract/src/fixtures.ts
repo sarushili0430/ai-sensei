@@ -76,6 +76,15 @@ export const fixtureNames = Object.keys(fixtureSchemas) as FixtureName[];
 export const fixtureFileSchemas: Record<string, FixtureName> = {
   ...Object.fromEntries(fixtureNames.map((name) => [name, name])),
   "create-session-response.en": "create-session-response",
+  /**
+   * 問題文が読めなかったセッション。**`problem` と `problem_outcome` の対を固定する。**
+   *
+   * ここを `.en` と同じ「別の課程」の話だと思わないこと。これは**別の決着**で、
+   * 読めた側のfixtureだけでは片方の分岐しか固定できない — アプリはこの形のときに
+   * 「読み取れなかった」と直し方を出す(`capture_screen.dart`)ので、
+   * 落ちれば読めなかった生徒の画面が黙って通る側へ戻る。
+   */
+  "create-session-response.unread": "create-session-response",
   "karte.en": "karte",
   "board-lesson.en": "board-lesson",
   // 英語の課程の板書。数学とは使える要素が重ならない(sentence / compare)。

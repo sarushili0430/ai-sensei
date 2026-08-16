@@ -73,15 +73,50 @@ void main() {
   /// `problem` を返すAPIクライアント。null なら「読めなかった」。
   List<Object?> apiOverrides({
     Map<String, dynamic>? problem,
+
+    /// 読み取りの決着(`api.ts` の `problemOutcomes`)。
+    /// **省略したら `problem` の有無から決める** — 契約は
+    /// 「`read` のときだけ `problem` が入る」で縛られているので、
+    /// テストの側でその対を崩せないようにしておく。
+    String? problemOutcome,
     List<Map<String, dynamic>>? topics,
     List<http.BaseRequest>? calls,
     String? errorCode,
     String? errorMessage,
+
+    /// 手入力を弾く(設問が無い・答えが混ざっている)。`PATCH /problem` だけ落とす。
+    bool rejectTypedProblem = false,
+
     /// 会話の開始だけを落とす(解析は通る)。通信が切れた状況を作る。
     bool failStart = false,
   }) {
+    /// いま画面に返している問題文。手入力が通れば、そのあとの応答も置き換わる。
+    Map<String, dynamic>? currentProblem = problem;
+    String currentOutcome = problemOutcome ?? (problem == null ? 'not_found' : 'read');
+
     final MockClient client = MockClient((http.Request request) async {
       calls?.add(request);
+
+      // 問題文の手入力。**写真は読み直さないので、出どころは `typed`。**
+      if (request.url.path.endsWith('/problem')) {
+        if (rejectTypedProblem) {
+          return http.Response.bytes(
+            utf8.encode(jsonEncode(<String, dynamic>{
+              'error': <String, dynamic>{
+                'code': 'problem_text_rejected',
+                'message': '問題文として読み取れませんでした。',
+              },
+            })),
+            422,
+            headers: <String, String>{'content-type': 'application/json; charset=utf-8'},
+          );
+        }
+        final String text =
+            (jsonDecode(request.body) as Map<String, dynamic>)['text'] as String;
+        currentProblem = <String, dynamic>{'text': text, 'source': 'typed'};
+        currentOutcome = 'read';
+      }
+
       if (failStart && request.url.path.endsWith('/start')) {
         return http.Response.bytes(
           utf8.encode(jsonEncode(<String, dynamic>{
@@ -131,11 +166,13 @@ void main() {
                       'confidence': 0.92,
                     },
                   ],
-              'problem': problem,
+              'problem': currentProblem,
+              'problem_outcome': currentOutcome,
             };
       return http.Response.bytes(
         utf8.encode(jsonEncode(body)),
-        request.url.path.endsWith('/start') ? 200 : 201,
+        // 作成だけが201。単元の絞り込みも問題文の手入力も、既にある行の更新。
+        request.url.path.endsWith('/sessions') ? 201 : 200,
         headers: <String, String>{'content-type': 'application/json; charset=utf-8'},
       );
     });
@@ -150,10 +187,12 @@ void main() {
   Future<void> pumpCapture(
     WidgetTester tester, {
     Map<String, dynamic>? problem,
+    String? problemOutcome,
     List<Map<String, dynamic>>? topics,
     List<http.BaseRequest>? calls,
     String? errorCode,
     String? errorMessage,
+    bool rejectTypedProblem = false,
     bool failStart = false,
     Size size = phoneSurface,
   }) async {
@@ -162,10 +201,12 @@ void main() {
       const CaptureScreen(),
       overrides: apiOverrides(
         problem: problem,
+        problemOutcome: problemOutcome,
         topics: topics,
         calls: calls,
         errorCode: errorCode,
         errorMessage: errorMessage,
+        rejectTypedProblem: rejectTypedProblem,
         failStart: failStart,
       ),
       size: size,
@@ -197,6 +238,29 @@ void main() {
     // multipart の送信は `MockClient` が実際にファイルを読むので、
     // `pumpAndSettle` では進まない(理由は `pumpUntil`)。
     await pumpUntil(tester, find.text(ja.captureConfirmHint));
+  }
+
+  /// 問題文を打って確定させる。
+  ///
+  /// [open] は入力を開く操作名。読めなかったときは「問題文を入力する」、
+  /// 読み取った文を直すときは「直す」。
+  ///
+  /// 送信の完了は `pumpAndSettle` では待てない — `MockClient` の応答は実時間で
+  /// 返るので、**画面の変化で待つ**(理由は `pumpUntil`)。
+  Future<void> typeProblem(
+    WidgetTester tester,
+    String text, {
+    String? open,
+    Finder? until,
+  }) async {
+    await tester.tap(find.text(open ?? ja.captureProblemEnter));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), text);
+    await tester.tap(find.text(ja.captureProblemInputSave));
+    // 通ったときは入力欄が閉じて読み合わせが出る。弾かれたときは文言が出る。
+    await pumpUntil(tester, until ?? find.text(ja.captureProblemTitle));
+    await tester.pumpAndSettle();
   }
 
   /// **ここが崩れると、ノートが無い生徒は問題の枠を見ないままシャッターの前に立つ。**
@@ -409,16 +473,124 @@ void main() {
     });
   });
 
-  // 読めなかったことを警告として出すと、任意のはずの2枚目が事実上の必須になる。
-  testWidgets('読み取れなかったときは、何も言わずに進める', (WidgetTester tester) async {
-    await pumpCapture(tester);
-    await takeNotes(tester);
+  /// **読めなかったことを、授業が始まる前に言う。**
+  ///
+  /// 以前はここで黙って通していた(警告を出すと任意のはずの2枚目が事実上の
+  /// 必須になる、という判断)。その結果、失敗が最初に表に出るのは会話の中 —
+  /// 先輩の「問題、読んでもらってもいい?」で、**アプリに問題が見えているのに
+  /// 声で言い直させられる**。外部テスターの唯一の不満がこれだった。
+  ///
+  /// 判断そのものは撤回していない。出すのは警告ではなく、事実と
+  /// **撮り直さずに済む道**(手入力)なので、2枚目は任意のまま。
+  group('問題文が読めなかったとき', () {
+    testWidgets('読み取れなかったことを言い、打つ道を出す', (WidgetTester tester) async {
+      await pumpCapture(tester, problemOutcome: 'not_found');
+      await takeNotes(tester);
 
+      await startLesson(tester);
+
+      expect(find.text(ja.captureProblemUnreadTitle), findsOneWidget);
+      expect(find.text(ja.captureProblemEnter), findsOneWidget);
+      // 行き止まりにしない。単元の確認まで進んでいて、そのまま始められる。
+      expect(find.text(ja.captureConfirmHint), findsOneWidget);
+      expect(
+        tester.widget<ChunkyButton>(find.byType(ChunkyButton)).onPressed,
+        isNotNull,
+        reason: '読めなくても授業は始められる(2枚目は任意のまま)',
+      );
+    });
+
+    // 撮り直しを促す言葉だけを置くと、それは撮り直さないと消えない警告になり、
+    // 任意のはずの2枚目が事実上の必須になる。
+    testWidgets('撮り直せとは言わない', (WidgetTester tester) async {
+      await pumpCapture(tester, problemOutcome: 'not_found');
+      await takeNotes(tester);
+      await startLesson(tester);
+
+      expect(find.text(ja.captureRetake), findsNothing);
+      expect(find.text(ja.captureAddProblem), findsNothing);
+    });
+
+    /// 落ち方ごとに、本人にできることが違う。畳んで「読み取れませんでした」1本に
+    /// すると、**直せたはずの人が直し方を知らないまま授業に入る。**
+    final Map<String, String> detailByOutcome = <String, String>{
+      'too_long': ja.captureProblemUnreadTooLong,
+      'solution_included': ja.captureProblemUnreadSolutionIncluded,
+      'not_a_problem': ja.captureProblemUnreadNotAProblem,
+      'not_found': ja.captureProblemUnreadNotFound,
+    };
+    for (final MapEntry<String, String> entry in detailByOutcome.entries) {
+      testWidgets('${entry.key} には、その落ち方の直し方を出す', (WidgetTester tester) async {
+        await pumpCapture(tester, problemOutcome: entry.key);
+        await takeNotes(tester);
+        await startLesson(tester);
+
+        expect(find.text(entry.value), findsOneWidget);
+        // 他の落ち方の文言が混ざっていないこと。
+        for (final String other in detailByOutcome.values.where((String it) => it != entry.value)) {
+          expect(find.text(other), findsNothing, reason: '別の落ち方の文言が出ている');
+        }
+      });
+    }
+
+    testWidgets('打った問題文が、そのまま先輩に渡る', (WidgetTester tester) async {
+      final List<http.BaseRequest> calls = <http.BaseRequest>[];
+      await pumpCapture(tester, problemOutcome: 'not_found', calls: calls);
+      await takeNotes(tester);
+      await startLesson(tester);
+
+      await typeProblem(tester, '円 x^2 + y^2 = 9 と直線の共有点の個数を求めよ。');
+
+      // 打った時点で「読めた」に変わり、読み合わせの側が出る。
+      expect(find.text(ja.captureProblemTitle), findsOneWidget);
+      expect(find.textContaining('共有点の個数'), findsOneWidget);
+      expect(find.text(ja.captureProblemUnreadTitle), findsNothing);
+
+      // **写真は撮り直していない。** 送ったのはテキストだけ。
+      expect(pickedPaths, hasLength(1));
+      expect(
+        calls.where((http.BaseRequest call) => call.url.path.endsWith('/problem')),
+        hasLength(1),
+      );
+    });
+
+    /// 打った文が通らないのは直せる失敗なので、**画面ごと差し替えない。**
+    /// 全画面のエラーへ飛ばすと、書いた文が消える。
+    testWidgets('通らなかった入力は、画面を壊さずその場で言う', (WidgetTester tester) async {
+      await pumpCapture(tester, problemOutcome: 'not_found', rejectTypedProblem: true);
+      await takeNotes(tester);
+      await startLesson(tester);
+
+      await typeProblem(
+        tester,
+        'x^2 - 3x + 2 = 0',
+        until: find.text('問題文として読み取れませんでした。'),
+      );
+
+      // サーバの文言が入力欄の隣に出て、入力は開いたまま。
+      expect(find.text('問題文として読み取れませんでした。'), findsOneWidget);
+      expect(find.byType(TextField), findsOneWidget);
+      // 撮り直しには戻していない(直せるものは手元のテキストのほうにある)。
+      expect(pickedPaths, hasLength(1));
+    });
+  });
+
+  /// 誤読の訂正。**授業の頭を1往復使わずに直せるようにする。**
+  ///
+  /// これまでの保険は「ちがっていれば会話の最初に本人が言う」だけだった。
+  testWidgets('読み取れた問題文も、始める前に直せる', (WidgetTester tester) async {
+    await pumpCapture(
+      tester,
+      problem: <String, dynamic>{'text': '別の問題を読んでしまった', 'source': 'notes_photo'},
+    );
+    await takeNotes(tester);
     await startLesson(tester);
 
-    expect(find.text(ja.captureProblemTitle), findsNothing);
-    // 行き止まりにもしない。単元の確認まで進んでいる。
-    expect(find.text(ja.captureConfirmHint), findsOneWidget);
+    expect(find.text(ja.captureProblemEdit), findsOneWidget);
+    await typeProblem(tester, '円と直線の共有点の個数を求めよ。', open: ja.captureProblemEdit);
+
+    expect(find.textContaining('円と直線の共有点'), findsOneWidget);
+    expect(find.text('別の問題を読んでしまった'), findsNothing);
   });
 
   /// `/start` が指定の回数だけ飛ぶまで進める。

@@ -270,12 +270,72 @@ class AppStrings {
 
   /// 読み取った問題文の見出し。**誤読がいちばん早く表面化する場所。**
   ///
-  /// 「合っていますか?」と聞かない。ここで直す手段が無い(セッションは
-  /// もう作られている)のに問いかけると、答えようのない問いになる。
-  /// 事実として置いておけば、ちがっていれば会話の最初に本人が言う —
-  /// それが計画書 §1-1 の「誤読の保険」そのもの。
+  /// **それでも「合っていますか?」とは聞かない。** 直す口はできたが
+  /// ([captureProblemEdit])、問いかけにすると全員が答えを求められる —
+  /// 合っている人にも一手増える。事実として置き、ちがう人だけが直せばよい。
   String get captureProblemTitle =>
       _pick('先輩は、この問題だと思っています', 'This is the problem your senpai sees');
+
+  /// 読み取った問題文を直す。**誤読の訂正を、授業の前に済ませられるようにする。**
+  ///
+  /// これが無かったあいだ、保険は「ちがっていれば会話の最初に本人が言う」だけで、
+  /// 訂正のために授業の頭を1往復使っていた。
+  String get captureProblemEdit => _pick('直す', 'Fix it');
+
+  /// 問題文が読めなかったときの見出し。**警告にしない。**
+  ///
+  /// 出さずに黙って通していたのが、外部テスターの唯一の不満の入口だった —
+  /// 読めなかったことを誰も言わないまま授業が始まり、先輩の一言目が
+  /// 「問題、読んでもらってもいい?」になる。**アプリに問題が見えているのに、
+  /// 声で言い直させられる。**
+  ///
+  /// かといって「読み取れませんでした。撮り直してください」にはしない。
+  /// 撮り直さないと消えない警告は、**任意のはずの2枚目を事実上の必須にする**
+  /// (`api.ts` の `problemSources` が「解析後にヒントを出さない」と決めた理由)。
+  /// だから事実 + このままでも始められること + 打つ道、の3つだけを置く。
+  String get captureProblemUnreadTitle =>
+      _pick('問題文は読み取れませんでした', "We couldn't read the problem");
+
+  /// 読めなかったときの、落ち方ごとの一言(`api.ts` の `problemOutcomes`)。
+  ///
+  /// **畳んで「読み取れませんでした」1本にしない。** 落ち方ごとに、本人にできる
+  /// ことが違う — 紙面を丸ごと撮っている人は問題の部分だけを撮れば読めるし、
+  /// 答えが写り込んだ人は次から外せる。畳むと、直せたはずの人が直し方を
+  /// 知らないまま授業に入る。
+  ///
+  /// **どれも「撮り直して」で終わらせない。** 下の入力([captureProblemEnter])が
+  /// 常に隣にあるので、撮り直しは選択肢の1つに留まる。
+  String get captureProblemUnreadNotFound => _pick(
+        'このままでも始められます。先輩が最初に聞きます。',
+        "You can still start. Your senpai will just ask you first.",
+      );
+  String get captureProblemUnreadTooLong => _pick(
+        'ページ全体が写っているみたいです。問題の部分だけを撮ると読み取れます。',
+        'Looks like the whole page is in the shot. Just the problem itself reads better.',
+      );
+  String get captureProblemUnreadSolutionIncluded => _pick(
+        '答えも一緒に写っていたので、使いませんでした。答えが入らないように撮ると読み取れます。',
+        "The answer was in the shot too, so we left it out. Keep the answer out and it reads fine.",
+      );
+  String get captureProblemUnreadNotAProblem => _pick(
+        '式は読めましたが、「〜を求めよ」の部分が見つかりませんでした。',
+        'We could read the expression, but not what it asks you to do.',
+      );
+
+  /// 問題文を自分で打つ。**読めなかったときの、撮り直さない道。**
+  ///
+  /// 手元の紙を見て打てば、先輩に聞き直されずに授業が始まる。
+  String get captureProblemEnter => _pick('問題文を入力する', 'Type the problem');
+
+  /// 入力欄の見出しと補助。**「正確に写せ」とは言わない** —
+  /// 先輩が扱う問題が特定できればよく、一字一句を求めると誰も打たなくなる。
+  String get captureProblemInputTitle => _pick('問題文', 'The problem');
+  String get captureProblemInputHint => _pick(
+        '手元の問題を、そのまま打ってください。答えは入れなくて大丈夫です。',
+        'Type the problem as it is. No need to include the answer.',
+      );
+  String get captureProblemInputSave => _pick('これで進む', 'Use this');
+  String get captureProblemInputCancel => _pick('やめる', 'Cancel');
 
   /// カメラを断られたとき。黙ってホームに戻さない。
   ///

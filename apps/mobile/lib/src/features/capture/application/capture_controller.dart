@@ -69,6 +69,12 @@ class CaptureState {
   /// 読み取れた問題文。読めなければ null。
   SessionProblem? get problem => analysis?.problem;
 
+  /// 問題文の読み取りがどう決着したか。写真を読んでいなければ null(復習)。
+  ProblemOutcome? get problemOutcome => analysis?.problemOutcome;
+
+  /// 写真は読んだが、問題文が取れなかった。**確認画面で控えめに言う状態。**
+  bool get problemUnread => analysis?.problemUnread ?? false;
+
   List<DetectedTopic> get topics => analysis?.detectedTopics ?? const <DetectedTopic>[];
 
   List<String> get selectedTopicIds => topics
@@ -176,6 +182,54 @@ class CaptureController extends _$CaptureController {
       // 圏外・タイムアウト・プロキシのHTML応答など。ここを拾わないと
       // isSubmitting が立ったままスピナーで固まり、撮り直しの導線も消える。
       _fail(_networkError(locale));
+    }
+  }
+
+  /// 問題文を手で確定させる。**読めなかったときの入力と、誤読の訂正が同じ口。**
+  ///
+  /// これが無かったあいだ、問題文が読めなかったセッションは確認画面を黙って通り、
+  /// 授業の一言目が「問題、読んでもらってもいい?」になっていた —
+  /// **アプリの画面に問題が出ているのに、声で言い直させられる。**
+  ///
+  /// **写真は撮り直さない。** 問題の紙面は解析後に破棄されているので読み直せず、
+  /// ここで送るテキストがそのまま問題文の正本になる(出どころは `typed`)。
+  /// 撮り直しに戻す作りにすると、任意のはずの2枚目が事実上の必須に戻る。
+  ///
+  /// **今日の1回は使わない。** Vision LLMを呼ばないので原価が動かず、
+  /// サーバ側でも枠を数えていない。
+  ///
+  /// 戻り値は**入力欄の隣に出す文言**で、null なら入力を閉じてよい
+  /// (成功したか、セッションごと消えていて画面側がエラーを引き取ったか)。
+  /// **[CaptureState.isSubmitting] は立てない。** 立てると入力欄の裏で画面が
+  /// スピナーに差し替わり、閉じた瞬間に一度ちらつく。送信中であることは
+  /// 入力欄の側が自分で持てばよく、ここが握るのは結果だけ。
+  Future<ApiException?> submitProblemText(String text, {String locale = 'ja'}) async {
+    final SessionAnalysis? current = state.analysis;
+    final String trimmed = text.trim();
+    if (current == null || trimmed.isEmpty) return null;
+
+    try {
+      final SessionAnalysis updated = await ref.read(apiClientProvider).updateSessionProblem(
+            sessionId: current.sessionId,
+            text: trimmed,
+            locale: locale,
+          );
+      // **外した単元はそのまま持っておく。** サーバ側の単元は触っていないので
+      // (反映は会話の開始の一歩前)、ここで選択を戻すと外した単元が復活する。
+      state = state.copyWith(analysis: updated, clearError: true);
+      return null;
+    } on ApiException catch (error) {
+      // セッションごと消えていたら、入力欄で言っても直しようがない。
+      // 画面をエラーへ渡して、撮影からやり直させる([_fail])。
+      if (error.isSessionNotFound) {
+        _fail(error);
+        return null;
+      }
+      // **画面は差し替えない。** 打った文が問題文として通らなかっただけで、
+      // 直せるものは入力欄の中にある。全画面のエラーに飛ばすと、書いた文が消える。
+      return error;
+    } catch (_) {
+      return _networkError(locale);
     }
   }
 

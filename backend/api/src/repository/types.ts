@@ -1,4 +1,10 @@
-import type { HoleSeverity, Locale, SessionProblem, StudyPlan } from "@ai-sensei/contract";
+import type {
+  HoleSeverity,
+  Locale,
+  ProblemOutcome,
+  SessionProblem,
+  StudyPlan,
+} from "@ai-sensei/contract";
 
 export type UserRecord = {
   device_id: string;
@@ -28,6 +34,18 @@ export type SessionContext = {
    * この欄が無い古い行は `undefined` で読めるので、`?? null` で受けること。
    */
   problem?: SessionProblem | null;
+  /**
+   * {@link SessionContext.problem} がその値になった理由(`contract` の `problemOutcomes`)。
+   *
+   * **`problem` が null の理由は、解析の瞬間にしか分からない。** 単元を絞り込む
+   * (PATCH /topics)たびに応答を組み直すが、そこにはもう写真も解析結果も無いので、
+   * ここに残していないと「読めなかった」までしか言えない — チップを1つ外した瞬間に、
+   * 画面から `too_long` 向けの直し方(「問題の部分だけを撮ってね」)が消える。
+   *
+   * `problem` と同じく `context` 列のJSONに入る(列は増えないのでマイグレーション不要)。
+   * この欄が無い古い行は `undefined` で読めるので、`?? null` で受けること。
+   */
+  problem_outcome?: ProblemOutcome | null;
   visible_work: string[];
   question_seeds: string[];
   /** 検出時の確信度。チップUIの表示を、単元を絞ったあとも同じに保つ。 */

@@ -15,6 +15,7 @@
                 "fair_use_limit_reached",
                 "premium_required",
                 "photo_unreadable",
+                "problem_text_rejected",
                 "out_of_scope",
                 "session_not_found",
                 "hole_not_found",

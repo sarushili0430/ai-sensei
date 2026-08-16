@@ -23,11 +23,15 @@ Map<String, dynamic> _analysisJson(
   String sessionId,
   List<String> topicIds, {
   Map<String, dynamic>? problem,
+  String? problemOutcome,
 }) {
   return <String, dynamic>{
     'session_id': sessionId,
     'kind': 'new',
     'problem': problem,
+    // 契約は「`read` のときだけ `problem` が入る」で対を縛っている。
+    // テストの側でその対を崩さないよう、既定は `problem` の有無から決める。
+    'problem_outcome': problemOutcome ?? (problem == null ? 'not_found' : 'read'),
     'detected_topics': <Map<String, dynamic>>[
       for (final String topicId in topicIds)
         <String, dynamic>{
@@ -86,6 +90,9 @@ void main() {
     Map<String, dynamic>? problem,
     int failStartTimes = 0,
     String? startErrorCode,
+
+    /// 手入力を弾く(設問が無い・答えが混ざっている)。`PATCH /problem` だけ落とす。
+    bool rejectTypedProblem = false,
   }) {
     int startCalls = 0;
     // サーバは UTF-8 で返す(単元名に日本語が入る)。`http.Response` の文字列版は
@@ -97,6 +104,26 @@ void main() {
 
     final MockClient client = MockClient((http.Request request) async {
       calls.add(request);
+      // 問題文の手入力。**写真は読み直さないので、出どころは `typed`。**
+      if (request.url.path.endsWith('/problem')) {
+        if (rejectTypedProblem) {
+          return json(<String, dynamic>{
+            'error': <String, dynamic>{
+              'code': 'problem_text_rejected',
+              'message': '問題文として読み取れませんでした。',
+            },
+          }, 422);
+        }
+        final String text = (jsonDecode(request.body) as Map<String, dynamic>)['text'] as String;
+        return json(
+          _analysisJson(
+            'ses_1',
+            <String>['M1-NIJI-GURAFU', 'M1-NIJI-HANBETSU'],
+            problem: <String, dynamic>{'text': text, 'source': 'typed'},
+          ),
+          200,
+        );
+      }
       if (request.method == 'PATCH') {
         final Map<String, dynamic> body = jsonDecode(request.body) as Map<String, dynamic>;
         final List<String> topicIds = (body['topic_ids'] as List<dynamic>).cast<String>();
@@ -409,9 +436,9 @@ void main() {
       expect(problem.source, ProblemSource.problemPhoto);
     });
 
-    /// **読めなかったことを画面に出さない**(黙って進める)。
-    /// 警告として出すと、任意のはずの2枚目が事実上の必須になる。
-    test('読めなければ null のまま。撮影をやり直させない', () async {
+    /// 読めなくても**撮影はやり直させない**(任意のはずの2枚目が事実上の必須になる)。
+    /// 出すのは落ち方と、撮り直さずに済む道(手入力)。
+    test('読めなければ null のまま。落ち方だけが届く', () async {
       final ProviderContainer container = containerWith(<http.BaseRequest>[]);
       addTearDown(container.dispose);
 
@@ -421,8 +448,101 @@ void main() {
 
       final CaptureState state = container.read(captureControllerProvider);
       expect(state.problem, isNull);
+      expect(state.problemOutcome, ProblemOutcome.notFound);
+      expect(state.problemUnread, isTrue);
       // 会話には進める。問題文が読めないことは行き止まりの理由にしない。
       expect(state.canStart, isTrue);
+    });
+  });
+
+  /// **問題文を、生徒が自分で確定させる。**
+  ///
+  /// これが無かったあいだ、読めなかったセッションは授業の一言目が
+  /// 「問題、読んでもらってもいい?」になっていた —
+  /// **アプリの画面に問題が出ているのに、声で言い直させられる。**
+  group('問題文の手入力', () {
+    const String typed = '円 x^2 + y^2 = 9 と直線 y = 2x + 1 の共有点の個数を求めよ。';
+
+    /// 解析まで進めて、問題文が読めなかった状態を作る。
+    Future<CaptureController> analyzed(
+      List<http.BaseRequest> calls, {
+      bool rejectTypedProblem = false,
+    }) async {
+      final ProviderContainer container = containerWith(
+        calls,
+        rejectTypedProblem: rejectTypedProblem,
+      );
+      addTearDown(container.dispose);
+
+      final CaptureController controller = container.read(captureControllerProvider.notifier);
+      controller.setPhoto(photo);
+      await controller.analyze();
+      return controller;
+    }
+
+    test('打った問題文が、問題文の正本になる', () async {
+      final List<http.BaseRequest> calls = <http.BaseRequest>[];
+      final CaptureController controller = await analyzed(calls);
+
+      expect(await controller.submitProblemText(typed), isNull);
+
+      final CaptureState state = controller.state;
+      expect(state.problem?.text, typed);
+      // 写真ではないので出どころは `typed`。2枚送った率の観測に混ぜない。
+      expect(state.problem?.source, ProblemSource.typed);
+      expect(state.problemUnread, isFalse);
+
+      // **セッションは作り直さない。** 作り直すと同じ写真をもう一度Vision LLMに通す。
+      expect(
+        calls.map((http.BaseRequest call) => '${call.method} ${call.url.path}'),
+        <String>['POST /v1/sessions', 'PATCH /v1/sessions/ses_1/problem'],
+      );
+    });
+
+    test('前後の空白は落として送る', () async {
+      final List<http.BaseRequest> calls = <http.BaseRequest>[];
+      final CaptureController controller = await analyzed(calls);
+
+      await controller.submitProblemText('  $typed \n');
+
+      final http.Request patch = calls.last as http.Request;
+      expect((jsonDecode(patch.body) as Map<String, dynamic>)['text'], typed);
+    });
+
+    // 空を送ると、契約上は 422 になるだけ。行かせない。
+    test('空の入力はサーバへ行かない', () async {
+      final List<http.BaseRequest> calls = <http.BaseRequest>[];
+      final CaptureController controller = await analyzed(calls);
+
+      expect(await controller.submitProblemText('   '), isNull);
+      expect(calls.where((http.BaseRequest call) => call.url.path.endsWith('/problem')), isEmpty);
+    });
+
+    /// **画面は差し替えない。** 打った文が通らないのは直せる失敗で、
+    /// 全画面のエラーに飛ばすと書いた文ごと消える。
+    test('通らなかった入力は、画面を壊さずに文言だけ返す', () async {
+      final CaptureController controller =
+          await analyzed(<http.BaseRequest>[], rejectTypedProblem: true);
+
+      final ApiException? error = await controller.submitProblemText('x^2 - 3x + 2 = 0');
+
+      expect(error?.code, 'problem_text_rejected');
+      expect(error?.message, '問題文として読み取れませんでした。');
+      // 確認画面のまま。解析も握ったままなので、会話はそのまま始められる。
+      expect(controller.state.error, isNull);
+      expect(controller.state.analysis, isNotNull);
+      expect(controller.state.canStart, isTrue);
+    });
+
+    // 外した単元まで戻ると、絞り込んだ生徒が外した単元を教わることになる。
+    test('外した単元の選択は、打っても戻らない', () async {
+      final CaptureController controller = await analyzed(<http.BaseRequest>[]);
+      controller.toggleTopic('M1-NIJI-GURAFU');
+      expect(controller.state.excludedTopicIds, contains('M1-NIJI-GURAFU'));
+
+      await controller.submitProblemText(typed);
+
+      expect(controller.state.excludedTopicIds, contains('M1-NIJI-GURAFU'));
     });
   });
 }

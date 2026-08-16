@@ -73,7 +73,8 @@
                   "type": "string",
                   "enum": [
                     "problem_photo",
-                    "notes_photo"
+                    "notes_photo",
+                    "typed"
                   ]
                 }
               },
@@ -87,13 +88,31 @@
               "type": "null"
             }
           ]
+        },
+        "problem_outcome": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "read",
+                "not_found",
+                "too_long",
+                "solution_included",
+                "not_a_problem"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
         "session_id",
         "kind",
         "detected_topics",
-        "problem"
+        "problem",
+        "problem_outcome"
       ],
       "additionalProperties": false
     }

@@ -35,6 +35,22 @@ const messages: Record<ApiErrorCode, { ja: string; en: string; status: number }>
     en: "We couldn't read any notes in this photo. Could you take another one?",
     status: 422,
   },
+  /**
+   * 手で打った問題文が、問題文として通らなかった。
+   *
+   * **落ち方(`solution_included` / `not_a_problem`)で文言を分けない。**
+   * 分けるほうが親切に見えるが、打った本人にできることは
+   * 「設問まで入れる」「答えを外す」の2つしかなく、どちらの落ち方でも
+   * その2つを見せれば直せる。落ちた理由そのものはログに出す(観測はそちら)。
+   *
+   * **撮り直しを促さない。** ここに来た人の手元には直せるテキストがあり、
+   * 写真の話へ戻すと、打つという逃げ道を自分で塞ぐことになる。
+   */
+  problem_text_rejected: {
+    ja: "問題文として読み取れませんでした。「〜を求めよ」のような設問まで入れて、答えは入れずに書いてみてください。",
+    en: 'That didn\'t read as a question. Include the instruction ("find…", "solve…") and leave the answer out.',
+    status: 422,
+  },
   // **教科名を数え上げない。** 課程を足すたびに文言を直す作りにすると、
   // どこかで必ず古いままになり、対応しているのに「対応していません」と返る。
   out_of_scope: {

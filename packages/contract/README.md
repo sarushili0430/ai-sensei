@@ -218,6 +218,7 @@ zod側がタプル(`z.tuple`)なのは、**同種の値の固定長列は配列�
 | --- | --- | --- |
 | POST | `/v1/sessions` | mobile(写真 + meta を multipart で。**まだ数えない**) |
 | PATCH | `/v1/sessions/{id}/topics` | mobile(チップUIで外した単元の反映) |
+| PATCH | `/v1/sessions/{id}/problem` | mobile(問題文の手入力・訂正。**会話が始まる前だけ**) |
 | POST | `/v1/sessions/{id}/start` | mobile(**会話の開始。ここで今日の1回を数え**、部屋の鍵が返る) |
 | POST | `/v1/sessions/{id}/complete` | agent(内部トークン必須) |
 | GET | `/v1/me/progress` | mobile(ホーム画面) |

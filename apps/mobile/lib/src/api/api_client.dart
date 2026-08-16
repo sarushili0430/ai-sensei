@@ -131,6 +131,36 @@ class ApiClient {
     return SessionAnalysis.fromJson(_decode(response));
   }
 
+  /// 問題文を手で確定させる(読めなかったときの入力・誤読の訂正)。
+  ///
+  /// **写真は読み直さない。** 問題の紙面は解析後に破棄されていて、機械が
+  /// 読み直す手段がそもそも無い(`api.ts` の `sessionPhotoParts`)。
+  /// 送るのは確定したテキストで、これが問題文の新しい正本になる。
+  ///
+  /// **会話が始まる前だけ**通る。文脈がエージェントへ渡るのは `/start` が
+  /// トークンを出す1回きりなので、始まったあとの更新は授業に反映されない
+  /// (サーバは 404 を返す)。
+  ///
+  /// 中身が問題文として通らなければ `problem_text_rejected` が返る。
+  /// **撮り直しには戻さない** — 直せるものは手元のテキストのほうにある。
+  Future<SessionAnalysis> updateSessionProblem({
+    required String sessionId,
+    required String text,
+    String locale = 'ja',
+  }) async {
+    final http.Response response = await _client
+        .patch(
+          Uri.parse('$baseUrl/v1/sessions/$sessionId/problem'),
+          headers: <String, String>{
+            ..._headers,
+            'content-type': 'application/json; charset=utf-8',
+          },
+          body: jsonEncode(<String, dynamic>{'locale': locale, 'text': text}),
+        )
+        .timeout(_timeout);
+    return SessionAnalysis.fromJson(_decode(response));
+  }
+
   /// 会話を始める。**ここで今日の1回を使う。**
   ///
   /// 部屋の鍵はこの応答にしか無い。枠の確保とトークンの発行はサーバ側の

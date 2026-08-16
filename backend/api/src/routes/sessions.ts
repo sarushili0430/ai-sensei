@@ -1,14 +1,18 @@
 import {
   type CreateSessionRequest,
   type CreateSessionResponse,
+  type ProblemOutcome,
   type SessionMetadata,
   type SessionProblem,
   type StartSessionResponse,
+  type UpdateSessionProblemResponse,
   type UpdateSessionTopicsResponse,
   createSessionRequestSchema,
+  localeSchema,
   sessionMetadataSchema,
   sessionPhotoParts,
   startSessionRequestSchema,
+  updateSessionProblemRequestSchema,
   updateSessionTopicsRequestSchema,
 } from "@ai-sensei/contract";
 import { localeOfTopicId } from "@ai-sensei/curriculum";
@@ -17,6 +21,7 @@ import {
   allowedTopicList,
   allowedTopicsLocale,
   buildAllowedTopics,
+  checkProblemText,
   toLocalDate,
 } from "@ai-sensei/guardrail";
 import {
@@ -204,6 +209,12 @@ sessionsRoute.post("/", async (c) => {
   let questionSeeds: string[] = reviewHole ? [reviewHole.desc] : [];
   let analysis: PhotoAnalysis | null = null;
   let problem: SessionProblem | null = null;
+  /**
+   * 問題文の決着。**写真を1枚も読まない復習セッションでは `null` のまま。**
+   * `not_found`(読んだが写っていない)に寄せると、写真を撮っていない生徒に
+   * 「問題が読めませんでした」と言うことになる。
+   */
+  let problemOutcome: ProblemOutcome | null = null;
 
   let allowed: AllowedTopics;
   try {
@@ -282,6 +293,7 @@ sessionsRoute.post("/", async (c) => {
         hadProblemPhoto: problemImage !== undefined,
       });
       problem = resolvedProblem.problem;
+      problemOutcome = resolvedProblem.outcome;
 
       // §0 決定4「問題とノートをセットで送る」が実際に効いているかは、ここでしか観測できない。
       // not_found が大半なら §4-1 のヒントが弱く、too_long が出るなら解析プロンプトが効いていない。
@@ -326,6 +338,9 @@ sessionsRoute.post("/", async (c) => {
     summary,
     // 写真は残らないので、問題文の保存先はここだけ(理由は SessionContext のコメント)。
     problem,
+    // 落ち方も一緒に残す。写真も解析結果もここから先には無いので、
+    // 残さないとPATCH以降は「読めなかった」までしか言えなくなる。
+    problem_outcome: problemOutcome,
     visible_work: visibleWork,
     question_seeds: questionSeeds,
     topics: analysis?.topics ?? [],
@@ -352,6 +367,7 @@ sessionsRoute.post("/", async (c) => {
     kind: meta.kind,
     detected_topics: buildDetectedTopics(allowed, context),
     problem,
+    problem_outcome: problemOutcome,
   };
 
   return c.json(response, 201);
@@ -460,13 +476,7 @@ sessionsRoute.post("/:sessionId/start", async (c) => {
     limits,
   });
 
-  const context: SessionContext = session.context ?? {
-    summary: "",
-    problem: null,
-    visible_work: [],
-    question_seeds: [],
-    topics: [],
-  };
+  const context: SessionContext = session.context ?? emptySessionContext();
 
   // エージェントに渡す文脈。会話中のガードレールはこれを基準にする。
   const metadata = buildSessionMetadata({
@@ -557,13 +567,7 @@ sessionsRoute.patch("/:sessionId/topics", async (c) => {
   const allowed = buildAllowedTopics(requested.filter((topicId) => detected.has(topicId)));
   if (allowed.primary.size === 0) throw apiError("photo_unreadable", { locale });
 
-  const context: SessionContext = session.context ?? {
-    summary: "",
-    problem: null,
-    visible_work: [],
-    question_seeds: [],
-    topics: [],
-  };
+  const context: SessionContext = session.context ?? emptySessionContext();
 
   await repository.updateSessionTopics({
     sessionId,
@@ -578,10 +582,160 @@ sessionsRoute.patch("/:sessionId/topics", async (c) => {
     detected_topics: buildDetectedTopics(allowed, context),
     // 写真は解析し直さない。問題文もセッションに残したものをそのまま返す。
     problem: context.problem ?? null,
+    problem_outcome: context.problem_outcome ?? null,
   };
 
   return c.json(response, 200);
 });
+
+/**
+ * PATCH /v1/sessions/{id}/problem
+ *
+ * **問題文を、生徒が自分で確定させる。** 読めなかったときの手入力と、
+ * 誤読の訂正が同じ口。
+ *
+ * これが無かったあいだ、問題文が読めなかったセッションは**確認画面を黙って通り**、
+ * 授業の一言目が「問題、読んでもらってもいい?」になっていた —
+ * **アプリの画面に問題が出ているのに、声で言い直させられる**。外部テスターが
+ * 唯一の不満として挙げたのがここ。
+ *
+ * **写真は読み直さない。** 紙面は解析後に破棄してあり(`contract` の
+ * `sessionPhotoParts`)、機械が読み直す手段がそもそも無い。受け取るのは
+ * 確定したテキストで、これがそのまま `problem` の新しい正本になる。
+ * だから `source` は `typed` — 写真の2枚と混ぜて数えると、
+ * 「実際に何割が2枚送るか」の観測が「問題文が埋まった率」に化ける。
+ *
+ * **今日の枠も解析の枠も使わない。** Vision LLMを呼ばないので原価が動かず、
+ * ここで数えると「読めなかった人だけが余分に払う」という逆さまの形になる。
+ */
+sessionsRoute.patch("/:sessionId/problem", async (c) => {
+  const { repository } = c.get("services");
+  const log = c.get("log");
+  const deviceId = c.get("deviceId");
+
+  const raw = await c.req.json().catch(() => null);
+  /**
+   * **文言の言語だけは、本文が通らなくても拾う。**
+   *
+   * ここで弾かれるのは長すぎ・空の入力で、そこはまさに文言を読ませたい場面。
+   * `parsed.data.locale` を待つと、打った文が長かっただけで
+   * 英語のユーザーに日本語のお願いが返る。
+   */
+  const locale = localeSchema.catch("ja").parse((raw as { locale?: unknown } | null)?.locale);
+
+  const parsed = updateSessionProblemRequestSchema.safeParse(raw);
+  // 空・長すぎ・欄なし。**`photo_unreadable` を返さない** — 打った人に
+  // 「もう一度撮ってみてください」は的外れで、直せるのは手元のテキストのほう。
+  if (!parsed.success) throw apiError("problem_text_rejected", { locale });
+  const { text } = parsed.data;
+
+  const sessionId = c.req.param("sessionId");
+  const session = await repository.getSession(sessionId);
+  // 他人のセッションと、終わったセッションには触らせない(PATCH /topics と同じ関門)。
+  if (!session || session.device_id !== deviceId || session.status !== "open") {
+    throw apiError("session_not_found", { locale });
+  }
+
+  /**
+   * **会話が始まる前だけ。**
+   *
+   * 文脈がエージェントへ渡るのは `/start` がトークンを出す1回きりなので
+   * (`buildSessionMetadata`)、始まったあとに書き換えても授業には反映されない。
+   * 受け付けて 200 を返すと、生徒には「直したのに直っていない」に見える —
+   * 声で言い直させられるより悪い。授業中に直す道は、文脈の再配布が
+   * 入ってから開ける(統一コンテキストのIssue)。
+   */
+  if (session.started_at !== null) {
+    log?.info("problem_edit_after_start", { session_id: session.id });
+    throw apiError("session_not_found", { locale });
+  }
+
+  /**
+   * **写真から始まった授業だけ。**
+   *
+   * 復習は穴が起点で、板書プロンプトは `lesson_mode` が `review` のとき
+   * `problem_text` を見ない(`prompts/senpai_board.*.md`「一致するほうの入力だけ」)。
+   * 通しても授業には効かず、効かない更新に 200 を返す口が1つ増えるだけになる。
+   * 確認画面も復習には出ないので、ここへ来るのは経路の取り違えのほう。
+   */
+  if (session.kind !== "new") throw apiError("session_not_found", { locale });
+
+  /**
+   * 中身の関門は解析器の出力に掛けているのと**同じ `checkProblemText`**。
+   *
+   * 手入力にだけ厳しい判定を足さない。読めなかった生徒が、今度は自分の入力で
+   * 弾かれることになる — 向こうは「迷ったら通す」で書いてあるので、それに乗る。
+   */
+  const verdict = checkProblemText(text);
+  if (!verdict.ok) {
+    // 文言は落ち方で分けないが(`errors.ts`)、**どちらで落ちたかは残す。**
+    // `not_a_problem` に偏るなら、入力欄の例示が「式だけ」を誘っている。
+    log?.info("problem_text_rejected", { session_id: session.id, reason: verdict.reason });
+    throw apiError("problem_text_rejected", { locale });
+  }
+
+  const allowed = buildAllowedTopics(session.topic_ids);
+  // 単元が空のセッションは、そもそも会話を始められない(`/start` と同じ判定)。
+  // 問題文だけ直せても行き止まりなので、ここで同じ答えを返す。
+  if (allowed.primary.size === 0) throw apiError("photo_unreadable", { locale });
+
+  const previous: SessionContext = session.context ?? emptySessionContext();
+  const context: SessionContext = {
+    ...previous,
+    problem: { text, source: "typed" },
+    // 手で確定した時点で「読めている」。落ち方はもう画面に出す必要がない。
+    problem_outcome: "read",
+  };
+
+  await repository.updateSessionTopics({
+    sessionId,
+    // **単元には触らない。** 直しているのは問題文だけで、ここで
+    // `allowed.primary` を書き戻すと、絞り込み済みのセッションが解析時の並びへ戻る。
+    topicIds: session.topic_ids,
+    photoKey: session.photo_key,
+    context,
+  });
+
+  // 手入力がどれくらい使われるかは、ここでしか観測できない。
+  // 元の落ち方と対で出す — `not_found` ばかりが手入力で救われているなら、
+  // 直すべきは撮影の案内のほう。
+  log?.info("problem_typed", {
+    session_id: session.id,
+    // 誤読の訂正(read → read)と、読めなかったときの救済を区別する。
+    previous_outcome: previous.problem_outcome ?? null,
+    corrected: previous.problem != null,
+  });
+
+  const response: UpdateSessionProblemResponse = {
+    session_id: sessionId,
+    kind: session.kind,
+    // 単元も一緒に返す。画面はこの応答で確認画面の状態を置き換えるので、
+    // 問題文だけを返すとチップが消える。
+    detected_topics: buildDetectedTopics(allowed, context),
+    problem: context.problem ?? null,
+    problem_outcome: context.problem_outcome ?? null,
+  };
+
+  return c.json(response, 200);
+});
+
+/**
+ * 文脈がまだ無いセッションの既定値。
+ *
+ * **`problem_outcome` を `null` にしておく。** 「読めなかった」(`not_found`)では
+ * ないから — ここに来るのは解析が保存される前か、写真を1枚も読まない
+ * 復習セッションで、どちらも問題文を探してすらいない。
+ */
+function emptySessionContext(): SessionContext {
+  return {
+    summary: "",
+    problem: null,
+    problem_outcome: null,
+    visible_work: [],
+    question_seeds: [],
+    topics: [],
+  };
+}
 
 /**
  * 後輩(agent)をこの部屋に呼ぶ指定。

@@ -57,6 +57,22 @@ function patchTopics(sessionId: string, body: unknown, headers: Record<string, s
   );
 }
 
+function patchProblem(sessionId: string, body: unknown, headers: Record<string, string> = {}) {
+  return app.request(
+    `/v1/sessions/${sessionId}/problem`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(body),
+      headers: {
+        "content-type": "application/json",
+        "x-device-id": testDeviceId,
+        ...headers,
+      },
+    },
+    bindings,
+  );
+}
+
 /**
  * 会話を始める。**今日の1回を数えるのはここだけ**なので、枠の話は全部この入口に集まる。
  */
@@ -622,6 +638,13 @@ describe("復習セッション", () => {
     expect(body.kind).toBe("review");
     // 写真がなくても、穴から単元を引く
     expect(body.detected_topics.map((topic) => topic.topic_id)).toEqual(["M1-NIJI-GURAFU"]);
+    /**
+     * 問題文の決着は `null` = **写真を1枚も読んでいない**。
+     * `not_found`(読んだが写っていなかった)に寄せると、撮っていない生徒に
+     * 「問題が読めませんでした」と直し方まで出すことになる。
+     */
+    expect(body.problem).toBeNull();
+    expect(body.problem_outcome).toBeNull();
 
     const started = await analyzeThenStart(reviewForm(holeId));
     const metadata = await metadataOf<{ problem_text: string; review_hole: unknown }>(started);
@@ -632,6 +655,21 @@ describe("復習セッション", () => {
       desc: "平方完成のなぜで説明が止まった",
       evidence: "形をそろえるため、だと思う",
     });
+  });
+
+  /**
+   * 復習に問題文の手入力は無い。板書プロンプトは `lesson_mode` が `review` のとき
+   * `problem_text` を見ない(「一致するほうの入力だけ」)ので、通しても授業には効かず、
+   * 効かない更新に 200 を返す口が増えるだけになる。
+   */
+  it("復習セッションの問題文は手入力できない", async () => {
+    await makePremium();
+    const holeId = await seedHole();
+    const created = await post(reviewForm(holeId));
+    const session = (await created.json()) as CreateSessionResponse;
+
+    const response = await patchProblem(session.session_id, { text: "x を求めよ。" });
+    expect(response.status).toBe(404);
   });
 
   it("他人の穴IDでは始められない", async () => {
@@ -849,6 +887,217 @@ describe("問題文", () => {
     const started = await analyzeThenStart();
     const claims = await verifyJwt(started.livekit.token, bindings.LIVEKIT_API_SECRET);
     const parsed = sessionMetadataSchema.safeParse(JSON.parse(String(claims?.["metadata"])));
+    expect(parsed.success ? null : parsed.error.issues).toBeNull();
+  });
+});
+
+/**
+ * **読めなかった理由を、アプリまで届ける。**
+ *
+ * `problem: null` だけを返していたあいだ、確認画面は読めなかったセッションを
+ * 黙って通すしかなく、失敗が最初に表に出るのは会話の中 —
+ * 先輩の「問題、読んでもらってもいい?」だった。**画面に問題が見えているのに、
+ * 声で言い直させられる**というのが、外部テスターの唯一の不満。
+ *
+ * 落ち方を畳まないのは、言うべき直し方が落ち方ごとに違うから
+ * (`too_long` は「問題の部分だけを撮る」、`solution_included` は「答えを写さない」)。
+ */
+describe("問題文の落ち方", () => {
+  async function create(analysis?: Partial<typeof analysisFixture>) {
+    if (analysis) services = testServices({ analysis: { ...analysisFixture, ...analysis } });
+    const response = await post(createSessionForm());
+    expect(response.status).toBe(201);
+    return (await response.json()) as CreateSessionResponse;
+  }
+
+  it("読めたセッションは read を返す", async () => {
+    const body = await create();
+    expect(body.problem_outcome).toBe("read");
+  });
+
+  it.each([
+    // 写っていない(解析器が空で返した)
+    ["not_found", ""],
+    // 紙面を丸ごと書き起こしている。切らずに捨てる
+    ["too_long", "あ".repeat(problemTextMaxLength + 1)],
+    // 章末の解答まで写り込んでいる(guardrail)
+    ["solution_included", "x^2 - 3x + 2 = 0 を解け。 【解答】x = 1, 2"],
+    // 式だけで、何を問われているか書かれていない(guardrail)
+    ["not_a_problem", "x^2 - 3x + 2 = 0"],
+  ])("%s は、その落ち方のまま返る", async (outcome, problemText) => {
+    const body = await create({ problem_text: problemText });
+
+    expect(body.problem).toBeNull();
+    expect(body.problem_outcome).toBe(outcome);
+    // どの落ち方でもセッションは止めない(問題の写真は必須ではない)。
+    expect(body.detected_topics.length).toBeGreaterThan(0);
+  });
+
+  // ここが落ちると、チップを1つ外した瞬間に画面から直し方が消える
+  // (PATCH の時点では写真も解析結果も残っていないので、文脈に残すしかない)。
+  it("単元を絞り込んでも、落ち方は残る", async () => {
+    const session = await create({ problem_text: "" });
+
+    const response = await patchTopics(session.session_id, { topic_ids: ["M2-ZUKEI-ENCHOKU"] });
+    const body = (await response.json()) as CreateSessionResponse;
+
+    expect(body.problem).toBeNull();
+    expect(body.problem_outcome).toBe("not_found");
+  });
+
+  it("応答は contract のスキーマを満たす(problem と落ち方の対を含む)", async () => {
+    const read = createSessionResponseSchema.safeParse(await create());
+    expect(read.success ? null : read.error.issues).toBeNull();
+
+    const unread = createSessionResponseSchema.safeParse(await create({ problem_text: "" }));
+    expect(unread.success ? null : unread.error.issues).toBeNull();
+  });
+});
+
+/**
+ * PATCH /v1/sessions/{id}/problem — **問題文を、生徒が自分で確定させる口。**
+ *
+ * 読めなかったときの救済(打てば済む)と、誤読の訂正(会話の頭を1往復使わない)が
+ * 同じ入口。写真は読み直さない — 紙面はもう破棄してあり、読み直す手段が無い。
+ */
+describe("問題文の手入力", () => {
+  const typed = "円 x^2 + y^2 = 9 と直線 y = 2x + 1 の共有点の個数を求めよ。";
+
+  async function createUnread() {
+    services = testServices({ analysis: { ...analysisFixture, problem_text: "" } });
+    const response = await post(createSessionForm());
+    expect(response.status).toBe(201);
+    return (await response.json()) as CreateSessionResponse;
+  }
+
+  it("打った問題文が、そのまま先輩に届く", async () => {
+    const session = await createUnread();
+
+    const response = await patchProblem(session.session_id, { text: typed });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as CreateSessionResponse;
+
+    // 写真ではないので、出どころは `typed`。2枚送った率の観測に混ぜない。
+    expect(body.problem).toEqual({ text: typed, source: "typed" });
+    expect(body.problem_outcome).toBe("read");
+
+    // **ここが本題。** 打った時点で先輩は問題を持っているので、
+    // 「問題、読んでもらってもいい?」から始まらない。
+    const started = (
+      await startSession(session.session_id)
+    ).json() as Promise<StartSessionResponse>;
+    const metadata = await metadataOf<{ problem_text: string }>(await started);
+    expect(metadata.problem_text).toBe(typed);
+  });
+
+  // 誤読の訂正。これまでの保険は「ちがっていれば会話の最初に本人が言う」だけだった。
+  it("読めていた問題文も上書きできる", async () => {
+    const created = await post(createSessionForm());
+    const session = (await created.json()) as CreateSessionResponse;
+    expect(session.problem?.text).toBe(analysisFixture.problem_text);
+
+    const response = await patchProblem(session.session_id, { text: typed });
+    const body = (await response.json()) as CreateSessionResponse;
+
+    expect(body.problem).toEqual({ text: typed, source: "typed" });
+  });
+
+  // 単元まで巻き戻すと、絞り込んだ生徒が外した単元を教わることになる。
+  it("絞り込んだ単元には触らない", async () => {
+    const session = await createUnread();
+    await patchTopics(session.session_id, { topic_ids: ["M2-ZUKEI-ENCHOKU"] });
+
+    const response = await patchProblem(session.session_id, { text: typed });
+    const body = (await response.json()) as CreateSessionResponse;
+
+    expect(body.detected_topics.map((topic) => topic.topic_id)).toEqual(["M2-ZUKEI-ENCHOKU"]);
+  });
+
+  /**
+   * 解析器の出力に掛けているのと**同じ関門**(`checkProblemText`)を通す。
+   * 手入力にだけ厳しくすると、読めなかった生徒が今度は自分の入力で弾かれる。
+   */
+  it.each([
+    ["設問が無い式だけの入力", "x^2 - 3x + 2 = 0"],
+    ["解答が混ざった入力", "x^2 - 3x + 2 = 0 を解け。 【解答】x = 1, 2"],
+  ])("%s は受け付けない", async (_label, text) => {
+    const session = await createUnread();
+
+    const response = await patchProblem(session.session_id, { text });
+    expect(response.status).toBe(422);
+    const body = (await response.json()) as { error: { code: string; message: string } };
+    // **`photo_unreadable` ではない。** 打った人に「もう一度撮ってみてください」は的外れで、
+    // 直せるのは手元のテキストのほう。
+    expect(body.error.code).toBe("problem_text_rejected");
+  });
+
+  it.each([
+    ["空", ""],
+    ["空白だけ", "   "],
+    ["上限超過", "あ".repeat(problemTextMaxLength + 1)],
+  ])("%s の入力は受け付けない", async (_label, text) => {
+    const session = await createUnread();
+
+    const response = await patchProblem(session.session_id, { text });
+    expect(response.status).toBe(422);
+  });
+
+  /**
+   * 弾かれる場面(長すぎ・空)は、**まさに文言を読ませたいところ**。
+   * `locale` を検証後の値から取ると、打った文が長かっただけで
+   * 英語のユーザーに日本語のお願いが返る。
+   */
+  it("本文が通らなくても、文言は端末の言語で返す", async () => {
+    const session = await createUnread();
+
+    const response = await patchProblem(session.session_id, {
+      locale: "en",
+      text: "あ".repeat(problemTextMaxLength + 1),
+    });
+    const body = (await response.json()) as { error: { message: string } };
+
+    expect(response.status).toBe(422);
+    expect(body.error.message).toMatch(/didn't read as a question/);
+  });
+
+  /**
+   * 文脈がエージェントへ渡るのは `/start` の1回きり。始まったあとに受け付けると、
+   * 生徒には「直したのに直っていない」に見える — 声で言い直させられるより悪い。
+   */
+  it("会話が始まったあとは直せない", async () => {
+    const session = await createUnread();
+    expect((await startSession(session.session_id)).status).toBe(200);
+
+    const response = await patchProblem(session.session_id, { text: typed });
+    expect(response.status).toBe(404);
+  });
+
+  it("他人のセッションは直せない", async () => {
+    const session = await createUnread();
+
+    const response = await patchProblem(
+      session.session_id,
+      { text: typed },
+      { "x-device-id": "99999999-8888-7777-6666-555555555555" },
+    );
+    expect(response.status).toBe(404);
+  });
+
+  // Vision LLMを呼ばないので原価が動かない。ここで数えると、
+  // 読めなかった人だけが余分に払うという逆さまの形になる。
+  it("今日の授業枠も解析枠も使わない", async () => {
+    const session = await createUnread();
+    await patchProblem(session.session_id, { text: typed });
+
+    const started = await startSession(session.session_id);
+    expect(started.status).toBe(200);
+  });
+
+  it("応答は contract のスキーマを満たす", async () => {
+    const session = await createUnread();
+    const response = await patchProblem(session.session_id, { text: typed });
+    const parsed = createSessionResponseSchema.safeParse(await response.json());
+
     expect(parsed.success ? null : parsed.error.issues).toBeNull();
   });
 });
