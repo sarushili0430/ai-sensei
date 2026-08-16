@@ -359,6 +359,53 @@ void main() {
     expect(find.byType(HomeScreen), findsOneWidget);
   });
 
+  // ペイウォールと購入のお礼は、常設タブのシェルの外に置いてある。
+  // 購入を決めている画面に別モードへの入口を並べない(処理中に画面内の
+  // ボタンを全部無効化しても、タブだけ生きていると離脱できてしまう)。
+  testWidgets('ペイウォールと購入のお礼には、下部タブを出さない', (WidgetTester tester) async {
+    final GoRouter router = await pumpRouter(tester, overrides: bootOverrides(premium: true));
+    const ValueKey<String> tabs = ValueKey<String>('main-bottom-navigation');
+
+    router.push(AppRoute.paywall.path);
+    await tester.pumpAndSettle();
+    expect(find.byType(PaywallScreen), findsOneWidget);
+    expect(find.byKey(tabs), findsNothing);
+
+    router.go(thanksLocation());
+    await tester.pumpAndSettle();
+    expect(find.byType(ThanksScreen), findsOneWidget);
+    expect(find.byKey(tabs), findsNothing);
+  });
+
+  // カルテの「今日はここまで」は go で来る(push ではない)。ルート直下へ
+  // 移しても、閉じたときの着地はホームのまま。
+  testWidgets('カルテ → ペイウォール → 無料のまま続ける でホームに戻る',
+      (WidgetTester tester) async {
+    final GoRouter router = await pumpRouter(
+      tester,
+      overrides: <Object?>[
+        ...bootOverrides(karte: sampleKarte),
+        sessionOutcomeControllerProvider.overrideWith(
+          () => FakeSessionOutcomeController(const SessionOutcome(showPaywall: true)),
+        ),
+      ],
+    );
+
+    router.go(AppRoute.karte.path);
+    await tester.pumpAndSettle();
+    final AppStrings strings = AppStrings.of(tester.element(find.byType(KarteScreen)));
+
+    await tester.ensureVisible(find.text(strings.karteDone));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(strings.karteDone));
+    await tester.pumpAndSettle();
+    expect(find.byType(PaywallScreen), findsOneWidget);
+
+    await tester.tap(find.text(strings.paywallDismiss));
+    await tester.pumpAndSettle();
+    expect(find.byType(HomeScreen), findsOneWidget);
+  });
+
   // 買ったあとにペイウォールへ戻れても、戻る先は「もう一度買う画面」しかない。
   testWidgets('お礼はペイウォールを差し替える(閉じても買う画面に戻らない)', (WidgetTester tester) async {
     final GoRouter router = await pumpRouter(tester, overrides: bootOverrides(premium: true));

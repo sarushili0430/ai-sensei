@@ -172,8 +172,20 @@ class AppStrings {
   /// ここでユーザーが選んでいるのは「教わる」こと。
   String get homeLesson => _pick('先輩に教わる', 'Get taught by your senpai');
 
+  /// 数字を含む全文。祝福画面のように**文字だけで数を見せる**場所と、
+  /// ホームのカウンターの読み上げ(`Semantics(label:)`)で使う。
   String streakDays(int days) => _pick('$days日つづけて説明中', '$days-day streak');
   String filledHoles(int count) => _pick('埋めた穴 $count', '$count gaps filled');
+
+  /// ホームのカウンター用。**数字は `CountUpText` が別に描く**ので、ここには
+  /// 含めない。上の全文をそのままラベルに使うと、数え上げる数字の隣に同じ数が
+  /// もう一度出る(「3 3日つづけて説明中」)。
+  ///
+  /// 空白の要不要も文字列側で持つ(ja「3日…」は詰める、「埋めた穴 4」は空ける)。
+  /// 分けるのは**見た目だけ**で、読み上げには上の全文を渡す。
+  String get streakDaysSuffix => _pick('日つづけて説明中', '-day streak');
+  String get filledHolesPrefix => _pick('埋めた穴 ', '');
+  String get filledHolesSuffix => _pick('', ' gaps filled');
 
   /// ホームの復習カード。再訪の起点で、通知の着地先でもある。
   /// 詳細がまだ手元に無い短い間も、件数に逃げず内容のカードとして見せる。
@@ -550,6 +562,12 @@ class AppStrings {
   String get paywallPriceUnavailable => _pick(
       'いまは金額を読み込めていません。少しあとで、もう一度ひらいてみてください。',
       "We can't load the price right now. Please try opening this again in a moment.");
+
+  /// 価格を取り直す口。**開き直しをお願いするだけにしない。**
+  ///
+  /// 上の文言だけだと、その場でできることが何も無い画面になる。
+  /// 出すのは鍵のあるビルドだけ(鍵が無いと取り直しても何も変わらない)。
+  String get paywallReload => _pick('もう一度読み込む', 'Try loading again');
 
   /// ペイウォールを**開く**ボタン(復習画面など)。ここで無料日数を約束しない。
   /// ストアの商品にトライアルが付いているかは、Offering を読むまで分からない。

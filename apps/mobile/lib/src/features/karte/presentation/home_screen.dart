@@ -158,13 +158,16 @@ class _TopRow extends StatelessWidget {
               children: <Widget>[
                 _Counter(
                   value: progress.streakDays,
-                  label: strings.streakDays(progress.streakDays),
+                  suffix: strings.streakDaysSuffix,
+                  semanticsLabel: strings.streakDays(progress.streakDays),
                   color: AppColors.streak,
                 ),
                 const SizedBox(width: AppSpacing.md),
                 _Counter(
                   value: progress.filledHoles,
-                  label: strings.filledHoles(progress.filledHoles),
+                  prefix: strings.filledHolesPrefix,
+                  suffix: strings.filledHolesSuffix,
+                  semanticsLabel: strings.filledHoles(progress.filledHoles),
                   color: AppColors.blue,
                   tooltip: strings.parentReportOpen,
                   onTap: () => context.push(AppRoute.parentReport.path),
@@ -320,40 +323,51 @@ class _EnoughForTodayLine extends StatelessWidget {
   }
 }
 
+/// 数えている1つ。
+///
+/// **数字を描くのは [CountUpText] だけ。** ラベルにも数を入れると、数え上がった
+/// 数字の隣に同じ数がもう一度出る(「3 3日つづけて説明中」)。文字列は数字の
+/// 前([prefix])と後ろ([suffix])に分けて受け取り、間の空白も文字列側が持つ。
+///
+/// 読み上げだけは分けない。[semanticsLabel] に数字入りの全文を渡し、
+/// 中身は捨てる(数え上げの途中の数も、切れたラベルも読ませない)。
 class _Counter extends StatelessWidget {
   const _Counter({
     required this.value,
-    required this.label,
+    required this.semanticsLabel,
     required this.color,
+    this.prefix = '',
+    this.suffix = '',
     this.tooltip,
     this.onTap,
   });
 
   final int value;
-  final String label;
+  final String semanticsLabel;
   final Color color;
+  final String prefix;
+  final String suffix;
   final String? tooltip;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    final TextTheme textTheme = Theme.of(context).textTheme;
     final Widget counter = Semantics(
-      label: label,
+      label: semanticsLabel,
       button: onTap != null,
+      excludeSemantics: true,
       child: GestureDetector(
         key: onTap == null ? null : const ValueKey<String>('parent-report-link'),
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: Row(
           children: <Widget>[
+            if (prefix.isNotEmpty) Text(prefix, style: textTheme.bodySmall),
             // 数えているのはこの2つだけ(連続日数と埋めた穴)。
             // 増えたことが見えるように、0から数え上げる。
-            CountUpText(
-              value,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(color: color),
-            ),
-            const SizedBox(width: AppSpacing.xs),
-            Text(label, style: Theme.of(context).textTheme.bodySmall),
+            CountUpText(value, style: textTheme.titleLarge?.copyWith(color: color)),
+            if (suffix.isNotEmpty) Text(suffix, style: textTheme.bodySmall),
           ],
         ),
       ),
