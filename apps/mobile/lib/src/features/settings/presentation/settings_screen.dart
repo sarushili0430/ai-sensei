@@ -23,6 +23,10 @@ import '../data/support_links.dart';
 ///   - プライバシーポリシー・利用規約(サブスクを載せる以上、審査で見られる)
 ///   - 不適切な質問の報告(AI生成物を含むアプリの導線)
 ///   - 問い合わせのときに聞かれる端末IDとバージョン
+///
+/// **AppBar は持たない。** ここは常設タブの根で、画面の名前は下部ナビが
+/// 「設定」と出している。AppBar にも同じ語を置くと、ひとつの画面に同じ
+/// 「設定」が2回出る(ホームも同じ理由でタイトルを持たない)。
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
@@ -31,7 +35,6 @@ class SettingsScreen extends ConsumerWidget {
     final AppStrings strings = AppStrings.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: Text(strings.settingsTitle)),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
