@@ -46,6 +46,17 @@ describe("trace_id", () => {
     expect(response.headers.get("x-trace-id")).toMatch(/^[0-9a-f-]{36}$/);
   });
 
+  // ブラウザのクライアント(apps/tuner)は expose されていない応答ヘッダを読めない。
+  // 落ちても trace_id を拾えないと、ログと突き合わせる手がかりが無くなる。
+  it("ブラウザから読めるように expose する", async () => {
+    const response = await app.request(
+      "/health",
+      { headers: { origin: "http://localhost:5273" } },
+      testBindings(),
+    );
+    expect(response.headers.get("access-control-expose-headers")).toContain("x-trace-id");
+  });
+
   it("リクエストごとに変わる", async () => {
     const first = await app.request(
       "/v1/me/progress",

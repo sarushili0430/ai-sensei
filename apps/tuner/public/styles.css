@@ -1,0 +1,541 @@
+/*
+ * 開発用の道具の見た目。**アプリの意匠を再現しない**(それは apps/mobile の担当)。
+ * ここで優先するのは、板書・字幕・封筒・時間を**同時に1画面で見られる**こと。
+ */
+
+:root {
+  --bg: #12151a;
+  --panel: #1a1e26;
+  --line: #2b323d;
+  --text: #e7ebf0;
+  --muted: #98a2b3;
+  --key: #7cc4ff;
+  --ok: #6fcf97;
+  --bad: #ff8080;
+  --live: #ffd166;
+  --board: #12271f;
+  --chalk: #eaf6ef;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+h1 {
+  font-size: 15px;
+  margin: 0;
+}
+
+h2 {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 0 0 12px;
+}
+
+h3 {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 16px 0 6px;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.bar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.note {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: normal;
+}
+
+.mono {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.banner {
+  background: #3a2a12;
+  border-bottom: 1px solid #6b4c1a;
+  color: #ffd9a0;
+  padding: 8px 16px;
+  font-size: 13px;
+}
+
+.hidden {
+  display: none;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 1fr) minmax(420px, 1.6fr) minmax(320px, 1fr);
+  gap: 12px;
+  padding: 12px;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  max-height: calc(100vh - 90px);
+  overflow: auto;
+}
+
+/* --- 入力 ---------------------------------------------------------------- */
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.field label {
+  color: var(--muted);
+  font-size: 12px;
+  min-width: 64px;
+}
+
+input[type="url"],
+input[type="text"],
+select {
+  flex: 1;
+  min-width: 0;
+  background: #0e1116;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+}
+
+button {
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+button.primary {
+  background: var(--key);
+  border-color: var(--key);
+  color: #08121c;
+  font-weight: 600;
+}
+
+button.ghost {
+  background: transparent;
+  color: var(--text);
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.button-link {
+  display: inline-block;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 13px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+textarea {
+  width: 100%;
+  margin-top: 8px;
+  background: #0e1116;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  resize: vertical;
+}
+
+/* /debug は写真の欄が無いぶん、真ん中(板書)を広く取る。 */
+.grid-debug {
+  grid-template-columns: minmax(300px, 1fr) minmax(420px, 1.4fr) minmax(320px, 1fr);
+}
+
+button.chip {
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.drops {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.drop {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.drop small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.drop.over,
+.drop.filled {
+  border-color: var(--key);
+  border-style: solid;
+}
+
+.drop img {
+  margin-top: 8px;
+  width: 100%;
+  border-radius: 6px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.quote {
+  background: #0e1116;
+  border-left: 3px solid var(--key);
+  padding: 8px 10px;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.error {
+  color: var(--bad);
+  font-size: 13px;
+}
+
+.pill {
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+  border: 1px solid var(--line);
+}
+
+.pill-ok {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.pill-bad {
+  color: var(--bad);
+  border-color: var(--bad);
+}
+
+.pill-live {
+  color: var(--live);
+  border-color: var(--live);
+}
+
+.pill-idle {
+  color: var(--muted);
+}
+
+/* --- 板書 ---------------------------------------------------------------- */
+
+.phase-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.toggle {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.board {
+  background: var(--board);
+  border: 1px solid #1d3b30;
+  border-radius: 10px;
+  padding: 12px;
+  color: var(--chalk);
+}
+
+.board-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: 1px solid #285244;
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.step {
+  border-left: 2px solid #2f6a56;
+  padding-left: 10px;
+}
+
+.step-head {
+  display: flex;
+  gap: 6px;
+}
+
+.badge {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  color: #8fd9bc;
+  border: 1px solid #2f6a56;
+  border-radius: 4px;
+  padding: 0 5px;
+}
+
+.badge-awaits {
+  color: var(--live);
+  border-color: var(--live);
+}
+
+.badge-muted {
+  color: var(--muted);
+  border-color: var(--muted);
+}
+
+.step-speech {
+  margin: 4px 0;
+}
+
+.step-speech::after {
+  content: attr(data-length);
+  margin-left: 8px;
+  font-size: 11px;
+  color: #6f9c8b;
+}
+
+.element {
+  margin-top: 6px;
+}
+
+.element-error {
+  color: var(--bad);
+  border: 1px solid var(--bad);
+  border-radius: 6px;
+  padding: 6px 8px;
+  white-space: pre-wrap;
+  font-size: 12px;
+}
+
+.latex {
+  overflow-x: auto;
+}
+
+.board-text {
+  margin: 0;
+}
+
+.sentence-text u {
+  text-decoration-color: var(--live);
+  text-underline-offset: 3px;
+}
+
+.sentence-gloss {
+  margin: 2px 0 0;
+  color: #9fc9b8;
+  font-size: 13px;
+}
+
+.compare {
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.compare th,
+.compare td {
+  border: 1px solid #2f6a56;
+  padding: 4px 8px;
+  text-align: left;
+}
+
+.figure {
+  max-width: 100%;
+  background: #fff;
+  border-radius: 6px;
+}
+
+.board-svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.board-svg-axis {
+  stroke: #6f9c8b;
+  stroke-width: 1;
+}
+
+.board-svg-curve {
+  fill: none;
+  stroke: var(--chalk);
+  stroke-width: 2.2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.board-svg-figure {
+  fill: none;
+  stroke: var(--chalk);
+  stroke-width: 2;
+}
+
+.board-svg-mark {
+  fill: var(--live);
+}
+
+.board-svg-angle,
+.board-svg-right-angle {
+  fill: none;
+  stroke: var(--live);
+  stroke-width: 1.5;
+}
+
+.board-svg-label {
+  fill: var(--chalk);
+  font-size: 13px;
+}
+
+/* --- 観測 ---------------------------------------------------------------- */
+
+.timings {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 12px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.timings dt {
+  color: var(--muted);
+}
+
+.timings dd {
+  margin: 0;
+  text-align: right;
+}
+
+details {
+  border-top: 1px solid var(--line);
+  padding: 8px 0;
+}
+
+summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.json {
+  background: #0e1116;
+  border-radius: 6px;
+  padding: 8px;
+  max-height: 320px;
+  overflow: auto;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.transcript,
+.events {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  max-height: 260px;
+  overflow: auto;
+  font-size: 12px;
+}
+
+.line {
+  padding: 2px 0;
+}
+
+.line-senpai strong {
+  color: var(--key);
+}
+
+.line-student strong {
+  color: var(--ok);
+}
+
+.partial {
+  opacity: 0.6;
+}
+
+.events li {
+  border-bottom: 1px solid #1f242d;
+  padding: 2px 0;
+}

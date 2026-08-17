@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- 開発専用の画面。検索にもリンクにも出さない。 -->
+    <meta name="robots" content="noindex, nofollow" />
+    <title>ai-sensei prompt tuner</title>
+    <!-- 開発サーバは public/ の中身しか配らない。favicon の404でログを汚さないために空を指す。 -->
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/vendor/katex/katex.min.css" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <h1>prompt tuner <span class="note">写真 → 音声 → 板書 を web で回す(開発専用)</span></h1>
+      <div class="bar-right">
+        <span id="health" class="pill pill-idle">API 未確認</span>
+        <button id="reload-status" type="button" class="ghost">状態を更新</button>
+        <!-- 授業を回さずに、板書のJSON・プロンプト・保存した試行を見る側 -->
+        <a class="ghost button-link" href="/debug">/debug</a>
+      </div>
+    </header>
+
+    <!-- prompts/*.md を直しても generated.ts を作り直すまで agent には届かない。
+         そのいちばん高くつく勘違いを、常設の帯で潰す。 -->
+    <div id="prompt-staleness" class="banner hidden"></div>
+
+    <main class="grid">
+      <section class="panel">
+        <h2>① 接続と写真</h2>
+
+        <div class="field">
+          <label for="api-base">API</label>
+          <input id="api-base" type="url" spellcheck="false" />
+        </div>
+        <div class="field">
+          <label for="device-id">device id</label>
+          <input id="device-id" type="text" spellcheck="false" />
+          <button id="new-device" type="button" class="ghost" title="今日の枠を使い切ったら作り直す">
+            新規
+          </button>
+        </div>
+        <div class="field">
+          <label for="locale">ロケール</label>
+          <select id="locale">
+            <option value="ja">ja</option>
+            <option value="en">en</option>
+          </select>
+          <label for="school-stage">課程</label>
+          <select id="school-stage">
+            <option value="high_school">high_school</option>
+            <option value="junior_high">junior_high</option>
+          </select>
+        </div>
+
+        <div class="drops">
+          <label class="drop" id="drop-problem">
+            <input type="file" accept="image/*" hidden />
+            <strong>問題の写真</strong>
+            <small>problem_photo — 解析後に破棄される</small>
+            <img alt="" hidden />
+          </label>
+          <label class="drop" id="drop-notes">
+            <input type="file" accept="image/*" hidden />
+            <strong>ノートの写真</strong>
+            <small>photo — R2に保存される</small>
+            <img alt="" hidden />
+          </label>
+        </div>
+        <p class="note">
+          どちらか1枚あれば解析できる。ドラッグ&amp;ドロップ・クリップボードからの貼り付けも可。
+        </p>
+
+        <div class="actions">
+          <button id="analyze" type="button" class="primary">写真を解析(POST /v1/sessions)</button>
+          <button id="start" type="button" class="primary" disabled>授業を始める(POST /start)</button>
+        </div>
+
+        <div id="analysis" class="hidden">
+          <h3>読み取った問題</h3>
+          <p id="problem-text" class="quote"></p>
+          <h3>単元(外すと PATCH /topics)</h3>
+          <div id="topics" class="chips"></div>
+          <button id="apply-topics" type="button" class="ghost">単元を反映する</button>
+        </div>
+
+        <p id="setup-error" class="error hidden"></p>
+      </section>
+
+      <section class="panel board-panel">
+        <h2>② 板書と音声</h2>
+        <div class="phase-bar">
+          <span id="phase" class="pill pill-idle">未接続</span>
+          <span id="remaining" class="mono"></span>
+          <label class="toggle"><input id="mic" type="checkbox" checked disabled /> マイク</label>
+          <button id="finish" type="button" class="ghost" disabled>会話を終える</button>
+        </div>
+        <div class="board">
+          <div class="board-head">
+            <span id="board-title">まだ板書はありません</span>
+            <span id="board-meta" class="mono"></span>
+          </div>
+          <p id="board-gap" class="error hidden"></p>
+          <ol id="steps" class="steps"></ol>
+        </div>
+        <!-- 先輩の声の再生先。ここが無いと板書だけが無音で進む。 -->
+        <audio id="senpai-audio" autoplay></audio>
+      </section>
+
+      <aside class="panel">
+        <h2>③ 観測</h2>
+
+        <h3>時間</h3>
+        <dl id="timings" class="timings"></dl>
+
+        <details open>
+          <summary>会話(字幕)</summary>
+          <ul id="transcript" class="transcript"></ul>
+        </details>
+
+        <details>
+          <summary>agent に渡した文脈(トークンの metadata)</summary>
+          <pre id="metadata" class="json"></pre>
+        </details>
+
+        <details>
+          <summary>板書の封筒(生JSON)</summary>
+          <pre id="envelopes" class="json"></pre>
+        </details>
+
+        <details>
+          <summary>カルテ(GET /result)</summary>
+          <pre id="karte" class="json"></pre>
+        </details>
+
+        <details open>
+          <summary>イベント</summary>
+          <ul id="events" class="events"></ul>
+        </details>
+
+        <button id="download" type="button" class="ghost">この試行をJSONで保存</button>
+      </aside>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "@ai-sensei/tuner",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "プロンプトチューニング用の web 版 勉強画面(写真登録 → 音声 → 板書)。開発専用で配信しない",
+  "scripts": {
+    "dev": "node --experimental-strip-types serve.ts"
+  },
+  "devDependencies": {
+    "katex": "^0.18.3",
+    "livekit-client": "^2.21.0"
+  }
+}

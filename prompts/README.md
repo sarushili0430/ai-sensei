@@ -35,6 +35,9 @@ pnpm --filter @ai-sensei/prompts generate   # .md → generated.ts
 ```
 
 `.md` を編集して再生成を忘れると `packages/prompts/src/index.test.ts` が落ちます。
+**再生成しても、常駐している agent は古い本文を持ったまま**なので再起動が要ります。
+直したものを実際に授業で試すときは [`apps/tuner`](../apps/tuner/README.md)
+(web の勉強画面)から回すと、この2つの取りこぼしを画面が知らせます。
 
 ```ts
 getPrompt("senpai_conversation", "en");       // 言語を指定して取り出す

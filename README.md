@@ -36,6 +36,7 @@ Google Play の掲載テキスト(短い説明・詳しい説明の日英)・ス
 ```
 apps/mobile/        Flutter (iOS先行) + Riverpod 3 + livekit_client
 apps/lp/            紹介ページ(日英2枚・素のHTML/CSS)。Cloudflare Workers の静的アセットとして配信
+apps/tuner/         プロンプトチューニング用のweb画面(写真→音声→板書)。**開発専用で配信しない**
 backend/api/        Cloudflare Workers + Hono — セッション作成 / カルテ保存 / 課金webhook
 backend/agent/      LiveKit Agents — VAD・STT・LLM・TTSの会話パイプライン + 板書生成(先輩キャラ)
 packages/contract/  APIとカルテと板書(`board.ts`)のスキーマ + fixture(モバイル/サーバ双方で契約を検証)
@@ -116,6 +117,23 @@ fvm flutter run --dart-define=API_BASE_URL=http://localhost:8787
 
 > 生成物(`*.freezed.dart` / `*.g.dart`)はコミットしません。
 > クローン直後は `build_runner build` を一度回してください。
+
+**プロンプトを直すときは、Flutterを立ち上げずに済みます。**
+`apps/tuner` が同じAPI・同じLiveKitの部屋・同じ板書の検査を web で回すので、
+写真を入れて授業を1本流し、板書・字幕・agentに渡した文脈・カルテ・所要時間を
+1画面で見られます([`apps/tuner/README.md`](apps/tuner/README.md))。
+
+```bash
+pnpm --filter @ai-sensei/tuner dev   # http://localhost:5273(api と agent も動かしておく)
+```
+
+`/debug` は**授業を回さない側**で、写真も鍵も要りません。板書のJSONを貼って
+描けるかを見る、保存した試行を封筒から再生する、プロンプトの本文と差し込み変数を読む、
+の3つに使います。
+
+`prompts/*.md` を直したら **`pnpm --filter @ai-sensei/prompts generate` と
+agentの再起動**が要ります(常駐プロセスが古い本文を持つため)。
+忘れたまま観察し続けないよう、tunerの画面が食い違いを帯で知らせます。
 
 ## テスト
 
