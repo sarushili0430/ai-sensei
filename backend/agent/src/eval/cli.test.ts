@@ -55,17 +55,31 @@ describe("コマンドの入口", () => {
     expect(await main(["list", "--nope"])).toBe(1);
     expect(out.error.join("\n")).toContain("使い方");
   });
+});
 
-  it("judge は Stage B 未実装", async () => {
-    expect(await main(["judge", "eval-out/x"])).toBe(1);
-    expect(out.error.join("\n")).toContain("Stage B");
+describe("eval judge の引数(鍵を読む前に落ちる経路)", () => {
+  it("run ディレクトリが無ければ使い方を出して1", async () => {
+    expect(await main(["judge"])).toBe(1);
+    expect(out.error.join("\n")).toContain("使い方");
+  });
+
+  it("試行が無いディレクトリは鍵を読む前に1", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "eval-cli-judge-"));
+    try {
+      expect(await main(["judge", dir])).toBe(1);
+      expect(out.error.join("\n")).toContain("試行レコードがありません");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
 describe("eval run の引数(鍵を読む前に落ちる経路)", () => {
-  it("--stage loop は Stage C 未実装", async () => {
-    expect(await main(["run", "--stage", "loop"])).toBe(1);
-    expect(out.error.join("\n")).toContain("Stage C");
+  it("--persona は loop 専用で、値も決まっている", async () => {
+    expect(await main(["run", "--persona", "stuck"])).toBe(1);
+    expect(out.error.join("\n")).toContain("--stage loop 専用");
+    expect(await main(["run", "--stage", "loop", "--persona", "nope"])).toBe(1);
+    expect(out.error.join("\n")).toContain("cooperative / stuck / silent");
   });
 
   it("知らない stage / locale / trials を弾く", async () => {
@@ -105,11 +119,33 @@ describe("eval report", () => {
     expect(out.error.join("\n")).toContain("試行レコードがありません");
   });
 
-  it("サマリは出すが、比較(Stage B)が無いので1で返す", async () => {
+  it("1本なら要約のMarkdownを出して0", async () => {
     saveTrial(dir, record());
-    expect(await main(["report", dir])).toBe(1);
+    expect(await main(["report", dir])).toBe(0);
     expect(out.log.join("\n")).toContain("math_quadratic.ja");
-    expect(out.error.join("\n")).toContain("Stage B");
+  });
+
+  it("2本なら比較のMarkdownを出して0", async () => {
+    const candidate = mkdtempSync(join(tmpdir(), "eval-cli-cand-"));
+    try {
+      saveTrial(dir, record());
+      saveTrial(candidate, record({ rejections: 2 }));
+      expect(await main(["report", dir, candidate])).toBe(0);
+      expect(out.log.join("\n")).toContain("math_quadratic.ja");
+    } finally {
+      rmSync(candidate, { recursive: true, force: true });
+    }
+  });
+
+  it("比較先が空でも1(0件で緑に見せない)", async () => {
+    const empty = mkdtempSync(join(tmpdir(), "eval-cli-empty-"));
+    try {
+      saveTrial(dir, record());
+      expect(await main(["report", dir, empty])).toBe(1);
+      expect(out.error.join("\n")).toContain("試行レコードがありません");
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+    }
   });
 });
 

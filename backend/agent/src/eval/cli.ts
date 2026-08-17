@@ -1,7 +1,16 @@
 import { relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { EvalEnvError, loadEvalEnv } from "./env.ts";
+import { type EvalEnv, EvalEnvError, loadEvalEnv } from "./env.ts";
+import { createJudgeLlm, judgeRun } from "./judge.ts";
+import { compareRuns, summarizeRun } from "./report.ts";
 import { boardSystemPrompt, createBoardLlm, runBoardTrial } from "./run-board.ts";
+import {
+  createConversationLlm,
+  createKarteLlm,
+  createStudentLlm,
+  loopSystemPrompt,
+  runLoopTrial,
+} from "./run-loop.ts";
 import {
   checkScenario,
   evalScenarios,
@@ -9,6 +18,7 @@ import {
   selectScenarios,
   subjectOfScenario,
 } from "./scenario.ts";
+import { createLlmStudent, isStudentPersona, studentPersonas } from "./student.ts";
 import {
   type TrialRecord,
   loadTrials,
@@ -22,10 +32,10 @@ import {
 /**
  * 評価ハーネスの入口。
  *
- *   eval run    --stage board --scenario <id|all> --locale ja|en|all --trials N [--out <dir>] [--model <m>]
+ *   eval run    --stage board|loop --scenario <id|all> --locale ja|en|all --trials N [--out <dir>] [--model <m>] [--persona <p>]
  *   eval list
- *   eval report <runDir> [<candidateRunDir>]   (Stage B)
- *   eval judge  <runDir>                        (Stage B)
+ *   eval judge  <runDir>
+ *   eval report <runDir> [<candidateRunDir>]
  *
  * **`cwd` に依存しない。**`--out` を省いたときの置き場は `import.meta.dirname` から
  * 引いた `backend/agent/eval-out/` で、どこから起動しても同じ場所に落ちる
@@ -55,18 +65,21 @@ type Values = { [K in keyof typeof options]?: string };
 
 const usage = [
   "使い方:",
-  "  eval run    --stage board --scenario <id|all> --locale ja|en|all --trials N [--out <dir>] [--model <m>]",
+  "  eval run    --stage board|loop --scenario <id|all> --locale ja|en|all --trials N [--out <dir>] [--model <m>] [--persona <p>]",
   "  eval list",
-  "  eval report <runDir> [<candidateRunDir>]",
   "  eval judge  <runDir>",
+  "  eval report <runDir> [<candidateRunDir>]",
   "",
-  "  --stage    board(L1: 板書1パス) / loop(L2: 授業の往復。Stage C)",
+  "  --stage    board(L1: 板書1パス) / loop(L2: 授業の往復+教え返し+カルテ)",
   "  --scenario シナリオid。省略か all で全部(`eval list` で一覧)",
   "  --locale   ja / en / all",
   "  --trials   1シナリオあたりの試行回数(既定 1)",
   "  --out      レコードの置き場。省略すると backend/agent/eval-out/<stage>-<時刻>",
   "  --model    板書LLMのモデル(既定は EVAL_MODEL_BOARD)",
-  "  --persona  L2の生徒ペルソナ(Stage C)",
+  `  --persona  L2の生徒ペルソナ: ${studentPersonas.join(" / ")}(既定 cooperative)`,
+  "",
+  "  judge  は各試行にルーブリック判定を書き足す(要 ANTHROPIC_API_KEY)",
+  "  report は決定的スコア(+あればジャッジ)を集計する。鍵は要らない",
 ].join("\n");
 
 export async function main(argv: readonly string[]): Promise<number> {
@@ -90,8 +103,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     case "report":
       return reportCommand(rest);
     case "judge":
-      console.error("Stage B: ジャッジ(judge.ts)は未実装です");
-      return 1;
+      return await judgeCommand(rest);
     default:
       console.error(
         `${command === undefined ? "コマンドを指定してください" : `不明なコマンド: ${command}`}\n\n${usage}`,
@@ -121,12 +133,19 @@ function listCommand(): number {
 
 async function runCommand(values: Values, argv: string[]): Promise<number> {
   const stage = values.stage ?? "board";
-  if (stage === "loop") {
-    console.error("Stage C: 授業の往復(run-loop.ts)は未実装です");
+  if (stage !== "board" && stage !== "loop") {
+    console.error(`--stage は board か loop です: ${stage}`);
     return 1;
   }
-  if (stage !== "board") {
-    console.error(`--stage は board か loop です: ${stage}`);
+
+  // ペルソナはL2の生徒役。boardで黙って無視すると「効いているつもりの引数」になるので弾く。
+  if (values.persona !== undefined && stage === "board") {
+    console.error("--persona は --stage loop 専用です(板書1パスに生徒は登場しません)");
+    return 1;
+  }
+  const persona = values.persona ?? "cooperative";
+  if (!isStudentPersona(persona)) {
+    console.error(`--persona は ${studentPersonas.join(" / ")} です: ${persona}`);
     return 1;
   }
 
@@ -180,20 +199,21 @@ async function runCommand(values: Values, argv: string[]): Promise<number> {
       ? resolve(defaultOutRoot, `${stage}-${stamp(new Date())}`)
       : resolve(process.cwd(), values.out);
 
+  // L1とL2でsystemの組み方が違う(remaining_secondsの起点)。sha256は実際に測る側で取る。
+  const systemOf = stage === "board" ? boardSystemPrompt : loopSystemPrompt;
   saveRunManifest(runDir, {
     stage,
     created_at: new Date().toISOString(),
     model,
     argv,
     prompt_sha256: Object.fromEntries(
-      selected.map((scenario) => [
-        scenarioKey(scenario),
-        promptSha256(boardSystemPrompt(scenario)),
-      ]),
+      selected.map((scenario) => [scenarioKey(scenario), promptSha256(systemOf(scenario))]),
     ),
   });
 
   const llm = createBoardLlm(env, model);
+  // L2の脇役。1つのrunで使い回す(シナリオごとに作り直す理由が無い)。
+  const supporting = stage === "loop" ? loopSupportingLlms(env) : undefined;
   const records: TrialRecord[] = [];
 
   for (const scenario of selected) {
@@ -209,7 +229,24 @@ async function runCommand(values: Values, argv: string[]): Promise<number> {
         continue;
       }
 
-      const record = await runBoardTrial({ scenario, trial, llm, model, runDir });
+      const record =
+        supporting === undefined
+          ? await runBoardTrial({ scenario, trial, llm, model, runDir })
+          : await runLoopTrial({
+              scenario,
+              trial,
+              llm,
+              student: createLlmStudent({
+                llm: supporting.student,
+                persona,
+                locale: scenario.locale,
+                scenario,
+              }),
+              conversationLlm: supporting.conversation,
+              karteLlm: supporting.karte,
+              model,
+              runDir,
+            });
       records.push(record);
       console.error(`${label}  ${progressOf(record)}`);
     }
@@ -219,12 +256,20 @@ async function runCommand(values: Values, argv: string[]): Promise<number> {
   return 0;
 }
 
+/** L2で先輩の会話・カルテ・生徒役を受け持つクライアント。板書LLMとは別のモデル。 */
+function loopSupportingLlms(env: EvalEnv) {
+  return {
+    student: createStudentLlm(env),
+    conversation: createConversationLlm(env),
+    karte: createKarteLlm(env),
+  };
+}
+
 /**
- * Stage A の `report`。**サマリは出すが、成功にはしない。**
+ * 集計。**鍵は要らない**(読むのは保存済みの試行レコードだけ)。
  *
- * before/after の比較(Markdown)は Stage B の `report.ts` の仕事で、そこが入るまでは
- * 「レポートが出た」と扱われないよう終了コードを1にしてある(スクリプトから回した
- * ときに、無いものを在るものとして拾わせない)。
+ * 1本なら要約、2本ならbefore/afterの比較Markdown。stdoutへ出すので、
+ * `> report.md` でそのままPRに貼れる。
  */
 function reportCommand(dirs: readonly string[]): number {
   const [baseDir, candidateDir] = dirs;
@@ -233,20 +278,69 @@ function reportCommand(dirs: readonly string[]): number {
     return 1;
   }
 
-  const resolved = resolve(process.cwd(), baseDir);
-  const records = loadTrials(resolved);
-  if (records.length === 0) {
+  // 空ディレクトリを黙ってレポートすると「0件で緑」に見える。測っていないことは失敗。
+  for (const dir of [baseDir, candidateDir]) {
+    if (dir === undefined) continue;
+    const resolved = resolve(process.cwd(), dir);
+    if (loadTrials(resolved).length === 0) {
+      console.error(`試行レコードがありません: ${resolved}`);
+      return 1;
+    }
+  }
+
+  const base = resolve(process.cwd(), baseDir);
+  console.log(
+    candidateDir === undefined
+      ? summarizeRun(base)
+      : compareRuns(base, resolve(process.cwd(), candidateDir)),
+  );
+  return 0;
+}
+
+/**
+ * ルーブリック判定を run の各試行へ書き足す。
+ *
+ * **ディレクトリの検証を鍵より先に**やる(`run` と同じ並び。引数間違いで
+ * ネットワークに触らせない)。判定済みの試行は `judgeRun` が飛ばすので、
+ * 途中で止めても同じコマンドで続きから回る。
+ */
+async function judgeCommand(dirs: readonly string[]): Promise<number> {
+  const [dir] = dirs;
+  if (dir === undefined) {
+    console.error(`judge には run ディレクトリが要ります\n\n${usage}`);
+    return 1;
+  }
+
+  const resolved = resolve(process.cwd(), dir);
+  if (loadTrials(resolved).length === 0) {
     console.error(`試行レコードがありません: ${resolved}`);
     return 1;
   }
 
-  console.log(summarize(resolved, records));
-  console.error(
-    candidateDir === undefined
-      ? "Stage B: 比較レポート(report.ts)は未実装です"
-      : "Stage B: run の比較(report.ts の compareRuns)は未実装です",
-  );
-  return 1;
+  let env: ReturnType<typeof loadEvalEnv>;
+  try {
+    env = loadEvalEnv();
+  } catch (error) {
+    if (error instanceof EvalEnvError) {
+      console.error(error.message);
+      return 1;
+    }
+    throw error;
+  }
+
+  const result = await judgeRun(resolved, {
+    llm: createJudgeLlm(env),
+    model: env.judgeModel,
+    onProgress: (line) => console.error(line),
+  });
+  for (const warning of result.warnings) console.error(`! ${warning}`);
+  if (result.ruleErrors > 0) {
+    // 読めなかった応答は成績ではない。もう一度 judge を打てばそこだけ聞き直す。
+    console.error(`! 応答を読めなかったルールが ${result.ruleErrors} 件(再実行で聞き直せます)`);
+  }
+
+  console.log(summarizeRun(resolved));
+  return 0;
 }
 
 /** 1試行ぶんの進捗。**stderr へ1行**(stdout はサマリだけに保つ)。 */
@@ -258,6 +352,10 @@ function progressOf(record: TrialRecord): string {
     `last=${metrics?.last_step ?? "none"}`,
     `${(record.meta.duration_ms / 1000).toFixed(1)}s`,
   ];
+  if (metrics?.loop_reason !== undefined) {
+    // L2はここが本丸: handed_over 以外は「教え返しへ渡せなかった授業」。
+    parts.push(`reason=${metrics.loop_reason}`, `passes=${metrics.passes ?? 0}`);
+  }
   if (record.meta.time_to_first_step_ms !== undefined) {
     parts.push(`first=${(record.meta.time_to_first_step_ms / 1000).toFixed(1)}s`);
   }

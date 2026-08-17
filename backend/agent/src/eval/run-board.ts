@@ -206,8 +206,10 @@ export async function runBoardTrial(options: RunBoardTrialOptions): Promise<Tria
  * この切り分けが `record.error` の意味になる:
  *   - `error` あり … ハーネス側の事故。**分母から外して読む**
  *   - `error` なし で `ok = false` … モデルが板書を出しきれなかった
+ *
+ * L2(`run-loop.ts`)も同じ切り分けを使うのでexportしている。
  */
-function transportFailure(
+export function transportFailure(
   warnings: readonly { event: string; fields: Record<string, unknown> }[],
 ): string | undefined {
   const failed = warnings.find(
