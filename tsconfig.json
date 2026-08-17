@@ -4,6 +4,6 @@
   "compilerOptions": {
     "noEmit": true
   },
-  "include": ["scripts/**/*", "packages/*/src/**/*", "backend/*/src/**/*"],
+  "include": ["scripts/**/*", "packages/*/src/**/*", "backend/*/src/**/*", "apps/tuner/*.ts"],
   "exclude": ["**/node_modules", "**/dist"]
 }

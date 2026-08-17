@@ -33,6 +33,12 @@ export function createApp(options: CreateAppOptions = {}) {
     cors({
       origin: "*",
       allowHeaders: ["content-type", "authorization", "x-device-id", "idempotency-key"],
+      // **ブラウザからのクライアントは、これが無いと `x-trace-id` を読めない。**
+      // 既定で読めるのは安全リスト(content-type 等)だけで、下の
+      // ミドルウェアが付けている trace_id は落ちる。ネイティブのアプリは
+      // CORSの対象外なので今まで気づかなかったが、`apps/tuner`(プロンプト
+      // チューニング用のweb画面)は失敗の報告にこの値しか持っていない。
+      exposeHeaders: ["x-trace-id"],
     }),
   );
 
