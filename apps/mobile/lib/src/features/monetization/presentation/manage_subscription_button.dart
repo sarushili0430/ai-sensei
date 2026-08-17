@@ -201,6 +201,10 @@ class _StateBadge extends StatelessWidget {
 /// 塗りにすると厚いボタンと同じ重さになって、押すもののように見えてしまう。
 ///
 /// 押すと設定へ飛ぶ。契約の状態と更新日はそこ([SubscriptionStatusCard])にある。
+///
+/// **`push` ではなくタブの切り替え。** 設定は寄り道ではなく常設の枝なので、
+/// 積んでしまうと「設定を見ているのにホームが選ばれている」タブバーができる。
+/// 出口は戻るボタンではなく、同じ下部ナビでホームを選ぶこと。
 class PremiumChip extends ConsumerWidget {
   const PremiumChip({super.key});
 
@@ -213,7 +217,7 @@ class PremiumChip extends ConsumerWidget {
       button: true,
       label: strings.premiumBadge,
       child: InkWell(
-        onTap: () => context.push(AppRoute.settings.path),
+        onTap: () => context.go(AppRoute.settings.path),
         borderRadius: BorderRadius.circular(AppRadius.chip),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 2),

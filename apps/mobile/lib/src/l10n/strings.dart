@@ -305,7 +305,6 @@ class AppStrings {
 
   // --- 会話 ---
   String get sessionListening => _pick('聞いています', 'Listening');
-  String get sessionThinking => _pick('考えています', 'Thinking');
 
   /// 会話が終わって、カルテを書いているあいだ。
   ///
@@ -483,7 +482,9 @@ class AppStrings {
   String get reviewBackHome => _pick('ホームにもどる', 'Back to home');
 
   // --- 設定 ---
-  String get settingsTitle => _pick('設定', 'Settings');
+  // 画面タイトルは持たない。設定は常設タブの根なので、名前は下部ナビの
+  // [navigationSettings] が出している。AppBar にも同じ「設定」を置くと、
+  // ひとつの画面に同じ語が2回出る。
   String get settingsSectionAccount => _pick('契約', 'Subscription');
   String get settingsSectionNotifications => _pick('通知', 'Notifications');
   String get settingsSectionAbout => _pick('このアプリについて', 'About');

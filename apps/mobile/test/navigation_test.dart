@@ -5,6 +5,7 @@ import 'package:ai_sensei/src/features/karte/domain/karte.dart';
 import 'package:ai_sensei/src/features/karte/presentation/home_screen.dart';
 import 'package:ai_sensei/src/features/karte/presentation/karte_screen.dart';
 import 'package:ai_sensei/src/features/karte/presentation/review_screen.dart';
+import 'package:ai_sensei/src/features/monetization/presentation/manage_subscription_button.dart';
 import 'package:ai_sensei/src/features/monetization/presentation/paywall_screen.dart';
 import 'package:ai_sensei/src/features/monetization/presentation/thanks_screen.dart';
 import 'package:ai_sensei/src/features/onboarding/presentation/onboarding_screen.dart';
@@ -113,6 +114,36 @@ void main() {
 
     // 設定はもうホームへ積む寄り道ではなく、常設の枝。戻るスタックを
     // 捏造せず、同じ下部ナビゲーションからホームを選べることを出口にする。
+    await tester.tap(find.byKey(const ValueKey<String>('navigation-home')));
+    await tester.pumpAndSettle();
+    expect(find.byType(HomeScreen), findsOneWidget);
+  });
+
+  // 設定はタブの根なので、画面の名前は下部ナビが出す。AppBar にも
+  // 「設定」を置くと、ひとつの画面に同じ語が2回出る。
+  testWidgets('設定に画面タイトルを持たせない(タブのラベルと二重になる)',
+      (WidgetTester tester) async {
+    await pumpRouter(tester, overrides: bootOverrides());
+
+    await tester.tap(find.byKey(const ValueKey<String>('navigation-settings')));
+    await tester.pumpAndSettle();
+    expect(find.byType(SettingsScreen), findsOneWidget);
+
+    final AppStrings strings = AppStrings.of(tester.element(find.byType(SettingsScreen)));
+    expect(find.text(strings.navigationSettings), findsOneWidget, reason: '出すのはタブのラベルだけ');
+  });
+
+  // Premiumチップは設定を積まない。積むと「設定を見ているのにホームが
+  // 選ばれている」タブバーになり、AppBar の戻るボタンでしか出られなくなる。
+  testWidgets('ホームのPremiumチップは、設定タブへ切り替える', (WidgetTester tester) async {
+    final GoRouter router = await pumpRouter(tester, overrides: bootOverrides(premium: true));
+
+    await tester.tap(find.byType(PremiumChip));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SettingsScreen), findsOneWidget);
+    expect(router.canPop(), isFalse, reason: '設定は寄り道ではないので、戻るスタックを作らない');
+    // 出口はタブ。ホームを選べば戻れる。
     await tester.tap(find.byKey(const ValueKey<String>('navigation-home')));
     await tester.pumpAndSettle();
     expect(find.byType(HomeScreen), findsOneWidget);
