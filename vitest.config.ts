@@ -9,8 +9,9 @@ export default defineConfig({
       "backend/*/src/**/*.test.ts",
       "backend/*/test/**/*.test.ts",
       // apps/tuner はブラウザ用の素のJS。実機と答えが違ってはいけない部分
-      // (板書の欠落判定・plotの式評価)だけをここで見る。
+      // (板書の欠落判定・plotの式評価)と、開発サーバの配信の境界だけを見る。
       "apps/tuner/test/**/*.test.js",
+      "apps/tuner/test/**/*.test.ts",
     ],
     exclude: ["**/node_modules/**", "**/dist/**", "apps/mobile/**"],
   },

@@ -3,13 +3,15 @@
  *
  *   pnpm --filter @ai-sensei/tuner dev     # http://localhost:5273
  *
- * やることは3つだけで、依存は持たない(`node:http` のみ):
+ * やることは4つだけで、依存は持たない(`node:http` のみ):
  *
  *   1. `public/` を配る(素のHTML/JS。ビルド手順を持たない)
+ *      `/` が授業を1本回す画面、`/debug` が回さずに中身をいじる画面
  *   2. `/vendor/*` を `node_modules` の中身へ橋渡しする
  *      (livekit-client と KaTeX。CDNから引かないのは、
  *       **手元の版を lockfile で固定したまま**にするため)
  *   3. `/api/status` で「いま prompts/*.md が agent に反映されているか」を返す
+ *   4. `/api/prompt?file=` でプロンプト1本の本文を返す(`/debug` が読む)
  *
  * 3つ目がこのサーバを書いた理由。プロンプトを編集しても
  * `packages/prompts/src/generated.ts` を作り直して agent を再起動するまでは
@@ -24,6 +26,7 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { type IncomingMessage, type ServerResponse, createServer } from "node:http";
 import { extname, join, resolve, sep } from "node:path";
 import { buildGeneratedSource } from "../../packages/prompts/src/generate.ts";
+import { parsePrompt } from "../../packages/prompts/src/render.ts";
 
 const here = import.meta.dirname;
 const repoRoot = resolve(here, "..", "..");
@@ -108,10 +111,34 @@ export function resolveFile(pathname: string): string | null {
     if (!requested.startsWith(prefix)) continue;
     const candidate = resolve(dir, `.${requested.slice(prefix.length - 1)}`);
     if (candidate !== dir && !candidate.startsWith(dir + sep)) continue;
-    if (!existsSync(candidate) || !statSync(candidate).isFile()) continue;
+    if (!existsSync(candidate)) continue;
+    // `/debug` のようにディレクトリを指されたら、その中の index.html を出す
+    // (末尾の `/` の有無で404になると、リンクの書き方だけで壊れる)。
+    if (statSync(candidate).isDirectory()) {
+      const index = join(candidate, "index.html");
+      if (existsSync(index)) return index;
+      continue;
+    }
     return candidate;
   }
   return null;
+}
+
+/**
+ * プロンプト1本の中身。**`/debug` から読むためだけにある。**
+ *
+ * 名前は一覧(`promptStatus`)に載っているものだけを受け付ける。パスを組み立てて
+ * から traversal を弾く作りにすると、`prompts/` の外を読める口がもう1つ増える。
+ */
+export async function promptBody(
+  file: string,
+): Promise<{ file: string; meta: unknown; body: string } | null> {
+  const { prompts } = await promptStatus();
+  if (!prompts.some((prompt) => prompt.file === file)) return null;
+
+  const source = await readFile(join(repoRoot, "prompts", file), "utf8");
+  const { meta, body } = parsePrompt(source);
+  return { file, meta, body };
 }
 
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
@@ -131,6 +158,16 @@ async function handle(request: IncomingMessage, response: ServerResponse): Promi
     return;
   }
 
+  if (url.pathname === "/api/prompt") {
+    const prompt = await promptBody(url.searchParams.get("file") ?? "");
+    if (!prompt) {
+      sendJson(response, 404, { error: "unknown_prompt", file: url.searchParams.get("file") });
+      return;
+    }
+    sendJson(response, 200, prompt);
+    return;
+  }
+
   const file = resolveFile(url.pathname);
   if (!file) {
     sendJson(response, 404, { error: "not_found", path: url.pathname });
@@ -146,10 +183,14 @@ async function handle(request: IncomingMessage, response: ServerResponse): Promi
   createReadStream(file).pipe(response);
 }
 
-createServer((request, response) => {
-  handle(request, response).catch((error: unknown) => {
-    sendJson(response, 500, { error: "internal_error", message: String(error) });
+// 直に起動されたときだけ待ち受ける(`packages/prompts` の generate.ts と同じ書き方)。
+// テストから import しただけでポートを掴むと、`pnpm test` が終わらなくなる。
+if (process.argv[1]?.endsWith("serve.ts")) {
+  createServer((request, response) => {
+    handle(request, response).catch((error: unknown) => {
+      sendJson(response, 500, { error: "internal_error", message: String(error) });
+    });
+  }).listen(port, () => {
+    console.log(`tuner: http://localhost:${port}  (API: ${apiBaseUrl})  /debug もあります`);
   });
-}).listen(port, () => {
-  console.log(`tuner: http://localhost:${port}  (API: ${apiBaseUrl})`);
-});
+}

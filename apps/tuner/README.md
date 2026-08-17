@@ -6,16 +6,17 @@
 
 ```
 apps/tuner/
-  serve.ts        依存なしの開発サーバ(public/ の配信 + /vendor + /api/status)
+  serve.ts        依存なしの開発サーバ(public/ の配信 + /vendor + /api/status + /api/prompt)
   public/         画面。素のHTML/JS(ビルド手順を持たない)
-    index.html    3段組み(① 接続と写真 / ② 板書と音声 / ③ 観測)
+    index.html    `/`      授業を1本回す。3段組み(① 接続と写真 / ② 板書と音声 / ③ 観測)
+    debug/        `/debug` 授業を回さずに中身をいじる(手貼り / リプレイ / プロンプト / 環境)
     app.js        画面の配線。「何を出すか」だけ
     api.js        backend/api の叩き方(apps/mobile の api_client.dart と同じ形)
     room.js       LiveKit(session_controller.dart の web 版)
     board.js      板書の受信箱。**アプリと同じ欠落判定**
     board-view.js 板書8種の描画(KaTeX + SVG)
     plot.js       plot.fn の評価器(eval を使わない)
-  test/           web と実機で答えが違ってはいけない部分だけのテスト
+  test/           web と実機で答えが違ってはいけない部分 + 配信の境界のテスト
 ```
 
 **開発専用で、どこにも配信しません。** `apps/lp` と違って wrangler の設定を
@@ -106,6 +107,24 @@ pnpm --filter @ai-sensei/prompts generate   # prompts/*.md → src/generated.ts
 
 **この試行をJSONで保存** を押すと、上の全部(設定・文脈・封筒・字幕・カルテ・時間)が
 1ファイルで落ちます。プロンプトのbefore/afterを比べるときは、これを2本並べてください。
+
+## `/debug` — 授業を回さずに見る側
+
+右上の `/debug` から入ります。**写真も鍵も今日の枠も要りません。**
+授業を1本回すには全部が揃っている必要があるので、それを待たずに済ませたい確認を
+こちらへ寄せてあります。
+
+| 欄 | やること | いつ使うか |
+| --- | --- | --- |
+| ① 板書を手で描く | 板書のJSONを貼ると描く。見本ボタンで8種を1つずつ出せる | 先輩の出力(agentのログからコピペ)が**そもそも描けるか**を見る。`focus` が本文に無い、`fn` が文法外、`domain` が逆 —— 授業を回さずに分かる |
+| ② 板書 | ①とリプレイの描画先 | |
+| ③ 試行のリプレイ | 授業の画面で保存したJSONを読み、封筒を**アプリと同じ受信箱**に流し直す。1通ずつ進められる | プロンプトの前後比較。会話は毎回違うが、保存した封筒は何度でも同じものを再生できる。欠落(`seq` の飛び)の再現もここ |
+| ④ プロンプト | `prompts/*.md` の本文と、宣言されている差し込み変数(フロントマターの `variables`) | 直す前に「この本文がどの変数を要求しているか」を確かめる |
+| ⑤ 環境 | `/api/status` の生JSON | APIのURLと `generated.ts` の同期状態 |
+
+貼り付けは**どの粒度でも受けます**(1回の説明 `{title, topic_ids, steps}` /
+封筒 `{type, seq, ...}` / 手順 `{index, speech, board}` / 要素 `{kind, ...}`)。
+agentのログから切り取った断片をそのまま入れられるようにするためです。
 
 ## 制約
 

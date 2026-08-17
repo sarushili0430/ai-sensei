@@ -127,6 +127,10 @@ fvm flutter run --dart-define=API_BASE_URL=http://localhost:8787
 pnpm --filter @ai-sensei/tuner dev   # http://localhost:5273(api と agent も動かしておく)
 ```
 
+`/debug` は**授業を回さない側**で、写真も鍵も要りません。板書のJSONを貼って
+描けるかを見る、保存した試行を封筒から再生する、プロンプトの本文と差し込み変数を読む、
+の3つに使います。
+
 `prompts/*.md` を直したら **`pnpm --filter @ai-sensei/prompts generate` と
 agentの再起動**が要ります(常駐プロセスが古い本文を持つため)。
 忘れたまま観察し続けないよう、tunerの画面が食い違いを帯で知らせます。

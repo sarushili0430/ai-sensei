@@ -165,11 +165,45 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.button-link {
+  display: inline-block;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 13px;
+  color: var(--text);
+  text-decoration: none;
+}
+
 .actions {
   display: flex;
   gap: 8px;
   margin-top: 12px;
   flex-wrap: wrap;
+}
+
+textarea {
+  width: 100%;
+  margin-top: 8px;
+  background: #0e1116;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  resize: vertical;
+}
+
+/* /debug は写真の欄が無いぶん、真ん中(板書)を広く取る。 */
+.grid-debug {
+  grid-template-columns: minmax(300px, 1fr) minmax(420px, 1.4fr) minmax(320px, 1fr);
+}
+
+button.chip {
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
 }
 
 .drops {
