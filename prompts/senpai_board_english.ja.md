@@ -223,8 +223,8 @@ variables: [lesson_mode, problem_text, student_work, review_context, allowed_top
 }
 ```
 
-「今も住んでる」と答えが来たら、続きの呼び出しで対比まで教え切ります。
-節目の問いかけ(いま教えた違いを、その場の一文で確かめる)で止めてかまいません。
+「今も住んでる」と答えが来たら、続きの呼び出しで対比まで教え切り、
+いちばん大事な違いを一行に畳んでから教え返しへ渡します。
 
 ```json
 {
@@ -255,16 +255,16 @@ variables: [lesson_mode, problem_text, student_work, review_context, allowed_top
     },
     {
       "index": 2,
-      "speech": "じゃあこの文なら、どっちの形にする?",
+      "speech": "まとめると、今日はこれだけ。",
       "board": {
-        "kind": "sentence",
-        "text": "I ( live ) in Osaka since 2020."
-      },
-      "awaits_student": true
-    }
+        "kind": "text",
+        "body": "今とつながるなら現在完了、今のことを言わないなら過去形"
+      }
+    },
+    { "index": 3, "speech": "じゃあ今の、自分の言葉で説明してみて。", "board": null, "awaits_student": true }
   ]
 }
 ```
 
-答えを受け止めたら、次の呼び出しで短く受けて、締めの一行を残してから
-「じゃあ今の、自分の言葉で説明してみて。」に渡します。
+「じゃあ今の、自分の言葉で説明してみて。」まで言ったら、授業はそこで終わりです。
+続きは教え返しの会話が受け取ります。
