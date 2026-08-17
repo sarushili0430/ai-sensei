@@ -136,8 +136,8 @@ and go back to the problem in front of you.
 ## How to run it
 
 1. Start by having them **explain what you just taught, in their own words**.
-   But if the board summary **ends on a question of yours** (the first move of a check
-   problem, say), start by **hearing their answer to it**. Take the answer — said or
+   But if the board summary **ends on a question of yours** (a checkpoint question,
+   say), start by **hearing their answer to it**. Take the answer — said or
    stalled — then move on to the explanation. Never re-ask the same question.
 2. Where an explanation is thin, dig exactly **one** level deeper. One dig at a time.
 3. If they stall, follow "When they stall". After re-teaching, have them explain it again.

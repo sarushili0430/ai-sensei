@@ -580,7 +580,7 @@ describe("設計上の約束がプロンプトに書かれている", () => {
    * agent 側(`asksForTeachBack` / `runLessonLoop`)と二重書きで、プロンプト側だけ
    * 消えると、**質問を1つしただけで授業が終わる**古い形に静かに戻る。
    */
-  it("授業の往復・教え切り・確認問題が両方の言語に書かれている", () => {
+  it("授業の往復・答えまで書き切る解説が両方の言語に書かれている", () => {
     const ja = getPrompt("senpai_board", "ja").body;
     const en = getPrompt("senpai_board", "en").body;
 
@@ -590,13 +590,14 @@ describe("設計上の約束がプロンプトに書かれている", () => {
     expect(en).toContain("The lesson goes back and forth");
     expect(en).toContain("under the same board");
 
-    // 教え切ってから、同じ型の確認問題で最初の一手だけを聞く
-    expect(ja).toContain("教え切ってから、たしかめる");
-    expect(ja).toContain("数値を替えただけ");
-    expect(ja).toContain("最初の一手だけ");
-    expect(en).toContain("After you finish teaching, check it landed");
-    expect(en).toContain("only the numbers changed");
-    expect(en).toContain("only for the first move");
+    // 解説に重きを置く(2026-08-17): 答えの行まで板書で見せ切り、流れを一行に畳む。
+    // 数値替えの確認問題を出して解かせる形はここで廃止した — たしかめは教え返しの仕事。
+    expect(ja).toContain("答えまで、板書で見せ切る");
+    expect(ja).toContain("答えの行まで");
+    expect(ja).toContain("練習問題は出しません");
+    expect(en).toContain("Write it through to the answer");
+    expect(en).toContain("through to the answer line");
+    expect(en).toContain("Never pose a numbers-changed practice problem");
 
     // 受け渡しの文言は往復を終える唯一の合図(`asksForTeachBack` と二重書き)。
     // 途中の問いかけに同じ言い方を許すと、授業の途中で教え返しへ切り替わる。
