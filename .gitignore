@@ -14,6 +14,8 @@ coverage/
 *.tsbuildinfo
 .wrangler/
 .vitest-cache/
+# プロンプト評価ハーネスの出力(実LLMの生の応答と封筒。試行ごとに増える)
+backend/agent/eval-out/
 
 # --- python (agent fallback) ---
 __pycache__/
