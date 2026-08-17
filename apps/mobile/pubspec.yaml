@@ -29,6 +29,16 @@ dependencies:
   # 撮影
   camera: ^0.12.0
   image_picker: ^1.1.2
+  # 写真の切り抜き。
+  #
+  # **iOSがSPMに対応しているのが決め手**(`ios/image_cropper/Package.swift`。
+  # 中身は TOCropViewController)。このアプリは Podfile を持たずSPMで組んで
+  # いるので、切り抜きのためだけにCocoaPodsを生やさずに済む。
+  # Androidは AndroidManifest に UCropActivity を1つ足すだけ(権限は増えない)。
+  #
+  # 出力は既定でJPEG(compressQuality 90)なので、`api_client.dart` が
+  # Content-Type を image/jpeg 決め打ちしているのとも噛み合う。
+  image_cropper: ^12.2.1
 
   # リアルタイム会話
   # 板書の受信は Text Streams API(registerTextStreamHandler)に乗っている。

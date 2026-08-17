@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -55,6 +56,32 @@ import '../application/capture_controller.dart';
 /// **どちらか1枚で始められる**(§4-1)。1枚に問題とノートの両方が写ることが
 /// 多いので、2枚必須にすると撮影の摩擦だけが増える。ここで出すのは「撮れ」ではなく
 /// 「写っていると迷子になりません」というヒントに留める。
+///
+/// ## 枠のタップでシートを開く理由(カメラを直接開かない)
+///
+/// アルバムから入れる道を足したが、**置ける場所がここしか無かった。**
+/// 枠は2つとも埋まっていて、片方を「アルバム専用」にはできない(どちらの枠に
+/// 入れたかが破棄の前提なので、枠の意味を変えられない)。
+///
+/// **端末の写真をアプリ内にマス目で並べる案は採らなかった。** それには Android で
+/// `READ_MEDIA_IMAGES`(広いアクセス)が要り、Google Play の Photo & Video
+/// Permissions ポリシーで申告と審査の対象になる。通す条件は「システムのピッカー
+/// ではコア機能が提供できない」ことで、**自前ピッカーを持っていること自体は
+/// 資格にならないと条文が名指ししている。** この画面がPhoto Pickerでできないのは
+/// 見た目と「1マス目に撮影ボタン」だけで、どちらも授業の成立には関わらない —
+/// 申告に書ける材料が無い。なので**マス目はOSのピッカーに任せ、撮影ボタンだけ
+/// 手前に出す**([_SourceSheet])。権限のダイアログも1つも増えていない。
+///
+/// ## 切り抜きを置く理由
+///
+/// `contract` の `problemTextMaxLength` が既知の失敗モードとしてこう書いている —
+/// 「ページ全体を写すと、章末の解答や解説まで問題文として流れ込み、先輩が答えを
+/// 読み上げるところから授業が始まってしまう」。600字の上限はその**安全弁**で、
+/// 根本の対策ではなかった。切り抜きがその対策になる。
+///
+/// **置き場所はここしかない。** [CaptureController] は解析後の差し替えを弾くので、
+/// 切り抜きが効くのは解析の前 = この画面だけ。**それでも任意に留める**
+/// (促しは [AppStrings.captureCropHint] が出す)。
 class CaptureScreen extends ConsumerStatefulWidget {
   const CaptureScreen({super.key});
 
@@ -72,14 +99,18 @@ const Set<String> _kPermissionErrorCodes = <String>{
   'invalid_source',
 };
 
+/// 枠に対してできること。[_SourceSheet] が返し、失敗したときの文言と
+/// 「もう一度」の行き先にもそのまま使う。
+enum _PickAction { camera, gallery, crop }
+
 class _CaptureScreenState extends ConsumerState<CaptureScreen> {
-  /// カメラを断られた。閉じるのではなく、戻し方を出す。
-  bool _cameraDenied = false;
+  /// 断られた。閉じるのではなく、戻し方を出す。
+  bool _denied = false;
 
-  /// 許可はあるのにカメラを開けなかった(端末側の理由)。撮り直しの導線を出す。
-  bool _cameraFailed = false;
+  /// 許可はあるのに開けなかった(端末側の理由)。やり直しの導線を出す。
+  bool _failed = false;
 
-  /// カメラを開いている最中。まだ見せるものが無い。
+  /// カメラ・アルバム・切り抜きのどれかを開いている最中。まだ見せるものが無い。
   ///
   /// 「1枚も撮っていない」と区別が要る。撮らずに帰ってきた人には
   /// **枠を見せて留まってもらう**ので、写真の有無だけでは判断できない。
@@ -88,11 +119,18 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
   /// **前回の写真が1フレームだけ見えてしまう**(コントローラは keepAlive)。
   bool _picking = true;
 
-  /// 直近にカメラを開いた枠。開けなかったときの「もう一度」を同じ枠へ戻すため。
+  /// 直近に触った枠。開けなかったときの「もう一度」を同じ枠へ戻すため。
   ///
   /// カメラの自動起動をやめてからは、**どちらの枠から来たかは本人の選択**なので、
   /// 失敗のたびにノートへ引き戻すと、ノートが無い生徒を無い枠へ送り返すことになる。
   bool _lastPickWasProblem = false;
+
+  /// 直近に選んだ操作。**文言も「もう一度」の行き先も、押したものに合わせる。**
+  ///
+  /// アルバムを押した人に「カメラを使えませんでした」と返すと、設定アプリの
+  /// どこを開けばいいのか分からなくなる。切り抜きで失敗した人を撮り直しへ
+  /// 引き戻すのも同じで、写真はもう入っている。
+  _PickAction _lastAction = _PickAction.camera;
 
   @override
   void initState() {
@@ -106,53 +144,99 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     });
   }
 
-  /// ノートの写真。**必須ではない**(サーバは `kind: new` でどちらか1枚を要求する)。
-  Future<void> _pickPhoto() => _pick(forProblem: false);
+  /// ノートの枠。**必須ではない**(サーバは `kind: new` でどちらか1枚を要求する)。
+  Future<void> _tapNotes() => _openSourceSheet(forProblem: false);
 
-  /// 問題の写真。これだけでも始められる(§4-1)。
-  Future<void> _pickProblemPhoto() => _pick(forProblem: true);
+  /// 問題の枠。これだけでも始められる(§4-1)。
+  Future<void> _tapProblem() => _openSourceSheet(forProblem: true);
 
-  Future<void> _pick({required bool forProblem}) async {
+  /// 写真の入れ方を選ぶシートを開く。**枠のタップはすべてここに来る。**
+  ///
+  /// カメラを直接開かず一枚挟んでいるのは、アルバムの導線を置く場所がここしか
+  /// 無いから(理由の全文はクラスのコメント)。撮る人のタップは1つ増えるが、
+  /// **この画面はもともと「何を撮るか」を選ばせるために止まっている**ので、
+  /// 止まる場所が増えたわけではない。
+  Future<void> _openSourceSheet({required bool forProblem}) async {
+    final CaptureState state = ref.read(captureControllerProvider);
+    final File? photo = forProblem ? state.problemPhoto : state.photo;
+    final AppStrings strings = AppStrings.of(context);
+
+    final _PickAction? action = await showModalBottomSheet<_PickAction>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.card)),
+      ),
+      builder: (BuildContext context) => _SourceSheet(
+        label: forProblem ? strings.capturePhotoProblem : strings.capturePhotoNotes,
+        // 切り抜きは写真が入っているときだけ。空の枠に出しても、押せない操作が増える。
+        hasPhoto: photo != null,
+      ),
+    );
+
+    // シートを閉じただけ。**どこにも戻さない** — 枠はそのまま見えている。
+    if (action == null || !mounted) return;
+
+    switch (action) {
+      case _PickAction.camera:
+        await _pick(forProblem: forProblem, source: ImageSource.camera);
+      case _PickAction.gallery:
+        await _pick(forProblem: forProblem, source: ImageSource.gallery);
+      case _PickAction.crop:
+        if (photo != null) await _crop(forProblem: forProblem, file: photo);
+    }
+  }
+
+  Future<void> _pick({
+    required bool forProblem,
+    required ImageSource source,
+  }) async {
     setState(() {
-      _cameraDenied = false;
-      _cameraFailed = false;
+      _denied = false;
+      _failed = false;
       _picking = true;
       _lastPickWasProblem = forProblem;
+      _lastAction = source == ImageSource.camera
+          ? _PickAction.camera
+          : _PickAction.gallery;
     });
 
     final XFile? picked;
     try {
       picked = await ImagePicker().pickImage(
-        source: ImageSource.camera,
+        source: source,
         imageQuality: 85,
+        // EXIFは使っていない。**落とすとiOSで写真の許可ダイアログが出なくなる**
+        // (フルのメタデータを求めなければPHPickerで済むため)。
+        // アルバムの導線を足しても、許可を1つも増やさずに済んでいるのはここ。
+        requestFullMetadata: false,
       );
     } on PlatformException catch (error, stack) {
-      // ここで拾わないと、initState の postFrameCallback から呼んでいるぶん
-      // 受け取り手がいないまま未処理例外になり、撮影画面ごと落ちる。
-      debugPrint('カメラを開けませんでした(${error.code}): ${error.message}\n$stack');
+      // ここで拾わないと、受け取り手がいないまま未処理例外になり、撮影画面ごと落ちる。
+      debugPrint('写真を開けませんでした(${error.code}): ${error.message}\n$stack');
       if (!mounted) return;
       setState(() {
         _picking = false;
         if (_kPermissionErrorCodes.contains(error.code)) {
-          _cameraDenied = true;
+          _denied = true;
         } else {
-          _cameraFailed = true;
+          _failed = true;
         }
       });
       return;
     } on Object catch (error, stack) {
-      // プラグインの想定外(ファイルの読み出し失敗など)。落とさずに撮り直させる。
+      // プラグインの想定外(ファイルの読み出し失敗など)。落とさずにやり直させる。
       debugPrint('写真を取得できませんでした: $error\n$stack');
       if (!mounted) return;
       setState(() {
         _picking = false;
-        _cameraFailed = true;
+        _failed = true;
       });
       return;
     }
 
-    // 撮らずに帰ってきた。許可が無いなら設定への行き方を出す —
-    // 何度カメラを開いても結果が同じなので、そこだけは別扱いにする。
+    // 撮らず/選ばずに帰ってきた。許可が無いなら設定への行き方を出す —
+    // 何度開いても結果が同じなので、そこだけは別扱いにする。
     // **枠で出し分けない。** どちらの枠も本人が選んで開いたものなので、
     // 許可が無いことを片方でだけ知らせる理由が無い。
     //
@@ -162,25 +246,110 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     // 本当にやめたい人は、この画面の戻るで降りられる(push で来ている)。
     if (picked == null) {
       if (!mounted) return;
-      final PermissionStatus status = await _cameraStatus();
+      final bool denied = await _isDenied(source);
       if (!mounted) return;
       setState(() {
         _picking = false;
-        _cameraDenied =
-            status.isDenied || status.isPermanentlyDenied || status.isRestricted;
+        _denied = denied;
       });
       return;
     }
 
     if (!mounted) return;
+    // ここでは解析しない(理由はクラスのコメント)。
+    _store(forProblem: forProblem, file: File(picked.path));
+  }
+
+  /// 入っている写真を切り抜く。**解析の前だけ効く操作。**
+  ///
+  /// [CaptureController] が解析後の差し替えを弾くので、ここから先で呼んでも
+  /// 黙って捨てられる。呼び口は [_SourceSheet] だけで、そのシートは
+  /// 解析前の画面([_PhotoReview])からしか開かない。
+  Future<void> _crop({required bool forProblem, required File file}) async {
+    setState(() {
+      _denied = false;
+      _failed = false;
+      _picking = true;
+      _lastPickWasProblem = forProblem;
+      _lastAction = _PickAction.crop;
+    });
+
+    final AppStrings strings = AppStrings.of(context);
+    final CroppedFile? cropped;
+    try {
+      cropped = await ImageCropper().cropImage(
+        sourcePath: file.path,
+        // **切り抜きで稼いだ解像度を、ここで捨てない。**
+        // 読み取りは `claude-sonnet-5`(`backend/api/wrangler.toml`)で、
+        // 長辺2576pxまではそのまま効く(超えた分はモデル側で縮小される)。
+        // 上限を切るのはアップロードのためで、精度のためではない。
+        maxWidth: 2576,
+        maxHeight: 2576,
+        uiSettings: <PlatformUiSettings>[
+          AndroidUiSettings(
+            toolbarTitle: strings.captureCrop,
+            toolbarColor: AppColors.blue,
+            toolbarWidgetColor: Colors.white,
+            activeControlsWidgetColor: AppColors.blue,
+            // **比率は固定しない。** 問題は横長のことも縦長のこともあるので、
+            // 枠を決め打ちすると切り抜けない紙面が出る。
+            lockAspectRatio: false,
+          ),
+          IOSUiSettings(title: strings.captureCrop, aspectRatioLockEnabled: false),
+        ],
+      );
+    } on Object catch (error, stack) {
+      // ネイティブ側の失敗(Androidで UCropActivity の宣言漏れ、など)。
+      debugPrint('切り抜けませんでした: $error\n$stack');
+      if (!mounted) return;
+      setState(() {
+        _picking = false;
+        _failed = true;
+      });
+      return;
+    }
+
+    if (!mounted) return;
+    // やめて帰ってきた。**元の写真をそのまま残す**(捨てると撮り直しになる)。
+    if (cropped == null) {
+      setState(() => _picking = false);
+      return;
+    }
+    _store(forProblem: forProblem, file: File(cropped.path));
+  }
+
+  /// 撮った/選んだ/切り抜いたものを、対応する枠へ入れる。
+  ///
+  /// **枠の対応を1か所に閉じ込めておく。** 取り違えると、他者の著作物が
+  /// ノートとしてR2に保存される(`api.ts` の `sessionPhotoParts`)。
+  void _store({required bool forProblem, required File file}) {
     final CaptureController controller = ref.read(captureControllerProvider.notifier);
     if (forProblem) {
-      controller.setProblemPhoto(File(picked.path));
+      controller.setProblemPhoto(file);
     } else {
-      // ここでは解析しない(理由はクラスのコメント)。
-      controller.setPhoto(File(picked.path));
+      controller.setPhoto(file);
     }
     setState(() => _picking = false);
+  }
+
+  /// 開けなかったものを、そのまま開き直す。
+  ///
+  /// **撮り直しに固定しない。** 切り抜きで失敗した人の写真はもう入っているし、
+  /// アルバムで失敗した人をカメラへ送るのも的外れになる。
+  Future<void> _retryLast(CaptureState state) {
+    final bool forProblem = _lastPickWasProblem;
+    if (_lastAction == _PickAction.crop) {
+      final File? photo = forProblem ? state.problemPhoto : state.photo;
+      // 切り抜く元が無い(セッションが消えて写真ごと捨てられた)なら、入れ直しから。
+      if (photo == null) return _openSourceSheet(forProblem: forProblem);
+      return _crop(forProblem: forProblem, file: photo);
+    }
+    return _pick(
+      forProblem: forProblem,
+      source: _lastAction == _PickAction.gallery
+          ? ImageSource.gallery
+          : ImageSource.camera,
+    );
   }
 
   Future<void> _analyze() async {
@@ -199,13 +368,22 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     if (session != null && mounted) context.go(AppRoute.session.path);
   }
 
-  /// 許可の照会も失敗しうる。ここで落とすと、撮影をやめただけの人まで巻き込む。
-  Future<PermissionStatus> _cameraStatus() async {
+  /// 何も返ってこなかったのが、**やめたからか許可が無いからか**を見分ける。
+  ///
+  /// **アルバムは照会しない。** OSのピッカー(iOSはPHPicker・AndroidはPhoto
+  /// Picker)経由なので、そもそも写真の許可が要らない。ここで許可を見にいくと、
+  /// 許可していない端末で「やめただけ」を「断られた」と誤診して、
+  /// 出しても意味のない設定画面へ送ることになる。
+  ///
+  /// 照会そのものも失敗しうる。ここで落とすと、やめただけの人まで巻き込む。
+  Future<bool> _isDenied(ImageSource source) async {
+    if (source == ImageSource.gallery) return false;
     try {
-      return await Permission.camera.status;
+      final PermissionStatus status = await Permission.camera.status;
+      return status.isDenied || status.isPermanentlyDenied || status.isRestricted;
     } on Object catch (error) {
       debugPrint('カメラの許可を確認できませんでした: $error');
-      return PermissionStatus.granted; // 許可の問題と決めつけず、ホームへ戻す
+      return false; // 許可の問題と決めつけない
     }
   }
 
@@ -243,20 +421,28 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
   Widget _body(CaptureState state) {
     final AppStrings strings = AppStrings.of(context);
 
-    if (_cameraDenied) {
+    if (_denied) {
       return _ErrorView(
-        message: strings.captureCameraDenied,
+        // **押したものに合わせる。** アルバムを押した人に「カメラを使えません
+        // でした」と返すと、設定アプリのどこを開けばいいのか分からなくなる。
+        message: _lastAction == _PickAction.gallery
+            ? strings.capturePhotosDenied
+            : strings.captureCameraDenied,
         retryLabel: strings.captureOpenSettings,
         onRetry: openAppSettings,
       );
     }
 
-    if (_cameraFailed) {
+    if (_failed) {
       return _ErrorView(
-        message: strings.captureCameraFailed,
-        // 開けなかった枠へ戻す。ノートへ固定すると、ノートが無い生徒を
-        // 無い枠へ送り返すことになる。
-        onRetry: () => _pick(forProblem: _lastPickWasProblem),
+        message: switch (_lastAction) {
+          _PickAction.camera => strings.captureCameraFailed,
+          _PickAction.gallery => strings.capturePhotosFailed,
+          _PickAction.crop => strings.captureCropFailed,
+        },
+        // 開けなかったものへ戻す。撮り直しに固定すると、ノートが無い生徒を
+        // 無い枠へ送り返したり、切り抜きに失敗しただけの人の写真を捨てたりする。
+        onRetry: () => _retryLast(state),
       );
     }
 
@@ -280,8 +466,8 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
             ? null
             : state.analysis != null
                 ? _start
-                // 撮り直すのは、直前に開いていた枠(ノートとは限らない)。
-                : () => _pick(forProblem: _lastPickWasProblem),
+                // やり直すのは、直前に触っていた枠と操作(ノートとは限らない)。
+                : () => _retryLast(state),
       );
     }
     // カメラを開いている最中は、まだ何も見せるものが無い。
@@ -292,8 +478,8 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     if (state.analysis == null) {
       return _PhotoReview(
         state: state,
-        onRetake: _pickPhoto,
-        onAddProblem: _pickProblemPhoto,
+        onTapNotes: _tapNotes,
+        onTapProblem: _tapProblem,
         onStart: _analyze,
       );
     }
@@ -325,36 +511,45 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
 ///   - まだ1枚も無い人 … **「ノートが無くてもいい」を先に言う。** ここで黙ると、
 ///     解けなかった生徒は紙面をノート枠に入れる(前へ進む道が他に見えない)
 ///   - ノートだけ撮った人 … 問題も撮ると先輩が迷子にならない、と促す
+///   - 問題が入っている人 … **ここは今まで無言だった。** 切り抜きを足したので、
+///     `contract` の `problemTextMaxLength` が書いている失敗モード(ページ全体を
+///     写すと章末の解答まで問題文として流れ込む)に、初めて言葉が届く
 ///
-/// 両方を常時並べると、どちらの人にも半分は関係のない文章になる。
+/// 全部を常時並べると、どの人にも大半は関係のない文章になる。
 /// **どちらも撮る前に出る言葉なので、§4-1 の「警告にしない」は保たれている**
 /// (`api.ts` の `problemSources` が言う、解析後に出すと2枚目が事実上の必須に
 /// なる、という話とは別の軸)。
 class _PhotoReview extends StatelessWidget {
   const _PhotoReview({
     required this.state,
-    required this.onRetake,
-    required this.onAddProblem,
+    required this.onTapNotes,
+    required this.onTapProblem,
     required this.onStart,
   });
 
   final CaptureState state;
-  final VoidCallback onRetake;
-  final VoidCallback onAddProblem;
+
+  /// 枠を触ったとき。**撮影ではなく[_SourceSheet]を開く**(理由は
+  /// [CaptureScreen] のコメント)。
+  final VoidCallback onTapNotes;
+  final VoidCallback onTapProblem;
   final VoidCallback onStart;
 
   @override
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
 
-    // 空の枠に合わせて、要る言葉だけを出す(理由はクラスのコメント)。
-    final String? hint;
+    // いまの埋まり方に合わせて、要る言葉だけを出す(理由はクラスのコメント)。
+    //
+    // **どの状態にも1つだけ出る。** 切り抜きを足したことで、いちばん進んだ状態
+    // (問題が入っている)にも言うことができた。並べるのではなく、入れ替える。
+    final String hint;
     if (!state.hasAnyPhoto) {
       hint = strings.captureEitherIsFine;
     } else if (state.problemPhoto == null) {
       hint = strings.captureProblemHint;
     } else {
-      hint = null;
+      hint = strings.captureCropHint;
     }
 
     return Column(
@@ -369,7 +564,7 @@ class _PhotoReview extends StatelessWidget {
                   label: strings.capturePhotoNotes,
                   photo: state.photo,
                   emptyLabel: strings.captureTakeNotes,
-                  onTap: onRetake,
+                  onTap: onTapNotes,
                 ),
               ),
               const SizedBox(width: AppSpacing.md),
@@ -378,7 +573,7 @@ class _PhotoReview extends StatelessWidget {
                   label: strings.capturePhotoProblem,
                   photo: state.problemPhoto,
                   emptyLabel: strings.captureAddProblem,
-                  onTap: onAddProblem,
+                  onTap: onTapProblem,
                 ),
               ),
             ],
@@ -386,14 +581,12 @@ class _PhotoReview extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.md),
         // **促しであって要求ではない。** 撮っていなくても下のボタンは押せる。
-        if (hint != null) ...<Widget>[
-          Text(
-            hint,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          const SizedBox(height: AppSpacing.xs),
-        ],
+        Text(
+          hint,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: AppSpacing.xs),
         Text(
           strings.captureProblemDiscarded,
           textAlign: TextAlign.center,
@@ -412,7 +605,7 @@ class _PhotoReview extends StatelessWidget {
   }
 }
 
-/// 写真1枚ぶんの枠。空のときは撮る、入っているときは撮り直す。
+/// 写真1枚ぶんの枠。**タップすると入れ方のシートが開く**([_SourceSheet])。
 class _PhotoSlot extends StatelessWidget {
   const _PhotoSlot({
     required this.label,
@@ -424,14 +617,16 @@ class _PhotoSlot extends StatelessWidget {
   final String label;
   final File? photo;
 
-  /// まだ撮っていないときの操作名。撮ったあとは「撮り直す」に変わる。
+  /// まだ入れていないときの操作名。入れたあとは「写真を変える」に変わる
+  /// — シートには撮り直す・アルバム・切り抜くが並ぶので、撮影だけを名指ししない。
   final String emptyLabel;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final File? file = photo;
-    final String actionLabel = file == null ? emptyLabel : AppStrings.of(context).captureRetake;
+    final String actionLabel =
+        file == null ? emptyLabel : AppStrings.of(context).captureChangePhoto;
 
     return Semantics(
       button: true,
@@ -471,6 +666,159 @@ class _PhotoSlot extends StatelessWidget {
               style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.blue),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 写真の入れ方を選ぶシート。**マス目の1つ目が撮影ボタン。**
+///
+/// ## 端末の写真をここに並べない理由
+///
+/// 「マス目に最近の写真が並んで、1つ目が撮影ボタン」という形にするには、端末の
+/// 写真ライブラリをアプリ側で読む必要がある。Androidではそれが
+/// `READ_MEDIA_IMAGES`(広いアクセス)で、Google Play の Photo & Video
+/// Permissions ポリシー(2025-05-28 全面適用)の申告・審査対象になる。
+/// 通す条件は「システムのピッカーでは**コア機能が提供できない**」ことで、
+/// **自前ピッカーを持っていること自体は資格にならないと条文が名指ししている。**
+///
+/// このアプリがPhoto Pickerでできないのは「見た目」と「1つ目の撮影ボタン」だけで、
+/// どちらも授業の成立には関わらない — 申告に書ける材料が無い。
+/// なので**マス目はOSのピッカーに任せ、撮影ボタンだけ手前に出した。**
+/// [AppStrings.capturePickGallery] を押した先がOSのピッカーで、
+/// あれ自体が写真のマス目になっている。**権限は1つも増えていない。**
+///
+/// (`android/app/src/main/AndroidManifest.xml` にも同じ理由を残してある。
+/// 権限を足すときは、申告に何を書くかを先に決めること。)
+class _SourceSheet extends StatelessWidget {
+  const _SourceSheet({required this.label, required this.hasPhoto});
+
+  /// どちらの枠を触っているか(ノート / 問題)。
+  ///
+  /// **枠の名前を出す。** シートが開いた時点で、どちらを触っているかが
+  /// 隠れる(枠がシートの裏に回る)ので、取り違えたまま入れられてしまう。
+  /// 問題の紙面をノート枠に入れると、他者の著作物がR2に保存される。
+  final String label;
+
+  /// 写真が入っているか。入っていれば撮影が「撮り直す」になり、切り抜きが増える。
+  final bool hasPhoto;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppStrings strings = AppStrings.of(context);
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            // **`IntrinsicHeight` を外すと落ちる。** マスの高さを揃えるための
+            // `stretch` は、高さの上限が無い場所(この `Column` は `min`)では
+            // 子に無限の高さを配ってしまう。ここで高さを確定させてから配る。
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Expanded(
+                    child: _SheetTile(
+                      icon: Icons.photo_camera_outlined,
+                      label:
+                          hasPhoto ? strings.captureRetake : strings.capturePickCamera,
+                      // **撮るを1つ目に、色つきで置く。** この画面の主役は撮影で、
+                      // アルバムは「すでに撮ってある人」の道。並びで主従を示す。
+                      primary: true,
+                      onTap: () => Navigator.of(context).pop(_PickAction.camera),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: _SheetTile(
+                      icon: Icons.photo_library_outlined,
+                      label: strings.capturePickGallery,
+                      onTap: () => Navigator.of(context).pop(_PickAction.gallery),
+                    ),
+                  ),
+                  if (hasPhoto) ...<Widget>[
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: _SheetTile(
+                        icon: Icons.crop,
+                        label: strings.captureCrop,
+                        onTap: () => Navigator.of(context).pop(_PickAction.crop),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// シートの1マス。
+///
+/// **高さを固定しない。** 正方形に見えるだけの余白を持たせて、中身で伸ばす。
+/// `AspectRatio` で正方形に切ると、文字を大きくしている端末で
+/// アイコンとラベルがはみ出す(このリポジトリが `layout_overflow_test` で
+/// 見ている壊れ方そのもの)。
+class _SheetTile extends StatelessWidget {
+  const _SheetTile({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.primary = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  /// 一等地。色を敷いて、並びの主役だと分かるようにする。
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color foreground = primary ? Colors.white : AppColors.ink;
+
+    return Semantics(
+      button: true,
+      label: label,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+          decoration: BoxDecoration(
+            color: primary ? AppColors.blue : AppColors.background,
+            border: Border.all(color: primary ? AppColors.blue : AppColors.border),
+            borderRadius: BorderRadius.circular(AppRadius.card),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(icon, color: foreground, size: 28),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: foreground),
+              ),
+            ],
+          ),
         ),
       ),
     );
