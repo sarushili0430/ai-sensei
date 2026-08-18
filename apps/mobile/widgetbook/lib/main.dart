@@ -133,11 +133,14 @@ Widget _appBuilder(BuildContext context, Widget child) {
     theme: AppTheme.light(),
     supportedLocales: AppStrings.supportedLocales,
     localizationsDelegates: _delegates,
-    home: Scaffold(
-      // 部品は「地の色の上」に置かれる前提で作ってある(白地ではない)。
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: child,
-    ),
+    // **地の色をここで渡さない。** 部品は「地の色の上」に置かれる前提で
+    // 作ってある(白地ではない)ので地そのものは要るが、`Scaffold` は
+    // 自分の上にある `theme:` から引く。渡すとしたら値はこの関数の
+    // `context` から取ることになり、それは**まだ widgetbook 側の木**
+    // (上の `MaterialApp` はまだ祖先になっていない)。widgetbook の地
+    // (明るいときは 0xFFFDFCFF、暗いときは暗色)が入って、
+    // アプリに存在しない地の上で部品を見ることになる。
+    home: Scaffold(body: child),
   );
 }
 
