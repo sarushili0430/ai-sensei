@@ -128,7 +128,6 @@ class _SchoolStageSection extends ConsumerWidget {
 
     return SettingsSection(
       title: strings.settingsSectionSchoolStage,
-      note: strings.settingsSchoolStageHint,
       children: <Widget>[
         row(SchoolStage.juniorHigh, strings.settingsSchoolStageJuniorHigh),
         row(SchoolStage.highSchool, strings.settingsSchoolStageHighSchool),

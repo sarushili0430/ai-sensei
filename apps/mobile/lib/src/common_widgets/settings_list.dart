@@ -129,7 +129,7 @@ class SettingsGroup extends StatelessWidget {
   }
 }
 
-/// 見出し + 補足 + まとまり。
+/// 見出し + まとまり。
 ///
 /// 見出しは行より**小さく・淡く**する。行(16)より大きい太字にすると、
 /// 見出しのほうが押せるものに見えて、一覧の主役が入れ替わる。
@@ -137,18 +137,11 @@ class SettingsSection extends StatelessWidget {
   const SettingsSection({
     required this.title,
     required this.children,
-    this.note,
     this.leading,
     super.key,
   });
 
   final String title;
-
-  /// まとまり全体にかかる補足。
-  ///
-  /// **行ではなく、選択肢の手前に置く。** 片方の行に付けると
-  /// 「選ばれているほうの説明」に読め、選び直すたびに説明が動いて見える。
-  final String? note;
 
   /// まとまりの手前に置くもの(契約の状態カードなど)。
   final Widget? leading;
@@ -175,11 +168,6 @@ class SettingsSection extends StatelessWidget {
               ),
             ),
           ),
-          if (note != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(_gutter, 0, _gutter, AppSpacing.sm),
-              child: Text(note!, style: text.bodySmall),
-            ),
           if (leading != null) ...<Widget>[
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: _gutter),

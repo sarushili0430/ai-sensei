@@ -562,8 +562,6 @@ class AppStrings {
   String get settingsSectionSchoolStage => _pick('学年', 'School');
   String get settingsSchoolStageJuniorHigh => _pick('中学生', 'Junior high');
   String get settingsSchoolStageHighSchool => _pick('高校生', 'High school');
-  String get settingsSchoolStageHint =>
-      _pick('撮った写真から単元を探す範囲が変わります', 'Changes which topics we look for in your photo');
 
   /// 1/3/7日の再訪のトグル。**ここが約束4のいちばん危ないところ。**
   ///
