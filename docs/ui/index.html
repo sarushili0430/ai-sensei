@@ -1,0 +1,793 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AI Sensei 画面カタログ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" />
+<style>
+  /* 地・文字・線はアプリのトークンそのまま。暗いほうは板書の色を地にする
+     (board_style.dart)。一覧のために新しい色を作らない。 */
+  :root {
+    --ground: #fbfaf7;
+    --surface: #ffffff;
+    --surface-sunken: #f3f1ea;
+    --ink: #33323d;
+    --ink-muted: #7a7887;
+    --border: #e6e3dc;
+    --accent: #0ea5e9;
+    --said: #ffd93b;
+    --hole: #ff7aa8;
+    --shadow: 0 12px 28px rgba(51, 50, 61, 0.10);
+    --shadow-hover: 0 18px 40px rgba(51, 50, 61, 0.16);
+    /* 線ごとの目印。明るい地の上で読める側の値。 */
+    --g-intro: #0ea5e9;
+    --g-tabs: #7a7887;
+    --g-lesson: #2f3a35;
+    --g-comeback: #ff7aa8;
+    --g-billing: #ff9f1c;
+    --g-board: #c08a12;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #232b27;
+      --surface: #2f3a35;
+      --surface-sunken: #28312c;
+      --ink: #edeae0;
+      --ink-muted: #9fa8a2;
+      --border: #3d4a43;
+      --accent: #56c9f5;
+      --said: #f2d675;
+      --hole: #ff9dbe;
+      --shadow: 0 12px 28px rgba(0, 0, 0, 0.34);
+      --shadow-hover: 0 18px 40px rgba(0, 0, 0, 0.46);
+      /* 板の色を地にした側。深緑(授業の線)はチョーク寄りに置き換える。 */
+      --g-intro: #56c9f5;
+      --g-tabs: #9fa8a2;
+      --g-lesson: #a9c6b5;
+      --g-comeback: #ff9dbe;
+      --g-billing: #ffb74d;
+      --g-board: #f2d675;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #232b27;
+    --surface: #2f3a35;
+    --surface-sunken: #28312c;
+    --ink: #edeae0;
+    --ink-muted: #9fa8a2;
+    --border: #3d4a43;
+    --accent: #56c9f5;
+    --said: #f2d675;
+    --hole: #ff9dbe;
+    --shadow: 0 12px 28px rgba(0, 0, 0, 0.34);
+    --shadow-hover: 0 18px 40px rgba(0, 0, 0, 0.46);
+    --g-intro: #56c9f5;
+    --g-tabs: #9fa8a2;
+    --g-lesson: #a9c6b5;
+    --g-comeback: #ff9dbe;
+    --g-billing: #ffb74d;
+    --g-board: #f2d675;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "Zen Kaku Gothic New", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 24px 96px;
+  }
+
+  h1, h2, h3 {
+    font-family: "Zen Maru Gothic", "Zen Kaku Gothic New", "Hiragino Sans", sans-serif;
+    font-weight: 700;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  code, .mono {
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* --- 見出し --- */
+  .hero {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: 72px 0 40px;
+  }
+  .eyebrow {
+    font-size: 12px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    margin: 0;
+  }
+  .hero h1 {
+    font-size: clamp(30px, 5vw, 46px);
+    line-height: 1.3;
+  }
+  /* 強調はboldではなく蛍光マーカー。アプリの署名をそのまま使う。 */
+  .marker {
+    background-image: linear-gradient(transparent 58%, var(--said) 58%, var(--said) 94%, transparent 94%);
+  }
+  .hero p {
+    margin: 0;
+    max-width: 62ch;
+    color: var(--ink-muted);
+  }
+  .facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 28px;
+    padding: 18px 22px;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: var(--surface);
+  }
+  .fact {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .fact dt {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--ink-muted);
+    margin: 0;
+  }
+  .fact dd {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  /* --- 索引 --- */
+  .index {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px 0;
+    margin-bottom: 12px;
+    background: color-mix(in srgb, var(--ground) 92%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  .index a {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--ink);
+    text-decoration: none;
+    font-size: 13px;
+  }
+  .index a:hover { border-color: var(--accent); }
+  .index a .dot { width: 8px; height: 8px; }
+  .index a .n {
+    color: var(--ink-muted);
+    font-size: 12px;
+  }
+
+  /* --- 束ね --- */
+  .section {
+    padding: 44px 0 8px;
+    scroll-margin-top: 72px;
+  }
+  .section__head {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 2px 16px;
+    align-items: baseline;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 26px;
+  }
+  .section__head h2 {
+    font-size: 22px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section__head p {
+    grid-column: 1 / 2;
+    margin: 0;
+    color: var(--ink-muted);
+    font-size: 13.5px;
+  }
+  .section__head .count {
+    grid-row: 1 / 3;
+    grid-column: 2 / 3;
+    align-self: center;
+    font-family: "Zen Maru Gothic", sans-serif;
+    font-size: 26px;
+    color: var(--group);
+  }
+  .is-intro { --group: var(--g-intro); }
+  .is-tabs { --group: var(--g-tabs); }
+  .is-lesson { --group: var(--g-lesson); }
+  .is-comeback { --group: var(--g-comeback); }
+  .is-billing { --group: var(--g-billing); }
+  .is-board { --group: var(--g-board); }
+
+  .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--group);
+    flex: none;
+  }
+
+  /* --- 1枚 --- */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+    gap: 28px 22px;
+  }
+  .grid--tiles {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  }
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    scroll-margin-top: 84px;
+  }
+  .shot {
+    display: block;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    overflow: hidden;
+    background: var(--surface-sunken);
+    box-shadow: var(--shadow);
+    cursor: zoom-in;
+    transition: transform 180ms ease, box-shadow 180ms ease;
+  }
+  .shot:hover, .shot:focus-visible {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-hover);
+  }
+  .shot:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .shot img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  .card__body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .card__body h3 { font-size: 15px; }
+  .card__meta { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font-size: 11.5px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    color: var(--ink-muted);
+    background: var(--surface);
+  }
+  .chip--route {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  }
+  .card__note {
+    margin: 0;
+    font-size: 13px;
+    color: var(--ink-muted);
+    line-height: 1.7;
+  }
+  .card__source {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 11px;
+    color: var(--ink-muted);
+    text-decoration: none;
+    word-break: break-all;
+    opacity: 0.85;
+  }
+  .card__source:hover { color: var(--accent); text-decoration: underline; }
+
+  /* --- 拡大 --- */
+  dialog {
+    border: none;
+    padding: 0;
+    background: transparent;
+    max-width: min(96vw, 520px);
+    max-height: 94vh;
+    overflow: visible;
+  }
+  dialog::backdrop { background: rgba(20, 24, 22, 0.72); }
+  dialog img {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 88vh;
+    object-fit: contain;
+    border-radius: 22px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+  }
+  dialog p {
+    margin: 10px 0 0;
+    text-align: center;
+    color: #edeae0;
+    font-size: 13px;
+  }
+
+  footer {
+    margin-top: 64px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    color: var(--ink-muted);
+    font-size: 13px;
+  }
+  footer code {
+    font-size: 12px;
+    background: var(--surface-sunken);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1px 6px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .shot { transition: none; }
+    .shot:hover, .shot:focus-visible { transform: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+    <header class="hero">
+      <p class="eyebrow">ai-sensei / apps/mobile</p>
+      <h1>いま動いているUIを、<span class="marker">1枚ずつ</span>並べたもの</h1>
+      <p>モックでも図でもなく、実際のWidgetツリーを描いて焼いたスクリーンショットです。撮っているのはiPhone 15相当の1サイズだけ。押すと等倍で開きます。</p>
+      <dl class="facts">
+        <div class="fact"><dt>画面</dt><dd>22 枚</dd></div>
+        <div class="fact"><dt>板書パーツ</dt><dd>7 枚</dd></div>
+        <div class="fact"><dt>寸法</dt><dd class="mono">393 × 852 pt @2x</dd></div>
+        <div class="fact"><dt>言語</dt><dd>日本語(ja)</dd></div>
+        <div class="fact"><dt>撮影</dt><dd class="mono">2026-08-18</dd></div>
+      </dl>
+    </header>
+
+    <nav class="index" aria-label="線ごとの索引">
+      <a class="is-intro" href="#g1"><span class="dot"></span>はじめて開いたとき<span class="n">3</span></a>
+      <a class="is-tabs" href="#g2"><span class="dot"></span>常設タブ<span class="n">7</span></a>
+      <a class="is-lesson" href="#g3"><span class="dot"></span>授業の線<span class="n">7</span></a>
+      <a class="is-comeback" href="#g4"><span class="dot"></span>戻ってくる線<span class="n">3</span></a>
+      <a class="is-billing" href="#g5"><span class="dot"></span>課金<span class="n">2</span></a>
+      <a class="is-board" href="#g6"><span class="dot"></span>板書パーツ<span class="n">7</span></a>
+    </nav>
+
+<section class="section is-intro" id="g1">
+  <header class="section__head">
+    <h2><span class="dot"></span>はじめて開いたとき</h2>
+    <p>初回起動。機能より先に約束を伝える3枚。</p>
+    <span class="count">3</span>
+  </header>
+  <div class="grid">
+<article class="card" id="s-01-onboarding-promise">
+  <button class="shot" type="button" data-title="オンボーディング(約束)" aria-label="オンボーディング(約束)を大きく見る">
+    <img src="screens/01-onboarding-promise.png" width="786" height="1704" alt="オンボーディング(約束)の画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>オンボーディング(約束)</h3>
+    <div class="card__meta"><span class="chip chip--outside">タブの外</span></div>
+    <p class="card__note">最初に伝えるのは機能ではなく約束。答えを教えないことを、使い始める前に置く。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/onboarding/presentation/onboarding_screen.dart" target="_blank" rel="noreferrer">features/onboarding/presentation/onboarding_screen.dart</a>
+  </div>
+</article>
+<article class="card" id="s-02-onboarding-rehearsal">
+  <button class="shot" type="button" data-title="オンボーディング(リハーサル)" aria-label="オンボーディング(リハーサル)を大きく見る">
+    <img src="screens/02-onboarding-rehearsal.png" width="786" height="1704" alt="オンボーディング(リハーサル)の画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>オンボーディング(リハーサル)</h3>
+    <div class="card__meta"><span class="chip chip--outside">タブの外</span></div>
+    <p class="card__note">答えは1文字も出ていない。出るのは問いと、説明する / 言えない の2つの道だけ。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/onboarding/presentation/onboarding_rehearsal.dart" target="_blank" rel="noreferrer">features/onboarding/presentation/onboarding_rehearsal.dart</a>
+  </div>
+</article>
+<article class="card" id="s-03-onboarding-karte">
+  <button class="shot" type="button" data-title="オンボーディング(カルテの見本)" aria-label="オンボーディング(カルテの見本)を大きく見る">
+    <img src="screens/03-onboarding-karte.png" width="786" height="1704" alt="オンボーディング(カルテの見本)の画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>オンボーディング(カルテの見本)</h3>
+    <div class="card__meta"><span class="chip chip--outside">タブの外</span></div>
+    <p class="card__note">止まった場所がピンクの穴として残る。責める言葉を置かず、また来ることを線で見せる。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/onboarding/presentation/onboarding_karte_preview.dart" target="_blank" rel="noreferrer">features/onboarding/presentation/onboarding_karte_preview.dart</a>
+  </div>
+</article>
+  </div>
+</section>
+
+<section class="section is-tabs" id="g2">
+  <header class="section__head">
+    <h2><span class="dot"></span>常設タブ</h2>
+    <p>いつでも戻れる場所。ホーム・計画・設定の3枝(ADR 0006)。</p>
+    <span class="count">7</span>
+  </header>
+  <div class="grid">
+<article class="card" id="s-04-home-first-run">
+  <button class="shot" type="button" data-title="ホーム(初回起動)" aria-label="ホーム(初回起動)を大きく見る">
+    <img src="screens/04-home-first-run.png" width="786" height="1704" alt="ホーム(初回起動)の画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>ホーム(初回起動)</h3>
+    <div class="card__meta"><code class="chip chip--route">/</code></div>
+    <p class="card__note">数えるものが何も無い日。空白にせず、次の一歩(撮る)だけを出す。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/karte/presentation/home_screen.dart" target="_blank" rel="noreferrer">features/karte/presentation/home_screen.dart</a>
+  </div>
+</article>
+<article class="card" id="s-05-home">
+  <button class="shot" type="button" data-title="ホーム(続きがある)" aria-label="ホーム(続きがある)を大きく見る">
+    <img src="screens/05-home.png" width="786" height="1704" alt="ホーム(続きがある)の画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>ホーム(続きがある)</h3>
+    <div class="card__meta"><code class="chip chip--route">/</code></div>
+    <p class="card__note">数えるのは点数ではなく、続けた日数と埋めた穴。復習カードは件数ではなく単元の中身を出す。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/karte/presentation/home_screen.dart" target="_blank" rel="noreferrer">features/karte/presentation/home_screen.dart</a>
+  </div>
+</article>
+<article class="card" id="s-06-home-premium">
+  <button class="shot" type="button" data-title="ホーム(Premium)" aria-label="ホーム(Premium)を大きく見る">
+    <img src="screens/06-home-premium.png" width="786" height="1704" alt="ホーム(Premium)の画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>ホーム(Premium)</h3>
+    <div class="card__meta"><code class="chip chip--route">/</code></div>
+    <p class="card__note">契約の印は右上に小さく。数えている2つ(連続日数・埋めた穴)を押し出さない。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/karte/presentation/home_screen.dart" target="_blank" rel="noreferrer">features/karte/presentation/home_screen.dart</a>
+  </div>
+</article>
+<article class="card" id="s-07-home-exhausted">
+  <button class="shot" type="button" data-title="ホーム(今日はここまで)" aria-label="ホーム(今日はここまで)を大きく見る">
+    <img src="screens/07-home-exhausted.png" width="786" height="1704" alt="ホーム(今日はここまで)の画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>ホーム(今日はここまで)</h3>
+    <div class="card__meta"><code class="chip chip--route">/</code></div>
+    <p class="card__note">今日の授業が終わった日。締めの言葉はいちばん長い文になるので、溢れるならまずここ。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/karte/presentation/home_screen.dart" target="_blank" rel="noreferrer">features/karte/presentation/home_screen.dart</a>
+  </div>
+</article>
+<article class="card" id="s-08-plan-empty">
+  <button class="shot" type="button" data-title="計画(まだ無い)" aria-label="計画(まだ無い)を大きく見る">
+    <img src="screens/08-plan-empty.png" width="786" height="1704" alt="計画(まだ無い)の画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>計画(まだ無い)</h3>
+    <div class="card__meta"><code class="chip chip--route">/plan</code></div>
+    <p class="card__note">フォームを置かない。計画は入力ではなく、声で作り始める。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/plan/presentation/plan_screen.dart" target="_blank" rel="noreferrer">features/plan/presentation/plan_screen.dart</a>
+  </div>
+</article>
+<article class="card" id="s-09-plan">
+  <button class="shot" type="button" data-title="計画(作成済み)" aria-label="計画(作成済み)を大きく見る">
+    <img src="screens/09-plan.png" width="786" height="1704" alt="計画(作成済み)の画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>計画(作成済み)</h3>
+    <div class="card__meta"><code class="chip chip--route">/plan</code></div>
+    <p class="card__note">日付・科目・分数と、口頭で組み直す入口。終わった項目は事実として出すが、割合や点数は作らない。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/plan/presentation/plan_screen.dart" target="_blank" rel="noreferrer">features/plan/presentation/plan_screen.dart</a>
+  </div>
+</article>
+<article class="card" id="s-10-settings">
+  <button class="shot" type="button" data-title="設定" aria-label="設定を大きく見る">
+    <img src="screens/10-settings.png" width="786" height="1704" alt="設定の画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>設定</h3>
+    <div class="card__meta"><code class="chip chip--route">/settings</code></div>
+    <p class="card__note">学校段階の切り替えと、契約の管理・復元、問い合わせ先。増やさないことが仕事の画面。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/settings/presentation/settings_screen.dart" target="_blank" rel="noreferrer">features/settings/presentation/settings_screen.dart</a>
+  </div>
+</article>
+  </div>
+</section>
+
+<section class="section is-lesson" id="g3">
+  <header class="section__head">
+    <h2><span class="dot"></span>授業の線</h2>
+    <p>撮影 → 会話 → 祝福 → カルテ。タブから抜けられない1本道。</p>
+    <span class="count">7</span>
+  </header>
+  <div class="grid">
+<article class="card" id="s-11-capture">
+  <button class="shot" type="button" data-title="撮影(何を撮るか選ぶ)" aria-label="撮影(何を撮るか選ぶ)を大きく見る">
+    <img src="screens/11-capture.png" width="786" height="1704" alt="撮影(何を撮るか選ぶ)の画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>撮影(何を撮るか選ぶ)</h3>
+    <div class="card__meta"><span class="chip chip--outside">タブの外</span></div>
+    <p class="card__note">入った瞬間にカメラを開かない。「ノートは無い」をシャッターの前に言える場所がここしかない。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/capture/presentation/capture_screen.dart" target="_blank" rel="noreferrer">features/capture/presentation/capture_screen.dart</a>
+  </div>
+</article>
+<article class="card" id="s-12-capture-analyzed">
+  <button class="shot" type="button" data-title="撮影(単元と問題文の確認)" aria-label="撮影(単元と問題文の確認)を大きく見る">
+    <img src="screens/12-capture-analyzed.png" width="786" height="1704" alt="撮影(単元と問題文の確認)の画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>撮影(単元と問題文の確認)</h3>
+    <div class="card__meta"><span class="chip chip--outside">タブの外</span></div>
+    <p class="card__note">解析の結果は確定ではない。検出した単元はチップで出し、外せるようにしてから始める。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/capture/presentation/capture_screen.dart" target="_blank" rel="noreferrer">features/capture/presentation/capture_screen.dart</a>
+  </div>
+</article>
+<article class="card" id="s-13-session-teaching">
+  <button class="shot" type="button" data-title="授業(板書つき)" aria-label="授業(板書つき)を大きく見る">
+    <img src="screens/13-session-teaching.png" width="786" height="1704" alt="授業(板書つき)の画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>授業(板書つき)</h3>
+    <div class="card__meta"><span class="chip chip--outside">タブの外</span></div>
+    <p class="card__note">コアループの中心。数式は板書に、声は問いかけだけ。板書は1問のあいだ生き続ける。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/session/presentation/session_screen.dart" target="_blank" rel="noreferrer">features/session/presentation/session_screen.dart</a>
+  </div>
+</article>
+<article class="card" id="s-14-session-explain-back">
+  <button class="shot" type="button" data-title="授業(説明し返す番)" aria-label="授業(説明し返す番)を大きく見る">
+    <img src="screens/14-session-explain-back.png" width="786" height="1704" alt="授業(説明し返す番)の画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>授業(説明し返す番)</h3>
+    <div class="card__meta"><span class="chip chip--outside">タブの外</span></div>
+    <p class="card__note">「じゃあ今の、説明してみて」。板書は残したまま、話す側が入れ替わる。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/session/presentation/session_screen.dart" target="_blank" rel="noreferrer">features/session/presentation/session_screen.dart</a>
+  </div>
+</article>
+<article class="card" id="s-15-session-connecting">
+  <button class="shot" type="button" data-title="授業(つないでいる)" aria-label="授業(つないでいる)を大きく見る">
+    <img src="screens/15-session-connecting.png" width="786" height="1704" alt="授業(つないでいる)の画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>授業(つないでいる)</h3>
+    <div class="card__meta"><span class="chip chip--outside">タブの外</span></div>
+    <p class="card__note">先輩が入ってくるまでの数秒。空白にせず、待っていることを言葉にする。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/session/presentation/session_screen.dart" target="_blank" rel="noreferrer">features/session/presentation/session_screen.dart</a>
+  </div>
+</article>
+<article class="card" id="s-16-celebration">
+  <button class="shot" type="button" data-title="祝福" aria-label="祝福を大きく見る">
+    <img src="screens/16-celebration.png" width="786" height="1704" alt="祝福の画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>祝福</h3>
+    <div class="card__meta"><span class="chip chip--outside">タブの外</span></div>
+    <p class="card__note">教え返せたことを祝う場所。点数を出さないので、祝うのは「言えた」という事実だけ。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/session/presentation/celebration_screen.dart" target="_blank" rel="noreferrer">features/session/presentation/celebration_screen.dart</a>
+  </div>
+</article>
+<article class="card" id="s-17-karte">
+  <button class="shot" type="button" data-title="カルテ" aria-label="カルテを大きく見る">
+    <img src="screens/17-karte.png" width="786" height="1704" alt="カルテの画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>カルテ</h3>
+    <div class="card__meta"><code class="chip chip--route">/karte</code></div>
+    <p class="card__note">言えたこと(黄)と、説明が止まった穴(ピンク)。先輩が書いた板書が根拠として残る。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/karte/presentation/karte_screen.dart" target="_blank" rel="noreferrer">features/karte/presentation/karte_screen.dart</a>
+  </div>
+</article>
+  </div>
+</section>
+
+<section class="section is-comeback" id="g4">
+  <header class="section__head">
+    <h2><span class="dot"></span>戻ってくる線</h2>
+    <p>翌日以降。穴を埋めにくる導線と、親に見せる1枚。</p>
+    <span class="count">3</span>
+  </header>
+  <div class="grid">
+<article class="card" id="s-18-review">
+  <button class="shot" type="button" data-title="復習" aria-label="復習を大きく見る">
+    <img src="screens/18-review.png" width="786" height="1704" alt="復習の画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>復習</h3>
+    <div class="card__meta"><code class="chip chip--route">/review</code></div>
+    <p class="card__note">埋めにいく穴と、埋めた穴が同じ画面に並ぶ。履歴のために別画面は作らない。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/karte/presentation/review_screen.dart" target="_blank" rel="noreferrer">features/karte/presentation/review_screen.dart</a>
+  </div>
+</article>
+<article class="card" id="s-19-parent-report">
+  <button class="shot" type="button" data-title="親レポート" aria-label="親レポートを大きく見る">
+    <img src="screens/19-parent-report.png" width="786" height="1704" alt="親レポートの画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>親レポート</h3>
+    <div class="card__meta"><code class="chip chip--route">/parent-report</code></div>
+    <p class="card__note">送る本文を全部見せてから共有する。引用は本人の言葉のまま、点数や順位は作らない。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/parent_report/presentation/parent_report_screen.dart" target="_blank" rel="noreferrer">features/parent_report/presentation/parent_report_screen.dart</a>
+  </div>
+</article>
+<article class="card" id="s-20-parent-report-locked">
+  <button class="shot" type="button" data-title="親レポート(未契約)" aria-label="親レポート(未契約)を大きく見る">
+    <img src="screens/20-parent-report-locked.png" width="786" height="1704" alt="親レポート(未契約)の画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>親レポート(未契約)</h3>
+    <div class="card__meta"><code class="chip chip--route">/parent-report</code></div>
+    <p class="card__note">エラーではなく「まだ開いていない」。閉じている理由と開け方だけを出す。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/parent_report/presentation/parent_report_screen.dart" target="_blank" rel="noreferrer">features/parent_report/presentation/parent_report_screen.dart</a>
+  </div>
+</article>
+  </div>
+</section>
+
+<section class="section is-billing" id="g5">
+  <header class="section__head">
+    <h2><span class="dot"></span>課金</h2>
+    <p>買うかどうかを決めている画面。常設ナビは重ねない。</p>
+    <span class="count">2</span>
+  </header>
+  <div class="grid">
+<article class="card" id="s-21-paywall">
+  <button class="shot" type="button" data-title="ペイウォール" aria-label="ペイウォールを大きく見る">
+    <img src="screens/21-paywall.png" width="786" height="1704" alt="ペイウォールの画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>ペイウォール</h3>
+    <div class="card__meta"><code class="chip chip--route">/paywall</code></div>
+    <p class="card__note">買わずに続ける道を必ず残す。金額はRevenueCatのOfferingから来るので、この撮影では読み込めていない状態で写る。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/monetization/presentation/paywall_screen.dart" target="_blank" rel="noreferrer">features/monetization/presentation/paywall_screen.dart</a>
+  </div>
+</article>
+<article class="card" id="s-22-thanks">
+  <button class="shot" type="button" data-title="購入のお礼" aria-label="購入のお礼を大きく見る">
+    <img src="screens/22-thanks.png" width="786" height="1704" alt="購入のお礼の画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>購入のお礼</h3>
+    <div class="card__meta"><code class="chip chip--route">/thanks</code></div>
+    <p class="card__note">祝っている画面でも、更新日と解約できることを消さない(App Store 3.1.2)。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/monetization/presentation/thanks_screen.dart" target="_blank" rel="noreferrer">features/monetization/presentation/thanks_screen.dart</a>
+  </div>
+</article>
+  </div>
+</section>
+
+<section class="section is-board" id="g6">
+  <header class="section__head">
+    <h2><span class="dot"></span>板書パーツ</h2>
+    <p>板書に出る要素の実物。画面ではないので板の上だけを切り出している。</p>
+    <span class="count">7</span>
+  </header>
+  <div class="grid grid--tiles">
+<article class="card" id="s-30-board-latex">
+  <button class="shot" type="button" data-title="latex(数式)" aria-label="latex(数式)を大きく見る">
+    <img src="screens/30-board-latex.png" width="720" height="440" alt="latex(数式)の画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>latex(数式)</h3>
+    <div class="card__meta"><span class="chip chip--outside">板書の部品</span></div>
+    <p class="card__note">式は画像ではなく組版で描く。フォントが載っていないと四角(tofu)になるので、ここで見える。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/session/presentation/board/latex_element_view.dart" target="_blank" rel="noreferrer">features/session/presentation/board/latex_element_view.dart</a>
+  </div>
+</article>
+<article class="card" id="s-31-board-text">
+  <button class="shot" type="button" data-title="text(そのまま書く)" aria-label="text(そのまま書く)を大きく見る">
+    <img src="screens/31-board-text.png" width="720" height="440" alt="text(そのまま書く)の画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>text(そのまま書く)</h3>
+    <div class="card__meta"><span class="chip chip--outside">板書の部品</span></div>
+    <p class="card__note">式にしない短い事実(係数の確認など)。チョーク色は板の上でしか読めない。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/session/presentation/board/text_element_view.dart" target="_blank" rel="noreferrer">features/session/presentation/board/text_element_view.dart</a>
+  </div>
+</article>
+<article class="card" id="s-32-board-plot">
+  <button class="shot" type="button" data-title="plot(グラフ)" aria-label="plot(グラフ)を大きく見る">
+    <img src="screens/32-board-plot.png" width="720" height="440" alt="plot(グラフ)の画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>plot(グラフ)</h3>
+    <div class="card__meta"><span class="chip chip--outside">板書の部品</span></div>
+    <p class="card__note">関数と印。答えの数値ではなく、どこで交わるかを見せるために置く。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/session/presentation/board/plot_painter.dart" target="_blank" rel="noreferrer">features/session/presentation/board/plot_painter.dart</a>
+  </div>
+</article>
+<article class="card" id="s-33-board-triangle">
+  <button class="shot" type="button" data-title="triangle(三角形)" aria-label="triangle(三角形)を大きく見る">
+    <img src="screens/33-board-triangle.png" width="720" height="440" alt="triangle(三角形)の画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>triangle(三角形)</h3>
+    <div class="card__meta"><span class="chip chip--outside">板書の部品</span></div>
+    <p class="card__note">頂点名・直角マーク・角のマーク。図形の話を言葉だけで進めないための最小の絵。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/session/presentation/board/triangle_painter.dart" target="_blank" rel="noreferrer">features/session/presentation/board/triangle_painter.dart</a>
+  </div>
+</article>
+<article class="card" id="s-34-board-circle">
+  <button class="shot" type="button" data-title="circle(円)" aria-label="circle(円)を大きく見る">
+    <img src="screens/34-board-circle.png" width="720" height="440" alt="circle(円)の画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>circle(円)</h3>
+    <div class="card__meta"><span class="chip chip--outside">板書の部品</span></div>
+    <p class="card__note">中心と半径のラベル。円と直線の位置関係を、距離の比較として描くために使う。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/session/presentation/board/circle_painter.dart" target="_blank" rel="noreferrer">features/session/presentation/board/circle_painter.dart</a>
+  </div>
+</article>
+<article class="card" id="s-35-board-sentence">
+  <button class="shot" type="button" data-title="sentence(英文)" aria-label="sentence(英文)を大きく見る">
+    <img src="screens/35-board-sentence.png" width="720" height="440" alt="sentence(英文)の画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>sentence(英文)</h3>
+    <div class="card__meta"><span class="chip chip--outside">板書の部品</span></div>
+    <p class="card__note">英語の板書。focus に下線を引き、訳ではなく「どこを見るか」を示す。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/session/presentation/board/sentence_element_view.dart" target="_blank" rel="noreferrer">features/session/presentation/board/sentence_element_view.dart</a>
+  </div>
+</article>
+<article class="card" id="s-36-board-compare">
+  <button class="shot" type="button" data-title="compare(対比表)" aria-label="compare(対比表)を大きく見る">
+    <img src="screens/36-board-compare.png" width="720" height="440" alt="compare(対比表)の画面" loading="lazy" />
+  </button>
+  <div class="card__body">
+    <h3>compare(対比表)</h3>
+    <div class="card__meta"><span class="chip chip--outside">板書の部品</span></div>
+    <p class="card__note">2つの違いを並べる。列は等分で、どちらが「正解」かは書かない。</p>
+    <a class="card__source" href="https://github.com/sarushili0430/ai-sensei/blob/develop/apps/mobile/lib/src/features/session/presentation/board/compare_element_view.dart" target="_blank" rel="noreferrer">features/session/presentation/board/compare_element_view.dart</a>
+  </div>
+</article>
+  </div>
+</section>
+
+    <footer>
+      <p>焼き直しは <code>cd apps/mobile &amp;&amp; fvm flutter test tool/generate_ui_overview.dart</code> → <code>pnpm run ui:overview</code>。撮る状態は <code>tool/generate_ui_overview.dart</code> に並んでいます。</p>
+      <p>ストア掲載用のスクリーンショット(サイズ違い・見出しつき)は <code>tool/generate_store_screenshots.dart</code>、崩れの検知は <code>test/golden/</code> の担当です。</p>
+    </footer>
+  </div>
+
+  <dialog>
+    <img src="" alt="" />
+    <p></p>
+  </dialog>
+<script>
+  // 一覧では小さいので、押したら等倍で見られるようにするだけ。
+  const dialog = document.querySelector("dialog");
+  const image = dialog.querySelector("img");
+  const label = dialog.querySelector("p");
+  for (const button of document.querySelectorAll(".shot")) {
+    button.addEventListener("click", () => {
+      // 拡大用のsrcは、カードの画像から借りる。data属性に同じbase64を持たせると
+      // HTMLの重さが**そのまま倍**になる(1枚あたり数百KBのPNGを抱いているため)。
+      image.src = button.querySelector("img").src;
+      image.alt = button.dataset.title;
+      label.textContent = button.dataset.title;
+      dialog.showModal();
+    });
+  }
+  dialog.addEventListener("click", () => dialog.close());
+</script>
+</body>
+</html>

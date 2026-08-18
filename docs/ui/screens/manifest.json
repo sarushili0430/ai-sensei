@@ -1,0 +1,292 @@
+[
+  {
+    "slug": "01-onboarding-promise",
+    "group": "はじめて開いたとき",
+    "title": "オンボーディング(約束)",
+    "route": null,
+    "source": "lib/src/features/onboarding/presentation/onboarding_screen.dart",
+    "note": "最初に伝えるのは機能ではなく約束。答えを教えないことを、使い始める前に置く。",
+    "width": 786,
+    "height": 1704
+  },
+  {
+    "slug": "02-onboarding-rehearsal",
+    "group": "はじめて開いたとき",
+    "title": "オンボーディング(リハーサル)",
+    "route": null,
+    "source": "lib/src/features/onboarding/presentation/onboarding_rehearsal.dart",
+    "note": "答えは1文字も出ていない。出るのは問いと、説明する / 言えない の2つの道だけ。",
+    "width": 786,
+    "height": 1704
+  },
+  {
+    "slug": "03-onboarding-karte",
+    "group": "はじめて開いたとき",
+    "title": "オンボーディング(カルテの見本)",
+    "route": null,
+    "source": "lib/src/features/onboarding/presentation/onboarding_karte_preview.dart",
+    "note": "止まった場所がピンクの穴として残る。責める言葉を置かず、また来ることを線で見せる。",
+    "width": 786,
+    "height": 1704
+  },
+  {
+    "slug": "04-home-first-run",
+    "group": "常設タブ",
+    "title": "ホーム(初回起動)",
+    "route": "/",
+    "source": "lib/src/features/karte/presentation/home_screen.dart",
+    "note": "数えるものが何も無い日。空白にせず、次の一歩(撮る)だけを出す。",
+    "width": 786,
+    "height": 1704
+  },
+  {
+    "slug": "05-home",
+    "group": "常設タブ",
+    "title": "ホーム(続きがある)",
+    "route": "/",
+    "source": "lib/src/features/karte/presentation/home_screen.dart",
+    "note": "数えるのは点数ではなく、続けた日数と埋めた穴。復習カードは件数ではなく単元の中身を出す。",
+    "width": 786,
+    "height": 1704
+  },
+  {
+    "slug": "06-home-premium",
+    "group": "常設タブ",
+    "title": "ホーム(Premium)",
+    "route": "/",
+    "source": "lib/src/features/karte/presentation/home_screen.dart",
+    "note": "契約の印は右上に小さく。数えている2つ(連続日数・埋めた穴)を押し出さない。",
+    "width": 786,
+    "height": 1704
+  },
+  {
+    "slug": "07-home-exhausted",
+    "group": "常設タブ",
+    "title": "ホーム(今日はここまで)",
+    "route": "/",
+    "source": "lib/src/features/karte/presentation/home_screen.dart",
+    "note": "今日の授業が終わった日。締めの言葉はいちばん長い文になるので、溢れるならまずここ。",
+    "width": 786,
+    "height": 1704
+  },
+  {
+    "slug": "08-plan-empty",
+    "group": "常設タブ",
+    "title": "計画(まだ無い)",
+    "route": "/plan",
+    "source": "lib/src/features/plan/presentation/plan_screen.dart",
+    "note": "フォームを置かない。計画は入力ではなく、声で作り始める。",
+    "width": 786,
+    "height": 1704
+  },
+  {
+    "slug": "09-plan",
+    "group": "常設タブ",
+    "title": "計画(作成済み)",
+    "route": "/plan",
+    "source": "lib/src/features/plan/presentation/plan_screen.dart",
+    "note": "日付・科目・分数と、口頭で組み直す入口。終わった項目は事実として出すが、割合や点数は作らない。",
+    "width": 786,
+    "height": 1704
+  },
+  {
+    "slug": "10-settings",
+    "group": "常設タブ",
+    "title": "設定",
+    "route": "/settings",
+    "source": "lib/src/features/settings/presentation/settings_screen.dart",
+    "note": "学校段階の切り替えと、契約の管理・復元、問い合わせ先。増やさないことが仕事の画面。",
+    "width": 786,
+    "height": 1704
+  },
+  {
+    "slug": "11-capture",
+    "group": "授業の線",
+    "title": "撮影(何を撮るか選ぶ)",
+    "route": null,
+    "source": "lib/src/features/capture/presentation/capture_screen.dart",
+    "note": "入った瞬間にカメラを開かない。「ノートは無い」をシャッターの前に言える場所がここしかない。",
+    "width": 786,
+    "height": 1704
+  },
+  {
+    "slug": "12-capture-analyzed",
+    "group": "授業の線",
+    "title": "撮影(単元と問題文の確認)",
+    "route": null,
+    "source": "lib/src/features/capture/presentation/capture_screen.dart",
+    "note": "解析の結果は確定ではない。検出した単元はチップで出し、外せるようにしてから始める。",
+    "width": 786,
+    "height": 1704
+  },
+  {
+    "slug": "13-session-teaching",
+    "group": "授業の線",
+    "title": "授業(板書つき)",
+    "route": null,
+    "source": "lib/src/features/session/presentation/session_screen.dart",
+    "note": "コアループの中心。数式は板書に、声は問いかけだけ。板書は1問のあいだ生き続ける。",
+    "width": 786,
+    "height": 1704
+  },
+  {
+    "slug": "14-session-explain-back",
+    "group": "授業の線",
+    "title": "授業(説明し返す番)",
+    "route": null,
+    "source": "lib/src/features/session/presentation/session_screen.dart",
+    "note": "「じゃあ今の、説明してみて」。板書は残したまま、話す側が入れ替わる。",
+    "width": 786,
+    "height": 1704
+  },
+  {
+    "slug": "15-session-connecting",
+    "group": "授業の線",
+    "title": "授業(つないでいる)",
+    "route": null,
+    "source": "lib/src/features/session/presentation/session_screen.dart",
+    "note": "先輩が入ってくるまでの数秒。空白にせず、待っていることを言葉にする。",
+    "width": 786,
+    "height": 1704
+  },
+  {
+    "slug": "16-celebration",
+    "group": "授業の線",
+    "title": "祝福",
+    "route": null,
+    "source": "lib/src/features/session/presentation/celebration_screen.dart",
+    "note": "教え返せたことを祝う場所。点数を出さないので、祝うのは「言えた」という事実だけ。",
+    "width": 786,
+    "height": 1704
+  },
+  {
+    "slug": "17-karte",
+    "group": "授業の線",
+    "title": "カルテ",
+    "route": "/karte",
+    "source": "lib/src/features/karte/presentation/karte_screen.dart",
+    "note": "言えたこと(黄)と、説明が止まった穴(ピンク)。先輩が書いた板書が根拠として残る。",
+    "width": 786,
+    "height": 1704
+  },
+  {
+    "slug": "18-review",
+    "group": "戻ってくる線",
+    "title": "復習",
+    "route": "/review",
+    "source": "lib/src/features/karte/presentation/review_screen.dart",
+    "note": "埋めにいく穴と、埋めた穴が同じ画面に並ぶ。履歴のために別画面は作らない。",
+    "width": 786,
+    "height": 1704
+  },
+  {
+    "slug": "19-parent-report",
+    "group": "戻ってくる線",
+    "title": "親レポート",
+    "route": "/parent-report",
+    "source": "lib/src/features/parent_report/presentation/parent_report_screen.dart",
+    "note": "送る本文を全部見せてから共有する。引用は本人の言葉のまま、点数や順位は作らない。",
+    "width": 786,
+    "height": 1704
+  },
+  {
+    "slug": "20-parent-report-locked",
+    "group": "戻ってくる線",
+    "title": "親レポート(未契約)",
+    "route": "/parent-report",
+    "source": "lib/src/features/parent_report/presentation/parent_report_screen.dart",
+    "note": "エラーではなく「まだ開いていない」。閉じている理由と開け方だけを出す。",
+    "width": 786,
+    "height": 1704
+  },
+  {
+    "slug": "21-paywall",
+    "group": "課金",
+    "title": "ペイウォール",
+    "route": "/paywall",
+    "source": "lib/src/features/monetization/presentation/paywall_screen.dart",
+    "note": "買わずに続ける道を必ず残す。金額はRevenueCatのOfferingから来るので、この撮影では読み込めていない状態で写る。",
+    "width": 786,
+    "height": 1704
+  },
+  {
+    "slug": "22-thanks",
+    "group": "課金",
+    "title": "購入のお礼",
+    "route": "/thanks",
+    "source": "lib/src/features/monetization/presentation/thanks_screen.dart",
+    "note": "祝っている画面でも、更新日と解約できることを消さない(App Store 3.1.2)。",
+    "width": 786,
+    "height": 1704
+  },
+  {
+    "slug": "30-board-latex",
+    "group": "板書パーツ",
+    "title": "latex(数式)",
+    "route": null,
+    "source": "lib/src/features/session/presentation/board/latex_element_view.dart",
+    "note": "式は画像ではなく組版で描く。フォントが載っていないと四角(tofu)になるので、ここで見える。",
+    "width": 720,
+    "height": 440
+  },
+  {
+    "slug": "31-board-text",
+    "group": "板書パーツ",
+    "title": "text(そのまま書く)",
+    "route": null,
+    "source": "lib/src/features/session/presentation/board/text_element_view.dart",
+    "note": "式にしない短い事実(係数の確認など)。チョーク色は板の上でしか読めない。",
+    "width": 720,
+    "height": 440
+  },
+  {
+    "slug": "32-board-plot",
+    "group": "板書パーツ",
+    "title": "plot(グラフ)",
+    "route": null,
+    "source": "lib/src/features/session/presentation/board/plot_painter.dart",
+    "note": "関数と印。答えの数値ではなく、どこで交わるかを見せるために置く。",
+    "width": 720,
+    "height": 440
+  },
+  {
+    "slug": "33-board-triangle",
+    "group": "板書パーツ",
+    "title": "triangle(三角形)",
+    "route": null,
+    "source": "lib/src/features/session/presentation/board/triangle_painter.dart",
+    "note": "頂点名・直角マーク・角のマーク。図形の話を言葉だけで進めないための最小の絵。",
+    "width": 720,
+    "height": 440
+  },
+  {
+    "slug": "34-board-circle",
+    "group": "板書パーツ",
+    "title": "circle(円)",
+    "route": null,
+    "source": "lib/src/features/session/presentation/board/circle_painter.dart",
+    "note": "中心と半径のラベル。円と直線の位置関係を、距離の比較として描くために使う。",
+    "width": 720,
+    "height": 440
+  },
+  {
+    "slug": "35-board-sentence",
+    "group": "板書パーツ",
+    "title": "sentence(英文)",
+    "route": null,
+    "source": "lib/src/features/session/presentation/board/sentence_element_view.dart",
+    "note": "英語の板書。focus に下線を引き、訳ではなく「どこを見るか」を示す。",
+    "width": 720,
+    "height": 440
+  },
+  {
+    "slug": "36-board-compare",
+    "group": "板書パーツ",
+    "title": "compare(対比表)",
+    "route": null,
+    "source": "lib/src/features/session/presentation/board/compare_element_view.dart",
+    "note": "2つの違いを並べる。列は等分で、どちらが「正解」かは書かない。",
+    "width": 720,
+    "height": 440
+  }
+]
