@@ -150,6 +150,33 @@ void main() {
     expect(marker.text, ja.onboardingTrySaid);
   });
 
+  // 数秒押し続けるあいだ、指は必ず少し動く。動いたら取り消す判定だと
+  // 「ちゃんと押しているのに切れる」ことになり、この枚の操作が成立しない。
+  // 横にずれた場合はページ送りに取られていたので、そちらも踏む。
+  testWidgets('長押し中に指が少しずれても、途中で切れない', (WidgetTester tester) async {
+    await pumpOnboarding(tester);
+    await advanceTo(tester, 2);
+
+    final TestGesture gesture = await tester.startGesture(
+      tester.getCenter(find.text(ja.onboardingTryHold)),
+    );
+    await tester.pump(const Duration(milliseconds: 150));
+    // kTouchSlop(18px)を超えて、縦にも横にも動かす。
+    await gesture.moveBy(const Offset(24, 0));
+    await tester.pump(const Duration(milliseconds: 150));
+    await gesture.moveBy(const Offset(0, 24));
+    await tester.pump(AppDurations.hold + const Duration(milliseconds: 50));
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(find.text(ja.onboardingTrySaidReaction), findsOneWidget);
+    expect(
+      find.text(ja.onboardingKarteTitle),
+      findsNothing,
+      reason: '横にずれてもページ送りには取られず、リハーサルの枚に留まる',
+    );
+  });
+
   // §0 の約束3。パスは失敗ではなく、穴という**持ち帰るもの**になる。
   testWidgets('うまく言えなくても進める。穴はピンクで残り、責める文言を出さない', (WidgetTester tester) async {
     await pumpOnboarding(tester);

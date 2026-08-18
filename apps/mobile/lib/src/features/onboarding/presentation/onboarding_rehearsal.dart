@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -356,10 +357,7 @@ class _BottomFade extends StatelessWidget {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             // alpha:0 は「その色の透明版」であって別の色ではない。
-            colors: <Color>[
-              AppColors.background.withValues(alpha: 0),
-              AppColors.background,
-            ],
+            colors: <Color>[AppColors.background.withValues(alpha: 0), AppColors.background],
           ),
         ),
       ),
@@ -409,7 +407,11 @@ class _SenpaiBoard extends StatelessWidget {
               speech: '',
               board: BoardElement.text(body: strings.onboardingTryBoardText),
             ),
-            const BoardStep(index: 1, speech: '', board: BoardElement.latex(tex: _tex)),
+            const BoardStep(
+              index: 1,
+              speech: '',
+              board: BoardElement.latex(tex: _tex),
+            ),
           ],
         ),
       ],
@@ -497,6 +499,9 @@ class _KarteLine extends StatelessWidget {
 /// 押している時間そのものが説明の比喩なので、この長さは
 /// アニメーションを減らす設定でも縮めない([AppDurations.hold])。
 /// 押し続けられない人のために、読み上げ利用時はタップで済むようにする。
+///
+/// 判定は [_HoldRecognizer] に任せてある。数秒押し続けるあいだ指は必ず少し動くので、
+/// 動いたら取り消す普通のタップ判定では使いものにならない([_HoldRecognizer] の説明)。
 class _HoldToExplainButton extends StatefulWidget {
   const _HoldToExplainButton({required this.onHoldChanged, required this.onExplained});
 
@@ -545,17 +550,25 @@ class _HoldToExplainButtonState extends State<_HoldToExplainButton>
     _progress.forward();
   }
 
+  /// 指を離した(または端末に取り上げられた)。
+  ///
+  /// 画面が消えるときにも認識器の後始末から呼ばれるので、[mounted] を見る。
   void _stop() {
-    if (_progress.isCompleted) return;
+    if (!mounted || _progress.isCompleted) return;
     _setHolding(false);
+    // 押し続けずに離したとき。読み上げ中は、これが正規の操作になる。
+    if (AppMotion.prefersTapOverHold(context)) {
+      _explainNow();
+      return;
+    }
     // 途中で離した。責めずに、押し方だけ伝える。
     if (_progress.value > 0.05) setState(() => _showHint = true);
     _progress.reverse();
   }
 
-  /// 押し続けずに離したとき。読み上げ中は、これが正規の操作になる。
-  void _tapped() {
-    if (!AppMotion.prefersTapOverHold(context)) return;
+  /// 押し続けずに済ませる。読み上げの二本指タップからも、ここに来る。
+  void _explainNow() {
+    if (!mounted || _progress.isCompleted) return;
     _progress.value = 1;
   }
 
@@ -570,11 +583,18 @@ class _HoldToExplainButtonState extends State<_HoldToExplainButton>
         Semantics(
           button: true,
           label: label,
-          child: GestureDetector(
-            onTapDown: (TapDownDetails _) => _start(),
-            onTapUp: (TapUpDetails _) => _stop(),
-            onTapCancel: _stop,
-            onTap: _tapped,
+          // 読み上げ利用時は長押しの指の動きが届かないので、意味のほうを渡す。
+          onTap: _explainNow,
+          child: RawGestureDetector(
+            behavior: HitTestBehavior.opaque,
+            gestures: <Type, GestureRecognizerFactory>{
+              _HoldRecognizer: GestureRecognizerFactoryWithHandlers<_HoldRecognizer>(
+                () => _HoldRecognizer(debugOwner: this),
+                (_HoldRecognizer instance) => instance
+                  ..onHoldStart = _start
+                  ..onHoldEnd = _stop,
+              ),
+            },
             child: AnimatedBuilder(
               animation: _progress,
               builder: (BuildContext context, Widget? child) => ClipRRect(
@@ -640,4 +660,54 @@ class _HoldToExplainButtonState extends State<_HoldToExplainButton>
       ],
     );
   }
+}
+
+/// 押しているあいだだけ働く判定。**指が少しずれても切らない。**
+///
+/// 素の [GestureDetector] のタップは、指が [kTouchSlop](18px)より動くと取り消される。
+/// そのうえこの枚は [PageView] の中にあるので、横に数ピクセル滑っただけで
+/// ページ送りが競り合いに勝ち、長押しが途中で落ちていた。
+/// 数秒押し続けるあいだ指が完全に止まっていることはまずないので、
+/// **押し始めた時点で競り合いを取り、離すまで続ける**ようにしてある。
+/// 途中でやめたい人はそのまま離せばいい(進みは巻き戻る)。
+///
+/// 指を置いたまま横に振ってもページは送られないが、それでいい —
+/// ここは「押し続ける」ことが体験そのものの枚で、ページ送りは
+/// 下の「つぎへ」と、ボタン以外の場所のスワイプで足りる。
+class _HoldRecognizer extends OneSequenceGestureRecognizer {
+  _HoldRecognizer({super.debugOwner});
+
+  VoidCallback? onHoldStart;
+  VoidCallback? onHoldEnd;
+
+  int? _pointer;
+
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    // 2本目以降は数えない。終わりは最初の指を離したときだけ。
+    if (_pointer != null) return;
+    _pointer = event.pointer;
+    startTrackingPointer(event.pointer, event.transform);
+    // ここで勝ちを取る。以後、動かしても他の判定に持っていかれない。
+    resolve(GestureDisposition.accepted);
+    onHoldStart?.call();
+  }
+
+  @override
+  void handleEvent(PointerEvent event) {
+    // 動き([PointerMoveEvent])は見ない。それがこの判定の主旨。
+    if (event is PointerUpEvent || event is PointerCancelEvent) {
+      stopTrackingPointer(event.pointer);
+    }
+  }
+
+  @override
+  void didStopTrackingLastPointer(int pointer) {
+    if (_pointer == null) return;
+    _pointer = null;
+    onHoldEnd?.call();
+  }
+
+  @override
+  String get debugDescription => 'hold to explain';
 }
