@@ -10,6 +10,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+// `ImageSource.gallery.index` を綴らずに書くため。**どちらが開いたかは
+// この番号でしか確かめられない**(返ってくる写真は同じなので)。
 import 'package:image_picker/image_picker.dart';
 
 import 'support/harness.dart';
@@ -19,58 +21,77 @@ final Uint8List _onePixelPng = base64Decode(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
 );
 
-/// 撮影画面。見ているのは見た目ではなく、**4つの約束が画面として成立しているか**。
+/// 撮影画面。見ているのは見た目ではなく、**3つの約束が画面として成立しているか**。
 ///
 ///   - **カメラを勝手に開かない。** 何を撮るかを先に選ばせる。ノートが無い生徒が
 ///     「ノートは無い」をシャッターの前に言えるのは、ここしかない
 ///   - どちらか1枚で授業を始められる(§4-1)
-///   - **撮る以外の入口がある。** 手元にある1枚が、いま撮れるとは限らない
-///     (塾で撮ったノート・送られてきた問題の画像)。ただし**枠は変わらない**
 ///   - 読み取った問題文は**授業の前に見せる**。読めなかったときは黙って進める
 ///
-/// カメラもアルバムも `plugins.flutter.io/image_picker` を差し替えて、
-/// 選んだことにする。
+/// カメラは `plugins.flutter.io/image_picker` を差し替えて、撮ったことにする。
 void main() {
   const MethodChannel pickerChannel = MethodChannel('plugins.flutter.io/image_picker');
+
+  /// 切り抜きのネイティブUI(uCrop / TOCropViewController)も同じやり方で差し替える。
+  const MethodChannel cropperChannel = MethodChannel('plugins.hunghd.vn/image_cropper');
   const AppStrings ja = AppStrings(Locale('ja'));
 
   late Directory tempDir;
   late List<String> pickedPaths;
 
-  /// 開いた入口(カメラ / アルバム)を、開いた順に。
-  /// **やめた回・断られた回も残す** — どこを開いたかは押した時点で決まっている。
-  late List<ImageSource> openedSources;
+  /// 撮ったのか選んだのか(`ImageSource.index`。0=カメラ / 1=アルバム)。
+  ///
+  /// **経路の取り違えは画面から見えない。** アルバムを押したのにカメラが
+  /// 開いていても、返ってくる写真は同じなので画面のテストはすべて通ってしまう。
+  late List<int> pickedSources;
 
-  /// カメラを閉じるまでに撮らずに帰る回数。0なら毎回撮る。
+  /// 写真を開くときに頼んだ長辺の上限(`maxWidth` / `maxHeight`)。
+  ///
+  /// **上限が抜けても画面には出ない。** 返ってくるパスは同じなので、
+  /// 頼んだ引数を見ておかないと、48MPの1枚がそのままVision APIへ行く経路が
+  /// 黙って戻る。
+  late List<Object?> pickedMaxSides;
+
+  /// 切り抜いた結果のパス。**撮った写真とは別のファイルにする** —
+  /// 同じものを返すと、切り抜きが枠に入ったかどうかが見えない。
+  late List<String> croppedPaths;
+
+  /// カメラ/アルバムを閉じるまでに撮らずに帰る回数。0なら毎回撮る。
   late int cancelCount;
 
-  /// 次に開いたときに投げる image_picker のエラーコード。
-  /// iOSは許可が無いと **null を返さず例外を投げる**ので、そこを再現する。
-  String? throwCode;
+  /// 切り抜きをやめる回数。0なら毎回切り抜く。
+  late int cropCancelCount;
+
+  /// 切り抜きを開いた回数(やめた分も数える)。
+  ///
+  /// **スピナーの出現では待てない。** 差し替えた切り抜きは一瞬で返るので、
+  /// `_picking` が立ってから寝るまでのあいだに1フレームも挟まらないことがある。
+  late int cropCalls;
 
   setUp(() {
     tempDir = Directory.systemTemp.createTempSync('capture_screen_test');
     pickedPaths = <String>[];
-    openedSources = <ImageSource>[];
+    pickedSources = <int>[];
+    pickedMaxSides = <Object?>[];
+    croppedPaths = <String>[];
     cancelCount = 0;
-    throwCode = null;
+    cropCancelCount = 0;
+    cropCalls = 0;
 
-    // 開くたびに別のファイルを返す(ノートと問題を取り違えないため)。
+    // カメラを開くたびに別のファイルを返す(ノートと問題を取り違えないため)。
     //
-    // **中身は本物の画像でないといけない。** 選んだものは画面にサムネイルとして
+    // **中身は本物の画像でないといけない。** 撮ったものは画面にサムネイルとして
     // 出るので、デコードできないバイト列を返すと `Image.file` がそこで落ちる。
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
       pickerChannel,
       (MethodCall call) async {
-        // どちらの入口から開いたか。`source` は ImageSource の並び順で来る
-        // (0=カメラ / 1=アルバム)。
+        // **やめた場合も、何を開いたかは記録する。** アルバムを押した人に
+        // カメラの文言を返していないかは、ここでしか確かめられない。
         final Map<Object?, Object?> arguments = call.arguments as Map<Object?, Object?>;
-        openedSources.add(ImageSource.values[arguments['source']! as int]);
-
-        final String? code = throwCode;
-        if (code != null) throw PlatformException(code: code);
-
-        // 何も選ばずに帰る(image_picker は null を返す)。
+        pickedSources.add(arguments['source']! as int);
+        pickedMaxSides.add(arguments['maxWidth']);
+        pickedMaxSides.add(arguments['maxHeight']);
+        // 撮らずに帰る(image_picker は null を返す)。
         if (cancelCount > 0) {
           cancelCount -= 1;
           return null;
@@ -82,6 +103,22 @@ void main() {
       },
     );
 
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      cropperChannel,
+      (MethodCall call) async {
+        cropCalls += 1;
+        // 切り抜きをやめる(image_cropper も null を返す)。
+        if (cropCancelCount > 0) {
+          cropCancelCount -= 1;
+          return null;
+        }
+        final File file = File('${tempDir.path}/cropped${croppedPaths.length}.jpg')
+          ..writeAsBytesSync(_onePixelPng);
+        croppedPaths.add(file.path);
+        return file.path;
+      },
+    );
+
     // 許可の照会は差し替えないと返ってこない(理由は `mockPermissionHandler`)。
     mockPermissionHandler();
   });
@@ -89,6 +126,8 @@ void main() {
   tearDown(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(pickerChannel, null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(cropperChannel, null);
     tempDir.deleteSync(recursive: true);
   });
 
@@ -99,9 +138,20 @@ void main() {
     List<http.BaseRequest>? calls,
     String? errorCode,
     String? errorMessage,
+    /// 会話の開始だけを落とす(解析は通る)。通信が切れた状況を作る。
+    bool failStart = false,
   }) {
     final MockClient client = MockClient((http.Request request) async {
       calls?.add(request);
+      if (failStart && request.url.path.endsWith('/start')) {
+        return http.Response.bytes(
+          utf8.encode(jsonEncode(<String, dynamic>{
+            'error': <String, dynamic>{'code': 'internal_error', 'message': 'server error'},
+          })),
+          500,
+          headers: <String, String>{'content-type': 'application/json; charset=utf-8'},
+        );
+      }
       if (errorCode != null) {
         return http.Response.bytes(
           utf8.encode(jsonEncode(<String, dynamic>{
@@ -114,31 +164,39 @@ void main() {
           headers: <String, String>{'content-type': 'application/json; charset=utf-8'},
         );
       }
-      final Map<String, dynamic> body = <String, dynamic>{
-        'session_id': 'ses_1',
-        'kind': 'new',
-        'livekit': <String, dynamic>{
-          'url': 'wss://test.livekit.cloud',
-          'token': 'token',
-          'room': 'ses_1',
-        },
-        'detected_topics': topics ??
-            <Map<String, dynamic>>[
-              <String, dynamic>{
-                'topic_id': 'M2-ZUKEI-ENCHOKU',
-                'course': '数学II',
-                'unit': '図形と方程式',
-                'topic': '円と直線の位置関係',
-                'label': '数学II',
-                'confidence': 0.92,
+      // 部屋の鍵が出るのは会話の開始だけ。**解析の応答には載せない** —
+      // 載せると、鍵を持っている = いつでも始められる になり、
+      // 回数を会話の開始で数える形が画面のテストからも見えなくなる。
+      final Map<String, dynamic> body = request.url.path.endsWith('/start')
+          ? <String, dynamic>{
+              'session_id': 'ses_1',
+              'kind': 'new',
+              'livekit': <String, dynamic>{
+                'url': 'wss://test.livekit.cloud',
+                'token': 'token',
+                'room': 'ses_1',
               },
-            ],
-        'problem': problem,
-        'limits': <String, dynamic>{'max_seconds': 1200, 'lesson_allowed_today': false},
-      };
+              'limits': <String, dynamic>{'max_seconds': 1200, 'lesson_allowed_today': false},
+            }
+          : <String, dynamic>{
+              'session_id': 'ses_1',
+              'kind': 'new',
+              'detected_topics': topics ??
+                  <Map<String, dynamic>>[
+                    <String, dynamic>{
+                      'topic_id': 'M2-ZUKEI-ENCHOKU',
+                      'course': '数学II',
+                      'unit': '図形と方程式',
+                      'topic': '円と直線の位置関係',
+                      'label': '数学II',
+                      'confidence': 0.92,
+                    },
+                  ],
+              'problem': problem,
+            };
       return http.Response.bytes(
         utf8.encode(jsonEncode(body)),
-        201,
+        request.url.path.endsWith('/start') ? 200 : 201,
         headers: <String, String>{'content-type': 'application/json; charset=utf-8'},
       );
     });
@@ -157,8 +215,8 @@ void main() {
     List<http.BaseRequest>? calls,
     String? errorCode,
     String? errorMessage,
+    bool failStart = false,
     Size size = phoneSurface,
-    Locale locale = const Locale('ja'),
   }) async {
     await pumpApp(
       tester,
@@ -169,53 +227,45 @@ void main() {
         calls: calls,
         errorCode: errorCode,
         errorMessage: errorMessage,
+        failStart: failStart,
       ),
       size: size,
-      locale: locale,
     );
+  }
+
+  /// 枠をタップして、シートから入れ方を選ぶ。
+  ///
+  /// **枠のタップではカメラが開かない。** 開くのは入れ方のシートで、カメラは
+  /// その1マス目。アルバムの導線を置ける場所がここしか無かったので、撮る人にも
+  /// 1タップ増えている(理由は `capture_screen.dart` のコメント)。
+  Future<void> tapSlot(WidgetTester tester, String slotLabel, String action) async {
+    await tester.tap(find.text(slotLabel));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(action));
+    await tester.pumpAndSettle();
   }
 
   /// ノートの枠から撮る。**画面に入っただけではカメラが開かない**ので、
   /// 写真が要るテストはここを通る。
-  Future<void> takeNotes(WidgetTester tester) async {
-    await tester.tap(find.text(ja.captureTakeNotes));
-    await tester.pumpAndSettle();
-  }
+  Future<void> takeNotes(WidgetTester tester) =>
+      tapSlot(tester, ja.captureTakeNotes, ja.capturePickCamera);
 
   /// 問題の枠から撮る。ノートが無い生徒はこちらだけを通る。
-  Future<void> takeProblem(WidgetTester tester) async {
-    await tester.tap(find.text(ja.captureAddProblem));
-    await tester.pumpAndSettle();
-  }
+  Future<void> takeProblem(WidgetTester tester) =>
+      tapSlot(tester, ja.captureAddProblem, ja.capturePickCamera);
 
-  /// アルバムの入口は**枠ごとに1つずつ**ある。画面に出る文字は2つとも同じなので、
-  /// 読み上げのラベル(枠の名前つき)で見分ける — 見分けられること自体が、
-  /// 選んだ1枚の行き先が見えているという条件そのもの。
-  Future<void> chooseFrom(WidgetTester tester, String slotLabel) async {
-    await tester.tap(find.bySemanticsLabel('$slotLabel・${ja.capturePickFromLibrary}'));
-    await tester.pumpAndSettle();
-  }
-
-  Future<void> chooseNotes(WidgetTester tester) => chooseFrom(tester, ja.capturePhotoNotes);
-  Future<void> chooseProblem(WidgetTester tester) => chooseFrom(tester, ja.capturePhotoProblem);
-
-  /// 送られた multipart から「パート名 → ファイル名」を取り出す。
+  /// 条件が満たされるまで実時間で進める。
   ///
-  /// **パート名だけでは取り違えを見つけられない。**「2枚とも送った」は分かるが、
-  /// **どちらの1枚がどちらのパートに入ったか**は分からない。ノート枠はR2に
-  /// 保存され、問題の枠は解析後に捨てられる — 入れ替わる事故はここにしか出ない。
-  /// カメラもアルバムも開いた順に `shot0.jpg`, `shot1.jpg` を返すので、
-  /// ファイル名が**どの操作で入った1枚か**を指す。
-  Map<String, String> partFilenames(http.BaseRequest request) {
-    final String body = utf8.decode(
-      (request as http.Request).bodyBytes,
-      allowMalformed: true,
-    );
-    return <String, String>{
-      for (final RegExpMatch part
-          in RegExp(r'name="(\w+)"; filename="([^"]+)"').allMatches(body))
-        part.group(1)!: part.group(2)!,
-    };
+  /// **画面の変化では待てない場面がある。** 切り抜きは戻ってきても枠の見た目が
+  /// 変わらない(サムネイルが差し替わるだけ)ので、結果そのものを待つ。
+  /// 実時間を挟む理由は [pumpUntil] と同じ。
+  Future<void> pumpUntilTrue(WidgetTester tester, bool Function() done) async {
+    for (int i = 0; i < 100; i++) {
+      if (done()) return;
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    fail('条件が満たされませんでした');
   }
 
   /// 「授業をはじめる」を押して、解析が返るまで進める。
@@ -442,168 +492,6 @@ void main() {
     });
   });
 
-  /// **手元にある1枚が、いま撮れるとは限らない。** 塾で撮ってきたノート、
-  /// 送られてきた問題のスクリーンショット、机を離れてから思い出した問題 —
-  /// 入口が「撮る」だけだと、紙を持ち直して撮り直すか、諦めるかになる。
-  ///
-  /// ただし**入口が2つになっても、枠は2つのまま。** 写真の寿命は撮り方ではなく
-  /// **どちらの枠に入れたか**で決まる(ノートは保存・問題の紙面は解析後に破棄)。
-  group('アルバムから選ぶ', () {
-    testWidgets('枠ごとに入口があり、枠のタップは撮るのまま', (WidgetTester tester) async {
-      await pumpCapture(tester);
-
-      // 1つにまとめると、選んだ1枚がどちらの枠に入るのかが消える。
-      expect(find.text(ja.capturePickFromLibrary), findsNWidgets(2));
-
-      await takeNotes(tester);
-      // **増やしたのは道であって手数ではない。** 撮る人は今までどおり1タップ。
-      expect(openedSources, <ImageSource>[ImageSource.camera]);
-    });
-
-    testWidgets('ノートの枠から選んだ1枚は、保存されるほう(photo)へ入る',
-        (WidgetTester tester) async {
-      final List<http.BaseRequest> calls = <http.BaseRequest>[];
-      await pumpCapture(tester, calls: calls);
-
-      await chooseNotes(tester);
-      await startLesson(tester);
-
-      expect(openedSources, <ImageSource>[ImageSource.gallery]);
-      final String body = utf8.decode(
-        (calls.single as http.Request).bodyBytes,
-        allowMalformed: true,
-      );
-      expect(body, contains('name="photo"'));
-      expect(body, isNot(contains('name="problem_photo"')));
-    });
-
-    /// **ここが逆になると、破棄の約束が静かに破れる。** アルバムから選んだ
-    /// 紙面がノート枠に入れば、他者の著作物がR2に残る。
-    testWidgets('問題の枠から選んだ1枚は、消えるほう(problem_photo)へ入る',
-        (WidgetTester tester) async {
-      final List<http.BaseRequest> calls = <http.BaseRequest>[];
-      await pumpCapture(tester, calls: calls);
-
-      await chooseProblem(tester);
-      await startLesson(tester);
-
-      expect(openedSources, <ImageSource>[ImageSource.gallery]);
-      final String body = utf8.decode(
-        (calls.single as http.Request).bodyBytes,
-        allowMalformed: true,
-      );
-      expect(body, contains('name="problem_photo"'));
-      expect(body, isNot(contains('name="photo"')));
-    });
-
-    // ノートは目の前にあるが、問題は送られてきた画像 — いちばんありそうな組み合わせ。
-    testWidgets('撮るのと混ぜられる(ノートは撮って、問題はアルバムから)',
-        (WidgetTester tester) async {
-      final List<http.BaseRequest> calls = <http.BaseRequest>[];
-      await pumpCapture(tester, calls: calls);
-
-      await takeNotes(tester);
-      await chooseProblem(tester);
-      await startLesson(tester);
-
-      expect(openedSources, <ImageSource>[ImageSource.camera, ImageSource.gallery]);
-      expect(partFilenames(calls.single), <String, String>{
-        'photo': 'shot0.jpg', // 先に撮ったノート
-        'problem_photo': 'shot1.jpg', // あとからアルバムで選んだ問題
-      });
-    });
-
-    /// **入る枠を決めるのは押したボタンで、選んだ順ではない。**
-    ///
-    /// 上のテストと同じ2枚を、逆の順で入れる。ここが順番に引きずられると、
-    /// 問題の紙面がノート枠(= R2に保存されるほう)に入り、
-    /// 「読み取ったあとに消えます」が画面の上だけの言葉になる。
-    testWidgets('先に問題を選んでも、順番で入れ替わらない', (WidgetTester tester) async {
-      final List<http.BaseRequest> calls = <http.BaseRequest>[];
-      await pumpCapture(tester, calls: calls);
-
-      await chooseProblem(tester); // 1枚目 = shot0.jpg
-      await takeNotes(tester); // 2枚目 = shot1.jpg
-      await startLesson(tester);
-
-      expect(partFilenames(calls.single), <String, String>{
-        'problem_photo': 'shot0.jpg',
-        'photo': 'shot1.jpg',
-      });
-    });
-
-    /// 選び直しても、**あとから入れた1枚が残る**。
-    /// 1枚目を捨て損ねると、確認した写真と送る写真がずれる。
-    testWidgets('同じ枠で選び直したら、あとの1枚が送られる', (WidgetTester tester) async {
-      final List<http.BaseRequest> calls = <http.BaseRequest>[];
-      await pumpCapture(tester, calls: calls);
-
-      await takeNotes(tester); // shot0.jpg
-      await chooseNotes(tester); // shot1.jpg(選び直し)
-      await startLesson(tester);
-
-      expect(partFilenames(calls.single), <String, String>{'photo': 'shot1.jpg'});
-    });
-
-    /// **やめただけの人を、許可の画面に落とさない。**
-    ///
-    /// いまのAndroid(フォトピッカー)もiOS(PHPicker)も、選ぶだけなら
-    /// アプリに許可が要らない。要らない許可を照会すると「未許可」が返るので、
-    /// カメラと同じ扱いにすると**アルバムをやめるたびに**設定へ促すことになる。
-    testWidgets('やめただけなら、許可の話にしない', (WidgetTester tester) async {
-      cancelCount = 1;
-      mockPermissionHandler(status: permissionDenied);
-      await pumpCapture(tester);
-
-      await chooseNotes(tester);
-
-      expect(find.text(ja.capturePhotosDenied), findsNothing);
-      expect(find.text(ja.captureCameraDenied), findsNothing);
-      // 枠に戻って、選び直せる。
-      expect(find.text(ja.captureTakeNotes), findsOneWidget);
-      expect(find.text(ja.capturePickFromLibrary), findsNWidgets(2));
-    });
-
-    /// 本当に断られる経路は例外で来る(iOSは許可が無いと null を返さない)。
-    /// **カメラの文言を使い回さない** — 設定アプリで探すものが変わる。
-    testWidgets('断られたら、写真の文言で設定へ促す', (WidgetTester tester) async {
-      throwCode = 'photo_access_denied';
-      await pumpCapture(tester);
-
-      await chooseNotes(tester);
-
-      expect(find.text(ja.capturePhotosDenied), findsOneWidget);
-      expect(find.text(ja.captureCameraDenied), findsNothing);
-      expect(find.text(ja.captureOpenSettings), findsOneWidget);
-    });
-
-    // 逆向きも固定する。アルバムを開いたあとにカメラで断られたら、カメラの文言。
-    testWidgets('カメラで断られたら、カメラの文言に戻る', (WidgetTester tester) async {
-      await pumpCapture(tester);
-      await chooseNotes(tester); // 直前の入口をアルバムにしておく
-
-      throwCode = 'camera_access_denied';
-      await takeProblem(tester);
-
-      expect(find.text(ja.captureCameraDenied), findsOneWidget);
-      expect(find.text(ja.capturePhotosDenied), findsNothing);
-    });
-
-    // 枠は画面の半分しかない。英語は日本語の1.5〜2倍に伸びるので、
-    // 入口を1行足した時点でいちばん狭い実機を見ておく。
-    testWidgets('狭い端末の英語でも、2つの入口が枠から溢れない', (WidgetTester tester) async {
-      const AppStrings en = AppStrings(Locale('en'));
-      await pumpCapture(tester, size: smallPhoneSurface, locale: const Locale('en'));
-
-      expect(tester.takeException(), isNull, reason: '枠から溢れています');
-      expect(find.text(en.capturePickFromLibrary), findsNWidgets(2));
-      expect(
-        tester.getBottomLeft(find.text(en.captureStart)).dy,
-        lessThan(smallPhoneSurface.height),
-      );
-    });
-  });
-
   // 読めなかったことを警告として出すと、任意のはずの2枚目が事実上の必須になる。
   testWidgets('読み取れなかったときは、何も言わずに進める', (WidgetTester tester) async {
     await pumpCapture(tester);
@@ -614,6 +502,49 @@ void main() {
     expect(find.text(ja.captureProblemTitle), findsNothing);
     // 行き止まりにもしない。単元の確認まで進んでいる。
     expect(find.text(ja.captureConfirmHint), findsOneWidget);
+  });
+
+  /// `/start` が指定の回数だけ飛ぶまで進める。
+  ///
+  /// **画面の変化では待てない。** ここでは開始をずっと失敗させているので、
+  /// 出ている「もう一度」は押す前と押したあとで見分けがつかない。
+  Future<void> pumpUntilStartCalls(
+    WidgetTester tester,
+    List<http.BaseRequest> calls,
+    int count,
+  ) async {
+    int startCalls() =>
+        calls.where((http.BaseRequest call) => call.url.path.endsWith('/start')).length;
+    for (int i = 0; i < 100; i++) {
+      if (startCalls() >= count) return;
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    fail('会話の開始が $count 回飛びませんでした(実際は ${startCalls()} 回)');
+  }
+
+  /// **「もう一度」が撮り直しに戻ると、行き止まりになる。**
+  ///
+  /// 解析済みの状態では [CaptureController.setPhoto] が新しい写真を捨てるので、
+  /// カメラだけが何度も開いてエラーが消えない。しかも会話の開始で落ちた場合は、
+  /// サーバ側で今日の枠を押さえていることがあり、撮り直すとその1回を捨てる。
+  testWidgets('会話の開始で落ちたら、「もう一度」は開始をやり直す(カメラを開かない)',
+      (WidgetTester tester) async {
+    final List<http.BaseRequest> calls = <http.BaseRequest>[];
+    await pumpCapture(tester, calls: calls, failStart: true);
+    await takeNotes(tester);
+    await startLesson(tester);
+
+    final int picksBeforeRetry = pickedPaths.length;
+
+    // 単元の確認画面の「はじめる」→ 会話の開始が落ちる
+    await tester.tap(find.text(ja.captureStart));
+    await pumpUntil(tester, find.text(ja.errorRetry));
+
+    await tester.tap(find.text(ja.errorRetry));
+    await pumpUntilStartCalls(tester, calls, 2);
+
+    expect(pickedPaths.length, picksBeforeRetry, reason: 'カメラを開き直さない');
   });
 
   testWidgets('Premium のフェアユース上限は、先輩が締めて再試行させない',
@@ -633,5 +564,139 @@ void main() {
     expect(find.text(serverMessage), findsNothing);
     expect(find.text(ja.errorRetry), findsNothing);
     expect(find.text(ja.paywallCta), findsNothing);
+  });
+
+  /// **端末の写真をアプリ内に並べる案は採っていない。** それには Android で
+  /// `READ_MEDIA_IMAGES`(広いアクセス)が要り、Google Play の Photo & Video
+  /// Permissions ポリシーの申告・審査対象になる。マス目はOSのピッカーに任せ、
+  /// 撮影ボタンだけ手前に出す形にしてある(理由は `capture_screen.dart`)。
+  group('アルバムから入れる', () {
+    testWidgets('枠をタップすると、撮るとアルバムが並ぶ', (WidgetTester tester) async {
+      await pumpCapture(tester);
+      await tester.tap(find.text(ja.captureTakeNotes));
+      await tester.pumpAndSettle();
+
+      expect(find.text(ja.capturePickCamera), findsOneWidget);
+      expect(find.text(ja.capturePickGallery), findsOneWidget);
+      // 空の枠に切り抜きは出さない(押せない操作が増えるだけ)。
+      expect(find.text(ja.captureCrop), findsNothing);
+      // **どちらの枠を触っているかを出す。** シートが枠を隠すので、
+      // 名前が無いと取り違えたまま入れられる。
+      expect(find.text(ja.capturePhotoNotes), findsWidgets);
+      // カメラはまだ開いていない。並べて見せているだけ。
+      expect(pickedSources, isEmpty);
+    });
+
+    /// **経路の取り違えは画面から見えない。** 返ってくる写真は同じなので、
+    /// アルバムを押してカメラが開いていても、見た目のテストは全部通る。
+    testWidgets('アルバムを選ぶと、カメラではなくアルバムが開く', (WidgetTester tester) async {
+      await pumpCapture(tester);
+      await tapSlot(tester, ja.captureAddProblem, ja.capturePickGallery);
+
+      expect(pickedSources, <int>[ImageSource.gallery.index]);
+      expect(pickedPaths, hasLength(1));
+    });
+
+    /// アルバムから入れても**枠の意味は変わらない。**
+    /// 問題の紙面がノート枠に入ると、他者の著作物がR2に保存される。
+    testWidgets('アルバムから入れた問題も、problem_photo として送られる',
+        (WidgetTester tester) async {
+      final List<http.BaseRequest> calls = <http.BaseRequest>[];
+      await pumpCapture(tester, calls: calls);
+      await tapSlot(tester, ja.captureAddProblem, ja.capturePickGallery);
+      await startLesson(tester);
+
+      final String body =
+          utf8.decode((calls.single as http.Request).bodyBytes, allowMalformed: true);
+      expect(body, contains('name="problem_photo"'));
+      expect(body, isNot(contains('name="photo"')));
+    });
+
+    /// **カメラの範囲を超えた1枚が入ってくる。** アルバムには他のアプリで撮った
+    /// 48MPの写真もパノラマもあり、解析は画像をそのままVision APIへ渡すので、
+    /// 大きすぎる1枚は**生徒からは「サーバのエラー」としてしか見えない形**で落ちる。
+    /// 上限は切り抜き側と同じ2576px(`claude-sonnet-5` がそのまま読める大きさ)。
+    testWidgets('開くときに長辺の上限を頼む(切り抜かない経路でも効く)',
+        (WidgetTester tester) async {
+      await pumpCapture(tester);
+      await tapSlot(tester, ja.captureAddProblem, ja.capturePickGallery);
+
+      expect(pickedMaxSides, <Object?>[2576.0, 2576.0]);
+    });
+
+    /// **枠は「これで合っている?」を見る場所。** `cover` は端を落とすので、
+    /// 紙面が切れていることがいちばん出るところが隠れる。アルバムから
+    /// 横長の写真も長いスクリーンショットも入ってくる。
+    testWidgets('確かめる枠では、写真を切り取らずに全体を入れる',
+        (WidgetTester tester) async {
+      await pumpCapture(tester);
+      await takeProblem(tester);
+
+      final Image thumbnail = tester.widget(find.byType(Image));
+      expect(thumbnail.fit, BoxFit.contain);
+    });
+  });
+
+  group('切り抜き', () {
+    /// 切り抜きを開いて、戻ってくるまで進める。
+    ///
+    /// **`pumpAndSettle` では待てない。** 待っているあいだ画面に出ているのは
+    /// 終わらないスピナーで、切り抜き自体も実ファイルを触る([pumpUntil])。
+    Future<void> cropFilledSlot(WidgetTester tester) async {
+      await tester.tap(find.text(ja.captureChangePhoto));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(ja.captureCrop));
+      await pumpUntilTrue(tester, () => cropCalls > 0);
+      // 結果が枠に入るまで(スピナーが出ていれば、それが消えるまで)。
+      await pumpUntilTrue(
+        tester,
+        () => find.byType(CircularProgressIndicator).evaluate().isEmpty,
+      );
+      await tester.pumpAndSettle();
+    }
+
+    /// **既知の失敗モードへの手当て。** `contract` の `problemTextMaxLength` が
+    /// 「ページ全体を写すと、章末の解答や解説まで問題文として流れ込み、先輩が
+    /// 答えを読み上げるところから授業が始まってしまう」と書いていて、600字の上限は
+    /// その安全弁でしかなかった。**それでも促しに留める。**
+    testWidgets('問題が入っている人にだけ、切り抜きを促す', (WidgetTester tester) async {
+      await pumpCapture(tester);
+      expect(find.text(ja.captureCropHint), findsNothing);
+
+      await takeProblem(tester);
+
+      expect(find.text(ja.captureCropHint), findsOneWidget);
+      final ChunkyButton button = tester.widget(find.byType(ChunkyButton));
+      expect(button.onPressed, isNotNull, reason: '切り抜かなくても始められる');
+    });
+
+    testWidgets('切り抜くと、切り抜いたほうが枠に入って送られる', (WidgetTester tester) async {
+      final List<http.BaseRequest> calls = <http.BaseRequest>[];
+      await pumpCapture(tester, calls: calls);
+      await takeProblem(tester);
+
+      await cropFilledSlot(tester);
+      expect(croppedPaths, hasLength(1));
+
+      await startLesson(tester);
+      final String body =
+          utf8.decode((calls.single as http.Request).bodyBytes, allowMalformed: true);
+      // 送られたのは切り抜いたほう。元の写真ではない。
+      expect(body, contains('filename="${croppedPaths.single.split('/').last}"'));
+      expect(body, isNot(contains('filename="${pickedPaths.single.split('/').last}"')));
+    });
+
+    /// **やめても写真は残す。** 捨てると撮り直しになる。
+    testWidgets('切り抜きをやめても、元の写真は枠に残る', (WidgetTester tester) async {
+      cropCancelCount = 1;
+      await pumpCapture(tester);
+      await takeProblem(tester);
+
+      await cropFilledSlot(tester);
+
+      expect(croppedPaths, isEmpty);
+      final ChunkyButton button = tester.widget(find.byType(ChunkyButton));
+      expect(button.onPressed, isNotNull, reason: '写真が残っているので始められる');
+    });
   });
 }

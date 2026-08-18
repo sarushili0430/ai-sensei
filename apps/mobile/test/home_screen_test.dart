@@ -24,9 +24,14 @@ void main() {
     limits: SessionLimits(maxSeconds: 1200, lessonAllowedToday: false),
   );
 
-  Future<void> pumpHome(WidgetTester tester, ProgressSummary summary) => pumpApp(
+  Future<void> pumpHome(
+    WidgetTester tester,
+    ProgressSummary summary, {
+    Locale locale = const Locale('ja'),
+  }) => pumpApp(
         tester,
         const HomeScreen(),
+        locale: locale,
         overrides: <Object?>[
           progressControllerProvider.overrideWith(() => FakeProgressController(summary)),
           reviewControllerProvider.overrideWith(() => FakeReviewController(sampleReviewQueue)),
@@ -66,6 +71,51 @@ void main() {
       isNull,
       reason: '押せる先が無い日は、押せるように見せない',
     );
+  });
+
+  // 数字を描くのは CountUpText だけ(#136)。ラベルにも数を持たせると
+  // 「3 3日つづけて説明中」と同じ数が2回出る。ホーム初版からのバグで、
+  // golden も最初からその絵で焼かれていたため検知できなかった。
+  // 見えている数の**回数**をここで固定する。
+  group('カウンターの数字', () {
+    testWidgets('数字は各カウンターに1回だけ出て、読み上げは自然文のまま',
+        (WidgetTester tester) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      await pumpHome(tester, sampleSummary);
+
+      expect(find.text('3'), findsOneWidget);
+      expect(find.text('4'), findsOneWidget);
+      // ラベル側は数字を持たない。空白の有無も文字列が持つ。
+      expect(find.text(ja.streakDaysSuffix), findsOneWidget);
+      expect(find.text(ja.filledHolesPrefix), findsOneWidget);
+      // 数字入りの全文は、画面ではなく読み上げにだけ出す。
+      expect(find.text(ja.streakDays(3)), findsNothing);
+      expect(find.text(ja.filledHoles(4)), findsNothing);
+      expect(find.bySemanticsLabel(ja.streakDays(3)), findsOneWidget);
+      expect(find.bySemanticsLabel(ja.filledHoles(4)), findsOneWidget);
+      handle.dispose();
+    });
+
+    // 初回起動がいちばんひどかった(0が4連発)。
+    testWidgets('初回起動でも、0はカウンターごとに1回', (WidgetTester tester) async {
+      await pumpHome(tester, firstRunSummary);
+
+      expect(find.text('0'), findsNWidgets(2));
+      expect(find.text(ja.streakDays(0)), findsNothing);
+      expect(find.text(ja.filledHoles(0)), findsNothing);
+    });
+
+    // 英語は数字が前(「4 gaps filled」)。前後どちらに置いても1回になる。
+    testWidgets('英語でも数字は1回だけ', (WidgetTester tester) async {
+      const AppStrings en = AppStrings(Locale('en'));
+      await pumpHome(tester, sampleSummary, locale: const Locale('en'));
+
+      expect(find.text('3'), findsOneWidget);
+      expect(find.text('4'), findsOneWidget);
+      expect(find.text(en.streakDaysSuffix), findsOneWidget);
+      expect(find.text(en.filledHolesSuffix), findsOneWidget);
+      expect(find.text(en.filledHoles(4)), findsNothing);
+    });
   });
 
   // Premium のフェアユース上限では、すでに契約している人へ課金導線を重ねない(§6-3)。

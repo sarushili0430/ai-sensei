@@ -43,6 +43,19 @@
     {
       "include": ["**/*.test.ts", "scripts/**"],
       "linter": { "rules": { "suspicious": { "noConsole": "off" } } }
+    },
+    {
+      "include": [
+        "packages/figure/src/solve.js",
+        "packages/figure/src/render.js",
+        "docs/figeval/**"
+      ],
+      "linter": {
+        "rules": {
+          "complexity": { "noForEach": "off" },
+          "suspicious": { "noExplicitAny": "off" }
+        }
+      }
     }
   ]
 }

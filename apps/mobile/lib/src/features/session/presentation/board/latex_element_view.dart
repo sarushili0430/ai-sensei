@@ -85,7 +85,7 @@ class _LatexElementViewState extends State<LatexElementView> {
     widget.tex,
     key: key,
     mathStyle: MathStyle.display,
-    textStyle: TextStyle(fontSize: fontSize, color: AppColors.ink),
+    textStyle: TextStyle(fontSize: fontSize, color: BoardStyle.chalk),
     onErrorFallback: (FlutterMathException error) => Text(
       '数式を表示できません',
       style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.hole),
@@ -279,7 +279,7 @@ class _EdgeFade extends StatelessWidget {
             end: Alignment.centerRight,
             // 色そのものは AppColors.background から作る(新しい色を定義しない)。
             // alpha:0 は「その色の透明版」であって別の色ではない。
-            colors: <Color>[AppColors.background.withValues(alpha: 0), AppColors.background],
+            colors: <Color>[BoardStyle.surface.withValues(alpha: 0), BoardStyle.surface],
           ),
         ),
       ),

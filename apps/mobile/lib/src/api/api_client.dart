@@ -41,6 +41,10 @@ class ApiClient {
 
   /// 写真を送ってセッションを作る。復習(kind=review)では写真を送らない。
   ///
+  /// **返るのは解析の結果だけで、部屋の鍵は入っていない。**
+  /// 今日の1回を使うのは [startSession](= 会話が始まったとき)なので、
+  /// ここまでは何度でも撮り直せる。
+  ///
   /// **2枚の写真は別のパートで送る。寿命が違うから**(`api.ts` の `sessionPhotoParts`):
   ///
   /// | パート | 中身 | 保存 |
@@ -51,7 +55,7 @@ class ApiClient {
   /// **どちらの枠に入れたかでしか区別できない。** 問題の紙面をノート枠で送ると、
   /// サーバはそれをノートとして保存する。だから枠の選択はUIの責務で、
   /// ここは渡されたものをそのまま対応するパートに載せるだけにしてある。
-  Future<SessionStart> createSession({
+  Future<SessionAnalysis> createSession({
     File? photo,
     File? problemPhoto,
     String kind = 'new',
@@ -99,15 +103,14 @@ class ApiClient {
     final http.Response response = await http.Response.fromStream(
       await _client.send(request),
     ).timeout(_uploadTimeout);
-    return SessionStart.fromJson(_decode(response));
+    return SessionAnalysis.fromJson(_decode(response));
   }
 
   /// チップUIで外した単元をサーバへ反映する。
   ///
-  /// セッションは作り直さない。作り直すと同じ写真で2回目のセッションになり、
-  /// 無料枠(1日1回)を使い切って、会話を始める瞬間に「今日はここまで」と
-  /// 返されてしまう。
-  Future<SessionStart> updateSessionTopics({
+  /// セッションは作り直さない。作り直すと同じ写真をもう一度Vision LLMに通すことになり、
+  /// 解析の回数だけを見ている上限にも二重に当たる。
+  Future<SessionAnalysis> updateSessionTopics({
     required String sessionId,
     required List<String> topicIds,
     String locale = 'ja',
@@ -123,6 +126,32 @@ class ApiClient {
             'locale': locale,
             'topic_ids': topicIds,
           }),
+        )
+        .timeout(_timeout);
+    return SessionAnalysis.fromJson(_decode(response));
+  }
+
+  /// 会話を始める。**ここで今日の1回を使う。**
+  ///
+  /// 部屋の鍵はこの応答にしか無い。枠の確保とトークンの発行はサーバ側の
+  /// 同じ1操作なので、鍵が返ってきたなら枠は取れているし、取れなければ
+  /// `free_limit_reached` / `fair_use_limit_reached` が返る。
+  ///
+  /// **同じセッションで押し直しても二重には数えない**(サーバが最初に押さえた
+  /// 枠のままトークンだけ出し直す)ので、通信が切れたときはそのまま再送してよい。
+  Future<SessionStart> startSession({
+    required String sessionId,
+    String locale = 'ja',
+  }) async {
+    final http.Response response = await _client
+        .post(
+          Uri.parse('$baseUrl/v1/sessions/$sessionId/start'),
+          headers: <String, String>{
+            ..._headers,
+            'content-type': 'application/json; charset=utf-8',
+          },
+          // locale はエラー文言の言語だけ。会話の言語は単元の課程で決まる。
+          body: jsonEncode(<String, dynamic>{'locale': locale}),
         )
         .timeout(_timeout);
     return SessionStart.fromJson(_decode(response));
@@ -273,6 +302,10 @@ class ApiException implements Exception {
   bool get isPhotoUnreadable =>
       code == 'photo_unreadable' || code == 'out_of_scope';
   bool get isHoleNotFound => code == 'hole_not_found';
+
+  /// セッションが消えている(他人のもの・完了済み・上限時間を過ぎた押し直し)。
+  /// **同じIDで押し直しても同じ404が返る**ので、握っているIDは捨てて作り直す。
+  bool get isSessionNotFound => code == 'session_not_found';
 
   @override
   String toString() => 'ApiException($code): $message';

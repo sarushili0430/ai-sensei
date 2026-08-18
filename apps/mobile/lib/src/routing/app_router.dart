@@ -27,8 +27,10 @@ part 'app_router.g.dart';
 ///
 /// - **常設** ホーム / 計画 / 設定。枝ごとの履歴を `indexedStack` で保つ
 /// - カルテは授業直後だけの画面なのでタブにせず、ホーム枝の子に置く
-/// - **寄り道(push)** 復習・カルテ・ペイウォール・お礼・親レポート
-/// - 寄り道を `/` の子にすると、通知着地でもホームが下に入り戻れる
+/// - **寄り道(push)** 復習・カルテ・親レポート。ホーム枝の子にすると、
+///   通知着地でもホームが下に入り戻れる
+/// - **買う画面** ペイウォールとお礼はシェルの外。購入を決めている場所に
+///   常設ナビを重ねない(下の `GoRoute` のコメント参照)
 /// - **授業の線** 撮影 → 会話 → 祝福。シェルの外でタブから抜けられない
 /// - 撮影だけ `push`。会話以降は `go` で置き換え、引き返せなくする
 @Riverpod(keepAlive: true)
@@ -67,20 +69,6 @@ GoRouter appRouter(Ref ref) {
                     builder: (_, _) => const ReviewScreen(),
                   ),
                   GoRoute(
-                    path: AppRoute.paywall.segment,
-                    builder: (_, _) => const PaywallScreen(),
-                  ),
-                  GoRoute(
-                    path: AppRoute.thanks.segment,
-                    builder: (_, GoRouterState state) =>
-                        ThanksScreen(restored: state.uri.queryParameters['restored'] == '1'),
-                    // 契約が無いのに祝わない。決済は通ったが entitlement が付いて
-                    // いない場合(ダッシュボードの設定漏れ)がここに来る。紙吹雪を
-                    // 見せてから使えないのが、いちばん落差が大きい。
-                    redirect: (_, _) =>
-                        ref.read(isPremiumProvider) ? null : AppRoute.home.path,
-                  ),
-                  GoRoute(
                     path: AppRoute.parentReport.segment,
                     builder: (_, _) => const ParentReportScreen(),
                   ),
@@ -114,6 +102,23 @@ GoRouter appRouter(Ref ref) {
       GoRoute(
         path: AppRoute.celebration.path,
         builder: (_, _) => const CelebrationScreen(),
+      ),
+      // 買うかどうかを決めている画面。**全画面で、タブは出さない。**
+      //
+      // 常設ナビを重ねると、購入判断のあいだじゅう別モードへの入口が並ぶ。
+      // 画面内のボタンは購入処理中(`_busy`)に全部無効化しているのに、
+      // タブだけ生きていて処理中に離脱できる、というガードの穴にもなる。
+      // `push` で来ていれば元の画面(ホーム・カルテ・復習・設定)に戻るので、
+      // シェルの外でも行き止まりにはならない。
+      GoRoute(path: AppRoute.paywall.path, builder: (_, _) => const PaywallScreen()),
+      GoRoute(
+        path: AppRoute.thanks.path,
+        builder: (_, GoRouterState state) =>
+            ThanksScreen(restored: state.uri.queryParameters['restored'] == '1'),
+        // 契約が無いのに祝わない。決済は通ったが entitlement が付いて
+        // いない場合(ダッシュボードの設定漏れ)がここに来る。紙吹雪を
+        // 見せてから使えないのが、いちばん落差が大きい。
+        redirect: (_, _) => ref.read(isPremiumProvider) ? null : AppRoute.home.path,
       ),
     ],
   );

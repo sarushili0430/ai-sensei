@@ -524,6 +524,17 @@ void main() {
 
       expect(find.textContaining('¥580'), findsNothing);
       expect(find.text(ja.paywallPriceUnavailable), findsOneWidget);
+
+      // プランが1枚も無いのだから、「このプラン」を指すボタンも出さない。
+      // 無効にして置いておくと、画面に無いものを指す灰色のボタンになる。
+      expect(find.text(ja.paywallSubscribe), findsNothing);
+      // テストは鍵の無いビルド(`RevenueCatConfig.isConfigured == false`)。
+      // ここで `refresh()` は何もしないので、取り直す口も出さない。
+      expect(find.text(ja.paywallReload), findsNothing);
+      // 買う口が消えても、無料継続とApp Reviewの必須要件は残す。
+      expect(find.text(ja.paywallDismiss), findsOneWidget);
+      expect(find.text(ja.paywallCancelNote), findsOneWidget);
+      expect(find.text(ja.paywallRestore), findsOneWidget);
     });
   });
 

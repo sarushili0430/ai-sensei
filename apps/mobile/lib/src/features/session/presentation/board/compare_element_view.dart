@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../theme/tokens.dart';
+import 'board_style.dart';
 
 /// 2列の対比表(`BoardElement.compare`)。「現在完了 と 過去形」。
 ///
@@ -24,18 +25,23 @@ class CompareElementView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final TextTheme textTheme = Theme.of(context).textTheme;
+    // **セルの文字もチョークで書く。**テーマの既定色(インク)のままだと、
+    // 板の上では黒に黒で、表の枠だけが見えて中身が読めない。
+    final TextTheme textTheme = Theme.of(context).textTheme.apply(
+          bodyColor: BoardStyle.chalk,
+          displayColor: BoardStyle.chalk,
+        );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         if (title != null) ...<Widget>[
-          Text(title!, style: textTheme.bodyMedium?.copyWith(color: AppColors.inkMuted)),
+          Text(title!, style: textTheme.bodyMedium?.copyWith(color: BoardStyle.chalkMuted)),
           const SizedBox(height: AppSpacing.xs),
         ],
         DecoratedBox(
           decoration: BoxDecoration(
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: BoardStyle.chalkMuted),
             borderRadius: BorderRadius.circular(AppRadius.card),
           ),
           child: Table(
@@ -46,11 +52,11 @@ class CompareElementView extends StatelessWidget {
               1: FlexColumnWidth(),
             },
             border: const TableBorder.symmetric(
-              inside: BorderSide(color: AppColors.border),
+              inside: BorderSide(color: BoardStyle.chalkMuted),
             ),
             children: <TableRow>[
               TableRow(
-                decoration: const BoxDecoration(color: AppColors.surface),
+                decoration: BoxDecoration(color: BoardStyle.chalk.withValues(alpha: 0.08)),
                 children: <Widget>[
                   for (final String heading in columns)
                     _Cell(

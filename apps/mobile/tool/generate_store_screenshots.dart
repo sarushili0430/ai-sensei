@@ -12,16 +12,27 @@
 /// 出力(`docs/store/screenshots/`):
 ///   plain/     1179x2556 端末フレームなしの素のまま。Shipaton提出用の指定サイズ
 ///   captioned/ 1290x2796 App Store Connect の 6.9インチ必須サイズ。見出し付き
+///   play/      1080x1920 Google Play の「スマートフォン」。見出し付き
+///   play-tablet-7/  1200x1920 Google Play の「7インチ タブレット」(600dp幅で描画)
+///   play-tablet-10/ 1600x2560 Google Play の「10インチ タブレット」(800dp幅で描画)
+///
+/// **Play に captioned を流用しないこと。** Play は縦横比を 16:9〜9:16 に
+/// 制限していて、1290x2796(1:2.17)は 9:16(1:1.78)より縦長なので弾かれる。
+///
+/// あわせてフィーチャーグラフィック(`docs/store/feature-graphic/`・1024x500)も
+/// ここで描く。Playでは**必須**で、これが無いと公開できない。
 ///
 /// 並び順は inception-deck §3。①授業(板書)②祝福 ③カルテ ④連続日数 ⑤復習。
 /// **デッキ §3 と同期していること。**片方だけ直すと、ストア素材と正文がずれる。
 library;
 
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:ai_sensei/src/api/device_id.dart';
+import 'package:ai_sensei/src/brand/app_mark.dart';
 import 'package:ai_sensei/src/features/capture/application/capture_controller.dart';
 import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
 import 'package:ai_sensei/src/features/karte/application/last_board_controller.dart';
@@ -47,15 +58,67 @@ import 'package:flutter_test/flutter_test.dart';
 import '../test/support/harness.dart';
 
 const String _outDir = '../../docs/store/screenshots';
+const String _featureDir = '../../docs/store/feature-graphic';
 
 /// 素のスクショ。iPhone 15 Pro の論理サイズ。×3で 1179x2556 になる。
 const Size _plainLogical = Size(393, 852);
 
-/// 見出し付き。App Store Connect の 6.9インチ必須サイズ。
-const Size _captionedLogical = Size(430, 932);
-const Size _captionedPixels = Size(1290, 2796);
+/// フィーチャーグラフィック。Playが指定する唯一のサイズ。
+const Size _featurePixels = Size(1024, 500);
 
 const double _pixelRatio = 3;
+
+/// 見出しつきで書き出す枠。**中の画面はこの `logical` で本当に描く**ので、
+/// タブレットの絵はタブレット幅のレイアウトになる(実機と違う絵を出さない)。
+@immutable
+class _Frame {
+  const _Frame({
+    required this.dir,
+    required this.logical,
+    required this.pixels,
+    required this.topRatio,
+  });
+
+  /// `docs/store/screenshots/{locale}/` の下のディレクトリ名。
+  final String dir;
+  final Size logical;
+  final Size pixels;
+
+  /// 見出しの下に空ける量(地の高さに対する比)。地が横長になるほど詰める。
+  final double topRatio;
+}
+
+/// 縦長すぎる地は見出しと端末画像が離れるので `topRatio` で吸収する。
+const List<_Frame> _frames = <_Frame>[
+  // App Store Connect の 6.9インチ必須サイズ。
+  _Frame(
+    dir: 'captioned',
+    logical: Size(430, 932),
+    pixels: Size(1290, 2796),
+    topRatio: 0.185,
+  ),
+  // Google Play「スマートフォン」。9:16 ちょうど。
+  _Frame(
+    dir: 'play',
+    logical: _plainLogical,
+    pixels: Size(1080, 1920),
+    topRatio: 0.135,
+  ),
+  // Google Play「7インチ タブレット」。600dp幅 = 7インチ級のレイアウト。
+  _Frame(
+    dir: 'play-tablet-7',
+    logical: Size(600, 960),
+    pixels: Size(1200, 1920),
+    topRatio: 0.135,
+  ),
+  // Google Play「10インチ タブレット」。800dp幅。
+  _Frame(
+    dir: 'play-tablet-10',
+    logical: Size(800, 1280),
+    pixels: Size(1600, 2560),
+    topRatio: 0.135,
+  ),
+];
 
 void main() {
   setUpAll(loadAppFonts);
@@ -74,16 +137,34 @@ void main() {
           );
         });
 
-        final GlobalKey key =
-            await _pump(tester, shot, copy.locale, _captionedLogical);
-        await tester.runAsync(() async {
-          _write(
-            '$_outDir/${copy.locale}/captioned/${shot.slug}.png',
-            await _png(await _compose(await _capture(key), copy)),
-          );
-        });
+        for (final _Frame frame in _frames) {
+          final GlobalKey key =
+              await _pump(tester, shot, copy.locale, frame.logical);
+          await tester.runAsync(() async {
+            _write(
+              '$_outDir/${copy.locale}/${frame.dir}/${shot.slug}.png',
+              await _png(await _compose(
+                await _capture(key),
+                copy,
+                frame.pixels,
+                topRatio: frame.topRatio,
+              )),
+            );
+          });
+        }
       });
     }
+  }
+
+  for (final _FeatureCopy copy in _featureCopy) {
+    testWidgets('${copy.locale} feature graphic', (WidgetTester tester) async {
+      await tester.runAsync(() async {
+        _write(
+          '$_featureDir/${copy.locale}-1024x500.png',
+          await _png(await _featureGraphic(copy)),
+        );
+      });
+    });
   }
 }
 
@@ -145,11 +226,19 @@ Future<ui.Image> _capture(GlobalKey key) {
 const Color _canvasTop = Color(0xFFE6F4FE);
 const Color _canvasBottom = Color(0xFFFBFAF7);
 
-Future<ui.Image> _compose(ui.Image screen, _Copy copy) async {
+/// [topRatio] は見出しの下に空ける量(地の高さに対する比)。
+/// 地の縦横比が変わると見出しと端末画像のあいだが空きすぎるので、
+/// **Play(9:16)は captioned(1:2.17)より詰める**。
+Future<ui.Image> _compose(
+  ui.Image screen,
+  _Copy copy,
+  Size pixels, {
+  double topRatio = 0.185,
+}) async {
   final ui.PictureRecorder recorder = ui.PictureRecorder();
   final Canvas canvas = Canvas(recorder);
-  final double w = _captionedPixels.width;
-  final double h = _captionedPixels.height;
+  final double w = pixels.width;
+  final double h = pixels.height;
 
   canvas.drawRect(
     Rect.fromLTWH(0, 0, w, h),
@@ -158,7 +247,7 @@ Future<ui.Image> _compose(ui.Image screen, _Copy copy) async {
           Offset.zero, Offset(0, h), <Color>[_canvasTop, _canvasBottom]),
   );
 
-  _drawCaption(
+  final double captionBottom = _drawCaption(
     canvas,
     copy,
     top: h * 0.052,
@@ -168,7 +257,11 @@ Future<ui.Image> _compose(ui.Image screen, _Copy copy) async {
   );
 
   // 端末フレーム(ベゼル)は描かない。角丸は写真の切り抜きとして最小限。
-  final double top = h * 0.185;
+  //
+  // [topRatio] は下限で、**見出しが実際に何行になったか**で押し下げる。
+  // 地が横長になるほど1行に入る字数が減り、比だけで決めると2行の見出しが
+  // 端末画像に食い込む(タブレットの日本語で最初に出た)。
+  final double top = math.max(h * topRatio, captionBottom + h * 0.03);
   final double bottomPad = h * 0.024;
   double height = h - top - bottomPad;
   double width = height * (screen.width / screen.height);
@@ -200,8 +293,9 @@ Future<ui.Image> _compose(ui.Image screen, _Copy copy) async {
 }
 
 /// 見出し。蛍光マーカー(黄=言えた / ピンク=穴)がこのアプリの署名なので、
-/// 強調はboldではなくマーカーで引く。
-void _drawCaption(
+/// 強調はboldではなくマーカーで引く。**下端のyを返す** —— 呼び側は
+/// これを見て端末画像の位置を決める(行数で高さが変わる)。
+double _drawCaption(
   Canvas canvas,
   _Copy copy, {
   required double top,
@@ -244,7 +338,137 @@ void _drawCaption(
   }
 
   painter.paint(canvas, origin);
+  return origin.dy + painter.height;
 }
+
+// --- フィーチャーグラフィック(1024x500) ---
+
+/// Playの「フィーチャーグラフィック」。ストアページの一番上に出る1枚。
+///
+/// 地はスクショ5枚と同じ淡い青のグラデーションにする(掲載ページで
+/// フィーチャーグラフィックとスクショの帯が地続きに見えるように)。
+/// 絵柄はアイコンと同じマーク。**別の絵を新しく描かない** —— ストアで
+/// 最初に目に入る2つ(アイコンとこの1枚)が違う絵だと結びつかない。
+///
+/// 端に寄せた要素はデバイスによって切られるので、内側 72px は空ける。
+Future<ui.Image> _featureGraphic(_FeatureCopy copy) async {
+  final ui.PictureRecorder recorder = ui.PictureRecorder();
+  final Canvas canvas = Canvas(recorder);
+  final double w = _featurePixels.width;
+  final double h = _featurePixels.height;
+
+  canvas.drawRect(
+    Rect.fromLTWH(0, 0, w, h),
+    Paint()
+      ..shader = ui.Gradient.linear(
+          Offset.zero, Offset(w, h), <Color>[_canvasTop, _canvasBottom]),
+  );
+
+  const double margin = 72;
+  const double mark = 240;
+  canvas.save();
+  canvas.translate(margin, (h - mark) / 2);
+  canvas.clipRRect(
+    RRect.fromRectAndRadius(
+      const Rect.fromLTWH(0, 0, mark, mark),
+      const Radius.circular(mark * 0.22),
+    ),
+  );
+  AppMark.paint(canvas, mark);
+  canvas.restore();
+
+  const double textLeft = margin + mark + 48;
+  final double textWidth = w - textLeft - margin;
+
+  final TextPainter headline = TextPainter(
+    text: TextSpan(
+      text: copy.headline,
+      style: const TextStyle(
+        fontFamily: 'ZenMaruGothic',
+        fontWeight: FontWeight.w700,
+        // 日本語の見出しが2行に収まる上限。全角14字 × 40 = 560 で、
+        // 使える幅(592)に収まる。上げると「もらう。」だけが3行目に落ちる。
+        fontSize: 40,
+        height: 1.4,
+        color: AppColors.ink,
+      ),
+    ),
+    textDirection: TextDirection.ltr,
+  )..layout(maxWidth: textWidth);
+
+  final TextPainter sub = TextPainter(
+    text: TextSpan(
+      text: copy.sub,
+      style: const TextStyle(
+        fontFamily: 'ZenMaruGothic',
+        fontWeight: FontWeight.w500,
+        fontSize: 23,
+        height: 1.4,
+        color: AppColors.inkMuted,
+      ),
+    ),
+    textDirection: TextDirection.ltr,
+  )..layout(maxWidth: textWidth);
+
+  const double gap = 24;
+  final double blockHeight = headline.height + gap + sub.height;
+  final Offset origin = Offset(textLeft, (h - blockHeight) / 2);
+
+  // 強調はboldではなくマーカー(captioned の見出しと同じ作法)。
+  final int start = copy.headline.indexOf(copy.marker);
+  if (start >= 0) {
+    for (final TextBox box in headline.getBoxesForSelection(
+      TextSelection(baseOffset: start, extentOffset: start + copy.marker.length),
+    )) {
+      final Rect r = box.toRect().shift(origin);
+      canvas.drawRect(
+        Rect.fromLTRB(
+            r.left, r.top + r.height * 0.52, r.right, r.top + r.height * 0.96),
+        Paint()..color = AppColors.said.withValues(alpha: 0.92),
+      );
+    }
+  }
+
+  headline.paint(canvas, origin);
+  sub.paint(canvas, Offset(textLeft, origin.dy + headline.height + gap));
+
+  return recorder.endRecording().toImage(w.toInt(), h.toInt());
+}
+
+@immutable
+class _FeatureCopy {
+  const _FeatureCopy({
+    required this.locale,
+    required this.headline,
+    required this.marker,
+    required this.sub,
+  });
+
+  final String locale;
+  final String headline;
+
+  /// マーカーを引く部分文字列。
+  final String marker;
+  final String sub;
+}
+
+/// 一行はLPとPlayの短い説明と同じ言葉にする(媒体ごとに言い方を変えない)。
+const List<_FeatureCopy> _featureCopy = <_FeatureCopy>[
+  _FeatureCopy(
+    locale: 'ja',
+    headline: '答えを教える。\nそのあと、教え返してもらう。',
+    marker: '教え返してもらう',
+    // 4課程(中学数学・高校数学・中学英語・高校英語)を1行で。
+    // 「数I・A…」まで並べると科目名だけで行が埋まって英語が消える。
+    sub: '中学・高校の数学と英語',
+  ),
+  _FeatureCopy(
+    locale: 'en',
+    headline: 'We teach you.\nThen you teach it back.',
+    marker: 'you teach it back',
+    sub: 'High school mathematics',
+  ),
+];
 
 Future<Uint8List> _png(ui.Image image) async =>
     (await image.toByteData(format: ui.ImageByteFormat.png))!
@@ -320,6 +544,13 @@ const SessionStart _sampleSessionStart = SessionStart(
   kind: 'realtime',
   livekit:
       LiveKitConnection(url: 'wss://example', token: 'token', room: 'room'),
+  limits: SessionLimits(maxSeconds: 300, lessonAllowedToday: true),
+);
+
+/// 撮影から渡される解析の結果(単元と問題文)。会話の開始とは別の値。
+const SessionAnalysis _sampleSessionAnalysis = SessionAnalysis(
+  sessionId: 'ses_1',
+  kind: 'realtime',
   detectedTopics: <DetectedTopic>[
     DetectedTopic(
       topicId: 'M1-NIJI-HANBETSU',
@@ -330,7 +561,6 @@ const SessionStart _sampleSessionStart = SessionStart(
       confidence: 0.9,
     ),
   ],
-  limits: SessionLimits(maxSeconds: 300, lessonAllowedToday: true),
 );
 
 class _FakeSessionController extends SessionController {
@@ -347,7 +577,10 @@ class _FakeSessionController extends SessionController {
 
 class _FakeCaptureController extends CaptureController {
   @override
-  CaptureState build() => const CaptureState(session: _sampleSessionStart);
+  CaptureState build() => const CaptureState(
+    analysis: _sampleSessionAnalysis,
+    session: _sampleSessionStart,
+  );
 }
 
 /// カルテに残る板書。3枚目の「根拠」の節をここで埋める。

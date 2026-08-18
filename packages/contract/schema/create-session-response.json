@@ -15,29 +15,6 @@
             "review"
           ]
         },
-        "livekit": {
-          "type": "object",
-          "properties": {
-            "url": {
-              "type": "string",
-              "format": "uri"
-            },
-            "token": {
-              "type": "string",
-              "minLength": 1
-            },
-            "room": {
-              "type": "string",
-              "minLength": 1
-            }
-          },
-          "required": [
-            "url",
-            "token",
-            "room"
-          ],
-          "additionalProperties": false
-        },
         "detected_topics": {
           "type": "array",
           "items": {
@@ -110,32 +87,13 @@
               "type": "null"
             }
           ]
-        },
-        "limits": {
-          "type": "object",
-          "properties": {
-            "max_seconds": {
-              "type": "integer",
-              "exclusiveMinimum": 0
-            },
-            "lesson_allowed_today": {
-              "type": "boolean"
-            }
-          },
-          "required": [
-            "max_seconds",
-            "lesson_allowed_today"
-          ],
-          "additionalProperties": false
         }
       },
       "required": [
         "session_id",
         "kind",
-        "livekit",
         "detected_topics",
-        "problem",
-        "limits"
+        "problem"
       ],
       "additionalProperties": false
     }

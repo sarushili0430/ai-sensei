@@ -36,8 +36,8 @@ JSON なのでコメントが書けません。各キーの意味は以下。
 | `REVENUECAT_OFFERING_ID` | 既定以外の Offering を出したいときだけ(価格の実験用)。空なら current |
 | `ONESIGNAL_APP_ID` | プッシュ受信。App IDは公開値。`backend/api` の `ONESIGNAL_APP_ID` と**同じ値**にすること。アプリ側(`push_repository.dart` の `PushConfig`)は既定値を持たないので、**空のビルドでは通知機能ごと無効**(初期化も端末登録もしない)。REST API Key はサーバ側にあり、ここには置かない |
 | `SENTRY_DSN` | クラッシュと**縮退**の監視(計画書 §10-7)。DSNは公開前提の値なので secure にしなくてよい。アプリ側(`src/telemetry/telemetry.dart` の `SentryConfig`)は既定値を持たないので、**空のビルドでは監視ごと無効**(SDKの初期化もしない)。値は Sentry のプロジェクト設定 > Client Keys (DSN) から取る |
-| `PRIVACY_POLICY_URL` | 設定画面から出るリンク。**ストア提出前に埋めること。** 空のあいだは設定画面に行ごと出ない(押しても開かない行を出さないため)。サブスクを載せる以上、審査で必ず見られる |
-| `TERMS_URL` | 同上。自前のものが無ければ Apple の標準EULA (`https://www.apple.com/legal/internet-services/itunes/dev/stdeula/`) で構わない |
+| `PRIVACY_POLICY_URL` | 設定画面から出るリンク。`https://ubiqy.jp/privacy/`(両ストアの申告と同じものを入れる)。空のあいだは設定画面に行ごと出ない(押しても開かない行を出さないため)。サブスクを載せる以上、審査で必ず見られる |
+| `TERMS_URL` | 同上。`https://ubiqy.jp/terms/` |
 | `SUPPORT_EMAIL` | 先輩の説明・板書・質問がおかしかったときの報告先。AI生成コンテンツを含むアプリの導線として要る |
 
 値は文字列・数値・真偽値だけです(入れ子のオブジェクト/配列は Flutter が受け付けません。

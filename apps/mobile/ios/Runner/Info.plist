@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>ai-sensei</string>
+	<string>カタルテ</string>
 	<key>CFBundleLocalizations</key>
 	<array>
 		<string>ja</string>
@@ -42,8 +42,9 @@
 	<string>ノートの写真を撮って、どの単元でつまずいているかを読み取るために使います。</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>解いた問題を声に出して説明してもらうために使います。</string>
-	<!-- 撮る以外の入口(撮影画面の「アルバムから選ぶ」)。塾で撮ってきたノートや、
-	     送られてきた問題の画像を、その場で撮り直さずに出せるようにするため。 -->
+	<!-- 撮る以外の入口(撮影画面で枠をタップして出るシートの「アルバム」)。
+	     塾で撮ってきたノートや、送られてきた問題の画像を、その場で撮り直さずに
+	     出せるようにするため。 -->
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>すでに撮ってあるノートや問題の写真を選ぶために使います。</string>
 	<!-- 復習プッシュを受け取るのに要る。これが無いと、アプリが起きていない間の

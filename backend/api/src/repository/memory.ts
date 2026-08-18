@@ -7,7 +7,7 @@ import type {
   ReviewScheduleRecord,
   SessionContext,
   SessionRecord,
-  SessionReservation,
+  SessionStartResult,
   UserRecord,
 } from "./types.ts";
 
@@ -58,29 +58,69 @@ export class MemoryRepository implements Repository {
     });
   }
 
-  async countSessionsOnDate(deviceId: string, localDate: string): Promise<number> {
-    return [...this.sessions.values()].filter(
-      (session) => session.device_id === deviceId && session.local_date === localDate,
-    ).length;
+  async countStartedSessionsOnDate(deviceId: string, localDate: string): Promise<number> {
+    return this.startedOnDate(deviceId, localDate).length;
   }
 
-  async reserveSessionSlot(input: {
+  async createSession(input: {
     session: SessionRecord;
-    maxPerDay: number;
-  }): Promise<SessionReservation> {
-    const sessionsToday = [...this.sessions.values()].filter(
+    maxAnalysesPerDay: number;
+  }): Promise<boolean> {
+    const analysesToday = [...this.sessions.values()].filter(
       (session) =>
         session.device_id === input.session.device_id &&
         session.local_date === input.session.local_date,
     ).length;
-    if (sessionsToday >= input.maxPerDay) return { reserved: false };
+    if (analysesToday >= input.maxAnalysesPerDay) return false;
 
     /**
      * JavaScriptは単一スレッドなので、確認から挿入までawaitを挟まなければこの区間は原子的になる。
      * ここにawaitを足すと、その隙間で別のリクエストが同じ「まだ空きがある」を見て通る。
      */
     this.sessions.set(input.session.id, input.session);
-    return { reserved: true, sessionsToday: sessionsToday + 1 };
+    return true;
+  }
+
+  async startSession(input: {
+    sessionId: string;
+    deviceId: string;
+    startedAt: string;
+    localDate: string;
+    maxPerDay: number;
+  }): Promise<SessionStartResult> {
+    const session = this.sessions.get(input.sessionId);
+    if (!session || session.device_id !== input.deviceId) return { started: false };
+
+    // 再送は数え直さない。最初に押さえた枠のまま、その日の本数だけを返す。
+    if (session.started_at !== null) {
+      return {
+        started: true,
+        alreadyStarted: true,
+        sessionsToday: this.startedOnDate(session.device_id, session.local_date).length,
+      };
+    }
+
+    const startedToday = this.startedOnDate(input.deviceId, input.localDate).length;
+    if (startedToday >= input.maxPerDay) return { started: false };
+
+    /** D1と同じく、確認から書き込みまでawaitを挟まない(挟むと同時実行が両方通る)。 */
+    this.sessions.set(session.id, {
+      ...session,
+      started_at: input.startedAt,
+      // 数える日は「会話が始まった日」。解析だけして日付をまたいだ回を、
+      // 撮った日のほうへ数えないため(D1側の UPDATE と同じ)。
+      local_date: input.localDate,
+    });
+    return { started: true, alreadyStarted: false, sessionsToday: startedToday + 1 };
+  }
+
+  private startedOnDate(deviceId: string, localDate: string): SessionRecord[] {
+    return [...this.sessions.values()].filter(
+      (session) =>
+        session.device_id === deviceId &&
+        session.local_date === localDate &&
+        session.started_at !== null,
+    );
   }
 
   async updateSessionTopics(input: {

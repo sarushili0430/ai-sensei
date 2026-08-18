@@ -9,6 +9,7 @@ import type {
 } from "./board.ts";
 import { extractJson } from "./karte.ts";
 import type { JobLogger } from "./log.ts";
+import { stepAwaitsStudent } from "./senpai.ts";
 
 /**
  * フェーズ1「授業」— 板書レッスンの生成と、手順単位の配送・読み上げ。
@@ -226,6 +227,8 @@ const repairInstruction: Record<CurriculumLocale, (rejection: BoardStepRejection
       "直前の板書の手順が検証に落ちました。**その手順1つだけ**を書き直してください。",
       "返すのは手順1つのJSONオブジェクト(`index` / `speech` / `board`)だけです。",
       "配列にしない、前置きを書かない、コードフェンスで囲まない。",
+      // 直しがいちばん安い道へ落ちるのを塞ぐ(`board.ts` の schemaGuidance と同じ理由)。
+      "**`board` を `null` にして逃げないこと。**書くはずだったものを消すと、この手順は板書に何も残しません。",
       "",
       `落ちた理由: ${rejection.guidance}`,
       `落ちた手順: ${JSON.stringify(rejection.raw)}`,
@@ -235,6 +238,7 @@ const repairInstruction: Record<CurriculumLocale, (rejection: BoardStepRejection
       "The board step below failed validation. Rewrite **only that one step**.",
       "Return a single step JSON object (`index` / `speech` / `board`) and nothing else.",
       "No array, no preamble, no code fence.",
+      "**Do not fall back to `board: null`** — dropping it leaves nothing on the board for this step.",
       "",
       `Why it failed: ${rejection.guidance}`,
       `The step that failed: ${JSON.stringify(rejection.raw)}`,
@@ -289,6 +293,15 @@ export type RunBoardLessonOptions = {
   signal?: AbortSignal;
   log?: Pick<JobLogger, "info" | "warn">;
   maxTokens?: number;
+  /**
+   * LLMへ渡すユーザーメッセージ。省略時は初回の定型指示({@link lessonInstruction})。
+   *
+   * 2回目以降の往復では「ここまでのやりとり + 続きだけを返す」の指示
+   * (`senpai.ts` の `lessonContinuationInstruction`)が入る。systemは毎回同じ正本で、
+   * **何が起きたかはユーザーメッセージ側に載せる** — systemを合成し直す作りにすると、
+   * どの文が正本でどの文が実行時の産物か、パスを重ねるほど分からなくなる。
+   */
+  instruction?: string;
 };
 
 export type BoardLessonResult = BoardAppendResult & {
@@ -315,12 +328,18 @@ export async function runBoardLesson(options: RunBoardLessonOptions): Promise<Bo
     signal,
     log,
     maxTokens = boardLessonMaxTokens,
+    instruction,
   } = options;
 
   const steps: BoardStep[] = [];
 
   const result = await delivery.append({
-    chunks: llm.stream({ system, user: lessonInstruction[locale], maxTokens, signal }),
+    chunks: llm.stream({
+      system,
+      user: instruction ?? lessonInstruction[locale],
+      maxTokens,
+      signal,
+    }),
     signal,
     onStep: async (step) => {
       steps.push(step);
@@ -328,6 +347,23 @@ export async function runBoardLesson(options: RunBoardLessonOptions): Promise<Bo
       // 生徒が話し始めた上に音声を重ねる理由はない。
       if (signal?.aborted === true) return;
       await speak(step);
+    },
+    // **問いかけたら、そこで止めて答えを待つ。**プロンプト側の「質問を出したら
+    // その板書はそこで終える」を、生成のぶれに任せずここで守る
+    // (`board.ts` の `stopAfter` にその判断を置かない理由も同じコメントにある)。
+    //
+    // 判定は手順の `awaits_student`(LLM自身の申告)が一次で、欄が無いときだけ
+    // 言い回しの推測に落ちる(`stepAwaitsStudent`)。どちらで止まったかはログに残す —
+    // フォールバックで止まる授業が多いなら、プロンプトが欄を書けていない。
+    stopAfter: (step) => {
+      const stops = stepAwaitsStudent(step, locale);
+      if (stops) {
+        log?.info("board_turn_awaited", {
+          index: step.index,
+          basis: step.awaits_student === undefined ? "fallback" : "field",
+        });
+      }
+      return stops;
     },
     repair: (rejection) => repairStep({ llm, system, locale, rejection, signal, log }),
     repairHead: (rejection) =>

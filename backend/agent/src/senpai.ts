@@ -38,6 +38,37 @@ const TEACH_BACK_PROMPT: Record<CurriculumLocale, string> = {
 };
 
 /**
+ * 授業の1コマ。板書に積んだ手順と、その合間の生徒の発話を、起きた順に並べたもの。
+ *
+ * 授業は1回のLLM呼び出しでは終わらない(`board.ts` の寿命の説明)。問いかけで止まり、
+ * 生徒の答えを聞いて、同じ板書に続きを積む。その往復を教え返しのプロンプトと
+ * 継続指示の両方が読めるよう、手順と発話を1本の列で持つ。
+ */
+export type LessonTurn = { kind: "step"; step: BoardStep } | { kind: "student"; text: string };
+
+/** 授業の列から、実際に配送された手順だけを抜く。 */
+export function lessonSteps(turns: readonly LessonTurn[]): BoardStep[] {
+  return turns
+    .filter((turn): turn is Extract<LessonTurn, { kind: "step" }> => turn.kind === "step")
+    .map((turn) => turn.step);
+}
+
+/**
+ * 答えを待ったが、生徒が何も言わなかったときの記録。
+ *
+ * 生徒の発話ではないので transcript(カルテの材料)には入れない。授業の列にだけ
+ * 残して、続きを書くLLMに「答えは無かった — 軽く自分で言って先へ進む」を選ばせる。
+ */
+const STUDENT_SILENCE: Record<CurriculumLocale, string> = {
+  ja: "(返事はなかった)",
+  en: "(no reply)",
+};
+
+export function studentSilenceMarker(locale: CurriculumLocale): string {
+  return STUDENT_SILENCE[locale];
+}
+
+/**
  * 板書が1行も出せなかったときの立て直し。
  *
  * **黙って会話に落とさない。**板書ゼロで「じゃあ今の、説明してみて」と言うと、
@@ -97,6 +128,26 @@ const HANDOFF_PATTERNS: Record<CurriculumLocale, RegExp[]> = {
   en: [/explain\b/i, /your own words/i, /tell me\b/i, /give it a (?:go|shot|try)/i, /try it\b/i],
 };
 
+/**
+ * 疑問符。**「〜してみて」型だけを番の受け渡しと見なしていたのが、実際の壊れ方だった。**
+ *
+ * 問題の写真が読めなかった授業は、板書プロンプトの指示どおり
+ * 「問題、読んでもらってもいい?」から始まる。これは上のどのパターンにも当たらないので
+ * `teachBackFallback` が**無条件で**「じゃあ今の、自分の言葉で説明してみて。」を続けていた
+ * (2026-08-12 の報告そのもの)。生徒から見ると、読み上げを頼まれた次の瞬間に
+ * **まだ何も教わっていない内容の説明を求められる**。
+ *
+ * 先輩が問いかけで終えたなら、形がどうであれ**番はもう生徒にある**。
+ *
+ * **全角の `？` はコードポイントで書く(`？`)。**
+ * 一度ここを `[??]` と生の字で書いて、`？` が半角に潰れたまま入っていた
+ * (見た目は2文字だが中身は `?` が2つで、全角では止まらない)。
+ * 日本語の出力はほとんど全角なので、**この取りこぼしは日本語の授業ぜんぶに効く** —
+ * 直したはずのターン制が、そのまま元に戻る。字で書けば次も同じ形で壊れるので、
+ * 目で見て違いの分かる書き方にしておく。
+ */
+const QUESTION_MARK = /[?？]\s*$/;
+
 export function teachBackPrompt(locale: CurriculumLocale): string {
   return TEACH_BACK_PROMPT[locale];
 }
@@ -115,7 +166,83 @@ export function reviewOpening(locale: CurriculumLocale): string {
 export function handsTurnToStudent(speech: string, locale: CurriculumLocale): boolean {
   const normalized = speech.trim();
   if (normalized.length === 0) return false;
+  if (QUESTION_MARK.test(normalized)) return true;
   return HANDOFF_PATTERNS[locale].some((pattern) => pattern.test(normalized));
+}
+
+/**
+ * この手順で先輩が**生徒の答えを待つ**か。番の受け渡しの判定は全部ここを通す。
+ *
+ * 一次情報は手順の `awaits_student`(**LLM自身の申告**。contract の
+ * `boardStepSchema` を参照)。{@link handsTurnToStudent} は**欄が無い手順の
+ * フォールバック**に格下げした。理由は実際の壊れ方そのもの:
+ *
+ *   末尾 `?` と言い回しの列挙では、板書プロンプトの見本どおりの
+ *   「まず何する? **一言でいいよ。**」すら取りこぼす(`?` が文中に沈む)。
+ *   取りこぼした瞬間、授業ループは「番を渡さず言い切った」= 渡し忘れと誤読して
+ *   **1パス目で授業を終え、教え返しへ落とす**。以降のセッションは音声だけになり、
+ *   板書は最初の数行のまま二度と増えない —
+ *   「板書がイニシャルのステートで止まっている」報告の正体。
+ *
+ * 逆向きの誤りも同じ欄で直る: 修辞疑問(「まず(1)からやろっか?」)は末尾が `?` でも
+ * `awaits_student: false` と申告されるので、1手順目で止まらない(#105 の症状A)。
+ *
+ * 申告が誤っていたときの倒れ方は従来と同じ側に寄せる — 欄の値を優先し、
+ * 渡し忘れは `teachBackFallback` の定型句が受け止める(保険は変えない)。
+ */
+export function stepAwaitsStudent(
+  step: Pick<BoardStep, "speech" | "awaits_student">,
+  locale: CurriculumLocale,
+): boolean {
+  return step.awaits_student ?? handsTurnToStudent(step.speech, locale);
+}
+
+/**
+ * 教え返しの最中に、生徒が**板書に書くこと**を求めているか。
+ *
+ * 授業ループを抜けたあとの会話LLMは板書に書く手段を持たない。以前はそこで
+ * 「板書して」と頼まれると、**書けない事実を取り繕う返事**(「最初にしたから、
+ * ここからは言葉だけでいくね」)が返っていた — 板書は開いたまま残っていて、
+ * 続きを積む配管(`BoardDelivery.append`)も生きているのに、である。
+ *
+ * この判定に引っかかった発話は会話LLMに渡さず、授業ループへ**再入**して
+ * 同じ板書の続きで応える(`agent.ts` の `serveBoardRequests`)。
+ *
+ * **語彙は狭く保つ。**「書いて」だけで拾うと、教え返しの説明そのもの
+ * (「ここで式を書いて解く」)が誤って授業へ吸い込まれる。板書・黒板と
+ * 名指しされたときだけ拾う(取りこぼした言い回しは従来どおり会話が受ける)。
+ */
+const BOARD_REQUEST_PATTERNS: Record<CurriculumLocale, RegExp> = {
+  ja: /板書|黒板/,
+  en: /\b(?:black|white)?board\b/i,
+};
+
+export function asksForBoard(text: string, locale: CurriculumLocale): boolean {
+  return BOARD_REQUEST_PATTERNS[locale].test(text);
+}
+
+/**
+ * 「じゃあ今の、自分の言葉で説明してみて」の形か。**授業の往復を終える唯一の合図。**
+ *
+ * {@link handsTurnToStudent} は「番を渡したか」を見る広い判定で、切り分けの質問も
+ * 途中の問いかけ(「最小公倍数、何になると思う?」)も true になる。そこで往復を
+ * 終えると、質問を1つしただけで板書の続きが書けなくなる — まさに
+ * 「先輩がすぐ説明を投げてくる」というドッグフーディングの報告の形。
+ *
+ * だから途中の問いかけは**答えを聞いて同じ板書に続け**、教え返しへ渡す言い方
+ * (板書プロンプトが最後の手順に固定している文言の族)だけで授業を終える。
+ * 文言を変えるときはプロンプト(`senpai_board.*.md` の受け渡しの節)と一緒に変えること
+ * (`prompts/README.md` の二重書きの表)。
+ */
+const TEACH_BACK_HANDOFF_PATTERNS: Record<CurriculumLocale, RegExp[]> = {
+  ja: [/自分の言葉で説明/, /説明してみて/],
+  en: [/your own words/i, /explain (?:that|it|this) back/i],
+};
+
+export function asksForTeachBack(speech: string, locale: CurriculumLocale): boolean {
+  const normalized = speech.trim();
+  if (normalized.length === 0) return false;
+  return TEACH_BACK_HANDOFF_PATTERNS[locale].some((pattern) => pattern.test(normalized));
 }
 
 /**
@@ -176,18 +303,41 @@ export function senpaiBoardLessonPrompt(input: SenpaiBoardLessonInput): string {
 }
 
 /**
+ * 板書に1行でも書いたか。**音声だけの手順は「教えた」に数えない。**
+ *
+ * `board: null` の手順は、切り分けの質問と相づちのための枠
+ * (`senpai_board.*.md` の要素表)。それしか出ていない授業は、
+ * 生徒の画面では**見出しだけの白い黒板**で、教わった中身はどこにも残っていない。
+ */
+export function wroteOnBoard(steps: readonly BoardStep[]): boolean {
+  return steps.some((step) => step.board !== null);
+}
+
+/**
  * 板書LLMが最後の一言で番を渡し忘れたときの、コード側の保険。
  *
  * プロンプトだけに任せると、生成が1回ぶれただけで「教えて終わり」になる。
  * 一方、すでに番を渡しているのに毎回定型句を足すと同じ質問を二度聞く。
  * 実際に配送できた最後の手順を見て、不足したときだけ教え返しへ戻す。
+ *
+ * **板書に1行も書いていない回では足さない。**「じゃあ今の」の「今の」が
+ * 存在しないので、教わっていないことの説明を求めることになる(§2 の逆)。
+ * 実際に起きていたのは次の並びで、しかも会話プロンプトは
+ * 「いまやっていること — 教え返し」で固定なので、**そのまま堂々巡りになる**:
+ *
+ *   先輩「問題、読んでもらってもいい?」  ← 写真から問題文が取れなかった授業の第一声
+ *   先輩「じゃあ今の、自分の言葉で説明してみて。」  ← ここ(無条件で足していた)
+ *
+ * 立て直しは呼び出し側の責務(`agent.ts` が `lessonFailedPrompt` を出す)。
+ * ここは「**足さない**」だけを決める。
  */
 export function teachBackFallback(
   context: Pick<SessionContext, "locale">,
   steps: readonly BoardStep[],
 ): string | null {
   const last = steps.at(-1);
-  if (last === undefined || handsTurnToStudent(last.speech, context.locale)) return null;
+  if (last === undefined || stepAwaitsStudent(last, context.locale)) return null;
+  if (!wroteOnBoard(steps)) return null;
   return teachBackPrompt(context.locale);
 }
 
@@ -221,6 +371,16 @@ function describeBoard(board: BoardStep["board"], locale: CurriculumLocale): str
       }`;
     case "circle":
       return `${label}: ${locale === "en" ? "circle" : "円"} r = ${board.r}`;
+    case "figure":
+      // **名前のついた点を出す。**ここを「図」の一言で畳むと、先輩は自分が置いた点を
+      // 思い出せず、次の説明で同じ図を描き直す(D-12「図が育たない」の原因はこれだった)。
+      // `alt` は agent が詰めるので、まだ無い場合(検証前)は点の名前だけで書く。
+      return `${label}: ${board.alt ?? (locale === "en" ? "figure" : "図")}${(() => {
+        const names = board.items
+          .map((item) => item.pt)
+          .filter((name): name is string => typeof name === "string");
+        return names.length === 0 ? "" : ` [${names.join(" ")}]`;
+      })()}`;
     // 英語の板書。**例文と、そこで見せた焦点まで**を残す。
     // 「例文を出した」だけだと、教え返しで何を聞き返せばいいか決められない。
     case "sentence":
@@ -241,40 +401,134 @@ function describeBoard(board: BoardStep["board"], locale: CurriculumLocale): str
 }
 
 /**
- * 送った板書を、先輩が読み返せる形に畳む。
- * 1行も無ければ**空文字ではなく「無い」と書いた定型句**を返す(上の `NO_LESSON_RECAP`)。
+ * 授業の列を1行ずつ書き下す。手順は `index + 1` の番号、発話はロール名で始める。
+ *
+ * `keep` は溢れたときにどちらを残すか。教え返しの要約は**先頭**を残す
+ * (授業は上から積み上がる構造なので、途中で切れても「ここまでは教えた」が読める)。
+ * 続きを書かせる指示は**末尾**を残す — 直前の問いかけと生徒の答えが読めないと、
+ * 続きがその答えと噛み合わない。
  */
-export function renderLessonRecap(
-  steps: readonly BoardStep[],
+function renderTurnLines(
+  turns: readonly LessonTurn[],
   locale: CurriculumLocale,
-  maxLength: number = lessonRecapMaxLength,
-): string {
-  const lines: string[] = [];
-  let length = 0;
-
+  studentLabel: string,
+  maxLength: number,
+  keep: "head" | "tail",
+): string[] {
   // 引用符も本文と同じ言語のものを使う。英語のプロンプトに「」が混ざると、
   // そこだけ日本語で応答しはじめる(`render.ts` の `phrases` と同じ理由)。
   const [open, close] = locale === "en" ? ['"', '"'] : ["「", "」"];
 
-  for (const step of steps) {
-    const board = describeBoard(step.board, locale);
-    const line = `${step.index + 1}. ${open}${step.speech}${close}${
+  const all = turns.map((turn) => {
+    if (turn.kind === "student") return `${studentLabel}: ${open}${turn.text}${close}`;
+    const board = describeBoard(turn.step.board, locale);
+    return `${turn.step.index + 1}. ${open}${turn.step.speech}${close}${
       board === null ? "" : ` / ${board}`
     }`;
+  });
+
+  const lines: string[] = [];
+  let length = 0;
+  for (const line of keep === "head" ? all : [...all].reverse()) {
     if (length + line.length > maxLength) break;
-    lines.push(line);
+    if (keep === "head") lines.push(line);
+    else lines.unshift(line);
     length += line.length + 1;
   }
+  return lines;
+}
 
+/**
+ * 送った板書と合間の発話を、先輩が読み返せる形に畳む。
+ * 1行も無ければ**空文字ではなく「無い」と書いた定型句**を返す(上の `NO_LESSON_RECAP`)。
+ *
+ * ロール名は transcript の整形(`formatTranscript`)と同じ語彙にそろえる。
+ * 生徒の行が入るのは、往復した授業の答え(「12だと思う」)を会話側が知らないと、
+ * **同じ質問をもう一度聞く**ところから教え返しが始まってしまうため。
+ */
+export function renderLessonRecap(
+  turns: readonly LessonTurn[],
+  locale: CurriculumLocale,
+  maxLength: number = lessonRecapMaxLength,
+): string {
+  const label = locale === "en" ? "Student" : "ユーザー";
+  const lines = renderTurnLines(turns, locale, label, maxLength, "head");
   return lines.length === 0 ? NO_LESSON_RECAP[locale] : lines.join("\n");
+}
+
+/**
+ * 続きの往復の上限(文字)。教え返しの要約より広く取る。
+ *
+ * こちらは**会話のたび**ではなく授業の往復1回につき1度しか送らないので、
+ * 入力トークンの重みが違う。それでも上限は要る — 板書1枚は最大40手順で、
+ * 上限の `speech` と `tex` で詰まると10KB級になる(`lessonRecapMaxLength` と同じ計算)。
+ */
+export const lessonContinuationRecapMaxLength = 4000;
+
+/**
+ * 2回目以降の授業パスに渡すユーザーメッセージ。
+ *
+ * systemプロンプト(問題・規約・人物像)は毎回同じ正本を使い、**何が起きたかだけ**を
+ * ここで渡す。生徒の答えをsystemに織り込む作りにすると、パスのたびにプロンプトの
+ * 正本と実行時の合成物がずれていく(どの文が正本か分からなくなる)。
+ *
+ * 「答えが合っていたら板書に書いて先へ・詰まっていたらそこを教える」という
+ * **応え方**はここに書かない。それは教え方で、正本(`senpai_board.*.md` の
+ * 「授業は往復する」)の責務。ここは形式(同じ板書に続く・indexは0から・
+ * 繰り返さない)だけを縛る。
+ */
+const CONTINUATION_INSTRUCTION: Record<
+  CurriculumLocale,
+  (recap: string, lastIsStudent: boolean) => string
+> = {
+  ja: (recap, lastIsStudent) =>
+    [
+      "ここまでの授業のやりとりです。番号つきの行はあなたが板書に積んだ手順、「生徒:」の行はそのときの生徒の発話です。",
+      "",
+      recap,
+      "",
+      "この続きから、同じ授業のJSON(`title` / `topic_ids` / `steps`)だけを返してください。",
+      "- `title` と `topic_ids` は前回と同じものを書きます(板書は開き直されず、手順は同じ板書の下に積まれます)。",
+      "- `steps` の `index` はまた 0 から数えます。",
+      "- すでに板書に出した手順を繰り返さない・書き直さないこと。続きだけを書きます。",
+      // 続きを頼む理由は2つある。答えを受けての続きと、途中で切れた説明の続き。
+      // 生徒が何も言っていないのに「直前の生徒の言葉に応えろ」と書くと、
+      // 言われていない言葉への返事を作り始める。
+      lastIsStudent
+        ? "- 最初の手順の `speech` は、直前の生徒の言葉への短い応えから始めてください。"
+        : "- 説明は途中で切れています。最後の手順のすぐ続きから教えてください。",
+    ].join("\n"),
+  en: (recap, lastIsStudent) =>
+    [
+      'This is the lesson so far. Numbered lines are the steps you have already put on the board; "Student:" lines are what the student said in between.',
+      "",
+      recap,
+      "",
+      "Continue from here. Return only the lesson JSON (`title` / `topic_ids` / `steps`).",
+      "- Write the same `title` and `topic_ids` as before (the board is not reopened; new steps stack under the same board).",
+      "- Number `steps` from `index` 0 again.",
+      "- Never repeat or rewrite steps that are already on the board — write only what comes next.",
+      lastIsStudent
+        ? "- Start the first step's `speech` with a short response to what the student just said."
+        : "- The explanation broke off. Pick it up right after the last step.",
+    ].join("\n"),
+};
+
+export function lessonContinuationInstruction(
+  turns: readonly LessonTurn[],
+  locale: CurriculumLocale,
+): string {
+  const label = locale === "en" ? "Student" : "生徒";
+  const lines = renderTurnLines(turns, locale, label, lessonContinuationRecapMaxLength, "tail");
+  return CONTINUATION_INSTRUCTION[locale](lines.join("\n"), turns.at(-1)?.kind === "student");
 }
 
 export type SenpaiConversationInput = {
   context: SessionContext;
   /** 会話の残り時間。締めに入る判断に使う(会話プロンプトの変数)。 */
   remainingSeconds: number;
-  /** 授業で実際にワイヤーへ出した手順。授業前だけ空でよい。 */
-  lesson?: readonly BoardStep[];
+  /** 授業で実際に起きたこと(配送済みの手順と合間の発話)。授業前だけ空でよい。 */
+  lesson?: readonly LessonTurn[];
 };
 
 /**

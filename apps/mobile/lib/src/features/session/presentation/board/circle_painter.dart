@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../../../theme/tokens.dart';
 import '../../domain/board.dart';
 import 'board_coordinate_space.dart';
+import 'board_style.dart';
 
 /// 円(`BoardElement.circle`)を描く。
 class CirclePainter extends CustomPainter {
@@ -36,11 +36,11 @@ class CirclePainter extends CustomPainter {
       canvasCenter,
       radiusPx,
       Paint()
-        ..color = AppColors.ink
+        ..color = BoardStyle.chalk
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2.4,
     );
-    canvas.drawCircle(canvasCenter, 3, Paint()..color = AppColors.ink);
+    canvas.drawCircle(canvasCenter, 3, Paint()..color = BoardStyle.chalk);
 
     final List<String>? labelList = labels;
     if (labelList == null || labelList.isEmpty) return;
@@ -57,7 +57,7 @@ class CirclePainter extends CustomPainter {
         canvasCenter,
         onEdge,
         Paint()
-          ..color = AppColors.inkMuted
+          ..color = BoardStyle.chalkMuted
           ..strokeWidth = 1,
       );
       paintBoardLabel(canvas, labelList[1], onEdge + const Offset(18, -10));

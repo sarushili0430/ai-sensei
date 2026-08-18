@@ -488,6 +488,90 @@ describe("checkLatexSyntax", () => {
 /* 割り込み                                                                    */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * 番を渡したらそこで止まること(`stopAfter`)。
+ *
+ * プロンプトは「質問を出したら、その板書はそこで終える」と書いているが、
+ * **守らせる仕組みが無かった**。守れなかった出力は問いかけごと12手順を
+ * 一息で読み上げ、先輩が自分の質問に自分で答える形になる。
+ */
+describe("板書の配送(番の受け渡し)", () => {
+  const asking = (index: number): unknown => ({
+    index,
+    speech: "a、b、c がどれか、言ってみて。",
+    board: null,
+  });
+
+  it("問いかけの手順まで送ったら、残りの手順は送らない", async () => {
+    const sink = recordingSink();
+    const json = lessonJson([step(0, "x^2 - 3x + 2 = 0"), asking(1), step(2, "D = 1")]);
+
+    const result = await deliverOnce(channelWith(sink), {
+      chunks: stream(slice(json, 5)),
+      stopAfter: (sent) => sent.speech.includes("言ってみて"),
+    });
+
+    // 問いかけそのものは届ける。**その先だけ**を送らない。
+    expect(typesOf(sink.sent)).toEqual(["board_open", "board_step", "board_step", "board_close"]);
+    expect(texOf(sink.sent)).toEqual(["x^2 - 3x + 2 = 0"]);
+    expect(result.step_count).toBe(2);
+    expect(boardChannelLogSchema.safeParse({ messages: sink.sent }).success).toBe(true);
+  });
+
+  /**
+   * **`interrupted` でも `error` でもない。** 生徒が割り込んだのでも壊れたのでもなく、
+   * 先輩が予定どおり番を渡しただけ。ここを `error` にすると、
+   * 正常な授業が全部「板書がとぎれた」として記録される。
+   */
+  it("自分から降りた回は completed(途中で切れた出力と区別する)", async () => {
+    const sink = recordingSink();
+    const json = lessonJson([asking(0), step(1, "D = 1")]);
+
+    const result = await deliverOnce(channelWith(sink), {
+      chunks: stream(slice(json, 3)),
+      stopAfter: () => true,
+    });
+
+    expect(result.reason).toBe("completed");
+    expect(sink.sent.at(-1)).toMatchObject({ type: "board_close", reason: "completed" });
+  });
+
+  it("残りを読まないと決めたら、上流も離す(誰も聞かない出力に払わない)", async () => {
+    const sink = recordingSink();
+    const json = lessonJson([asking(0), step(1, "D = 1"), step(2, "x = 2")]);
+    let released = false;
+
+    async function* watched(): AsyncGenerator<string> {
+      try {
+        for (const part of slice(json, 4)) {
+          await Promise.resolve();
+          yield part;
+        }
+      } finally {
+        released = true;
+      }
+    }
+
+    await deliverOnce(channelWith(sink), { chunks: watched(), stopAfter: () => true });
+    // `releaseIterator` は待たない(best effort)ので、1周まわしてから見る。
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(released).toBe(true);
+  });
+
+  it("渡していない手順では止まらない", async () => {
+    const sink = recordingSink();
+    const json = lessonJson([step(0, "x = 1"), step(1, "y = 2")]);
+
+    const result = await deliverOnce(channelWith(sink), {
+      chunks: stream(slice(json, 6)),
+      stopAfter: (sent) => sent.speech.includes("言ってみて"),
+    });
+
+    expect(result.step_count).toBe(2);
+    expect(result.reason).toBe("completed");
+  });
+});
+
 describe("板書の配送(割り込み)", () => {
   it("割り込んだら interrupted で締め、step_count は送った数と一致する", async () => {
     const sink = recordingSink();
@@ -1235,5 +1319,84 @@ describe("板書の範囲の照合(配送を通して)", () => {
     });
 
     expect(repairHead).not.toHaveBeenCalled();
+  });
+});
+
+describe("figure(作図)", () => {
+  const figureStep = (items: unknown) => ({
+    index: 0,
+    speech: "この図を見て",
+    board: { kind: "figure", items },
+  });
+
+  it("解けた図には svg と alt が入る(先輩は svg を書かない)", () => {
+    const verdict = validateStep(
+      figureStep([
+        { pt: "A", at: [0, 4] },
+        { pt: "B", at: [-3, -2] },
+        { pt: "C", at: [3, -2] },
+        { poly: ["A", "B", "C"] },
+      ]),
+      0,
+      "ja",
+    );
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok) return;
+    const board = verdict.step.board;
+    expect(board?.kind).toBe("figure");
+    if (board?.kind !== "figure") return;
+    expect(board.svg?.startsWith("<svg")).toBe(true);
+    expect(board.alt).toContain("多角形");
+  });
+
+  it("解けない図は落とし、理由をそのまま直しの指示にする", () => {
+    const verdict = validateStep(figureStep([{ circle: "K", center: "O", r: 3 }]), 0, "ja");
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) return;
+    expect(verdict.rejection.kind).toBe("figure");
+    expect(verdict.rejection.detail).toContain("未定義の点");
+    expect(verdict.rejection.guidance).toContain("未定義の点");
+  });
+
+  it("長さのラベルが実際と食い違う図は通さない", () => {
+    const verdict = validateStep(
+      figureStep([
+        { pt: "A", at: [0, 0] },
+        { pt: "B", at: [10, 0] },
+        { seg: ["A", "B"], label: "6" },
+      ]),
+      0,
+      "ja",
+    );
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) return;
+    expect(verdict.rejection.detail).toContain("実際の長さ");
+  });
+
+  it("先輩が svg を書いてきても、契約が受け取らない", () => {
+    const verdict = validateStep(
+      {
+        ...figureStep([{ pt: "A", at: [0, 0] }]),
+        board: {
+          kind: "figure",
+          items: [{ pt: "A", at: [0, 0] }],
+          svg: '<svg onload="alert(1)"/>',
+        },
+      },
+      0,
+      "ja",
+    );
+    // svg 自体は optional なので形は通るが、**こちらが解いた SVG で上書きされる**
+    if (!verdict.ok) return;
+    const board = verdict.step.board;
+    if (board?.kind !== "figure") return;
+    expect(board.svg).not.toContain("onload");
+  });
+
+  it("知らないキーは契約の段で落ちる", () => {
+    const verdict = validateStep(figureStep([{ pt: "A", at: [0, 0], colour: "red" }]), 0, "ja");
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) return;
+    expect(verdict.rejection.kind).toBe("schema");
   });
 });

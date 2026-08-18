@@ -29,6 +29,16 @@ dependencies:
   # 撮影
   camera: ^0.12.0
   image_picker: ^1.1.2
+  # 写真の切り抜き。
+  #
+  # **iOSがSPMに対応しているのが決め手**(`ios/image_cropper/Package.swift`。
+  # 中身は TOCropViewController)。このアプリは Podfile を持たずSPMで組んで
+  # いるので、切り抜きのためだけにCocoaPodsを生やさずに済む。
+  # Androidは AndroidManifest に UCropActivity を1つ足すだけ(権限は増えない)。
+  #
+  # 出力は既定でJPEG(compressQuality 90)なので、`api_client.dart` が
+  # Content-Type を image/jpeg 決め打ちしているのとも噛み合う。
+  image_cropper: ^12.2.1
 
   # リアルタイム会話
   # 板書の受信は Text Streams API(registerTextStreamHandler)に乗っている。
@@ -67,6 +77,11 @@ dependencies:
   # メンテが薄いリスクへの保険は `packages/guardrail` の許可コマンド照合と
   # agent側のKaTeXパースで取る(§3-6の三段構え。このパッケージ自体は縛らない)。
   flutter_math_fork: ^0.7.4
+  # 板書の作図(`figure`)。**SVGはサーバが解いて描いたものだけが届く**
+  # (先輩が書いたSVGはどの経路でも入らない。`packages/contract/src/board.ts`)。
+  # 端末側はこれを描くだけなので、図の語彙が増えてもここは変わらない
+  # (docs/wireframe_board_v2.html D-21)。
+  flutter_svg: ^2.0.10
   # 授業冒頭の短い一言は、同梱アセットだけを再生する。
   # URLを渡さないので通信もTTS従量原価も発生しない(計画書§3-2)。
   just_audio: ^0.10.6

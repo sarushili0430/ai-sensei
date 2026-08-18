@@ -72,8 +72,11 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 /// 自前のペイウォール。
 ///
 /// RevenueCat の Offering が取れていれば、その価格でプランを出す。
-/// 取れていなければ価格を約束しない文言だけを出して、購入ボタンは押せなくする
-/// (押せるのに買えない、が一番わるい)。
+///
+/// 取れていなければ価格を約束しない文言に落とし、**購入ボタン自体を出さない**
+/// (押せるのに買えない、が一番わるい。無効なボタンで「このプランで」と
+/// 言っても、指すプランが画面に無い)。代わりに置くのは取り直す口だけで、
+/// それも鍵のあるビルドに限る。「無料のまま続ける」は常に残す。
 class _ManualPaywall extends ConsumerStatefulWidget {
   const _ManualPaywall();
 
@@ -111,6 +114,22 @@ class _ManualPaywallState extends ConsumerState<_ManualPaywall> {
       case PurchaseFailed(:final PurchaseFailure failure):
         setState(() => _message = failure.message(strings));
     }
+  }
+
+  /// Offering を取り直す。価格が読めていないときの、その場でできること。
+  ///
+  /// 取れれば `entitlement.value.plans` が入り、通常の購入画面に切り替わる。
+  /// 取れなければ [AppStrings.paywallPriceUnavailable] が出たままなので、
+  /// 失敗を別の文言で重ねて言わない。
+  Future<void> _reload() async {
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+
+    await ref.read(entitlementControllerProvider.notifier).refresh();
+    if (!mounted) return;
+    setState(() => _busy = false);
   }
 
   Future<void> _restore() async {
@@ -193,16 +212,27 @@ class _ManualPaywallState extends ConsumerState<_ManualPaywall> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  ChunkyButton(
-                    // トライアルの有無は Offering を読むまで分からない。
-                    // 分かっているときだけ「無料」と書く。無い商品に
-                    // 「7日間無料でためす」と出すと、押した瞬間に課金される。
-                    label: selected != null && selected.hasFreeTrial
-                        ? strings.planFreeTrial(selected.freeTrialDays)
-                        : strings.paywallSubscribe,
-                    // 買えないときは押せなくする。押しても何も起きないボタンは置かない。
-                    onPressed: selected == null || _busy ? null : () => _purchase(selected),
-                  ),
+                  // プランが1枚も無いのに「このプランではじめる」は出さない。
+                  // 指している「このプラン」が画面のどこにも無い。
+                  if (plans.isNotEmpty)
+                    ChunkyButton(
+                      // トライアルの有無は Offering を読むまで分からない。
+                      // 分かっているときだけ「無料」と書く。無い商品に
+                      // 「7日間無料でためす」と出すと、押した瞬間に課金される。
+                      label: selected != null && selected.hasFreeTrial
+                          ? strings.planFreeTrial(selected.freeTrialDays)
+                          : strings.paywallSubscribe,
+                      // 買えないときは押せなくする。押しても何も起きないボタンは置かない。
+                      onPressed: selected == null || _busy ? null : () => _purchase(selected),
+                    )
+                  // 価格が読めていないとき、押せる口は「取り直す」だけ。
+                  // 鍵の無いビルドでは `refresh()` が何もしないので、
+                  // そこでは押しても何も起きないボタンになる — 出さない。
+                  else if (RevenueCatConfig.isConfigured)
+                    ChunkyButton(
+                      label: strings.paywallReload,
+                      onPressed: _busy ? null : _reload,
+                    ),
                   if (_message != null)
                     Padding(
                       padding: const EdgeInsets.only(top: AppSpacing.sm),

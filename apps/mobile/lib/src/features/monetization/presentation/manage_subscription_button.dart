@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../common_widgets/settings_list.dart';
 import '../../../l10n/strings.dart';
 import '../../../routing/routes.dart';
 import '../../../theme/tokens.dart';
@@ -14,22 +15,20 @@ import 'purchase_messages.dart';
 /// 自前で作ると App Review のたびに指摘が出る類の画面なので、
 /// RevenueCat のものをそのまま出す。
 ///
-/// 契約が無い人には出さない。ホームは静かな画面にしておきたいし、
-/// 復元の導線はペイウォール側にある。
+/// **出すかどうかは置く側が決める**([Entitlement.canManageSubscription])。
+/// 契約が無い人には管理する先が無いが、行が自分で消えると、
+/// [SettingsGroup] の中にその行ぶんの区切りの線だけが残る。
 class ManageSubscriptionButton extends ConsumerWidget {
   const ManageSubscriptionButton({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AppStrings strings = AppStrings.of(context);
-    final Entitlement? entitlement = ref.watch(entitlementControllerProvider).value;
 
-    if (entitlement == null || !entitlement.canManageSubscription) {
-      return const SizedBox.shrink();
-    }
-
-    return TextButton.icon(
-      onPressed: () async {
+    return SettingsTile(
+      title: strings.manageSubscription,
+      trailing: SettingsTile.icon(Icons.chevron_right),
+      onTap: () async {
         final bool shown =
             await ref.read(entitlementControllerProvider.notifier).presentCustomerCenter();
         if (shown || !context.mounted) return;
@@ -37,13 +36,6 @@ class ManageSubscriptionButton extends ConsumerWidget {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(strings.errorGeneric)));
       },
-      icon: const Icon(Icons.settings_outlined, size: 18),
-      label: Text(strings.manageSubscription, style: Theme.of(context).textTheme.bodySmall),
-      style: TextButton.styleFrom(
-        foregroundColor: AppColors.inkMuted,
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-        visualDensity: VisualDensity.compact,
-      ),
     );
   }
 }
@@ -53,6 +45,10 @@ class ManageSubscriptionButton extends ConsumerWidget {
 /// ペイウォールにも同じものがあるが、**契約していない人にはペイウォールしか
 /// 出口が無い**状態にはしたくない。機種変更した人が最初に探すのは設定なので、
 /// ここにも置く(App Review でも復元導線は見られる)。
+///
+/// 鍵の無いビルドで押しても何も起きないが、**行を落とすのは置く側**
+/// ([RevenueCatConfig.isConfigured] で「契約」の見出しごと出さない)。
+/// ここで消すと、[SettingsGroup] に区切りの線だけが残る。
 class RestorePurchasesButton extends ConsumerStatefulWidget {
   const RestorePurchasesButton({super.key});
 
@@ -92,18 +88,16 @@ class _RestorePurchasesButtonState extends ConsumerState<RestorePurchasesButton>
   @override
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
-    // 鍵の無いビルドでは押しても何も起きないので、行ごと出さない。
-    if (!RevenueCatConfig.isConfigured) return const SizedBox.shrink();
 
-    return ListTile(
-      title: Text(strings.paywallRestore, style: Theme.of(context).textTheme.bodyMedium),
+    return SettingsTile(
+      title: strings.paywallRestore,
       trailing: _busy
           ? const SizedBox(
-              width: 18,
-              height: 18,
+              width: SettingsTile.iconSize,
+              height: SettingsTile.iconSize,
               child: CircularProgressIndicator(strokeWidth: 2),
             )
-          : const Icon(Icons.refresh, size: 18, color: AppColors.inkMuted),
+          : SettingsTile.icon(Icons.refresh),
       onTap: _busy ? null : _restore,
     );
   }
@@ -201,6 +195,10 @@ class _StateBadge extends StatelessWidget {
 /// 塗りにすると厚いボタンと同じ重さになって、押すもののように見えてしまう。
 ///
 /// 押すと設定へ飛ぶ。契約の状態と更新日はそこ([SubscriptionStatusCard])にある。
+///
+/// **`push` ではなくタブの切り替え。** 設定は寄り道ではなく常設の枝なので、
+/// 積んでしまうと「設定を見ているのにホームが選ばれている」タブバーができる。
+/// 出口は戻るボタンではなく、同じ下部ナビでホームを選ぶこと。
 class PremiumChip extends ConsumerWidget {
   const PremiumChip({super.key});
 
@@ -213,7 +211,7 @@ class PremiumChip extends ConsumerWidget {
       button: true,
       label: strings.premiumBadge,
       child: InkWell(
-        onTap: () => context.push(AppRoute.settings.path),
+        onTap: () => context.go(AppRoute.settings.path),
         borderRadius: BorderRadius.circular(AppRadius.chip),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 2),

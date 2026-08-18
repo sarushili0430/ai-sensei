@@ -17,6 +17,10 @@
  * | `lesson_empty`               | 板書が1行も出せなかった。**8/16のゲートを見る指標** |
  * | `board_publisher_missing`    | Text Streams の送り口が無い。板書なしで会話だけ続ける |
  * | `say_failed`                 | 読み上げに失敗した(セッションが閉じかけている等) |
+ * | `voice_metrics`              | SDKが集めた遅延・音声時間・割り込み数。本文は出さない |
+ * | `user_turn_transcribed`      | 生徒の1ターンが確定した(interim回数と文字数だけ) |
+ * | `agent_false_interruption`   | 誤割り込みを自動再開できたか |
+ * | `overlapping_speech`         | 発話の重なりを検出した(生音声と確率列は出さない) |
  * | `conversation_ended`         | 終わり方(completed / timeout / user_left / error) |
  * | `karte_built`                | カルテができた(穴の数と所要時間) |
  * | `karte_failed`               | LLMかスキーマで落ちた。空のカルテを送る |

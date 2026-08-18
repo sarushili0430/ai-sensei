@@ -15,6 +15,7 @@
     "generate:schema": "node --experimental-strip-types src/generate-json-schema.ts"
   },
   "dependencies": {
+    "@ai-sensei/figure": "workspace:*",
     "zod": "^3.24.1",
     "zod-to-json-schema": "^3.24.1"
   }

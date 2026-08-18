@@ -426,6 +426,39 @@
                           "rows"
                         ],
                         "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "figure"
+                          },
+                          "items": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": {}
+                            },
+                            "minItems": 1,
+                            "maxItems": 80
+                          },
+                          "svg": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 12000
+                          },
+                          "alt": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "items"
+                        ],
+                        "additionalProperties": false
                       }
                     ]
                   },
@@ -433,6 +466,9 @@
                     "type": "null"
                   }
                 ]
+              },
+              "awaits_student": {
+                "type": "boolean"
               }
             },
             "required": [
