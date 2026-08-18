@@ -10,6 +10,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+// `ImageSource.gallery.index` を綴らずに書くため。**どちらが開いたかは
+// この番号でしか確かめられない**(返ってくる写真は同じなので)。
+import 'package:image_picker/image_picker.dart';
 
 import 'support/harness.dart';
 
@@ -28,18 +31,44 @@ final Uint8List _onePixelPng = base64Decode(
 /// カメラは `plugins.flutter.io/image_picker` を差し替えて、撮ったことにする。
 void main() {
   const MethodChannel pickerChannel = MethodChannel('plugins.flutter.io/image_picker');
+
+  /// 切り抜きのネイティブUI(uCrop / TOCropViewController)も同じやり方で差し替える。
+  const MethodChannel cropperChannel = MethodChannel('plugins.hunghd.vn/image_cropper');
   const AppStrings ja = AppStrings(Locale('ja'));
 
   late Directory tempDir;
   late List<String> pickedPaths;
 
-  /// カメラを閉じるまでに撮らずに帰る回数。0なら毎回撮る。
+  /// 撮ったのか選んだのか(`ImageSource.index`。0=カメラ / 1=アルバム)。
+  ///
+  /// **経路の取り違えは画面から見えない。** アルバムを押したのにカメラが
+  /// 開いていても、返ってくる写真は同じなので画面のテストはすべて通ってしまう。
+  late List<int> pickedSources;
+
+  /// 切り抜いた結果のパス。**撮った写真とは別のファイルにする** —
+  /// 同じものを返すと、切り抜きが枠に入ったかどうかが見えない。
+  late List<String> croppedPaths;
+
+  /// カメラ/アルバムを閉じるまでに撮らずに帰る回数。0なら毎回撮る。
   late int cancelCount;
+
+  /// 切り抜きをやめる回数。0なら毎回切り抜く。
+  late int cropCancelCount;
+
+  /// 切り抜きを開いた回数(やめた分も数える)。
+  ///
+  /// **スピナーの出現では待てない。** 差し替えた切り抜きは一瞬で返るので、
+  /// `_picking` が立ってから寝るまでのあいだに1フレームも挟まらないことがある。
+  late int cropCalls;
 
   setUp(() {
     tempDir = Directory.systemTemp.createTempSync('capture_screen_test');
     pickedPaths = <String>[];
+    pickedSources = <int>[];
+    croppedPaths = <String>[];
     cancelCount = 0;
+    cropCancelCount = 0;
+    cropCalls = 0;
 
     // カメラを開くたびに別のファイルを返す(ノートと問題を取り違えないため)。
     //
@@ -48,6 +77,11 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
       pickerChannel,
       (MethodCall call) async {
+        // **やめた場合も、何を開いたかは記録する。** アルバムを押した人に
+        // カメラの文言を返していないかは、ここでしか確かめられない。
+        pickedSources.add(
+          (call.arguments as Map<Object?, Object?>)['source']! as int,
+        );
         // 撮らずに帰る(image_picker は null を返す)。
         if (cancelCount > 0) {
           cancelCount -= 1;
@@ -60,6 +94,22 @@ void main() {
       },
     );
 
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      cropperChannel,
+      (MethodCall call) async {
+        cropCalls += 1;
+        // 切り抜きをやめる(image_cropper も null を返す)。
+        if (cropCancelCount > 0) {
+          cropCancelCount -= 1;
+          return null;
+        }
+        final File file = File('${tempDir.path}/cropped${croppedPaths.length}.jpg')
+          ..writeAsBytesSync(_onePixelPng);
+        croppedPaths.add(file.path);
+        return file.path;
+      },
+    );
+
     // 許可の照会は差し替えないと返ってこない(理由は `mockPermissionHandler`)。
     mockPermissionHandler();
   });
@@ -67,6 +117,8 @@ void main() {
   tearDown(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(pickerChannel, null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(cropperChannel, null);
     tempDir.deleteSync(recursive: true);
   });
 
@@ -172,17 +224,39 @@ void main() {
     );
   }
 
-  /// ノートの枠から撮る。**画面に入っただけではカメラが開かない**ので、
-  /// 写真が要るテストはここを通る。
-  Future<void> takeNotes(WidgetTester tester) async {
-    await tester.tap(find.text(ja.captureTakeNotes));
+  /// 枠をタップして、シートから入れ方を選ぶ。
+  ///
+  /// **枠のタップではカメラが開かない。** 開くのは入れ方のシートで、カメラは
+  /// その1マス目。アルバムの導線を置ける場所がここしか無かったので、撮る人にも
+  /// 1タップ増えている(理由は `capture_screen.dart` のコメント)。
+  Future<void> tapSlot(WidgetTester tester, String slotLabel, String action) async {
+    await tester.tap(find.text(slotLabel));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(action));
     await tester.pumpAndSettle();
   }
 
+  /// ノートの枠から撮る。**画面に入っただけではカメラが開かない**ので、
+  /// 写真が要るテストはここを通る。
+  Future<void> takeNotes(WidgetTester tester) =>
+      tapSlot(tester, ja.captureTakeNotes, ja.capturePickCamera);
+
   /// 問題の枠から撮る。ノートが無い生徒はこちらだけを通る。
-  Future<void> takeProblem(WidgetTester tester) async {
-    await tester.tap(find.text(ja.captureAddProblem));
-    await tester.pumpAndSettle();
+  Future<void> takeProblem(WidgetTester tester) =>
+      tapSlot(tester, ja.captureAddProblem, ja.capturePickCamera);
+
+  /// 条件が満たされるまで実時間で進める。
+  ///
+  /// **画面の変化では待てない場面がある。** 切り抜きは戻ってきても枠の見た目が
+  /// 変わらない(サムネイルが差し替わるだけ)ので、結果そのものを待つ。
+  /// 実時間を挟む理由は [pumpUntil] と同じ。
+  Future<void> pumpUntilTrue(WidgetTester tester, bool Function() done) async {
+    for (int i = 0; i < 100; i++) {
+      if (done()) return;
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    fail('条件が満たされませんでした');
   }
 
   /// 「授業をはじめる」を押して、解析が返るまで進める。
@@ -481,5 +555,115 @@ void main() {
     expect(find.text(serverMessage), findsNothing);
     expect(find.text(ja.errorRetry), findsNothing);
     expect(find.text(ja.paywallCta), findsNothing);
+  });
+
+  /// **端末の写真をアプリ内に並べる案は採っていない。** それには Android で
+  /// `READ_MEDIA_IMAGES`(広いアクセス)が要り、Google Play の Photo & Video
+  /// Permissions ポリシーの申告・審査対象になる。マス目はOSのピッカーに任せ、
+  /// 撮影ボタンだけ手前に出す形にしてある(理由は `capture_screen.dart`)。
+  group('アルバムから入れる', () {
+    testWidgets('枠をタップすると、撮るとアルバムが並ぶ', (WidgetTester tester) async {
+      await pumpCapture(tester);
+      await tester.tap(find.text(ja.captureTakeNotes));
+      await tester.pumpAndSettle();
+
+      expect(find.text(ja.capturePickCamera), findsOneWidget);
+      expect(find.text(ja.capturePickGallery), findsOneWidget);
+      // 空の枠に切り抜きは出さない(押せない操作が増えるだけ)。
+      expect(find.text(ja.captureCrop), findsNothing);
+      // **どちらの枠を触っているかを出す。** シートが枠を隠すので、
+      // 名前が無いと取り違えたまま入れられる。
+      expect(find.text(ja.capturePhotoNotes), findsWidgets);
+      // カメラはまだ開いていない。並べて見せているだけ。
+      expect(pickedSources, isEmpty);
+    });
+
+    /// **経路の取り違えは画面から見えない。** 返ってくる写真は同じなので、
+    /// アルバムを押してカメラが開いていても、見た目のテストは全部通る。
+    testWidgets('アルバムを選ぶと、カメラではなくアルバムが開く', (WidgetTester tester) async {
+      await pumpCapture(tester);
+      await tapSlot(tester, ja.captureAddProblem, ja.capturePickGallery);
+
+      expect(pickedSources, <int>[ImageSource.gallery.index]);
+      expect(pickedPaths, hasLength(1));
+    });
+
+    /// アルバムから入れても**枠の意味は変わらない。**
+    /// 問題の紙面がノート枠に入ると、他者の著作物がR2に保存される。
+    testWidgets('アルバムから入れた問題も、problem_photo として送られる',
+        (WidgetTester tester) async {
+      final List<http.BaseRequest> calls = <http.BaseRequest>[];
+      await pumpCapture(tester, calls: calls);
+      await tapSlot(tester, ja.captureAddProblem, ja.capturePickGallery);
+      await startLesson(tester);
+
+      final String body =
+          utf8.decode((calls.single as http.Request).bodyBytes, allowMalformed: true);
+      expect(body, contains('name="problem_photo"'));
+      expect(body, isNot(contains('name="photo"')));
+    });
+  });
+
+  group('切り抜き', () {
+    /// 切り抜きを開いて、戻ってくるまで進める。
+    ///
+    /// **`pumpAndSettle` では待てない。** 待っているあいだ画面に出ているのは
+    /// 終わらないスピナーで、切り抜き自体も実ファイルを触る([pumpUntil])。
+    Future<void> cropFilledSlot(WidgetTester tester) async {
+      await tester.tap(find.text(ja.captureChangePhoto));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(ja.captureCrop));
+      await pumpUntilTrue(tester, () => cropCalls > 0);
+      // 結果が枠に入るまで(スピナーが出ていれば、それが消えるまで)。
+      await pumpUntilTrue(
+        tester,
+        () => find.byType(CircularProgressIndicator).evaluate().isEmpty,
+      );
+      await tester.pumpAndSettle();
+    }
+
+    /// **既知の失敗モードへの手当て。** `contract` の `problemTextMaxLength` が
+    /// 「ページ全体を写すと、章末の解答や解説まで問題文として流れ込み、先輩が
+    /// 答えを読み上げるところから授業が始まってしまう」と書いていて、600字の上限は
+    /// その安全弁でしかなかった。**それでも促しに留める。**
+    testWidgets('問題が入っている人にだけ、切り抜きを促す', (WidgetTester tester) async {
+      await pumpCapture(tester);
+      expect(find.text(ja.captureCropHint), findsNothing);
+
+      await takeProblem(tester);
+
+      expect(find.text(ja.captureCropHint), findsOneWidget);
+      final ChunkyButton button = tester.widget(find.byType(ChunkyButton));
+      expect(button.onPressed, isNotNull, reason: '切り抜かなくても始められる');
+    });
+
+    testWidgets('切り抜くと、切り抜いたほうが枠に入って送られる', (WidgetTester tester) async {
+      final List<http.BaseRequest> calls = <http.BaseRequest>[];
+      await pumpCapture(tester, calls: calls);
+      await takeProblem(tester);
+
+      await cropFilledSlot(tester);
+      expect(croppedPaths, hasLength(1));
+
+      await startLesson(tester);
+      final String body =
+          utf8.decode((calls.single as http.Request).bodyBytes, allowMalformed: true);
+      // 送られたのは切り抜いたほう。元の写真ではない。
+      expect(body, contains('filename="${croppedPaths.single.split('/').last}"'));
+      expect(body, isNot(contains('filename="${pickedPaths.single.split('/').last}"')));
+    });
+
+    /// **やめても写真は残す。** 捨てると撮り直しになる。
+    testWidgets('切り抜きをやめても、元の写真は枠に残る', (WidgetTester tester) async {
+      cropCancelCount = 1;
+      await pumpCapture(tester);
+      await takeProblem(tester);
+
+      await cropFilledSlot(tester);
+
+      expect(croppedPaths, isEmpty);
+      final ChunkyButton button = tester.widget(find.byType(ChunkyButton));
+      expect(button.onPressed, isNotNull, reason: '写真が残っているので始められる');
+    });
   });
 }

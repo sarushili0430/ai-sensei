@@ -262,6 +262,37 @@ class AppStrings {
   String get captureAddProblem => _pick('問題を撮る', 'Take the problem');
   String get captureRetake => _pick('撮り直す', 'Retake');
 
+  /// 写真が入っている枠の操作名。**「撮り直す」ではない。**
+  ///
+  /// タップで開くシートには撮り直す・アルバム・切り抜くが並ぶので、撮ることだけを
+  /// 名指しすると、**切り抜きがどこからも見えなくなる**([captureCropHint] が
+  /// 促している操作なのに、入口の名前が撮影だけを指すことになる)。
+  String get captureChangePhoto => _pick('写真を変える', 'Change photo');
+
+  /// 写真の入れ方を選ぶシートの中身。**枠をタップすると下から出る。**
+  ///
+  /// ## 端末の写真をアプリ内に並べない理由
+  ///
+  /// 「マス目に写真が並んで、1マス目が撮影ボタン」という形にするには、端末の
+  /// 写真ライブラリをアプリ側で読む必要がある。Androidではそれが
+  /// `READ_MEDIA_IMAGES` = 広いアクセス権限で、Google Play の
+  /// Photo & Video Permissions ポリシー(2025-05-28 全面適用)の対象になる。
+  /// 通す条件は「システムのピッカーでは**コア機能が提供できない**」ことで、
+  /// **自前ピッカーを持っていること自体は資格にならないと条文が名指ししている。**
+  /// このアプリがPhoto Pickerでできないのは「見た目」と「1マス目の撮影ボタン」
+  /// だけで、どちらも授業の成立には関わらない — 申告に書ける材料が無い。
+  ///
+  /// なので**マス目はOSのピッカーに任せ、撮影ボタンだけ手前に出す。**
+  /// [capturePickGallery] を押した先はOSのピッカーで、あれ自体が写真のマス目。
+  /// 権限のダイアログも出ない。
+  String get capturePickCamera => _pick('撮る', 'Camera');
+  String get capturePickGallery => _pick('アルバム', 'Photos');
+
+  /// 切り抜き。**解析の前にしか出さない。**
+  /// あとから差し替えても写真は読み直されないので([CaptureController.setPhoto])、
+  /// 出したところで効かない操作になる。
+  String get captureCrop => _pick('切り抜く', 'Crop');
+
   /// §4-1 の言い回しそのまま。**ヒントであって要求ではない。**
   /// 1枚に問題とノートの両方が写ることが多いので、2枚必須にすると
   /// 撮影の摩擦だけが増える。
@@ -271,6 +302,22 @@ class AppStrings {
   String get captureProblemHint => _pick(
         '問題も写っていると、先輩が迷子になりません',
         "If the problem is in the shot too, your senpai won't get lost",
+      );
+
+  /// 問題の写真が入っている人に出すヒント。[captureProblemHint] と入れ替わる。
+  ///
+  /// **既知の失敗モードに、ここで初めて手が届く。**`contract` の
+  /// `problemTextMaxLength` がこう書いている —「ページ全体を写すと、章末の
+  /// 解答や解説まで問題文として流れ込み、先輩が答えを読み上げるところから
+  /// 授業が始まってしまう」。600字の上限はそのための**安全弁**で、
+  /// 根本の対策ではなかった。切り抜きがその対策になる。
+  ///
+  /// **それでも促しに留める。** 切り抜かなくても授業は始められる
+  /// (この画面の他のヒントと同じ扱い)。要求にすると、1枚に問題が1つしか
+  /// 写っていない人にも操作が増える。
+  String get captureCropHint => _pick(
+        '解く問題だけを切り抜くと、先輩が別の問題を読みません',
+        "Crop to just the problem you're solving so your senpai doesn't read a different one",
       );
 
   /// 枠を分けている理由を、そのまま利点として書く。
@@ -299,9 +346,29 @@ class AppStrings {
       );
   String get captureOpenSettings => _pick('設定をひらく', 'Open Settings');
 
+  /// アルバムを断られたとき。**カメラの文言と混ぜない。**
+  ///
+  /// 断られたのは写真へのアクセスなのに「カメラを使えませんでした」と返すと、
+  /// 設定アプリのどこを開けばいいのか分からなくなる。
+  /// (iOSは `requestFullMetadata: false` で許可を要求しない経路に乗せてあるので
+  /// 普段は出ないが、端末やOSの版によっては来る。)
+  String get capturePhotosDenied => _pick(
+        'アルバムを開けませんでした。設定アプリから写真へのアクセスを許可すると、選べるようになります。',
+        "We couldn't open your photos. Allow photo access in Settings and you'll be able to pick one.",
+      );
+
   /// カメラを開けなかったとき(許可はあるが端末側の理由)。許可の話と混ぜない。
   String get captureCameraFailed => _pick('カメラを開けませんでした。もう一度おためしください。',
       "We couldn't open the camera. Please try again.");
+
+  /// アルバムを開けなかったとき(許可はあるが端末側の理由)。
+  String get capturePhotosFailed => _pick('アルバムを開けませんでした。もう一度おためしください。',
+      "We couldn't open your photos. Please try again.");
+
+  /// 切り抜きを開けなかったとき。**撮り直しに引き戻さない** —
+  /// 写真はもう入っているので、失敗したのは切り抜きだけ。
+  String get captureCropFailed => _pick('切り抜けませんでした。もう一度おためしください。',
+      "We couldn't crop the photo. Please try again.");
 
   // --- 会話 ---
   String get sessionListening => _pick('聞いています', 'Listening');
