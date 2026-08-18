@@ -107,6 +107,22 @@ fvm flutter test
 丸ゴシック(SIL OFL 1.1)を `assets/fonts/` に置き、テスト側で読み込んでから
 描画しています。読み込まないとAhem(四角)で描画され、字形の崩れに気づけません。
 
+## 部品カタログ(Widgetbook)
+
+見た目の部品を1つずつ取り出して、押した状態・日英・文字サイズ・「アニメーションを
+減らす」設定を**手で切り替えながら**見る場所です。`widgetbook/` に**別パッケージ**
+として置いてあります(端末フレームの画像アセットを本体の配布物に載せないため)。
+
+```bash
+cd widgetbook
+fvm flutter pub get
+fvm dart run build_runner build
+fvm flutter run -d chrome
+```
+
+画面まるごとの回帰は golden test の担当なので、**カタログに画面は並べません。**
+詳しくは [`widgetbook/README.md`](widgetbook/README.md)。
+
 ## ビルドと配布
 
 `ios/` と `android/` はコミットしています。
