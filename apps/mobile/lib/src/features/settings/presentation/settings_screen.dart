@@ -6,9 +6,11 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../../api/device_id.dart';
 import '../../../common_widgets/external_link.dart';
+import '../../../common_widgets/settings_list.dart';
 import '../../../l10n/strings.dart';
 import '../../../theme/tokens.dart';
-import '../../monetization/application/entitlement_controller.dart' show RevenueCatConfig;
+import '../../monetization/application/entitlement_controller.dart'
+    show Entitlement, RevenueCatConfig, entitlementControllerProvider;
 import '../../monetization/presentation/manage_subscription_button.dart';
 import '../../notifications/application/push_controller.dart';
 import '../../notifications/data/push_repository.dart';
@@ -27,6 +29,10 @@ import '../data/support_links.dart';
 /// **AppBar は持たない。** ここは常設タブの根で、画面の名前は下部ナビが
 /// 「設定」と出している。AppBar にも同じ語を置くと、ひとつの画面に同じ
 /// 「設定」が2回出る(ホームも同じ理由でタイトルを持たない)。
+///
+/// **並べ方は [SettingsSection] にまかせる。** 直接 [ListTile] を置くと
+/// 素の余白(16)で並び、見出しのガター(24)と 8px ずれる。ずれた行と
+/// ずれていない行が交互に来るので、字下げが揃っていないことだけが目立つ。
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
@@ -37,36 +43,57 @@ class SettingsScreen extends ConsumerWidget {
     return Scaffold(
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+          padding: const EdgeInsets.only(top: AppSpacing.lg, bottom: AppSpacing.xl),
           children: <Widget>[
             // 鍵の無いビルドでは中身が全部消えるので、見出しごと出さない。
-            if (RevenueCatConfig.isConfigured) ...<Widget>[
-              _Section(title: strings.settingsSectionAccount),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                child: SubscriptionStatusCard(),
-              ),
-              const Align(alignment: Alignment.centerLeft, child: ManageSubscriptionButton()),
-              const RestorePurchasesButton(),
-            ],
-            _Section(title: strings.settingsSectionSchoolStage),
-            const _SchoolStageRows(),
-            _Section(title: strings.settingsSectionNotifications),
-            const _NotificationRow(),
-            _Section(title: strings.settingsSectionAbout),
-            if (SupportLinks.hasSupportEmail) const _ReportRow(),
-            if (SupportLinks.hasPrivacyPolicy)
-              _LinkRow(
-                label: strings.settingsPrivacy,
-                url: Uri.parse(SupportLinks.privacyPolicyUrl),
-              ),
-            if (SupportLinks.hasTerms)
-              _LinkRow(label: strings.settingsTerms, url: Uri.parse(SupportLinks.termsUrl)),
-            const _VersionRow(),
-            const _DeviceIdRow(),
+            if (RevenueCatConfig.isConfigured) const _AccountSection(),
+            const _SchoolStageSection(),
+            SettingsSection(
+              title: strings.settingsSectionNotifications,
+              children: const <Widget>[_NotificationRow()],
+            ),
+            SettingsSection(
+              title: strings.settingsSectionAbout,
+              children: <Widget>[
+                // 出ない行は**ここで落とす**。行に自分で消えさせると、
+                // その行ぶんの区切りの線だけがまとまりの中に残る。
+                if (SupportLinks.hasSupportEmail) const _ReportRow(),
+                if (SupportLinks.hasPrivacyPolicy)
+                  _LinkRow(
+                    label: strings.settingsPrivacy,
+                    url: Uri.parse(SupportLinks.privacyPolicyUrl),
+                  ),
+                if (SupportLinks.hasTerms)
+                  _LinkRow(label: strings.settingsTerms, url: Uri.parse(SupportLinks.termsUrl)),
+                const _VersionRow(),
+                const _DeviceIdRow(),
+              ],
+            ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 契約。状態のカードと、その下に管理・復元の2行。
+class _AccountSection extends ConsumerWidget {
+  const _AccountSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AppStrings strings = AppStrings.of(context);
+    final Entitlement? entitlement = ref.watch(entitlementControllerProvider).value;
+
+    return SettingsSection(
+      title: strings.settingsSectionAccount,
+      // 契約していない人に状態カードは出さない(出すと売り込みに読める)。
+      // 出ないものを `leading` に渡すと、その下に空きだけが残る。
+      leading: (entitlement?.isPremium ?? false) ? const SubscriptionStatusCard() : null,
+      children: <Widget>[
+        if (entitlement?.canManageSubscription ?? false) const ManageSubscriptionButton(),
+        const RestorePurchasesButton(),
+      ],
     );
   }
 }
@@ -79,36 +106,30 @@ class SettingsScreen extends ConsumerWidget {
 ///
 /// スイッチではなく2行にしてあるのは、オン/オフではなく**どちらかを選ぶ**もの
 /// だから。「中学生オフ = 高校生」は読めない。
-class _SchoolStageRows extends ConsumerWidget {
-  const _SchoolStageRows();
+class _SchoolStageSection extends ConsumerWidget {
+  const _SchoolStageSection();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AppStrings strings = AppStrings.of(context);
     final SchoolStage current = ref.watch(schoolStageControllerProvider);
 
-    Widget row(SchoolStage stage, String label) {
+    SettingsTile row(SchoolStage stage, String label) {
       final bool selected = current == stage;
-      return ListTile(
-        title: Text(label),
-        trailing: selected ? const Icon(Icons.check, color: AppColors.blue) : null,
+      return SettingsTile(
+        title: label,
         selected: selected,
+        trailing: selected
+            ? const Icon(Icons.check, size: SettingsTile.iconSize, color: AppColors.blue)
+            : null,
         onTap: () => ref.read(schoolStageControllerProvider.notifier).select(stage),
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return SettingsSection(
+      title: strings.settingsSectionSchoolStage,
+      note: strings.settingsSchoolStageHint,
       children: <Widget>[
-        // **ヒントは行ではなく、選択肢の手前に置く。** 片方の行に付けると
-        // 「選ばれているほうの説明」に読め、選び直すたびに説明が動いて見える。
-        Padding(
-          padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.sm),
-          child: Text(
-            strings.settingsSchoolStageHint,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ),
         row(SchoolStage.juniorHigh, strings.settingsSchoolStageJuniorHigh),
         row(SchoolStage.highSchool, strings.settingsSchoolStageHighSchool),
       ],
@@ -128,13 +149,12 @@ class _NotificationRow extends ConsumerWidget {
     final AppStrings strings = AppStrings.of(context);
     final PushPermission permission = ref.watch(pushPermissionControllerProvider);
 
-    return ListTile(
-      title: Text(strings.settingsNotifications),
-      subtitle: Text(
-        permission.granted ? strings.settingsNotificationsOn : strings.settingsNotificationsOff,
-        style: Theme.of(context).textTheme.bodySmall,
-      ),
-      trailing: const Icon(Icons.chevron_right, color: AppColors.inkMuted),
+    return SettingsTile(
+      title: strings.settingsNotifications,
+      subtitle: permission.granted
+          ? strings.settingsNotificationsOn
+          : strings.settingsNotificationsOff,
+      trailing: SettingsTile.icon(Icons.chevron_right),
       onTap: openAppSettings,
     );
   }
@@ -148,10 +168,10 @@ class _ReportRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final AppStrings strings = AppStrings.of(context);
 
-    return ListTile(
-      title: Text(strings.settingsReport),
-      subtitle: Text(strings.settingsReportBody, style: Theme.of(context).textTheme.bodySmall),
-      trailing: const Icon(Icons.mail_outline, color: AppColors.inkMuted),
+    return SettingsTile(
+      title: strings.settingsReport,
+      subtitle: strings.settingsReportBody,
+      trailing: SettingsTile.icon(Icons.mail_outline),
       onTap: () async {
         final PackageInfo info = await PackageInfo.fromPlatform();
         final Uri mail = SupportLinks.reportMail(
@@ -174,9 +194,9 @@ class _LinkRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      title: Text(label),
-      trailing: const Icon(Icons.open_in_new, size: 18, color: AppColors.inkMuted),
+    return SettingsTile(
+      title: label,
+      trailing: SettingsTile.icon(Icons.open_in_new),
       onTap: () => openExternalLink(context, url),
     );
   }
@@ -192,8 +212,8 @@ class _VersionRow extends StatelessWidget {
       future: PackageInfo.fromPlatform(),
       builder: (BuildContext context, AsyncSnapshot<PackageInfo> snapshot) {
         final PackageInfo? info = snapshot.data;
-        return ListTile(
-          title: Text(strings.settingsVersion, style: Theme.of(context).textTheme.bodyMedium),
+        return SettingsTile(
+          title: strings.settingsVersion,
           trailing: Text(
             info == null ? '—' : '${info.version} (${info.buildNumber})',
             style: Theme.of(context).textTheme.bodySmall,
@@ -213,10 +233,10 @@ class _DeviceIdRow extends ConsumerWidget {
     final AppStrings strings = AppStrings.of(context);
     final String deviceId = ref.watch(deviceIdProvider);
 
-    return ListTile(
-      title: Text(strings.settingsDeviceId, style: Theme.of(context).textTheme.bodyMedium),
-      subtitle: Text(deviceId, style: Theme.of(context).textTheme.bodySmall),
-      trailing: const Icon(Icons.copy_outlined, size: 18, color: AppColors.inkMuted),
+    return SettingsTile(
+      title: strings.settingsDeviceId,
+      subtitle: deviceId,
+      trailing: SettingsTile.icon(Icons.copy_outlined),
       onTap: () async {
         await Clipboard.setData(ClipboardData(text: deviceId));
         if (!context.mounted) return;
@@ -226,26 +246,3 @@ class _DeviceIdRow extends ConsumerWidget {
     );
   }
 }
-
-class _Section extends StatelessWidget {
-  const _Section({required this.title});
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.lg,
-        AppSpacing.lg,
-        AppSpacing.lg,
-        AppSpacing.sm,
-      ),
-      child: Text(
-        title,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(color: AppColors.inkMuted),
-      ),
-    );
-  }
-}
-
