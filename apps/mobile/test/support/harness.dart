@@ -152,6 +152,14 @@ const Size phoneSurface = Size(393, 852);
 /// [phoneSurface] で収まっても、ここで溢れる画面がある。
 const Size smallPhoneSurface = Size(375, 667);
 
+/// いちばん広い実機(iPad 級)。
+///
+/// **狭さの反対側でも壊れる。** 幅がぴったりで降りてくる並び
+/// (`CrossAxisAlignment.stretch`)の中では、寸法を持っているつもりの部品が
+/// 画面幅まで引き伸ばされる。狭い端末では気づけない壊れ方なので、
+/// 「大きくなってはいけないもの」はこの寸法で見る。
+const Size tabletSurface = Size(1024, 1366);
+
 /// 実フォントを読み込む。
 ///
 /// widget test は既定でAhem(四角)で描画するので、そのままgoldenを撮ると
