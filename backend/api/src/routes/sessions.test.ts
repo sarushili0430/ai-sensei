@@ -7,6 +7,7 @@ import {
   startSessionResponseSchema,
 } from "@ai-sensei/contract";
 import { localeOfTopicId } from "@ai-sensei/curriculum";
+import { checkProblemText } from "@ai-sensei/guardrail";
 import { formatProblemText, formatVisibleWork, getPrompt } from "@ai-sensei/prompts";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../app.ts";
@@ -981,6 +982,36 @@ describe("問題文の手入力", () => {
     expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
       "problem_unreadable",
     );
+  });
+
+  /**
+   * **写真のときより厳しい一段が、この経路に繋がっている。**
+   *
+   * 裸の `Answer:` を通しているのは「紙面には解く前から空欄の解答欄が
+   * 印刷されている」からで、その理由は自分で打ち込んだ本文には立たない。
+   * ここが繋がっていないと、`答え: 4` がそのまま先輩に渡る。
+   */
+  it("打ち込まれた答えも受け取らない(写真の側は通す形でも)", async () => {
+    const withAnswer = "x を求めよ。 x + 3 = 7\n答え: 4";
+    // 写真の書き起こしとしては通る形。**手入力だから落ちる。**
+    expect(checkProblemText(withAnswer).ok).toBe(true);
+
+    const session = await unreadSession();
+    const response = await patchProblem(session.session_id, { text: withAnswer });
+
+    expect(response.status).toBe(422);
+    const stored = await services.repository.getSession(session.session_id);
+    expect(stored?.context?.problem ?? null).toBeNull();
+  });
+
+  // 空欄の解答欄までは弾かない(「答えがあるか」を見ていて、体裁は見ていない)。
+  it("空欄の解答欄が付いていても受け取る", async () => {
+    const session = await unreadSession();
+    const response = await patchProblem(session.session_id, {
+      text: "x を求めよ。 x + 3 = 7\n答え:",
+    });
+
+    expect(response.status).toBe(200);
   });
 
   /**

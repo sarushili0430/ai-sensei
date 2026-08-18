@@ -659,7 +659,12 @@ sessionsRoute.patch("/:sessionId/problem", async (c) => {
   const allowed = buildAllowedTopics(session.topic_ids);
   if (allowed.primary.size === 0) throw apiError("photo_unreadable", { locale });
 
-  const verdict = checkProblemText(text);
+  /**
+   * **写真のときより厳しく見る。** 裸の `Answer:` を通しているのは
+   * 「紙面には解く前から空欄の解答欄が印刷されている」からで、その理由は
+   * 自分で打ち込んだ本文には立たない(`problem-guard.ts` の `typedAnswerHeading`)。
+   */
+  const verdict = checkProblemText(text, "manual");
   if (!verdict.ok) {
     // 何が弾かれているかは、ここでしか見えない。頻度が高ければ、直すのは
     // 文言か入力欄の側(`problem-guard.ts` の「迷ったら通す」は動かさない)。
