@@ -150,37 +150,54 @@ class _SenpaiFaceState extends State<SenpaiFace> with TickerProviderStateMixin {
         // 首をかしげる。困っているのはこちらで、相手を責めてはいない。
         final double tilt = widget.mood == SenpaiMood.puzzled ? 0.05 + 0.015 * wave : 0;
 
-        return AnimatedContainer(
-          duration: AppDurations.reaction,
-          width: widget.size,
-          height: widget.size,
-          decoration: BoxDecoration(
-            color: widget.mood == SenpaiMood.delighted
-                ? AppColors.said.withValues(alpha: 0.25)
-                : AppColors.blue.withValues(alpha: 0.12),
-            shape: BoxShape.circle,
-          ),
-          child: Semantics(
-            label: switch (widget.mood) {
-              SenpaiMood.neutral => strings.senpaiWaiting,
-              SenpaiMood.listening => strings.senpaiListening,
-              SenpaiMood.delighted => strings.senpaiDelighted,
-              SenpaiMood.puzzled => strings.senpaiPuzzled,
-            },
-            child: Transform.translate(
-              offset: Offset(0, dy),
-              child: Transform.rotate(
-                angle: tilt,
-                child: Transform.scale(
-                  scale: scale,
-                  // 顔は常に動いている。まわりを巻き込んで塗り直さないよう囲う。
-                  child: RepaintBoundary(
-                    child: CustomPaint(
-                      painter: _FacePainter(
-                        mood: widget.mood,
-                        phase: phase,
-                        moodT: moodT,
-                        eyeOpenness: _eyeOpenness(phase),
+        // **顔は [size] より大きくならない。**
+        //
+        // 呼び出し側の縦並びが `CrossAxisAlignment.stretch` だと(字幕の列は
+        // これ)、幅がぴったりで降りてきて `width` が効かず、顔が画面幅まで
+        // 引き伸ばされる。地の丸は短いほうの辺で描かれるので中央に残るが、
+        // 目と口は幅の割合で置いているため左右へ飛んでいく(iPadの会話画面で、
+        // 目が両端の黒丸、口が横一杯の楕円になった)。
+        //
+        // 直し方を呼び出し側の `Center` に頼ると、囲い忘れた1か所で同じ絵が
+        // 出る。ここで包んでおけば、どの並びに置いても顔は丸のまま。
+        // `widthFactor`/`heightFactor` を 1 にしてあるので、余白のある場所では
+        // これまで通り顔の大きさぶんしか場所を取らない(横並びの帯で
+        // 隣の文字を押し出さない)。
+        return Center(
+          widthFactor: 1,
+          heightFactor: 1,
+          child: AnimatedContainer(
+            duration: AppDurations.reaction,
+            width: widget.size,
+            height: widget.size,
+            decoration: BoxDecoration(
+              color: widget.mood == SenpaiMood.delighted
+                  ? AppColors.said.withValues(alpha: 0.25)
+                  : AppColors.blue.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Semantics(
+              label: switch (widget.mood) {
+                SenpaiMood.neutral => strings.senpaiWaiting,
+                SenpaiMood.listening => strings.senpaiListening,
+                SenpaiMood.delighted => strings.senpaiDelighted,
+                SenpaiMood.puzzled => strings.senpaiPuzzled,
+              },
+              child: Transform.translate(
+                offset: Offset(0, dy),
+                child: Transform.rotate(
+                  angle: tilt,
+                  child: Transform.scale(
+                    scale: scale,
+                    // 顔は常に動いている。まわりを巻き込んで塗り直さないよう囲う。
+                    child: RepaintBoundary(
+                      child: CustomPaint(
+                        painter: _FacePainter(
+                          mood: widget.mood,
+                          phase: phase,
+                          moodT: moodT,
+                          eyeOpenness: _eyeOpenness(phase),
+                        ),
                       ),
                     ),
                   ),

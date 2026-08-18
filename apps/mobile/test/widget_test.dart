@@ -52,6 +52,28 @@ void main() {
       await pump(tester, const SenpaiFace(mood: SenpaiMood.delighted));
       expect(find.bySemanticsLabel('先輩が納得しています'), findsOneWidget);
     });
+
+    // 幅がぴったりで降りてくる並びの中でも、顔は size の正方形のまま。
+    // ここが崩れると、目と口は幅の割合で置いているので画面の両端まで飛び、
+    // iPad の会話画面で顔が横一杯の落書きになった。
+    testWidgets('広い画面の stretch な列でも、size より大きくならない', (WidgetTester tester) async {
+      await pumpApp(
+        tester,
+        const Scaffold(
+          body: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[SenpaiFace(mood: SenpaiMood.neutral, size: 160)],
+          ),
+        ),
+        size: tabletSurface,
+      );
+
+      // 絵を描くのはこの箱。ここの寸法がそのまま目と口の位置になる。
+      final Size painted = tester.getSize(
+        find.descendant(of: find.byType(SenpaiFace), matching: find.byType(CustomPaint)),
+      );
+      expect(painted, const Size(160, 160));
+    });
   });
 
   group('ペイウォール', () {
