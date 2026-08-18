@@ -45,6 +45,13 @@ void main() {
   /// 開いていても、返ってくる写真は同じなので画面のテストはすべて通ってしまう。
   late List<int> pickedSources;
 
+  /// 写真を開くときに頼んだ長辺の上限(`maxWidth` / `maxHeight`)。
+  ///
+  /// **上限が抜けても画面には出ない。** 返ってくるパスは同じなので、
+  /// 頼んだ引数を見ておかないと、48MPの1枚がそのままVision APIへ行く経路が
+  /// 黙って戻る。
+  late List<Object?> pickedMaxSides;
+
   /// 切り抜いた結果のパス。**撮った写真とは別のファイルにする** —
   /// 同じものを返すと、切り抜きが枠に入ったかどうかが見えない。
   late List<String> croppedPaths;
@@ -65,6 +72,7 @@ void main() {
     tempDir = Directory.systemTemp.createTempSync('capture_screen_test');
     pickedPaths = <String>[];
     pickedSources = <int>[];
+    pickedMaxSides = <Object?>[];
     croppedPaths = <String>[];
     cancelCount = 0;
     cropCancelCount = 0;
@@ -79,9 +87,10 @@ void main() {
       (MethodCall call) async {
         // **やめた場合も、何を開いたかは記録する。** アルバムを押した人に
         // カメラの文言を返していないかは、ここでしか確かめられない。
-        pickedSources.add(
-          (call.arguments as Map<Object?, Object?>)['source']! as int,
-        );
+        final Map<Object?, Object?> arguments = call.arguments as Map<Object?, Object?>;
+        pickedSources.add(arguments['source']! as int);
+        pickedMaxSides.add(arguments['maxWidth']);
+        pickedMaxSides.add(arguments['maxHeight']);
         // 撮らずに帰る(image_picker は null を返す)。
         if (cancelCount > 0) {
           cancelCount -= 1;
@@ -601,6 +610,30 @@ void main() {
           utf8.decode((calls.single as http.Request).bodyBytes, allowMalformed: true);
       expect(body, contains('name="problem_photo"'));
       expect(body, isNot(contains('name="photo"')));
+    });
+
+    /// **カメラの範囲を超えた1枚が入ってくる。** アルバムには他のアプリで撮った
+    /// 48MPの写真もパノラマもあり、解析は画像をそのままVision APIへ渡すので、
+    /// 大きすぎる1枚は**生徒からは「サーバのエラー」としてしか見えない形**で落ちる。
+    /// 上限は切り抜き側と同じ2576px(`claude-sonnet-5` がそのまま読める大きさ)。
+    testWidgets('開くときに長辺の上限を頼む(切り抜かない経路でも効く)',
+        (WidgetTester tester) async {
+      await pumpCapture(tester);
+      await tapSlot(tester, ja.captureAddProblem, ja.capturePickGallery);
+
+      expect(pickedMaxSides, <Object?>[2576.0, 2576.0]);
+    });
+
+    /// **枠は「これで合っている?」を見る場所。** `cover` は端を落とすので、
+    /// 紙面が切れていることがいちばん出るところが隠れる。アルバムから
+    /// 横長の写真も長いスクリーンショットも入ってくる。
+    testWidgets('確かめる枠では、写真を切り取らずに全体を入れる',
+        (WidgetTester tester) async {
+      await pumpCapture(tester);
+      await takeProblem(tester);
+
+      final Image thumbnail = tester.widget(find.byType(Image));
+      expect(thumbnail.fit, BoxFit.contain);
     });
   });
 
