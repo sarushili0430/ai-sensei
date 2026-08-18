@@ -1,0 +1,15 @@
+# ビルド生成物
+.dart_tool/
+build/
+
+# build_runner の生成物。本体と同じで**コミットしない**(CIで作る)。
+lib/main.directories.g.dart
+
+# 実機・シミュレータで開きたくなったときに
+# `flutter create --platforms=ios,android .` で足すもの。
+# カタログは Chrome で開くのが既定なので、web/ だけを版に載せている。
+/android/
+/ios/
+/macos/
+/linux/
+/windows/

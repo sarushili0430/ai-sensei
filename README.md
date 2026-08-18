@@ -35,6 +35,7 @@ Google Play の掲載テキスト(短い説明・詳しい説明の日英)・ス
 
 ```
 apps/mobile/        Flutter (iOS先行) + Riverpod 3 + livekit_client
+apps/mobile/widgetbook/  見た目の部品カタログ(Widgetbook)。**別パッケージ**。配布物に載せないため
 apps/lp/            紹介ページ(日英2枚・素のHTML/CSS)。Cloudflare Workers の静的アセットとして配信
 backend/api/        Cloudflare Workers + Hono — セッション作成 / カルテ保存 / 課金webhook
 backend/agent/      LiveKit Agents — VAD・STT・LLM・TTSの会話パイプライン + 板書生成(先輩キャラ)
@@ -126,7 +127,13 @@ pnpm run format       # Biomeで整形する(--write)
 pnpm test             # vitest のみ
 
 cd apps/mobile && fvm flutter test   # 契約fixture + ウィジェット + golden
+cd apps/mobile/widgetbook && fvm flutter test   # 部品カタログを1件ずつ開く
 ```
+
+部品カタログ(Widgetbook)は `apps/mobile/widgetbook` で別パッケージになっています。
+`fvm flutter run -d chrome` で開くと、部品ごとに端末の寸法・日英・文字サイズ・
+「アニメーションを減らす」設定を手で切り替えられます
+([`apps/mobile/widgetbook/README.md`](apps/mobile/widgetbook/README.md))。
 
 ### コミット前のlint(lefthook)
 
