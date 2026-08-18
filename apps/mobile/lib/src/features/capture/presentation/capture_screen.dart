@@ -825,7 +825,7 @@ class _SheetTile extends StatelessWidget {
   }
 }
 
-class _TopicConfirm extends ConsumerWidget {
+class _TopicConfirm extends ConsumerStatefulWidget {
   const _TopicConfirm({required this.state, required this.onStart});
 
   final CaptureState state;
@@ -834,8 +834,50 @@ class _TopicConfirm extends ConsumerWidget {
   final Future<void> Function() onStart;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_TopicConfirm> createState() => _TopicConfirmState();
+}
+
+class _TopicConfirmState extends ConsumerState<_TopicConfirm> {
+  /// 問題文を打ち込んでいる最中か。
+  ///
+  /// **画面ごと差し替えない。** 別画面にすると、いま確かめている単元のチップが
+  /// 見えなくなり、戻ってくるまで何を直しているのか分からなくなる。
+  bool _editing = false;
+
+  /// 打ち直しを送っている最中。
+  ///
+  /// **`CaptureState.isSubmitting` は使わない。** あれが立つと [_body] が
+  /// スピナーを出して画面ごと消えるので、いま打った本文が見えなくなる。
+  bool _saving = false;
+
+  /// 打ち直しが弾かれた理由(サーバの文言)。**入力欄の下に出す。**
+  ///
+  /// `CaptureState.error` に載せると全面のエラー表示になり、直す場所へ
+  /// 戻る道ごと消える(`CaptureController.submitProblemText`)。
+  String? _editError;
+
+  Future<void> _submitProblem(String text) async {
+    setState(() {
+      _saving = true;
+      _editError = null;
+    });
+    final String locale = Localizations.localeOf(context).languageCode;
+    final ApiException? error = await ref
+        .read(captureControllerProvider.notifier)
+        .submitProblemText(text, locale: locale);
+    if (!mounted) return;
+    setState(() {
+      _saving = false;
+      _editError = error?.message;
+      // 通ったときだけ閉じる。弾かれたら本文を残したまま直してもらう。
+      if (error == null) _editing = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
+    final CaptureState state = widget.state;
     final SessionProblem? problem = state.problem;
 
     return Column(
@@ -852,15 +894,34 @@ class _TopicConfirm extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                // **読めているときだけ出す。読めていないときは黙って進める。**
+                // **読めなかったときも黙らない。直せる口と一緒に出す。**
                 //
-                // 「問題を読み取れませんでした」を出すと、任意のはずの2枚目が
-                // 事実上の必須になる(撮り直さないと消えない警告になるため)。
-                // §4-1 のヒントは撮る前に出してあるので、ここで念を押す必要もない。
-                if (problem != null) ...<Widget>[
-                  _ProblemReadback(problem: problem),
-                  const SizedBox(height: AppSpacing.lg),
-                ],
+                // ここは長いあいだ意図して無言だった。読めなかったと告げるだけだと、
+                // 撮り直さないかぎり消えない警告になり、**任意のはずの2枚目が
+                // 事実上の必須**になるため。その代わり、失敗が最初に表に出るのは
+                // 会話の中 —「問題、読んでもらってもいい?」と、**画面に見えている
+                // 問題を声で入れ直す**ところだった。
+                //
+                // 打ち直す口([_ProblemEditor])と同時に出すなら、警告にはならない。
+                // その場で終わる話になるので、撮り直しを迫っていない。
+                if (_editing)
+                  _ProblemEditor(
+                    initialText: problem?.text ?? '',
+                    saving: _saving,
+                    error: _editError,
+                    onCancel: () => setState(() {
+                      _editing = false;
+                      _editError = null;
+                    }),
+                    onSubmit: _submitProblem,
+                  )
+                else
+                  _ProblemReadback(
+                    problem: problem,
+                    outcome: state.problemOutcome,
+                    onEdit: () => setState(() => _editing = true),
+                  ),
+                const SizedBox(height: AppSpacing.lg),
                 Text(strings.captureConfirmHint, style: Theme.of(context).textTheme.bodySmall),
                 const SizedBox(height: AppSpacing.md),
                 Wrap(
@@ -887,7 +948,9 @@ class _TopicConfirm extends ConsumerWidget {
         // 解析時のままで、外した単元を先輩が教えてしまう([CaptureController]）。
         ChunkyButton(
           label: strings.captureStart,
-          onPressed: state.canStart ? onStart : null,
+          // 打ち込んでいる最中は始めない。**打った本文が届かないまま
+          // 授業が始まる**のが、この画面でいちばん起きてはいけない裏切り。
+          onPressed: state.canStart && !_editing ? widget.onStart : null,
         ),
       ],
     );
@@ -901,17 +964,48 @@ class _TopicConfirm extends ConsumerWidget {
 /// 誤読が致命傷になる」)。
 ///
 /// **合っているかを問わない。** ここは読み合わせの場で、正誤の申告を求める場では
-/// ない。ちがっていれば会話の最初に本人が言う — それが §1-1 の「誤読の保険」そのもの。
-/// (授業の回数を数えるのは会話が始まったときなので、戻って撮り直しても
-/// 今日の1回は減らない。)
+/// ない。問いかけにすると全員が答えを迫られる。事実として置いておけば、
+/// ちがっている人だけが [onEdit] から直しにいく。
+///
+/// ## 読めなかったときも、ここに出る
+///
+/// 以前は読めているときだけ出して、**読めなかったときは黙って進めていた。**
+/// 告げるだけでは撮り直しを迫る警告にしかならず、任意のはずの2枚目が事実上の
+/// 必須になるためで、その判断自体は正しかった。問題は、**黙った結果として
+/// 失敗が会話の中で露呈していた**こと — 先輩が「問題、読んでもらってもいい?」と
+/// 聞き、生徒は**画面に見えている問題を、もう一度声で入れ直していた。**
+///
+/// 打ち直す口ができたので、告げても行き止まりにならない。だから出す。
+/// **落ち方ごとに言葉を変える**のも同じ理由で、「読み取れませんでした」だけでは
+/// 次に何をすればいいかが分からない。
 class _ProblemReadback extends StatelessWidget {
-  const _ProblemReadback({required this.problem});
+  const _ProblemReadback({
+    required this.problem,
+    required this.outcome,
+    required this.onEdit,
+  });
 
-  final SessionProblem problem;
+  /// 読み取れた問題文。**読めなければ null**(そのときは落ち方を出す)。
+  final SessionProblem? problem;
+
+  /// [problem] が null になった理由。分からなければ既定の文言に倒す。
+  final ProblemOutcome? outcome;
+
+  final VoidCallback onEdit;
+
+  /// 落ち方ごとの一行。**「撮り直して」とは言わない** — 撮り直しの導線は
+  /// この画面に無く(セッションはもう作られている)、言えば行き止まりが増える。
+  String _outcomeMessage(AppStrings strings) => switch (outcome) {
+        ProblemOutcome.tooLong => strings.captureProblemTooLong,
+        ProblemOutcome.solutionIncluded => strings.captureProblemHadSolution,
+        ProblemOutcome.notAProblem => strings.captureProblemNotAQuestion,
+        _ => strings.captureProblemNotRead,
+      };
 
   @override
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
+    final SessionProblem? problem = this.problem;
 
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
@@ -923,11 +1017,125 @@ class _ProblemReadback extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(strings.captureProblemTitle, style: Theme.of(context).textTheme.bodySmall),
-          const SizedBox(height: AppSpacing.xs),
-          // 長い問題文(契約の上限は600字)でも、ここだけで送りきる。
-          // 折りたたむと、読み合わせという目的そのものが消える。
-          Text(problem.text, style: Theme.of(context).textTheme.bodyLarge),
+          if (problem != null) ...<Widget>[
+            Text(strings.captureProblemTitle, style: Theme.of(context).textTheme.bodySmall),
+            const SizedBox(height: AppSpacing.xs),
+            // 長い問題文(契約の上限は600字)でも、ここだけで送りきる。
+            // 折りたたむと、読み合わせという目的そのものが消える。
+            Text(problem.text, style: Theme.of(context).textTheme.bodyLarge),
+          ] else ...<Widget>[
+            // **咎めない書き方にする。** 撮った本人に落ち度がある言い方をすると、
+            // 直せる口が隣にあっても押しにくくなる。
+            Text(_outcomeMessage(strings), style: Theme.of(context).textTheme.bodyLarge),
+            const SizedBox(height: AppSpacing.xs),
+            Text(strings.captureProblemFixHint, style: Theme.of(context).textTheme.bodySmall),
+          ],
+          GhostButton(
+            label: problem != null ? strings.captureProblemEdit : strings.captureProblemAdd,
+            onPressed: onEdit,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 問題文を打ち込む欄。**授業が始まる前に直せる、唯一の口。**
+///
+/// 問題の紙面は解析後に破棄される(著作物。`api.ts` の `sessionPhotoParts`)ので、
+/// **あとから機械が読み直す手段は無い。** 読めなかったときの救済も、誤読の訂正も、
+/// ここを通る以外に道がない。
+///
+/// **写真の撮り直しにはしない。** 解答が混ざる・紙面を丸ごと写すといった落ち方の
+/// 原因は「紙面のどこを写したか」なので、同じ写真を投げ直しても同じものが返る。
+/// テキストなら、その場で終わる。
+class _ProblemEditor extends StatefulWidget {
+  const _ProblemEditor({
+    required this.initialText,
+    required this.saving,
+    required this.error,
+    required this.onCancel,
+    required this.onSubmit,
+  });
+
+  /// 読み取れていた本文。読めていなければ空(いちから打つ)。
+  final String initialText;
+  final bool saving;
+
+  /// サーバに弾かれた理由。**そのまま出す**(煽らない文体で書かれている)。
+  final String? error;
+
+  final VoidCallback onCancel;
+  final Future<void> Function(String text) onSubmit;
+
+  @override
+  State<_ProblemEditor> createState() => _ProblemEditorState();
+}
+
+class _ProblemEditorState extends State<_ProblemEditor> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.initialText);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final AppStrings strings = AppStrings.of(context);
+    final String? error = widget.error;
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            // 問題文は1行では終わらない。**上限までは伸ばす** —
+            // 打っている本文が見えないと、読み合わせにならない。
+            minLines: 3,
+            maxLines: 8,
+            // 契約の上限。ここで止めておけば、超えてから弾かれる往復が起きない。
+            maxLength: problemTextMaxLength,
+            keyboardType: TextInputType.multiline,
+            textInputAction: TextInputAction.newline,
+            enabled: !widget.saving,
+            decoration: InputDecoration(
+              hintText: strings.captureProblemFieldHint,
+              border: const OutlineInputBorder(),
+            ),
+            // 空のままでは送れない(サーバも受け取らない)。
+            onChanged: (_) => setState(() {}),
+          ),
+          if (error != null) ...<Widget>[
+            Text(
+              error,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: Theme.of(context).colorScheme.error),
+            ),
+            const SizedBox(height: AppSpacing.xs),
+          ],
+          ChunkyButton(
+            label: strings.captureProblemSave,
+            onPressed: _controller.text.trim().isEmpty || widget.saving
+                ? null
+                : () => widget.onSubmit(_controller.text),
+          ),
+          GhostButton(
+            label: strings.captureProblemCancel,
+            onPressed: widget.saving ? null : widget.onCancel,
+          ),
         ],
       ),
     );

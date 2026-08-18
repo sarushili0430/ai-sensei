@@ -1,4 +1,8 @@
-import { type SessionProblem, problemTextMaxLength } from "@ai-sensei/contract";
+import {
+  type ProblemOutcome,
+  type SessionProblem,
+  problemTextMaxLength,
+} from "@ai-sensei/contract";
 import {
   type CurriculumLocale,
   type SchoolStage,
@@ -274,19 +278,15 @@ export function resolveDetectedTopics(
  * **同じ写真をもう一度投げても同じものが返る**。Vision の課金とセッション開始の
  * 数秒を払って、同じ結果を得るだけになりやすい。
  *
- * 落ち方を `not_found` にまとめないのは、**観測のため**。
+ * 落ち方を `not_found` にまとめないのは、**観測のため**…だった。
  * `too_long` が続けば `prompts/photo_analysis.*.md` の600字の指示が効いていない、
  * `solution_included` が続けば「解答は取らない」の指示が効いていない、と読み分けられる。
- * ログで区別できないと、どちらも永遠に気づけない。
+ *
+ * **いまは生徒にも届く。** 値の定義は `@ai-sensei/contract` に移してあり
+ * ({@link ProblemOutcome})、`POST /v1/sessions` の応答に載る。落ち方ごとに
+ * 直し方が違う(紙面を丸ごと撮っている / 解答が写っている)ので、
+ * ぜんぶ「読み取れませんでした」に畳むと、生徒からは直しようのない行き止まりに見える。
  */
-export const problemOutcomes = [
-  "read",
-  "not_found",
-  "too_long",
-  "solution_included",
-  "not_a_problem",
-] as const;
-export type ProblemOutcome = (typeof problemOutcomes)[number];
 
 export function resolveSessionProblem(input: {
   analysis: PhotoAnalysis | null;
