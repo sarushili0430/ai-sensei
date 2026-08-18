@@ -117,6 +117,30 @@ jobs:
       - run: flutter test
         working-directory: apps/mobile
 
+      # 部品カタログ(apps/mobile/widgetbook)。**別パッケージなので pub get から要る。**
+      #
+      # 本体の analyze はここを除外している(apps/mobile/analysis_options.yaml。
+      # 除外しないと、カタログを触っていない人の pre-commit まで巻き込んで落ちる)。
+      # つまり**カタログを見ている場所はここだけ**で、抜くと誰も起動しないまま
+      # 壊れていられる。
+      - name: Widgetbook | pub get
+        run: flutter pub get
+        working-directory: apps/mobile/widgetbook
+
+      - name: Widgetbook | codegen (main.directories.g.dart)
+        run: dart run build_runner build
+        working-directory: apps/mobile/widgetbook
+
+      - name: Widgetbook | analyze
+        run: flutter analyze
+        working-directory: apps/mobile/widgetbook
+
+      # ユースケースを1件ずつ開いて、例外なく描けることを見る。
+      # 「コンパイルは通るが開くと落ちる」はここでしか捕まらない。
+      - name: Widgetbook | test
+        run: flutter test
+        working-directory: apps/mobile/widgetbook
+
       # goldenが落ちたとき、差分画像を見られるようにする
       - uses: actions/upload-artifact@v4
         if: failure()

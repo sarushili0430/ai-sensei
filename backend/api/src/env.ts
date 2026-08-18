@@ -48,6 +48,20 @@ export type Bindings = {
   PREMIUM_SESSIONS_PER_DAY?: string;
   FREE_SESSION_MAX_SECONDS?: string;
   PREMIUM_SESSION_MAX_SECONDS?: string;
+
+  /**
+   * クローズドβの開放期限(ISO8601)。**入っている間だけ、全員がPremium相当**になる。
+   *
+   * 配れるのが限定公開テストの名簿(Play の closed testing / TestFlight)に
+   * 載っている人だけ、という状態でのみ使う設定。**「全員」= テスター**が
+   * 成り立たなくなったら外すこと。
+   *
+   * 日付を持たせて、外し忘れても勝手に終わるようにしている。無期限のフラグは
+   * 一般公開の日に「なぜか誰も課金画面を見ない」という形で発覚する。
+   */
+  BETA_OPEN_ACCESS_UNTIL?: string;
+  /** β開放中の1日の授業本数。使い放題の体感を出しつつ、暴走だけ止める高さにする。 */
+  BETA_SESSIONS_PER_DAY?: string;
 };
 
 /**
@@ -80,6 +94,9 @@ export type Limits = {
   premiumSessionsPerDay: number;
   freeSessionMaxSeconds: number;
   premiumSessionMaxSeconds: number;
+  /** クローズドβの開放期限。`null` は通常営業(= 課金した人だけがPremium)。 */
+  betaOpenAccessUntil: Date | null;
+  betaSessionsPerDay: number;
 };
 
 export function readLimits(env: Bindings): Limits {
@@ -90,10 +107,25 @@ export function readLimits(env: Bindings): Limits {
     // 無料のお試しも品質を落とさず、設計の15〜20分を完走できる上端を既定値にする。
     freeSessionMaxSeconds: toInt(env.FREE_SESSION_MAX_SECONDS, 1200),
     premiumSessionMaxSeconds: toInt(env.PREMIUM_SESSION_MAX_SECONDS, 1200),
+    betaOpenAccessUntil: toDate(env.BETA_OPEN_ACCESS_UNTIL),
+    // 通常利用(1日1〜2回)には絶対に当たらず、原価の暴走だけを止める高さ。
+    betaSessionsPerDay: toInt(env.BETA_SESSIONS_PER_DAY, 10),
   };
 }
 
 function toInt(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+/**
+ * 読めない値は `null` = **通常営業**に倒す。
+ *
+ * 打ち間違えた日付を「開放中」側へ倒すと、課金を止めたまま誰も気づかない。
+ * 反対に倒れたときは、テスターが無料枠に当たって報告してくれる。
+ */
+function toDate(value: string | undefined): Date | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }

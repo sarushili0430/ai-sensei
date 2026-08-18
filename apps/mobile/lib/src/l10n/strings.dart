@@ -172,8 +172,20 @@ class AppStrings {
   /// ここでユーザーが選んでいるのは「教わる」こと。
   String get homeLesson => _pick('先輩に教わる', 'Get taught by your senpai');
 
+  /// 数字を含む全文。祝福画面のように**文字だけで数を見せる**場所と、
+  /// ホームのカウンターの読み上げ(`Semantics(label:)`)で使う。
   String streakDays(int days) => _pick('$days日つづけて説明中', '$days-day streak');
   String filledHoles(int count) => _pick('埋めた穴 $count', '$count gaps filled');
+
+  /// ホームのカウンター用。**数字は `CountUpText` が別に描く**ので、ここには
+  /// 含めない。上の全文をそのままラベルに使うと、数え上げる数字の隣に同じ数が
+  /// もう一度出る(「3 3日つづけて説明中」)。
+  ///
+  /// 空白の要不要も文字列側で持つ(ja「3日…」は詰める、「埋めた穴 4」は空ける)。
+  /// 分けるのは**見た目だけ**で、読み上げには上の全文を渡す。
+  String get streakDaysSuffix => _pick('日つづけて説明中', '-day streak');
+  String get filledHolesPrefix => _pick('埋めた穴 ', '');
+  String get filledHolesSuffix => _pick('', ' gaps filled');
 
   /// ホームの復習カード。再訪の起点で、通知の着地先でもある。
   /// 詳細がまだ手元に無い短い間も、件数に逃げず内容のカードとして見せる。
@@ -250,16 +262,36 @@ class AppStrings {
   String get captureAddProblem => _pick('問題を撮る', 'Take the problem');
   String get captureRetake => _pick('撮り直す', 'Retake');
 
-  /// もう一つの入口。**枠ごとに1つずつ持たせる。**
+  /// 写真が入っている枠の操作名。**「撮り直す」ではない。**
   ///
-  /// 撮った写真とアルバムの写真で、行き先(= 寿命)は変わらない —
-  /// ノートは保存され、問題の紙面は読み取ったあとに消える(§4-1)。
-  /// **だから画面に1つだけ置くことはできない。** 選んだ1枚がどちらの枠に
-  /// 入るのかが見えていないと、枠を分けている意味がそこで切れる。
+  /// タップで開くシートには撮り直す・アルバム・切り抜くが並ぶので、撮ることだけを
+  /// 名指しすると、**切り抜きがどこからも見えなくなる**([captureCropHint] が
+  /// 促している操作なのに、入口の名前が撮影だけを指すことになる)。
+  String get captureChangePhoto => _pick('写真を変える', 'Change photo');
+
+  /// 写真の入れ方を選ぶシートの中身。**枠をタップすると下から出る。**
   ///
-  /// 「アルバム」と場所の名前で言う。「ライブラリ」だとiOSの用語、
-  /// 「ギャラリー」だとAndroidの用語で、どちらか片方の生徒に馴染まない。
-  String get capturePickFromLibrary => _pick('アルバムから選ぶ', 'Choose from photos');
+  /// ## 端末の写真をアプリ内に並べない理由
+  ///
+  /// 「マス目に写真が並んで、1マス目が撮影ボタン」という形にするには、端末の
+  /// 写真ライブラリをアプリ側で読む必要がある。Androidではそれが
+  /// `READ_MEDIA_IMAGES` = 広いアクセス権限で、Google Play の
+  /// Photo & Video Permissions ポリシー(2025-05-28 全面適用)の対象になる。
+  /// 通す条件は「システムのピッカーでは**コア機能が提供できない**」ことで、
+  /// **自前ピッカーを持っていること自体は資格にならないと条文が名指ししている。**
+  /// このアプリがPhoto Pickerでできないのは「見た目」と「1マス目の撮影ボタン」
+  /// だけで、どちらも授業の成立には関わらない — 申告に書ける材料が無い。
+  ///
+  /// なので**マス目はOSのピッカーに任せ、撮影ボタンだけ手前に出す。**
+  /// [capturePickGallery] を押した先はOSのピッカーで、あれ自体が写真のマス目。
+  /// 権限のダイアログも出ない。
+  String get capturePickCamera => _pick('撮る', 'Camera');
+  String get capturePickGallery => _pick('アルバム', 'Photos');
+
+  /// 切り抜き。**解析の前にしか出さない。**
+  /// あとから差し替えても写真は読み直されないので([CaptureController.setPhoto])、
+  /// 出したところで効かない操作になる。
+  String get captureCrop => _pick('切り抜く', 'Crop');
 
   /// §4-1 の言い回しそのまま。**ヒントであって要求ではない。**
   /// 1枚に問題とノートの両方が写ることが多いので、2枚必須にすると
@@ -270,6 +302,22 @@ class AppStrings {
   String get captureProblemHint => _pick(
         '問題も写っていると、先輩が迷子になりません',
         "If the problem is in the shot too, your senpai won't get lost",
+      );
+
+  /// 問題の写真が入っている人に出すヒント。[captureProblemHint] と入れ替わる。
+  ///
+  /// **既知の失敗モードに、ここで初めて手が届く。**`contract` の
+  /// `problemTextMaxLength` がこう書いている —「ページ全体を写すと、章末の
+  /// 解答や解説まで問題文として流れ込み、先輩が答えを読み上げるところから
+  /// 授業が始まってしまう」。600字の上限はそのための**安全弁**で、
+  /// 根本の対策ではなかった。切り抜きがその対策になる。
+  ///
+  /// **それでも促しに留める。** 切り抜かなくても授業は始められる
+  /// (この画面の他のヒントと同じ扱い)。要求にすると、1枚に問題が1つしか
+  /// 写っていない人にも操作が増える。
+  String get captureCropHint => _pick(
+        '解く問題だけを切り抜くと、先輩が別の問題を読みません',
+        "Crop to just the problem you're solving so your senpai doesn't read a different one",
       );
 
   /// 枠を分けている理由を、そのまま利点として書く。
@@ -298,27 +346,32 @@ class AppStrings {
       );
   String get captureOpenSettings => _pick('設定をひらく', 'Open Settings');
 
+  /// アルバムを断られたとき。**カメラの文言と混ぜない。**
+  ///
+  /// 断られたのは写真へのアクセスなのに「カメラを使えませんでした」と返すと、
+  /// 設定アプリのどこを開けばいいのか分からなくなる。
+  /// (iOSは `requestFullMetadata: false` で許可を要求しない経路に乗せてあるので
+  /// 普段は出ないが、端末やOSの版によっては来る。)
+  String get capturePhotosDenied => _pick(
+        'アルバムを開けませんでした。設定アプリから写真へのアクセスを許可すると、選べるようになります。',
+        "We couldn't open your photos. Allow photo access in Settings and you'll be able to pick one.",
+      );
+
   /// カメラを開けなかったとき(許可はあるが端末側の理由)。許可の話と混ぜない。
   String get captureCameraFailed => _pick('カメラを開けませんでした。もう一度おためしください。',
       "We couldn't open the camera. Please try again.");
-
-  /// アルバムを断られたとき。**カメラの文言を使い回さない。**
-  ///
-  /// 断られたのは写真へのアクセスなので、「カメラを使えませんでした」と返すと
-  /// 設定アプリのどこを開ければいいのか分からなくなる。開く先は同じでも、
-  /// **本人が押した操作の名前で返す。**
-  String get capturePhotosDenied => _pick(
-        '写真を使えませんでした。設定アプリから許可すると、選べるようになります。',
-        "We couldn't open your photos. Allow access in Settings and you'll be able to pick one.",
-      );
 
   /// アルバムを開けなかったとき(許可はあるが端末側の理由)。
   String get capturePhotosFailed => _pick('アルバムを開けませんでした。もう一度おためしください。',
       "We couldn't open your photos. Please try again.");
 
+  /// 切り抜きを開けなかったとき。**撮り直しに引き戻さない** —
+  /// 写真はもう入っているので、失敗したのは切り抜きだけ。
+  String get captureCropFailed => _pick('切り抜けませんでした。もう一度おためしください。',
+      "We couldn't crop the photo. Please try again.");
+
   // --- 会話 ---
   String get sessionListening => _pick('聞いています', 'Listening');
-  String get sessionThinking => _pick('考えています', 'Thinking');
 
   /// 会話が終わって、カルテを書いているあいだ。
   ///
@@ -340,6 +393,19 @@ class AppStrings {
   /// 教え返し。板書は残したまま、こちらが喋る番になったとき
   /// (コアループ §2「じゃあ今の、説明してみて」)。
   String get sessionExplainBack => _pick('説明してみて', 'Now you explain it');
+
+  /// 授業中に出す問題文の見出し(ワイヤー v2 の1つ目)。
+  ///
+  /// **撮影画面の `captureProblemTitle` とは別の文言にする。**あちらは
+  /// 「先輩はこの問題だと思っています」= 授業を始める前の**答え合わせ**で、
+  /// こちらは授業中に**いま何を解いているか**を出す札。同じ文を使うと、
+  /// 板書の上に確認の問いかけが常駐することになる。
+  String get sessionProblemTitle => _pick('問題', 'The problem');
+
+  /// 3行で畳んだ問題文を開く。**板書を押し出さないため**に畳んである
+  /// (契約の上限は600字で、全文を出すと板書が画面外へ出る)。
+  String get sessionProblemExpand => _pick('続きを読む', 'Read more');
+  String get sessionProblemCollapse => _pick('畳む', 'Show less');
 
   /// 板書がとぎれたとき(封筒の欠落・順序違反を検知した)。
   ///
@@ -483,7 +549,9 @@ class AppStrings {
   String get reviewBackHome => _pick('ホームにもどる', 'Back to home');
 
   // --- 設定 ---
-  String get settingsTitle => _pick('設定', 'Settings');
+  // 画面タイトルは持たない。設定は常設タブの根なので、名前は下部ナビの
+  // [navigationSettings] が出している。AppBar にも同じ「設定」を置くと、
+  // ひとつの画面に同じ語が2回出る。
   String get settingsSectionAccount => _pick('契約', 'Subscription');
   String get settingsSectionNotifications => _pick('通知', 'Notifications');
   String get settingsSectionAbout => _pick('このアプリについて', 'About');
@@ -494,8 +562,6 @@ class AppStrings {
   String get settingsSectionSchoolStage => _pick('学年', 'School');
   String get settingsSchoolStageJuniorHigh => _pick('中学生', 'Junior high');
   String get settingsSchoolStageHighSchool => _pick('高校生', 'High school');
-  String get settingsSchoolStageHint =>
-      _pick('撮った写真から単元を探す範囲が変わります', 'Changes which topics we look for in your photo');
 
   /// 1/3/7日の再訪のトグル。**ここが約束4のいちばん危ないところ。**
   ///
@@ -508,8 +574,6 @@ class AppStrings {
   /// 英語も `Reminders`(=催促の語)を避ける。
   String get settingsNotifications =>
       _pick('先輩からのおさらい', 'Check-backs from your senpai');
-  String get settingsNotificationsOn => _pick('届きます', 'On');
-  String get settingsNotificationsOff => _pick('届きません', 'Off');
   String get settingsNotificationsOpenSettings =>
       _pick('通知の設定をひらく', 'Open notification settings');
   String get settingsPrivacy => _pick('プライバシーポリシー', 'Privacy policy');
@@ -562,6 +626,12 @@ class AppStrings {
   String get paywallPriceUnavailable => _pick(
       'いまは金額を読み込めていません。少しあとで、もう一度ひらいてみてください。',
       "We can't load the price right now. Please try opening this again in a moment.");
+
+  /// 価格を取り直す口。**開き直しをお願いするだけにしない。**
+  ///
+  /// 上の文言だけだと、その場でできることが何も無い画面になる。
+  /// 出すのは鍵のあるビルドだけ(鍵が無いと取り直しても何も変わらない)。
+  String get paywallReload => _pick('もう一度読み込む', 'Try loading again');
 
   /// ペイウォールを**開く**ボタン(復習画面など)。ここで無料日数を約束しない。
   /// ストアの商品にトライアルが付いているかは、Offering を読むまで分からない。
@@ -765,6 +835,10 @@ class AppStrings {
   String boardSpeechSubscript(String index) => _pick('の 添字 $index', 'sub $index');
   String boardSpeechVector(String body) => _pick('ベクトル $body', 'vector $body');
 
+  /// 上線(`\overline{AB}` / `\bar{x}`)。線分・共役複素数・平均で使う。
+  /// **何を意味するかは文脈で変わる**ので、読み上げは「線が引いてある」までに留める。
+  String boardSpeechOverline(String body) => _pick('$body の上に線', '$body with a bar');
+
   /// 図形は「厳密な読み上げ」より「**何が描かれているか**」で足りる。
   String boardSpeechTriangle(String vertices, String marks) => _pick(
         '三角形 $vertices。$marks',
@@ -797,28 +871,76 @@ class AppStrings {
         'A graph of $fn for x from $min to $max. $marks',
       );
 
+  /// 作図の読み上げ。**SVGは読み上げられない**ので、サーバが一緒に送ってくる
+  /// `alt` をそのまま使う(作図の宣言はサーバが持っているので、文言も向こうで書ける)。
+  /// `alt` が無いときだけ、この定型に落ちる。
+  String get boardSpeechFigure => _pick('図', 'A figure');
+
   /// 記号を言葉にする。**スクリーンリーダーごとの読み方の揺れを消す**ため、
   /// 記号のまま渡さずにこちらで言葉にしておく。
+  ///
+  /// **順序に意味がある。** `board_speech.dart` は上から順に `replaceAll` するので、
+  /// **長いものを先に置く**(`\cdots` より先に `\cdot` を当てると「かける s」に化ける)。
+  /// 同じ理由で `\infty` は `\in` より先、`\leq` は `\le` より先に並べてある。
+  /// ここに足すときは、その語を接頭辞に持つ語が上にあるかを必ず確かめること。
   Map<String, String> get boardSpeechSymbols => _ja
       ? const <String, String>{
-          r'\cdot': ' かける ', r'\pm': ' プラスマイナス ', r'\leq': ' 以下 ',
+          // 度。`^` ごと畳まないと「90 の 度 乗」に読める(指数の畳みが `\` に当たらない)。
+          r'^\circ': ' 度 ',
+          r'\cdots': ' 以下同様に ', r'\ldots': ' 以下同様に ', r'\dots': ' 以下同様に ',
+          r'\cdot': ' かける ', r'\pm': ' プラスマイナス ', r'\mp': ' マイナスプラス ',
+          r'\times': ' かける ', r'\div': ' わる ',
+          r'\leq': ' 以下 ',
           r'\geq': ' 以上 ', r'\neq': ' ノットイコール ', r'\to': ' に近づく ',
+          r'\le': ' 以下 ', r'\ge': ' 以上 ', r'\ne': ' ノットイコール ',
+          r'\lt': ' 小なり ', r'\gt': ' 大なり ', r'\approx': ' およそ等しい ',
           r'\therefore': ' よって ', r'\because': ' なぜならば ',
+          r'\Leftrightarrow': ' 同値 ', r'\Rightarrow': ' ならば ',
+          // 図形
+          r'\angle': ' 角 ', r'\triangle': ' 三角形 ', r'\perp': ' に垂直 ',
+          r'\parallel': ' に平行 ', r'\sim': ' 相似 ', r'\cong': ' 合同 ',
+          r'\equiv': ' 合同 ', r'\circ': ' 度 ',
+          // 集合
+          r'\emptyset': ' 空集合 ', r'\varnothing': ' 空集合 ',
+          r'\infty': ' 無限大 ', r'\notin': ' に属さない ', r'\in': ' に属する ',
+          r'\subset': ' は部分集合 ', r'\supset': ' を含む ',
+          r'\cap': ' かつ ', r'\cup': ' または ',
           r'\sum': ' 総和 ', r'\int': ' 積分 ', r'\lim': ' 極限 ',
           r'\sin': ' サイン ', r'\cos': ' コサイン ', r'\tan': ' タンジェント ',
-          r'\log': ' ログ ', r'\theta': ' シータ ', r'\alpha': ' アルファ ',
+          r'\log': ' ログ ', r'\ln': ' 自然対数 ', r'\theta': ' シータ ',
+          r'\alpha': ' アルファ ',
           r'\beta': ' ベータ ', r'\pi': ' パイ ',
+          // 集合の波括弧。構造の `{}` を落とす前に言葉にしないと、
+          // バックスラッシュだけが読み上げに残る。
+          r'\{': ' 集合 かっこ ', r'\}': ' 集合 かっことじ ',
           '=': ' イコール ', '+': ' プラス ', '-': ' マイナス ',
           '<': ' 小なり ', '>': ' 大なり ', '(': ' かっこ ', ')': ' かっことじ ',
         }
       : const <String, String>{
-          r'\cdot': ' times ', r'\pm': ' plus or minus ', r'\leq': ' less than or equal to ',
+          r'^\circ': ' degrees ',
+          r'\cdots': ' and so on ', r'\ldots': ' and so on ', r'\dots': ' and so on ',
+          r'\cdot': ' times ', r'\pm': ' plus or minus ', r'\mp': ' minus or plus ',
+          r'\times': ' times ', r'\div': ' divided by ',
+          r'\leq': ' less than or equal to ',
           r'\geq': ' greater than or equal to ', r'\neq': ' not equal to ',
+          r'\le': ' less than or equal to ', r'\ge': ' greater than or equal to ',
+          r'\ne': ' not equal to ', r'\lt': ' less than ', r'\gt': ' greater than ',
+          r'\approx': ' approximately equals ',
           r'\to': ' approaches ', r'\therefore': ' therefore ', r'\because': ' because ',
+          r'\Leftrightarrow': ' if and only if ', r'\Rightarrow': ' implies ',
+          r'\angle': ' angle ', r'\triangle': ' triangle ', r'\perp': ' perpendicular to ',
+          r'\parallel': ' parallel to ', r'\sim': ' is similar to ',
+          r'\cong': ' is congruent to ', r'\equiv': ' is congruent to ', r'\circ': ' degrees ',
+          r'\emptyset': ' the empty set ', r'\varnothing': ' the empty set ',
+          r'\infty': ' infinity ', r'\notin': ' is not in ', r'\in': ' is in ',
+          r'\subset': ' is a subset of ', r'\supset': ' contains ',
+          r'\cap': ' intersect ', r'\cup': ' union ',
           r'\sum': ' the sum of ', r'\int': ' the integral of ', r'\lim': ' the limit of ',
           r'\sin': ' sine ', r'\cos': ' cosine ', r'\tan': ' tangent ',
-          r'\log': ' log ', r'\theta': ' theta ', r'\alpha': ' alpha ',
+          r'\log': ' log ', r'\ln': ' natural log ', r'\theta': ' theta ',
+          r'\alpha': ' alpha ',
           r'\beta': ' beta ', r'\pi': ' pi ',
+          r'\{': ' open brace ', r'\}': ' close brace ',
           '=': ' equals ', '+': ' plus ', '-': ' minus ',
           '<': ' less than ', '>': ' greater than ', '(': ' open bracket ',
           ')': ' close bracket ',

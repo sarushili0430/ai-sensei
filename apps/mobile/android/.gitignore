@@ -1,5 +1,7 @@
 gradle-wrapper.jar
 /.gradle
+# Kotlin Gradle Plugin 2.x がローカルビルドのたびに作る作業ディレクトリ
+/.kotlin
 /captures/
 /gradlew
 /gradlew.bat

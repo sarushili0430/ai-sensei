@@ -22,7 +22,7 @@ import {
 import { Hono } from "hono";
 import type { AppEnv } from "../env.ts";
 import { readLimits } from "../env.ts";
-import { canStartSessionToday, isPremiumNow } from "../lib/entitlement.ts";
+import { canStartSessionToday, hasPremiumAccess } from "../lib/entitlement.ts";
 import { apiError } from "../lib/errors.ts";
 import type { HoleRecord } from "../repository/types.ts";
 
@@ -36,13 +36,15 @@ meRoute.get("/progress", async (c) => {
   const limits = readLimits(c.env);
 
   const user = await repository.ensureUser(deviceId, at);
-  const premium = isPremiumNow(user, at);
+  const premium = hasPremiumAccess({ user, now: at, limits });
   const localDate = toLocalDate(at);
 
   const [sessionDates, holes, sessionsToday] = await Promise.all([
     repository.sessionDates(deviceId),
     repository.listHoles(deviceId),
-    repository.countSessionsOnDate(deviceId, localDate),
+    // 数えるのは**会話が始まった**セッションだけ。撮って単元を確かめただけの
+    // セッションでホームの導線を閉じない。
+    repository.countStartedSessionsOnDate(deviceId, localDate),
   ]);
 
   const response: ProgressResponse = {
@@ -132,7 +134,7 @@ meRoute.get("/parent-report", async (c) => {
   const deviceId = c.get("deviceId");
 
   const user = await repository.ensureUser(deviceId, at);
-  if (!isPremiumNow(user, at)) {
+  if (!hasPremiumAccess({ user, now: at, limits: readLimits(c.env) })) {
     const locked: ParentReportResponse = { requires_premium: true, report: null };
     return c.json(locked);
   }

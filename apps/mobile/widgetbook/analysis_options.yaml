@@ -1,0 +1,30 @@
+include: package:flutter_lints/flutter.yaml
+
+# 本体(../analysis_options.yaml)と同じ厳しさで見る。
+# カタログのコードだけ緩いと、本体に戻せない書き方が溜まる。
+analyzer:
+  language:
+    strict-casts: true
+    strict-raw-types: true
+
+# 有効/無効の両方を書くのでマップ形式。リスト形式では**外せない**
+# (include で入った規則を消すには `規則名: false` が要る)。
+linter:
+  rules:
+    prefer_const_constructors: true
+    prefer_const_declarations: true
+    prefer_final_locals: true
+    avoid_print: true
+    require_trailing_commas: true
+
+    # **ここだけ本体と違う。**
+    #
+    # `implementation_imports` は「他人のパッケージの lib/src/ を import するな」
+    # という規則で、ふつうは正しい。ただ ai_sensei は publish_to: none の
+    # 同じリポジトリのアプリで、部品も画面もぜんぶ `lib/src/` の下にある
+    # (外向けの公開APIの層を持たない)。カタログから部品を指せなくなると、
+    # このパッケージは存在できない。
+    #
+    # 逆に言うと、外部に配るパッケージをこのリポジトリに足すときは、
+    # この1行を持ち出さないこと。
+    implementation_imports: false

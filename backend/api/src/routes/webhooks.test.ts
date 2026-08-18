@@ -85,6 +85,79 @@ describe("POST /v1/webhooks/revenuecat", () => {
     expect((await services.repository.getUser(testDeviceId))?.is_premium).toBe(false);
   });
 
+  // 支払い失敗は失効ではない。ここで剥奪すると、猶予期間のあいだだけ
+  // アプリはPremium・サーバは無料になり、カードを更新すれば直るはずの
+  // 数日間、授業も復習も止まる(docs/revenuecat.md §9)。
+  describe("BILLING_ISSUE(支払いの再試行が始まっただけ)", () => {
+    it("Premiumを外さず、猶予期間の終わりまで延ばす", async () => {
+      await postWebhook({
+        type: "INITIAL_PURCHASE",
+        app_user_id: testDeviceId,
+        expiration_at_ms: Date.parse("2026-09-03T00:00:00.000Z"),
+      });
+      const response = await postWebhook({
+        type: "BILLING_ISSUE",
+        app_user_id: testDeviceId,
+        expiration_at_ms: Date.parse("2026-09-03T00:00:00.000Z"),
+        grace_period_expiration_at_ms: Date.parse("2026-09-06T00:00:00.000Z"),
+      });
+      expect(response.status).toBe(200);
+
+      const user = await services.repository.getUser(testDeviceId);
+      expect(user?.is_premium).toBe(true);
+      expect(user?.premium_expires_at).toBe("2026-09-06T00:00:00.000Z");
+    });
+
+    // 猶予期間を0日にしているストアでは grace_period_expiration_at_ms が来ない
+    it("猶予期間が無ければ、そのイベントの期限をそのまま使う", async () => {
+      await postWebhook({
+        type: "INITIAL_PURCHASE",
+        app_user_id: testDeviceId,
+        expiration_at_ms: Date.parse("2026-09-03T00:00:00.000Z"),
+      });
+      await postWebhook({
+        type: "BILLING_ISSUE",
+        app_user_id: testDeviceId,
+        expiration_at_ms: Date.parse("2026-09-03T00:00:00.000Z"),
+      });
+
+      const user = await services.repository.getUser(testDeviceId);
+      expect(user?.is_premium).toBe(true);
+      expect(user?.premium_expires_at).toBe("2026-09-03T00:00:00.000Z");
+    });
+
+    // 期限なしで付け直すと「無期限」の意味になる(handleTransfer と同じ理由)。
+    // 支払いに失敗しただけの人が永久Premiumになってはいけない。
+    it("期限の材料が1つも無ければ、いまの期限を書き換えない", async () => {
+      await postWebhook({
+        type: "INITIAL_PURCHASE",
+        app_user_id: testDeviceId,
+        expiration_at_ms: Date.parse("2026-09-03T00:00:00.000Z"),
+      });
+      await postWebhook({ type: "BILLING_ISSUE", app_user_id: testDeviceId });
+
+      const user = await services.repository.getUser(testDeviceId);
+      expect(user?.is_premium).toBe(true);
+      expect(user?.premium_expires_at).toBe("2026-09-03T00:00:00.000Z");
+    });
+
+    it("猶予が明けても払われなければ、EXPIRATION で外れる", async () => {
+      await postWebhook({
+        type: "INITIAL_PURCHASE",
+        app_user_id: testDeviceId,
+        expiration_at_ms: Date.parse("2026-09-03T00:00:00.000Z"),
+      });
+      await postWebhook({
+        type: "BILLING_ISSUE",
+        app_user_id: testDeviceId,
+        grace_period_expiration_at_ms: Date.parse("2026-09-06T00:00:00.000Z"),
+      });
+      await postWebhook({ type: "EXPIRATION", app_user_id: testDeviceId });
+
+      expect((await services.repository.getUser(testDeviceId))?.is_premium).toBe(false);
+    });
+  });
+
   // 機種変更・再インストール後の「購入を復元する」。
   // 匿名デバイスIDは作り直されるので、RevenueCat は購入を付け替えて
   // TRANSFER を送ってくる。ここを落とすと、アプリは「復元しました」と言うのに

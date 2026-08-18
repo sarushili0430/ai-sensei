@@ -46,13 +46,27 @@ WORKDIR /app
 FROM base AS deps
 
 # 先にマニフェストとロックだけ置く(ソースを1行直しただけで再インストールしない)。
-# **ワークスペースの全マニフェストが要る。** 1つでも欠けると --frozen-lockfile が
-# 「ロックが古い」と誤検知して落ちる。イメージに入らない backend/api も同じ理由で置く。
+# **ワークスペースの全マニフェストが要る。** イメージに入らない backend/api も置くのは
+# そのため。
+#
+# **欠けても、ここでは落ちない。それがいちばん危ないところ。**
+# マニフェストの無いパッケージは pnpm から見て「ワークスペースに存在しない」ので、
+# `--frozen-lockfile` はロックのずれとして検知しない。依存側には
+# `workspace:*` のシンボリックリンクだけが張られ、**そのパッケージ自身の依存
+# (`packages/figure` なら zod)は1つも入らない**。あとから `COPY packages/` で
+# ソースだけが入るので、イメージは焼けるし LiveKit への登録も通る。
+# 壊れるのはジョブの子プロセスを起こす瞬間で、
+# `Cannot find package 'zod' imported from /app/packages/figure/src/schema.ts` を
+# 出して即死し、**アプリからは「先輩が来ない」としか見えない**
+# (実際に2026-08-12〜08-14のdevelopがこの形で止まっていた)。
+# packages/ を1つ足したら、**この一覧にも足すこと**。忘れても下の
+# 「起動できるかを焼き込み時に確かめる」でビルドが落ちる。
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY backend/agent/package.json       backend/agent/
 COPY backend/api/package.json         backend/api/
 COPY packages/contract/package.json   packages/contract/
 COPY packages/curriculum/package.json packages/curriculum/
+COPY packages/figure/package.json     packages/figure/
 COPY packages/guardrail/package.json  packages/guardrail/
 COPY packages/prompts/package.json    packages/prompts/
 
@@ -89,6 +103,19 @@ COPY --chown=agent:agent backend/agent/ backend/agent/
 
 USER agent
 ENV NODE_ENV=production
+
+# **ジョブの入口を、焼き込み時に一度 import してみる。**
+#
+# LiveKit Agents は `agent.ts` を**別プロセス**で読む。そこで解決に失敗しても
+# 親ワーカーは生き続け、LiveKitへの登録も 200 のままなので、
+# ヘルスチェックも `lk agent status` も緑を返す。壊れたことが分かるのは
+# 生徒がアプリで「先輩が来ない」に当たったときで、ログを見るまで
+# 依存の取りこぼしだと気づけない(上の COPY の一覧がまさにそれで抜けた)。
+#
+# ここで落としておけば、同じ抜けは**デプロイ前にビルド失敗として**出る。
+# 走るのは import までで、設定の読み込み(`loadConfig`)も接続も起きない。
+RUN node --experimental-strip-types --input-type=module \
+  -e "await import('/app/backend/agent/src/agent.ts')"
 
 # productionモードのワーカーは 0.0.0.0:8081 にヘルスチェックを出す。
 #   GET /       LiveKitに登録できていれば 200、できていなければ 503

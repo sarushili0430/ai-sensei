@@ -42,7 +42,8 @@
       "step": {
         "index": 2,
         "speech": "そう。じゃあ今の、自分の言葉で説明してみて。",
-        "board": null
+        "board": null,
+        "awaits_student": true
       }
     },
     {

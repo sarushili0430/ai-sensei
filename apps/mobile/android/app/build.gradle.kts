@@ -8,11 +8,23 @@ plugins {
 
 // リリース署名の情報は android/key.properties から読む(コミットしない)。
 // CIでは codemagic.yaml が Codemagic の keystore から書き出す。
-// 手元にファイルが無いときは debug 署名のままにして、
-// `flutter run --release` が動かなくならないようにする。
+// 鍵が無い Release を debug 署名へ落とすと、ビルド自体は成功しても
+// Play Console へのアップロード時に初めて拒否されるため、明示的に失敗させる。
+val keystorePropertiesFile = rootProject.file("key.properties")
 val keystoreProperties = Properties().apply {
-    val file = rootProject.file("key.properties")
-    if (file.exists()) file.inputStream().use { load(it) }
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
+}
+val releaseBuildRequested = gradle.startParameter.taskNames.any { taskName ->
+    taskName.endsWith("assembleRelease", ignoreCase = true) ||
+        taskName.endsWith("bundleRelease", ignoreCase = true)
+}
+if (releaseBuildRequested && keystoreProperties.isEmpty()) {
+    throw GradleException(
+        "Release署名が未設定です。android/key.properties と upload keystore を用意するか、" +
+            "Codemagic の Android — Play internal workflow でビルドしてください。",
+    )
 }
 
 android {
@@ -20,7 +32,16 @@ android {
     // permission_handler_android 14 が compileSdk 37 を要求する。
     // Flutter 3.44.8 の flutter.compileSdkVersion はまだ 36 なので、
     // SDKが追いつくまではここで明示的に上書きする。
+    //
+    // API 37 のプラットフォームは Google がマイナー版付きでしか配っていない
+    // (`platforms;android-37.0` / `android-37.1`。`android-37` は存在しない)。
+    // そしてマイナー版を持つ API では hash string にもマイナーが入る
+    // ―― API 36.0 だけが `android-36` に特別扱いされ、37.0 は `android-37.0`。
+    // なので compileSdk = 37 だけだと AGP は `android-37` を探して
+    //   Failed to find target with hash string 'android-37'
+    // で落ちる。プラットフォームを入れても直らないので、マイナーまで指定する。
     compileSdk = 37
+    compileSdkMinor = 0
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -52,7 +73,6 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.findByName("release")
-                ?: signingConfigs.getByName("debug")
         }
     }
 }

@@ -2,12 +2,18 @@ import type { BoardStep } from "@ai-sensei/contract";
 import { describe, expect, it } from "vitest";
 import { readSessionContext } from "./context.ts";
 import {
+  type LessonTurn,
+  asksForBoard,
+  asksForTeachBack,
   handsTurnToStudent,
+  lessonContinuationInstruction,
   lessonFailedPrompt,
   lessonRecapMaxLength,
   renderLessonRecap,
   reviewOpening,
   senpaiConversationPrompt,
+  stepAwaitsStudent,
+  studentSilenceMarker,
   teachBackPrompt,
 } from "./senpai.ts";
 import { sessionMetadataJson } from "./test-support.ts";
@@ -50,11 +56,12 @@ const englishContext = readSessionContext(
   }),
 );
 
-const step = (index: number, speech: string, board: BoardStep["board"]): BoardStep => ({
-  index,
-  speech,
-  board,
+const step = (index: number, speech: string, board: BoardStep["board"]): LessonTurn => ({
+  kind: "step",
+  step: { index, speech, board },
 });
+
+const said = (text: string): LessonTurn => ({ kind: "student", text });
 
 describe("定型の一言", () => {
   it("言語ごとに別の文言を返す", () => {
@@ -105,6 +112,108 @@ describe("handsTurnToStudent", () => {
     expect(handsTurnToStudent("Here is the discriminant.", "en")).toBe(false);
     expect(handsTurnToStudent("   ", "ja")).toBe(false);
   });
+
+  /**
+   * **実際に踏んだ壊れ方。** 問題文が読めなかった授業は
+   * 「問題、読んでもらってもいい?」から始まる(`senpai_board.*.md` の指示)。
+   * これを「まだ喋っている途中」と読むと、直後に教え返しの定型句が足され、
+   * **読み上げを頼まれた次の瞬間に、まだ教わっていない内容の説明を求められる。**
+   */
+  it("問いかけで終わっていれば、形が違っても番は渡っている", () => {
+    expect(handsTurnToStudent("問題、読んでもらってもいい?", "ja")).toBe(true);
+    expect(handsTurnToStudent("この式、まず何する?", "ja")).toBe(true);
+    // **全角の疑問符。**日本語の出力はほとんどこちらで、ここを取りこぼすと
+    // 日本語の授業ではターン制が丸ごと元に戻る(実際に一度、正規表現の中の
+    // 全角 `？` が半角に潰れていた)。半角に化けても落ちるよう、
+    // コードポイントで書いてある。
+    expect(handsTurnToStudent("D はプラスだよね。だから\uFF1F", "ja")).toBe(true);
+    expect(handsTurnToStudent("じゃあ、次はどうする\uFF1F ", "ja")).toBe(true);
+    expect(handsTurnToStudent("Could you read me the problem?", "en")).toBe(true);
+  });
+
+  it("文の途中の疑問符では止めない(終わりだけを見る)", () => {
+    expect(handsTurnToStudent("「なんで?」って思うよね。ここを見てほしい。", "ja")).toBe(false);
+  });
+});
+
+describe("stepAwaitsStudent", () => {
+  const withField = (speech: string, awaits: boolean | undefined) => ({
+    speech,
+    ...(awaits === undefined ? {} : { awaits_student: awaits }),
+  });
+
+  /**
+   * 言い回しの推測が取りこぼす問いかけこそ、申告で止まらないといけない。
+   * 「まず何する? 一言でいいよ。」は**板書プロンプトの見本そのもの**で、
+   * `?` が文中に沈むので `handsTurnToStudent` は false — 推測のままだと
+   * ここで授業ループが「渡し忘れ」と誤読して1パス目で終わり、
+   * 板書が最初の数行のまま二度と増えなくなる(実際に起きた壊れ方)。
+   */
+  it("申告があれば言い回しに関わらず従う", () => {
+    const missedByRegex = "オッケー。じゃあこの式、まず何する? 一言でいいよ。";
+    expect(handsTurnToStudent(missedByRegex, "ja")).toBe(false);
+    expect(stepAwaitsStudent(withField(missedByRegex, true), "ja")).toBe(true);
+
+    // 逆向き: 修辞疑問は末尾が ? でも false の申告で流す(#105 の症状A)。
+    const rhetorical = "まず(1)からやろっか?";
+    expect(handsTurnToStudent(rhetorical, "ja")).toBe(true);
+    expect(stepAwaitsStudent(withField(rhetorical, false), "ja")).toBe(false);
+  });
+
+  it("欄が無い手順は従来の言い回し判定に落ちる(修復経路・古い出力)", () => {
+    expect(stepAwaitsStudent(withField("この式、まず何する?", undefined), "ja")).toBe(true);
+    expect(stepAwaitsStudent(withField("この形だったよね。", undefined), "ja")).toBe(false);
+  });
+});
+
+describe("asksForBoard", () => {
+  it("板書・黒板と名指しした発話だけを拾う", () => {
+    expect(asksForBoard("板書して!", "ja")).toBe(true);
+    expect(asksForBoard("それ、黒板に書いてみて", "ja")).toBe(true);
+    expect(asksForBoard("板書のここの部分がわからない", "ja")).toBe(true);
+    expect(asksForBoard("Can you write it on the board?", "en")).toBe(true);
+    expect(asksForBoard("Put that on the whiteboard please", "en")).toBe(true);
+  });
+
+  /**
+   * 「書いて」だけでは拾わない。教え返しの説明そのもの
+   * (「ここで式を書いて解く」)が授業へ吸い込まれると、
+   * 生徒の説明の途中に先輩の板書パスが割り込む。
+   */
+  it("板書と名指ししない発話は拾わない(説明の誤爆を避ける)", () => {
+    expect(asksForBoard("ここで式を書いて解くんだよね", "ja")).toBe(false);
+    expect(asksForBoard("次はどうするんだっけ", "ja")).toBe(false);
+    expect(asksForBoard("I'm a bit bored of this", "en")).toBe(false);
+  });
+});
+
+describe("asksForTeachBack", () => {
+  // 授業の往復を終える唯一の合図。板書プロンプトが最後の手順に固定している文言の族。
+  it("教え返しへの受け渡しだけを true にする", () => {
+    expect(asksForTeachBack("じゃあ今の、自分の言葉で説明してみて。", "ja")).toBe(true);
+    expect(asksForTeachBack(teachBackPrompt("ja"), "ja")).toBe(true);
+    expect(asksForTeachBack(teachBackPrompt("en"), "en")).toBe(true);
+    expect(asksForTeachBack("Now explain that back to me in your own words.", "en")).toBe(true);
+  });
+
+  /**
+   * 途中の問いかけは番を渡すが(`handsTurnToStudent` は true)、授業は終わらない。
+   * ここを取り違えると、質問を1つしただけで板書の続きが書けなくなる —
+   * 「先輩がすぐ説明を投げてくる」というドッグフーディングの報告の形そのもの。
+   */
+  it("途中の問いかけでは終わらない", () => {
+    for (const speech of [
+      "最小公倍数、何になると思う?",
+      "この式の a と b と c、どれ?",
+      "最初の一手、言ってみて。",
+      "これ、まず何する?",
+    ]) {
+      expect(asksForTeachBack(speech, "ja"), speech).toBe(false);
+      expect(handsTurnToStudent(speech, "ja"), speech).toBe(true);
+    }
+    expect(asksForTeachBack("What do you think the LCM is?", "en")).toBe(false);
+    expect(asksForTeachBack("", "ja")).toBe(false);
+  });
 });
 
 describe("renderLessonRecap", () => {
@@ -131,6 +240,41 @@ describe("renderLessonRecap", () => {
     ]);
   });
 
+  /**
+   * 往復した授業では、生徒の答えも要約に入る。ここが無いと、会話LLMは
+   * 「最小公倍数、何になると思う?」に生徒がもう答えたことを知らず、
+   * **同じ質問をもう一度聞く**ところから教え返しが始まる。
+   */
+  it("生徒の発話をロール名つきで挟む", () => {
+    const recap = renderLessonRecap(
+      [
+        step(0, "最小公倍数、何になると思う?", null),
+        said("12だと思う"),
+        step(1, "そう、12だよね。", { kind: "latex", tex: "x = 12" }),
+      ],
+      "ja",
+    );
+
+    expect(recap.split("\n")).toEqual([
+      "1. 「最小公倍数、何になると思う?」",
+      "ユーザー: 「12だと思う」",
+      "2. 「そう、12だよね。」 / 板書: x = 12",
+    ]);
+  });
+
+  it("英語では英語のロール名と引用符になる", () => {
+    const recap = renderLessonRecap(
+      [step(0, "What do you think the LCM is?", null), said("Twelve, I think")],
+      "en",
+    );
+
+    expect(recap.split("\n")).toEqual([
+      '1. "What do you think the LCM is?"',
+      'Student: "Twelve, I think"',
+    ]);
+    expect(recap).not.toMatch(/[ぁ-んァ-ン一-龯]/);
+  });
+
   // instructions は毎ターン全部送られる。板書1枚は最大40手順あるので、
   // 上限がないと会話のたびに板書ぶんの入力トークンを払い続けることになる。
   it("上限を超えたら末尾を落とす(先頭は残す)", () => {
@@ -151,6 +295,53 @@ describe("renderLessonRecap", () => {
     expect(renderLessonRecap([], "ja")).toContain("まだ板書には何も出していません");
     expect(renderLessonRecap([], "en")).toContain("nothing on the board yet");
     expect(renderLessonRecap([], "en")).not.toMatch(/[ぁ-んァ-ン一-龯]/);
+  });
+});
+
+describe("lessonContinuationInstruction", () => {
+  const turns: LessonTurn[] = [
+    step(0, "まず、式をそのまま書くね。", { kind: "latex", tex: "x^2 - 3x + 2 = 0" }),
+    step(1, "最小公倍数、何になると思う?", null),
+    said("えっと、12?"),
+  ];
+
+  it("ここまでのやりとりと、続きだけを書く指示が入る", () => {
+    const instruction = lessonContinuationInstruction(turns, "ja");
+
+    expect(instruction).toContain("x^2 - 3x + 2 = 0");
+    expect(instruction).toContain("生徒: 「えっと、12?」");
+    expect(instruction).toContain("続きだけを書きます");
+    expect(instruction).toContain("`index` はまた 0 から");
+  });
+
+  // 答えの直前が読めないと、続きがその答えと噛み合わない。
+  // 教え返しの要約(先頭を残す)とは逆で、こちらは**末尾**を残す。
+  it("溢れたら先頭を落として、直近のやりとりを残す", () => {
+    const many: LessonTurn[] = Array.from({ length: 60 }, (_, index) =>
+      step(index, `${index}番目。${"あ".repeat(90)}`, null),
+    );
+    many.push(said("最後の答え"));
+
+    const instruction = lessonContinuationInstruction(many, "ja");
+
+    expect(instruction).toContain("最後の答え");
+    expect(instruction).not.toContain("「0番目。");
+  });
+
+  it("英語では英語の指示になる", () => {
+    const instruction = lessonContinuationInstruction(
+      [step(0, "What do you think the LCM is?", null), said("Twelve?")],
+      "en",
+    );
+
+    expect(instruction).toContain('Student: "Twelve?"');
+    expect(instruction).toContain("write only what comes next");
+    expect(instruction).not.toMatch(/[ぁ-んァ-ン一-龯]/);
+  });
+
+  it("沈黙の記録は会話の言語で書かれている", () => {
+    expect(studentSilenceMarker("ja")).toBe("(返事はなかった)");
+    expect(studentSilenceMarker("en")).toBe("(no reply)");
   });
 });
 

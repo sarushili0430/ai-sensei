@@ -115,6 +115,8 @@ variables: [photo_summary, visible_work, allowed_topics, question_seeds, lesson_
 | 日本語は数式ではなく `text` 要素へ | `guardrail` の `text_in_math` |
 | 1手順=1行(`\\` を使わない・多行環境を使わない) | `contract` の `tex` の正規表現 / `guardrail` の `row_separator_outside_environment` |
 | 長い式は `=` の前で割って2手順にする | **コード側の相手がまだいない**(計画書 §3-6b。W2でNode側の幅推定を入れるまで、ここはプロンプトだけが守っている) |
+| 答えを待つ問いかけには `awaits_student: true` を付け、`steps` をそこで終える(授業は往復する) | `contract` の `boardStepSchema.awaits_student` + `senpai.ts` の `stepAwaitsStudent`(欄が無い手順だけ `handsTurnToStudent` の言い回し推測に落ちる)。`backend/agent/src/lesson.ts` の `stopAfter` がそこで止め、答えを受けた続きは `lesson-loop.ts` が同じ板書に積む |
+| 教え返しへの受け渡しは「じゃあ今の、**自分の言葉で説明してみて**」の形で言い、**途中の問いかけには「説明して」を使わない** | `senpai.ts` の `asksForTeachBack`。**授業の往復を終える唯一の合図**なので、文言の族を変えるときは判定とテストも一緒に変える |
 
 学習計画(`study_plan`)の二重書きの相手は、さらに別です:
 
@@ -127,10 +129,11 @@ variables: [photo_summary, visible_work, allowed_topics, question_seeds, lesson_
 | `topic_ids` は許可リストから選ぶ | `guardrail` の `filterHoleTopicIds()` と同じ照合(**計画向けはまだ無い** — 下記) |
 | 組み直しで `intake` を聞き直さない | **コード側の相手がいない。**ここはプロンプトだけが守っている |
 
-教え返し(`senpai_conversation`)の二重書きの相手は、**いまのところ1つもありません。**
+教え返し(`senpai_conversation`)にも、締めの検出という二重書きの相手があります。
 
 | プロンプトに書くこと | コード側の相手 |
 | --- | --- |
+| 締めるときは「**今日は**ここまでにしよっか」 / "Let's stop here for today" を明示して終える(「説明はここまで」のような話の区切りの言い方では締めない) | `backend/agent/src/closing.ts` の `CLOSING_PATTERNS`。「今日は」「そろそろ」のような**今日ぜんぶを指す語**を前に要求している。文言を変えるときは検出とテストも更新する |
 | 採点しない・「合ってる / 違う」を宣告しない | **無し。**プロンプトだけが守っている |
 | 命令・催促をしない、数字を見せない(約束4) | **無し。**同上 |
 | 先に答えを埋めない(まず言わせる) | **無し。**`containsAnswerLeak()` は当てられない(下記) |

@@ -1,10 +1,9 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
-import '../../../../theme/tokens.dart';
 import '../../domain/board.dart';
 import 'board_coordinate_space.dart';
+import 'board_style.dart';
+import 'dart:math' as math;
 
 /// 三角形(`BoardElement.triangle`)を描く。
 ///
@@ -52,7 +51,7 @@ class TrianglePainter extends CustomPainter {
     canvas.drawPath(
       path,
       Paint()
-        ..color = AppColors.ink
+        ..color = BoardStyle.chalk
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2.4
         ..strokeJoin = StrokeJoin.round,
@@ -98,7 +97,7 @@ class TrianglePainter extends CustomPainter {
     final Offset unit2 = dir2 / len2;
 
     final Paint markPaint = Paint()
-      ..color = AppColors.blue
+      ..color = BoardStyle.chalkKey
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2;
 
@@ -138,7 +137,7 @@ class TrianglePainter extends CustomPainter {
       final Offset placement = bisectorLength < 1e-6
           ? vertex + const Offset(0, -24)
           : vertex + bisector / bisectorLength * 26;
-      paintBoardLabel(canvas, label, placement, color: AppColors.blue);
+      paintBoardLabel(canvas, label, placement, color: BoardStyle.chalkKey);
     }
   }
 

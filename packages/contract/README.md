@@ -61,6 +61,11 @@ fixtureはレビューで一番読まれる場所なので、実際に起きる�
   板書は1つの問題ぶん生き続け、何回かの説明(切り分け → 教える → 教え返させる)が
   同じ `board_id` に積み上がる。**LLMを呼ぶたびに `board_open` を送ると、
   会話が1往復するたびに板書が消える**(計画書 §3-2 の「前の行は消さない」が毎ターン破れる)。
+- **番の受け渡しは推測ではなく申告。** `awaits_student`(optionalのboolean)は
+  「その手順で生徒の答えを待つか」の**LLM自身の申告**で、授業の往復(`backend/agent` の
+  `lesson-loop.ts`)がどこで止まって答えを待つかを決める。言い回しからの推測だと、
+  修辞疑問で止まり、本当の問いかけを取りこぼす — 取りこぼした瞬間に往復が終わり、
+  板書が増えなくなる。optionalなのはワイヤー互換のため(モバイルは読まずに捨ててよい)。
 - **LLMが出す形と、data channelを流れる形を分けている。** `board-lesson` は識別子を持たない
   (幻覚したIDが配送層に流れ込まないように)。宛先・順序・板書の切り替えは封筒
   (`board-channel-log` の各メッセージ)の責務。**通し番号の付け直しも配送層**で、
@@ -211,7 +216,9 @@ zod側がタプル(`z.tuple`)なのは、**同種の値の固定長列は配列�
 
 | メソッド | パス | 誰が呼ぶ |
 | --- | --- | --- |
-| POST | `/v1/sessions` | mobile(写真 + meta を multipart で) |
+| POST | `/v1/sessions` | mobile(写真 + meta を multipart で。**まだ数えない**) |
+| PATCH | `/v1/sessions/{id}/topics` | mobile(チップUIで外した単元の反映) |
+| POST | `/v1/sessions/{id}/start` | mobile(**会話の開始。ここで今日の1回を数え**、部屋の鍵が返る) |
 | POST | `/v1/sessions/{id}/complete` | agent(内部トークン必須) |
 | GET | `/v1/me/progress` | mobile(ホーム画面) |
 | GET | `/v1/me/reviews` | mobile(無料の小テスト。音声授業の可否は `/v1/me/progress` の `limits.lesson_allowed_today`) |

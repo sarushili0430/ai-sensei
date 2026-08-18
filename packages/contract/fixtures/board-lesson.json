@@ -30,12 +30,14 @@
     {
       "index": 5,
       "speech": "ここ、D を見てほしいんだけど — プラスだよね。だから?",
-      "board": { "kind": "latex", "tex": "D = 1 > 0" }
+      "board": { "kind": "latex", "tex": "D = 1 > 0" },
+      "awaits_student": false
     },
     {
       "index": 6,
       "speech": "そう。じゃあ今の、自分の言葉で説明してみて。",
-      "board": { "kind": "text", "body": "D > 0 → 異なる2つの実数解" }
+      "board": { "kind": "text", "body": "D > 0 → 異なる2つの実数解" },
+      "awaits_student": true
     }
   ]
 }

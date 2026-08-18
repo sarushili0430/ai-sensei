@@ -3,6 +3,7 @@ library;
 
 import 'package:ai_sensei/src/features/session/domain/board.dart';
 import 'package:ai_sensei/src/features/session/presentation/board/board_element_view.dart';
+import 'package:ai_sensei/src/features/session/presentation/board/board_style.dart';
 import 'package:ai_sensei/src/features/session/presentation/board/board_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -31,9 +32,16 @@ void main() {
     await setSurface(tester, size: const Size(360, 220));
     await tester.pumpWidget(
       wrapApp(
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: BoardElementView(element: element),
+        // **板の上に置いて撮る。**要素は必ず [BoardView] の中に置かれる
+        // (`board_view.dart` が板を持っている)ので、地の上で撮ると
+        // **アプリに存在しない見え方**を正として焼くことになる。
+        // チョーク色は白地では読めないので、そこも見逃せない。
+        ColoredBox(
+          color: BoardStyle.surface,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: BoardElementView(element: element),
+          ),
         ),
       ),
     );
@@ -169,7 +177,11 @@ void main() {
 
     await setSurface(tester, size: const Size(393, 500));
     await tester.pumpWidget(
-      wrapApp(const Padding(padding: EdgeInsets.all(16), child: BoardView(steps: steps))),
+      // **板書の外側にだけ余白を置く。**[BoardView] が板と内側の余白を持っているので、
+      // ここで内側にもう一段付けると実効幅が二重に削られる。
+      wrapApp(
+        const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: BoardView(steps: steps)),
+      ),
     );
     await tester.pumpAndSettle();
     await capture(tester, 'stacked_3steps');

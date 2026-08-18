@@ -7,6 +7,7 @@ import {
   startsWithBoardLesson,
   teachBackFallback,
   teachBackPrompt,
+  wroteOnBoard,
 } from "./senpai.ts";
 import { sessionMetadataJson } from "./test-support.ts";
 
@@ -100,5 +101,47 @@ describe("復習から板書授業への接続", () => {
     expect(
       teachBackFallback(reviewContext, [step("じゃあ今の、自分の言葉で説明してみて。")]),
     ).toBeNull();
+  });
+
+  /**
+   * **報告された壊れ方(2026-08-12)。**
+   *
+   *   先輩「問題、読んでもらってもいい?」
+   *   先輩「じゃあ今の、自分の言葉で説明してみて。」  ← これが無条件で足されていた
+   *
+   * 問題文が写真から読めなかった授業は、板書プロンプトの指示どおり読み上げを頼む。
+   * それを「番を渡していない」と読んだうえに、板書に1行も書いていないことも
+   * 見ていなかったので、**まだ何も教わっていない生徒に説明を求めていた。**
+   * しかも会話プロンプトは「いまやっていること — 教え返し」で固定なので、
+   * そのまま同じやりとりが繰り返される。
+   */
+  it("問題文の読み上げを頼んだだけの回に、教え返しを足さない", () => {
+    const asked: BoardStep = { index: 0, speech: "問題、読んでもらってもいい?", board: null };
+    expect(teachBackFallback(reviewContext, [asked])).toBeNull();
+  });
+
+  it("板書に1行も書いていない回には足さない(「今の」が存在しない)", () => {
+    const spoken: BoardStep = { index: 0, speech: "じゃあ、そこから見ていくね。", board: null };
+    expect(teachBackFallback(reviewContext, [spoken])).toBeNull();
+  });
+
+  it("1行でも書いていれば、これまでどおり教え返しへ戻す", () => {
+    expect(
+      teachBackFallback(reviewContext, [
+        { index: 0, speech: "まず、そこは置いといて。", board: null },
+        step("この形にすると頂点が見えるよ。"),
+      ]),
+    ).toBe(teachBackPrompt("ja"));
+  });
+});
+
+describe("板書に何か書いたか", () => {
+  it("音声だけの手順は「教えた」に数えない", () => {
+    expect(wroteOnBoard([{ index: 0, speech: "うん、そうそう。", board: null }])).toBe(false);
+    expect(wroteOnBoard([])).toBe(false);
+  });
+
+  it("1つでも板書に載っていれば true", () => {
+    expect(wroteOnBoard([{ index: 0, speech: "ここ。", board: null }, step("こう。")])).toBe(true);
   });
 });

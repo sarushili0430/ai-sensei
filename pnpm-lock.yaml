@@ -38,6 +38,9 @@ importers:
       '@ai-sensei/curriculum':
         specifier: workspace:*
         version: link:../../packages/curriculum
+      '@ai-sensei/figure':
+        specifier: workspace:*
+        version: link:../../packages/figure
       '@ai-sensei/guardrail':
         specifier: workspace:*
         version: link:../../packages/guardrail
@@ -100,6 +103,9 @@ importers:
 
   packages/contract:
     dependencies:
+      '@ai-sensei/figure':
+        specifier: workspace:*
+        version: link:../figure
       zod:
         specifier: ^3.24.1
         version: 3.25.76
@@ -108,6 +114,12 @@ importers:
         version: 3.25.2(zod@3.25.76)
 
   packages/curriculum:
+    dependencies:
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+
+  packages/figure:
     dependencies:
       zod:
         specifier: ^3.24.1

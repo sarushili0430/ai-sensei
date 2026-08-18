@@ -445,8 +445,7 @@ workflows:
       - name: key.properties を書き出す
         working_directory: apps/mobile/android
         # android/app/build.gradle.kts がこのファイルを読んでリリース署名に使う。
-        # 無いときは debug 署名にフォールバックする作りなので、書き損ねると
-        # 「ビルドは通るがPlayに弾かれる」になる。先にここで落とす。
+        # Release署名が無ければGradle側も失敗するが、ここで先に原因を明示する。
         script: |
           set -euo pipefail
           if [ -z "${CM_KEYSTORE_PATH:-}" ]; then
@@ -459,6 +458,10 @@ workflows:
           keyAlias=$CM_KEY_ALIAS
           keyPassword=$CM_KEY_PASSWORD
           EOF
+
+      # compileSdk 37 のプラットフォームは AGP が自動でダウンロードする。
+      # ディレクトリ名を android-37 に揃えるステップがここにあったが、
+      # 名前の問題ではなかったので消した(詳細は app/build.gradle.kts の compileSdkMinor)。
 
       - name: AAB をビルド
         working_directory: apps/mobile

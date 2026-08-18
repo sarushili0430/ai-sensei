@@ -12,7 +12,7 @@ import { checkPlanScope, filterPlanItems, toLocalDate } from "@ai-sensei/guardra
 import { Hono } from "hono";
 import type { AppEnv, Bindings } from "../env.ts";
 import { readLimits } from "../env.ts";
-import { isPremiumNow } from "../lib/entitlement.ts";
+import { hasPremiumAccess } from "../lib/entitlement.ts";
 import { apiError } from "../lib/errors.ts";
 import { type AgentDispatch, createLiveKitToken } from "../lib/livekit.ts";
 
@@ -38,13 +38,14 @@ plansRoute.post("/", async (c) => {
   }
   const { locale, school_stage: schoolStage } = parsed.data;
 
+  const limits = readLimits(c.env);
   const user = await repository.ensureUser(deviceId, at);
-  if (!isPremiumNow(user, at)) {
+  if (!hasPremiumAccess({ user, now: at, limits })) {
     throw apiError("premium_required", { locale });
   }
 
   const planSessionId = newId("pls");
-  const maxSeconds = readLimits(c.env).premiumSessionMaxSeconds;
+  const maxSeconds = limits.premiumSessionMaxSeconds;
   const currentPlan = await repository.getCurrentPlan(deviceId);
   const metadata = planSessionMetadataSchema.parse({
     plan_session_id: planSessionId,

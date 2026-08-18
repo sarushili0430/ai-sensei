@@ -17,6 +17,7 @@ import { planDateSchema, planSourceSchema, studyPlanDraftSchema, studyPlanSchema
 export const apiPaths = {
   createSession: "/v1/sessions",
   updateSessionTopics: (sessionId: string) => `/v1/sessions/${sessionId}/topics`,
+  startSession: (sessionId: string) => `/v1/sessions/${sessionId}/start`,
   completeSession: (sessionId: string) => `/v1/sessions/${sessionId}/complete`,
   progress: "/v1/me/progress",
   reviewQueue: "/v1/me/reviews",
@@ -234,11 +235,23 @@ export const sessionLimitsSchema = z
   })
   .strict();
 
+/**
+ * POST /v1/sessions のレスポンス。**写真を読んだ結果だけで、部屋の鍵は入っていない。**
+ *
+ * ここに `livekit` と `limits` が無いのは仕様。**1日の回数を数えるのは
+ * 「写真を読んだとき」ではなく「会話が始まったとき」**にしたので
+ * (`startSessionResponseSchema`)、解析の応答は枠の判定を通らない。
+ *
+ * トークンを解析の時点で配ると、その分け方は成立しない。**トークンを持っている =
+ * いつでも会話を始められる**ので、鍵を先に渡してから「会話の開始で数える」と言っても、
+ * 数える口をクライアント側に置いたのと同じことになる。だから枠の確保とトークンの発行を
+ * `POST /v1/sessions/{id}/start` の1操作に束ね、この応答は**単元と問題文の読み合わせ**
+ * だけを返す。
+ */
 export const createSessionResponseSchema = z
   .object({
     session_id: z.string().min(1),
     kind: sessionKindSchema,
-    livekit: liveKitConnectionSchema,
     detected_topics: z.array(detectedTopicSchema).min(1),
     /**
      * 解析が読み取った問題。**読めなければ `null`**(それでもセッションは成立する)。
@@ -250,17 +263,54 @@ export const createSessionResponseSchema = z
      *      授業が始まる前の手当て。
      */
     problem: sessionProblemSchema.nullable(),
-    limits: sessionLimitsSchema,
   })
   .strict();
 export type CreateSessionResponse = z.infer<typeof createSessionResponseSchema>;
 
 /**
+ * POST /v1/sessions/{id}/start のリクエスト。
+ *
+ * `locale` は**エラー文言の言語**だけに使う。会話の言語はセッションに残した
+ * 単元の課程で決まる(端末を英語にしただけで、日本語で撮った問題に英語で
+ * 教えに来ることはない)。
+ */
+export const startSessionRequestSchema = z.object({ locale: localeSchema.default("ja") }).strict();
+export type StartSessionRequest = z.infer<typeof startSessionRequestSchema>;
+export type StartSessionRequestInput = z.input<typeof startSessionRequestSchema>;
+
+/**
+ * POST /v1/sessions/{id}/start のレスポンス。**ここが「1回」を数える唯一の場所。**
+ *
+ * 以前は写真を読んだ時点(`POST /v1/sessions`)で今日の枠を押さえていた。
+ * 原価(Vision LLM)が発生するのがそこだったからだが、そのぶん
+ * **撮って単元を確かめただけの人が、会話を1度もしないまま「今日はここまで」**に
+ * なっていた。生徒から見れば1回とは「先輩と話した回数」なので、数える場所を
+ * ここへ移してある。
+ *
+ * 枠の確保とトークンの発行は**サーバ側の同じ1操作**で、順番も入れ替えられない。
+ * 枠を取れなければトークンは出ないし、トークンが出たなら枠は取れている。
+ * (解析だけを繰り返して原価を積む道は、`POST /v1/sessions` 側の別の上限で塞ぐ。
+ * そちらは1日の授業回数よりずっと緩い、異常利用だけを止める上限。)
+ *
+ * **再送しても二重に数えない。** 同じセッションで2度目を呼ぶと、最初に押さえた
+ * 枠のままトークンだけ出し直す(通信が切れて押し直したときのため)。
+ */
+export const startSessionResponseSchema = z
+  .object({
+    session_id: z.string().min(1),
+    kind: sessionKindSchema,
+    livekit: liveKitConnectionSchema,
+    limits: sessionLimitsSchema,
+  })
+  .strict();
+export type StartSessionResponse = z.infer<typeof startSessionResponseSchema>;
+
+/**
  * PATCH /v1/sessions/{id}/topics のリクエスト。
  *
  * チップUIで外した単元を、**セッションを作り直さずに**反映する。
- * 作り直すと無料枠(1日1回)をもう1回消費してしまい、単元を確認して
- * 会話を始めた瞬間に「今日のセッションはここまで」と言われてしまう。
+ * 作り直すと同じ写真をもう一度Vision LLMに通すことになり(原価が二重にかかり)、
+ * 解析の回数だけを見ている上限にも二重に当たる。
  */
 export const updateSessionTopicsRequestSchema = z
   .object({
@@ -272,7 +322,10 @@ export const updateSessionTopicsRequestSchema = z
 export type UpdateSessionTopicsRequest = z.infer<typeof updateSessionTopicsRequestSchema>;
 export type UpdateSessionTopicsRequestInput = z.input<typeof updateSessionTopicsRequestSchema>;
 
-/** 返るものは作成時と同じ(session_idは変わらず、トークンだけ出し直す)。 */
+/**
+ * 返るものは作成時と同じ形(単元と問題文の読み合わせ)。
+ * **ここでもトークンは出さない** — 部屋の鍵が出るのは `/start` だけ。
+ */
 export type UpdateSessionTopicsResponse = CreateSessionResponse;
 
 /**

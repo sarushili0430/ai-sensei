@@ -3,6 +3,8 @@ import {
   type BoardStep,
   boardChannelMessageSchema,
   boardChannelTopic,
+  boardFigureAltMaxLength,
+  boardFigureSvgMaxLength,
   boardLessonStepsMaxCount,
   boardProtocolVersion,
   boardStepSchema,
@@ -13,6 +15,7 @@ import {
   type CurriculumSubject,
   subjectOfTopicId,
 } from "@ai-sensei/curriculum";
+import { drawFigure } from "@ai-sensei/figure";
 import {
   type AllowedTopics,
   type LatexRejectionReason,
@@ -168,10 +171,10 @@ export type BoardStepRejection = {
   index: number;
   /**
    * `latex` は描けないコマンド(三段構えの②)、`syntax` は構文の壊れ(③)、
-   * `schema` は契約違反(長さ・形)。
+   * `schema` は契約違反(長さ・形)、`figure` は**解けなかった作図**。
    */
-  kind: "latex" | "syntax" | "schema";
-  reason: LatexRejectionReason | "syntax" | "schema";
+  kind: "latex" | "syntax" | "schema" | "figure";
+  reason: LatexRejectionReason | "syntax" | "schema" | "figure" | "figure_too_large";
   /** 何が引っかかったか(ログ用)。 */
   detail: string;
   /** **会話の言語で書かれた再生成の指示。**そのままプロンプトに足せる。 */
@@ -201,27 +204,37 @@ export type HeadRepair = (rejection: BoardHeadRejection) => Promise<unknown>;
  * ここで先に閉じておけば、**英語の課程では LaTeX の検査に到達しない**。
  */
 const boardKindsBySubject: Record<CurriculumSubject, readonly string[]> = {
-  math: ["latex", "text", "plot", "triangle", "circle"],
+  math: ["latex", "text", "plot", "triangle", "circle", "figure"],
   english: ["sentence", "compare", "text"],
 };
 
-/** 契約に合わなかったときの指示。LaTeXの理由別の文面は guardrail 側にある。 */
+/**
+ * 契約に合わなかったときの指示。LaTeXの理由別の文面は guardrail 側にある。
+ *
+ * **`null` を逃げ道として書かない。** 以前は「〜のどれか、または null にすること」と
+ * 書いていたが、それは**落ちた板書を消せば検査を通る**と教えているのと同じで、
+ * いちばん安いのがその道になる。直った手順が音声だけになると、
+ * 授業は最後まで進むのに黒板は白いまま — しかも配送層から見れば全部成功なので、
+ * **どこにも記録が残らない**(2026-08-12 の「板書が描画されない」報告で、
+ * 図が落ちた手順がここを通っていた)。`null` が正しいのは切り分けの質問だけで、
+ * それはプロンプト本文の役割。**直しの指示では常に置き場所を名指しする。**
+ */
 const schemaGuidanceBySubject: Record<CurriculumSubject, Record<CurriculumLocale, string>> = {
   math: {
-    ja: "手順の形が契約に合っていません。speech は120字以内の話し言葉(数式を入れない)、board は latex / text / plot / triangle / circle のどれか、または null にすること。",
-    en: "The step does not match the contract. Keep speech under 120 characters of plain spoken language (no formulas), and make board one of latex / text / plot / triangle / circle, or null.",
+    ja: "手順の形が契約に合っていません。speech は120字以内の話し言葉(数式を入れない)、board は latex / text / plot / triangle / circle / figure のどれかにすること。figure の items に書けるキーは決まっていて、知らないキーは通りません。**board を null にして逃げないこと** — 書くはずだったものは、式なら latex、図なら figure、それでも書けなければ text の一行に置き換えて送ります。",
+    en: "The step does not match the contract. Keep speech under 120 characters of plain spoken language (no formulas), and make board one of latex / text / plot / triangle / circle / figure. A figure's items accept a fixed set of keys — anything else is rejected. **Do not fall back to board: null** — put what you meant to write in latex, in figure, or failing that in a one-line text element.",
   },
   english: {
-    ja: "手順の形が契約に合っていません。speech は120字以内の話し言葉、board は sentence(例文) / compare(2列の対比表) / text(一行の注記) のどれか、または null にすること。**英語の板書に数式は置きません。**",
-    en: "The step does not match the contract. Keep speech under 120 characters of plain spoken language, and make board one of sentence / compare / text, or null. **Never put formulas on an English board.**",
+    ja: "手順の形が契約に合っていません。speech は120字以内の話し言葉、board は sentence(例文) / compare(2列の対比表) / text(一行の注記) のどれかにすること。**英語の板書に数式は置きません。** **board を null にして逃げないこと** — 書くはずだったものは sentence か text に置き換えて送ります。",
+    en: "The step does not match the contract. Keep speech under 120 characters of plain spoken language, and make board one of sentence / compare / text. **Never put formulas on an English board.** **Do not fall back to board: null** — put what you meant to write in a sentence or text element instead.",
   },
 };
 
 /** その教科で使えない要素が来たときの指示。 */
 const wrongKindGuidance: Record<CurriculumSubject, Record<CurriculumLocale, string>> = {
   math: {
-    ja: "その要素は数学の板書では使えません。式は latex、図は plot / triangle / circle、注記は text に置くこと。",
-    en: "That element cannot be used on a maths board. Put formulas in latex, figures in plot / triangle / circle, and notes in text.",
+    ja: "その要素は数学の板書では使えません。式は latex、図は figure(作図)か plot / triangle / circle、注記は text に置くこと。",
+    en: "That element cannot be used on a maths board. Put formulas in latex, diagrams in figure (or plot / triangle / circle), and notes in text.",
   },
   english: {
     ja: "その要素は英語の板書では使えません。例文は sentence、使い分けの対比は compare、一行の注記は text に置くこと。数式は使いません。",
@@ -382,8 +395,112 @@ export function validateStep(
     }
   }
 
+  if (board !== null && board.kind === "figure") {
+    // **先輩が書くのは関係の宣言だけ。**ここで解いて、座標も SVG もこちらが作る。
+    // 解けない図(定義していない点・平行な2直線の交点・実際と合わない長さのラベル)は
+    // **描かずに落とす** — そこを通すと「それらしく見えて中身が違う図」が生徒に届く。
+    // 落ちた理由はそのまま直しの指示になるので、既存の作り直しの輪に乗せる。
+    const drawn = drawFigure(board.items);
+    if (!drawn.ok) {
+      return {
+        ok: false,
+        rejection: {
+          index,
+          kind: "figure",
+          reason: "figure",
+          detail: drawn.errors.join(" / "),
+          guidance: figureGuidanceByLocale[locale](drawn.errors),
+          raw,
+        },
+      };
+    }
+    if (drawn.svg.length > boardFigureSvgMaxLength) {
+      // 描けはしたが、板書に載せるには濃すぎる。図を分けさせる。
+      return {
+        ok: false,
+        rejection: {
+          index,
+          kind: "figure",
+          reason: "figure_too_large",
+          detail: `svg ${drawn.svg.length} > ${boardFigureSvgMaxLength}`,
+          guidance: figureTooLargeGuidanceByLocale[locale],
+          raw,
+        },
+      };
+    }
+    return {
+      ok: true,
+      step: {
+        ...parsed.data,
+        board: { ...board, svg: drawn.svg, alt: describeFigure(board.items, locale) },
+      },
+    };
+  }
+
   return { ok: true, step: parsed.data };
 }
+
+/**
+ * 図の読み上げ文。**SVGは読み上げられない**ので、こちらで一言にする。
+ *
+ * 作図の宣言はこちらが持っているので、`Semantics` に載せる文言は自前で書ける
+ * (wireframe D-13c で「読み上げは問題にならない」と判断した根拠がこれ)。
+ */
+function describeFigure(
+  items: readonly Record<string, unknown>[],
+  locale: CurriculumLocale,
+): string {
+  const has = (key: string) => items.some((item) => key in item);
+  const parts: string[] = [];
+  const word = (ja: string, en: string) => parts.push(locale === "en" ? en : ja);
+  if (has("box3")) word("立体", "a solid");
+  if (has("circle") || has("unitCircle")) word("円", "a circle");
+  if (has("poly")) word("多角形", "a polygon");
+  if (has("curve") || has("polar")) word("グラフ", "a graph");
+  if (has("signTable")) word("増減表", "a sign table");
+  if (has("states")) word("遷移図", "a transition diagram");
+  if (has("boxplot") || has("histogram") || has("scatter")) word("データの図", "a data chart");
+  if (has("vec")) word("ベクトル", "vectors");
+  if (has("numberLine")) word("数直線", "a number line");
+  const named = items
+    .map((item) => item.pt)
+    .filter((name): name is string => typeof name === "string")
+    .slice(0, 6);
+  const body =
+    parts.length === 0
+      ? locale === "en"
+        ? "a figure"
+        : "図"
+      : parts.join(locale === "en" ? ", " : "と");
+  const points =
+    named.length === 0
+      ? ""
+      : locale === "en"
+        ? ` with points ${named.join(", ")}`
+        : `(点 ${named.join("・")})`;
+  return `${body}${points}`.slice(0, boardFigureAltMaxLength);
+}
+
+/** 図が解けなかったときの指示。**理由をそのまま渡す** — 先輩は自分の間違いを読めないと直せない。 */
+const figureGuidanceByLocale: Record<CurriculumLocale, (errors: readonly string[]) => string> = {
+  ja: (errors) =>
+    [
+      `図が描けませんでした(${errors.join(" / ")})。`,
+      "座標や長さを自分で計算せず、関係だけを書いてください。",
+      "使う点は使う前に定義し、長さが決まっている図形は from と dist で置くこと。",
+    ].join(""),
+  en: (errors) =>
+    [
+      `The figure could not be drawn (${errors.join(" / ")}). `,
+      "Do not compute coordinates or lengths yourself — declare the relations only. ",
+      "Define every point before using it, and place fixed-length figures with from and dist.",
+    ].join(""),
+};
+
+const figureTooLargeGuidanceByLocale: Record<CurriculumLocale, string> = {
+  ja: "図が板書1枚には濃すぎます。要素を減らすか、2枚に分けてください。",
+  en: "The figure is too dense for one board. Use fewer elements, or split it into two figures.",
+};
 
 /**
  * 見出しが範囲外だった理由。手順の {@link BoardStepRejection} と同じ形で持つ。
@@ -526,6 +643,23 @@ export type AppendBoardOptions = {
    * 板書が音声より何行先に出ていると読みにくいかを見てから決める値。
    */
   onStep?: (step: BoardStep) => void | Promise<void>;
+  /**
+   * 手順を1つ出し終えた時点で、**そこで説明を打ち切るか**を決める。
+   *
+   * 板書プロンプトは「質問を出したら、その板書はそこで終える。`steps` を続けないで
+   * ください。答えを聞く前に次の手順を書くのは、**自分で答えを埋めて先に進む**ことで、
+   * 申告させるより悪い」と書いているが、**それを守らせる仕組みが配送側に無かった。**
+   * 守れなかった出力は、問いかけを含む12手順を一息で読み上げる — 生徒から見ると
+   * 先輩が**自分の質問に自分で答えながら喋り続ける**(2026-08-12 の「ターン制を
+   * 守り切れていない」報告)。
+   *
+   * 打ち切りは `interrupted` ではなく **`completed`**。生徒が割り込んだのではなく、
+   * 先輩が**予定どおり番を渡した**ので、この回の説明はそこで完結している。
+   *
+   * **何を「番の受け渡し」と見るかはここでは決めない。**判定は会話の言語の問題で、
+   * この層は言語を知らない(`senpai.ts` の `handsTurnToStudent` が持つ)。
+   */
+  stopAfter?: (step: BoardStep) => boolean;
   repair?: StepRepair;
   /**
    * 範囲外の単元で板書を始めようとしたときに、見出しを作り直させる。
@@ -729,6 +863,7 @@ export class BoardDelivery {
       chunks,
       signal,
       onStep,
+      stopAfter,
       repair,
       repairHead,
       maxRepairAttempts = defaultMaxRepairAttempts,
@@ -737,6 +872,13 @@ export class BoardDelivery {
     const rejections: BoardStepRejection[] = [];
     const before = this.sent;
     let reason: BoardCloseReason = "completed";
+    /**
+     * {@link AppendBoardOptions.stopAfter} で自分から降りたか。
+     *
+     * **途中で切れた出力(`board_stream_truncated`)と区別する**ために要る。
+     * こちらは残りを**読まないと決めた**だけで、壊れてはいない。
+     */
+    let handedOver = false;
 
     if (this.closed) {
       // 上限で閉じた板書に積もうとした。呼び出し側は知らずに呼びうるので、
@@ -859,12 +1001,24 @@ export class BoardDelivery {
           // 板書を出してから喋る(§3-2)。ここで待つのは意図的で、
           // 音声が板書を追い越すと「ここ、見て」が空の盤面を指すことになる。
           await onStep?.(verdict.step);
+
+          // 番を渡したら、そこで止める。**読み上げたあとに見る**のは、
+          // 問いかけそのものは生徒に届けきる必要があるから。
+          if (stopAfter?.(verdict.step) === true) {
+            this.log?.info("board_turn_handed_over", {
+              board_id: this.boardId,
+              index: verdict.step.index,
+            });
+            handedOver = true;
+            break consume;
+          }
         }
       }
 
       // ルートの `}` まで読めていない = 途中で切れた出力。送った手順は有効だが、
       // 「1回ぶん全部送った」とは言えないので `completed` にはしない。
-      if (reason === "completed" && !parser.completed) {
+      // **自分から降りた回は別**(残りを読まないと決めただけで、壊れていない)。
+      if (reason === "completed" && !handedOver && !parser.completed) {
         this.log?.warn("board_stream_truncated", {
           board_id: this.boardId,
           appended: this.sent - before,
@@ -897,7 +1051,10 @@ export class BoardDelivery {
       releaseIterator(iterator);
     }
 
-    if (reason === "interrupted") releaseIterator(iterator);
+    // 上流を離す。番を渡して降りたときも同じ — 残りの手順は**読まないと決めた**ので、
+    // 接続を掴んだままだと、誰も聞かない板書の出力トークンを払い続ける
+    // (`lesson.ts` の `createAnthropicLessonClient` が HTTP ごと切る)。
+    if (reason === "interrupted" || handedOver) releaseIterator(iterator);
 
     // 上限に達した板書だけは、ここで閉じる。
     if (this.opened && !this.closed && this.sent >= boardStepsMaxCount) {

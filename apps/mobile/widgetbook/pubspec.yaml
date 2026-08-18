@@ -1,0 +1,47 @@
+name: ai_sensei_widgetbook
+description: ai_sensei の見た目の部品カタログ(Widgetbook)。アプリとは別パッケージ。
+publish_to: "none"
+
+# **アプリ本体とは別パッケージにしてある。**
+#
+# widgetbook は `device_frame_plus` を連れてくる。これは端末の枠を **画像アセット**
+# で持っているパッケージで、**アセットはツリーシェイクされない**。同じ pubspec に
+# 入れると、`lib/` から一度も参照していなくても実機に配られる .ipa / .apk に
+# 端末フレームの画像が丸ごと載る。カタログのために配布物を太らせない、が理由。
+#
+# ついでに、本体の `dart run build_runner build` に widgetbook_generator が
+# 混ざらないので、CIのコード生成も重くならない。
+environment:
+  # 本体(../pubspec.yaml)と揃える。SDKは .fvmrc で固定する。
+  sdk: ">=3.12.0 <4.0.0"
+  flutter: ">=3.44.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # カタログの対象。path 依存なので、本体を直せば次の起動で反映される。
+  ai_sensei:
+    path: ".."
+
+  widgetbook: ^3.25.0
+  widgetbook_annotation: ^3.11.0
+
+  # widgetbook 自身のUIが Cupertino のアイコンを参照する。入れないと
+  # `flutter build web` が「フォントが見つからない」と言い、カタログの
+  # 枠まわりのアイコンが豆腐(□)で出る。本体は使っていない。
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+  # `main.directories.g.dart` を作る。生成物はコミットしない(本体と同じ方針)。
+  build_runner: ^2.4.13
+  widgetbook_generator: ^3.24.0
+
+flutter:
+  uses-material-design: true

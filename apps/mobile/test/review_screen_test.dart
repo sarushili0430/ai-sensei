@@ -264,7 +264,6 @@ class _RecordingCaptureController extends CaptureController {
         token: 'token',
         room: 'ses_review',
       ),
-      detectedTopics: <DetectedTopic>[],
       limits: SessionLimits(maxSeconds: 1200, lessonAllowedToday: true),
     );
     state = const CaptureState(session: session);
