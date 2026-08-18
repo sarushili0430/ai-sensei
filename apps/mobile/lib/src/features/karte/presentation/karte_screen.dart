@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import 'package:permission_handler/permission_handler.dart';
 
 import '../../../common_widgets/chunky_button.dart';
 import '../../../common_widgets/marker_text.dart';
@@ -11,6 +10,7 @@ import '../../../routing/routes.dart';
 import '../../../theme/tokens.dart';
 import '../../notifications/application/push_controller.dart';
 import '../../notifications/data/push_repository.dart';
+import '../../notifications/presentation/push_toggle.dart';
 import '../../session/presentation/board/board_view.dart';
 import '../application/karte_controllers.dart';
 import '../application/last_board_controller.dart';
@@ -243,6 +243,7 @@ class _Section extends StatelessWidget {
 ///
 /// スイッチをアプリ側に持たないのは、OSの許可がそのまま状態だから。
 /// 二重に持つと「アプリではオンなのに届かない」が生まれる。
+/// 切り替えたときの振る舞いは設定画面と同じものを使う([PushToggle])。
 class _ReviewReminderCard extends ConsumerWidget {
   const _ReviewReminderCard();
 
@@ -269,31 +270,7 @@ class _ReviewReminderCard extends ConsumerWidget {
               style: Theme.of(context).textTheme.bodyMedium,
             ),
           ),
-          if (permission.available)
-            Switch(
-              value: permission.granted,
-              activeThumbColor: AppColors.blue,
-              onChanged: (bool wantsOn) async {
-                // 切るのは設定アプリで。アプリ側に別のスイッチを作らない。
-                if (!wantsOn) {
-                  await openAppSettings();
-                  return;
-                }
-                final bool ok =
-                    await ref.read(pushPermissionControllerProvider.notifier).request();
-                if (ok || !context.mounted) return;
-                // 一度断られると、iOSはもうダイアログを出さない。設定への行き方を伝える。
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(strings.karteReviewDenied),
-                    action: SnackBarAction(
-                      label: strings.settingsNotificationsOpenSettings,
-                      onPressed: openAppSettings,
-                    ),
-                  ),
-                );
-              },
-            ),
+          if (permission.available) const PushToggle(),
         ],
       ),
     );

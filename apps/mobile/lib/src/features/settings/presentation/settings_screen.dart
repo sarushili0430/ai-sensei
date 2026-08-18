@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 import '../../../api/device_id.dart';
 import '../../../common_widgets/external_link.dart';
@@ -14,6 +13,7 @@ import '../../monetization/application/entitlement_controller.dart'
 import '../../monetization/presentation/manage_subscription_button.dart';
 import '../../notifications/application/push_controller.dart';
 import '../../notifications/data/push_repository.dart';
+import '../../notifications/presentation/push_toggle.dart';
 import '../application/school_stage_controller.dart';
 import '../data/support_links.dart';
 
@@ -139,8 +139,10 @@ class _SchoolStageSection extends ConsumerWidget {
 
 /// 通知のオン/オフ。
 ///
-/// アプリ側にスイッチを持たない。OSの許可がそのまま状態で、切るのも戻すのも
-/// 設定アプリでやってもらう。二重に持つと「アプリではオンなのに届かない」が生まれる。
+/// **アプリ側に状態を持たない。** スイッチが出しているのはOSの許可そのもので、
+/// 切り替えでやるのは許可を求めることと、設定アプリへ送ることだけ
+/// ([setPushNotifications])。二重に持つと
+/// 「アプリではオンなのに届かない」が生まれる。
 class _NotificationRow extends ConsumerWidget {
   const _NotificationRow();
 
@@ -151,11 +153,12 @@ class _NotificationRow extends ConsumerWidget {
 
     return SettingsTile(
       title: strings.settingsNotifications,
-      subtitle: permission.granted
-          ? strings.settingsNotificationsOn
-          : strings.settingsNotificationsOff,
-      trailing: SettingsTile.icon(Icons.chevron_right),
-      onTap: openAppSettings,
+      // 「届きます/届きません」は書かない。スイッチが同じことを言っている。
+      trailing: const PushToggle(),
+      // 当たりを行の幅まで広げる。スイッチだけだと右端の狭い的になる。
+      onTap: permission.available
+          ? () => setPushNotifications(context, ref, on: !permission.granted)
+          : null,
     );
   }
 }

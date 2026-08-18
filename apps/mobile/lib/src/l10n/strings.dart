@@ -576,8 +576,6 @@ class AppStrings {
   /// 英語も `Reminders`(=催促の語)を避ける。
   String get settingsNotifications =>
       _pick('先輩からのおさらい', 'Check-backs from your senpai');
-  String get settingsNotificationsOn => _pick('届きます', 'On');
-  String get settingsNotificationsOff => _pick('届きません', 'Off');
   String get settingsNotificationsOpenSettings =>
       _pick('通知の設定をひらく', 'Open notification settings');
   String get settingsPrivacy => _pick('プライバシーポリシー', 'Privacy policy');
