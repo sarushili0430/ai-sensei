@@ -760,6 +760,11 @@ class AppStrings {
 
   /// 購入ボタン。トライアルがあるときは [planFreeTrial] に差し替わる。
   String get paywallSubscribe => _pick('このプランではじめる', 'Start with this plan');
+  /// 離脱の口(左上の×)の読み上げ・ツールチップ。**画面には文字で出ない。**
+  ///
+  /// 「閉じる」にしないのは、閉じたあと何が起きるのかを言っていないから。
+  /// 初めて課金画面を見た人にとって「ここで閉じたら使えなくなるのか」は
+  /// 実際に浮かぶ疑問なので、**押しても損をしないことまで**ラベルで言う。
   String get paywallDismiss => _pick('無料のまま続ける', 'Keep using the free version');
 
   /// 自動更新であることは購入画面に書く義務がある(Guideline 3.1.2)。
