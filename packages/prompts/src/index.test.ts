@@ -182,6 +182,36 @@ describe("整形ヘルパ", () => {
     expect(text).toContain("中心と直線の距離d");
   });
 
+  /**
+   * 一覧は主題から根までを平らに並べたもので、並び順からは親子も深さも読めない。
+   * 「答えられなければ**1段手前の前提**へ下る」と指示している以上、どれが1段手前かを
+   * ここに書かないと、別の枝の単元を「手前」だと思って降りていける。
+   */
+  it("各行に1段手前の前提を添え、一覧の外のIDは出さない", () => {
+    const text = formatAllowedTopics([
+      {
+        id: "JE-DOMEISHI",
+        course: "中学英語",
+        unit: "文法事項",
+        topic: "動名詞",
+        goals: ["動名詞が主語・目的語・補語になることを説明できる"],
+        prerequisites: ["JE-FUTEISHI", "JE-SOTO-NO-TANGEN"],
+      },
+      {
+        id: "JE-FUTEISHI",
+        course: "中学英語",
+        unit: "文法事項",
+        topic: "to不定詞",
+        goals: ["3用法を見分けられる"],
+        prerequisites: [],
+      },
+    ]);
+
+    expect(text).toContain("1段手前の前提: JE-FUTEISHI");
+    // 許可リストの外は、戻ってよい範囲ではないので出さない。
+    expect(text).not.toContain("JE-SOTO-NO-TANGEN");
+  });
+
   it("許可トピックが空のときは撮り直しを促す文言になる", () => {
     expect(formatAllowedTopics([])).toContain("撮り直し");
     expect(formatAllowedTopics([], "en")).toContain("another photo");
