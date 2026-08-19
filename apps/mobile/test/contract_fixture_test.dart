@@ -323,7 +323,7 @@ void main() {
 
       expect(lesson.title, '判別式で解の個数を見る');
       expect(lesson.topicIds, <String>['M1-NIJI-HANBETSU']);
-      expect(lesson.steps, hasLength(7));
+      expect(lesson.steps, hasLength(8));
 
       // board が null の手順(相づち・確認)が読めているか。
       expect(lesson.steps[2].board, isNull);
@@ -333,6 +333,13 @@ void main() {
       expect((lesson.steps[0].board! as LatexElement).tex, 'x^2 - 3x + 2 = 0');
       expect(lesson.steps[1].board, isA<TextElement>());
       expect((lesson.steps[1].board! as TextElement).body, 'a = 1, b = -3, c = 2');
+
+      // 類題の手順だけが、通常の会話待ちとは別の解答待ちを申告する。
+      expect(lesson.steps.last.awaitsSolving, isTrue);
+      expect(
+        lesson.steps.where((BoardStep step) => step.awaitsSolving == true),
+        hasLength(1),
+      );
 
       // 不変条件(index の連番)は壊れていないはず。
       expect(() => ensureSequentialStepIndices(lesson), returnsNormally);
@@ -346,6 +353,7 @@ void main() {
           lesson.steps.map((BoardStep s) => s.board).whereType<BoardElement>().toList();
       expect(elements.whereType<SentenceElement>(), isNotEmpty);
       expect(elements.whereType<CompareElement>(), isNotEmpty);
+      expect(lesson.steps.last.awaitsSolving, isTrue);
 
       final SentenceElement sentence = elements.whereType<SentenceElement>().first;
       // focus は text の一部(README「JSON Schema に現れない不変条件」)。
@@ -372,6 +380,7 @@ void main() {
       expect(plot.domain.max, 4);
       expect(plot.marks, hasLength(2));
       expect(plot.marks!.first.label, 'x = 1');
+      expect(lesson.steps.last.awaitsSolving, isTrue);
 
       // fixtureのdomainは壊れていないはず(min < max)。
       expect(() => ensureValidDomain(plot.domain), returnsNormally);
@@ -391,6 +400,12 @@ void main() {
       expect(circle.center.y, 0);
       expect(circle.r, 5);
       expect(circle.labels, <String>['O', 'r = 5']);
+
+      final BoardStepMessage solvingStep = log.messages
+          .whereType<BoardStepMessage>()
+          .singleWhere((BoardStepMessage message) => message.step.awaitsSolving == true);
+      expect(solvingStep.step.awaitsSolving, isTrue);
+      expect(circleStepMessage.step.awaitsSolving, isNull);
     });
   });
 

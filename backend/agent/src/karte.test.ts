@@ -191,6 +191,13 @@ describe("withUncertaintyHole", () => {
     expect(twice.holes[0]?.evidence).toBe("わからないです / そこも習ってないです");
   });
 
+  it("類題の「できなかった」を新しい欄ではなく穴の evidence に残す", () => {
+    const karte = withUncertaintyHole(emptyKarte(), context, [said("できなかった")]);
+
+    expect(karte.holes).toHaveLength(1);
+    expect(karte.holes[0]?.evidence).toBe("できなかった");
+  });
+
   it("LLMが穴を書けているときは足さない(数を水増ししない)", () => {
     const drafted = applyGuardrails(karteDraftSchema.parse(validKarte), context);
     expect(withUncertaintyHole(drafted, context, [said("わからないです")])).toEqual(drafted);

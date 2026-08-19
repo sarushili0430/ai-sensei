@@ -36,10 +36,21 @@ import { type SessionContext, subjectOf } from "./context.ts";
  * この線引きは `senpai_conversation.<locale>.md` の本文にも二重に書いてある。
  */
 
-/** 授業が終わったら教え返しへ渡す。計画書 §2 のコアループの2つ目。 */
+/**
+ * 類題を出せない残り時間では、従来の教え返しへ縮退する。
+ *
+ * この文は消さない。類題を解く時間が足りないときにも、ユーザー本人の説明を
+ * transcript に残してカルテの材料にするための最後の保険。
+ */
 const TEACH_BACK_PROMPT: Record<CurriculumLocale, string> = {
   ja: "じゃあ今の、自分の言葉で説明してみて。",
   en: "Alright — now explain that back to me in your own words.",
+};
+
+/** 類題を「できた」と申告したあと、解き方の理由を教え返してもらう定型句。 */
+const PRACTICE_TEACH_BACK_PROMPT: Record<CurriculumLocale, string> = {
+  ja: "じゃあ、どうしてそうなるか、自分の言葉で説明してみて。",
+  en: "Now explain in your own words why it works out that way.",
 };
 
 /**
@@ -157,6 +168,10 @@ export function teachBackPrompt(locale: CurriculumLocale): string {
   return TEACH_BACK_PROMPT[locale];
 }
 
+export function practiceTeachBackPrompt(locale: CurriculumLocale): string {
+  return PRACTICE_TEACH_BACK_PROMPT[locale];
+}
+
 export function lessonFailedPrompt(
   locale: CurriculumLocale,
   kind: SessionContext["kind"] = "new",
@@ -200,6 +215,52 @@ export function stepAwaitsStudent(
   locale: CurriculumLocale,
 ): boolean {
   return step.awaits_student ?? handsTurnToStudent(step.speech, locale);
+}
+
+/** 類題を解き終わるまで待つ手順か。通常の会話待ちとはタイムアウトが違う。 */
+export function stepAwaitsSolving(step: Pick<BoardStep, "awaits_solving">): boolean {
+  return step.awaits_solving === true;
+}
+
+/** 配送を止めて生徒へ番を渡す手順か。 */
+export function stepAwaitsInput(
+  step: Pick<BoardStep, "speech" | "awaits_student" | "awaits_solving">,
+  locale: CurriculumLocale,
+): boolean {
+  return stepAwaitsSolving(step) || stepAwaitsStudent(step, locale);
+}
+
+export type SolvingReport = "solved" | "stuck" | "unclear";
+
+/**
+ * 類題への本人申告を読む。**正誤判定ではない。**
+ *
+ * ボタンの定型文も声の自然な言い換えも同じ `lk.chat` / STT 入力へ来るため、
+ * この1本で分岐する。否定形は「できた」を内包するので必ず先に見る。
+ *
+ * **「でき**て**ない」の `て` を忘れない。** 声で答える生徒は言い切りより
+ * 「まだできてない」と言うほうが多く、これを落とすと `unclear` に沈んで
+ * 「できた? 止まった?」と聞き直す — はっきり詰まりを伝えた生徒に、
+ * もう一度同じことを言わせることになる。
+ */
+const SOLVING_REPORT_PATTERNS: Record<CurriculumLocale, { stuck: RegExp; solved: RegExp }> = {
+  ja: {
+    stuck:
+      /(?:でき|解け)(?:て(?:ない|ません)|ない|なかった|ません|ませんでした)|分からない|わからない|わかんない|詰まった|無理|だめ|ダメ/,
+    solved: /できた|できました|解けた|解けました|終わった|終わりました/,
+  },
+  en: {
+    stuck:
+      /\b(?:could(?:n't| not)|can(?:'t|not)|did(?:n't| not) (?:get|solve)|don(?:'t| not) know|stuck|could not do it)\b/i,
+    solved: /\b(?:done|finished|solved(?: it)?|got it|i did it|i could do it)\b/i,
+  },
+};
+
+export function classifySolvingReport(text: string, locale: CurriculumLocale): SolvingReport {
+  const normalized = text.normalize("NFKC").trim();
+  if (SOLVING_REPORT_PATTERNS[locale].stuck.test(normalized)) return "stuck";
+  if (SOLVING_REPORT_PATTERNS[locale].solved.test(normalized)) return "solved";
+  return "unclear";
 }
 
 /**
@@ -332,8 +393,8 @@ export function asksForBoard(text: string, locale: CurriculumLocale): boolean {
  * (`prompts/README.md` の二重書きの表)。
  */
 const TEACH_BACK_HANDOFF_PATTERNS: Record<CurriculumLocale, RegExp[]> = {
-  ja: [/自分の言葉で説明/, /説明してみて/],
-  en: [/your own words/i, /explain (?:that|it|this) back/i],
+  ja: [/自分の言葉で説明/, /説明してみて/, /どうしてそうなるか.*説明/],
+  en: [/your own words/i, /explain (?:that|it|this) back/i, /explain.*why it works/i],
 };
 
 export function asksForTeachBack(speech: string, locale: CurriculumLocale): boolean {
@@ -433,8 +494,15 @@ export function teachBackFallback(
   steps: readonly BoardStep[],
 ): string | null {
   const last = steps.at(-1);
-  if (last === undefined || stepAwaitsStudent(last, context.locale)) return null;
+  if (last === undefined || stepAwaitsInput(last, context.locale)) return null;
   if (!wroteOnBoard(steps)) return null;
+  const solvingIndex = steps.findLastIndex(stepAwaitsSolving);
+  const firstAfterSolving = steps[solvingIndex + 1];
+  // 「できた」分岐は正答の板書から始まる。「どこで止まった?」(board:null)を
+  // 挟んだ教え直しを、正答を書けた分岐と取り違えない。
+  if (solvingIndex >= 0 && firstAfterSolving !== undefined && firstAfterSolving.board !== null) {
+    return practiceTeachBackPrompt(context.locale);
+  }
   return teachBackPrompt(context.locale);
 }
 
@@ -445,9 +513,12 @@ export function teachBackFallback(
  * 上限だから、詰まると10KB級になる。instructions は毎ターン全部送られるので、
  * そのまま入れると会話のたびに板書ぶんの入力トークンを払い続けることになる。
  *
- * 溢れたときは**先頭から入れて、入らなくなったところで止める**(末尾を落とす)。
+ * 溢れたときは原則として**先頭から入れて、入らなくなったところで止める**。
  * 授業は上から積み上がる構造なので、途中で切れても「ここまでは教えた」が読める。
  * 逆に先頭を落とすと、話の前提だけが消えた飛び飛びの板書が残る。
+ *
+ * ただし最後の類題と、そのあと板書した正答は末尾でも必ず残す。ここが落ちると、
+ * 会話LLMは説明対象と正答を知らないまま「どうしてそうなるか」を聞くことになる。
  */
 export const lessonRecapMaxLength = 2000;
 
@@ -535,6 +606,15 @@ function renderTurnLines(
   return lines;
 }
 
+/** {@link renderTurnLines} と同じ表現で、1行だけ書き下す。 */
+function renderTurnLine(turn: LessonTurn, locale: CurriculumLocale, studentLabel: string): string {
+  const [open, close] = locale === "en" ? ['"', '"'] : ["「", "」"];
+  if (turn.kind === "student") return `${studentLabel}: ${open}${turn.text}${close}`;
+  const board = describeBoard(turn.step.board, locale);
+  const boardSuffix = board === null ? "" : ` / ${board}`;
+  return `${turn.step.index + 1}. ${open}${turn.step.speech}${close}${boardSuffix}`;
+}
+
 /**
  * 送った板書と合間の発話を、先輩が読み返せる形に畳む。
  * 1行も無ければ**空文字ではなく「無い」と書いた定型句**を返す(上の `NO_LESSON_RECAP`)。
@@ -549,7 +629,39 @@ export function renderLessonRecap(
   maxLength: number = lessonRecapMaxLength,
 ): string {
   const label = locale === "en" ? "Student" : "ユーザー";
-  const lines = renderTurnLines(turns, locale, label, maxLength, "head");
+  const all = turns.map((turn) => renderTurnLine(turn, locale, label));
+
+  // 最後に出した類題と、そのあと最初に板書した行(正答)を予約する。
+  // 失敗→教え直し→再挑戦があっても、説明対象になる最後の1問だけを残せばよい。
+  let solvingIndex = -1;
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const turn = turns[index];
+    if (turn?.kind === "step" && stepAwaitsSolving(turn.step)) {
+      solvingIndex = index;
+      break;
+    }
+  }
+  const answerIndex =
+    solvingIndex < 0
+      ? -1
+      : turns.findIndex(
+          (turn, index) => index > solvingIndex && turn.kind === "step" && turn.step.board !== null,
+        );
+  const reservedIndexes = new Set([solvingIndex, answerIndex].filter((index) => index >= 0));
+  const reserved = [...reservedIndexes]
+    .sort((left, right) => left - right)
+    .map((index) => all[index] as string);
+  const reservedLength = reserved.reduce((length, line) => length + line.length + 1, 0);
+
+  const head: string[] = [];
+  let length = reservedLength;
+  for (const [index, line] of all.entries()) {
+    if (reservedIndexes.has(index)) continue;
+    if (length + line.length > maxLength) break;
+    head.push(line);
+    length += line.length + 1;
+  }
+  const lines = [...head, ...reserved];
   return lines.length === 0 ? NO_LESSON_RECAP[locale] : lines.join("\n");
 }
 
@@ -576,9 +688,14 @@ export const lessonContinuationRecapMaxLength = 4000;
  */
 const CONTINUATION_INSTRUCTION: Record<
   CurriculumLocale,
-  (recap: string, lastIsStudent: boolean, problemReadoutAlreadyRequested: boolean) => string
+  (
+    recap: string,
+    lastIsStudent: boolean,
+    problemReadoutAlreadyRequested: boolean,
+    solvingReport?: SolvingReport,
+  ) => string
 > = {
-  ja: (recap, lastIsStudent, problemReadoutAlreadyRequested) =>
+  ja: (recap, lastIsStudent, problemReadoutAlreadyRequested, solvingReport) =>
     [
       "ここまでの授業のやりとりです。番号つきの行はあなたが板書に積んだ手順、「生徒:」の行はそのときの生徒の発話です。",
       "",
@@ -599,8 +716,25 @@ const CONTINUATION_INSTRUCTION: Record<
       lastIsStudent
         ? "- 最初の手順の `speech` は、直前の生徒の言葉への短い応えから始めてください。"
         : "- 説明は途中で切れています。最後の手順のすぐ続きから教えてください。",
+      ...(solvingReport === "solved"
+        ? [
+            "- 直前の「できた」は本人申告です。採点済み・正解したとは言わないでください。",
+            "- 類題の正答を `board` に1行で書き、そのあと「じゃあ、どうしてそうなるか、自分の言葉で説明してみて。」と聞いてください。",
+            "- 最後の手順は `awaits_student: true` とし、`awaits_solving` は付けません。",
+          ]
+        : solvingReport === "stuck"
+          ? [
+              "- 直前の「できなかった」は責めずに受け止め、まず「どこで止まった?」とだけ聞いてください。",
+              "- その手順は `awaits_student: true` とし、答えを聞く前に解説や別の類題を続けません。",
+            ]
+          : solvingReport === "unclear"
+            ? [
+                "- 直前の言葉から完了か詰まりかを推測せず、できたか・止まったかだけを短く確認してください。",
+                "- その手順は `awaits_student: true` とします。",
+              ]
+            : []),
     ].join("\n"),
-  en: (recap, lastIsStudent, problemReadoutAlreadyRequested) =>
+  en: (recap, lastIsStudent, problemReadoutAlreadyRequested, solvingReport) =>
     [
       'This is the lesson so far. Numbered lines are the steps you have already put on the board; "Student:" lines are what the student said in between.',
       "",
@@ -618,12 +752,30 @@ const CONTINUATION_INSTRUCTION: Record<
       lastIsStudent
         ? "- Start the first step's `speech` with a short response to what the student just said."
         : "- The explanation broke off. Pick it up right after the last step.",
+      ...(solvingReport === "solved"
+        ? [
+            "- Treat the completion report only as the student's self-report; never say it was graded or correct.",
+            '- Put the analogous problem\'s correct answer in one `board` line, then ask exactly: "Now explain in your own words why it works out that way."',
+            "- Set `awaits_student: true` on that final step and do not set `awaits_solving`.",
+          ]
+        : solvingReport === "stuck"
+          ? [
+              '- Respond without blame and first ask only: "Where did you get stuck?"',
+              "- Set `awaits_student: true` on that step; do not explain ahead or pose a different problem before hearing the answer.",
+            ]
+          : solvingReport === "unclear"
+            ? [
+                "- Do not infer whether they succeeded. Briefly ask whether they finished or got stuck.",
+                "- Set `awaits_student: true` on that step.",
+              ]
+            : []),
     ].join("\n"),
 };
 
 export function lessonContinuationInstruction(
   turns: readonly LessonTurn[],
   locale: CurriculumLocale,
+  solvingReport?: SolvingReport,
 ): string {
   const label = locale === "en" ? "Student" : "生徒";
   const lines = renderTurnLines(turns, locale, label, lessonContinuationRecapMaxLength, "tail");
@@ -634,6 +786,7 @@ export function lessonContinuationInstruction(
     lines.join("\n"),
     turns.at(-1)?.kind === "student",
     problemReadoutAlreadyRequested,
+    solvingReport,
   );
 }
 

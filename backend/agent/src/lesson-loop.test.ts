@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { BoardChannel, type BoardSink } from "./board.ts";
 import { StudentUtterances, runLessonLoop } from "./lesson-loop.ts";
 import type { LessonLlm } from "./lesson.ts";
-import { studentSilenceMarker } from "./senpai.ts";
+import { lessonSteps, studentSilenceMarker, teachBackFallback, teachBackPrompt } from "./senpai.ts";
 
 /**
  * 授業の**往復**のテスト。見たいのは4つ:
@@ -37,6 +37,14 @@ const stepAwaitingWithQuestion = (index: number, speech: string, question: strin
   speech,
   board: { kind: "text", body: `Q: ${question}` },
   awaits_student: true,
+});
+
+/** 類題を出して、解き終わりの本人申告まで待つ手順。 */
+const stepSolving = (index: number, speech: string, tex: string): unknown => ({
+  index,
+  speech,
+  board: { kind: "latex", tex },
+  awaits_solving: true,
 });
 
 function lessonJson(steps: readonly unknown[]): string {
@@ -109,6 +117,7 @@ function loopWith(
     signal: never.signal,
     utterances: new StudentUtterances(),
     record: () => undefined,
+    practiceProblemEnabled: true,
     remainingSeconds: () => 600,
     ...overrides,
   });
@@ -163,6 +172,128 @@ describe("StudentUtterances", () => {
 });
 
 describe("runLessonLoop", () => {
+  it("類題を出して15秒判定を使わず待ち、「できた」なら理由の教え返しへ渡す", async () => {
+    const sink = recordingSink();
+    const board = boardWith(sink);
+    const llm = stubLlm(
+      lessonJson([
+        step(0, "流れはこの3つ。", "D = b^2 - 4ac"),
+        stepSolving(1, "じゃあ、この類題はどうなる? 解けたら教えて。", "x^2 - 5x + 6 = 0"),
+      ]),
+      lessonJson([
+        step(0, "正答はこう。", "D = 1 > 0"),
+        stepAwaiting(1, "じゃあ、どうしてそうなるか、自分の言葉で説明してみて。", true),
+      ]),
+    );
+    const utterances = new StudentUtterances();
+    const recorded: string[] = [];
+    const events: string[] = [];
+
+    const result = await loopWith(llm, board, {
+      utterances,
+      record: (text) => recorded.push(text),
+      // 通常待ちなら1msで切れる条件。20ms後の申告を受け取れれば別の待ちを使えている。
+      answerTimeoutMs: 1,
+      log: {
+        info: (event) => events.push(event),
+        warn: (event) => events.push(event),
+      },
+      speak: async (delivered) => {
+        if (delivered.awaits_solving === true) {
+          setTimeout(() => utterances.push("できた"), 20);
+        }
+      },
+    });
+
+    expect(result.reason).toBe("handed_over");
+    expect(result.passes).toBe(2);
+    expect(recorded).toEqual(["できた"]);
+    expect(events).not.toContain("lesson_answer_timeout");
+    expect(llm.asked[1]).toContain("類題の正答");
+    expect(llm.asked[1]).toContain("正解したとは言わない");
+    expect(
+      sink.sent.some(
+        (message) =>
+          message.type === "board_step" &&
+          message.step.board?.kind === "latex" &&
+          message.step.board.tex.includes("D = 1"),
+      ),
+    ).toBe(true);
+  });
+
+  it("完了申告後の生成が失敗しても、同じ申告をもう一度待たない", async () => {
+    const board = boardWith(recordingSink());
+    const llm = stubLlm(
+      lessonJson([stepSolving(0, "じゃあ、この類題はどうなる?", "x^2 - 5x + 6 = 0")]),
+      "",
+    );
+    const utterances = new StudentUtterances();
+    const recorded: string[] = [];
+
+    const result = await loopWith(llm, board, {
+      utterances,
+      record: (text) => recorded.push(text),
+      minContinueSeconds: 0,
+      remainingSeconds: () => 0.05,
+      speak: async (delivered) => {
+        if (delivered.awaits_solving === true) setTimeout(() => utterances.push("できた"), 1);
+      },
+    });
+
+    expect(result.reason).toBe("error");
+    expect(recorded).toEqual(["できた"]);
+    expect(llm.asked).toHaveLength(2);
+  });
+
+  it("「できなかった」なら止まった場所を聞き、教え直して同じ類題へ戻す", async () => {
+    const sink = recordingSink();
+    const board = boardWith(sink);
+    const llm = stubLlm(
+      lessonJson([
+        step(0, "流れはこの3つ。", "D = b^2 - 4ac"),
+        stepSolving(1, "じゃあ、この類題はどうなる? 解けたら教えて。", "x^2 - 5x + 6 = 0"),
+      ]),
+      lessonJson([stepAwaiting(0, "そっか。どこで止まった?", true)]),
+      lessonJson([
+        step(0, "Dの代入だけ一緒にやろう。", "D = (-5)^2 - 4 \\cdot 1 \\cdot 6"),
+        stepSolving(1, "同じ類題を、もう一回やってみて。", "x^2 - 5x + 6 = 0"),
+      ]),
+      lessonJson([
+        step(0, "正答はこう。", "D = 1 > 0"),
+        stepAwaiting(1, "じゃあ、どうしてそうなるか、自分の言葉で説明してみて。", true),
+      ]),
+    );
+    const utterances = new StudentUtterances();
+    const recorded: string[] = [];
+    let solvingCount = 0;
+
+    const result = await loopWith(llm, board, {
+      utterances,
+      record: (text) => recorded.push(text),
+      answerTimeoutMs: 100,
+      speak: async (delivered) => {
+        if (delivered.awaits_solving === true) {
+          solvingCount += 1;
+          setTimeout(() => utterances.push(solvingCount === 1 ? "できなかった" : "できた"), 5);
+        } else if (delivered.speech.includes("どこで止まった")) {
+          setTimeout(() => utterances.push("Dに数字を入れるところ"), 5);
+        }
+      },
+    });
+
+    expect(result.reason).toBe("handed_over");
+    expect(result.passes).toBe(4);
+    expect(recorded).toEqual(["できなかった", "Dに数字を入れるところ", "できた"]);
+    expect(llm.asked[1]).toContain("どこで止まった");
+    expect(llm.asked[1]).toContain("責めず");
+    expect(llm.asked[2]).toContain("Dに数字を入れるところ");
+    const solvingSteps = lessonSteps(result.turns).filter(
+      (delivered) => delivered.awaits_solving === true,
+    );
+    expect(solvingSteps).toHaveLength(2);
+    expect(solvingSteps[0]?.board).toEqual(solvingSteps[1]?.board);
+  });
+
   it("問いかけで止まり、答えを受けて同じ板書に続きを積む", async () => {
     const sink = recordingSink();
     const board = boardWith(sink);
@@ -599,12 +730,13 @@ describe("runLessonLoop", () => {
     expect(utterances.pending).toBe(true);
   });
 
-  it("残り時間が少なければ、答えを待たずに教え返しへ譲る", async () => {
-    const board = boardWith(recordingSink());
+  it("残り時間が少なければ類題を送信前に省き、従来の教え返しへ縮退する", async () => {
+    const sink = recordingSink();
+    const board = boardWith(sink);
     const llm = stubLlm(
       lessonJson([
         step(0, "まず、式をそのまま書くね。", "x^2 - 3x + 2 = 0"),
-        step(1, "この式、まず何する?"),
+        stepSolving(1, "じゃあ、この類題はどうなる?", "x^2 - 5x + 6 = 0"),
       ]),
     );
 
@@ -614,6 +746,72 @@ describe("runLessonLoop", () => {
 
     expect(result.reason).toBe("budget");
     expect(result.passes).toBe(1);
+    expect(
+      sink.sent.some(
+        (message) =>
+          message.type === "board_step" &&
+          message.step.board?.kind === "latex" &&
+          message.step.board.tex.includes("x^2 - 5x"),
+      ),
+    ).toBe(false);
+    expect(lessonSteps(result.turns).some((delivered) => delivered.awaits_solving === true)).toBe(
+      false,
+    );
+    expect(teachBackFallback({ locale: "ja" }, lessonSteps(result.turns))).toBe(
+      teachBackPrompt("ja"),
+    );
+  });
+
+  it("復習では残り時間があっても類題を送らず、従来の教え返しへ縮退する", async () => {
+    const sink = recordingSink();
+    const board = boardWith(sink);
+    const llm = stubLlm(
+      lessonJson([
+        step(0, "平方完成すると頂点が見える。", "(x + 3)^2 - 9"),
+        stepSolving(1, "じゃあ、この類題はどうなる?", "x^2 + 4x + 1"),
+      ]),
+    );
+
+    const result = await loopWith(llm, board, { practiceProblemEnabled: false });
+
+    expect(result.reason).toBe("budget");
+    expect(lessonSteps(result.turns).some((delivered) => delivered.awaits_solving === true)).toBe(
+      false,
+    );
+    expect(
+      sink.sent.some(
+        (message) =>
+          message.type === "board_step" &&
+          message.step.board?.kind === "latex" &&
+          message.step.board.tex.includes("x^2 + 4x"),
+      ),
+    ).toBe(false);
+    expect(teachBackFallback({ locale: "ja" }, lessonSteps(result.turns))).toBe(
+      teachBackPrompt("ja"),
+    );
+  });
+
+  it("類題の待機はセッション残り時間だけを安全弁にする", async () => {
+    const board = boardWith(recordingSink());
+    const llm = stubLlm(
+      lessonJson([stepSolving(0, "じゃあ、この類題はどうなる?", "x^2 - 5x + 6 = 0")]),
+    );
+    const events: string[] = [];
+
+    const result = await loopWith(llm, board, {
+      // 類題は出せる設定にし、20msぶんのセッション残り時間だけで待ちを閉じる。
+      minContinueSeconds: 0,
+      remainingSeconds: () => 0.02,
+      answerTimeoutMs: 1,
+      log: {
+        info: (event) => events.push(event),
+        warn: (event) => events.push(event),
+      },
+    });
+
+    expect(result.reason).toBe("interrupted");
+    expect(events).toContain("lesson_solving_deadline");
+    expect(events).not.toContain("lesson_answer_timeout");
   });
 
   it("答えを待っている間にセッションが終わったら、すぐ降りる", async () => {

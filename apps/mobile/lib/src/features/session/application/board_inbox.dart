@@ -37,6 +37,9 @@ class BoardSnapshot {
   /// とぎれたまま止まっているか。
   bool get hasGap => gapReason != null;
 
+  /// 最後の手順が、類題を解き終わるまで待つ申告か。
+  bool get awaitsSolving => steps.isNotEmpty && steps.last.awaitsSolving == true;
+
   static const BoardSnapshot empty = BoardSnapshot();
 }
 

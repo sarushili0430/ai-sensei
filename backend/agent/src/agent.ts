@@ -37,7 +37,7 @@ import {
   senpaiBoardLessonPrompt,
   senpaiConversationPrompt,
   startsWithBoardLesson,
-  stepAwaitsStudent,
+  stepAwaitsInput,
   teachBackFallback,
 } from "./senpai.ts";
 import { TranscriptCollector } from "./transcript.ts";
@@ -49,7 +49,8 @@ import { createVoiceSession } from "./voice-session.ts";
  *
  *   フェーズ1「授業」  板書LLM → 手順単位で Text Streams → 直後にTTS(§3-2)。
  *                     問いかけで止まり、生徒の答えを聞いて同じ板書に続きを積む
- *                     **往復**で解法を教え切る(`lesson-loop.ts`)
+ *                     **往復**で解法を教え切り、類題は完了申告まで沈黙を守る
+ *                     (`lesson-loop.ts`)
  *   フェーズ2「教え返し」 STT → 会話LLM(先輩) → TTS ← 既存のパイプライン
  *   終了時            transcript → カルテ → /complete ← 既存のまま
  *
@@ -499,6 +500,9 @@ function lessonRunner(options: TeachOptions, board: BoardDelivery) {
         isMissing: () => problemTextIsMissing(context),
         remember: (text) => rememberSpokenProblemText(context, text),
       },
+      // Issue #152 の類題は新規授業だけ。復習は既に本人が申告した穴を教え直す場なので、
+      // 従来どおり「いま教えた内容」の教え返しへ直接渡す。
+      practiceProblemEnabled: context.kind === "new",
       // 答え待ちのタイムアウトの瞬間に生徒がまだ話していたら、言い終わりを待つ。
       isStudentSpeaking: () => session.userState === "speaking",
       remainingSeconds: remaining,
@@ -634,7 +638,7 @@ async function teachWithBoard(options: TeachOptions): Promise<TaughtLesson | und
   // 種別ログで観測する。番を渡していれば黙って待つ — ここで立て直しの一言を足すと、
   // 答えようとしている生徒に「板書が出せなかった」と被せることになる。
   const lastStep = steps.at(-1);
-  if (written === 0 && (lastStep === undefined || !stepAwaitsStudent(lastStep, context.locale))) {
+  if (written === 0 && (lastStep === undefined || !stepAwaitsInput(lastStep, context.locale))) {
     log.warn("lesson_wrote_nothing", {
       board_id: lesson.board_id,
       steps: lesson.step_count,

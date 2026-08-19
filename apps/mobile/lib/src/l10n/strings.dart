@@ -491,6 +491,13 @@ class AppStrings {
   /// (コアループ §2「じゃあ今の、説明してみて」)。
   String get sessionExplainBack => _pick('説明してみて', 'Now you explain it');
 
+  /// 類題を解いている間だけ出す本人申告。正誤の採点には使わない。
+  String get sessionSolving => _pick('この問題を解いてみて', 'Try this problem');
+  String get sessionSolved => _pick('できた', 'I did it');
+  String get sessionStuck => _pick('できなかった', "I couldn't do it");
+  String get sessionSolvedMessage => _pick('できた', 'I did it');
+  String get sessionStuckMessage => _pick('できなかった', "I couldn't do it");
+
   /// 授業中に出す問題文の見出し(ワイヤー v2 の1つ目)。
   ///
   /// **撮影画面の `captureProblemTitle` とは別の文言にする。**あちらは

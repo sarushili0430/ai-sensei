@@ -13,6 +13,7 @@ describe("isUncertaintyUtterance", () => {
       "忘れました",
       "うまく言えないです",
       "説明できません",
+      "類題はできなかった",
       "そこは……なんとなくです",
       "ちょっと自信ないです",
     ]) {
@@ -22,6 +23,16 @@ describe("isUncertaintyUtterance", () => {
 
   it("画面の「うまく言えない」を押したときの合図も拾う", () => {
     expect(isUncertaintyUtterance("うまく言えません。ちがう聞き方をしてもらえますか?")).toBe(true);
+  });
+
+  it("類題の「できなかった」を穴の evidence として拾う", () => {
+    expect(isUncertaintyUtterance("できなかった")).toBe(true);
+    expect(isUncertaintyUtterance("できません")).toBe(true);
+    expect(isUncertaintyUtterance("解けませんでした")).toBe(true);
+    expect(isUncertaintyUtterance("I couldn't do it")).toBe(true);
+    expect(isUncertaintyUtterance("I can't solve it")).toBe(true);
+    expect(isUncertaintyUtterance("できた")).toBe(false);
+    expect(isUncertaintyUtterance("できないことはない")).toBe(false);
   });
 
   it("英語ロケールの言い方も拾う", () => {

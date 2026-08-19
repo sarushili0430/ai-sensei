@@ -44,12 +44,18 @@ void main() {
     int index, {
     String boardId = 'brd_1',
     String body = 'a = 1, b = -3, c = 2',
+    bool? awaitsSolving,
   }) => BoardChannelMessage.boardStep(
     v: 1,
     sessionId: sessionId,
     boardId: boardId,
     seq: seq,
-    step: BoardStep(index: index, speech: 'ここ、見て', board: BoardElement.text(body: body)),
+    step: BoardStep(
+      index: index,
+      speech: 'ここ、見て',
+      board: BoardElement.text(body: body),
+      awaitsSolving: awaitsSolving,
+    ),
   );
 
   BoardChannelMessage close(int seq, int stepCount, {String boardId = 'brd_1'}) =>
@@ -90,6 +96,16 @@ void main() {
       expect(inbox.snapshot.steps.length, 2);
       expect(inbox.snapshot.title, '判別式');
       expect(inbox.snapshot.hasGap, isFalse);
+    });
+
+    test('最後の手順だけから、類題を解いている状態を読める', () {
+      final BoardInbox inbox = BoardInbox(sessionId: sessionId);
+      inbox.accept(open(0));
+      inbox.accept(step(1, 0, awaitsSolving: true));
+      expect(inbox.snapshot.awaitsSolving, isTrue);
+
+      inbox.accept(step(2, 1));
+      expect(inbox.snapshot.awaitsSolving, isFalse);
     });
 
     test('board_open は前の板書を消す(別の問題に移るとき)', () {
@@ -258,6 +274,76 @@ void main() {
       // 聞いている顔で待つ(試験官にはしない)。
       final SenpaiFace face = tester.widget(find.byType(SenpaiFace));
       expect(face.mood, SenpaiMood.listening);
+    });
+
+    testWidgets('類題を解いている間だけ「できた / できなかった」を出し、押したら消す', (
+      WidgetTester tester,
+    ) async {
+      const BoardSnapshot board = BoardSnapshot(
+        title: '判別式',
+        steps: <BoardStep>[
+          BoardStep(
+            index: 0,
+            speech: 'じゃあ、この類題はどうなる?',
+            board: BoardElement.latex(tex: 'x^2 - 5x + 6 = 0'),
+            awaitsSolving: true,
+          ),
+        ],
+      );
+      final FakeSessionController controller = await pumpSession(
+        tester,
+        const SessionState(
+          phase: SessionPhase.explainBack,
+          remainingSeconds: 1200,
+          board: board,
+          awaitingSolving: true,
+        ),
+      );
+
+      expect(find.text(ja.sessionSolving), findsOneWidget);
+      expect(find.text(ja.sessionSolved), findsOneWidget);
+      expect(find.text(ja.sessionStuck), findsOneWidget);
+      expect(find.text(ja.sessionPass), findsNothing);
+
+      await tester.tap(find.text(ja.sessionSolved));
+      await tester.pump();
+
+      expect(controller.solvingReports, <String>[ja.sessionSolvedMessage]);
+      expect(find.text(ja.sessionSolved), findsNothing);
+      expect(find.text(ja.sessionStuck), findsNothing);
+      expect(find.text(ja.sessionPass), findsOneWidget);
+    });
+
+    testWidgets('ボタンを押さず声で答えた場合も、類題の二択を消す', (
+      WidgetTester tester,
+    ) async {
+      final FakeSessionController controller = await pumpSession(
+        tester,
+        const SessionState(
+          phase: SessionPhase.explainBack,
+          remainingSeconds: 1200,
+          awaitingSolving: true,
+          board: BoardSnapshot(
+            title: '判別式',
+            steps: <BoardStep>[
+              BoardStep(
+                index: 0,
+                speech: 'じゃあ、この類題はどうなる?',
+                board: BoardElement.latex(tex: 'x^2 - 5x + 6 = 0'),
+                awaitsSolving: true,
+              ),
+            ],
+          ),
+        ),
+      );
+
+      expect(find.text(ja.sessionSolved), findsOneWidget);
+      controller.onUserTurn();
+      await tester.pump();
+
+      expect(find.text(ja.sessionSolved), findsNothing);
+      expect(find.text(ja.sessionStuck), findsNothing);
+      expect(controller.solvingReports, isEmpty);
     });
 
     /// **何を解いているかが画面のどこにも無かった。**
@@ -462,6 +548,22 @@ void main() {
         expectNoOverflow(tester, '教え返し中');
       });
 
+      testWidgets('狭い端末: 類題の二択が出ても溢れない ($lang)', (
+        WidgetTester tester,
+      ) async {
+        final SessionState state = packed(phase: SessionPhase.explainBack);
+        await pumpSession(
+          tester,
+          state.copyWith(awaitingSolving: true),
+          locale: locale,
+          size: smallPhoneSurface,
+        );
+
+        expect(find.text(AppStrings(locale).sessionSolved), findsOneWidget);
+        expect(find.text(AppStrings(locale).sessionStuck), findsOneWidget);
+        expectNoOverflow(tester, '類題の二択');
+      });
+
       // とぎれた一行が、いちばん厚い状態の上にさらに乗る。
       testWidgets('狭い端末: とぎれた一行が乗っても溢れない ($lang)', (WidgetTester tester) async {
         await pumpSession(
@@ -558,12 +660,19 @@ class FakeSessionController extends SessionController {
   FakeSessionController(this._initial);
 
   final SessionState _initial;
+  final List<String> solvingReports = <String>[];
 
   @override
   SessionState build() => _initial;
 
   @override
   Future<void> connect(SessionStart session, {required String locale}) async {}
+
+  @override
+  Future<void> reportSolving(String message) async {
+    solvingReports.add(message);
+    await super.reportSolving(message);
+  }
 
   /// 板書が1行増えた、を再現する。
   void push(SessionState next) => state = next;

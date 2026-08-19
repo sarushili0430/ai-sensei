@@ -733,6 +733,14 @@ export type AppendBoardOptions = {
    */
   onStep?: (step: BoardStep) => void | Promise<void>;
   /**
+   * 検証を通った手順を**送る前に**、この回の説明を意図的に終えるか。
+   *
+   * 残り時間が少ないときの類題は、送ってから無視すると生徒だけが解き始めてしまう。
+   * そのため `board_open` / `board_step` / TTS のどれよりも前に抑止する。
+   * これは契約違反や割り込みではないので、結果は `completed` のまま返す。
+   */
+  stopBefore?: (step: BoardStep) => boolean;
+  /**
    * 手順を1つ出し終えた時点で、**そこで説明を打ち切るか**を決める。
    *
    * 板書プロンプトは「質問を出したら、その板書はそこで終える。`steps` を続けないで
@@ -952,6 +960,7 @@ export class BoardDelivery {
       chunks,
       signal,
       onStep,
+      stopBefore,
       stopAfter,
       repair,
       repairHead,
@@ -962,12 +971,12 @@ export class BoardDelivery {
     const before = this.sent;
     let reason: BoardCloseReason = "completed";
     /**
-     * {@link AppendBoardOptions.stopAfter} で自分から降りたか。
+     * {@link AppendBoardOptions.stopBefore} / `stopAfter` で自分から降りたか。
      *
      * **途中で切れた出力(`board_stream_truncated`)と区別する**ために要る。
      * こちらは残りを**読まないと決めた**だけで、壊れてはいない。
      */
-    let handedOver = false;
+    let stoppedIntentionally = false;
 
     if (this.closed) {
       // 上限で閉じた板書に積もうとした。呼び出し側は知らずに呼びうるので、
@@ -1073,6 +1082,17 @@ export class BoardDelivery {
             break consume;
           }
 
+          // 類題を出せる残り時間がない場合など、**生徒へ見せる前**に止める。
+          // openIfNeeded より前なので、抑止した1手順だけの出力が前の板書を白紙にしない。
+          if (stopBefore?.(verdict.step) === true) {
+            this.log?.info("board_step_suppressed", {
+              board_id: this.boardId,
+              index: verdict.step.index,
+            });
+            stoppedIntentionally = true;
+            break consume;
+          }
+
           // **手順が1つ確定してから板書を開く。**`board_open` は前の板書を消す信号なので、
           // 中身が1行も無い出力(`steps: []`)や、最初の手順から検証に落ちる出力で
           // これを送ると、**生徒が読んでいた板書を白紙にしただけで終わる**。
@@ -1117,7 +1137,7 @@ export class BoardDelivery {
               board_id: this.boardId,
               index: verdict.step.index,
             });
-            handedOver = true;
+            stoppedIntentionally = true;
             break consume;
           }
         }
@@ -1126,7 +1146,7 @@ export class BoardDelivery {
       // ルートの `}` まで読めていない = 途中で切れた出力。送った手順は有効だが、
       // 「1回ぶん全部送った」とは言えないので `completed` にはしない。
       // **自分から降りた回は別**(残りを読まないと決めただけで、壊れていない)。
-      if (reason === "completed" && !handedOver && !parser.completed) {
+      if (reason === "completed" && !stoppedIntentionally && !parser.completed) {
         this.log?.warn("board_stream_truncated", {
           board_id: this.boardId,
           appended: this.sent - before,
@@ -1139,7 +1159,7 @@ export class BoardDelivery {
       // 「読み切れたが空だった」は成功ではない。1件も送っていないぶん受信側には
       // 何も起きないが、**成功として返してはいけない** —
       // 呼び出し側が「板書は出た」と思って音声だけ進めてしまう。
-      if (reason === "completed" && this.sent === before) {
+      if (reason === "completed" && !stoppedIntentionally && this.sent === before) {
         this.log?.warn(head === null ? "board_head_missing" : "board_lesson_empty", {
           board_id: this.boardId,
           opened: this.opened,
@@ -1162,7 +1182,7 @@ export class BoardDelivery {
     // 上流を離す。番を渡して降りたときも同じ — 残りの手順は**読まないと決めた**ので、
     // 接続を掴んだままだと、誰も聞かない板書の出力トークンを払い続ける
     // (`lesson.ts` の `createAnthropicLessonClient` が HTTP ごと切る)。
-    if (reason === "interrupted" || handedOver) releaseIterator(iterator);
+    if (reason === "interrupted" || stoppedIntentionally) releaseIterator(iterator);
 
     // 上限に達した板書だけは、ここで閉じる。
     if (this.opened && !this.closed && this.sent >= boardStepsMaxCount) {
