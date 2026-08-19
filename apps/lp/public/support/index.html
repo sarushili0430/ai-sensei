@@ -12,6 +12,62 @@
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230EA5E9'/%3E%3Cpath d='M40.3 77.5L25.5 83.5L20.7 59.1Z' fill='%23FBFAF7'/%3E%3Ccircle cx='50' cy='47.5' r='31.5' fill='%23FBFAF7'/%3E%3Cg fill='none' stroke='%2333323D' stroke-width='5.2' stroke-linecap='round'%3E%3Cpath d='M30 46Q37.5 37 45 46'/%3E%3Cpath d='M55 46Q62.5 37 70 46'/%3E%3Cpath d='M58.4 57.3A8.5 5 0 0 1 41.6 57.2'/%3E%3C/g%3E%3C/svg%3E">
 
+<!-- 送信のふるまい。**スタイルシートより前に置くこと。**
+     パーサが差し込むscriptは「先行するスタイルシートが解決するまで実行されない」ので、
+     </body>の直前に置くと、Google Fonts が遅い回線では
+     **フォントが降ってくるまでこのJSが動かない**。その隙に送信されると、
+     素のPOSTがそのまま飛んでGoogleの確認画面へ移る(記録はされるが画面が変わる)。
+     先に置いて DOMContentLoaded を待つ形なら、その隙が無い。 -->
+<script>
+  // Googleフォームへ投げて、このページに留まる。
+  // no-cors なので返事は読めない —— 「送信しました」は
+  // 通信が最後まで行ったことしか意味していない(上のコメント)。
+  document.addEventListener('DOMContentLoaded', function () {
+    var form = document.getElementById('ask');
+    var done = document.getElementById('ask-done');
+    var error = document.getElementById('ask-error');
+
+    function fail(message) {
+      error.textContent = message;
+      error.hidden = false;
+    }
+
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      error.hidden = true;
+
+      // 〔…〕が残っている = まだGoogleフォームに繋がっていない。
+      // 押した人を黙って落とさないよう、ここで止めて理由を出す。
+      //
+      // **form.action ではなく getAttribute('action')** を見ること。
+      // 前者は解決済みのURLを返すので、〔 が %E3%80%94 に化けて一致しない。
+      // 項目の name 側も見る —— action だけ差し替えて entry を忘れると、
+      // Googleは黙って受け取って必須項目が空の回答になる(こちらからは気づけない)。
+      var action = form.getAttribute('action') || '';
+      var unfilled = action.indexOf('〔') !== -1 ||
+        Array.prototype.some.call(form.elements, function (el) {
+          return el.name && el.name.indexOf('〔') !== -1;
+        });
+      if (unfilled) {
+        fail('フォームの接続がまだです。お手数ですが、下のメールあてにお送りください。');
+        return;
+      }
+
+      fetch(form.action, {
+        method: 'POST',
+        mode: 'no-cors',
+        body: new FormData(form)
+      }).then(function () {
+        form.hidden = true;
+        done.hidden = false;
+        done.scrollIntoView({ block: 'center' });
+      }).catch(function () {
+        fail('送信できませんでした。通信を確かめるか、下のメールあてにお送りください。');
+      });
+    });
+  });
+</script>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
@@ -50,11 +106,11 @@
     <p>
       このページは App Store Connect と Google Play Console の
       <strong>サポートURL</strong>（どちらも必須）に入れるためのものです。
-      <span class="fill">〔黄色の箇所〕</span>が未確定の値で、
-      とくに<strong>お問い合わせフォームのURL・運営者名・返信までの目安</strong>は
-      空のままでは出せません。
+      <span class="fill">〔黄色の箇所〕</span>が未確定の値です。
+      フォームは体だけ用意してあり、<strong>Googleフォームの <code>FORM_ID</code> と
+      各項目の <code>entry.&lt;ID&gt;</code> を入れるまで送信できません</strong>
+      （押すと「接続がまだです」と出ます。詳しくはこのページのソースのコメント）。
       <strong>審査担当者がここを開いて「サポート情報がある」ことを確かめます。</strong>
-      窓口が押せない状態のまま提出しないこと。
     </p>
   </div>
 
@@ -65,44 +121,112 @@
     返信が要るときだけ、フォームの中で連絡先をご記入ください。
   </p>
 
-  <!-- Googleフォームの公開URLが決まったら、下の <span class="btn btn-soon"> を
-       <a class="btn btn-primary" href="〔フォームのURL〕">お問い合わせフォームをひらく</a>
-       に差し替える。beta/index.html のステップ2と同じ扱いで、
-       **無いものへのリンクは置かない**(apps/lp/README.md)。
+  <!-- Googleフォームに「自前のフォーム」から投げている。iframe は使わない。
+       ============================================================
+       Googleフォームは、回答の受け口
+         https://docs.google.com/forms/d/e/<FORM_ID>/formResponse
+       に `entry.<ID>=値` を POST すれば記録される。埋め込み(iframe)は
+       見た目がGoogle側のままになるので、フォームの体だけこちらで持つ。
 
-       ■ 種類ごとにフォームを分けず、1本のフォームに「お問い合わせの種類」を
-         事前入力して飛ばす。取り方は:
-
+       ■ 埋めるもの(4か所 + action)
          フォームの編集画面 > 右上の ⋮ > 「事前入力したURLを取得」
            → 各項目に見本の値を入れて「リンクを取得」
            → https://docs.google.com/forms/d/e/<FORM_ID>/viewform?usp=pp_url
-                &entry.<ID1>=見本の値&entry.<ID2>=...
-             という形のURLが出る
+                &entry.111111=見本&entry.222222=見本 ...
+         ここに出てくる <FORM_ID> を action に、`entry.<ID>` を下の name に写す。
+         **viewform を formResponse に変えること**(viewform のままだと記録されない)。
 
-         この `entry.<ID>` が項目ごとの固定の番号で、= の右側を差し替えれば
-         その項目が入った状態でフォームがひらく。値はURLエンコードすること
-         (日本語は %E3%81%82... の形になる)。
+       ■ フォーム側の設定
+         「回答を受け付ける」がオンで、**ログイン必須・メールアドレスの収集がオフ**
+         であること。オンだと未ログインのPOSTが黙って捨てられる。
 
-       ■ アプリ側からは、もっと入れられる。
-         「設定 > 気になった内容を報告する」はいま SUPPORT_EMAIL の mailto:
-         (apps/mobile/lib/src/features/settings/data/support_links.dart)。
-         ここをフォームに替えると、端末ID・アプリのバージョン・OSを
-         同じ entry.<ID> で埋めた状態でひらける。
-         **問い合わせのたびに端末IDを手で書き写してもらう手間が消える**ので、
-         窓口をフォームにするなら、アプリ側もあわせて替えること。 -->
-  <div class="cta-row">
-    <span class="btn btn-soon" role="note">フォームのURLが決まったら押せます</span>
-  </div>
-  <p class="tiny">
-    フォームのURL: <span class="fill">〔Googleフォームの公開URL〕</span><br>
-    返信の目安: <span class="fill">〔返信までの目安〕</span>（個人で開発しているため、
-    お返事にお時間をいただくことがあります）
+       ■ JavaScriptを1つだけ置いている
+         LPは「JSなし」で通してきた(README「作りの前提」)。ここだけ例外で、
+         理由は**送ったあとにこのページへ留まりたい**から。素のPOSTでも送信自体は
+         できるが、Googleの「回答を記録しました」の画面へ飛ばされる。
+         iframe を隠して受け止める昔ながらの手も要らない —— fetch の no-cors で足りる。
+         **JSを切っている人向けに、素のPOSTがそのまま働く形は残してある**
+         (その場合だけGoogleの画面に移る)。
+
+       ■ no-cors の限界
+         返ってくるのは opaque なレスポンスで、**中身も状態コードも読めない**。
+         つまり「Googleが受け付けたか」はこちらから確かめられない。
+         下の「送信しました」は、通信が最後まで行ったことしか意味していない。
+         必須項目の取りこぼしなどはここでは捕まらないので、フォーム側の必須設定は
+         **こちらの required と食い違わせないこと**。
+       ============================================================ -->
+  <form class="support-form" id="ask" method="post"
+        action="https://docs.google.com/forms/d/e/〔FORM_ID〕/formResponse">
+
+    <div class="field">
+      <label for="ask-kind">お問い合わせの種類</label>
+      <select id="ask-kind" name="entry.〔種類のID〕" required>
+        <option value="" selected disabled>選んでください</option>
+        <option>不具合・うまく動かない</option>
+        <option>先輩の説明や板書、質問がおかしい</option>
+        <option>課金・解約について</option>
+        <option>データの削除・利用停止</option>
+        <option>その他</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="ask-body">お問い合わせ内容</label>
+      <textarea id="ask-body" name="entry.〔内容のID〕" rows="6" required
+                placeholder="どの画面で、何をしたときに、どうなったかを書いていただけると助かります。"></textarea>
+    </div>
+
+    <div class="field">
+      <label for="ask-device">端末ID <span class="field-opt">(任意)</span></label>
+      <input id="ask-device" type="text" name="entry.〔端末IDのID〕" autocomplete="off"
+             placeholder="設定 &gt; 端末ID(問い合わせ用) からコピーできます">
+      <p class="field-note">
+        不具合の報告のときだけで大丈夫です。アカウントが無いぶん、
+        こちらで状況を辿れる手がかりがこのIDだけになります。
+      </p>
+    </div>
+
+    <div class="field">
+      <label for="ask-mail">返信先のメールアドレス <span class="field-opt">(任意)</span></label>
+      <input id="ask-mail" type="email" name="entry.〔返信先のID〕" autocomplete="email"
+             placeholder="例: you@example.com">
+      <p class="field-note">返信が要るときだけご記入ください。登録は要りません。</p>
+    </div>
+
+    <!-- 同意は送信の関所としてだけ置いている(name が無いので送られない)。
+         同意した記録も残したいときは、フォーム側に項目を1つ足して
+         name="entry.〔同意のID〕" value="同意する" を持たせること。 -->
+    <label class="consent">
+      <input type="checkbox" required>
+      <span><a href="../privacy/">プライバシーポリシー</a>に同意します</span>
+    </label>
+
+    <div class="cta-row">
+      <button class="btn btn-primary" type="submit">送信する</button>
+    </div>
+  </form>
+
+  <p class="form-msg" id="ask-done" hidden>
+    送信しました。ありがとうございます。<br>
+    返信先をご記入いただいた場合は、<span class="fill">〔返信までの目安〕</span>を目安にお返事します。
   </p>
+  <p class="form-error" id="ask-error" hidden></p>
+
+  <p class="tiny">
+    フォームがうまく動かないときは、<code>kfukejob@gmail.com</code> あてのメールでも受け付けています。
+    個人で開発しているため、お返事にお時間をいただくことがあります。
+  </p>
+  <noscript>
+    <p class="tiny">
+      JavaScript を切ってお使いの場合、送信するとGoogleフォームの確認画面に移ります。
+      送信そのものは同じように記録されます。
+    </p>
+  </noscript>
 
   <p>
-    不具合の報告には、<strong>アプリの「設定 &gt; 端末ID(問い合わせ用)」に出ているID</strong>を
-    そえていただけると、こちらで状況を確かめられます。タップするとコピーできます。
-    アカウントが無いぶん、このIDだけが手がかりになります。
+    アプリの<strong>「設定 &gt; 気になった内容を報告する」</strong>からだと、
+    端末IDとアプリのバージョンが本文に入った状態でメールの下書きがひらきます。
+    書き写す手間がないので、アプリを開ける状況ならそちらが早いです。
   </p>
 
   <h2 id="faq">まず試してみてください</h2>
@@ -250,6 +374,7 @@
   <a class="legal-back" href="../">← カタルテのトップへ</a>
 
 </main>
+
 
 </body>
 </html>

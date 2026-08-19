@@ -443,7 +443,7 @@ fvm flutter test tool/generate_store_screenshots.dart   # スクショ一式</di
     <tr><th>配信地域</th><td>全地域(<b>米国を必ず含める</b> — Shipatonの参加要件)</td></tr>
     <tr><th>言語</th><td>日本語(主) / 英語</td></tr>
     <tr><th>著作権</th><td><code>2026 &lt;権利者名&gt;</code> — 未確定</td></tr>
-    <tr><th>サポートURL</th><td>未確定 — <code>SUPPORT_EMAIL</code> と同じ窓口を指すページを1枚用意する</td></tr>
+    <tr><th>サポートURL</th><td>LPの <code>apps/lp/public/support/</code>。Googleフォームに投げる問い合わせ欄と、解約・返金・データ削除の案内を1枚に置いた。<b>フォームの <code>FORM_ID</code> と <code>entry.&lt;ID&gt;</code> は未確定</b>(繋がるまで送信は止まる)</td></tr>
     <tr><th>マーケティングURL</th><td>任意。無ければ空でよい</td></tr>
     <tr><th>プライバシーポリシーURL</th><td><code>https://ubiqy.jp/privacy/</code>
       — <code>PRIVACY_POLICY_URL</code>(dart_define)と両ストアの申告で同じものを使う。
@@ -684,11 +684,13 @@ Review reminders after 1, 3 and 7 days, requested on the first karte screen.</di
     <ul>
       <li>表示名を <code>カタルテ</code> に(<code>ios/Runner/Info.plist</code> の <code>CFBundleDisplayName</code> と
         <code>android/app/src/main/AndroidManifest.xml</code> の <code>android:label</code>。いまは <code>ai-sensei</code>)</li>
-      <li><code>SUPPORT_EMAIL</code> の実体
-        (<code>PRIVACY_POLICY_URL</code> = <code>https://ubiqy.jp/privacy/</code> /
-        <code>TERMS_URL</code> = <code>https://ubiqy.jp/terms/</code> は確定)</li>
+      <li><code>SUPPORT_EMAIL</code> = <code>kfukejob@gmail.com</code> —— 値は決まった。
+        <b>Codemagic の変数グループ <code>mobile-dart-defines</code> に入れること</b>
+        (空だと「設定 &gt; 気になった内容を報告する」の行ごと消える)。
+        <code>PRIVACY_POLICY_URL</code> = <code>https://ubiqy.jp/privacy/</code> /
+        <code>TERMS_URL</code> = <code>https://ubiqy.jp/terms/</code> も確定)</li>
       <li>審査用サンプルノート画像の公開URL(<code>&lt;SAMPLE_NOTES_URL&gt;</code>)</li>
-      <li>App Store Connect のサポートURL(1枚ページ)</li>
+      <li>Googleフォームを作って <code>apps/lp/public/support/</code> に繋ぐ(<code>FORM_ID</code> と4つの <code>entry.&lt;ID&gt;</code>)。ページ自体は用意済み</li>
       <li>著作権表記の権利者名</li>
       <li>App内課金の表示名・説明・審査用スクリーンショット</li>
       <li>審査員 / Shipaton 審査用のプロモコード</li>

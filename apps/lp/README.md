@@ -43,9 +43,14 @@ apps/lp/
 
 ## 作りの前提
 
-- **ビルド工程なし・JavaScriptなし。** 素の HTML と CSS だけで、どこに置いても動きます。
+- **ビルド工程なし。** 素の HTML と CSS だけで、どこに置いても動きます。
   wrangler は配信のために使っているだけで、ビルドはしません
   (pnpm workspace に入っているのは、`pnpm --filter` から deploy を叩くためです)。
+- **JavaScript は `public/support/` の送信処理だけ**(そのページに直接書いてあります)。
+  Googleフォームへ投げたあとこのページに留まるための15行で、これが無いと
+  Googleの「回答を記録しました」の画面へ飛ばされます。**JSを切っていても
+  素のPOSTがそのまま働く形は残してあります**(その場合だけGoogleの画面に移る)。
+  他のページには1行も置かないこと —— 増やすなら、まずここを直してから。
 - **色・角丸・ボタンの厚みは `apps/mobile/lib/src/theme/tokens.dart` が正**で、`styles.css` はその写し。
   ずらすとストアのスクショと並んだときに別プロダクトに見えます。変えるときは先に tokens.dart を見ること。
 - **端末の画面はCSSで組んでいます**(`docs/store/screenshots/` の画像を貼っていません)。
@@ -126,16 +131,17 @@ GitHub App からpushできないため)。
 - [ ] **Premium の「改善利用オフ」トグルを実装する。** 規約に書いた以上、
       アプリに無ければ嘘になる。プライバシーポリシー第4条・利用規約第5条
 - [ ] 規約とポリシーの英語版。米国配信は Shipaton の参加要件なので、日本語だけでは足りない
-- [ ] **`public/support/` の窓口を押せるようにする。** Googleフォームを作って、
-      `.btn-soon` の span を `<a class="btn btn-primary" href="〔フォームのURL〕">` に差し替える。
+- [ ] **`public/support/` のフォームをGoogleフォームに繋ぐ。** フォームを作って、
+      `<form>` の `action` の `〔FORM_ID〕` と、4つの `name="entry.〔…〕"` を実物に差し替える
+      (取り方はそのページのコメント)。**繋がるまで送信は止まります**(押すと理由が出る)。
+      フォーム側は「回答を受け付ける」がオン、**ログイン必須とメールアドレスの収集はオフ**。
       **審査担当者はこのページを開いてサポート情報があることを確かめる**ので、
-      押せないまま提出しないこと。運営者名・所在地・返信の目安も同じページの `fill`
-- [ ] **アプリの問い合わせ導線もフォームに寄せるか決める。** いまは `SUPPORT_EMAIL` の
-      `mailto:`(`apps/mobile/lib/src/features/settings/data/support_links.dart`)で、
-      **空だと「設定 > 気になった内容を報告する」の行ごと消える**
-      (`settings_screen.dart` の `SupportLinks.hasSupportEmail`)。
-      審査メモはこの導線があることを前提に書いてあるので、
-      メールを用意するか、フォームのURL(端末ID・バージョンを事前入力)に替えるかを決める
+      送れないまま提出しないこと。運営者名・所在地・返信の目安も同じページの `fill`
+- [ ] **Codemagic の変数グループ `mobile-dart-defines` に `SUPPORT_EMAIL` を入れる。**
+      値は `kfukejob@gmail.com`(`dart_defines/local.example.json` と同じ)。
+      アプリの「設定 > 気になった内容を報告する」はこの `mailto:` で、
+      **空だと行ごと消えます**(`settings_screen.dart` の `SupportLinks.hasSupportEmail`)。
+      審査メモはこの導線があることを前提に書いてあるので、空のまま出さないこと
 - [ ] `public/support/` の英語版。規約・ポリシーの英語版と同じ扱い(いまは日本語へ送っている)
 - [ ] `public/404.html` → 足したら `wrangler.jsonc` の `not_found_handling` を `"404-page"` に
 - [ ] **クローズドテストのトラックにリリースが載ったら、`public/beta/` と

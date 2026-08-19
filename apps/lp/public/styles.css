@@ -1211,6 +1211,114 @@ footer a {
   font-weight: 700;
 }
 
+/* ------------------------------------------------------------------ *
+ * 問い合わせフォーム(public/support/)
+ *
+ * 部品の見た目はボタンとカードに合わせる —— 2pxの枠・var(--r-btn)の角丸。
+ * ブラウザ既定の入力欄はここだけシステムフォントに戻るので、font を継がせる。
+ * ------------------------------------------------------------------ */
+
+.support-form {
+  margin-top: 22px;
+}
+
+.field + .field {
+  margin-top: 20px;
+}
+
+.field label,
+.support-form > label {
+  display: block;
+  font-weight: 900;
+  font-size: 14.5px;
+  margin-bottom: 7px;
+}
+
+.field-opt {
+  font-weight: 500;
+  color: var(--ink-mut);
+  font-size: 13px;
+}
+
+.field-note {
+  font-size: 12.5px;
+  color: var(--ink-mut);
+  line-height: 1.7;
+  margin-top: 6px;
+}
+
+.support-form input[type="text"],
+.support-form input[type="email"],
+.support-form select,
+.support-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 15px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--r-btn);
+  padding: 12px 14px;
+}
+
+.support-form textarea {
+  resize: vertical;
+  line-height: 1.8;
+}
+
+.support-form input:focus-visible,
+.support-form select:focus-visible,
+.support-form textarea:focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: 1px;
+  border-color: var(--blue);
+}
+
+/* 送信の関所。押し間違えないよう、行ごと押せるようにラベルで包んでいる。 */
+.consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 22px;
+  font-size: 14px;
+  line-height: 1.7;
+  cursor: pointer;
+}
+
+.consent input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  accent-color: var(--blue);
+}
+
+.support-form button {
+  cursor: pointer;
+}
+
+/* 送信のあと。成功は黄(言えたこと)、失敗はピンク(穴)。アプリと同じ配色。 */
+.form-msg,
+.form-error {
+  border-radius: var(--r-card);
+  padding: 15px 18px;
+  margin-top: 20px;
+  font-size: 14.5px;
+  line-height: 1.9;
+  font-weight: 700;
+}
+
+.form-msg {
+  border: 2px solid var(--said);
+  background: #fffbe6;
+}
+
+.form-error {
+  border: 2px solid var(--hole);
+  background: #fff5f8;
+}
+
 /* 端末の「アニメーションを減らす」を必ず通す(ADR 0004)。
    アプリ側が守っている約束を、入口のページで破らない。 */
 @media (prefers-reduced-motion: reduce) {
