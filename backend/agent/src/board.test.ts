@@ -156,6 +156,33 @@ describe("板書の配送(正常系)", () => {
     expect(boardChannelLogSchema.safeParse({ messages: sink.sent }).success).toBe(true);
   });
 
+  it("2枚目はサーバから更新された許可集合で検証する", async () => {
+    const sink = recordingSink();
+    const channel = channelWith(sink, "ja", ["M1-NIJI-HANBETSU"]);
+    await deliverOnce(channel, { chunks: stream([lessonJson([step(0, "D = 1")], "1問目")]) });
+
+    channel.updateAllowedTopicIds(["M2-ZUKEI-ENCHOKU"]);
+    const second = JSON.stringify({
+      title: "円と直線",
+      topic_ids: ["M2-ZUKEI-ENCHOKU"],
+      steps: [step(0, "d = r")],
+    });
+    await deliverOnce(channel, { chunks: stream([second]) });
+
+    expect(typesOf(sink.sent)).toEqual([
+      "board_open",
+      "board_step",
+      "board_close",
+      "board_open",
+      "board_step",
+      "board_close",
+    ]);
+    expect(sink.sent.at(3)).toMatchObject({
+      type: "board_open",
+      topic_ids: ["M2-ZUKEI-ENCHOKU"],
+    });
+  });
+
   /**
    * **案A(§3-2)の核心が配送層まで届いていること。**
    * 全部揃うのを待って一気に送っているなら、最後のチャンクの直前まで

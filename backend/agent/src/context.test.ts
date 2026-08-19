@@ -2,6 +2,7 @@ import type { SessionMetadata } from "@ai-sensei/contract";
 import { describe, expect, it } from "vitest";
 import {
   InvalidSessionContextError,
+  fetchSessionContext,
   readAgentContext,
   readSessionContext,
   remainingSeconds,
@@ -92,19 +93,80 @@ describe("readSessionContext", () => {
 
   // fixtureに欄が増えたときも自動で検査対象になる。agent側でdefaultを足すと、
   // その欄を消したケースが通って契約ドリフトを再び隠すため、必須欄を1つずつ削る。
-  // review_holeだけは、古いAPIと共存するデプロイの窓のため意図的に省略可能。
-  it("review_hole以外の共有契約の必須項目をagent側で補わない", () => {
+  // review_hole / context_revision は、古いAPIと共存する窓のため意図的に省略可能。
+  it("ローリングデプロイ用の2項目以外をagent側で補わない", () => {
     for (const field of Object.keys(sessionMetadataFixture) as (keyof SessionMetadata)[]) {
-      if (field === "review_hole") continue;
+      if (field === "review_hole" || field === "context_revision") continue;
       expect(() => readSessionContext(withoutField(field)), field).toThrow(
         InvalidSessionContextError,
       );
     }
   });
 
+  it("古いAPIのrevisionなしmetadataは1問目として読める", () => {
+    const context = readSessionContext(withoutField("context_revision"));
+    expect(context.context_revision).toBeUndefined();
+  });
+
   it("共有契約にない項目を受け入れない(strict)", () => {
     const extended = JSON.stringify({ ...sessionMetadataFixture, future_field: "x" });
     expect(() => readSessionContext(extended)).toThrow(InvalidSessionContextError);
+  });
+});
+
+describe("fetchSessionContext", () => {
+  it("内部トークンで正本を読み、開始時の持ち時間とPremium状態は変えない", async () => {
+    const current = readSessionContext(metadata);
+    let authorization = "";
+    let requested = "";
+    const next = sessionMetadataJson({
+      context_revision: 2,
+      problem_text: "二次関数 y = x^2 - 6x + 5 の頂点を求めよ。",
+      max_seconds: 9999,
+      is_premium: true,
+      allowed_topic_ids: ["M1-NIJI-GURAFU"],
+    });
+
+    const fetched = await fetchSessionContext({
+      apiBaseUrl: "https://api.example.test/",
+      internalToken: "internal-secret",
+      current,
+      fetcher: async (resource, init) => {
+        requested = String(resource);
+        authorization = new Headers(init?.headers).get("authorization") ?? "";
+        return new Response(next, { status: 200 });
+      },
+    });
+
+    expect(requested).toBe(`https://api.example.test/v1/sessions/${current.session_id}/context`);
+    expect(authorization).toBe("Bearer internal-secret");
+    expect(fetched.context_revision).toBe(2);
+    expect(fetched.problem_text).toContain("頂点");
+    expect(fetched.allowed_topic_ids).toEqual(["M1-NIJI-GURAFU"]);
+    expect(fetched.max_seconds).toBe(current.max_seconds);
+    expect(fetched.is_premium).toBe(current.is_premium);
+  });
+
+  it("HTTP失敗と別セッションの応答を受け入れない", async () => {
+    const current = readSessionContext(metadata);
+    await expect(
+      fetchSessionContext({
+        apiBaseUrl: "https://api.example.test",
+        internalToken: "token",
+        current,
+        fetcher: async () => new Response("{}", { status: 401 }),
+      }),
+    ).rejects.toThrow(/HTTP 401/);
+
+    await expect(
+      fetchSessionContext({
+        apiBaseUrl: "https://api.example.test",
+        internalToken: "token",
+        current,
+        fetcher: async () =>
+          new Response(sessionMetadataJson({ session_id: "ses_other" }), { status: 200 }),
+      }),
+    ).rejects.toThrow(/識別/);
   });
 });
 

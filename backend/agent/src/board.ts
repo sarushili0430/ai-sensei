@@ -717,9 +717,9 @@ export class BoardChannel {
    * 授業の教科。**許可トピックの接頭辞から決まる**(ADR 0007)ので、
    * 呼び出し側が別に持たなくてよい。数学しか無かった頃と同じ既定は `math`。
    */
-  private readonly subject: CurriculumSubject;
+  private subject: CurriculumSubject;
   private readonly sink: BoardSink;
-  private readonly allowedTopics: AllowedTopics | undefined;
+  private allowedTopics: AllowedTopics | undefined;
   private readonly newBoardId: () => string;
   private readonly log: Pick<JobLogger, "info" | "warn"> | undefined;
   private seq = 0;
@@ -744,6 +744,19 @@ export class BoardChannel {
   /** 次に送る封筒の `seq`(テストと検算用)。 */
   get nextSeq(): number {
     return this.seq;
+  }
+
+  /**
+   * 次の問題を開く前に、サーバから読み直した許可集合へ差し替える。
+   * 既に開いている `BoardDelivery` は作成時の集合を保持するので、1問目の検証規則が
+   * 途中で変わることはない。次の `startBoard()` だけが更新後の集合を見る。
+   */
+  updateAllowedTopicIds(allowedTopicIds: readonly string[]): void {
+    this.subject =
+      (allowedTopicIds[0] === undefined ? undefined : subjectOfTopicId(allowedTopicIds[0])) ??
+      "math";
+    // 前提はAPIが計算済み。ここでさらに広げない。
+    this.allowedTopics = buildAllowedTopics(allowedTopicIds, { prerequisiteDepth: 0 });
   }
 
   /**

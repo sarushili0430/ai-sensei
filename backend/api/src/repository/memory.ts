@@ -66,11 +66,13 @@ export class MemoryRepository implements Repository {
     session: SessionRecord;
     maxAnalysesPerDay: number;
   }): Promise<boolean> {
-    const analysesToday = [...this.sessions.values()].filter(
-      (session) =>
-        session.device_id === input.session.device_id &&
-        session.local_date === input.session.local_date,
-    ).length;
+    const analysesToday = [...this.sessions.values()]
+      .filter(
+        (session) =>
+          session.device_id === input.session.device_id &&
+          session.local_date === input.session.local_date,
+      )
+      .reduce((total, session) => total + session.analysis_count, 0);
     if (analysesToday >= input.maxAnalysesPerDay) return false;
 
     /**
@@ -121,6 +123,69 @@ export class MemoryRepository implements Repository {
         session.local_date === localDate &&
         session.started_at !== null,
     );
+  }
+
+  async reserveSessionAnalysis(input: {
+    sessionId: string;
+    deviceId: string;
+    localDate: string;
+    maxAnalysesPerSession: number;
+    maxAnalysesPerDay: number;
+  }): Promise<boolean> {
+    const session = this.sessions.get(input.sessionId);
+    const analysesToday = [...this.sessions.values()]
+      .filter(
+        (candidate) =>
+          candidate.device_id === input.deviceId && candidate.local_date === input.localDate,
+      )
+      .reduce((total, candidate) => total + candidate.analysis_count, 0);
+    if (
+      !session ||
+      session.device_id !== input.deviceId ||
+      session.kind !== "new" ||
+      session.status !== "open" ||
+      session.started_at === null ||
+      session.analysis_count >= input.maxAnalysesPerSession ||
+      analysesToday >= input.maxAnalysesPerDay
+    ) {
+      return false;
+    }
+
+    // D1の条件付きUPDATEと同じく、確認から書き込みまでawaitを挟まない。
+    this.sessions.set(session.id, { ...session, analysis_count: session.analysis_count + 1 });
+    return true;
+  }
+
+  async releaseSessionAnalysis(sessionId: string): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    this.sessions.set(session.id, {
+      ...session,
+      // 初回解析の1枠は、追加写真が失敗しても返さない。
+      analysis_count: Math.max(1, session.analysis_count - 1),
+    });
+  }
+
+  async updateSessionContextIfRevision(input: {
+    sessionId: string;
+    expectedRevision: number;
+    topicIds: string[];
+    context: SessionContext;
+  }): Promise<boolean> {
+    const session = this.sessions.get(input.sessionId);
+    if (
+      !session ||
+      session.status !== "open" ||
+      (session.context?.revision ?? 1) !== input.expectedRevision
+    ) {
+      return false;
+    }
+    this.sessions.set(session.id, {
+      ...session,
+      topic_ids: input.topicIds,
+      context: input.context,
+    });
+    return true;
   }
 
   async updateSessionTopics(input: {

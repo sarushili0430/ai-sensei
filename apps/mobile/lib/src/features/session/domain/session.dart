@@ -153,6 +153,30 @@ abstract class SessionAnalysis with _$SessionAnalysis {
   factory SessionAnalysis.fromJson(Map<String, dynamic> json) => _$SessionAnalysisFromJson(json);
 }
 
+/// 会話中に追加した問題写真の解析結果。
+///
+/// 作成時の [SessionAnalysis] とほぼ同じだが、agentへの制御通知で使う
+/// [contextRevision] が必須。問題文や許可集合をRPCへ載せず、この番号だけを知らせる。
+@freezed
+abstract class AddedSessionProblem with _$AddedSessionProblem {
+  const factory AddedSessionProblem({
+    @JsonKey(name: 'session_id') required String sessionId,
+    required String kind,
+    @JsonKey(name: 'detected_topics')
+    required List<DetectedTopic> detectedTopics,
+    SessionProblem? problem,
+    @JsonKey(
+      name: 'problem_outcome',
+      unknownEnumValue: JsonKey.nullForUndefinedEnumValue,
+    )
+    ProblemOutcome? problemOutcome,
+    @JsonKey(name: 'context_revision') required int contextRevision,
+  }) = _AddedSessionProblem;
+
+  factory AddedSessionProblem.fromJson(Map<String, dynamic> json) =>
+      _$AddedSessionProblemFromJson(json);
+}
+
 /// 始まった会話。**この応答が返った時点で、今日の1回を使っている。**
 ///
 /// 部屋の鍵(`livekit`)と上限がここにしか無いのは仕様で、枠の確保と

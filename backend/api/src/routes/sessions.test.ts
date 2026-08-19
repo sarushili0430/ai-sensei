@@ -1,4 +1,9 @@
-import type { CreateSessionResponse, StartSessionResponse } from "@ai-sensei/contract";
+import type {
+  AddSessionProblemPhotoResponse,
+  CreateSessionResponse,
+  SessionMetadata,
+  StartSessionResponse,
+} from "@ai-sensei/contract";
 import {
   createSessionResponseSchema,
   problemTextMaxLength,
@@ -95,6 +100,33 @@ function startSession(
       },
     },
     env,
+  );
+}
+
+function addProblemPhoto(
+  sessionId: string,
+  meta: Record<string, unknown> = {},
+  headers: Record<string, string> = {},
+) {
+  const form = new FormData();
+  form.set("problem_photo", problemPhotoFile());
+  form.set("meta", JSON.stringify({ locale: "ja", school_stage: "high_school", ...meta }));
+  return app.request(
+    `/v1/sessions/${sessionId}/problem-photo`,
+    {
+      method: "POST",
+      body: form,
+      headers: { "x-device-id": testDeviceId, ...headers },
+    },
+    bindings,
+  );
+}
+
+function getSessionContext(sessionId: string, token = bindings.INTERNAL_API_TOKEN) {
+  return app.request(
+    `/v1/sessions/${sessionId}/context`,
+    { headers: { authorization: `Bearer ${token}` } },
+    bindings,
   );
 }
 
@@ -340,6 +372,151 @@ describe("POST /v1/sessions", () => {
     // 押さえた枠が返っていれば、撮り直した1枚はちゃんと通る
     expect((await post(createSessionForm())).status).toBe(201);
     expect(services.repository.sessions.size).toBe(1);
+  });
+});
+
+describe("POST /v1/sessions/{id}/problem-photo", () => {
+  async function startedSession(): Promise<string> {
+    const created = (await (await post(createSessionForm())).json()) as CreateSessionResponse;
+    expect((await startSession(created.session_id)).status).toBe(200);
+    return created.session_id;
+  }
+
+  it("追加解析を文脈へ追記し、サーバ側で許可集合を広げ直す", async () => {
+    const sessionId = await startedSession();
+    const nextAnalysis = {
+      ...analysisFixture,
+      summary: "平方完成で頂点を求める次の問題。",
+      problem_text: "二次関数 y = x^2 - 6x + 5 の頂点を求めよ。",
+      visible_work: [],
+      topics: [{ topic_id: "M1-NIJI-GURAFU", confidence: 0.94 }],
+      question_seeds: ["平方完成で何が見えるか"],
+    };
+    services.analyzer = new RecordingAnalyzer(nextAnalysis);
+
+    const response = await addProblemPhoto(sessionId);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as AddSessionProblemPhotoResponse;
+    expect(body.context_revision).toBe(2);
+    expect(body.problem?.text).toContain("頂点");
+    expect(body.detected_topics.map((topic) => topic.topic_id)).toEqual(
+      expect.arrayContaining(["M1-NIJI-GURAFU", "M2-ZUKEI-ENCHOKU"]),
+    );
+
+    const stored = await services.repository.getSession(sessionId);
+    expect(stored?.analysis_count).toBe(2);
+    expect(stored?.context?.materials).toHaveLength(2);
+    expect(stored?.context?.materials?.[0]?.problem?.text).toContain("共有点");
+    expect(stored?.context?.problem?.text).toContain("頂点");
+    expect(stored?.context?.has_notes_photo).toBe(false);
+    expect(stored?.topic_ids).toEqual(
+      expect.arrayContaining(["M1-NIJI-GURAFU", "M2-ZUKEI-ENCHOKU"]),
+    );
+
+    const analyzer = services.analyzer as RecordingAnalyzer;
+    expect(analyzer.calls).toEqual([{ locale: "ja", hadNotes: false, hadProblem: true }]);
+  });
+
+  it("追加した問題の紙面もR2へ保存せず、解析後に破棄する", async () => {
+    const isolated = testBindings();
+    const createdResponse = await app.request(
+      "/v1/sessions",
+      { method: "POST", body: createSessionForm(), headers: { "x-device-id": testDeviceId } },
+      isolated,
+    );
+    const created = (await createdResponse.json()) as CreateSessionResponse;
+    expect((await startSession(created.session_id, {}, {}, isolated)).status).toBe(200);
+
+    const objects = (isolated.PHOTOS as unknown as { objects: Map<string, unknown> }).objects;
+    const storedBefore = [...objects.keys()];
+    expect(storedBefore).toHaveLength(1);
+
+    const form = new FormData();
+    form.set("problem_photo", problemPhotoFile());
+    form.set("meta", JSON.stringify({ locale: "ja", school_stage: "high_school" }));
+    const added = await app.request(
+      `/v1/sessions/${created.session_id}/problem-photo`,
+      { method: "POST", body: form, headers: { "x-device-id": testDeviceId } },
+      isolated,
+    );
+
+    expect(added.status).toBe(200);
+    expect([...objects.keys()]).toEqual(storedBefore);
+  });
+
+  it("agentは内部トークンで最新文脈を読み、端末の許可集合は受け取らない", async () => {
+    const sessionId = await startedSession();
+    services.analyzer = new RecordingAnalyzer({
+      ...analysisFixture,
+      problem_text: "二次関数 y = x^2 - 6x + 5 の頂点を求めよ。",
+      topics: [{ topic_id: "M1-NIJI-GURAFU", confidence: 0.94 }],
+    });
+
+    // strictなmetaなので、端末から許可集合を広げる入力は弾く。
+    const rejected = await addProblemPhoto(sessionId, {
+      allowed_topic_ids: ["M3-SEKIBUN-KIHON"],
+    });
+    expect(rejected.status).toBe(422);
+    expect((await services.repository.getSession(sessionId))?.analysis_count).toBe(1);
+
+    expect((await addProblemPhoto(sessionId)).status).toBe(200);
+    expect((await getSessionContext(sessionId, "wrong-token")).status).toBe(401);
+
+    const response = await getSessionContext(sessionId);
+    expect(response.status).toBe(200);
+    const context = (await response.json()) as SessionMetadata;
+    expect(sessionMetadataSchema.safeParse(context).success).toBe(true);
+    expect(context.context_revision).toBe(2);
+    expect(context.problem_text).toContain("頂点");
+    expect(context.visible_work).toBe(formatVisibleWork(null, "ja"));
+    expect(context.allowed_topic_ids).toContain("M1-NIJI-GURAFU");
+  });
+
+  it("初回を含む5回で止め、今の授業は続けられる非終端エラーを返す", async () => {
+    const sessionId = await startedSession();
+    const analyzer = new RecordingAnalyzer(analysisFixture);
+    services.analyzer = analyzer;
+
+    // 初回が1回目なので、会話中に追加できるのは4枚。
+    for (let count = 0; count < 4; count += 1) {
+      expect((await addProblemPhoto(sessionId)).status).toBe(200);
+    }
+    expect(analyzer.calls).toHaveLength(4);
+
+    const denied = await addProblemPhoto(sessionId);
+    expect(denied.status).toBe(429);
+    const body = (await denied.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("problem_photo_limit_reached");
+    expect(body.error.message).toContain("今の問題はそのまま続けられます");
+    // 上限判定はVisionより前。5枚目を原価へ流していない。
+    expect(analyzer.calls).toHaveLength(4);
+    expect((await services.repository.getSession(sessionId))?.status).toBe("open");
+    // 行き止まりにしない。同じセッションのトークン再発行は引き続き通る。
+    expect((await startSession(sessionId)).status).toBe(200);
+  });
+
+  it("読めない追加写真は枠と現在の問題を失わせない", async () => {
+    const sessionId = await startedSession();
+    const before = await services.repository.getSession(sessionId);
+    const form = new FormData();
+    form.set(
+      "problem_photo",
+      new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], "broken.pdf", {
+        type: "application/pdf",
+      }),
+    );
+    form.set("meta", JSON.stringify({ locale: "ja" }));
+
+    const response = await app.request(
+      `/v1/sessions/${sessionId}/problem-photo`,
+      { method: "POST", body: form, headers: { "x-device-id": testDeviceId } },
+      bindings,
+    );
+    expect(response.status).toBe(422);
+    const after = await services.repository.getSession(sessionId);
+    expect(after?.analysis_count).toBe(1);
+    expect(after?.context?.problem).toEqual(before?.context?.problem);
+    expect(after?.status).toBe("open");
   });
 });
 

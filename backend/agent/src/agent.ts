@@ -12,6 +12,7 @@ import { type AgentConfig, loadConfig } from "./config.ts";
 import {
   type AgentContext,
   type SessionContext,
+  fetchSessionContext,
   remainingSeconds,
   resolveAgentContext,
 } from "./context.ts";
@@ -38,6 +39,13 @@ import {
   stepAwaitsInput,
   teachBackFallback,
 } from "./senpai.ts";
+import {
+  type RpcRegistrar,
+  SessionControlInbox,
+  problemPhotoBridge,
+  problemPhotoFailedBridge,
+  registerSessionControl,
+} from "./session-control.ts";
 import { TranscriptCollector } from "./transcript.ts";
 import { observeVoiceMetrics } from "./voice-metrics.ts";
 import { createVoiceSession } from "./voice-session.ts";
@@ -56,11 +64,11 @@ import { createVoiceSession } from "./voice-session.ts";
  * 文脈の受け渡し・**授業と会話の切り替え**・上限時間の打ち切り・カルテ生成。
  *
  * ─────────────────────────────────────────────────────────────────────────
- * 【板書の寿命】1セッション = 1つの問題 = 板書1枚
+ * 【板書の寿命】1つの問題 = 板書1枚。1セッションには複数枚ありうる
  * ─────────────────────────────────────────────────────────────────────────
  *
- * `board_open` は最初の手順が確定したときに1度だけ、`board_close` は
- * **会話がぜんぶ終わってから**送る(`board.ts` の寿命の約束)。
+ * `board_open` は各問題の最初の手順が確定したときに1度だけ、`board_close` は
+ * **次の問題へ移る直前か、会話がぜんぶ終わったとき**に送る(`board.ts` の約束)。
  * 授業から教え返しへ移るときには閉じない — 生徒は板書を見ながら説明するので、
  * ここで閉じ直すと、いちばん要る瞬間に画面が白紙になる。
  *
@@ -124,21 +132,23 @@ export default defineAgent({
       return;
     }
 
-    log = log.child({ session_id: context.session_id });
+    let currentContext: SessionContext = context;
+
+    log = log.child({ session_id: currentContext.session_id });
 
     // 穴が届いた復習も板書授業から始める。`review` は小テストで「まだ」→「先輩に聞く」を
     // 選んだ**あと**のセッションなので、前回の穴をもう一度聞くだけの会話へ戻すと、
     // §2 の「詰まったら授業モードへ」がここで途切れる。写真の代わりに何を根拠に
     // 教えるかは `senpaiBoardLessonPrompt()` が review_hole から組み立てる。
     // 欄が無い復習は、古いAPIと共存する窓なので従来の会話へ安全に縮退する。
-    const lessonMode = startsWithBoardLesson(context);
+    const lessonMode = startsWithBoardLesson(currentContext);
 
-    const collector = new TranscriptCollector(startedAt, context);
+    const collector = new TranscriptCollector(startedAt, currentContext);
 
     const session = createVoiceSession({
       ctx,
       config,
-      locale: context.locale,
+      locale: currentContext.locale,
       llmTemperature: 0.6,
     });
     // 最初の発話から遅延と割り込みを測る。start後では最初のターンを取りこぼす。
@@ -179,7 +189,10 @@ export default defineAgent({
       // 復習も授業も**同じ先輩**。ピボット(§0 決定3)で配役は1つになったので、
       // モードで人格を出し分けない。授業モードではこの時点で板書の要約がまだ無く、
       // 授業が終わってから `updateInstructions` で足す。
-      instructions: senpaiConversationPrompt({ context, remainingSeconds: context.max_seconds }),
+      instructions: senpaiConversationPrompt({
+        context: currentContext,
+        remainingSeconds: currentContext.max_seconds,
+      }),
       lessonRunning: lessonMode,
       onLessonUtterance: (text) => utterances.push(text),
       onBoardRequest: (text) => boardRequestSink?.(text) ?? false,
@@ -191,10 +204,10 @@ export default defineAgent({
     // 「セッションは始まっているのに、始まったログが無い」時間帯ができる。
     // その間に落ちたときに、どこまで行っていたのかが読めなくなる。
     log.info("conversation_started", {
-      kind: context.kind,
-      locale: context.locale,
-      max_seconds: context.max_seconds,
-      topics: context.allowed_topic_ids.length,
+      kind: currentContext.kind,
+      locale: currentContext.locale,
+      max_seconds: currentContext.max_seconds,
+      topics: currentContext.allowed_topic_ids.length,
       lesson_mode: lessonMode,
     });
 
@@ -204,85 +217,204 @@ export default defineAgent({
     // その間の離脱(`Close`)とエラーを取りこぼす。イベントは1度きりなので、
     // 取りこぼすと上限時間が来るまで**誰もいない部屋が回り続ける**
     // (無料5分ならまだしも、Premium15分だとその全部を待つ)。
-    const ended = waitForEnd(session, context, startedAt, (handler) => {
+    const ended = waitForEnd(session, currentContext, startedAt, (handler) => {
       onClosing = handler;
     });
     // 終わったのに板書を作り続けない。生徒が抜けたあとのLLM出力は誰も見ない。
     void ended.then(() => interrupt.abort());
 
-    let board: BoardDelivery | undefined;
-    // 再入の窓口(`serveBoardRequests`)の寿命。板書を締める前に畳み終わりを待つ。
-    let boardServing: Promise<void> | undefined;
-    if (lessonMode) {
-      const taught = await teachWithBoard({
-        ctx,
-        config,
-        context,
-        session,
-        agent,
-        startedAt,
-        signal: interrupt.signal,
-        utterances,
-        record: (text) => collector.add({ role: "user", text }),
+    const localParticipant = ctx.room.localParticipant as
+      | (TextStreamPublisher & RpcRegistrar)
+      | undefined;
+    const channel =
+      lessonMode && localParticipant
+        ? new BoardChannel({
+            sessionId: currentContext.session_id,
+            locale: currentContext.locale,
+            sink: createTextStreamBoardSink(localParticipant),
+            allowedTopicIds: currentContext.allowed_topic_ids,
+            log,
+          })
+        : undefined;
+
+    const controlInbox = new SessionControlInbox();
+    let unregisterControl: () => void = () => undefined;
+    if (currentContext.kind === "new" && localParticipant) {
+      unregisterControl = registerSessionControl({
+        registrar: localParticipant,
+        studentIdentity: participant.identity,
+        sessionId: currentContext.session_id,
+        getCurrentContext: () => currentContext,
+        fetchContext: () =>
+          fetchSessionContext({
+            apiBaseUrl: config.API_BASE_URL,
+            internalToken: config.INTERNAL_API_TOKEN,
+            current: currentContext,
+          }),
+        inbox: controlInbox,
         log,
       });
-      board = taught?.board;
+    }
 
-      if (taught !== undefined && !interrupt.signal.aborted) {
-        // **教え返しに入っても、板書の窓口は閉じない。**板書は開いたままで、
-        // 続きを積む配管も生きている。「板書して」と頼まれたのに会話LLMが
-        // 「ここからは言葉だけでいくね」と取り繕う、が実際に起きた壊れ方
-        // (会話LLMは板書に書く手段を持たないので、頼まれると嘘をつくしかない)。
-        // 板書と名指しされた発話はここで拾い、同じ板書の続きで応える。
-        boardRequestSink = (text) => {
-          if (interrupt.signal.aborted || taught.board.isClosed) return false;
-          if (!asksForBoard(text, context.locale)) return false;
-          boardRequests.push(text);
-          return true;
+    let board: BoardDelivery | undefined;
+    let taught: TaughtLesson | undefined;
+    let closedBoardSteps = 0;
+    let boardContinuationAvailable = true;
+
+    if (lessonMode && channel) {
+      while (!interrupt.signal.aborted) {
+        // 1問ぶんだけを止める合図。セッション全体の終了とは分けるので、
+        // 写真解析に失敗しても同じ部屋・同じ残り時間で会話を続けられる。
+        const problemInterrupt = new AbortController();
+        const stopProblem = () => {
+          problemInterrupt.abort();
+          // LLMストリームだけでなく、読み上げ待ちもその場で解く。これが無いと
+          // 「見てるね」が古い手順のTTSを読み切った数秒後まで出てこない。
+          void session.interrupt({ force: true }).await.catch(() => undefined);
         };
-        // 窓口が落ちても会話は続ける(板書の再入が失われるだけで、致命ではない)。
-        boardServing = serveBoardRequests({
-          taught,
-          agent,
-          session,
-          context,
-          startedAt,
-          signal: interrupt.signal,
-          requests: boardRequests,
-          utterances,
-          record: (text) => collector.add({ role: "user", text }),
-          log,
-        }).catch((error) => {
-          log.error("board_request_loop_failed", error);
-        });
+        interrupt.signal.addEventListener("abort", stopProblem, { once: true });
+        const detachControl = controlInbox.onPush(stopProblem);
+        let boardServing: Promise<void> | undefined;
+
+        if (taught === undefined) {
+          agent.startLesson();
+          taught = await teachWithBoard({
+            channel,
+            config,
+            context: currentContext,
+            session,
+            agent,
+            startedAt,
+            signal: problemInterrupt.signal,
+            utterances,
+            record: (text) => collector.add({ role: "user", text }),
+            log,
+          });
+          board = taught.board;
+          boardContinuationAvailable = !problemInterrupt.signal.aborted;
+        }
+
+        if (
+          taught !== undefined &&
+          boardContinuationAvailable &&
+          !problemInterrupt.signal.aborted
+        ) {
+          // **教え返しに入っても、板書の窓口は閉じない。**次の問題の通知が来たら
+          // problemInterrupt で先に畳み、close と次の open が同じseqを取り合わない。
+          const servingLesson = taught;
+          boardRequestSink = (text) => {
+            if (problemInterrupt.signal.aborted || servingLesson.board.isClosed) return false;
+            if (!asksForBoard(text, currentContext.locale)) return false;
+            boardRequests.push(text);
+            return true;
+          };
+          boardServing = serveBoardRequests({
+            taught: servingLesson,
+            agent,
+            session,
+            context: currentContext,
+            startedAt,
+            signal: problemInterrupt.signal,
+            requests: boardRequests,
+            utterances,
+            record: (text) => collector.add({ role: "user", text }),
+            log,
+          }).catch((error) => {
+            log.error("board_request_loop_failed", error);
+          });
+        } else {
+          boardRequestSink = undefined;
+        }
+
+        let control = await controlInbox.take(interrupt.signal);
+        stopProblem();
+        detachControl();
+        interrupt.signal.removeEventListener("abort", stopProblem);
+        boardRequestSink = undefined;
+        if (boardServing) await drainBoardServing(boardServing, log);
+        if (control === null) break;
+
+        if (control.type === "problem_photo_analyzing") {
+          // いまの説明へ被せず、解析中の数秒を一言で埋める。chatCtxへ入れないので、
+          // transcriptにもカルテにも「見てるね」は混ざらない。
+          await session.interrupt({ force: true }).await.catch(() => undefined);
+          await sayAndWait(session, problemPhotoBridge(currentContext.locale), log, {
+            addToChatCtx: false,
+          });
+
+          // アップロードの成否が来るまで、古い板書は閉じない。失敗ならそのまま残して
+          // 会話へ戻り、成功したときだけ close → 次の open へ進む。
+          do {
+            control = await controlInbox.take(interrupt.signal);
+          } while (control?.type === "problem_photo_analyzing");
+          if (control === null) break;
+        }
+
+        if (control.type === "problem_photo_failed") {
+          boardContinuationAvailable = false;
+          agent.endLesson();
+          await sayAndWait(session, problemPhotoFailedBridge(currentContext.locale), log, {
+            addToChatCtx: false,
+          });
+          continue;
+        }
+
+        const currentRevision = currentContext.context_revision ?? 1;
+        const fetchedRevision = control.context.context_revision ?? 1;
+        if (fetchedRevision <= currentRevision) {
+          // RPCの再送。板書を同じ問題でもう一度開き直さない。
+          log.info("session_context_replayed", { context_revision: fetchedRevision });
+          continue;
+        }
+
+        // **新しい問題へ移る境界。**旧板書を締め切ってから許可集合を差し替え、
+        // 同じBoardChannelで次を始める。seqはセッション通しのまま続く。
+        if (board) {
+          await board.close("completed");
+          closedBoardSteps += board.stepCount;
+        }
+        currentContext = control.context;
+        collector.updateContext(currentContext);
+        channel.updateAllowedTopicIds(currentContext.allowed_topic_ids);
+        utterances.clear();
+        boardRequests.clear();
+        // 前問の #152「解答待ち」は runLessonLoop のローカル状態ごと捨てる。
+        // 新しいTaughtLessonを作るので pendingSolvingReport も持ち越されない。
+        taught = undefined;
+        board = undefined;
+        boardContinuationAvailable = true;
+        await agent
+          .updateInstructions(
+            senpaiConversationPrompt({
+              context: currentContext,
+              remainingSeconds: remainingSeconds(currentContext, startedAt, new Date()),
+            }),
+          )
+          .catch((error) => log.error("instructions_update_failed", error));
+        log.info("problem_switched", { context_revision: fetchedRevision });
       }
-    } else {
+    } else if (!lessonMode) {
       // 新しいagentを先に出した窓では、古いAPIの復習metadataに review_hole が無い。
       // 根拠なしの板書を作らず従来の聞き直し会話へ落とし、窓が閉じないまま運用が
       // 続いても気づけるよう縮退を必ず記録する。
-      log.warn("review_hole_missing", { kind: context.kind });
-      session.say(reviewOpening(context.locale));
+      log.warn("review_hole_missing", { kind: currentContext.kind });
+      session.say(reviewOpening(currentContext.locale));
+    } else {
+      log.warn("board_publisher_missing");
+      agent.endLesson();
+      session.say(lessonFailedPrompt(currentContext.locale, currentContext.kind));
     }
 
     const endedReason = await ended;
+    unregisterControl();
 
     // 会話はここで終わり。カルテ生成(数秒かかる)を待たせないよう、
     // 先に部屋を閉じる。開けたままだと上限時間を超えて話し続けられてしまう。
     const endedAt = new Date();
     await session.close().catch(() => undefined);
 
-    // **板書を締める前に、再入の窓口が畳み終わるのを待つ。**中断そのものは
-    // `interrupt.abort()` がもう伝えている。待たずに締めると、再入のパスが
-    // 送信しかけていた `board_step` と `board_close` が**同じ `seq` を取り合う**
-    // (`sendEnvelope` は送信を直列化していない)— 受信側にはそれが欠落に見えて、
-    // 正常に終わったセッションの板書が最後の1通でとぎれ判定になる。
-    // 上限つきで待つのは、詰まった `sendText` にカルテ生成まで道連れに
-    // されないため(セッションはもう閉じたので、待ちは配送の残りだけ)。
-    if (boardServing !== undefined) {
-      await drainBoardServing(boardServing, log);
-    }
-
-    // **板書を締めるのはここだけ。**1つの問題が終わったので閉じる(§3-2)。
+    // 最後に開いていた1問だけをここで締める。途中で差し替えた板書は、その境界で
+    // 既にclose済み。closeを二重送信しないのはBoardDelivery自身も保証する。
     // セッションを閉じたあとに送るのは、締めの封筒より先に声を止めたいから
     // (`sendText` が詰まっても、生徒には「先輩が喋り続ける」に見えない)。
     await board?.close(boardCloseReasonFor(endedReason));
@@ -293,14 +425,14 @@ export default defineAgent({
       duration_seconds: Math.floor((endedAt.getTime() - startedAt.getTime()) / 1000),
       turns: transcript.length,
       user_spoke: collector.hasUserSpeech,
-      board_steps: board?.stepCount ?? 0,
+      board_steps: closedBoardSteps + (board?.stepCount ?? 0),
       ...voiceMetrics.summary(endedAt),
     });
 
     const karteStartedAt = Date.now();
     const drafted = collector.hasUserSpeech
       ? await buildKarte({
-          context,
+          context: currentContext,
           transcript,
           llm: createAnthropicClient({
             apiKey: config.ANTHROPIC_API_KEY,
@@ -325,9 +457,9 @@ export default defineAgent({
 
     // 「わからない」と言ったのに穴ゼロ、を出さない。
     // LLMが書けなかったときも(上の catch を通ったときも)ここを通る。
-    const karte = withUncertaintyHole(drafted, context, transcript);
+    const karte = withUncertaintyHole(drafted, currentContext, transcript);
     if (karte.holes.length > drafted.holes.length) {
-      log.info("karte_uncertainty_hole_added", { session_id: context.session_id });
+      log.info("karte_uncertainty_hole_added", { session_id: currentContext.session_id });
     }
 
     // review_outcome はここでは立てない。言えたかどうかを決めるのは本人で、
@@ -346,7 +478,7 @@ export default defineAgent({
       await postComplete({
         apiBaseUrl: config.API_BASE_URL,
         internalToken: config.INTERNAL_API_TOKEN,
-        sessionId: context.session_id,
+        sessionId: currentContext.session_id,
         body,
       });
       log.info("complete_posted", { holes: karte.holes.length });
@@ -437,7 +569,8 @@ class LessonAwareAgent extends voice.Agent {
 }
 
 type TeachOptions = {
-  ctx: JobContext;
+  /** セッション通しのseqと、更新可能な許可集合を持つ板書チャネル。 */
+  channel: BoardChannel;
   config: AgentConfig;
   context: SessionContext;
   session: voice.AgentSession;
@@ -522,28 +655,9 @@ function lessonRunner(options: TeachOptions, board: BoardDelivery) {
  * 板書チャネルが作れなかったときは `undefined` を返し、**会話だけで続ける** —
  * 板書が出ないのは大きな劣化だが、黙って部屋を閉じるよりはるかにまし。
  */
-async function teachWithBoard(options: TeachOptions): Promise<TaughtLesson | undefined> {
-  const { ctx, context, session, agent, startedAt, signal, utterances, log } = options;
+async function teachWithBoard(options: TeachOptions): Promise<TaughtLesson> {
+  const { channel, context, session, agent, startedAt, signal, utterances, log } = options;
 
-  const publisher = ctx.room.localParticipant as TextStreamPublisher | undefined;
-  if (publisher === undefined) {
-    // 接続直後に必ず入っている値なので、ここに来るのはフレームワーク側の異常。
-    log.warn("board_publisher_missing");
-    agent.endLesson();
-    session.say(lessonFailedPrompt(context.locale, context.kind));
-    return undefined;
-  }
-
-  const channel = new BoardChannel({
-    sessionId: context.session_id,
-    locale: context.locale,
-    sink: createTextStreamBoardSink(publisher),
-    // **教える範囲の妥当性**を見るための許可集合(計画書 §8)。
-    // 見出しの `topic_ids` がここから外れていたら作り直させる。
-    // 前提2段ぶんは backend/api が既に入れてくるので、こちらでは広げない。
-    allowedTopicIds: context.allowed_topic_ids,
-    log,
-  });
   const board = channel.startBoard();
   const runLesson = lessonRunner(options, board);
   const taught: TaughtLesson = { board, turns: [], runLesson };
