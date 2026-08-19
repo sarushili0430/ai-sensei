@@ -192,9 +192,11 @@ agentが読む環境変数は [`backend/agent/.env.example`](../backend/agent/.e
 | `INTERNAL_API_TOKEN` | 必須 | **同じ環境の** `backend/api` のsecretと同じ値 |
 | `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | 必須 | 環境に対応するLiveKitプロジェクトのもの |
 | `ANTHROPIC_API_KEY` | 必須 | 会話とカルテのLLM |
-| `DEEPGRAM_API_KEY` | 必須 | STTとTTSで共通 |
+| `DEEPGRAM_API_KEY` | 必須 | STT(聞く側) |
+| `GOOGLE_API_KEY` | 必須 | TTS(喋る側)。Gemini API の鍵([ADR 0008](adr.md#adr-0008)) |
 | `LLM_MODEL_CONVERSATION` / `LLM_MODEL_KARTE` | 任意 | 未設定なら `config.ts` の既定値 |
-| `DEEPGRAM_TTS_MODEL_JA` / `_EN` | 任意 | **ふつうは触らない**(声はキャラクターそのもの) |
+| `GEMINI_TTS_MODEL` | 任意 | 未設定なら GA の `gemini-2.5-flash-tts`。3.1 を試すときだけ入れる |
+| `GEMINI_TTS_VOICE` | 任意 | **ふつうは触らない**(声はキャラクターそのもの) |
 | `SENTRY_DSN` | 任意 | 未設定ならSentryへは何も送らない |
 | `ENVIRONMENT` | 任意 | Sentryに出る名前。`develop` / `production` |
 | `LIVEKIT_AGENT_NAME` | 環境次第 | [§4](#4-ディスパッチ) |

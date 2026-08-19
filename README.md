@@ -83,7 +83,7 @@ cp apps/mobile/dart_defines.example.env apps/mobile/dart_defines.env    # --dart
 | テンプレート | 中身 |
 | --- | --- |
 | `backend/api/.dev.vars.example` | LiveKit / Vision LLM / OneSignal / RevenueCat webhook / 内部トークン |
-| `backend/agent/.env.example` | LiveKit / 会話・カルテのLLM / STT / TTS / 内部トークン |
+| `backend/agent/.env.example` | LiveKit / 会話・カルテのLLM / STT(Deepgram)/ TTS(Gemini)/ 内部トークン |
 | `apps/mobile/dart_defines.example.env` | **公開値のみ**(APIのURL・RevenueCat公開鍵・OneSignal App ID・Sentry DSN・規約URL・報告先メール) |
 
 課金まわりのダッシュボード設定とアプリ側の噛み合わせは
@@ -248,7 +248,8 @@ Flutter app ──HTTPS──▶ backend/api ──▶ LiveKit room 作成 + age
 | カリキュラム | 数学I〜C(新課程) | Algebra 1 / Geometry / Algebra 2 / Precalculus / Calculus / Statistics |
 | topic_id | `M2-ZUKEI-ENCHOKU` | `A2-COORD-CIRCLE` |
 | プロンプト | `prompts/*.ja.md` | `prompts/*.en.md` |
-| STT / TTS | 日本語モデル | 英語モデル |
+| STT | 日本語モデル | 英語モデル |
+| TTS | 読み方の指示だけ切り替え。**声は日英で同じ1つ**([ADR 0008](docs/adr.md#adr-0008)) | 同左 |
 | ガードレール | 答えの漏れ・範囲外の語・数式音声を日本語で | 同じものを英語で |
 
 穴(hole)に付いた `topic_id` の接頭辞が、その穴の言語を決めます。復習の通知と

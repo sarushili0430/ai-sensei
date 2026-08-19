@@ -1,10 +1,14 @@
 /**
- * 授業冒頭の短い一言を、Deepgram で同梱 m4a に差し替える。
+ * 授業冒頭の短い一言を、Gemini TTS で同梱 m4a に差し替える。
  *
- * backend/agent の `deepgram.TTS` と同じ `/v1/speak`、`Token` 認証、モデル既定値を
- * 使う。違うのは出力だけで、リアルタイム会話の PCM ではなく保存向け AAC を受け、
- * ffmpeg で m4a コンテナに包む。SDKをもう1本依存させないのは、このスクリプトが
- * リリース前に数回だけ走る生成工程であり、実行時の依存グラフへ持ち込む理由が無いため。
+ * **会話中と同じ声・同じモデル・同じ読み方の指示**で作る(`senpai-voice.ts` から
+ * 読む)。ここがずれると、冒頭の一言だけ別人が喋って、そのまま先輩の声に
+ * バトンタッチする — いちばん気づきにくく、いちばん台無しになる壊れ方をする。
+ *
+ * `@google/genai` を足さず素の `fetch` で書いているのは、このスクリプトが
+ * リリース前に数回だけ走る生成工程であり、ルートの依存グラフへ持ち込む理由が
+ * 無いため(`backend/agent` 側は LiveKit プラグイン経由でSDKを使う)。
+ * Gemini が返すのは生PCMなので、ffmpeg で AAC へ焼いて m4a に包む。
  *
  *   node --experimental-strip-types --env-file=backend/agent/.env \
  *     scripts/generate-prerendered-audio.ts
@@ -13,6 +17,11 @@ import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
+import {
+  defaultGeminiTtsModel,
+  defaultGeminiTtsVoice,
+  ttsInstructionsForLocale,
+} from "../backend/agent/src/senpai-voice.ts";
 
 type Locale = "ja" | "en";
 
@@ -34,11 +43,9 @@ export const prerenderedCueSources = [
   },
 ] as const satisfies readonly CueSource[];
 
-const models: Record<Locale, string> = {
-  // backend/agent/src/config.ts と同じ既定。声を変えるなら両方を同じ環境変数で上書きする。
-  ja: process.env.DEEPGRAM_TTS_MODEL_JA?.trim() || "aura-2-izanami-ja",
-  en: process.env.DEEPGRAM_TTS_MODEL_EN?.trim() || "aura-2-andromeda-en",
-};
+// agent と同じ環境変数を同じ既定値で読む。声はロケールで分かれない(ADR 0008)。
+const ttsModel = process.env.GEMINI_TTS_MODEL?.trim() || defaultGeminiTtsModel;
+const ttsVoice = process.env.GEMINI_TTS_VOICE?.trim() || defaultGeminiTtsVoice;
 
 const locales = ["ja", "en"] as const;
 const repoRoot = resolve(import.meta.dirname, "..");
@@ -46,49 +53,95 @@ const outputDir = join(repoRoot, "apps/mobile/assets/audio");
 
 function usage(): string {
   return [
-    "プリレンダ音声を Deepgram で生成します。",
+    "プリレンダ音声を Gemini TTS で生成します。",
     "",
     "使い方:",
     "  node --experimental-strip-types --env-file=backend/agent/.env scripts/generate-prerendered-audio.ts",
     "  node --experimental-strip-types scripts/generate-prerendered-audio.ts --list",
     "",
-    "必要: DEEPGRAM_API_KEY, ffmpeg",
+    "必要: GOOGLE_API_KEY, ffmpeg",
   ].join("\n");
 }
 
 function listCues(): void {
   for (const cue of prerenderedCueSources) {
     for (const locale of locales) {
-      console.log(`${cue.file[locale]}\t${models[locale]}\t${cue.text[locale]}`);
+      console.log(`${cue.file[locale]}\t${ttsModel}/${ttsVoice}\t${cue.text[locale]}`);
     }
   }
 }
 
-async function synthesize(text: string, model: string, apiKey: string): Promise<Uint8Array> {
-  const url = new URL("https://api.deepgram.com/v1/speak");
-  url.searchParams.set("model", model);
-  url.searchParams.set("encoding", "aac");
-  url.searchParams.set("sample_rate", "24000");
-  // LiveKit plugin と同じく生の音声を受ける。m4a 化は下の ffmpeg に一本化する。
-  url.searchParams.set("container", "none");
-  url.searchParams.set("mip_opt_out", "false");
+/** Gemini が返す生PCM。サンプリングレートは mimeType にしか書かれていない。 */
+type SynthesizedPcm = {
+  pcm: Uint8Array;
+  sampleRate: number;
+};
+
+/**
+ * `audio/L16;codec=pcm;rate=24000` からサンプリングレートを読む。
+ *
+ * 既定は現行の24kHz。**取り違えると音は出るが再生速度がずれる**(ffmpeg には
+ * ヘッダの無い生PCMを渡すので、こちらの申告がそのまま正になる)ため、
+ * 応答が書いてきたときはそれに従う。
+ */
+function sampleRateOf(mimeType: string): number {
+  const rate = Number(/rate=(\d+)/.exec(mimeType)?.[1]);
+  return Number.isFinite(rate) && rate > 0 ? rate : 24_000;
+}
+
+async function synthesize(text: string, locale: Locale, apiKey: string): Promise<SynthesizedPcm> {
+  const url = new URL(
+    `https://generativelanguage.googleapis.com/v1beta/models/${ttsModel}:generateContent`,
+  );
+
+  // LiveKitプラグインが投げるのと同じ形に揃える(`{指示}:\n"{本文}"`)。
+  // 指示を外すと、同じ声・同じモデルでも喋り方だけが会話中とずれる。
+  const prompt = `${ttsInstructionsForLocale(locale)}:\n"${text}"`;
 
   const response = await fetch(url, {
     method: "POST",
     headers: {
-      Authorization: `Token ${apiKey}`,
+      // 鍵はクエリ文字列にも置けるが、そこへ書くとシェル履歴とプロキシのログに残る。
+      "x-goog-api-key": apiKey,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: {
+        responseModalities: ["AUDIO"],
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: ttsVoice } } },
+      },
+    }),
   });
 
   if (!response.ok) {
     // 応答本文に鍵は入らないが、無制限にログへ出さない。モデル名とHTTP状態で
     // 通常の設定ミスは直せ、本文がHTMLでもターミナルを埋めない。
     const detail = (await response.text()).slice(0, 500);
-    throw new Error(`Deepgram TTS が失敗しました: ${response.status} ${detail}`);
+    throw new Error(`Gemini TTS が失敗しました: ${response.status} ${detail}`);
   }
-  return new Uint8Array(await response.arrayBuffer());
+
+  const body = (await response.json()) as {
+    candidates?: {
+      content?: { parts?: { inlineData?: { mimeType?: string; data?: string } }[] };
+    }[];
+  };
+  const audio = body.candidates?.[0]?.content?.parts?.find(
+    (part) => part.inlineData?.mimeType?.startsWith("audio/") === true,
+  )?.inlineData;
+
+  // 200 でも音声が付かないことがある(安全フィルタなど)。空の m4a を assets へ
+  // 置くより、どのロケールで止まったかを添えて落とす。
+  if (audio?.data === undefined) {
+    throw new Error(
+      `Gemini TTS が音声を返しませんでした(locale=${locale}, model=${ttsModel}, voice=${ttsVoice})`,
+    );
+  }
+
+  return {
+    pcm: Buffer.from(audio.data, "base64"),
+    sampleRate: sampleRateOf(audio.mimeType ?? ""),
+  };
 }
 
 async function run(command: string, args: readonly string[]): Promise<void> {
@@ -112,25 +165,33 @@ async function generateOne(
   tempDir: string,
 ): Promise<void> {
   const filename = cue.file[locale];
-  const rawPath = join(tempDir, `${cue.id}.${locale}.aac`);
+  const rawPath = join(tempDir, `${cue.id}.${locale}.pcm`);
   // 末尾を .m4a にして、ffmpeg が出力コンテナを拡張子から確定できるようにする。
   const stagedPath = join(outputDir, `.${filename}.${process.pid}.tmp.m4a`);
   const outputPath = join(outputDir, filename);
 
-  const audio = await synthesize(cue.text[locale], models[locale], apiKey);
-  await writeFile(rawPath, audio);
+  const { pcm, sampleRate } = await synthesize(cue.text[locale], locale, apiKey);
+  await writeFile(rawPath, pcm);
   try {
     await run(process.env.FFMPEG_BIN?.trim() || "ffmpeg", [
       "-hide_banner",
       "-loglevel",
       "error",
       "-y",
+      // Gemini が返すのはヘッダの無い 16bit little-endian モノラルPCM。
+      // 形式は入力側で申告するしかないので、Deepgramのときのような `-c:a copy` は使えない。
       "-f",
-      "aac",
+      "s16le",
+      "-ar",
+      String(sampleRate),
+      "-ac",
+      "1",
       "-i",
       rawPath,
       "-c:a",
-      "copy",
+      "aac",
+      "-b:a",
+      "96k",
       "-movflags",
       "+faststart",
       stagedPath,
@@ -145,7 +206,7 @@ async function generateOne(
     await rm(stagedPath, { force: true });
   }
   const size = (await readFile(outputPath)).byteLength;
-  console.log(`生成: ${basename(outputPath)} (${size} bytes, ${models[locale]})`);
+  console.log(`生成: ${basename(outputPath)} (${size} bytes, ${ttsModel}/${ttsVoice})`);
 }
 
 async function main(): Promise<void> {
@@ -160,14 +221,14 @@ async function main(): Promise<void> {
   }
   if (args.length > 0) throw new Error(`未対応の引数です: ${args.join(" ")}\n${usage()}`);
 
-  const apiKey = process.env.DEEPGRAM_API_KEY?.trim();
-  if (!apiKey) throw new Error(`DEEPGRAM_API_KEY がありません。\n${usage()}`);
+  const apiKey = process.env.GOOGLE_API_KEY?.trim();
+  if (!apiKey) throw new Error(`GOOGLE_API_KEY がありません。\n${usage()}`);
 
   await mkdir(outputDir, { recursive: true });
   const tempDir = await mkdtemp(join(tmpdir(), "ai-sensei-prerender-"));
   try {
     // 同時に8本投げない。リリース前の手動工程なので速さより、失敗したファイル名が
-    // 直前の1行で分かり、Deepgram のレート制限へ触れにくいことを採る。
+    // 直前の1行で分かり、Gemini のレート制限へ触れにくいことを採る。
     for (const cue of prerenderedCueSources) {
       for (const locale of locales) await generateOne(cue, locale, apiKey, tempDir);
     }

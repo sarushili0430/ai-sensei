@@ -95,7 +95,13 @@ export function splitJapaneseSentences(text: string): SentenceToken[] {
   return tokens;
 }
 
-/** 日本語の句読点を読める、Deepgram TTS用の文分割器。 */
+/**
+ * 日本語の句読点を読める文分割器。
+ *
+ * TTSベンダーには依存しない。いま当てているのは Gemini TTS を包む `StreamAdapter`
+ * (`voice-session.ts` の `createSenpaiTts`)で、**分割された1文がそのまま1リクエスト**
+ * になるため、ここの切り方がそのまま最初の音までの待ちになる。
+ */
 export class JapaneseSentenceTokenizer extends tokenize.SentenceTokenizer {
   tokenize(text: string, _language?: string): string[] {
     return splitJapaneseSentences(text).map(([token]) => token);

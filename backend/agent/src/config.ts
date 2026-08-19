@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { defaultGeminiTtsModel, defaultGeminiTtsVoice } from "./senpai-voice.ts";
 
 /**
  * 既定値のある設定。**空文字を「未設定」として扱う。**
@@ -53,26 +54,25 @@ const configSchema = z.object({
    */
   LLM_MODEL_BOARD: withDefault("claude-sonnet-5"),
 
-  /** 聞く(STT)と喋る(TTS)は同じ鍵で通る。声のベンダーは1つに寄せてある(ADR 0003)。 */
+  /** 聞く(STT)の鍵。喋る側は Gemini へ移したので、ここは STT 専用になった(ADR 0008)。 */
   DEEPGRAM_API_KEY: z.string().min(1),
 
-  /**
-   * 先輩の声(日本語)。**キャラクターそのものなので、既定値で固定する。**
-   *
-   * 環境変数で上書きできるのは声を聴き比べるときのため。ローカルと本番で
-   * 別の声になってはいけない(同じ先輩が環境ごとに違う声で喋ることになる)ので、
-   * 差し替えるならここを変えて、全環境で一度に変える。
-   */
-  DEEPGRAM_TTS_MODEL_JA: withDefault("aura-2-izanami-ja"),
+  /** 喋る(TTS)。Gemini TTS は Gemini API の鍵で通る(ADR 0008)。 */
+  GOOGLE_API_KEY: z.string().min(1),
 
   /**
-   * 英語ロケールの声。
+   * 先輩の声。既定値と選び方の理由は `senpai-voice.ts` にまとめてある。
    *
-   * Deepgramは**言語がモデル名に埋まっている**ので、日本語ボイスは英語を喋れない
-   * (1ボイスに言語を渡す作りではない)。`locale=en` はデモと審査向けなので、
-   * 既定のまま動けばよく、こだわるときだけ差し替える。
+   * **ここには既定値を書かない。**授業冒頭の同梱音声を作る
+   * `scripts/generate-prerendered-audio.ts` も同じ定数を読んでいて、
+   * 2箇所に書くと片方だけ古くなり、冒頭の一言だけ別人の声になる。
+   *
+   * 環境変数で上書きできるのは、モデルを 3.1 へ切り替えるときと、
+   * 声を聴き比べるときのため。ローカルと本番で別の声になってはいけないので、
+   * 恒久的に変えるなら `senpai-voice.ts` を変えて全環境で一度に変える。
    */
-  DEEPGRAM_TTS_MODEL_EN: withDefault("aura-2-andromeda-en"),
+  GEMINI_TTS_MODEL: withDefault(defaultGeminiTtsModel),
+  GEMINI_TTS_VOICE: withDefault(defaultGeminiTtsVoice),
 });
 
 export type AgentConfig = z.infer<typeof configSchema>;

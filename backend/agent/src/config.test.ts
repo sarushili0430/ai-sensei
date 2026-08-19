@@ -9,6 +9,7 @@ const complete = {
   LIVEKIT_API_SECRET: "secret",
   ANTHROPIC_API_KEY: "key",
   DEEPGRAM_API_KEY: "key",
+  GOOGLE_API_KEY: "key",
 };
 
 describe("loadConfig", () => {
@@ -29,13 +30,21 @@ describe("loadConfig", () => {
   // 先輩の声は環境ごとに変わってはいけないので、鍵と違って設定必須にしない
   it("先輩の声は設定が無くても固定される", () => {
     const config = loadConfig(complete);
-    expect(config.DEEPGRAM_TTS_MODEL_JA).toBe("aura-2-izanami-ja");
-    expect(config.DEEPGRAM_TTS_MODEL_EN).toBe("aura-2-andromeda-en");
+    expect(config.GEMINI_TTS_VOICE).toBe("Leda");
+  });
+
+  // preview のモデル名は予告なく消える。消えた瞬間に先輩が一言も喋らなくなるので、
+  // 既定はGAの2.5に置き、3.1は入れた人だけが踏む(ADR 0008)。
+  it("TTSの既定は 2.5 で、3.1 は環境変数で切り替える", () => {
+    expect(loadConfig(complete).GEMINI_TTS_MODEL).toBe("gemini-2.5-flash-tts");
+
+    const next = loadConfig({ ...complete, GEMINI_TTS_MODEL: "gemini-3.1-flash-tts-preview" });
+    expect(next.GEMINI_TTS_MODEL).toBe("gemini-3.1-flash-tts-preview");
   });
 
   it("声は聴き比べのために上書きできる", () => {
-    const config = loadConfig({ ...complete, DEEPGRAM_TTS_MODEL_JA: "aura-2-other-ja" });
-    expect(config.DEEPGRAM_TTS_MODEL_JA).toBe("aura-2-other-ja");
+    const config = loadConfig({ ...complete, GEMINI_TTS_VOICE: "Aoede" });
+    expect(config.GEMINI_TTS_VOICE).toBe("Aoede");
   });
 
   // `.env` に `KEY=` と書くと値は undefined ではなく空文字になる。
@@ -43,13 +52,13 @@ describe("loadConfig", () => {
   it("空文字は未設定として扱い、既定値に倒す", () => {
     const config = loadConfig({
       ...complete,
-      DEEPGRAM_TTS_MODEL_JA: "",
-      DEEPGRAM_TTS_MODEL_EN: "   ",
+      GEMINI_TTS_MODEL: "",
+      GEMINI_TTS_VOICE: "   ",
       LLM_MODEL_KARTE: "",
     });
 
-    expect(config.DEEPGRAM_TTS_MODEL_JA).toBe("aura-2-izanami-ja");
-    expect(config.DEEPGRAM_TTS_MODEL_EN).toBe("aura-2-andromeda-en");
+    expect(config.GEMINI_TTS_MODEL).toBe("gemini-2.5-flash-tts");
+    expect(config.GEMINI_TTS_VOICE).toBe("Leda");
     expect(config.LLM_MODEL_KARTE).toBe("claude-sonnet-5");
   });
 
@@ -57,6 +66,13 @@ describe("loadConfig", () => {
   it("鍵が足りなければ起動時に落とす", () => {
     const { DEEPGRAM_API_KEY, ...missing } = complete;
     expect(() => loadConfig(missing)).toThrow(/DEEPGRAM_API_KEY/);
+  });
+
+  // 聞く側と喋る側でベンダーが分かれたので、鍵は2本要る(ADR 0008)。
+  // 喋る側の鍵だけが無いと、会話は始まるのに先輩が無言のまま終わる。
+  it("TTSの鍵が無ければ起動時に落とす", () => {
+    const { GOOGLE_API_KEY, ...missing } = complete;
+    expect(() => loadConfig(missing)).toThrow(/GOOGLE_API_KEY/);
   });
 
   it("API_BASE_URLがURLでなければ落とす", () => {

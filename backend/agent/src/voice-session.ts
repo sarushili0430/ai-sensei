@@ -1,9 +1,11 @@
 import type { Locale } from "@ai-sensei/contract";
 import { toSpeakableJa } from "@ai-sensei/guardrail";
-import { type JobContext, inference, voice } from "@livekit/agents";
+import { type JobContext, inference, tokenize, tts, voice } from "@livekit/agents";
 import * as anthropic from "@livekit/agents-plugin-anthropic";
 import * as deepgram from "@livekit/agents-plugin-deepgram";
+import * as google from "@livekit/agents-plugin-google";
 import type { AgentConfig } from "./config.ts";
+import { ttsInstructionsForLocale } from "./senpai-voice.ts";
 import { JapaneseSentenceTokenizer } from "./sentence-tokenizer.ja.ts";
 
 /**
@@ -53,6 +55,44 @@ export function ttsTextTransformsForLocale(locale: Locale) {
   return locale === "ja" ? [...defaultTtsTextTransforms, jaSpeakable] : defaultTtsTextTransforms;
 }
 
+/**
+ * 先輩の声(Gemini TTS)。ロケールで変わるのは**読み方の指示だけ**で、声は変えない。
+ *
+ * Deepgram は言語がモデル名に埋まっていて日英で別ボイスだったが、Gemini は
+ * 1つの声が両方を喋る(ADR 0008)。日本語の文に混ざった英単語もこの声のまま読む。
+ */
+export function createGeminiTts(config: AgentConfig, locale: Locale): google.beta.TTS {
+  return new google.beta.TTS({
+    apiKey: config.GOOGLE_API_KEY,
+    model: config.GEMINI_TTS_MODEL,
+    voiceName: config.GEMINI_TTS_VOICE,
+    instructions: ttsInstructionsForLocale(locale),
+  });
+}
+
+/**
+ * 文分割器。**Gemini TTS はストリーミングを持たないので、ここが実質のTTFB**になる。
+ *
+ * 分割された1文がそのまま1リクエストなので、句点まで溜めてから投げると
+ * その待ちが丸ごと沈黙になる。日本語だけ自前の分割器を当てるのは Deepgram のときと
+ * 同じ理由で、SDK既定(`basic`)は半角の文末記号しか見ず「。」で切れない。
+ */
+export function sentenceTokenizerForLocale(locale: Locale): tokenize.SentenceTokenizer {
+  return locale === "ja" ? new JapaneseSentenceTokenizer() : new tokenize.basic.SentenceTokenizer();
+}
+
+/**
+ * セッションへ渡すTTS。**必ず `StreamAdapter` で包む。**
+ *
+ * `google.beta.TTS` は `capabilities.streaming === false` で、`stream()` は例外を投げる。
+ * 包まずに渡すとSDKが `ttsNode` の中で**既定の `BasicSentenceTokenizer`**で勝手に包む。
+ * それは半角の文末記号しか見ないので、日本語は生成が終わるまで1文も投げられず、
+ * 授業の最初の一言が丸ごと遅れる。分割器をこちらで選ぶために、包む側もこちらが持つ。
+ */
+export function createSenpaiTts(config: AgentConfig, locale: Locale): tts.TTS {
+  return new tts.StreamAdapter(createGeminiTts(config, locale), sentenceTokenizerForLocale(locale));
+}
+
 export function createVoiceSession(options: VoiceSessionOptions): voice.AgentSession {
   const { ctx, config, locale, llmTemperature } = options;
   return new voice.AgentSession({
@@ -77,17 +117,9 @@ export function createVoiceSession(options: VoiceSessionOptions): voice.AgentSes
       // 先輩の文体を安定させたいので、振れ幅は小さめにする
       temperature: llmTemperature,
     }),
-    // 声は**言語ごとにモデルが分かれる**。1ボイスに言語を渡す作りではないので、
-    // localeで選び分ける(日本語ボイスに英語を喋らせることはできない)。
-    // SDK 1.6.1 の `TTSModels` は英語ボイスしか型に持たないが、`model` の型は
-    // `TTSModels | string` で、実体はAPIへそのまま渡るだけなので日本語ボイスも通る。
-    tts: new deepgram.TTS({
-      apiKey: config.DEEPGRAM_API_KEY,
-      model: locale === "en" ? config.DEEPGRAM_TTS_MODEL_EN : config.DEEPGRAM_TTS_MODEL_JA,
-      // 既定分割器は半角の文末記号しか見ないため、日本語では生成完了までTTSへ渡らない。
-      // 英語は既定の英語向け規則のままにし、日本語だけ早く確定した文を送る。
-      ...(locale === "ja" ? { sentenceTokenizer: new JapaneseSentenceTokenizer() } : {}),
-    }),
+    // 声は**日英で同じ1つ**。Gemini のボイスは言語を選ばないので、日本語の文に
+    // 英単語が混ざってもそのまま読む(ADR 0008)。組み立ては `createSenpaiTts`。
+    tts: createSenpaiTts(config, locale),
     // LiveKit SDK 1.6.1 の `voice/agent_activity.ts` は会話・`session.say()` とも先に `tee()` し、
     // TTS枝だけへ `performTTSInference` 内でこの変換を適用する。字幕枝は元の文字列のまま流れる。
     // 既定値も明示しないと自作変換を渡した時点でMarkdown・絵文字の除去が消える。
