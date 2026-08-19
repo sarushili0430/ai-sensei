@@ -212,8 +212,16 @@ topic_id を `{教科}-{課程}-{単元}` に作り直す(保存済みIDを全�
 - **声は日英で1つ。**Geminiのボイスは言語がモデル名にも声名にも埋まっていないので、
   ロケールで先輩が別人にならない([0003](#adr-0003-voice) では別モデルだった)
 - `Leda`(youthful)に固定。落ち着いた大人の声だと**先生**になり、教え返しを頼む相手として遠い
-- 既定は**GAの `gemini-2.5-flash-tts`**。3.1(`gemini-3.1-flash-tts-preview`)は
-  `GEMINI_TTS_MODEL` を入れた人だけが踏む。previewは予告なく消え、消えた日に先輩が無言になる
+- 既定は `gemini-2.5-flash-preview-tts`。3.1(`gemini-3.1-flash-tts-preview`)は
+  `GEMINI_TTS_MODEL` を入れた人だけが踏む
+- **TTSモデルは3つとも preview で、GAは無い**(2026-08 時点)。「モデルが消えた日に
+  先輩が無言になる」リスクはどれを選んでも避けられないので、**コードを変えずに
+  環境変数だけで逃げられる**形にしてある
+- **プラグインの `GeminiTTSModels` 型を信用しない。**`gemini-2.5-flash-tts` /
+  `gemini-2.5-pro-tts` という存在しない名前が入っている。`model` は
+  `GeminiTTSModels | string` でAPIへ素通しなので、型は実在を保証しない
+  (存在しない名前でも起動は通り、最初に喋る瞬間に落ちる)。
+  実在するIDは `senpai-voice.ts` の `geminiTtsModels` が正
 - 聞く側(STT)は Deepgram `nova-3` のまま。**JSのGoogleプラグインにSTTのクラスが無い**
 - Gemini TTS は**ストリーミングを持たない**。`tts.StreamAdapter` でこちらから包み、
   日本語の文分割器を渡す。包み忘れるとSDKが既定の分割器を当てて「。」で切れなくなる
@@ -231,5 +239,5 @@ previewモデルの寿命はGoogleが決める。合成が生成モデルなの�
 `toSpeakableJa` を外す(「にぶんのいち」のような日本語の数学の読み順は、
 モデルの気分に任せる場所ではない)。
 
-**見直す条件** — 3.1 がGAになったとき / STTのGoogleプラグインがJSに来たとき /
+**見直す条件** — TTSにGAのモデルが出たとき / STTのGoogleプラグインがJSに来たとき /
 Live API が板書の配送を壊さずに使えると分かったとき。

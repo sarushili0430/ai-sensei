@@ -28,7 +28,7 @@ node --experimental-strip-types --env-file=backend/agent/.env \
 `.env` を使わない場合は `GOOGLE_API_KEY` を環境変数で渡してください。モデルと声の
 既定値は agent と同じ定数(`backend/agent/src/senpai-voice.ts`)を読んでいます。
 
-- モデル: `GEMINI_TTS_MODEL`、未指定なら `gemini-2.5-flash-tts`
+- モデル: `GEMINI_TTS_MODEL`、未指定なら `gemini-2.5-flash-preview-tts`
 - 声: `GEMINI_TTS_VOICE`、未指定なら `Leda`。**日英で同じ1つ**([ADR 0008](../../../../docs/adr.md#adr-0008))
 
 **会話中と同じ読み方の指示まで含めて同じ形で投げます。**ここがずれると、冒頭の一言だけ

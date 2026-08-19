@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { type AgentConfig, loadConfig } from "./config.ts";
-import { ttsInstructionsForLocale } from "./senpai-voice.ts";
+import { geminiTtsModels, ttsInstructionsForLocale } from "./senpai-voice.ts";
 import {
   createGeminiTts,
   createSenpaiTts,
@@ -61,10 +61,18 @@ describe("ttsTextTransformsForLocale", () => {
 
 describe("createGeminiTts", () => {
   it("既定は 2.5 で、環境変数1つで 3.1 に替わる", () => {
-    expect(createGeminiTts(testConfig(), "ja").opts.model).toBe("gemini-2.5-flash-tts");
+    expect(createGeminiTts(testConfig(), "ja").opts.model).toBe("gemini-2.5-flash-preview-tts");
 
     const next = testConfig({ GEMINI_TTS_MODEL: "gemini-3.1-flash-tts-preview" });
     expect(createGeminiTts(next, "ja").opts.model).toBe("gemini-3.1-flash-tts-preview");
+  });
+
+  // プラグインの `GeminiTTSModels` 型には `gemini-2.5-flash-tts` のような
+  // **存在しない名前**が混じっていて、`model` は string として素通しされる。
+  // 型に釣られて書き換えても起動は通り、最初に喋る瞬間に落ちるので、ここで縛る。
+  it("既定は実在するモデルIDである", () => {
+    const model = createGeminiTts(testConfig(), "ja").opts.model;
+    expect(geminiTtsModels).toContain(model);
   });
 
   // Deepgramは言語がモデル名に埋まっていて日英で別ボイスだった。Geminiは1つの声が

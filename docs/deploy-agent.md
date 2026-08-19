@@ -195,7 +195,7 @@ agentが読む環境変数は [`backend/agent/.env.example`](../backend/agent/.e
 | `DEEPGRAM_API_KEY` | 必須 | STT(聞く側) |
 | `GOOGLE_API_KEY` | 必須 | TTS(喋る側)。Gemini API の鍵([ADR 0008](adr.md#adr-0008)) |
 | `LLM_MODEL_CONVERSATION` / `LLM_MODEL_KARTE` | 任意 | 未設定なら `config.ts` の既定値 |
-| `GEMINI_TTS_MODEL` | 任意 | 未設定なら GA の `gemini-2.5-flash-tts`。3.1 を試すときだけ入れる |
+| `GEMINI_TTS_MODEL` | 任意 | 未設定なら `gemini-2.5-flash-preview-tts`。3.1 を試すときだけ入れる |
 | `GEMINI_TTS_VOICE` | 任意 | **ふつうは触らない**(声はキャラクターそのもの) |
 | `SENTRY_DSN` | 任意 | 未設定ならSentryへは何も送らない |
 | `ENVIRONMENT` | 任意 | Sentryに出る名前。`develop` / `production` |
