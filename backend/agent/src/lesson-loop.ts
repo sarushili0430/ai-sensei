@@ -473,11 +473,17 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
     // 問いの内容は機械では判定しない。ただし `awaits_student: true` の授業中の問いは
     // `text` の Q 行を残す規約なので、種類だけを全件記録すれば `none / 全件` の割合を
     // 後から測れる。発話や板書本文は、学習内容をログへ出さないため意図的に含めない。
-    if (lastStep?.awaits_student === true) {
+    //
+    // **見るのは `turns` の末尾ではなく、このパスが実際に配送した手順。**
+    // 生成が1手順も出せずに終わった回(ストリーム失敗・即割り込み)は `turns` の末尾が
+    // 前のパスの問いのままなので、同じ問いを新しいパス番号でもう一度数えてしまい、
+    // 測ろうとしている `board_missing` の割合がその二重計上ぶんだけ歪む。
+    const deliveredStep = result.steps.at(-1);
+    if (deliveredStep?.awaits_student === true) {
       log?.info("lesson_awaiting_question_board", {
         pass: passes,
-        board_kind: lastStep.board?.kind ?? "none",
-        board_missing: lastStep.board === null,
+        board_kind: deliveredStep.board?.kind ?? "none",
+        board_missing: deliveredStep.board === null,
       });
     }
 

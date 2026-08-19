@@ -636,6 +636,40 @@ describe("runLessonLoop", () => {
     ]);
   });
 
+  /**
+   * **手順を1つも配送しなかったパスは、前の問いを数え直さない。**
+   *
+   * 生成が空で終わる回(ストリーム失敗・即割り込み)に累積の `turns` を見ると、
+   * 末尾は前のパスの問いのままなので、同じ問いが新しいパス番号でもう一度載る。
+   * 測ろうとしている `board_missing` の割合が、その二重計上ぶんだけ歪む。
+   */
+  it("手順が出せなかったパスでは、前の問いを二重に数えない", async () => {
+    const board = boardWith(recordingSink());
+    const llm = stubLlm(
+      lessonJson([stepAwaiting(0, "2行目から3行目、何をした?", true)]),
+      // 2パス目は空(生成が壊れた回)。板書には何も積まれない。
+      "",
+    );
+    const observations: Record<string, unknown>[] = [];
+    const utterances = new StudentUtterances();
+
+    await loopWith(llm, board, {
+      utterances,
+      maxPasses: 2,
+      log: {
+        info: (event: string, fields: Record<string, unknown> = {}) => {
+          if (event === "lesson_awaiting_question_board") observations.push(fields);
+        },
+        warn: (_event: string) => undefined,
+      },
+      speak: async () => {
+        setTimeout(() => utterances.push("答え"), 5);
+      },
+    });
+
+    expect(observations).toEqual([{ pass: 1, board_kind: "none", board_missing: true }]);
+  });
+
   it("修辞疑問(awaits_student: false)では止まらず、そのまま教え続ける", async () => {
     const board = boardWith(recordingSink());
     const llm = stubLlm(
