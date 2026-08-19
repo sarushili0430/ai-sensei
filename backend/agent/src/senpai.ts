@@ -246,6 +246,19 @@ export function problemTextIsMissing(
   return context.problem_text === formatProblemText(null, context.locale);
 }
 
+/**
+ * 音読を頼まれて**断った / 答えられなかった**返事。
+ *
+ * 頭に「えっと」「うーん」が付く形まで見るのは、声の返事がほぼその形で来るため。
+ * 逆に文中に「わからない」が出てくるだけの文
+ * (「この問題、x がわからないときの解き方を求めよ」)は問題文でありうるので、
+ * **先頭に限る**。
+ */
+const REFUSAL_PATTERNS: Record<CurriculumLocale, RegExp> = {
+  ja: /^(?:えー?っと|うーん|あの|ごめん)?[、,\s]*(?:わかん?ない|わかりません|分から?ない|読めない|見えない|無理|ちょっと待って|まだ(?:読|見)?[^。]*ない)/u,
+  en: /^(?:um+|uh+|well|sorry)?[,\s]*(?:i\s+(?:can'?t|cannot|don'?t|do not|dunno)|no idea|not sure|hold on|wait)\b/iu,
+};
+
 export type SpokenProblemMemoryResult =
   | { accepted: true; length: number }
   | {
@@ -282,6 +295,18 @@ export function rememberSpokenProblemText(
   const text = normalizeMathSpeech(spoken, context.locale).text.trim();
   if (text.length === 0) return { accepted: false, reason: "empty" };
   if (text.length > problemTextMaxLength) return { accepted: false, reason: "too_long" };
+
+  /**
+   * **音読を頼まれて断った返事は、問題文ではない。**
+   *
+   * 「わかりません」「読めない」は `checkProblemText` を素通りする(解答マーカーも
+   * 式だけの断片も無いので)。そのまま採用すると、それが以降のパスとカルテの
+   * `problem_text` になり、**問題文が無い状態のほうがまだましな形**で嘘の文脈が居座る。
+   * 読めなかったのなら、定型句のままにしておくのが正しい。
+   */
+  if (REFUSAL_PATTERNS[context.locale].test(text)) {
+    return { accepted: false, reason: "not_a_problem" };
+  }
 
   // 本人が入力した問題文と同じ側で見る。答えまで読み上げた発話を採用すると、
   // 写真と手入力で塞いだ解答混入の穴が音声経路から開く。
