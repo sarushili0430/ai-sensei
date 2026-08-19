@@ -503,6 +503,17 @@ export const boardStepSchema = z
      * 欄が無い手順は、agent 側が従来の言い回し判定に落として読む。
      */
     awaits_student: z.boolean().optional(),
+    /**
+     * この手順で**類題を解き終わるまで待つ**か。
+     *
+     * `awaits_student` は会話の短い返答を待つため15秒の無回答判定を持つが、
+     * 類題を解いている沈黙に同じ判定を使うと、考えている最中に先輩が被せてしまう。
+     * そのため別の申告にし、agent はセッション残り時間だけを安全弁にして待つ。
+     * モバイルはこの値が `true` の間だけ「できた / できなかった」を表示する。
+     *
+     * `optional` なのは旧agent・旧アプリが流す手順とのワイヤー互換のため。
+     */
+    awaits_solving: z.boolean().optional(),
   })
   .strict();
 export type BoardStep = z.infer<typeof boardStepSchema>;

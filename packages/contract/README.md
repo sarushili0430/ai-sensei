@@ -66,6 +66,10 @@ fixtureはレビューで一番読まれる場所なので、実際に起きる�
   `lesson-loop.ts`)がどこで止まって答えを待つかを決める。言い回しからの推測だと、
   修辞疑問で止まり、本当の問いかけを取りこぼす — 取りこぼした瞬間に往復が終わり、
   板書が増えなくなる。optionalなのはワイヤー互換のため(モバイルは読まずに捨ててよい)。
+- **類題を解く沈黙は、会話の待ち時間と分ける。** `awaits_solving`(optionalのboolean)は
+  「この手順の類題を解き終わるまで待つ」という申告。通常の `awaits_student` にある
+  15秒の無回答判定は使わず、セッション残り時間だけを安全弁にする。モバイルはこの値が
+  `true` の間だけ「できた / できなかった」を表示し、申告は音声と同じ `lk.chat` に送る。
 - **LLMが出す形と、data channelを流れる形を分けている。** `board-lesson` は識別子を持たない
   (幻覚したIDが配送層に流れ込まないように)。宛先・順序・板書の切り替えは封筒
   (`board-channel-log` の各メッセージ)の責務。**通し番号の付け直しも配送層**で、
@@ -229,7 +233,7 @@ zod側がタプル(`z.tuple`)なのは、**同種の値の固定長列は配列�
 | POST | `/v1/sessions` | mobile(写真 + meta を multipart で。**まだ数えない**) |
 | PATCH | `/v1/sessions/{id}/topics` | mobile(チップUIで外した単元の反映) |
 | PATCH | `/v1/sessions/{id}/problem` | mobile(問題文の手入力・訂正。**写真は送らない**) |
-| POST | `/v1/sessions/{id}/start` | mobile(**会話の開始。ここで今日の1回を数え**、部屋の鍵が返る) |
+| POST | `/v1/sessions/{id}/start` | mobile(**会話の開始。ここで日次の持ち時間を仮押さえし**、部屋の鍵が返る) |
 | POST | `/v1/sessions/{id}/complete` | agent(内部トークン必須) |
 | GET | `/v1/me/progress` | mobile(ホーム画面) |
 | GET | `/v1/me/reviews` | mobile(無料の小テスト。音声授業の可否は `/v1/me/progress` の `limits.lesson_allowed_today`) |

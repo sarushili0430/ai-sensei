@@ -10,9 +10,14 @@ import {
 import type { JobLogger } from "./log.ts";
 import {
   type LessonTurn,
+  type SolvingReport,
+  type SpokenProblemMemoryResult,
+  asksForProblemReadout,
   asksForTeachBack,
+  classifySolvingReport,
   lessonContinuationInstruction,
   lessonSteps,
+  stepAwaitsSolving,
   stepAwaitsStudent,
   studentSilenceMarker,
 } from "./senpai.ts";
@@ -24,7 +29,8 @@ import {
  *   生徒が答える
  *   2往復目: 答えを受けて、**同じ板書に**続きを積む
  *   …
- *   最後: 「じゃあ今の、自分の言葉で説明してみて」で教え返しへ渡す
+ *   最後(new): 類題を出し、解き終わりを待って、その理由の教え返しへ渡す
+ *   最後(review): 従来どおり、教えた内容そのものの教え返しへ渡す
  *
  * 配送層(`BoardDelivery.append()` × n → `close()`)は最初からこの往復を
  * 想定して作られていたが、呼び出し側が1往復で会話へ落としていた。その結果、
@@ -39,7 +45,10 @@ import {
  * 授業がどこまで続くかは板書LLMが決める(教え切ったかどうかは中身の話なので、
  * コードには判定できない)。合図は最後の手順:
  *
- *   - 「自分の言葉で説明してみて」(`asksForTeachBack`) → 授業は完了。教え返しへ
+ *   - 「どうしてそうなるか、自分の言葉で説明してみて」(`asksForTeachBack`)
+ *                                                              → 授業は完了。教え返しへ
+ *   - 類題を解く手順(`stepAwaitsSolving`)                  → 15秒判定を使わず、
+ *                                                              セッション残り時間まで待つ
  *   - 答えを待つ手順(`stepAwaitsStudent` — 一次は `awaits_student` の申告、
  *     欄が無ければ言い回しの推測)                       → 答えを待って、続きを積む
  *   - 答えを待たず言い切った                            → 渡し忘れ。呼び出し側の
@@ -133,8 +142,26 @@ export class StudentUtterances {
     return this.queue.shift() ?? null;
   }
 
+  /**
+   * 次の問題へ移る前に、前の問題の答え・類題の本人申告を捨てる。
+   * 待機中の `takeUntil` も null で解き、#152 の解答待ちを新しい授業へ持ち越さない。
+   */
+  clear(): void {
+    this.queue.length = 0;
+    this.waiter?.settle(null);
+  }
+
   /** 次の発話を待って取り出す。時間切れ・中止は null。 */
   take(timeoutMs: number, signal?: AbortSignal): Promise<string | null> {
+    return this.wait(signal, timeoutMs);
+  }
+
+  /** 次の発話を、外側の中止条件だけで待つ。類題の15秒タイムアウト回避に使う。 */
+  takeUntil(signal: AbortSignal): Promise<string | null> {
+    return this.wait(signal);
+  }
+
+  private wait(signal: AbortSignal | undefined, timeoutMs?: number): Promise<string | null> {
     const queued = this.queue.shift();
     if (queued !== undefined) return Promise.resolve(queued);
     if (signal?.aborted === true) return Promise.resolve(null);
@@ -144,13 +171,13 @@ export class StudentUtterances {
       const settle = (text: string | null) => {
         if (done) return;
         done = true;
-        clearTimeout(timer);
+        if (timer !== undefined) clearTimeout(timer);
         signal?.removeEventListener("abort", onAbort);
         if (this.waiter !== null && this.waiter.settle === settle) this.waiter = null;
         resolve(text);
       };
       const onAbort = () => settle(null);
-      const timer = setTimeout(() => settle(null), timeoutMs);
+      const timer = timeoutMs === undefined ? undefined : setTimeout(() => settle(null), timeoutMs);
       signal?.addEventListener("abort", onAbort, { once: true });
       this.waiter = { settle };
     });
@@ -213,6 +240,16 @@ export type RunLessonLoopOptions = {
   utterances: StudentUtterances;
   /** 消費した発話をtranscriptへ写す口(`collector.add`)。 */
   record: (text: string) => void;
+  /**
+   * 問題文の音読を頼んだ直後だけ使う、セッション内メモリへの書き込み口。
+   * 本文をログへ渡さず、採用結果だけを返す。
+   */
+  problemReadoutMemory?: {
+    isMissing: () => boolean;
+    remember: (text: string) => SpokenProblemMemoryResult;
+  };
+  /** 類題を出してよい授業か。本人申告済みの穴を扱う `review` では false。 */
+  practiceProblemEnabled: boolean;
   /** タイムアウトの瞬間に生徒が話しているか(`session.userState`)。 */
   isStudentSpeaking?: () => boolean;
   remainingSeconds: () => number;
@@ -247,6 +284,8 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
     signal,
     utterances,
     record,
+    problemReadoutMemory,
+    practiceProblemEnabled,
     isStudentSpeaking = () => false,
     remainingSeconds,
     log,
@@ -262,6 +301,31 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
   let opened = false;
   let stepCount = 0;
   let passes = 0;
+  let problemReadoutRequests = priorTurns.filter(
+    (turn) => turn.kind === "step" && asksForProblemReadout(turn.step.speech, locale),
+  ).length;
+
+  /** 音読依頼の直後の発話だけを問題文として採用する。本文はログに出さない。 */
+  const rememberProblemReadout = (step: BoardStep | undefined, text: string): void => {
+    if (
+      step === undefined ||
+      problemReadoutMemory === undefined ||
+      !problemReadoutMemory.isMissing() ||
+      !asksForProblemReadout(step.speech, locale) ||
+      !stepAwaitsStudent(step, locale)
+    ) {
+      return;
+    }
+
+    const remembered = problemReadoutMemory.remember(text);
+    if (remembered.accepted) {
+      log?.info("problem_readout_captured", { pass: passes, length: remembered.length });
+    } else {
+      log?.info("problem_readout_rejected", { pass: passes, reason: remembered.reason });
+    }
+  };
+  /** 類題の本人申告。直後の1パスだけに、採点せず分岐する指示として渡す。 */
+  let pendingSolvingReport: SolvingReport | undefined;
 
   const summary = (reason: LessonLoopReason): LessonLoopResult => ({
     board_id: boardId,
@@ -278,6 +342,10 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
 
   while (true) {
     passes += 1;
+    let skippedSolving = false;
+    /** 2回目の読み上げ依頼を配送前に落としたか。観測して警告に出す。 */
+    let blockedProblemReadout = false;
+    const solvingReportForPass = pendingSolvingReport;
 
     // このパスの中止条件は「セッションの終わり」か「生徒が話し始めた」。
     // 生徒の発話で止めるのは §3-2 案Aの利点そのもの — ただし従来と違い、
@@ -297,7 +365,35 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
         speak,
         // 文脈が1つでもあれば継続の指示。初回の定型指示に戻るのは、
         // この板書でまだ何も起きていないときだけ。
-        instruction: turns.length === 0 ? undefined : lessonContinuationInstruction(turns, locale),
+        instruction:
+          turns.length === 0
+            ? undefined
+            : lessonContinuationInstruction(turns, locale, solvingReportForPass),
+        // 類題を見せてから「時間がないので答えなくてよい」とするのが一番混乱する。
+        // 次の1パスと教え返しに120秒を残せないときは、送信前に従来の締めへ縮退する。
+        // `review` も同じ口で抑止し、プロンプトがぶれても Issue の `new` 限定を守る。
+        stopBefore: (step) => {
+          /**
+           * **2回目の読み上げ依頼は、板書とTTSへ出る前に落とす。**
+           *
+           * 継続の指示で「もう一度頼まない」と書いてはいるが、モデルが外したときに
+           * 事後のログだけでは遅い —— `runBoardLesson` は手順を配送して `speak` を
+           * 呼んでから返るので、観測した時点で**生徒にはもう二度目が届いている**。
+           * 「毎回読ませる」を直しに来た変更なので、ここは観測ではなく門にする。
+           */
+          if (problemReadoutRequests >= 1 && asksForProblemReadout(step.speech, locale)) {
+            blockedProblemReadout = true;
+            return true;
+          }
+          if (!stepAwaitsSolving(step)) return false;
+          const shouldSkip =
+            !practiceProblemEnabled ||
+            passes >= maxPasses ||
+            remainingSeconds() < minContinueSeconds ||
+            delivery.isClosed;
+          if (shouldSkip) skippedSolving = true;
+          return shouldSkip;
+        },
         signal: passAbort.signal,
         log,
       });
@@ -311,14 +407,104 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
     boardId = result.board_id;
     opened = opened || result.opened;
     stepCount = result.step_count;
+    if (result.appended > 0) pendingSolvingReport = undefined;
 
     if (signal.aborted) return summary("interrupted");
 
+    const lastTurn = turns.at(-1);
     const lastStep = lessonSteps(turns).at(-1);
     const lastSpeech = lastStep?.speech ?? "";
+    const awaitsStudent = lastStep !== undefined && stepAwaitsStudent(lastStep, locale);
+
+    // 第一声と problem_resolved を session_id で突き合わせるための観測口。
+    // speech 本文は問題文を含みうるので残さず、定型の依頼だったかだけを見る。
+    const readoutSteps = result.steps.filter((step) => asksForProblemReadout(step.speech, locale));
+    const problemWasMissing = problemReadoutMemory?.isMissing() ?? false;
+    if (passes === 1 && priorTurns.length === 0) {
+      log?.info("lesson_opening_observed", {
+        problem_present: !problemWasMissing,
+        problem_readout_requested: readoutSteps.length > 0,
+      });
+    }
+    for (const readoutStep of readoutSteps) {
+      problemReadoutRequests += 1;
+      const fields = {
+        pass: passes,
+        problem_present: !problemWasMissing,
+        repeated: problemReadoutRequests > 1,
+        awaits_student: stepAwaitsStudent(readoutStep, locale),
+      };
+      if (fields.problem_present || fields.repeated) {
+        // 問題文があるのに頼んだ / 2パス目以降も頼んだ、のどちらもユーザーへ
+        // 同じ聞き直しを届けた縮退。Sentry側でも本文なしで気づける warn にする。
+        log?.warn("problem_readout_unexpected", fields);
+      } else {
+        log?.info("problem_readout_requested", fields);
+      }
+    }
+
+    // 生徒には届いていない(配送前に落とした)が、プロンプトが守られなかった事実は残す。
+    if (blockedProblemReadout) {
+      log?.warn("problem_readout_blocked", { pass: passes });
+    }
+
+    if (skippedSolving) {
+      log?.info("lesson_solving_skipped", {
+        passes,
+        practice_problem_enabled: practiceProblemEnabled,
+        remaining_seconds: remainingSeconds(),
+      });
+      return summary("budget");
+    }
+
+    // 類題を解いている沈黙には通常の15秒タイムアウトを使わない。
+    // 待ちの安全弁はセッション残り時間だけで、時間切れの再促しもしない。
+    if (lastTurn?.kind === "step" && stepAwaitsSolving(lastTurn.step)) {
+      const remainingMs = Math.max(0, Math.floor(remainingSeconds() * 1000));
+      if (remainingMs === 0) return summary("interrupted");
+      const solvingDeadline = AbortSignal.timeout(remainingMs);
+      const solvingSignal = AbortSignal.any([signal, solvingDeadline]);
+      const report = await utterances.takeUntil(solvingSignal);
+
+      if (report === null) {
+        if (!signal.aborted) {
+          log?.info("lesson_solving_deadline", {
+            passes,
+            remaining_seconds: remainingSeconds(),
+          });
+        }
+        return summary("interrupted");
+      }
+
+      record(report);
+      turns.push({ kind: "student", text: report });
+      pendingSolvingReport = classifySolvingReport(report, locale);
+      log?.info("lesson_solving_report", {
+        pass: passes,
+        report: pendingSolvingReport,
+      });
+      continue;
+    }
 
     // 「自分の言葉で説明してみて」まで来たら授業は完了。教え返しへ渡す。
     if (asksForTeachBack(lastSpeech, locale)) return summary("handed_over");
+
+    // 問いの内容は機械では判定しない。ただし `awaits_student: true` の授業中の問いは
+    // `text` の Q 行を残す規約なので、種類だけを全件記録すれば `none / 全件` の割合を
+    // 後から測れる。発話や板書本文は、学習内容をログへ出さないため意図的に含めない。
+    //
+    // **見るのは `turns` の末尾ではなく、このパスが実際に配送した手順。**
+    // 生成が1手順も出せずに終わった回(ストリーム失敗・即割り込み)は `turns` の末尾が
+    // 前のパスの問いのままなので、同じ問いを新しいパス番号でもう一度数えてしまい、
+    // 測ろうとしている `board_missing` の割合がその二重計上ぶんだけ歪む。
+    const deliveredStep = result.steps.at(-1);
+    if (deliveredStep?.awaits_student === true) {
+      log?.info("lesson_awaiting_question_board", {
+        pass: passes,
+        board_kind: deliveredStep.board?.kind ?? "none",
+        board_missing: deliveredStep.board === null,
+      });
+    }
 
     // 安全弁。ここで降りるとき、積み残しの発話は**取り出さない** —
     // 記録も返事も、板書の要約を持った会話モード(呼び出し側)が引き取る。
@@ -335,6 +521,7 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
     const interjection = utterances.tryTake();
     if (interjection !== null) {
       record(interjection);
+      rememberProblemReadout(lastStep, interjection);
       turns.push({ kind: "student", text: interjection });
       log?.info("lesson_interjection", { pass: passes });
       continue;
@@ -361,7 +548,7 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
       return summary("interrupted");
     }
 
-    if (lastStep === undefined || !stepAwaitsStudent(lastStep, locale)) {
+    if (!awaitsStudent) {
       // 答えを待たずに言い切って終えた(番の渡し忘れ)。呼び出し側の
       // `teachBackFallback` が定型句で教え返しへ戻す。
       return summary("completed");
@@ -381,6 +568,7 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
       log?.info("lesson_answer_timeout", { pass: passes });
     } else {
       record(answer);
+      rememberProblemReadout(lastStep, answer);
       turns.push({ kind: "student", text: answer });
     }
   }

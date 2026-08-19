@@ -14,7 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// 撮影 → 単元の確認 → 会話開始。
 ///
 /// 不具合報告: 写真を撮って単元を確かめただけで「今日のセッションは終わり」と出た。
-/// **今日の1回を数えるのは会話が始まったとき**(`POST /v1/sessions/{id}/start`)に
+/// **日次の持ち時間を押さえるのは会話が始まったとき**(`POST /v1/sessions/{id}/start`)に
 /// 変えてあるので、ここで見るのは「どの操作でどの入口を叩くか」。
 
 /// 写真を読んだ応答。**部屋の鍵は入らない。** 入っていたら、鍵を持っている =
@@ -43,7 +43,7 @@ Map<String, dynamic> _analysisJson(
   };
 }
 
-/// 会話を始めた応答。**この応答が返った時点で今日の1回を使っている。**
+/// 会話を始めた応答。**この応答が返った時点で持ち時間を仮押さえしている。**
 Map<String, dynamic> _startJson(String sessionId) {
   return <String, dynamic>{
     'session_id': sessionId,
@@ -53,7 +53,11 @@ Map<String, dynamic> _startJson(String sessionId) {
       'token': 'token',
       'room': sessionId,
     },
-    'limits': <String, dynamic>{'max_seconds': 1200, 'lesson_allowed_today': false},
+    'limits': <String, dynamic>{
+      'max_seconds': 1200,
+      'remaining_seconds_today': 0,
+      'lesson_allowed_today': false,
+    },
   };
 }
 
@@ -166,7 +170,7 @@ void main() {
     expect(calls[0].url.path, '/v1/sessions');
     expect(calls[1].method, 'PATCH');
     expect(calls[1].url.path, '/v1/sessions/ses_1/topics');
-    // 部屋の鍵はここでしか出ない = 今日の1回を使うのもここ
+    // 部屋の鍵はここでしか出ない = 持ち時間を押さえるのもここ
     expect(calls[2].method, 'POST');
     expect(calls[2].url.path, '/v1/sessions/ses_1/start');
   });
@@ -192,8 +196,8 @@ void main() {
 
   /// 会話の開始だけが落ちた(通信が切れた)場合。
   ///
-  /// **押し直しでセッションを作り直さない。** サーバは同じIDなら二重に数えないので、
-  /// 作り直すほうが危ない — 最初の開始が届いていたら、その1回を捨てることになる。
+  /// **押し直しでセッションを作り直さない。** サーバは同じIDなら二重に確保しないので、
+  /// 作り直すほうが危ない — 最初の開始が届いていたら、その仮押さえを捨てることになる。
   group('会話の開始で切れたとき', () {
     test('押し直しは、同じセッションを始め直す', () async {
       final List<http.BaseRequest> calls = <http.BaseRequest>[];
@@ -234,7 +238,7 @@ void main() {
       expect(
         calls.where((http.BaseRequest call) => call.url.path == '/v1/sessions').length,
         1,
-        reason: '作り直すと、Premiumの枠をもう1回使ってしまう',
+        reason: '作り直すと、Premiumの時間をもう一度仮押さえしてしまう',
       );
     });
 
@@ -262,8 +266,8 @@ void main() {
     });
   });
 
-  /// **不具合報告そのもの。** 撮って単元を確かめただけで今日の1回が消えていた。
-  /// 会話を始めるまで `/start` を叩かないことが、そのまま「数えない」の中身。
+  /// **不具合報告そのもの。** 撮って単元を確かめただけで利用枠が消えていた。
+  /// 会話を始めるまで `/start` を叩かないことが、そのまま「時間を押さえない」の中身。
   test('撮って単元を確かめただけでは、会話の開始を呼ばない', () async {
     final List<http.BaseRequest> calls = <http.BaseRequest>[];
     final ProviderContainer container = containerWith(calls);
@@ -423,6 +427,55 @@ void main() {
       expect(state.problem, isNull);
       // 会話には進める。問題文が読めないことは行き止まりの理由にしない。
       expect(state.canStart, isTrue);
+    });
+  });
+
+  group('会話中の問題写真', () {
+    test('専用endpointのproblem_photo枠へ送り、許可単元は端末から渡さない', () async {
+      http.Request? sent;
+      final MockClient client = MockClient((http.Request request) async {
+        sent = request;
+        final Map<String, dynamic> response = _analysisJson(
+          'ses_1',
+          <String>['M1-NIJI-GURAFU'],
+          problem: <String, dynamic>{
+            'text': '二次関数の頂点を求めよ。',
+            'source': 'problem_photo',
+          },
+        )..['context_revision'] = 2;
+        return http.Response.bytes(
+          utf8.encode(jsonEncode(response)),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json; charset=utf-8',
+          },
+        );
+      });
+      final ApiClient api = ApiClient(
+        baseUrl: 'http://test',
+        deviceId: 'device-1',
+        client: client,
+      );
+
+      final AddedSessionProblem added = await api.addSessionProblemPhoto(
+        sessionId: 'ses_1',
+        problemPhoto: problemPhoto,
+        locale: 'ja',
+        schoolStage: 'high_school',
+      );
+
+      expect(sent?.method, 'POST');
+      expect(sent?.url.path, '/v1/sessions/ses_1/problem-photo');
+      final String body = utf8.decode(sent!.bodyBytes, allowMalformed: true);
+      final Set<String> names = RegExp(
+        r'(?:^|;\s)name="([^"]+)"',
+        multiLine: true,
+      ).allMatches(body).map((RegExpMatch match) => match.group(1)!).toSet();
+      expect(names, <String>{'meta', 'problem_photo'});
+      expect(body, contains('"school_stage":"high_school"'));
+      expect(body, isNot(contains('allowed_topic_ids')));
+      expect(body, isNot(contains('topic_ids')));
+      expect(added.contextRevision, 2);
     });
   });
 }

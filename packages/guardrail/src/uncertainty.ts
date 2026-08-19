@@ -35,6 +35,8 @@ export const uncertaintyPatterns: RegExp[] = [
   // 説明できない / 言えない / 説明の仕方がわからない
   /(?:説明|言葉に)(?:が)?でき(?:ない|ません)/,
   /(?:うまく)?言え(?:ない|ません)/,
+  // 類題の本人申告。「できなかった」はそのまま穴の evidence にする(#152)。
+  /(?:でき|解け)(?:ない|ません|なかった|ませんでした)/,
   // なんとなく / たぶん / 自信ない — 理由が出てこないときの言い方
   /なんとなく/,
   /自信(?:が)?(?:ない|ありません)/,
@@ -44,6 +46,7 @@ export const uncertaintyPatterns: RegExp[] = [
   /\bno\s+idea\b/i,
   /\bnot\s+sure\b/i,
   /\bcan'?t\s+explain\b/i,
+  /\bi\s+(?:(?:can(?:'t| not)|could(?:n't| not))\s+(?:do|solve)\s+it|did(?:n't| not)\s+get\s+it)\b/i,
 ];
 
 /**
@@ -57,6 +60,7 @@ export const uncertaintyPatterns: RegExp[] = [
 const NOT_UNCERTAIN: RegExp[] = [
   /わ(?:か|から)らな(?:い|かった)こと(?:が|は)?(?:わ(?:か|から)|分か)/,
   /わ(?:か|から)らなく(?:な)?かった/,
+  /(?:でき|解け)ないこと(?:は|も)ない/,
 ];
 
 /** 1つの発話が「わからない」の申告かどうか。 */

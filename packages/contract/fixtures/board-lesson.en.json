@@ -38,9 +38,14 @@
     },
     {
       "index": 5,
-      "speech": "Now say it back to me. Why is it between and not outside?",
-      "board": null,
-      "awaits_student": true
+      "speech": "The flow is: find the roots, then read where the graph is below zero.",
+      "board": { "kind": "text", "body": "roots → below the axis → solution interval" }
+    },
+    {
+      "index": 6,
+      "speech": "Now try the same method with these numbers. Tell me when you're done.",
+      "board": { "kind": "latex", "tex": "x^2 - 5x + 6 < 0" },
+      "awaits_solving": true
     }
   ]
 }

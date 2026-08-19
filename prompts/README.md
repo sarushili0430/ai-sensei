@@ -12,7 +12,7 @@
 | `question_types_few_shot` | agent | 教え返しを聞くときの聞き方4型をそろえるfew-shot |
 | `karte_generation` | agent(セッション終了時) | transcript → カルテJSON |
 | `math_speech_hints` | 両方 | 数式音声の補正ヒント(§4(d)) |
-| `senpai_board` | agent(新規 / 復習の板書LLM) | 写真または対象穴を起点に、先輩ペルソナ + 板書JSON生成([ピボット計画 v1](../docs/pivot_plan_v1.md) §2・§3) |
+| `senpai_board` | agent(新規 / 復習の板書LLM) | 写真または対象穴を起点に、解説・新規授業だけの同じ解法の類題1問・教え返しへの受け渡しを含む板書JSON生成([ピボット計画 v1](../docs/pivot_plan_v1.md) §2・§3) |
 | `study_plan` | agent(計画モード) | 先輩が**口で聞いて**学習計画を組む / 組み直す(同 §4-3) |
 
 現在のロケールは `ja` と `en` の2つ。**id の数 × 2ロケール**が揃って
@@ -115,8 +115,12 @@ variables: [photo_summary, visible_work, allowed_topics, question_seeds, lesson_
 | 日本語は数式ではなく `text` 要素へ | `guardrail` の `text_in_math` |
 | 1手順=1行(`\\` を使わない・多行環境を使わない) | `contract` の `tex` の正規表現 / `guardrail` の `row_separator_outside_environment` |
 | 長い式は `=` の前で割って2手順にする | **コード側の相手がまだいない**(計画書 §3-6b。W2でNode側の幅推定を入れるまで、ここはプロンプトだけが守っている) |
+| 許可リストは主題 + 前提チェーン全体。答えられなければ1段ずつ、3問程度と残り時間を上限に切り分ける | `guardrail` の `conversationPrerequisiteDepth` / `buildAllowedTopics()`(全チェーン)と板書見出しの許可集合照合。**実際に戻る深さの判定はプロンプト側** |
 | 答えを待つ問いかけには `awaits_student: true` を付け、`steps` をそこで終える(授業は往復する) | `contract` の `boardStepSchema.awaits_student` + `senpai.ts` の `stepAwaitsStudent`(欄が無い手順だけ `handsTurnToStudent` の言い回し推測に落ちる)。`backend/agent/src/lesson.ts` の `stopAfter` がそこで止め、答えを受けた続きは `lesson-loop.ts` が同じ板書に積む |
+| 切り分け・節目の問いは板書の場所か記号を名指しし、`text` の短い `Q:` 行にも残す | 対象の名指しは機械判定しない。`lesson-loop.ts` が `awaits_student: true` の `board_kind` だけを記録し、`none` の割合を観測する |
 | 教え返しへの受け渡しは「じゃあ今の、**自分の言葉で説明してみて**」の形で言い、**途中の問いかけには「説明して」を使わない** | `senpai.ts` の `asksForTeachBack`。**授業の往復を終える唯一の合図**なので、文言の族を変えるときは判定とテストも一緒に変える |
+| `new` の類題1問には `awaits_solving: true` を付け、「できた / できなかった」まで再促しせず待つ(`review` は従来の教え返しへ直接渡す) | `contract` の `boardStepSchema.awaits_solving`、`lesson-loop.ts` の解答待ち分岐(15秒の `defaultAnswerTimeoutMs` は使わず、セッション残り時間だけで中断)、モバイルの `BoardStep.awaitsSolving` と二択UI。ボタンは既存の `lk.chat` へ発話と同じテキストを送り、新しい制御チャネルは作らない |
+| 類題の正答を板書したあと「**どうしてそうなるか、自分の言葉で説明してみて**」へ渡す。残り120秒未満だけ従来の「じゃあ今の、自分の言葉で説明してみて」へ縮退する | `senpai.ts` の `asksForTeachBack` が両方を認識し、`lesson-loop.ts` が残り時間不足なら類題手順を配送前に止める。文言の族や120秒を変えるときは判定とテストも一緒に変える |
 
 学習計画(`study_plan`)の二重書きの相手は、さらに別です:
 

@@ -16,6 +16,9 @@ import { planDateSchema, planSourceSchema, studyPlanDraftSchema, studyPlanSchema
 
 export const apiPaths = {
   createSession: "/v1/sessions",
+  addSessionProblemPhoto: (sessionId: string) => `/v1/sessions/${sessionId}/problem-photo`,
+  /** agent だけが内部トークンで読む、会話中の最新文脈。 */
+  sessionContext: (sessionId: string) => `/v1/sessions/${sessionId}/context`,
   updateSessionTopics: (sessionId: string) => `/v1/sessions/${sessionId}/topics`,
   updateSessionProblem: (sessionId: string) => `/v1/sessions/${sessionId}/problem`,
   startSession: (sessionId: string) => `/v1/sessions/${sessionId}/start`,
@@ -265,8 +268,13 @@ export const sessionLimitsSchema = z
     /** サーバが強制する上限。無料・Premiumとも、15〜20分の授業を完走できる最長20分。 */
     max_seconds: z.number().int().positive(),
     /**
+     * 完了実績と進行中の仮押さえを引いた、今日の残り秒数。
+     * ホームの分表示の正本で、クライアントがこの値から開始可否を再判定しない。
+     */
+    remaining_seconds_today: z.number().int().min(0),
+    /**
      * この応答時点から、今日さらに授業を始められるか。
-     * §6-3「UIに数字は一切出さない」を契約の形で守るため、残数ではなく可否だけを返す。
+     * 3分の最低単位と非公開の開始回数ガードもサーバが加味した結果。
      */
     lesson_allowed_today: z.boolean(),
   })
@@ -275,13 +283,13 @@ export const sessionLimitsSchema = z
 /**
  * POST /v1/sessions のレスポンス。**写真を読んだ結果だけで、部屋の鍵は入っていない。**
  *
- * ここに `livekit` と `limits` が無いのは仕様。**1日の回数を数えるのは
- * 「写真を読んだとき」ではなく「会話が始まったとき」**にしたので
- * (`startSessionResponseSchema`)、解析の応答は枠の判定を通らない。
+ * ここに `livekit` と `limits` が無いのは仕様。**日次の持ち時間を押さえるのは
+ * 「写真を読んだとき」ではなく「会話が始まったとき」**なので
+ * (`startSessionResponseSchema`)、解析の応答は時間枠の判定を通らない。
  *
  * トークンを解析の時点で配ると、その分け方は成立しない。**トークンを持っている =
  * いつでも会話を始められる**ので、鍵を先に渡してから「会話の開始で数える」と言っても、
- * 数える口をクライアント側に置いたのと同じことになる。だから枠の確保とトークンの発行を
+ * 確保の判断をクライアント側に置いたのと同じことになる。だから時間の確保とトークンの発行を
  * `POST /v1/sessions/{id}/start` の1操作に束ね、この応答は**単元と問題文の読み合わせ**
  * だけを返す。
  */
@@ -315,6 +323,37 @@ export const createSessionResponseSchema = z
 export type CreateSessionResponse = z.infer<typeof createSessionResponseSchema>;
 
 /**
+ * POST /v1/sessions/{id}/problem-photo の multipart `meta`。
+ *
+ * **許可トピックは受け取らない。** 追加写真から検出した単元を既存の単元へ
+ * 足し、前提をどこまで許すかはサーバが `buildAllowedTopics` で決め直す。
+ * 端末から許可集合を送れる形にすると、写真と無関係な単元へ会話中に広げられる。
+ */
+export const addSessionProblemPhotoRequestSchema = z
+  .object({
+    /** エラー文言の言語。会話の言語は既存セッションの topic_id から決める。 */
+    locale: localeSchema.default("ja"),
+    school_stage: schoolStageSchema.default("high_school"),
+  })
+  .strict();
+export type AddSessionProblemPhotoRequest = z.infer<typeof addSessionProblemPhotoRequestSchema>;
+export type AddSessionProblemPhotoRequestInput = z.input<
+  typeof addSessionProblemPhotoRequestSchema
+>;
+
+/**
+ * 会話中に新しい問題を読み取った結果。
+ *
+ * 作成時の読み合わせに `context_revision` だけを足す。アプリはこの問題文へ
+ * 表示を差し替え、revision を LiveKit の制御通知に載せる。ただし agent は
+ * 通知の中身を正本として使わず、内部APIから同じrevisionの文脈を読み直す。
+ */
+export const addSessionProblemPhotoResponseSchema = createSessionResponseSchema.extend({
+  context_revision: z.number().int().positive(),
+});
+export type AddSessionProblemPhotoResponse = z.infer<typeof addSessionProblemPhotoResponseSchema>;
+
+/**
  * POST /v1/sessions/{id}/start のリクエスト。
  *
  * `locale` は**エラー文言の言語**だけに使う。会話の言語はセッションに残した
@@ -326,21 +365,21 @@ export type StartSessionRequest = z.infer<typeof startSessionRequestSchema>;
 export type StartSessionRequestInput = z.input<typeof startSessionRequestSchema>;
 
 /**
- * POST /v1/sessions/{id}/start のレスポンス。**ここが「1回」を数える唯一の場所。**
+ * POST /v1/sessions/{id}/start のレスポンス。**ここが会話時間を仮押さえする唯一の場所。**
  *
  * 以前は写真を読んだ時点(`POST /v1/sessions`)で今日の枠を押さえていた。
  * 原価(Vision LLM)が発生するのがそこだったからだが、そのぶん
  * **撮って単元を確かめただけの人が、会話を1度もしないまま「今日はここまで」**に
- * なっていた。生徒から見れば1回とは「先輩と話した回数」なので、数える場所を
- * ここへ移してある。
+ * なっていた。生徒から見れば使った時間は「先輩と実際に話した時間」なので、
+ * 仮押さえする場所をここへ移してある。
  *
- * 枠の確保とトークンの発行は**サーバ側の同じ1操作**で、順番も入れ替えられない。
- * 枠を取れなければトークンは出ないし、トークンが出たなら枠は取れている。
+ * 残高の確認と `max_seconds` の確保は**サーバ側の同じ1操作**。
+ * 確保できなければトークンは出ず、トークンが出たならその時間は仮押さえ済み。
  * (解析だけを繰り返して原価を積む道は、`POST /v1/sessions` 側の別の上限で塞ぐ。
- * そちらは1日の授業回数よりずっと緩い、異常利用だけを止める上限。)
+ * そちらは想定する授業本数よりずっと緩い、異常利用だけを止める上限。)
  *
- * **再送しても二重に数えない。** 同じセッションで2度目を呼ぶと、最初に押さえた
- * 枠のままトークンだけ出し直す(通信が切れて押し直したときのため)。
+ * **再送しても二重に確保しない。** 同じセッションで2度目を呼ぶと、最初の
+ * `max_seconds` のままトークンだけ出し直す(通信が切れて押し直したときのため)。
  */
 export const startSessionResponseSchema = z
   .object({
@@ -480,6 +519,14 @@ export const sessionMetadataSchema = z
     allowed_topics: z.string(),
     /** ガードレールの照合に使う生のID。前提トピックまで含む。 */
     allowed_topic_ids: z.array(topicIdSchema),
+    /**
+     * `sessions.context` の版。会話中の追加写真を二重通知しても、同じ問題を
+     * 二度開き直さないために使う。
+     *
+     * ローリングデプロイ中は古いAPIのmetadataに無いので省略可能。新しいAPIは
+     * 初期文脈を1として必ず入れ、agentは省略時だけ1として扱う。
+     */
+    context_revision: z.number().int().positive().optional(),
     is_premium: z.boolean(),
     /**
      * 復習で**今回教え直す穴だけ**。新しいAPIは復習で1件、新規授業で `null` を送る。
@@ -514,6 +561,52 @@ export const sessionMetadataSchema = z
     path: ["review_hole"],
   });
 export type SessionMetadata = z.infer<typeof sessionMetadataSchema>;
+
+/** agent が内部トークンで読む最新文脈。形は開始時metadataと同じ。 */
+export const sessionContextResponseSchema = sessionMetadataSchema;
+export type SessionContextResponse = z.infer<typeof sessionContextResponseSchema>;
+
+/* -------------------------------------------------------------------------- */
+/* 会話中の制御通知(LiveKit RPC。本人の発話ではない)                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * app → agent の専用RPC名。
+ *
+ * `lk.chat` は本人の発話とtranscriptの入口なので使わない。写真解析の開始・完了は
+ * 制御信号であり、カルテの材料へ混ぜると「ユーザーが説明した内容」という原則が壊れる。
+ */
+export const sessionControlRpcMethod = "ai-sensei.session-control";
+export const sessionControlProtocolVersion = 1;
+
+const sessionControlBaseSchema = z.object({
+  v: z.literal(sessionControlProtocolVersion),
+  session_id: z.string().min(1),
+});
+
+/**
+ * 通知に問題文・解析結果・許可集合は載せない。`context_updated` を受けた agent は
+ * INTERNAL_API_TOKEN でAPIを読み直し、アプリ由来の内容を信頼しない。
+ */
+export const sessionControlRequestSchema = z.discriminatedUnion("type", [
+  sessionControlBaseSchema.extend({ type: z.literal("problem_photo_analyzing") }).strict(),
+  sessionControlBaseSchema
+    .extend({
+      type: z.literal("context_updated"),
+      context_revision: z.number().int().positive(),
+    })
+    .strict(),
+  sessionControlBaseSchema.extend({ type: z.literal("problem_photo_failed") }).strict(),
+]);
+export type SessionControlRequest = z.infer<typeof sessionControlRequestSchema>;
+
+export const sessionControlResponseSchema = z
+  .object({
+    v: z.literal(sessionControlProtocolVersion),
+    accepted: z.literal(true),
+  })
+  .strict();
+export type SessionControlResponse = z.infer<typeof sessionControlResponseSchema>;
 
 /** 会話ログ。assistant=後輩の発話、user=ユーザーの説明。 */
 export const transcriptMessageSchema = z
@@ -566,6 +659,8 @@ export const completeSessionResponseSchema = z
     karte: karteSchema,
     review_schedule: z.array(reviewScheduleEntrySchema),
     progress: progressSchema,
+    /** 実績秒数で精算した直後の、ホーム用の日次残高。 */
+    limits: sessionLimitsSchema,
     /** 初回カルテ直後にペイウォールを出すかどうか(出す位置はサーバが決める)。 */
     show_paywall: z.boolean(),
   })
@@ -646,6 +741,8 @@ export const apiErrorCodes = [
   "fair_use_limit_reached",
   "premium_required",
   "photo_unreadable",
+  /** 会話は続けられる。追加写真だけが、このセッションの5回枠を使い切った。 */
+  "problem_photo_limit_reached",
   /**
    * 手入力の問題文をガードレールが落とした
    * ({@link updateSessionProblemRequestSchema})。**写真の話ではない**ので

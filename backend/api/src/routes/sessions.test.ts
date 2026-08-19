@@ -1,4 +1,9 @@
-import type { CreateSessionResponse, StartSessionResponse } from "@ai-sensei/contract";
+import type {
+  AddSessionProblemPhotoResponse,
+  CreateSessionResponse,
+  SessionMetadata,
+  StartSessionResponse,
+} from "@ai-sensei/contract";
 import {
   createSessionResponseSchema,
   problemTextMaxLength,
@@ -75,7 +80,7 @@ function patchTopics(sessionId: string, body: unknown, headers: Record<string, s
 }
 
 /**
- * 会話を始める。**今日の1回を数えるのはここだけ**なので、枠の話は全部この入口に集まる。
+ * 会話を始める。**日次の持ち時間を押さえるのはここだけ**なので、枠の話は全部この入口に集まる。
  */
 function startSession(
   sessionId: string,
@@ -95,6 +100,33 @@ function startSession(
       },
     },
     env,
+  );
+}
+
+function addProblemPhoto(
+  sessionId: string,
+  meta: Record<string, unknown> = {},
+  headers: Record<string, string> = {},
+) {
+  const form = new FormData();
+  form.set("problem_photo", problemPhotoFile());
+  form.set("meta", JSON.stringify({ locale: "ja", school_stage: "high_school", ...meta }));
+  return app.request(
+    `/v1/sessions/${sessionId}/problem-photo`,
+    {
+      method: "POST",
+      body: form,
+      headers: { "x-device-id": testDeviceId, ...headers },
+    },
+    bindings,
+  );
+}
+
+function getSessionContext(sessionId: string, token = bindings.INTERNAL_API_TOKEN) {
+  return app.request(
+    `/v1/sessions/${sessionId}/context`,
+    { headers: { authorization: `Bearer ${token}` } },
+    bindings,
   );
 }
 
@@ -152,7 +184,7 @@ describe("POST /v1/sessions", () => {
    * 「会話の開始で数える」と言っても、数える口をクライアント側に置いたのと同じになる。
    * `strict()` のスキーマなので、うっかり足し戻したらこのテストが落ちる。
    */
-  it("この時点ではLiveKitトークンを渡さない(数えるのは会話の開始)", async () => {
+  it("この時点ではLiveKitトークンを渡さない(時間を押さえるのは会話の開始)", async () => {
     const body = (await (await post(createSessionForm())).json()) as Record<string, unknown>;
 
     expect(body["livekit"]).toBeUndefined();
@@ -160,14 +192,14 @@ describe("POST /v1/sessions", () => {
     expect(createSessionResponseSchema.safeParse(body).success).toBe(true);
   });
 
-  it("写真を読んだだけでは、今日の1回を使わない", async () => {
+  it("写真を読んだだけでは、日次の持ち時間を使わない", async () => {
     expect((await post(createSessionForm())).status).toBe(201);
 
-    // 撮り直して単元を確かめ直しても、まだ1回も話していないのだから通る
+    // 撮り直して単元を確かめ直しても、まだ話していないので持ち時間は残っている
     expect((await post(createSessionForm())).status).toBe(201);
-    expect(await services.repository.countStartedSessionsOnDate(testDeviceId, "2026-08-03")).toBe(
-      0,
-    );
+    expect(
+      (await services.repository.getDailySessionUsage(testDeviceId, "2026-08-03")).sessionsStarted,
+    ).toBe(0);
   });
 
   it("デバイスIDがなければ401", async () => {
@@ -343,6 +375,152 @@ describe("POST /v1/sessions", () => {
   });
 });
 
+/** 日次の持ち時間を仮押さえし、確保できた時間だけをトークンへ載せる入口。 */
+describe("POST /v1/sessions/{id}/problem-photo", () => {
+  async function startedSession(): Promise<string> {
+    const created = (await (await post(createSessionForm())).json()) as CreateSessionResponse;
+    expect((await startSession(created.session_id)).status).toBe(200);
+    return created.session_id;
+  }
+
+  it("追加解析を文脈へ追記し、サーバ側で許可集合を広げ直す", async () => {
+    const sessionId = await startedSession();
+    const nextAnalysis = {
+      ...analysisFixture,
+      summary: "平方完成で頂点を求める次の問題。",
+      problem_text: "二次関数 y = x^2 - 6x + 5 の頂点を求めよ。",
+      visible_work: [],
+      topics: [{ topic_id: "M1-NIJI-GURAFU", confidence: 0.94 }],
+      question_seeds: ["平方完成で何が見えるか"],
+    };
+    services.analyzer = new RecordingAnalyzer(nextAnalysis);
+
+    const response = await addProblemPhoto(sessionId);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as AddSessionProblemPhotoResponse;
+    expect(body.context_revision).toBe(2);
+    expect(body.problem?.text).toContain("頂点");
+    expect(body.detected_topics.map((topic) => topic.topic_id)).toEqual(
+      expect.arrayContaining(["M1-NIJI-GURAFU", "M2-ZUKEI-ENCHOKU"]),
+    );
+
+    const stored = await services.repository.getSession(sessionId);
+    expect(stored?.analysis_count).toBe(2);
+    expect(stored?.context?.materials).toHaveLength(2);
+    expect(stored?.context?.materials?.[0]?.problem?.text).toContain("共有点");
+    expect(stored?.context?.problem?.text).toContain("頂点");
+    expect(stored?.context?.has_notes_photo).toBe(false);
+    expect(stored?.topic_ids).toEqual(
+      expect.arrayContaining(["M1-NIJI-GURAFU", "M2-ZUKEI-ENCHOKU"]),
+    );
+
+    const analyzer = services.analyzer as RecordingAnalyzer;
+    expect(analyzer.calls).toEqual([{ locale: "ja", hadNotes: false, hadProblem: true }]);
+  });
+
+  it("追加した問題の紙面もR2へ保存せず、解析後に破棄する", async () => {
+    const isolated = testBindings();
+    const createdResponse = await app.request(
+      "/v1/sessions",
+      { method: "POST", body: createSessionForm(), headers: { "x-device-id": testDeviceId } },
+      isolated,
+    );
+    const created = (await createdResponse.json()) as CreateSessionResponse;
+    expect((await startSession(created.session_id, {}, {}, isolated)).status).toBe(200);
+
+    const objects = (isolated.PHOTOS as unknown as { objects: Map<string, unknown> }).objects;
+    const storedBefore = [...objects.keys()];
+    expect(storedBefore).toHaveLength(1);
+
+    const form = new FormData();
+    form.set("problem_photo", problemPhotoFile());
+    form.set("meta", JSON.stringify({ locale: "ja", school_stage: "high_school" }));
+    const added = await app.request(
+      `/v1/sessions/${created.session_id}/problem-photo`,
+      { method: "POST", body: form, headers: { "x-device-id": testDeviceId } },
+      isolated,
+    );
+
+    expect(added.status).toBe(200);
+    expect([...objects.keys()]).toEqual(storedBefore);
+  });
+
+  it("agentは内部トークンで最新文脈を読み、端末の許可集合は受け取らない", async () => {
+    const sessionId = await startedSession();
+    services.analyzer = new RecordingAnalyzer({
+      ...analysisFixture,
+      problem_text: "二次関数 y = x^2 - 6x + 5 の頂点を求めよ。",
+      topics: [{ topic_id: "M1-NIJI-GURAFU", confidence: 0.94 }],
+    });
+
+    // strictなmetaなので、端末から許可集合を広げる入力は弾く。
+    const rejected = await addProblemPhoto(sessionId, {
+      allowed_topic_ids: ["M3-SEKIBUN-KIHON"],
+    });
+    expect(rejected.status).toBe(422);
+    expect((await services.repository.getSession(sessionId))?.analysis_count).toBe(1);
+
+    expect((await addProblemPhoto(sessionId)).status).toBe(200);
+    expect((await getSessionContext(sessionId, "wrong-token")).status).toBe(401);
+
+    const response = await getSessionContext(sessionId);
+    expect(response.status).toBe(200);
+    const context = (await response.json()) as SessionMetadata;
+    expect(sessionMetadataSchema.safeParse(context).success).toBe(true);
+    expect(context.context_revision).toBe(2);
+    expect(context.problem_text).toContain("頂点");
+    expect(context.visible_work).toBe(formatVisibleWork(null, "ja"));
+    expect(context.allowed_topic_ids).toContain("M1-NIJI-GURAFU");
+  });
+
+  it("初回を含む5回で止め、今の授業は続けられる非終端エラーを返す", async () => {
+    const sessionId = await startedSession();
+    const analyzer = new RecordingAnalyzer(analysisFixture);
+    services.analyzer = analyzer;
+
+    // 初回が1回目なので、会話中に追加できるのは4枚。
+    for (let count = 0; count < 4; count += 1) {
+      expect((await addProblemPhoto(sessionId)).status).toBe(200);
+    }
+    expect(analyzer.calls).toHaveLength(4);
+
+    const denied = await addProblemPhoto(sessionId);
+    expect(denied.status).toBe(429);
+    const body = (await denied.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("problem_photo_limit_reached");
+    expect(body.error.message).toContain("今の問題はそのまま続けられます");
+    // 上限判定はVisionより前。5枚目を原価へ流していない。
+    expect(analyzer.calls).toHaveLength(4);
+    expect((await services.repository.getSession(sessionId))?.status).toBe("open");
+    // 行き止まりにしない。同じセッションのトークン再発行は引き続き通る。
+    expect((await startSession(sessionId)).status).toBe(200);
+  });
+
+  it("読めない追加写真は枠と現在の問題を失わせない", async () => {
+    const sessionId = await startedSession();
+    const before = await services.repository.getSession(sessionId);
+    const form = new FormData();
+    form.set(
+      "problem_photo",
+      new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], "broken.pdf", {
+        type: "application/pdf",
+      }),
+    );
+    form.set("meta", JSON.stringify({ locale: "ja" }));
+
+    const response = await app.request(
+      `/v1/sessions/${sessionId}/problem-photo`,
+      { method: "POST", body: form, headers: { "x-device-id": testDeviceId } },
+      bindings,
+    );
+    expect(response.status).toBe(422);
+    const after = await services.repository.getSession(sessionId);
+    expect(after?.analysis_count).toBe(1);
+    expect(after?.context?.problem).toEqual(before?.context?.problem);
+    expect(after?.status).toBe("open");
+  });
+});
+
 /**
  * **回数を数えるのはここ。**
  *
@@ -368,6 +546,21 @@ describe("POST /v1/sessions/{id}/start", () => {
     expect(body.session_id).toBe(session.session_id);
     expect(body.livekit.room).toBe(session.session_id);
     expect(body.limits.max_seconds).toBe(1200);
+    expect(body.limits.remaining_seconds_today).toBe(0);
+    expect(body.limits.lesson_allowed_today).toBe(false);
+  });
+
+  it("残高600秒なら、その回の max_seconds も600秒にする", async () => {
+    const shortBudget = testBindings({ FREE_SECONDS_PER_DAY: "600" });
+    const body = await analyzeThenStart(createSessionForm(), shortBudget);
+
+    expect(body.limits).toEqual({
+      max_seconds: 600,
+      remaining_seconds_today: 0,
+      lesson_allowed_today: false,
+    });
+    const metadata = await metadataOf<{ max_seconds: number }>(body, shortBudget);
+    expect(metadata.max_seconds).toBe(600);
   });
 
   it("LiveKitトークンに会話の文脈(許可トピック)を載せる", async () => {
@@ -403,14 +596,14 @@ describe("POST /v1/sessions/{id}/start", () => {
     expect(claims?.["roomConfig"]).toBeUndefined();
   });
 
-  // 無料枠はサーバ側で数える(クライアント改竄対策)
-  it("無料ユーザーは1日1回しか会話を始められない", async () => {
+  // 持ち時間はサーバ側で数える(クライアント改竄対策)
+  it("無料ユーザーは未精算の1200秒を仮押さえすると次を始められない", async () => {
     const first = await analyze();
     const second = await analyze();
 
     expect((await startSession(first.session_id)).status).toBe(200);
 
-    // 2本目は解析まで済んでいても、会話は始められない
+    // 2本目は解析まで済んでいても、残高が無いので会話は始められない
     const response = await startSession(second.session_id);
     expect(response.status).toBe(402);
     const body = (await response.json()) as {
@@ -422,9 +615,9 @@ describe("POST /v1/sessions/{id}/start", () => {
 
   /**
    * つなぎ直し・押し直しで枠が減らないこと。
-   * ここが緩むと、電波の悪い場所で1回押し直しただけで今日の授業が終わる。
+   * ここが緩むと、電波の悪い場所で押し直しただけで持ち時間を二重に失う。
    */
-  it("同じセッションを始め直しても、二重に数えない", async () => {
+  it("同じセッションを始め直しても、二重に時間を確保しない", async () => {
     const session = await analyze();
 
     const first = await startSession(session.session_id);
@@ -432,9 +625,9 @@ describe("POST /v1/sessions/{id}/start", () => {
 
     expect(first.status).toBe(200);
     expect(again.status).toBe(200);
-    expect(await services.repository.countStartedSessionsOnDate(testDeviceId, "2026-08-03")).toBe(
-      1,
-    );
+    expect(
+      (await services.repository.getDailySessionUsage(testDeviceId, "2026-08-03")).sessionsStarted,
+    ).toBe(1);
   });
 
   it("Premiumは通常利用の2回目まで通り、無料と同じ20分を使える", async () => {
@@ -548,8 +741,8 @@ describe("POST /v1/sessions/{id}/start", () => {
    * **押し直しの窓は、最初の鍵の寿命まで。**
    *
    * ここが開いていると、部屋に入らないまま開いたセッションが期限のない
-   * 鍵の引換券になる。その1本は最初の日に数えられているので、翌日そのIDで
-   * 押せば、今日の枠を減らさずに授業が1回増えてしまう
+   * 鍵の引換券になる。その時間は最初の日に仮押さえされているので、翌日そのIDで
+   * 押せば、今日の残高を減らさずに授業時間が増えてしまう
    * (会話が成立しなければ `/complete` も来ないので、行は open のまま残る)。
    */
   it("上限時間を過ぎたセッションは、始め直せない", async () => {
@@ -574,9 +767,9 @@ describe("POST /v1/sessions/{id}/start", () => {
     services.now = () => new Date("2026-08-03T13:40:07.000Z");
 
     expect((await startSession(session.session_id)).status).toBe(200);
-    expect(await services.repository.countStartedSessionsOnDate(testDeviceId, "2026-08-03")).toBe(
-      1,
-    );
+    expect(
+      (await services.repository.getDailySessionUsage(testDeviceId, "2026-08-03")).sessionsStarted,
+    ).toBe(1);
   });
 });
 
@@ -1065,8 +1258,8 @@ describe("問題文の手入力", () => {
     expect((services.analyzer as RecordingAnalyzer).calls).toHaveLength(before);
   });
 
-  // 打ち直しただけでは、今日の1回は減らない(数えるのは会話の開始だけ)。
-  it("打ち直しただけでは、今日の1回を使わない", async () => {
+  // 打ち直しただけでは持ち時間は減らない(仮押さえするのは会話の開始だけ)。
+  it("打ち直しただけでは、日次の持ち時間を使わない", async () => {
     const session = await unreadSession();
     await patchProblem(session.session_id, { text: rescueText });
 
@@ -1357,12 +1550,12 @@ describe("同時実行の授業枠", () => {
       "free_limit_reached",
       "free_limit_reached",
     ]);
-    expect(await services.repository.countStartedSessionsOnDate(testDeviceId, "2026-08-03")).toBe(
-      1,
-    );
+    expect(
+      (await services.repository.getDailySessionUsage(testDeviceId, "2026-08-03")).sessionsStarted,
+    ).toBe(1);
   });
 
-  it("Premiumは同時に5本始めても3本しか通らない", async () => {
+  it("Premiumの3600秒は同時に5本始めても1200秒ずつ3本までしか通らない", async () => {
     await makePremium();
     const ids = await analyzed(5);
     lineUpAt(5);
@@ -1380,9 +1573,9 @@ describe("同時実行の授業枠", () => {
       "fair_use_limit_reached",
       "fair_use_limit_reached",
     ]);
-    expect(await services.repository.countStartedSessionsOnDate(testDeviceId, "2026-08-03")).toBe(
-      3,
-    );
+    expect(
+      (await services.repository.getDailySessionUsage(testDeviceId, "2026-08-03")).sessionsStarted,
+    ).toBe(3);
   });
 });
 
@@ -1413,14 +1606,14 @@ describe("PATCH /v1/sessions/{id}/topics", () => {
     expect(services.repository.sessions.size).toBe(1);
   });
 
-  // 単元を確かめただけの人は、まだ1回も話していない。
-  it("単元を確かめただけでは、今日の1回を使わない", async () => {
+  // 単元を確かめただけの人は、まだ話していないので持ち時間を使っていない。
+  it("単元を確かめただけでは、日次の持ち時間を使わない", async () => {
     const session = await analyze();
     await patchTopics(session.session_id, { topic_ids: ["M2-ZUKEI-ENCHOKU"] });
 
-    expect(await services.repository.countStartedSessionsOnDate(testDeviceId, "2026-08-03")).toBe(
-      0,
-    );
+    expect(
+      (await services.repository.getDailySessionUsage(testDeviceId, "2026-08-03")).sessionsStarted,
+    ).toBe(0);
     const progress = await app.request(
       "/v1/me/progress",
       { headers: { "x-device-id": testDeviceId } },

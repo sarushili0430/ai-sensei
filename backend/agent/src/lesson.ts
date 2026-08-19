@@ -9,7 +9,7 @@ import type {
 } from "./board.ts";
 import { extractJson } from "./karte.ts";
 import type { JobLogger } from "./log.ts";
-import { stepAwaitsStudent } from "./senpai.ts";
+import { stepAwaitsInput, stepAwaitsSolving } from "./senpai.ts";
 
 /**
  * フェーズ1「授業」— 板書レッスンの生成と、手順単位の配送・読み上げ。
@@ -302,6 +302,8 @@ export type RunBoardLessonOptions = {
    * どの文が正本でどの文が実行時の産物か、パスを重ねるほど分からなくなる。
    */
   instruction?: string;
+  /** 検証済みの手順を、板書と音声へ出す前に抑止する条件。 */
+  stopBefore?: (step: BoardStep) => boolean;
 };
 
 export type BoardLessonResult = BoardAppendResult & {
@@ -329,6 +331,7 @@ export async function runBoardLesson(options: RunBoardLessonOptions): Promise<Bo
     log,
     maxTokens = boardLessonMaxTokens,
     instruction,
+    stopBefore,
   } = options;
 
   const steps: BoardStep[] = [];
@@ -341,6 +344,7 @@ export async function runBoardLesson(options: RunBoardLessonOptions): Promise<Bo
       signal,
     }),
     signal,
+    stopBefore,
     onStep: async (step) => {
       steps.push(step);
       // 割り込み後は喋らない。板書はもう出ているので消さないが、
@@ -352,15 +356,19 @@ export async function runBoardLesson(options: RunBoardLessonOptions): Promise<Bo
     // その板書はそこで終える」を、生成のぶれに任せずここで守る
     // (`board.ts` の `stopAfter` にその判断を置かない理由も同じコメントにある)。
     //
-    // 判定は手順の `awaits_student`(LLM自身の申告)が一次で、欄が無いときだけ
-    // 言い回しの推測に落ちる(`stepAwaitsStudent`)。どちらで止まったかはログに残す —
+    // 通常の問いは `awaits_student`、類題は `awaits_solving` が一次情報。
+    // 前者だけ、欄が無いときに言い回しの推測へ落ちる。どちらで止まったかはログに残す —
     // フォールバックで止まる授業が多いなら、プロンプトが欄を書けていない。
     stopAfter: (step) => {
-      const stops = stepAwaitsStudent(step, locale);
+      const stops = stepAwaitsInput(step, locale);
       if (stops) {
         log?.info("board_turn_awaited", {
           index: step.index,
-          basis: step.awaits_student === undefined ? "fallback" : "field",
+          basis: stepAwaitsSolving(step)
+            ? "solving"
+            : step.awaits_student === undefined
+              ? "fallback"
+              : "field",
         });
       }
       return stops;

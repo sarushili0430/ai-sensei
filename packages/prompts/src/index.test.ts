@@ -116,6 +116,7 @@ describe("教科ごとの音声補正ヒント", () => {
   it("カルテ生成でも教科で切り替わる", () => {
     const karte = karteSystemPrompt(
       {
+        problem_text: "Read the following passage and answer the question.",
         photo_summary: "現在完了の練習問題",
         allowed_topics: "- JE-JISEI-KANRYO",
         transcript: "先輩: なんでですか?",
@@ -180,6 +181,36 @@ describe("整形ヘルパ", () => {
     ]);
     expect(text).toContain("M2-ZUKEI-ENCHOKU");
     expect(text).toContain("中心と直線の距離d");
+  });
+
+  /**
+   * 一覧は主題から根までを平らに並べたもので、並び順からは親子も深さも読めない。
+   * 「答えられなければ**1段手前の前提**へ下る」と指示している以上、どれが1段手前かを
+   * ここに書かないと、別の枝の単元を「手前」だと思って降りていける。
+   */
+  it("各行に1段手前の前提を添え、一覧の外のIDは出さない", () => {
+    const text = formatAllowedTopics([
+      {
+        id: "JE-DOMEISHI",
+        course: "中学英語",
+        unit: "文法事項",
+        topic: "動名詞",
+        goals: ["動名詞が主語・目的語・補語になることを説明できる"],
+        prerequisites: ["JE-FUTEISHI", "JE-SOTO-NO-TANGEN"],
+      },
+      {
+        id: "JE-FUTEISHI",
+        course: "中学英語",
+        unit: "文法事項",
+        topic: "to不定詞",
+        goals: ["3用法を見分けられる"],
+        prerequisites: [],
+      },
+    ]);
+
+    expect(text).toContain("1段手前の前提: JE-FUTEISHI");
+    // 許可リストの外は、戻ってよい範囲ではないので出さない。
+    expect(text).not.toContain("JE-SOTO-NO-TANGEN");
   });
 
   it("許可トピックが空のときは撮り直しを促す文言になる", () => {
@@ -257,7 +288,7 @@ describe("組み立て済みプロンプト", () => {
   );
 
   it("few-shotと音声補正ヒントを同梱する", () => {
-    expect(conversation).toContain("なんで(2)でいきなり判別式にしたの?");
+    expect(conversation).toContain("(2)で、なんでいきなり判別式にしたの?");
     expect(conversation).toContain("さんぶんのに");
   });
 
@@ -280,6 +311,7 @@ describe("組み立て済みプロンプト", () => {
   it("カルテ生成プロンプトも組み立てられる", () => {
     const karte = karteSystemPrompt(
       {
+        problem_text: "円 x^2 + y^2 = 5 と直線の共有点を求めよ。",
         photo_summary: "円と直線",
         allowed_topics: "- M2-ZUKEI-ENCHOKU",
         transcript: "先輩: なんでですか?",
@@ -288,6 +320,8 @@ describe("組み立て済みプロンプト", () => {
       { subject: "math" },
     );
     expect(karte).toContain("said_well");
+    expect(karte).toContain("円 x^2 + y^2 = 5");
+    expect(karte).toContain("問題文を読み上げただけ");
     expect(karte).toContain("先輩: なんでですか?");
   });
 
@@ -307,7 +341,7 @@ describe("組み立て済みプロンプト", () => {
 
   it("英語の会話プロンプトに日本語が混ざらない", () => {
     expect(english).toContain("You are the user's **senpai**");
-    expect(english).toContain("Why'd you go straight to the discriminant");
+    expect(english).toContain("In part (2), why'd you go straight to the discriminant");
     expect(english).toContain("square root of 3");
     expect(english).toContain("It is not something the user has explained.");
     expect(english).not.toMatch(/[ぁ-んァ-ン一-龯]/);
@@ -316,6 +350,7 @@ describe("組み立て済みプロンプト", () => {
   it("英語のカルテ生成プロンプトも組み立てられる", () => {
     const karte = karteSystemPrompt(
       {
+        problem_text: "Find the intersections of the circle and line.",
         photo_summary: "A line-and-circle problem",
         allowed_topics: "- A2-COORD-CIRCLE",
         transcript: "Senpai: Why is that?",
@@ -324,6 +359,8 @@ describe("組み立て済みプロンプト", () => {
       { locale: "en", subject: "math" },
     );
     expect(karte).toContain("said_well");
+    expect(karte).toContain("Find the intersections");
+    expect(karte).toContain("Merely reading the question");
     expect(karte).toContain("Senpai: Why is that?");
     expect(karte).not.toMatch(/[ぁ-んァ-ン一-龯]/);
   });
@@ -403,6 +440,18 @@ describe("設計上の約束がプロンプトに書かれている", () => {
     }
   });
 
+  it("問題文が入っているときは、冒頭で復唱も音読依頼もしないと明記する", () => {
+    const ja = getPrompt("senpai_board", "ja").body;
+    const en = getPrompt("senpai_board", "en").body;
+    const englishLessonJa = getPrompt("senpai_board_english", "ja").body;
+
+    expect(ja).toContain("冒頭で問題文を復唱せず");
+    expect(ja).toContain("読み上げを頼まず");
+    expect(en).toContain("do not repeat it or ask the student to read it aloud");
+    expect(englishLessonJa).toContain("冒頭で問題文を復唱せず");
+    expect(englishLessonJa).toContain("読み上げを頼まず");
+  });
+
   // 「ノートが無いときは口頭で『どこまでやってみた?』と聞く」案は明示的に見送られた。
   // 口頭のグラウンディング手順を足すと、それは切り分けではなく申告させる聞き方になる。
   it("ノートが無いときに「ノート見せて」と言わない、が両方の言語に書かれている", () => {
@@ -467,8 +516,14 @@ describe("設計上の約束がプロンプトに書かれている", () => {
 
     expect(ja).toContain("必ず `holes` に入れてください");
     expect(ja).toContain("間違ったカルテ");
+    expect(ja).toContain("「できなかった」「解けなかった」");
+    expect(ja).toContain("その申告をそのまま短く");
+    expect(ja).toContain("「できた」は解き終わりの合図");
     expect(en).toContain("put it in `holes`");
     expect(en).toContain("wrong karte");
+    expect(en).toContain('"I couldn\'t do it", "I couldn\'t solve it"');
+    expect(en).toContain("quote the report itself");
+    expect(en).toContain('"I did it" on the analogous problem only reports');
   });
 
   /**
@@ -505,6 +560,43 @@ describe("設計上の約束がプロンプトに書かれている", () => {
     expect(en).toContain("120 characters max");
     expect(en).toContain("cut before the `=`");
     expect(en).toContain("`text` board element");
+  });
+
+  /**
+   * 固定2段へ戻ると、動名詞で詰まった生徒をbe動詞まで診断できない。
+   * 数学の日英と、日本語で教える英語授業の3本を同じ変更単位として固定する。
+   */
+  it("前提チェーン全体を1段ずつ切り分け、前提から主題へ戻る見本が3本にある", () => {
+    const ja = getPrompt("senpai_board", "ja").body;
+    const en = getPrompt("senpai_board", "en").body;
+    const englishLesson = getPrompt("senpai_board_english", "ja").body;
+
+    expect(ja).toContain("前提チェーン全体");
+    expect(ja).toContain("直接の前提へ1段だけ下り");
+    expect(ja).toContain("3問程度");
+    expect(ja).toContain("前提: 因数分解 — 積の形に直す");
+
+    expect(en).toContain("whole prerequisite");
+    expect(en).toContain("one direct prerequisite");
+    expect(en).toContain("about three narrowing questions");
+    expect(en).toContain("Prerequisite: factoring into a product");
+
+    expect(englishLesson).toContain("前提チェーン全体");
+    expect(englishLesson).toContain("直接の前提へ1段だけ下って");
+    expect(englishLesson).toContain("前提: be動詞 — 主語と説明をつなぐ");
+    expect(englishLesson).toContain(
+      '"topic_ids": ["JE-DOUSHI-BE", "JE-BUNKOZO-KIHON", "JE-DOMEISHI"]',
+    );
+  });
+
+  it("根から教え切れないときは、前提だけを教え返して締める", () => {
+    expect(getPrompt("senpai_board", "ja").body).toContain("今日は○○(いま教えている前提)だけ");
+    expect(getPrompt("senpai_board", "en").body).toContain(
+      "today, let's just do [the prerequisite]",
+    );
+    expect(getPrompt("senpai_board_english", "ja").body).toContain(
+      "今日は○○(いま教えている前提)だけ",
+    );
   });
 
   /**
@@ -560,6 +652,10 @@ describe("設計上の約束がプロンプトに書かれている", () => {
     // 選び方が「最初の1問」まで書かれていること(理由だけだとモデルは並べ続ける)。
     expect(getPrompt("photo_analysis", "ja").body).toContain("いちばん最初の問題");
     expect(getPrompt("photo_analysis", "en").body).toContain("The first problem on the page");
+    expect(getPrompt("photo_analysis", "ja").body).toContain(
+      "ページ全体を書き起こしてはいけません",
+    );
+    expect(getPrompt("photo_analysis", "en").body).toContain("Never transcribe the whole page");
   });
 
   /**
@@ -573,14 +669,12 @@ describe("設計上の約束がプロンプトに書かれている", () => {
   });
 
   /**
-   * 授業は往復する(2026-08-14 のドッグフーディング報告への対応)。
+   * 授業は往復し、教え切ったあと同じ解法の類題1問へ進む(Issue #152)。
    *
-   * 「問いかけで `steps` を止めて答えを聞き、同じ板書に続きを積んで**教え切る**。
-   * 教え返しへの受け渡しは『自分の言葉で説明してみて』の形だけ」— この形は
-   * agent 側(`asksForTeachBack` / `runLessonLoop`)と二重書きで、プロンプト側だけ
-   * 消えると、**質問を1つしただけで授業が終わる**古い形に静かに戻る。
+   * `awaits_solving` と受け渡し文は agent / contract / mobile と二重書きなので、
+   * プロンプト側だけ消えると15秒で再促しする旧経路や、授業全体の自由再生へ戻る。
    */
-  it("授業の往復・答えまで書き切る解説が両方の言語に書かれている", () => {
+  it("授業の往復・類題からの教え返しが両方の言語に書かれている", () => {
     const ja = getPrompt("senpai_board", "ja").body;
     const en = getPrompt("senpai_board", "en").body;
 
@@ -590,25 +684,52 @@ describe("設計上の約束がプロンプトに書かれている", () => {
     expect(en).toContain("The lesson goes back and forth");
     expect(en).toContain("under the same board");
 
-    // 解説に重きを置く(2026-08-17): 答えの行まで板書で見せ切り、流れを一行に畳む。
-    // 数値替えの確認問題を出して解かせる形はここで廃止した — たしかめは教え返しの仕事。
+    // 解説は答えまで見せ切り、その直後に同じ解法の類題を1問だけ置く。
     expect(ja).toContain("答えまで、板書で見せ切る");
     expect(ja).toContain("答えの行まで");
-    expect(ja).toContain("練習問題は出しません");
+    expect(ja).toContain("数値だけを替えた類題を1問だけ自作します");
+    expect(ja).toContain("awaits_solving: true");
+    expect(ja).toContain("15秒の無回答判定を使いません");
+    expect(ja).toContain("残り120秒未満なら類題を出しません");
+    expect(ja).toContain("`review` では類題を出さず");
     expect(en).toContain("Write it through to the answer");
     expect(en).toContain("through to the answer line");
-    expect(en).toContain("Never pose a numbers-changed practice problem");
+    expect(en).toContain("exactly one analogous problem of your own");
+    expect(en).toContain("awaits_solving: true");
+    expect(en).toContain("never uses the 15-second no-answer timeout");
+    expect(en).toContain("fewer than 120 seconds remain");
+    expect(en).toContain("In `review`, pose no analogous problem");
 
-    // 受け渡しの文言は往復を終える唯一の合図(`asksForTeachBack` と二重書き)。
+    // 新しい受け渡しと、時間不足時だけ使う従来の受け渡しを両方残す。
     // 途中の問いかけに同じ言い方を許すと、授業の途中で教え返しへ切り替わる。
-    expect(ja).toContain("自分の言葉で説明してみて");
+    expect(ja).toContain("どうしてそうなるか、自分の言葉で説明してみて");
+    expect(ja).toContain("じゃあ今の、自分の言葉で説明してみて");
     expect(ja).toContain("途中の問いかけには「説明して」を使わない");
-    expect(en).toContain("in your own words");
+    expect(en).toContain("Now explain in your own words why it works out that way");
+    expect(en).toContain("Alright — now explain that back to me in your own words");
     expect(en).toContain("for a mid-lesson checkpoint");
 
-    // 教え返し側も、要約の最後の問いかけから会話を再開する(同じ質問を聞き直さない)
-    expect(getPrompt("senpai_conversation", "ja").body).toContain("その答えを聞くところから");
-    expect(getPrompt("senpai_conversation", "en").body).toContain("hearing their answer to it");
+    // 教え返し側は類題1問に対象を絞り、「できた」自体を理解の証拠にしない。
+    expect(getPrompt("senpai_conversation", "ja").body).toContain("その類題1問の理由");
+    expect(getPrompt("senpai_conversation", "ja").body).toContain(
+      "「できた」だけを「言えたこと」にせず",
+    );
+    expect(getPrompt("senpai_conversation", "en").body).toContain("why that one problem works");
+    expect(getPrompt("senpai_conversation", "en").body).toContain(
+      '"I did it" alone is not evidence',
+    );
+  });
+
+  it("英語科の日本語板書も、類題を待って理由の説明へ渡す", () => {
+    const englishLesson = getPrompt("senpai_board_english", "ja").body;
+
+    expect(englishLesson).toContain("数値や主語だけを替えた類題を1問だけ自作します");
+    expect(englishLesson).toContain("awaits_solving: true");
+    expect(englishLesson).toContain("15秒の無回答判定や再促しは使わず");
+    expect(englishLesson).toContain("類題と正答の両方");
+    expect(englishLesson).toContain("どうしてそうなるか、自分の言葉で説明してみて");
+    expect(englishLesson).toContain("残り120秒未満なら類題を出しません");
+    expect(englishLesson).toContain("`review` では類題を出さず");
   });
 
   /**
@@ -626,6 +747,72 @@ describe("設計上の約束がプロンプトに書かれている", () => {
     expect(en).toContain("never ask them to self-report");
     expect(en).toContain('"tell me the first step"');
     expect(en).toContain('cannot answer with "yes" or "no"');
+  });
+
+  /**
+   * 問いの音声は消えるので、対象を聞き取れなかった生徒にも「答えの置き場」が残る形を
+   * 見本ごと固定する。対象の自然言語判定は無理筋なので、ここで見るのはプロンプトの
+   * 規約と既存 JSON 見本だけ。`validateStep` へリジェクト条件は足さない。
+   */
+  it("授業中の問いは対象を名指しし、短い Q 行を板書に残す", () => {
+    const boardJa = getPrompt("senpai_board", "ja").body;
+    const boardEn = getPrompt("senpai_board", "en").body;
+    const englishLessonJa = getPrompt("senpai_board_english", "ja").body;
+    const conversationJa = getPrompt("senpai_conversation", "ja").body;
+    const conversationEn = getPrompt("senpai_conversation", "en").body;
+    const fewShotJa = getPrompt("question_types_few_shot", "ja").body;
+    const fewShotEn = getPrompt("question_types_few_shot", "en").body;
+
+    for (const body of [boardJa, englishLessonJa, conversationJa]) {
+      expect(body).toContain("板書の場所か記号");
+      for (const vagueCheck of ["「おかしくない?」", "「いい?」", "「合ってる?」"]) {
+        expect(body).toContain(vagueCheck);
+      }
+    }
+    expect(fewShotJa).toContain("板書の場所か記号を名指しする");
+
+    for (const body of [boardEn, conversationEn]) {
+      expect(body).toMatch(/name(?:s)? the board location or symbol/i);
+      for (const vagueCheck of ['"Anything odd?"', '"Okay?"', '"Is that right?"']) {
+        expect(body).toContain(vagueCheck);
+      }
+    }
+    expect(fewShotEn).toContain("names its board location or symbol");
+
+    for (const body of [boardJa, boardEn, englishLessonJa]) {
+      expect(body).toMatch(/"board": \{ "kind": "text", "body": "Q:/);
+      /**
+       * **`board: null` のまま残してよいのは、教え返しへ渡す手順だけ。**
+       *
+       * 統合時にここが2件へ増えていた —— #148 が足した「前提へ戻ってから教え上がる」
+       * 見本の締めの問いが `board: null` のままだったため。前提から戻った先の問いは
+       * **授業中の問いかけ**なので、聞き逃しても答える場所が残る `Q:` 行が要る。
+       * ここが増えたら、また授業中の問いが `board: null` に戻っている合図。
+       */
+      expect(body.match(/"board": null,\s*"awaits_student": true/g) ?? []).toHaveLength(1);
+    }
+
+    expect(boardJa).toContain('"body": "Q: 2行目の D はいくつ?"');
+    expect(boardEn).toContain('"body": "Q: what is D on line 2?"');
+    expect(englishLessonJa).toContain('"body": "Q: have lived はいつまで続く?"');
+  });
+
+  it("返事が無いときは1段具体化し、それでも無ければ自分で答える", () => {
+    for (const body of [
+      getPrompt("senpai_board", "ja").body,
+      getPrompt("senpai_board_english", "ja").body,
+    ]) {
+      expect(body).toContain("同じ問いを言い直しません");
+      expect(body).toContain("二択");
+      expect(body).toContain("それでも返事が無ければ");
+      expect(body).toContain("軽く自分で答えて先へ進みます");
+    }
+
+    const en = getPrompt("senpai_board", "en").body;
+    expect(en).toContain("do not repeat or rephrase the same question");
+    expect(en).toContain("give two choices");
+    expect(en).toContain("If there is still no reply");
+    expect(en).toContain("say the answer lightly yourself and move on");
   });
 
   it("先輩のプロンプトは音声ヒントを同梱し、英語版に日本語が混ざらない", () => {

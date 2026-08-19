@@ -172,6 +172,10 @@ class AppStrings {
   /// ここでユーザーが選んでいるのは「教わる」こと。
   String get homeLesson => _pick('先輩に教わる', 'Get taught by your senpai');
 
+  /// 日次の持ち時間。先輩の発話ではなく、ホームの状態表示としてだけ数字を出す。
+  String homeRemainingMinutes(int minutes) =>
+      _pick('今日の残り $minutes分', '$minutes min left today');
+
   /// 数字を含む全文。祝福画面のように**文字だけで数を見せる**場所と、
   /// ホームのカウンターの読み上げ(`Semantics(label:)`)で使う。
   String streakDays(int days) => _pick('$days日つづけて説明中', '$days-day streak');
@@ -193,12 +197,10 @@ class AppStrings {
 
   /// 今日はもう授業をしない、という**先輩の判断**(§6-3)。
   ///
-  /// 「本日の残り回数 0/3」とは書かない。数字を見せた瞬間に不満になるし、
-  /// 見えていれば残りの使い道を計算し始める。上限は制限ではなく
-  /// 「詰め込みすぎても入らない」という先生の判断として出す。
+  /// 残り時間はホームに別途出すが、上限への到達は先輩が学習を締める言い方のままにする。
   String get lessonEnoughForToday => _pick(
-        '今日はここまでにしよっか。詰め込みすぎても入らないから。明日また続きやろう。',
-        "Let's call it a day. Cramming more won't stick — we'll pick this up tomorrow.",
+        '今日の持ち時間は使い切ったよ。明日また続きやろう。',
+        "You've used today's lesson time. Let's pick this up again tomorrow.",
       );
 
   /// 上の判断の隣に置く、契約への道。
@@ -227,7 +229,7 @@ class AppStrings {
   /// シャッターの前に立っていた(`capture_screen.dart` のコメント)。
   String get captureChooseTitle => _pick('何が手元にある?', 'What do you have?');
 
-  /// 解析はセッションを作る = 今日の1回を使う操作なので、その前に一度だけ挟む。
+  /// 解析はVision LLMの原価が発生するので、その前に一度だけ確認を挟む。
   String get captureReviewTitle => _pick('撮れました', 'Got it');
 
   /// 1枚も撮っていないときのヒント。**ノートが無いことを、先に許しておく。**
@@ -367,10 +369,21 @@ class AppStrings {
   String get captureProblemNotRead =>
       _pick('問題文は読み取れませんでした', "We couldn't read the question");
 
+  /// `not_found` — 問題の指示まで写真に入っていない/読めない。
+  String get captureProblemNotReadGuidance => _pick(
+        '次に撮るなら、問題文が端まで写るようにすると読み取りやすくなります',
+        'Next time, include the whole question in the shot so it is easier to read',
+      );
+
   /// `too_long` — 紙面を丸ごと撮っている。
   String get captureProblemTooLong => _pick(
         'ページ全体が写っていたようで、問題文を絞り込めませんでした',
         "That looked like a whole page, so we couldn't pin down the question",
+      );
+
+  String get captureProblemTooLongGuidance => _pick(
+        '次に撮るなら、問題の部分だけを切り抜くと読み取りやすくなります',
+        'Next time, crop to just the question so it is easier to read',
       );
 
   /// `solution_included` — 解答・解説まで写っている。
@@ -380,10 +393,20 @@ class AppStrings {
         'The answer was in the shot too, so we left it out',
       );
 
+  String get captureProblemHadSolutionGuidance => _pick(
+        '次に撮るなら、解答が写らないように問題だけを入れると読み取りやすくなります',
+        'Next time, keep the answer out and include only the question so it is easier to read',
+      );
+
   /// `not_a_problem` — 式だけで、何を問われているかが無い。
   String get captureProblemNotAQuestion => _pick(
         '式だけで、何を聞かれているかまでは読み取れませんでした',
         'We only got the expression, not what it asks you to do',
+      );
+
+  String get captureProblemNotAQuestionGuidance => _pick(
+        '次に撮るなら、「〜を求めよ」まで入れると読み取りやすくなります',
+        'Next time, include the instruction such as “solve” or “find” so it is easier to read',
       );
 
   /// 上の行に続けて、**直すと何が変わるか**だけを言う。
@@ -393,6 +416,13 @@ class AppStrings {
   String get captureProblemFixHint => _pick(
         '入れておくと、先輩が最初に聞き直しません',
         'Type it in and your senpai will not have to ask you for it',
+      );
+
+  /// 問題文が空のまま開始できることと、その結果を開始ボタンの直前で明示する。
+  /// **止める文言にはしない。** 2枚目の写真を事実上の必須へ戻さないため。
+  String get captureProblemStartWarning => _pick(
+        'このまま始めると、最初に先輩が問題を聞き直します',
+        'If you start as-is, your senpai will ask you for the question first',
       );
 
   /// 打ち込む欄のプレースホルダ。**解答を入れないことだけ先に言う。**
@@ -463,6 +493,13 @@ class AppStrings {
   /// (コアループ §2「じゃあ今の、説明してみて」)。
   String get sessionExplainBack => _pick('説明してみて', 'Now you explain it');
 
+  /// 類題を解いている間だけ出す本人申告。正誤の採点には使わない。
+  String get sessionSolving => _pick('この問題を解いてみて', 'Try this problem');
+  String get sessionSolved => _pick('できた', 'I did it');
+  String get sessionStuck => _pick('できなかった', "I couldn't do it");
+  String get sessionSolvedMessage => _pick('できた', 'I did it');
+  String get sessionStuckMessage => _pick('できなかった', "I couldn't do it");
+
   /// 授業中に出す問題文の見出し(ワイヤー v2 の1つ目)。
   ///
   /// **撮影画面の `captureProblemTitle` とは別の文言にする。**あちらは
@@ -475,6 +512,21 @@ class AppStrings {
   /// (契約の上限は600字で、全文を出すと板書が画面外へ出る)。
   String get sessionProblemExpand => _pick('続きを読む', 'Read more');
   String get sessionProblemCollapse => _pick('畳む', 'Show less');
+
+  /// 会話中に、次に扱う問題の紙面を撮る。本人の発話ではなく制御経路で先輩へ伝える。
+  String get sessionAddProblem => _pick('問題を追加', 'Add a problem');
+  String get sessionAddingProblem =>
+      _pick('問題を見ています…', 'Looking at the problem…');
+  String get sessionProblemPhotoFailed => _pick(
+    '問題を読み取れませんでした。今の問題はそのまま続けられます。',
+    "We couldn't read that problem. You can keep working on the current one.",
+  );
+  String get sessionProblemNotificationFailed => _pick(
+    '問題は読み取れましたが、先輩への連絡が届きませんでした。',
+    "We read the problem, but couldn't notify your senpai.",
+  );
+  String get sessionProblemNotificationRetry =>
+      _pick('先輩にもう一度伝える', 'Notify again');
 
   /// 板書がとぎれたとき(封筒の欠落・順序違反を検知した)。
   ///
@@ -723,10 +775,9 @@ class AppStrings {
 
   /// Premium のセッション枠。
   ///
-  /// **「何問でも」と書いてはいけない。**`PREMIUM_SESSIONS_PER_DAY` の
+  /// **「何問でも」と書いてはいけない。** `PREMIUM_SECONDS_PER_DAY` の
   /// フェアユース上限があるので、無制限を約束すると**買ったあとにAPIが断る**。
-  /// §6-3 が数字を隠せと言っているのは**利用中の残数表示**の話であって、
-  /// 買うかどうかを決める場所で嘘をついてよいという意味ではない
+  /// ホームでは残り時間を見せるが、購入画面でも「無制限」と誤認させない。
   /// (HAMM の「誠実なペイウォール」に正面から反する)。
   /// 通常利用では一度も当たらない上限なので、**当たらないことを言う**。
   String get paywallEverydayQuestions => _pick('毎日、続けて何問も', 'Several questions a day');
@@ -757,7 +808,7 @@ class AppStrings {
   /// 買った。素直にお礼を言っていい唯一のケース。
   String get thanksTitle => _pick('ありがとうございます', 'Thank you');
   String get thanksBody =>
-      _pick('これから、いくらでも聞きます。', 'From now on, ask me as much as you like.');
+      _pick('これから、もっと長く話せます。', 'Now we have more lesson time together.');
 
   /// 無料トライアルが始まった。**お礼ではなく、事実から書く。**
   String thanksTrialTitle(int days) =>
@@ -778,7 +829,7 @@ class AppStrings {
 
   /// 解放されたもの。ペイウォールの比較表と同じ3つを、同じ順で出す。
   String get thanksUnlockedSessions =>
-      _pick('1日1回の上限がなくなりました', 'The once-a-day limit is gone');
+      _pick('今日の持ち時間が増えました', 'More lesson time each day');
   String get thanksUnlockedHistory =>
       _pick('埋めた穴が、ぜんぶ残ります', 'Every gap you fill stays on record');
   String get thanksUnlockedFollowup =>
@@ -919,8 +970,12 @@ class AppStrings {
   /// 英語の例文の読み上げ。**下線は音にならない**ので、focus を言葉にする。
   String boardSpeechSentence(String text, String gloss, String focus) {
     final StringBuffer buffer = StringBuffer(text);
-    if (gloss.isNotEmpty) buffer.write(_pick('。訳は $gloss', '. Meaning: $gloss'));
-    if (focus.isNotEmpty) buffer.write(_pick('。注目するのは $focus', '. The focus is $focus'));
+    if (gloss.isNotEmpty) {
+      buffer.write(_pick('。訳は $gloss', '. Meaning: $gloss'));
+    }
+    if (focus.isNotEmpty) {
+      buffer.write(_pick('。注目するのは $focus', '. The focus is $focus'));
+    }
     return buffer.toString();
   }
 

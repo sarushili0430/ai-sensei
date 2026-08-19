@@ -7,8 +7,8 @@ import '../domain/karte.dart';
 
 part 'karte_controllers.g.dart';
 
-/// ホーム画面が読む進捗。カウンター(連続日数・埋めた穴)と、今日の授業可否。
-/// 数えるのは連続日数と埋めた穴だけで、授業回数や点数は持たない。
+/// ホーム画面が読む進捗。カウンター(連続日数・埋めた穴)と、今日の残り時間。
+/// 学習成果として数えるのは連続日数と埋めた穴だけで、授業回数や点数は持たない。
 @Riverpod(keepAlive: true)
 class ProgressController extends _$ProgressController {
   @override
@@ -22,15 +22,18 @@ class ProgressController extends _$ProgressController {
     );
   }
 
-  /// セッション作成後の可否を、そのレスポンスから引き継ぐ。
-  ///
-  /// 回数から推測しない。セッションを作った時点でサーバが返した真偽値が、
-  /// その授業のあとにもう一度始められるかを表している。
-  void applyLessonAllowance(bool lessonAllowedToday) {
+  /// `/start` の仮押さえ後の残高と可否を、サーバの応答からそのまま引き継ぐ。
+  void applySessionLimits({
+    required int maxSeconds,
+    required int remainingSecondsToday,
+    required bool lessonAllowedToday,
+  }) {
     final ProgressSummary previous = state.value ?? ProgressSummary.empty;
     state = AsyncValue<ProgressSummary>.data(
       previous.copyWith(
         limits: previous.limits.copyWith(
+          maxSeconds: maxSeconds,
+          remainingSecondsToday: remainingSecondsToday,
           lessonAllowedToday: lessonAllowedToday,
         ),
       ),
@@ -38,7 +41,7 @@ class ProgressController extends _$ProgressController {
   }
 
   /// セッション直後は、サーバが返した進捗をそのまま反映する(再取得しない)。
-  /// 授業可否はセッション作成時に [applyLessonAllowance] で反映済み。
+  /// 授業可否はセッション開始時に [applySessionLimits] で反映済み。
   void applyFromSession(Progress progress) {
     final ProgressSummary previous = state.value ?? ProgressSummary.empty;
     state = AsyncValue<ProgressSummary>.data(
@@ -120,6 +123,13 @@ class SessionOutcomeController extends _$SessionOutcomeController {
     ref
         .read(progressControllerProvider.notifier)
         .applyFromSession(result.progress);
+    ref
+        .read(progressControllerProvider.notifier)
+        .applySessionLimits(
+          maxSeconds: result.limits.maxSeconds,
+          remainingSecondsToday: result.limits.remainingSecondsToday,
+          lessonAllowedToday: result.limits.lessonAllowedToday,
+        );
     // keepAliveの復習キューには、前回読んだopen状態が残りうる。カルテ画面で
     // 「今回と重なる過去の穴」を選ぶ前に、完了後の状態を取り直させる。
     ref.invalidate(reviewControllerProvider);

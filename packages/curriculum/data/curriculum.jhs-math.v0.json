@@ -283,7 +283,7 @@
         "分母の有理化がなぜ必要かを説明できる",
         "有理数と無理数を区別して判断できる"
       ],
-      "prerequisites": ["J1-KAZUSHIKI-SOINSU"],
+      "prerequisites": ["J1-KAZUSHIKI-SOINSU", "J1-KAZUSHIKI-SEIFU"],
       "keywords": ["平方根", "根号", "√", "有理数", "無理数", "有理化", "近似値"]
     },
     {

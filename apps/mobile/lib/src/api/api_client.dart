@@ -42,7 +42,7 @@ class ApiClient {
   /// 写真を送ってセッションを作る。復習(kind=review)では写真を送らない。
   ///
   /// **返るのは解析の結果だけで、部屋の鍵は入っていない。**
-  /// 今日の1回を使うのは [startSession](= 会話が始まったとき)なので、
+  /// 日次の持ち時間を押さえるのは [startSession](= 会話が始まったとき)なので、
   /// ここまでは何度でも撮り直せる。
   ///
   /// **2枚の写真は別のパートで送る。寿命が違うから**(`api.ts` の `sessionPhotoParts`):
@@ -106,6 +106,41 @@ class ApiClient {
     return SessionAnalysis.fromJson(_decode(response));
   }
 
+  /// 会話中に、次に扱う問題の紙面を追加する。
+  ///
+  /// `problem_photo` だけを送り、ノート用の `photo` には絶対に入れない。
+  /// 紙面はサーバで解析後に破棄される。許可単元は送らず、解析結果からサーバが
+  /// `buildAllowedTopics` を通し直すので、端末から会話範囲を広げる口にはならない。
+  Future<AddedSessionProblem> addSessionProblemPhoto({
+    required String sessionId,
+    required File problemPhoto,
+    String locale = 'ja',
+    String schoolStage = 'high_school',
+  }) async {
+    final http.MultipartRequest request =
+        http.MultipartRequest(
+            'POST',
+            Uri.parse('$baseUrl/v1/sessions/$sessionId/problem-photo'),
+          )
+          ..headers.addAll(_headers)
+          ..fields['meta'] = jsonEncode(<String, dynamic>{
+            'locale': locale,
+            'school_stage': schoolStage,
+          })
+          ..files.add(
+            await http.MultipartFile.fromPath(
+              'problem_photo',
+              problemPhoto.path,
+              contentType: MediaType('image', 'jpeg'),
+            ),
+          );
+
+    final http.Response response = await http.Response.fromStream(
+      await _client.send(request),
+    ).timeout(_uploadTimeout);
+    return AddedSessionProblem.fromJson(_decode(response));
+  }
+
   /// チップUIで外した単元をサーバへ反映する。
   ///
   /// セッションは作り直さない。作り直すと同じ写真をもう一度Vision LLMに通すことになり、
@@ -164,14 +199,14 @@ class ApiClient {
     return SessionAnalysis.fromJson(_decode(response));
   }
 
-  /// 会話を始める。**ここで今日の1回を使う。**
+  /// 会話を始める。**ここで日次の持ち時間を仮押さえする。**
   ///
   /// 部屋の鍵はこの応答にしか無い。枠の確保とトークンの発行はサーバ側の
-  /// 同じ1操作なので、鍵が返ってきたなら枠は取れているし、取れなければ
+  /// 同じ1操作なので、鍵が返ってきたなら時間は取れているし、取れなければ
   /// `free_limit_reached` / `fair_use_limit_reached` が返る。
   ///
-  /// **同じセッションで押し直しても二重には数えない**(サーバが最初に押さえた
-  /// 枠のままトークンだけ出し直す)ので、通信が切れたときはそのまま再送してよい。
+  /// **同じセッションで押し直しても二重には確保しない**(サーバが最初に押さえた
+  /// 時間のままトークンだけ出し直す)ので、通信が切れたときはそのまま再送してよい。
   Future<SessionStart> startSession({
     required String sessionId,
     String locale = 'ja',
@@ -334,6 +369,7 @@ class ApiException implements Exception {
   bool get isPremiumRequired => code == 'premium_required';
   bool get isPhotoUnreadable =>
       code == 'photo_unreadable' || code == 'out_of_scope';
+  bool get isProblemPhotoLimitReached => code == 'problem_photo_limit_reached';
   bool get isHoleNotFound => code == 'hole_not_found';
 
   /// セッションが消えている(他人のもの・完了済み・上限時間を過ぎた押し直し)。

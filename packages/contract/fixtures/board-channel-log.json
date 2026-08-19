@@ -41,9 +41,9 @@
       "type": "board_step",
       "step": {
         "index": 2,
-        "speech": "そう。じゃあ今の、自分の言葉で説明してみて。",
-        "board": null,
-        "awaits_student": true
+        "speech": "じゃあ、数だけ替えたこの問題はどうなる? 解けたら教えて。",
+        "board": { "kind": "latex", "tex": "x^2 - 5x + 6 = 0" },
+        "awaits_solving": true
       }
     },
     {

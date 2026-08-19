@@ -20,7 +20,8 @@ export type UserRecord = {
  * 単元を絞り込んだあとにトークンを出し直すとき、写真をもう一度
  * 解析しないで済むように、解析の結果をセッションに残しておく。
  */
-export type SessionContext = {
+/** 1問ぶんの解析結果。問題写真そのものは含めない(解析後に破棄するため)。 */
+export type SessionMaterialContext = {
   summary: string;
   /**
    * 解析が読み取った問題。読めなければ null。
@@ -50,6 +51,21 @@ export type SessionContext = {
   question_seeds: string[];
   /** 検出時の確信度。チップUIの表示を、単元を絞ったあとも同じに保つ。 */
   topics: { topic_id: string; confidence: number }[];
+  /** この問題にノート写真があったか。追加の問題写真だけなら false。 */
+  has_notes_photo?: boolean;
+};
+
+export type SessionContext = SessionMaterialContext & {
+  /**
+   * 会話中の差し替え版。初期解析を1とし、問題を足すたび1つ進める。
+   * 古い行には無いので省略可能。読む側は1として扱う。
+   */
+  revision?: number;
+  /**
+   * セッションで扱った問題の列。カルテはセッション1本のままなので、過去の問題を
+   * 捨てずに追記する。一方、上の直下フィールドは「いま教える問題」を指す。
+   */
+  materials?: SessionMaterialContext[];
 };
 
 export type SessionRecord = {
@@ -76,36 +92,65 @@ export type SessionRecord = {
   /**
    * 会話が始まった時刻。まだ始まっていなければ null。
    *
-   * **1日の回数はこの列で数える。** 行が在ることではない — 写真を読んだだけの
-   * セッションは行にはなるが、先輩とは1度も話していない。
+   * **日次の持ち時間と開始回数ガードはこの列を起点に数える。** 行が在ることではない —
+   * 写真を読んだだけのセッションは行にはなるが、先輩とは1度も話していない。
    */
   started_at: string | null;
+  /**
+   * `/start` がその回に仮押さえした秒数。開始前は null。
+   * 旧データの null は、従来の1回上限1200秒として読む。
+   */
+  max_seconds: number | null;
+  /**
+   * 日次の持ち時間を実績へ精算した時刻。
+   * `/complete` が来ない回も、トークンの寿命を過ぎたら仮押さえ額で埋める。
+   */
+  quota_settled_at: string | null;
+  /** 初回解析を含む、このセッションで使った解析枠。 */
+  analysis_count: number;
 };
 
 /**
- * 授業枠(= 会話を1回する権利)の確保の結果。
- * **数えてから入れるのではなく、入れられたかどうかで判定する。**
+ * `max_seconds` を保存していなかった旧セッションの復元値。
+ * 移行前の1回上限が無料・Premiumとも1200秒だったため。
+ */
+export const legacySessionMaxSeconds = 1200;
+
+export type DailySessionUsage = {
+  /** 完了は実績、進行中は仮押さえを合計した秒数。 */
+  consumedSeconds: number;
+  /** 異常利用ガードのための開始回数。 */
+  sessionsStarted: number;
+};
+
+/**
+ * 日次の持ち時間を確保した結果。
+ * **使用量を読んでから別操作で書くのではなく、書けたかどうかで判定する。**
  *
- * 数えた件数ではなく `started` を返すのは、呼び出し側に「まだ空いているか」を
- * 判断させないため。件数を渡すと、そこからもう一度上限と比べる書き方に戻れてしまう。
+ * `started` を返すのは、呼び出し側に「まだ空いているか」を判断させないため。
+ * 使用量を返して再判定させると、読み取りと書き込みを分ける実装へ戻れてしまう。
  */
 export type SessionStartResult =
   | {
       started: true;
       /**
-       * 押さえたのは今回ではなく、前に押さえた枠のまま。
+       * 押さえたのは今回ではなく、前に押さえた時間のまま。
        *
        * 通信が切れて押し直したとき、同じセッションの2度目をここで区別する。
-       * 二重に数えないための印で、呼び出し側はトークンだけ出し直せばよい。
+       * 二重に確保しないための印で、呼び出し側はトークンだけ出し直せばよい。
        */
       alreadyStarted: boolean;
       /**
-       * 押さえた分を含む、その日の本数。
+       * 押さえた分を含む、その日の開始回数。
        *
        * 上限の判定には使わない(判定はもう終わっている)。`lesson_allowed_today` =
        * 「今日もう一度始められるか」を組み立てるためだけの値。
        */
       sessionsToday: number;
+      /** このセッションに原子的に確保できた秒数。 */
+      maxSeconds: number;
+      /** 今回の仮押さえ後に残っている当日の秒数。 */
+      remainingSecondsToday: number;
     }
   | { started: false };
 
@@ -178,19 +223,27 @@ export type Repository = {
   }): Promise<void>;
 
   /**
-   * その日に**会話が始まった**セッションの本数。
-   *
-   * 表示と事前案内のためのもので、枠の判定には使わないこと。数えてから入れると、
-   * 同時実行が同じ件数を見て上限を抜ける。
+   * 当日の使用済み時間。完了は `duration_seconds`、進行中は `max_seconds`を数える。
+   * 表示と事前案内用で、確保の判定は必ず {@link Repository.startSession} の1操作で行う。
    */
-  countStartedSessionsOnDate(deviceId: string, localDate: string): Promise<number>;
+  getDailySessionUsage(deviceId: string, localDate: string): Promise<DailySessionUsage>;
+  /**
+   * `/complete` が来ない開始済みセッションを、仮押さえ額で自動精算する。
+   * 壊れた `started_at` も再入室できないので、漏れを避ける側へ倒す。
+   * 会話実績やカルテは無いので `status` は completed にせず、streakには混ぜない。
+   */
+  settleExpiredSessions(input: {
+    deviceId: string;
+    now: string;
+    graceSeconds: number;
+  }): Promise<number>;
   /**
    * セッション行を作る道はこの操作だけにする。上限の確認と作成を分ける道を残すと、
    * 将来また「数えてから入れる」が書けてしまうため。
    *
-   * **ここで押さえるのは授業の枠ではなく、写真解析の枠。** 授業の枠は
+   * **ここで押さえるのは持ち時間ではなく、写真解析の枠。** 持ち時間は
    * {@link Repository.startSession} が会話の開始時に押さえる。この上限は
-   * 1日の授業回数よりずっと緩く、解析だけを延々と繰り返してVisionの原価を
+   * 想定する授業本数よりずっと緩く、解析だけを延々と繰り返してVisionの原価を
    * 積む使い方だけを止める。
    */
   createSession(input: {
@@ -199,7 +252,7 @@ export type Repository = {
     maxAnalysesPerDay: number;
   }): Promise<boolean>;
   /**
-   * 会話の開始。**授業枠の確保とこの記録は1操作**にする。
+   * 会話の開始。**持ち時間の確保とこの記録は1操作**にする。
    *
    * 分けて書くと、同時に始めた2本が同じ「まだ空いている」を見て両方通る。
    * `localDate` も一緒に書き直すのは、数える日を「会話が始まった日」に
@@ -210,9 +263,37 @@ export type Repository = {
     deviceId: string;
     startedAt: string;
     localDate: string;
-    /** その日に許す授業の本数(無料1 / Premium 3)。 */
-    maxPerDay: number;
+    /** その日に使える合計秒数。 */
+    secondsPerDay: number;
+    /** 1回の最長秒数。残高のほうが小さければそちらを確保する。 */
+    sessionMaxSeconds: number;
+    /** これ未満の残高では、締めまで成立しないので始めない。 */
+    minimumSessionSeconds: number;
+    /** 持ち時間とは別の、1日の開始連打ガード。 */
+    maxStartsPerDay: number;
   }): Promise<SessionStartResult>;
+  /**
+   * 会話中の追加解析枠を条件付きで1つ押さえる。同時押しでも上限を越えない1操作。
+   */
+  reserveSessionAnalysis(input: {
+    sessionId: string;
+    deviceId: string;
+    localDate: string;
+    maxAnalysesPerSession: number;
+    maxAnalysesPerDay: number;
+  }): Promise<boolean>;
+  /** 写真を読めず解析が成立しなかったとき、押さえた追加枠を返す。 */
+  releaseSessionAnalysis(sessionId: string): Promise<void>;
+  /**
+   * 追加解析の結果を、読んだrevisionがまだ最新のときだけ書き戻す。
+   * falseなら呼び出し側は最新を読み直してマージし、同時更新を取りこぼさない。
+   */
+  updateSessionContextIfRevision(input: {
+    sessionId: string;
+    expectedRevision: number;
+    topicIds: string[];
+    context: SessionContext;
+  }): Promise<boolean>;
   /** 写真解析のあとに、確定した単元と写真キー、会話の文脈を書き戻す。 */
   updateSessionTopics(input: {
     sessionId: string;
@@ -220,7 +301,7 @@ export type Repository = {
     photoKey: string | null;
     context: SessionContext | null;
   }): Promise<void>;
-  /** 解析に失敗したときに予約を取り消す(無料枠を無駄に消費させないため)。 */
+  /** 解析に失敗したときに予約を取り消す(解析枠を無駄に消費させないため)。 */
   deleteSession(sessionId: string): Promise<void>;
   getSession(sessionId: string): Promise<SessionRecord | null>;
   completeSession(input: {

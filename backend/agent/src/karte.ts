@@ -44,6 +44,10 @@ export async function buildKarte({
 }: BuildKarteOptions): Promise<KarteDraft> {
   const system = karteSystemPrompt(
     {
+      // 読み上げで補った問題文も同じセッション文脈に入る。カルテ側では
+      // 「何について話したか」の照合にだけ使い、説明できた証拠にはしない
+      // (`karte_generation.*.md` がその線引きを持つ)。
+      problem_text: context.problem_text,
       photo_summary: context.photo_summary,
       allowed_topics: context.allowed_topics,
       transcript: renderTranscript(transcript, context.locale),
@@ -123,6 +127,18 @@ export function withUncertaintyHole(
 
   const said = findUncertaintyUtterances(transcript);
   if (said.length === 0) return karte;
+
+  /**
+   * **会話中に問題を差し替えたセッションでは、この推測を打たない。**
+   *
+   * transcript は全部の問題ぶんが1本に並ぶのに、`allowed_topic_ids` は
+   * **最後の問題のもの**しか持っていない(発話に単元の境界が無い)。
+   * そのまま先頭のIDを付けると、1問目で言った「わからない」が2問目の単元の穴になり、
+   * **本人が触れていない単元の復習**が1/3/7日後に届く。誤った単元へ連れて行くくらいなら、
+   * ここは黙るほうがまだ直せる —— `/complete` が `review_outcome` を推測で立てないのと
+   * 同じ判断。LLMが穴を書けていれば従来どおり通る(上の早期returnで抜けている)。
+   */
+  if ((context.context_revision ?? 1) > 1) return karte;
 
   const topicId = primaryTopicId(context);
   if (topicId === undefined) return karte;

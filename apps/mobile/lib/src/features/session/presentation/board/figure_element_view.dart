@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../../telemetry/telemetry.dart';
 import 'board_style.dart';
 
 /// 作図を描く。**中身はサーバが解いて描いたSVG**で、ここは表示するだけ。
@@ -22,13 +23,17 @@ import 'board_style.dart';
 /// 収まり、板書の1手順としては大きすぎない。**上限だけは持たせる** —
 /// 縦長の図(数直線を縦に積んだものなど)が来たときに、1手順で画面を埋めないため。
 class FigureElementView extends StatelessWidget {
-  const FigureElementView({required this.svg, super.key});
+  const FigureElementView({required this.svg, this.onSvgError, super.key});
 
   /// 図1つに渡す高さの上限。板書は積み上がるので、1手順が画面を占めると
   /// 前の行が押し出されて見えなくなる。
   static const double maxHeight = 260;
 
   final String svg;
+
+  /// テストで、`flutter_svg` の失敗経路まで通ったことを観測するための口。
+  /// 本番の記録は常に [Telemetry.report] が行い、このコールバックへ本文は渡さない。
+  final ValueChanged<Object>? onSvgError;
 
   @override
   Widget build(BuildContext context) {
@@ -50,6 +55,17 @@ class FigureElementView extends StatelessWidget {
           // 授業の途中で画面が落ちるより、その1行が抜けるほうが軽い
           // (`board.ts` の「壊れたら止まる。ただし今あるものは消さない」と同じ判断)。
           placeholderBuilder: (BuildContext context) => const SizedBox.shrink(),
+          errorBuilder: (BuildContext context, Object error, StackTrace stackTrace) {
+            onSvgError?.call(error);
+            // SVG本文は未成年の問題内容を含みうる。長さと例外型だけを送る。
+            Telemetry.report(
+              DegradationEvent.figureSvgFailed(
+                svgLength: svg.length,
+                error: error.runtimeType,
+              ),
+            );
+            return const SizedBox.shrink();
+          },
         ),
       ),
     );

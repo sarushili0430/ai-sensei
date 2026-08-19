@@ -208,7 +208,7 @@ void main() {
       }
       // 部屋の鍵が出るのは会話の開始だけ。**解析の応答には載せない** —
       // 載せると、鍵を持っている = いつでも始められる になり、
-      // 回数を会話の開始で数える形が画面のテストからも見えなくなる。
+      // 持ち時間を会話の開始で押さえる形が画面のテストからも見えなくなる。
       final Map<String, dynamic> body = request.url.path.endsWith('/start')
           ? <String, dynamic>{
               'session_id': 'ses_1',
@@ -218,7 +218,11 @@ void main() {
                 'token': 'token',
                 'room': 'ses_1',
               },
-              'limits': <String, dynamic>{'max_seconds': 1200, 'lesson_allowed_today': false},
+              'limits': <String, dynamic>{
+                'max_seconds': 1200,
+                'remaining_seconds_today': 0,
+                'lesson_allowed_today': false,
+              },
             }
           : <String, dynamic>{
               'session_id': 'ses_1',
@@ -343,7 +347,7 @@ void main() {
     expect(find.text(ja.captureAddProblem), findsOneWidget);
   });
 
-  testWidgets('撮ったら、解析の前に一度止まる(今日の1回を使う前)', (WidgetTester tester) async {
+  testWidgets('撮ったら、解析の前に一度止まる(Vision原価が発生する前)', (WidgetTester tester) async {
     final List<http.BaseRequest> calls = <http.BaseRequest>[];
     await pumpCapture(tester, calls: calls);
     await takeNotes(tester);
@@ -550,14 +554,17 @@ void main() {
   ///
   /// **直せる口と同時に出すなら、警告にならない。** その場で終わる話になる。
   group('問題文が読めなかったとき', () {
-    testWidgets('黙って進めず、直せる口と一緒にそう言う', (WidgetTester tester) async {
+    testWidgets('黙って進めず、打ち直し欄を最初から主導線として出す', (WidgetTester tester) async {
       await pumpCapture(tester);
       await takeNotes(tester);
 
       await startLesson(tester);
 
       expect(find.text(ja.captureProblemNotRead), findsOneWidget);
-      expect(find.text(ja.captureProblemAdd), findsOneWidget);
+      expect(find.text(ja.captureProblemNotReadGuidance), findsOneWidget);
+      expect(find.byType(TextField), findsOneWidget);
+      expect(find.text(ja.captureProblemFixHint), findsOneWidget);
+      expect(find.text(ja.captureProblemStartWarning), findsOneWidget);
       // 読み合わせの見出しは出ない(読めていないので、見せる本文が無い)。
       expect(find.text(ja.captureProblemTitle), findsNothing);
       // 行き止まりにもしない。単元の確認まで進んでいる。
@@ -572,6 +579,7 @@ void main() {
       await startLesson(tester);
 
       expect(find.text(ja.captureProblemTooLong), findsOneWidget);
+      expect(find.text(ja.captureProblemTooLongGuidance), findsOneWidget);
       expect(find.text(ja.captureProblemNotRead), findsNothing);
     });
 
@@ -581,6 +589,16 @@ void main() {
       await startLesson(tester);
 
       expect(find.text(ja.captureProblemHadSolution), findsOneWidget);
+      expect(find.text(ja.captureProblemHadSolutionGuidance), findsOneWidget);
+    });
+
+    testWidgets('式だけだったときは、設問の指示まで入れるよう案内する', (WidgetTester tester) async {
+      await pumpCapture(tester, problemOutcome: 'not_a_problem');
+      await takeNotes(tester);
+      await startLesson(tester);
+
+      expect(find.text(ja.captureProblemNotAQuestion), findsOneWidget);
+      expect(find.text(ja.captureProblemNotAQuestionGuidance), findsOneWidget);
     });
 
     /// サーバが落ち方を増やしても、確認画面ごと落ちない。
@@ -603,10 +621,12 @@ void main() {
     Future<void> typeProblem(
       WidgetTester tester,
       String text, {
-      required String opener,
+      String? opener,
     }) async {
-      await tester.tap(find.text(opener));
-      await tester.pumpAndSettle();
+      if (opener != null) {
+        await tester.tap(find.text(opener));
+        await tester.pumpAndSettle();
+      }
       await tester.enterText(find.byType(TextField), text);
       await tester.pumpAndSettle();
       await tester.tap(find.text(ja.captureProblemSave));
@@ -619,7 +639,7 @@ void main() {
       await takeNotes(tester);
       await startLesson(tester);
 
-      await typeProblem(tester, typed, opener: ja.captureProblemAdd);
+      await typeProblem(tester, typed);
 
       expect(find.text(ja.captureProblemTitle), findsOneWidget);
       expect(find.text(typed), findsOneWidget);
@@ -635,7 +655,7 @@ void main() {
       await takeNotes(tester);
       await startLesson(tester);
 
-      await typeProblem(tester, typed, opener: ja.captureProblemAdd);
+      await typeProblem(tester, typed);
 
       final http.Request patched = calls.lastWhere(
         (http.BaseRequest it) => it.url.path.endsWith('/problem'),
@@ -675,8 +695,7 @@ void main() {
       await takeNotes(tester);
       await startLesson(tester);
 
-      await typeProblem(tester, 'x^2 - 3x + 2 = 0 【解答】x = 1, 2',
-          opener: ja.captureProblemAdd);
+      await typeProblem(tester, 'x^2 - 3x + 2 = 0 【解答】x = 1, 2');
 
       expect(find.text(message), findsOneWidget);
       // 打った本文も、単元のチップも残っている。
@@ -691,9 +710,6 @@ void main() {
       await takeNotes(tester);
       await startLesson(tester);
 
-      await tester.tap(find.text(ja.captureProblemAdd));
-      await tester.pumpAndSettle();
-
       final ChunkyButton button = tester.widget<ChunkyButton>(
         find.widgetWithText(ChunkyButton, ja.captureStart),
       );
@@ -705,13 +721,18 @@ void main() {
       await takeNotes(tester);
       await startLesson(tester);
 
-      await tester.tap(find.text(ja.captureProblemAdd));
-      await tester.pumpAndSettle();
       await tester.tap(find.text(ja.captureProblemCancel));
       await tester.pumpAndSettle();
 
       expect(find.byType(TextField), findsNothing);
       expect(find.text(ja.captureProblemNotRead), findsOneWidget);
+      expect(find.text(ja.captureProblemStartWarning), findsOneWidget);
+
+      // 2枚目を事実上の必須にはしない。結果を明示したうえで、空のまま進める。
+      final ChunkyButton button = tester.widget<ChunkyButton>(
+        find.widgetWithText(ChunkyButton, ja.captureStart),
+      );
+      expect(button.onPressed, isNotNull);
     });
   });
 
@@ -738,11 +759,19 @@ void main() {
   ///
   /// 解析済みの状態では [CaptureController.setPhoto] が新しい写真を捨てるので、
   /// カメラだけが何度も開いてエラーが消えない。しかも会話の開始で落ちた場合は、
-  /// サーバ側で今日の枠を押さえていることがあり、撮り直すとその1回を捨てる。
+  /// サーバ側で会話時間を押さえていることがあり、撮り直すとその仮押さえを捨てる。
   testWidgets('会話の開始で落ちたら、「もう一度」は開始をやり直す(カメラを開かない)',
       (WidgetTester tester) async {
     final List<http.BaseRequest> calls = <http.BaseRequest>[];
-    await pumpCapture(tester, calls: calls, failStart: true);
+    await pumpCapture(
+      tester,
+      calls: calls,
+      failStart: true,
+      problem: <String, dynamic>{
+        'text': 'x^2 - 3x + 2 = 0 を解け。',
+        'source': 'notes_photo',
+      },
+    );
     await takeNotes(tester);
     await startLesson(tester);
 
@@ -760,7 +789,7 @@ void main() {
 
   testWidgets('Premium のフェアユース上限は、先輩が締めて再試行させない',
       (WidgetTester tester) async {
-    const String serverMessage = '上限3回です。Premiumを購入してください。';
+    const String serverMessage = '今日の持ち時間は使い切りました。';
     await pumpCapture(
       tester,
       errorCode: 'fair_use_limit_reached',

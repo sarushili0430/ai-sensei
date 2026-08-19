@@ -62,7 +62,7 @@ void main() {
     });
 
     // **解析の応答に部屋の鍵は入らない。**入れると「鍵を持っている = いつでも
-    // 始められる」になり、回数を会話の開始で数える意味が消える。
+    // 始められる」になり、持ち時間を会話の開始で押さえる意味が消える。
     test('start-session-response.json をパースできる(部屋の鍵はこちらだけ)', () {
       final SessionStart session = SessionStart.fromJson(loadFixture('start-session-response'));
 
@@ -70,6 +70,7 @@ void main() {
       expect(session.livekit.room, session.sessionId);
       // 共有fixtureは契約の形を確かめるもの。運用上限の既定値はサーバ設定が正なので固定しない。
       expect(session.limits.maxSeconds, isPositive);
+      expect(session.limits.remainingSecondsToday, 0);
       expect(session.limits.lessonAllowedToday, isFalse);
     });
 
@@ -81,6 +82,16 @@ void main() {
       expect(analysis.detectedTopics.first.topicId, 'A2-COORD-CIRCLE');
       // チップに出るのはサーバが返す科目名。訳さずそのまま出す。
       expect(analysis.detectedTopics.first.course, 'Algebra 2');
+    });
+
+    test('会話中に追加した問題とcontext revisionを共有fixtureから読める', () {
+      final AddedSessionProblem added = AddedSessionProblem.fromJson(
+        loadFixture('add-session-problem-photo-response'),
+      );
+
+      expect(added.sessionId, isNotEmpty);
+      expect(added.problem?.text, contains('頂点'));
+      expect(added.contextRevision, 2);
     });
 
     // 問題文(§4-1 グラウンディング)。ここが落ちていると、授業の前に
@@ -162,19 +173,22 @@ void main() {
       expect(result.karte.holes, hasLength(1));
       expect(result.progress.streakDays, 3);
       expect(result.progress.filledHoles, 4);
+      expect(result.limits.remainingSecondsToday, 932);
       expect(result.showPaywall, isTrue);
     });
   });
 
   group('進捗と復習のfixture', () {
     test('progress-response.json をパースできる', () {
-      final Progress progress = Progress.fromJson(
-        loadFixture('progress-response')['progress'] as Map<String, dynamic>,
+      final ProgressSummary summary = ProgressSummary.fromJson(
+        loadFixture('progress-response'),
       );
+      final Progress progress = summary.progress;
 
       expect(progress.streakDays, 3);
       expect(progress.openHoles, 1);
       expect(progress.lastSessionDate, '2026-08-03');
+      expect(summary.limits.remainingSecondsToday, 900);
     });
 
     test('review-queue-response.json をパースできる', () {
@@ -323,7 +337,7 @@ void main() {
 
       expect(lesson.title, '判別式で解の個数を見る');
       expect(lesson.topicIds, <String>['M1-NIJI-HANBETSU']);
-      expect(lesson.steps, hasLength(7));
+      expect(lesson.steps, hasLength(8));
 
       // board が null の手順(相づち・確認)が読めているか。
       expect(lesson.steps[2].board, isNull);
@@ -333,6 +347,13 @@ void main() {
       expect((lesson.steps[0].board! as LatexElement).tex, 'x^2 - 3x + 2 = 0');
       expect(lesson.steps[1].board, isA<TextElement>());
       expect((lesson.steps[1].board! as TextElement).body, 'a = 1, b = -3, c = 2');
+
+      // 類題の手順だけが、通常の会話待ちとは別の解答待ちを申告する。
+      expect(lesson.steps.last.awaitsSolving, isTrue);
+      expect(
+        lesson.steps.where((BoardStep step) => step.awaitsSolving == true),
+        hasLength(1),
+      );
 
       // 不変条件(index の連番)は壊れていないはず。
       expect(() => ensureSequentialStepIndices(lesson), returnsNormally);
@@ -346,6 +367,7 @@ void main() {
           lesson.steps.map((BoardStep s) => s.board).whereType<BoardElement>().toList();
       expect(elements.whereType<SentenceElement>(), isNotEmpty);
       expect(elements.whereType<CompareElement>(), isNotEmpty);
+      expect(lesson.steps.last.awaitsSolving, isTrue);
 
       final SentenceElement sentence = elements.whereType<SentenceElement>().first;
       // focus は text の一部(README「JSON Schema に現れない不変条件」)。
@@ -372,6 +394,7 @@ void main() {
       expect(plot.domain.max, 4);
       expect(plot.marks, hasLength(2));
       expect(plot.marks!.first.label, 'x = 1');
+      expect(lesson.steps.last.awaitsSolving, isTrue);
 
       // fixtureのdomainは壊れていないはず(min < max)。
       expect(() => ensureValidDomain(plot.domain), returnsNormally);
@@ -391,6 +414,12 @@ void main() {
       expect(circle.center.y, 0);
       expect(circle.r, 5);
       expect(circle.labels, <String>['O', 'r = 5']);
+
+      final BoardStepMessage solvingStep = log.messages
+          .whereType<BoardStepMessage>()
+          .singleWhere((BoardStepMessage message) => message.step.awaitsSolving == true);
+      expect(solvingStep.step.awaitsSolving, isTrue);
+      expect(circleStepMessage.step.awaitsSolving, isNull);
     });
   });
 

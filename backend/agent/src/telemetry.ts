@@ -90,6 +90,8 @@ export const agentDegradations = [
   "review_hole_missing",
   /** 授業が1行も板書を出せなかった。**8/16ゲートを見る指標**(計画書 §3-4)。 */
   "lesson_empty",
+  /** 問題文があるのに音読を頼んだ、または同じ依頼を2回以上届けた。 */
+  "problem_readout_unexpected",
   /** 読み上げに失敗した。板書は出ているのに音声だけ落ちている。 */
   "say_failed",
   /** 自動割り当てが作れず定型テンプレへ落ちた。計画は届くが自動化の品質は失われている。 */

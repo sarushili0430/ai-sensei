@@ -120,29 +120,23 @@ describe("filterPlanItems", () => {
 });
 
 /**
- * 前提をどこまで許すかは設計判断。2段で止めるのは、それ以上広げても増えるトピックが
- * 少なく(2段で飽和する)、「テスト対策」ではなく「課程のやり直し」になるため。
+ * 計画には会話中の診断がない。遠い根を本人に聞かず学習日へ昇格させないため、
+ * 会話が全チェーンへ広がっても計画は2段で止める。
  */
 describe("前提をどこまで許すか", () => {
   /**
-   * **会話側と同じ値だが、追随はしない。**
-   *
-   * 当初は「計画のほうが深いはず」(単位が質問ではなく1日だから)としていたが、
-   * 会話側がプロンプトの約束どおり2段に直った時点で同じ値になった。
-   * それでも定数を分けたままにしてあるのは、**会話側は原価(セッション時間)の都合で
-   * 浅くしたくなることがある**から。そのとき計画まで黙って追随すると、
-   * 正当な復習日が範囲外として落ちはじめる。
+   * 会話は答えられる地点まで多段で切り分けるので全チェーン、計画は診断なしで
+   * 遠い根を学習日にしないため2段。同じ前提グラフでも仕事が違う。
    */
   it("会話側の深さが変わっても、計画の深さは動かない", () => {
     const plan = allowedFor(["M2-SANKAKU-HOTEISHIKI"]);
     // 三角方程式 → 加法定理(1段)→ 三角比(2段)。復習日として置ける。
     expect(isAllowedTopic(plan, "M1-KEIRYO-SANKAKUHI")).toBe(true);
 
-    // 会話側を浅くしても、計画側は planPrerequisiteDepth のまま。
-    const shallowConversation = buildAllowedTopics(["M2-SANKAKU-HOTEISHIKI"], {
-      prerequisiteDepth: 1,
-    });
-    expect(isAllowedTopic(shallowConversation, "M1-KEIRYO-SANKAKUHI")).toBe(false);
+    // 会話はさらに三平方の定理まで戻れるが、計画へは自動で足さない。
+    const conversation = buildAllowedTopics(["M2-SANKAKU-HOTEISHIKI"]);
+    expect(isAllowedTopic(conversation, "J3-ZUKEI-SANHEIHO")).toBe(true);
+    expect(isAllowedTopic(plan, "J3-ZUKEI-SANHEIHO")).toBe(false);
     expect(planPrerequisiteDepth).toBe(2);
   });
 

@@ -162,7 +162,8 @@ export function topicsByUnit(course: CourseName, unit: string): Topic[] {
 /**
  * 前提トピックを再帰的にたどる。穴の深掘り(「そもそも◯◯とは?」)で、
  * 1つ手前の単元まで質問を落とすのに使う。
- * @param depth たどる段数。1なら直接の前提のみ。
+ * @param depth たどる段数。1なら直接の前提のみ、無限大ならチェーン全体。
+ * 訪問済みの `Map` へ追加してから次へ進むため、循環した入力でも同じIDを再訪しない。
  */
 export function prerequisitesOf(id: string, depth = 1): Topic[] {
   const collected = new Map<string, Topic>();

@@ -38,12 +38,22 @@
     },
     {
       "index": 3,
-      "speech": "だから yesterday とは一緒に使えない。理由、言える?",
+      "speech": "だから yesterday とは一緒に使えない。ここまでの流れね。",
       "board": {
         "kind": "text",
         "body": "現在完了 × yesterday — 「今」と「終わった過去」がぶつかる"
+      }
+    },
+    {
+      "index": 4,
+      "speech": "じゃあ、同じ考え方でこの文はどう直す? できたら教えて。",
+      "board": {
+        "kind": "sentence",
+        "text": "I have visited Kyoto yesterday.",
+        "gloss": "私は昨日京都を訪れた",
+        "focus": "have visited"
       },
-      "awaits_student": true
+      "awaits_solving": true
     }
   ]
 }

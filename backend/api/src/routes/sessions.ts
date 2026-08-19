@@ -1,4 +1,6 @@
 import {
+  type AddSessionProblemPhotoRequest,
+  type AddSessionProblemPhotoResponse,
   type CreateSessionRequest,
   type CreateSessionResponse,
   type ProblemOutcome,
@@ -7,6 +9,7 @@ import {
   type StartSessionResponse,
   type UpdateSessionProblemResponse,
   type UpdateSessionTopicsResponse,
+  addSessionProblemPhotoRequestSchema,
   createSessionRequestSchema,
   problemTextMaxLength,
   sessionMetadataSchema,
@@ -36,12 +39,15 @@ import type { AppEnv, Bindings } from "../env.ts";
 import { readLimits } from "../env.ts";
 import {
   analysesPerDay,
+  analysesPerSessionSlot,
   canReissueToken,
   canStartSessionToday,
   hasPremiumAccess,
   limitReachedAllowance,
+  maxSessionStartsPerDay,
+  minimumSessionSeconds,
+  secondsPerDay,
   sessionMaxSeconds,
-  sessionsPerDay,
   startedAllowance,
   tokenGraceSeconds,
 } from "../lib/entitlement.ts";
@@ -55,7 +61,7 @@ import {
   resolveSessionProblem,
   toDetectedTopicPayload,
 } from "../lib/photo-analysis.ts";
-import type { HoleRecord, SessionContext } from "../repository/types.ts";
+import type { HoleRecord, SessionContext, SessionMaterialContext } from "../repository/types.ts";
 
 export const sessionsRoute = new Hono<AppEnv>();
 
@@ -65,7 +71,7 @@ export const sessionsRoute = new Hono<AppEnv>();
  * 写真を受け取り、Vision LLMで単元を判定して、**単元と問題文の読み合わせだけ**を返す。
  * ここで作った許可トピックが、会話中のガードレールの基準になる。
  *
- * **ここでは今日の1回を数えない。** 数えるのは会話が始まったとき
+ * **ここでは日次の持ち時間を押さえない。** 押さえるのは会話が始まったとき
  * (`POST /v1/sessions/{id}/start`)。撮って単元を確かめただけで枠が消え、
  * 先輩と1度も話さないまま「今日はここまで」になっていたのを直したもの。
  *
@@ -73,7 +79,7 @@ export const sessionsRoute = new Hono<AppEnv>();
  *
  *   1. **もう今日の授業を使い切っていないか**(下の事前判定)。使い切った人に
  *      Vision LLMを回してから断るのは、原価の面でも体験の面でも損しかない
- *   2. **解析そのものの上限**(`analysesPerDay`)。1日の授業回数よりずっと緩く、
+ *   2. **解析そのものの上限**(`analysesPerDay`)。想定する授業本数よりずっと緩く、
  *      解析だけを延々と繰り返す使い方だけを止める
  */
 sessionsRoute.post("/", async (c) => {
@@ -99,7 +105,7 @@ sessionsRoute.post("/", async (c) => {
    * この上限は無力になる。
    *
    * 将来ユーザーのタイムゾーンに追随するなら、オフセットの出どころをサーバが決めることを
-   * 前提にし、countStartedSessionsOnDateの表示と枠の判定を同じ日付規則へ一緒に動かす。
+   * 前提にし、getDailySessionUsageの表示と枠の判定を同じ日付規則へ一緒に動かす。
    */
   const localDate = toLocalDate(at);
 
@@ -131,8 +137,22 @@ sessionsRoute.post("/", async (c) => {
    * 上限そのものは `/start` が守る。ここを消すと、使い切った人にも毎回
    * Vision LLMを回してから断ることになる。
    */
-  const startedToday = await repository.countStartedSessionsOnDate(deviceId, localDate);
-  if (!canStartSessionToday({ user, sessionsToday: startedToday, now: at, limits })) {
+  await repository.settleExpiredSessions({
+    deviceId,
+    now: at.toISOString(),
+    graceSeconds: tokenGraceSeconds,
+  });
+  const usage = await repository.getDailySessionUsage(deviceId, localDate);
+  const remainingSecondsToday = Math.max(
+    0,
+    secondsPerDay({ user, now: at, limits }) - usage.consumedSeconds,
+  );
+  if (
+    !canStartSessionToday({
+      remainingSecondsToday,
+      sessionsToday: usage.sessionsStarted,
+    })
+  ) {
     const limitReached = limitReachedAllowance({ user, now: at, limits });
     throw apiError(limitReached.reason, {
       locale,
@@ -177,8 +197,12 @@ sessionsRoute.post("/", async (c) => {
       hole_id: reviewHole?.id ?? null,
       duration_seconds: null,
       context: null,
-      // 会話はまだ始まっていない。ここが null のあいだ、この行は1回として数えない。
+      // 会話はまだ始まっていない。ここが null のあいだ、この行は時間集計に入れない。
       started_at: null,
+      max_seconds: null,
+      quota_settled_at: null,
+      // 初回の写真解析を1回目として数える。追加分はこの行を条件付きで増やす。
+      analysis_count: 1,
     },
     maxAnalysesPerDay: analysesPerDay({ user, now: at, limits }),
   });
@@ -340,6 +364,19 @@ sessionsRoute.post("/", async (c) => {
     visible_work: visibleWork,
     question_seeds: questionSeeds,
     topics: analysis?.topics ?? [],
+    has_notes_photo: photoKey !== null,
+    revision: 1,
+    materials: [
+      {
+        summary,
+        problem,
+        problem_outcome: problemOutcome,
+        visible_work: visibleWork,
+        question_seeds: questionSeeds,
+        topics: analysis?.topics ?? [],
+        has_notes_photo: photoKey !== null,
+      },
+    ],
   };
 
   await repository.updateSessionTopics({
@@ -370,9 +407,248 @@ sessionsRoute.post("/", async (c) => {
 });
 
 /**
+ * POST /v1/sessions/{id}/problem-photo
+ *
+ * 会話中に、次に扱う問題の紙面を1枚足す。紙面は初回と同じくVision解析にだけ使い、
+ * **R2には保存しない**。解析結果は現行文脈へ差し替えつつ `materials` に追記するので、
+ * カルテはセッション1本のままでも、扱った問題の履歴は失わない。
+ *
+ * 許可集合は端末から受け取らない。新しい解析結果と既存の主題をサーバで合わせ、
+ * `buildAllowedTopics` を通し直す。agentはこの応答を信じず、専用通知を受けてから
+ * INTERNAL_API_TOKEN で下の `/context` を読み直す。
+ */
+sessionsRoute.post("/:sessionId/problem-photo", async (c) => {
+  const { repository, analyzer, now } = c.get("services");
+  const log = c.get("log");
+  const deviceId = c.get("deviceId");
+  const sessionId = c.req.param("sessionId");
+
+  const form = await c.req.formData().catch(() => null);
+  if (form === null) throw apiError("photo_unreadable");
+  const meta = parseProblemPhotoMeta(form.get("meta"));
+  const session = await repository.getSession(sessionId);
+  // 追加できるのは、本人がいま会話している新規授業だけ。開始前の訂正は既存の
+  // 撮影画面、復習は前回の穴を根拠にするので、どちらもこの入口へ混ぜない。
+  if (
+    !session ||
+    session.device_id !== deviceId ||
+    session.kind !== "new" ||
+    session.status !== "open" ||
+    session.started_at === null
+  ) {
+    throw apiError("session_not_found", { locale: meta.locale });
+  }
+
+  const currentAllowed = buildAllowedTopics(session.topic_ids);
+  if (currentAllowed.primary.size === 0) {
+    throw apiError("photo_unreadable", { locale: meta.locale });
+  }
+
+  const user = await repository.getUser(deviceId);
+  if (!user) throw apiError("session_not_found", { locale: meta.locale });
+  const at = now();
+  const limits = readLimits(c.env);
+
+  /**
+   * **会話が生きている窓の中だけ受け付ける。**`/start` と同じ境界を使う。
+   *
+   * `open` かつ `started_at` があるだけを条件にすると、開始だけして部屋に入らず
+   * IDを持っておいた端末が、**翌日以降にそのセッションの `local_date` へ向けて**
+   * 解析を投げられる。1本につき4枚積める枠を、古いIDをためた数だけ増やせるので、
+   * その日の日次枠を回避して Vision の原価が伸びる。
+   */
+  if (
+    !canReissueToken({
+      startedAt: session.started_at,
+      now: at,
+      maxSeconds: sessionMaxSeconds({ user, now: at, limits }),
+    })
+  ) {
+    log?.info("problem_photo_session_expired", {
+      session_id: sessionId,
+      started_at: session.started_at,
+    });
+    throw apiError("session_not_found", { locale: meta.locale });
+  }
+
+  // 5という値と日次枠は entitlement が正。開始前の撮り直しも含む現行の日次門と、
+  // このセッション5回の両方を同じ条件付きUPDATEで守る。
+  const reserved = await repository.reserveSessionAnalysis({
+    sessionId,
+    deviceId,
+    localDate: session.local_date,
+    maxAnalysesPerSession: analysesPerSessionSlot,
+    maxAnalysesPerDay: analysesPerDay({ user, now: at, limits }),
+  });
+  if (!reserved) {
+    const latest = await repository.getSession(sessionId);
+    if (!latest || latest.status !== "open" || latest.started_at === null) {
+      throw apiError("session_not_found", { locale: meta.locale });
+    }
+    log?.info("problem_photo_limit_reached", {
+      session_id: sessionId,
+      analysis_count: latest.analysis_count,
+    });
+    throw apiError("problem_photo_limit_reached", { locale: meta.locale });
+  }
+
+  try {
+    const problemPhoto = form.get(sessionPhotoParts.problem);
+    if (!(problemPhoto instanceof File)) {
+      throw apiError("photo_unreadable", { locale: meta.locale });
+    }
+
+    const bytes = await problemPhoto.arrayBuffer();
+    const mediaType = detectImageMediaType(bytes, problemPhoto.type);
+    if (!mediaType) throw apiError("photo_unreadable", { locale: meta.locale });
+
+    /**
+     * **`PHOTOS.put` は呼ばない。** 教科書・問題集の紙面は解析が戻った時点で
+     * このリクエストのメモリから外れ、永続化されない。初回 problem_photo と同じ寿命。
+     */
+    const conversationLocale = allowedTopicsLocale(currentAllowed);
+    const analysis = await analyzer.analyze({
+      problem: { image: bytes, contentType: mediaType },
+      locale: conversationLocale,
+      stage: meta.school_stage,
+    });
+    if (analysis.subject === "other") {
+      throw apiError("out_of_scope", { locale: meta.locale });
+    }
+
+    const resolved = resolveDetectedTopics(analysis, conversationLocale, meta.school_stage);
+    if (resolved.topicIds.length === 0) {
+      throw apiError("photo_unreadable", { locale: meta.locale });
+    }
+    const resolvedProblem = resolveSessionProblem({ analysis, hadProblemPhoto: true });
+    const material: SessionMaterialContext = {
+      summary: analysis.summary,
+      problem: resolvedProblem.problem,
+      problem_outcome: resolvedProblem.outcome,
+      // 追加入口は問題の紙面だけ。初回のノートを次の問題の途中式として使い回さない。
+      visible_work: [],
+      question_seeds: analysis.question_seeds,
+      topics: analysis.topics,
+      has_notes_photo: false,
+    };
+
+    // 同時に2枚解析された場合も、後着が先着の文脈を上書きして消さない。
+    // revisionの条件付き更新に負けた側だけ最新を読み直してマージする。
+    const maxCommitAttempts = 3;
+    for (let attempt = 0; attempt < maxCommitAttempts; attempt += 1) {
+      const latest = await repository.getSession(sessionId);
+      if (!latest || latest.status !== "open" || latest.context === null) {
+        throw apiError("session_not_found", { locale: meta.locale });
+      }
+
+      const expectedRevision = latest.context.revision ?? 1;
+      const previousMaterials = materialsOf(latest.context, latest.photo_key !== null);
+      const allowed = buildAllowedTopics(uniqueTopicIds(resolved.topicIds, latest.topic_ids));
+      if (allowed.primary.size === 0) {
+        throw apiError("photo_unreadable", { locale: meta.locale });
+      }
+      const revision = expectedRevision + 1;
+      const context: SessionContext = {
+        ...material,
+        revision,
+        // 枠自体が5回なので、履歴も最大5問。壊れた古い行で増えていても頭を切る。
+        materials: [...previousMaterials, material].slice(-analysesPerSessionSlot),
+      };
+
+      const committed = await repository.updateSessionContextIfRevision({
+        sessionId,
+        expectedRevision,
+        topicIds: [...allowed.primary],
+        context,
+      });
+      if (!committed) continue;
+
+      log?.info("problem_photo_added", {
+        session_id: sessionId,
+        context_revision: revision,
+        topic_ids: [...allowed.primary],
+        outcome: resolvedProblem.outcome,
+        // 保存したキーではなく、破棄した事実だけを残す。
+        problem_photo: "analyzed_and_discarded",
+      });
+      const response: AddSessionProblemPhotoResponse = {
+        session_id: sessionId,
+        kind: session.kind,
+        detected_topics: buildDetectedTopics(allowed, context),
+        problem: context.problem ?? null,
+        problem_outcome: context.problem_outcome ?? null,
+        context_revision: revision,
+      };
+      return c.json(response, 200);
+    }
+
+    // 3回連続でrevisionが進むのは異常な同時更新。解析原価は発生済みなのでログを残す。
+    throw new Error("追加問題の文脈を3回再試行しても更新できませんでした");
+  } catch (error) {
+    // 初回解析が落ちたときに行を消して枠を返す既存挙動と揃える。読めない写真の
+    // 連打で、成功した追加問題のための枠まで失わせない。
+    await repository.releaseSessionAnalysis(sessionId);
+    if (error instanceof HTTPException) {
+      log?.warn("problem_photo_rejected", { session_id: sessionId, status: error.status });
+    } else {
+      log?.error("problem_photo_analysis_failed", error, { session_id: sessionId });
+    }
+    throw error;
+  }
+});
+
+/**
+ * GET /v1/sessions/{id}/context — agent専用。
+ *
+ * アプリの通知は「更新された」という合図だけ。問題文も許可集合もここでD1から
+ * 組み立て直し、INTERNAL_API_TOKENを持つagentにだけ返す。
+ */
+sessionsRoute.get("/:sessionId/context", async (c) => {
+  const { repository, now } = c.get("services");
+  const log = c.get("log");
+  const authorized = c.req.header("authorization") === `Bearer ${c.env.INTERNAL_API_TOKEN}`;
+  if (!authorized) {
+    log?.warn("session_context_unauthorized", { session_id: c.req.param("sessionId") });
+    throw apiError("unauthorized");
+  }
+
+  const session = await repository.getSession(c.req.param("sessionId"));
+  if (!session || session.status !== "open" || session.started_at === null) {
+    throw apiError("session_not_found");
+  }
+  const context = session.context;
+  const allowed = buildAllowedTopics(session.topic_ids);
+  if (context === null || allowed.primary.size === 0) throw apiError("session_not_found");
+
+  const user = await repository.getUser(session.device_id);
+  if (!user) throw apiError("session_not_found");
+  const reviewHole =
+    session.kind === "review" && session.hole_id !== null
+      ? await repository.getHole(session.hole_id)
+      : null;
+  const sessionMetadata = buildSessionMetadata({
+    sessionId: session.id,
+    locale: allowedTopicsLocale(allowed),
+    kind: session.kind,
+    // agentは開始時の値を保持して上書きする。この値で時間を延長することはない。
+    maxSeconds: sessionMaxSeconds({ user, now: now(), limits: readLimits(c.env) }),
+    context,
+    allowed,
+    isPremium: user.is_premium,
+    hasNotesPhoto: context.has_notes_photo ?? session.photo_key !== null,
+    reviewHole,
+  });
+  log?.info("session_context_read", {
+    session_id: session.id,
+    context_revision: sessionMetadata.context_revision ?? 1,
+  });
+  return c.json(sessionMetadata, 200);
+});
+
+/**
  * POST /v1/sessions/{id}/start
  *
- * **会話を始める。ここが今日の1回を数える唯一の場所。**
+ * **会話を始める。ここが日次の持ち時間を仮押さえする唯一の場所。**
  *
  * 枠の確保とトークンの発行を1つの操作にまとめてあるのが要点で、順番は入れ替えられない
  * (枠を取れなければトークンは出ないし、トークンが出たなら枠は取れている)。
@@ -394,6 +670,14 @@ sessionsRoute.post("/:sessionId/start", async (c) => {
   const locale = parsed.success ? parsed.data.locale : "ja";
 
   const sessionId = c.req.param("sessionId");
+  // 離脱・クラッシュで /complete が来なかった回は、最初のトークンの寿命後に
+  // 仮押さえ額で精算する。残高のSUMは精算前もmax_secondsを数えるので、この更新と
+  // 同時に別の開始が来ても二重取りにはならない。
+  await repository.settleExpiredSessions({
+    deviceId,
+    now: at.toISOString(),
+    graceSeconds: tokenGraceSeconds,
+  });
   const session = await repository.getSession(sessionId);
   // 他人のセッションと、終わったセッションには触らせない。
   if (!session || session.device_id !== deviceId || session.status !== "open") {
@@ -417,14 +701,14 @@ sessionsRoute.post("/:sessionId/start", async (c) => {
    *
    * ここが無いと、部屋に入らないまま開いたセッションが**期限のない鍵の引換券**になる。
    * 会話が成立しなければ `/complete` は来ないので行は open のまま残り、
-   * 翌日そのIDで押せば、今日の枠を減らさずに授業がもう1回増えてしまう。
+   * 翌日そのIDで押せば、今日の残高を減らさずに授業時間が増えてしまう。
    */
   if (
     session.started_at !== null &&
     !canReissueToken({
       startedAt: session.started_at,
       now: at,
-      maxSeconds: sessionMaxSeconds({ user, now: at, limits }),
+      maxSeconds: session.max_seconds ?? sessionMaxSeconds({ user, now: at, limits }),
     })
   ) {
     // 「もう入る部屋が無い」は、アプリからは消えたセッションと同じ。
@@ -454,9 +738,12 @@ sessionsRoute.post("/:sessionId/start", async (c) => {
     sessionId: session.id,
     deviceId,
     startedAt: at.toISOString(),
-    // 数える日は、撮った日ではなく**始めた日**。日付をまたいで始めた会話は今日の1本。
+    // 数える日は、撮った日ではなく**始めた日**。日付をまたいで始めた会話は今日の時間。
     localDate: toLocalDate(at),
-    maxPerDay: sessionsPerDay({ user, now: at, limits }),
+    secondsPerDay: secondsPerDay({ user, now: at, limits }),
+    sessionMaxSeconds: sessionMaxSeconds({ user, now: at, limits }),
+    minimumSessionSeconds,
+    maxStartsPerDay: maxSessionStartsPerDay,
   });
   if (!started.started) {
     const limitReached = limitReachedAllowance({ user, now: at, limits });
@@ -466,10 +753,9 @@ sessionsRoute.post("/:sessionId/start", async (c) => {
     });
   }
   const allowance = startedAllowance({
-    user,
+    maxSeconds: started.maxSeconds,
+    remainingSecondsToday: started.remainingSecondsToday,
     sessionsToday: started.sessionsToday,
-    now: at,
-    limits,
   });
 
   const context: SessionContext = session.context ?? {
@@ -481,7 +767,7 @@ sessionsRoute.post("/:sessionId/start", async (c) => {
   };
 
   // エージェントに渡す文脈。会話中のガードレールはこれを基準にする。
-  const metadata = buildSessionMetadata({
+  const sessionMetadata = buildSessionMetadata({
     sessionId: session.id,
     // 会話の言語は単元の課程に従う(端末の表示言語ではない)。
     locale: allowedTopicsLocale(allowed),
@@ -491,9 +777,10 @@ sessionsRoute.post("/:sessionId/start", async (c) => {
     allowed,
     isPremium: user.is_premium,
     // 写真は解析し直さないので、保存済みのキーの有無がそのまま「ノートがあったか」。
-    hasNotesPhoto: session.photo_key !== null,
+    hasNotesPhoto: context.has_notes_photo ?? session.photo_key !== null,
     reviewHole,
   });
+  const metadata = JSON.stringify(sessionMetadata);
 
   const dispatch = agentDispatch(c.env, metadata);
   const token = await createLiveKitToken({
@@ -516,6 +803,10 @@ sessionsRoute.post("/:sessionId/start", async (c) => {
     kind: session.kind,
     locale: allowedTopicsLocale(allowed),
     topic_ids: [...allowed.primary],
+    // `problem_resolved` と session_id でつなぐと、解析後も問題文が空のまま
+    // 会話まで進んだ率が分かる。本文は他者の著作物なので、存在と落ち方だけを残す。
+    problem_present: context.problem != null,
+    problem_outcome: context.problem_outcome ?? null,
     max_seconds: allowance.maxSeconds,
     agent_dispatch: dispatch ? "explicit" : "automatic",
     // 押し直し・つなぎ直しでトークンだけ出し直した回。枠は数え直していない。
@@ -528,6 +819,7 @@ sessionsRoute.post("/:sessionId/start", async (c) => {
     livekit: { url: c.env.LIVEKIT_URL, token, room: session.id },
     limits: {
       max_seconds: allowance.maxSeconds,
+      remaining_seconds_today: allowance.remainingSecondsToday,
       lesson_allowed_today: allowance.lessonAllowedToday,
     },
   };
@@ -541,7 +833,7 @@ sessionsRoute.post("/:sessionId/start", async (c) => {
  * チップUIで外した単元を反映する。**セッションは作り直さない**。
  *
  * 以前はここで POST /v1/sessions をもう一度呼んでいたため、写真を撮って
- * 単元を確認しただけで無料枠(1日1回)を2回消費し、会話を始める瞬間に
+ * 単元を確認しただけで当時の無料枠(1日1回)を2回消費し、会話を始める瞬間に
  * 「今日のセッションはここまで」と言われていた。同じ写真を2度Vision LLMへ通す
  * ことにもなるので、単元が変わってもセッションは同じ行のまま書き換える。
  *
@@ -679,11 +971,20 @@ sessionsRoute.patch("/:sessionId/problem", async (c) => {
     question_seeds: [],
     topics: [],
   };
+  const materials = materialsOf(previous, session.photo_key !== null);
+  const currentMaterial = materials.at(-1);
   const context: SessionContext = {
     ...previous,
     // 出どころは写真ではなく本人。**写真の2枠と同じ軸に並べる**(`problemSources`)。
     problem: { text, source: "manual" },
     problem_outcome: "read",
+    materials:
+      currentMaterial === undefined
+        ? materials
+        : [
+            ...materials.slice(0, -1),
+            { ...currentMaterial, problem: { text, source: "manual" }, problem_outcome: "read" },
+          ],
   };
 
   await repository.updateSessionTopics({
@@ -788,7 +1089,7 @@ function buildSessionMetadata(input: {
   hasNotesPhoto: boolean;
   /** 復習で教え直す1つの穴。新規授業では `null`。 */
   reviewHole: HoleRecord | null;
-}): string {
+}): SessionMetadata {
   const metadata = sessionMetadataSchema.parse({
     session_id: input.sessionId,
     locale: input.locale,
@@ -810,6 +1111,7 @@ function buildSessionMetadata(input: {
     question_seeds: formatBullets(input.context.question_seeds, input.locale),
     allowed_topics: formatAllowedTopics(allowedTopicList(input.allowed), input.locale),
     allowed_topic_ids: [...input.allowed.primary, ...input.allowed.prerequisite],
+    context_revision: input.context.revision ?? 1,
     is_premium: input.isPremium,
     // 前回のカルテ全体は載せない。対象外の穴や「言えたこと」まで板書LLMへ渡すと、
     // 1回1穴の復習が前回セッション全体の再講義へ広がる。対象穴の説明と、
@@ -823,7 +1125,7 @@ function buildSessionMetadata(input: {
             evidence: input.reviewHole.evidence,
           },
   } satisfies SessionMetadata);
-  return JSON.stringify(metadata);
+  return metadata;
 }
 
 /**
@@ -841,6 +1143,45 @@ function buildDetectedTopics(allowed: AllowedTopics, context: SessionContext) {
     unreadable: [],
     question_seeds: context.question_seeds,
   });
+}
+
+/** 古いcontextにも、最初の1問を履歴として補ってから追記する。 */
+function materialsOf(
+  context: SessionContext,
+  legacyHasNotesPhoto: boolean,
+): SessionMaterialContext[] {
+  if (context.materials && context.materials.length > 0) return [...context.materials];
+  return [
+    {
+      summary: context.summary,
+      problem: context.problem ?? null,
+      problem_outcome: context.problem_outcome ?? null,
+      visible_work: context.visible_work,
+      question_seeds: context.question_seeds,
+      topics: context.topics,
+      has_notes_photo: context.has_notes_photo ?? legacyHasNotesPhoto,
+    },
+  ];
+}
+
+/** 新しい問題を主題の先頭に置きつつ、既存の許可主題を重複なく残す。 */
+function uniqueTopicIds(current: readonly string[], previous: readonly string[]): string[] {
+  return [...new Set([...current, ...previous])];
+}
+
+function parseProblemPhotoMeta(value: File | string | null): AddSessionProblemPhotoRequest {
+  if (typeof value !== "string" || value.length === 0) {
+    return addSessionProblemPhotoRequestSchema.parse({});
+  }
+  let raw: unknown;
+  try {
+    raw = JSON.parse(value);
+  } catch {
+    throw apiError("photo_unreadable");
+  }
+  const parsed = addSessionProblemPhotoRequestSchema.safeParse(raw);
+  if (!parsed.success) throw apiError("photo_unreadable");
+  return parsed.data;
 }
 
 // 戻り値は契約の型そのもの。手で並べ直すと、フィールドを足したときに

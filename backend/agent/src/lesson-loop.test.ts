@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { BoardChannel, type BoardSink } from "./board.ts";
 import { StudentUtterances, runLessonLoop } from "./lesson-loop.ts";
 import type { LessonLlm } from "./lesson.ts";
-import { studentSilenceMarker } from "./senpai.ts";
+import { lessonSteps, studentSilenceMarker, teachBackFallback, teachBackPrompt } from "./senpai.ts";
 
 /**
  * 授業の**往復**のテスト。見たいのは4つ:
@@ -14,6 +14,7 @@ import { studentSilenceMarker } from "./senpai.ts";
  *   3. 説明の途中の発話がパスを中止し、**会話へ落とさず**続きのパスで応えること
  *   4. 安全弁(回数・セッション終了)で降りるとき、積み残しの発話を
  *      取り出さないこと(記録も返事も会話モードが引き取る)
+ *   5. 答え待ちの問いが板書に残ったかを、本文なしの種別ログで観測できること
  */
 
 const step = (index: number, speech: string, tex?: string): unknown => ({
@@ -30,6 +31,22 @@ const stepAwaiting = (index: number, speech: string, awaits: boolean, tex?: stri
   awaits_student: awaits,
 });
 
+/** 問いを画面に残す、`text` の短い Q 行。Issue #153 の推奨形。 */
+const stepAwaitingWithQuestion = (index: number, speech: string, question: string): unknown => ({
+  index,
+  speech,
+  board: { kind: "text", body: `Q: ${question}` },
+  awaits_student: true,
+});
+
+/** 類題を出して、解き終わりの本人申告まで待つ手順。 */
+const stepSolving = (index: number, speech: string, tex: string): unknown => ({
+  index,
+  speech,
+  board: { kind: "latex", tex },
+  awaits_solving: true,
+});
+
 function lessonJson(steps: readonly unknown[]): string {
   return JSON.stringify({
     title: "最小公倍数で分母をそろえる",
@@ -38,13 +55,18 @@ function lessonJson(steps: readonly unknown[]): string {
   });
 }
 
-/** 出力を呼び出し順に返すLLM。呼ばれた `user`(指示)を記録する。 */
-function stubLlm(...outputs: readonly string[]): LessonLlm & { asked: string[] } {
+/** 出力を呼び出し順に返すLLM。呼ばれた system と `user`(指示)を記録する。 */
+function stubLlm(
+  ...outputs: readonly string[]
+): LessonLlm & { asked: string[]; systems: string[] } {
   const asked: string[] = [];
+  const systems: string[] = [];
   let call = 0;
   return {
     asked,
-    stream({ user }) {
+    systems,
+    stream({ system, user }) {
+      systems.push(system);
       asked.push(user);
       const output = outputs[Math.min(call, outputs.length - 1)] ?? "";
       call += 1;
@@ -95,6 +117,7 @@ function loopWith(
     signal: never.signal,
     utterances: new StudentUtterances(),
     record: () => undefined,
+    practiceProblemEnabled: true,
     remainingSeconds: () => 600,
     ...overrides,
   });
@@ -146,9 +169,143 @@ describe("StudentUtterances", () => {
     utterances.push("もう聞こえない");
     expect(heard).toBe(1);
   });
+
+  it("新しい問題へ移ると、類題の解答待ちと積み残しを消す", async () => {
+    const utterances = new StudentUtterances();
+    utterances.push("前の問題はできた");
+    expect(utterances.pending).toBe(true);
+    utterances.clear();
+    expect(utterances.pending).toBe(false);
+
+    const waiting = utterances.takeUntil(new AbortController().signal);
+    utterances.clear();
+    await expect(waiting).resolves.toBeNull();
+  });
 });
 
 describe("runLessonLoop", () => {
+  it("類題を出して15秒判定を使わず待ち、「できた」なら理由の教え返しへ渡す", async () => {
+    const sink = recordingSink();
+    const board = boardWith(sink);
+    const llm = stubLlm(
+      lessonJson([
+        step(0, "流れはこの3つ。", "D = b^2 - 4ac"),
+        stepSolving(1, "じゃあ、この類題はどうなる? 解けたら教えて。", "x^2 - 5x + 6 = 0"),
+      ]),
+      lessonJson([
+        step(0, "正答はこう。", "D = 1 > 0"),
+        stepAwaiting(1, "じゃあ、どうしてそうなるか、自分の言葉で説明してみて。", true),
+      ]),
+    );
+    const utterances = new StudentUtterances();
+    const recorded: string[] = [];
+    const events: string[] = [];
+
+    const result = await loopWith(llm, board, {
+      utterances,
+      record: (text) => recorded.push(text),
+      // 通常待ちなら1msで切れる条件。20ms後の申告を受け取れれば別の待ちを使えている。
+      answerTimeoutMs: 1,
+      log: {
+        info: (event) => events.push(event),
+        warn: (event) => events.push(event),
+      },
+      speak: async (delivered) => {
+        if (delivered.awaits_solving === true) {
+          setTimeout(() => utterances.push("できた"), 20);
+        }
+      },
+    });
+
+    expect(result.reason).toBe("handed_over");
+    expect(result.passes).toBe(2);
+    expect(recorded).toEqual(["できた"]);
+    expect(events).not.toContain("lesson_answer_timeout");
+    expect(llm.asked[1]).toContain("類題の正答");
+    expect(llm.asked[1]).toContain("正解したとは言わない");
+    expect(
+      sink.sent.some(
+        (message) =>
+          message.type === "board_step" &&
+          message.step.board?.kind === "latex" &&
+          message.step.board.tex.includes("D = 1"),
+      ),
+    ).toBe(true);
+  });
+
+  it("完了申告後の生成が失敗しても、同じ申告をもう一度待たない", async () => {
+    const board = boardWith(recordingSink());
+    const llm = stubLlm(
+      lessonJson([stepSolving(0, "じゃあ、この類題はどうなる?", "x^2 - 5x + 6 = 0")]),
+      "",
+    );
+    const utterances = new StudentUtterances();
+    const recorded: string[] = [];
+
+    const result = await loopWith(llm, board, {
+      utterances,
+      record: (text) => recorded.push(text),
+      minContinueSeconds: 0,
+      remainingSeconds: () => 0.05,
+      speak: async (delivered) => {
+        if (delivered.awaits_solving === true) setTimeout(() => utterances.push("できた"), 1);
+      },
+    });
+
+    expect(result.reason).toBe("error");
+    expect(recorded).toEqual(["できた"]);
+    expect(llm.asked).toHaveLength(2);
+  });
+
+  it("「できなかった」なら止まった場所を聞き、教え直して同じ類題へ戻す", async () => {
+    const sink = recordingSink();
+    const board = boardWith(sink);
+    const llm = stubLlm(
+      lessonJson([
+        step(0, "流れはこの3つ。", "D = b^2 - 4ac"),
+        stepSolving(1, "じゃあ、この類題はどうなる? 解けたら教えて。", "x^2 - 5x + 6 = 0"),
+      ]),
+      lessonJson([stepAwaiting(0, "そっか。どこで止まった?", true)]),
+      lessonJson([
+        step(0, "Dの代入だけ一緒にやろう。", "D = (-5)^2 - 4 \\cdot 1 \\cdot 6"),
+        stepSolving(1, "同じ類題を、もう一回やってみて。", "x^2 - 5x + 6 = 0"),
+      ]),
+      lessonJson([
+        step(0, "正答はこう。", "D = 1 > 0"),
+        stepAwaiting(1, "じゃあ、どうしてそうなるか、自分の言葉で説明してみて。", true),
+      ]),
+    );
+    const utterances = new StudentUtterances();
+    const recorded: string[] = [];
+    let solvingCount = 0;
+
+    const result = await loopWith(llm, board, {
+      utterances,
+      record: (text) => recorded.push(text),
+      answerTimeoutMs: 100,
+      speak: async (delivered) => {
+        if (delivered.awaits_solving === true) {
+          solvingCount += 1;
+          setTimeout(() => utterances.push(solvingCount === 1 ? "できなかった" : "できた"), 5);
+        } else if (delivered.speech.includes("どこで止まった")) {
+          setTimeout(() => utterances.push("Dに数字を入れるところ"), 5);
+        }
+      },
+    });
+
+    expect(result.reason).toBe("handed_over");
+    expect(result.passes).toBe(4);
+    expect(recorded).toEqual(["できなかった", "Dに数字を入れるところ", "できた"]);
+    expect(llm.asked[1]).toContain("どこで止まった");
+    expect(llm.asked[1]).toContain("責めず");
+    expect(llm.asked[2]).toContain("Dに数字を入れるところ");
+    const solvingSteps = lessonSteps(result.turns).filter(
+      (delivered) => delivered.awaits_solving === true,
+    );
+    expect(solvingSteps).toHaveLength(2);
+    expect(solvingSteps[0]?.board).toEqual(solvingSteps[1]?.board);
+  });
+
   it("問いかけで止まり、答えを受けて同じ板書に続きを積む", async () => {
     const sink = recordingSink();
     const board = boardWith(sink);
@@ -206,6 +363,158 @@ describe("runLessonLoop", () => {
       "step",
       "step",
     ]);
+  });
+
+  it("音読依頼の直後の発話を覚え、次パスの system へ問題文として渡す", async () => {
+    const board = boardWith(recordingSink());
+    const llm = stubLlm(
+      lessonJson([stepAwaiting(0, "問題、読んでもらってもいい?", true)]),
+      lessonJson([
+        step(0, "じゃあ、この式を整理するね。", "x^2 - 3x + 2 = 0"),
+        stepAwaiting(1, "じゃあ今の、自分の言葉で説明してみて。", true),
+      ]),
+    );
+    const utterances = new StudentUtterances();
+    const spoken = "次の二次方程式 x^2 - 3x + 2 = 0 を解け。";
+    let remembered: string | null = null;
+
+    const result = await loopWith(llm, board, {
+      system: () => `今日の問題: ${remembered ?? "(問題の写真なし)"}`,
+      utterances,
+      problemReadoutMemory: {
+        isMissing: () => remembered === null,
+        remember: (text) => {
+          remembered = text;
+          return { accepted: true, length: text.length };
+        },
+      },
+      speak: async (delivered) => {
+        if (delivered.speech.includes("読んでもらってもいい")) {
+          setTimeout(() => utterances.push(spoken), 5);
+        }
+      },
+    });
+
+    expect(result.reason).toBe("handed_over");
+    expect(remembered).toBe(spoken);
+    expect(llm.systems[0]).toContain("(問題の写真なし)");
+    expect(llm.systems[1]).toContain(spoken);
+    expect(llm.asked[1]).toContain("問題文の読み上げはもう一度頼みません");
+  });
+
+  it("問題文があるのに音読を頼んだパスを、本文なしの縮退ログにする", async () => {
+    const board = boardWith(recordingSink());
+    const llm = stubLlm(lessonJson([stepAwaiting(0, "問題、読んでもらってもいい?", true)]));
+    const infos: { event: string; fields: Record<string, unknown> }[] = [];
+    const warnings: { event: string; fields: Record<string, unknown> }[] = [];
+
+    await loopWith(llm, board, {
+      remainingSeconds: () => 30,
+      problemReadoutMemory: {
+        isMissing: () => false,
+        remember: () => ({ accepted: false, reason: "already_present" }),
+      },
+      log: {
+        info: (event, fields = {}) => infos.push({ event, fields }),
+        warn: (event, fields = {}) => warnings.push({ event, fields }),
+      },
+    });
+
+    expect(infos).toContainEqual({
+      event: "lesson_opening_observed",
+      fields: { problem_present: true, problem_readout_requested: true },
+    });
+    expect(warnings).toContainEqual({
+      event: "problem_readout_unexpected",
+      fields: {
+        pass: 1,
+        problem_present: true,
+        repeated: false,
+        awaits_student: true,
+      },
+    });
+    expect(JSON.stringify(warnings)).not.toContain("問題、読んで");
+  });
+
+  it("2パス目でも音読を頼んだら、繰り返しとして観測する", async () => {
+    const board = boardWith(recordingSink());
+    const llm = stubLlm(
+      lessonJson([stepAwaiting(0, "問題、読んでもらってもいい?", true)]),
+      lessonJson([stepAwaiting(0, "もう一度、問題を読んでくれる?", true)]),
+    );
+    const utterances = new StudentUtterances();
+    const warnings: { event: string; fields: Record<string, unknown> }[] = [];
+    let remembered = false;
+
+    await loopWith(llm, board, {
+      utterances,
+      problemReadoutMemory: {
+        isMissing: () => !remembered,
+        remember: (text) => {
+          remembered = true;
+          return { accepted: true, length: text.length };
+        },
+      },
+      speak: async (delivered) => {
+        if (!remembered && delivered.speech.includes("読んでもらってもいい")) {
+          setTimeout(() => utterances.push("x^2 = 4 を解け。"), 5);
+        }
+      },
+      // 2パス目の観測後は答えを待たず、安全弁で終了させる。
+      remainingSeconds: () => (llm.systems.length < 2 ? 300 : 0),
+      log: {
+        info: () => undefined,
+        warn: (event, fields = {}) => warnings.push({ event, fields }),
+      },
+    });
+
+    /**
+     * **2回目は観測ではなく、配送前に落とす。**
+     *
+     * `runBoardLesson` は手順を配送して `speak` を呼んでから返るので、事後に
+     * 気づいても**生徒にはもう二度目が届いている**。「毎回読ませる」を直しに来た
+     * 変更なので門にしてあり、届かなかった事実だけが warn に残る。
+     */
+    expect(warnings).toContainEqual({ event: "problem_readout_blocked", fields: { pass: 2 } });
+    expect(warnings.map((warning) => warning.event)).not.toContain("problem_readout_unexpected");
+  });
+
+  it("2回目の音読依頼は板書にもTTSにも出さない", async () => {
+    const sink = recordingSink();
+    const board = boardWith(sink);
+    const llm = stubLlm(
+      lessonJson([stepAwaiting(0, "問題、読んでもらってもいい?", true)]),
+      lessonJson([stepAwaiting(0, "もう一度、問題を読んでくれる?", true)]),
+    );
+    const utterances = new StudentUtterances();
+    const spoken: string[] = [];
+    let remembered = false;
+
+    await loopWith(llm, board, {
+      utterances,
+      problemReadoutMemory: {
+        isMissing: () => !remembered,
+        remember: (text) => {
+          remembered = true;
+          return { accepted: true, length: text.length };
+        },
+      },
+      speak: async (delivered) => {
+        spoken.push(delivered.speech);
+        if (!remembered && delivered.speech.includes("読んでもらってもいい")) {
+          setTimeout(() => utterances.push("x^2 = 4 を解け。"), 5);
+        }
+      },
+      remainingSeconds: () => (llm.systems.length < 2 ? 300 : 0),
+    });
+
+    // 1回目は届く。2回目はTTSにも板書にも出ない。
+    expect(spoken.filter((speech) => speech.includes("読ん"))).toHaveLength(1);
+    expect(
+      sink.sent.filter(
+        (message) => message.type === "board_step" && message.step.speech.includes("もう一度"),
+      ),
+    ).toHaveLength(0);
   });
 
   it("説明の途中の発話はパスを中止し、続きのパスで応える(会話へ落とさない)", async () => {
@@ -332,6 +641,73 @@ describe("runLessonLoop", () => {
     expect(result.step_count).toBe(4);
   });
 
+  it("答え待ちの問いは、本文を出さず板書の有無と種類を観測する", async () => {
+    const board = boardWith(recordingSink());
+    const llm = stubLlm(
+      lessonJson([stepAwaitingWithQuestion(0, "1行目の D、符号はどれ?", "1行目の D の符号は?")]),
+      // プロンプトから外れた `board: null` も拒否せず、割合を測れる形で記録する。
+      lessonJson([stepAwaiting(0, "2行目から3行目、何をした?", true)]),
+      lessonJson([stepAwaiting(0, "じゃあ今の、自分の言葉で説明してみて。", true)]),
+    );
+    const observations: Record<string, unknown>[] = [];
+    const utterances = new StudentUtterances();
+
+    const result = await loopWith(llm, board, {
+      utterances,
+      log: {
+        info: (event: string, fields: Record<string, unknown> = {}) => {
+          if (event === "lesson_awaiting_question_board") observations.push(fields);
+        },
+        warn: (_event: string) => undefined,
+      },
+      speak: async (delivered) => {
+        if (!delivered.speech.includes("説明して")) {
+          setTimeout(() => utterances.push("答え"), 5);
+        }
+      },
+    });
+
+    expect(result.reason).toBe("handed_over");
+    expect(observations).toEqual([
+      { pass: 1, board_kind: "text", board_missing: false },
+      { pass: 2, board_kind: "none", board_missing: true },
+    ]);
+  });
+
+  /**
+   * **手順を1つも配送しなかったパスは、前の問いを数え直さない。**
+   *
+   * 生成が空で終わる回(ストリーム失敗・即割り込み)に累積の `turns` を見ると、
+   * 末尾は前のパスの問いのままなので、同じ問いが新しいパス番号でもう一度載る。
+   * 測ろうとしている `board_missing` の割合が、その二重計上ぶんだけ歪む。
+   */
+  it("手順が出せなかったパスでは、前の問いを二重に数えない", async () => {
+    const board = boardWith(recordingSink());
+    const llm = stubLlm(
+      lessonJson([stepAwaiting(0, "2行目から3行目、何をした?", true)]),
+      // 2パス目は空(生成が壊れた回)。板書には何も積まれない。
+      "",
+    );
+    const observations: Record<string, unknown>[] = [];
+    const utterances = new StudentUtterances();
+
+    await loopWith(llm, board, {
+      utterances,
+      maxPasses: 2,
+      log: {
+        info: (event: string, fields: Record<string, unknown> = {}) => {
+          if (event === "lesson_awaiting_question_board") observations.push(fields);
+        },
+        warn: (_event: string) => undefined,
+      },
+      speak: async () => {
+        setTimeout(() => utterances.push("答え"), 5);
+      },
+    });
+
+    expect(observations).toEqual([{ pass: 1, board_kind: "none", board_missing: true }]);
+  });
+
   it("修辞疑問(awaits_student: false)では止まらず、そのまま教え続ける", async () => {
     const board = boardWith(recordingSink());
     const llm = stubLlm(
@@ -438,12 +814,13 @@ describe("runLessonLoop", () => {
     expect(utterances.pending).toBe(true);
   });
 
-  it("残り時間が少なければ、答えを待たずに教え返しへ譲る", async () => {
-    const board = boardWith(recordingSink());
+  it("残り時間が少なければ類題を送信前に省き、従来の教え返しへ縮退する", async () => {
+    const sink = recordingSink();
+    const board = boardWith(sink);
     const llm = stubLlm(
       lessonJson([
         step(0, "まず、式をそのまま書くね。", "x^2 - 3x + 2 = 0"),
-        step(1, "この式、まず何する?"),
+        stepSolving(1, "じゃあ、この類題はどうなる?", "x^2 - 5x + 6 = 0"),
       ]),
     );
 
@@ -453,6 +830,72 @@ describe("runLessonLoop", () => {
 
     expect(result.reason).toBe("budget");
     expect(result.passes).toBe(1);
+    expect(
+      sink.sent.some(
+        (message) =>
+          message.type === "board_step" &&
+          message.step.board?.kind === "latex" &&
+          message.step.board.tex.includes("x^2 - 5x"),
+      ),
+    ).toBe(false);
+    expect(lessonSteps(result.turns).some((delivered) => delivered.awaits_solving === true)).toBe(
+      false,
+    );
+    expect(teachBackFallback({ locale: "ja" }, lessonSteps(result.turns))).toBe(
+      teachBackPrompt("ja"),
+    );
+  });
+
+  it("復習では残り時間があっても類題を送らず、従来の教え返しへ縮退する", async () => {
+    const sink = recordingSink();
+    const board = boardWith(sink);
+    const llm = stubLlm(
+      lessonJson([
+        step(0, "平方完成すると頂点が見える。", "(x + 3)^2 - 9"),
+        stepSolving(1, "じゃあ、この類題はどうなる?", "x^2 + 4x + 1"),
+      ]),
+    );
+
+    const result = await loopWith(llm, board, { practiceProblemEnabled: false });
+
+    expect(result.reason).toBe("budget");
+    expect(lessonSteps(result.turns).some((delivered) => delivered.awaits_solving === true)).toBe(
+      false,
+    );
+    expect(
+      sink.sent.some(
+        (message) =>
+          message.type === "board_step" &&
+          message.step.board?.kind === "latex" &&
+          message.step.board.tex.includes("x^2 + 4x"),
+      ),
+    ).toBe(false);
+    expect(teachBackFallback({ locale: "ja" }, lessonSteps(result.turns))).toBe(
+      teachBackPrompt("ja"),
+    );
+  });
+
+  it("類題の待機はセッション残り時間だけを安全弁にする", async () => {
+    const board = boardWith(recordingSink());
+    const llm = stubLlm(
+      lessonJson([stepSolving(0, "じゃあ、この類題はどうなる?", "x^2 - 5x + 6 = 0")]),
+    );
+    const events: string[] = [];
+
+    const result = await loopWith(llm, board, {
+      // 類題は出せる設定にし、20msぶんのセッション残り時間だけで待ちを閉じる。
+      minContinueSeconds: 0,
+      remainingSeconds: () => 0.02,
+      answerTimeoutMs: 1,
+      log: {
+        info: (event) => events.push(event),
+        warn: (event) => events.push(event),
+      },
+    });
+
+    expect(result.reason).toBe("interrupted");
+    expect(events).toContain("lesson_solving_deadline");
+    expect(events).not.toContain("lesson_answer_timeout");
   });
 
   it("答えを待っている間にセッションが終わったら、すぐ降りる", async () => {

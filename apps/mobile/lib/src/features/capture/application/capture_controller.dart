@@ -12,12 +12,12 @@ part 'capture_controller.g.dart';
 
 /// 撮影 → (問題の写真は任意で追加)→ 解析 → 単元と問題文の確認 → 会話の開始。
 ///
-/// **今日の1回を使うのは最後の一歩だけ。** 解析([analyze])まではセッションを
-/// 作るだけで数えず、会話を始める([confirmAndStart] / [startReview])ときに
-/// サーバが枠を押さえてトークンを返す。だから状態も2つに分かれている:
+/// **日次の持ち時間を押さえるのは最後の一歩だけ。** 解析([analyze])まではセッションを
+/// 作るだけで時間を押さえず、会話を始める([confirmAndStart] / [startReview])ときに
+/// サーバが時間を押さえてトークンを返す。だから状態も2つに分かれている:
 ///
-///   - [CaptureState.analysis] … 写真から読めたもの(単元・問題文)。数えない
-///   - [CaptureState.session]  … 始まった会話(部屋の鍵)。**これが返った = 1回使った**
+///   - [CaptureState.analysis] … 写真から読めたもの(単元・問題文)。時間を押さえない
+///   - [CaptureState.session]  … 始まった会話(部屋の鍵)。**これが返った = 時間を仮押さえ済み**
 ///
 /// 単元のチップは**外せる**。写真解析が外したときに、ユーザーが直せる余地を残す
 /// (「修正可能なチップUI」)。
@@ -49,17 +49,17 @@ class CaptureState {
   /// 撮影の摩擦だけが増える。無ければ解析器はノートの写真から問題文を読み取る。
   final File? problemPhoto;
 
-  /// 写真を読んだ結果。**ここまでは今日の1回を使っていない。**
+  /// 写真を読んだ結果。**ここまでは日次の持ち時間を押さえていない。**
   final SessionAnalysis? analysis;
 
-  /// 始まった会話。**入った時点で今日の1回を使っている**(部屋の鍵つき)。
+  /// 始まった会話。**入った時点で日次の持ち時間を仮押さえしている**(部屋の鍵つき)。
   final SessionStart? session;
 
   /// [analysis] が復習セッションのとき、その対象の穴。
   ///
   /// **同じ穴で押し直されたときに、セッションを作り直さない**ために持つ
   /// ([startReview])。作り直すと、前回の `/start` がサーバに届いていた場合に
-  /// もう1回ぶんの枠を使ってしまう。
+  /// もう1回ぶんの時間を仮押さえしてしまう。
   final String? reviewHoleId;
 
   final Set<String> excludedTopicIds;
@@ -151,7 +151,7 @@ class CaptureController extends _$CaptureController {
     state = state.copyWith(excludedTopicIds: excluded);
   }
 
-  /// 写真を送って単元を検出する(**まだ会話は始めないので、今日の1回も使わない**)。
+  /// 写真を送って単元を検出する(**まだ会話は始めないので、持ち時間も押さえない**)。
   ///
   /// **どちらか1枚あれば出せる**([CaptureState.hasAnyPhoto])。
   /// 問題だけでも成立するのは、手も付けられない問題を持ってきた生徒に
@@ -194,7 +194,7 @@ class CaptureController extends _$CaptureController {
   /// ここでセッションを作り直してはいけない。同じ写真をもう一度Vision LLMに
   /// 通すことになり、解析の回数だけを見ている上限にも二重に当たる。
   ///
-  /// **今日の1回を使うのはこの最後の一歩。** 上限に当たるならここで
+  /// **持ち時間を押さえるのはこの最後の一歩。** 上限に当たるならここで
   /// `free_limit_reached` が返るので、撮影画面のまま文言を出せる。
   Future<SessionStart?> confirmAndStart({String locale = 'ja'}) async {
     final SessionAnalysis? current = state.analysis;
@@ -230,7 +230,7 @@ class CaptureController extends _$CaptureController {
   ///
   /// **写真は送り直さない。** 解答が混ざる・紙面を丸ごと写す、といった落ち方の
   /// 原因は「紙面のどこを写したか」なので、同じ写真を投げ直しても同じものが返る。
-  /// サーバもVision LLMを回さないので、**解析の枠も今日の1回も減らない。**
+  /// サーバもVision LLMを回さないので、**解析枠も日次の持ち時間も減らない。**
   ///
   /// **失敗は戻り値で返し、[CaptureState.error] には入れない。**
   /// この画面は `state.error` を**全面のエラー表示**に使っているので、
@@ -319,4 +319,3 @@ class CaptureController extends _$CaptureController {
 
   void reset() => state = const CaptureState();
 }
-

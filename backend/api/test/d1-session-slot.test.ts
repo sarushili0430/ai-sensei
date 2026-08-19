@@ -151,6 +151,9 @@ function session(id: string, overrides: Partial<SessionRecord> = {}): SessionRec
     duration_seconds: null,
     context: null,
     started_at: null,
+    max_seconds: null,
+    quota_settled_at: null,
+    analysis_count: 1,
     ...overrides,
   };
 }
@@ -164,6 +167,7 @@ describeWithSqlite("D1の授業枠", () => {
 
       expect(entries.map((entry) => entry.name)).toContain("0003_session_day_seq.sql");
       expect(entries.map((entry) => entry.name)).toContain("0004_drop_session_day_seq_index.sql");
+      expect(entries.map((entry) => entry.name)).toContain("0009_session_time_budget.sql");
       expect(
         database
           .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?")
@@ -175,6 +179,70 @@ describeWithSqlite("D1の授業枠", () => {
           .all()
           .some((column) => column["name"] === "day_seq"),
       ).toBe(true);
+      const sessionColumns = database
+        .prepare("PRAGMA table_info(sessions)")
+        .all()
+        .map((column) => column["name"]);
+      expect(sessionColumns).toContain("max_seconds");
+      expect(sessionColumns).toContain("quota_settled_at");
+      // 会話中の追加解析の枠(#150)。**既定値 1 まで見る** — ここが空だと
+      // 既存行の初回ぶんが数え落ちて、1セッションで6枚目まで通る。
+      expect(
+        database
+          .prepare("PRAGMA table_info(sessions)")
+          .all()
+          .some((column) => column["name"] === "analysis_count" && column["dflt_value"] === "1"),
+      ).toBe(true);
+    } finally {
+      database.close();
+    }
+  });
+
+  it("0009は開始済み旧行を1200秒で復元し、完了実績は精算済みにする", async () => {
+    const database = openDatabase();
+    try {
+      const entries = await migrations();
+      const ninthIndex = entries.findIndex(
+        (entry) => entry.name === "0009_session_time_budget.sql",
+      );
+      if (ninthIndex < 0) throw new Error("0009マイグレーションがありません");
+      apply(database, entries.slice(0, ninthIndex));
+      database.exec(`
+        INSERT INTO users (device_id, created_at)
+        VALUES ('device_a', '2026-08-03T13:00:00.000Z');
+
+        INSERT INTO sessions
+          (id, device_id, kind, status, created_at, completed_at, local_date,
+           photo_key, topic_ids, hole_id, duration_seconds, context, started_at)
+        VALUES
+          ('legacy_open', 'device_a', 'new', 'open',
+           '2026-08-03T13:00:00.000Z', NULL, '2026-08-03',
+           NULL, '[]', NULL, NULL, NULL, '2026-08-03T13:00:00.000Z'),
+          ('legacy_completed', 'device_a', 'new', 'completed',
+           '2026-08-03T12:00:00.000Z', '2026-08-03T12:04:28.000Z', '2026-08-03',
+           NULL, '[]', NULL, 268, NULL, '2026-08-03T12:00:00.000Z');
+      `);
+
+      apply(database, entries.slice(ninthIndex));
+      expect(
+        database
+          .prepare("SELECT id, max_seconds, quota_settled_at FROM sessions ORDER BY id")
+          .all()
+          .map((row) => ({ ...row })),
+      ).toEqual([
+        {
+          id: "legacy_completed",
+          max_seconds: 1200,
+          quota_settled_at: "2026-08-03T12:04:28.000Z",
+        },
+        { id: "legacy_open", max_seconds: 1200, quota_settled_at: null },
+      ]);
+
+      const repository = new D1Repository(new SQLiteD1Database(database));
+      expect(await repository.getDailySessionUsage("device_a", "2026-08-03")).toEqual({
+        consumedSeconds: 1468,
+        sessionsStarted: 2,
+      });
     } finally {
       database.close();
     }
@@ -275,20 +343,142 @@ describeWithSqlite("D1の授業枠", () => {
       }
 
       expect(created).toEqual([true, true, true, false]);
-      // 行はあるが、まだ誰も会話していない = 今日の授業は0本。
-      expect(await repository.countStartedSessionsOnDate("device_a", "2026-08-03")).toBe(0);
+      // 行はあるが、まだ誰も会話していない = 今日の使用時間は0秒。
+      expect(await repository.getDailySessionUsage("device_a", "2026-08-03")).toEqual({
+        consumedSeconds: 0,
+        sessionsStarted: 0,
+      });
     } finally {
       database.close();
     }
   });
 
-  /**
-   * **1日の回数を数える本体。**
-   *
-   * 枠の確認と `started_at` の書き込みが1文になっていること、再送で数え直さないこと、
-   * 数える日が「始めた日」になることを、実際のSQLで固定する。
-   */
-  it("授業の上限を超えて始められず、確保した分を含む本数を返す", async () => {
+  it("会話中の追加解析を初回込み5回で原子的に止め、失敗時は枠を返す", async () => {
+    const database = openDatabase();
+    try {
+      apply(database, await migrations());
+      const repository = new D1Repository(new SQLiteD1Database(database));
+      await repository.ensureUser("device_a", new Date("2026-08-03T13:00:00.000Z"));
+      await repository.createSession({
+        session: session("session_1", { started_at: "2026-08-03T13:30:00.000Z" }),
+        maxAnalysesPerDay: 99,
+      });
+
+      const results = await Promise.all(
+        Array.from({ length: 5 }, () =>
+          repository.reserveSessionAnalysis({
+            sessionId: "session_1",
+            deviceId: "device_a",
+            localDate: "2026-08-03",
+            maxAnalysesPerSession: 5,
+            maxAnalysesPerDay: 99,
+          }),
+        ),
+      );
+      expect(results.filter(Boolean)).toHaveLength(4);
+      expect((await repository.getSession("session_1"))?.analysis_count).toBe(5);
+
+      await repository.releaseSessionAnalysis("session_1");
+      expect((await repository.getSession("session_1"))?.analysis_count).toBe(4);
+      expect(
+        await repository.reserveSessionAnalysis({
+          sessionId: "session_1",
+          deviceId: "device_a",
+          localDate: "2026-08-03",
+          maxAnalysesPerSession: 5,
+          maxAnalysesPerDay: 99,
+        }),
+      ).toBe(true);
+    } finally {
+      database.close();
+    }
+  });
+
+  it("会話中の追加解析も、開始前の撮り直しと同じ日次解析枠に数える", async () => {
+    const database = openDatabase();
+    try {
+      apply(database, await migrations());
+      const repository = new D1Repository(new SQLiteD1Database(database));
+      await repository.ensureUser("device_a", new Date("2026-08-03T13:00:00.000Z"));
+      // 開始せずに残った1回と、いま会話中の初回1回で、日次3回のうち2回を使用済み。
+      await repository.createSession({
+        session: session("abandoned"),
+        maxAnalysesPerDay: 99,
+      });
+      await repository.createSession({
+        session: session("started", { started_at: "2026-08-03T13:30:00.000Z" }),
+        maxAnalysesPerDay: 99,
+      });
+
+      expect(
+        await repository.reserveSessionAnalysis({
+          sessionId: "started",
+          deviceId: "device_a",
+          localDate: "2026-08-03",
+          maxAnalysesPerSession: 5,
+          maxAnalysesPerDay: 3,
+        }),
+      ).toBe(true);
+      expect(
+        await repository.reserveSessionAnalysis({
+          sessionId: "started",
+          deviceId: "device_a",
+          localDate: "2026-08-03",
+          maxAnalysesPerSession: 5,
+          maxAnalysesPerDay: 3,
+        }),
+      ).toBe(false);
+      // 追加分を合算しているので、新しいセッション解析も同じ門で止まる。
+      expect(
+        await repository.createSession({
+          session: session("over_limit"),
+          maxAnalysesPerDay: 3,
+        }),
+      ).toBe(false);
+    } finally {
+      database.close();
+    }
+  });
+
+  it("同じrevisionを読んだ文脈更新は1本だけ通す", async () => {
+    const database = openDatabase();
+    try {
+      apply(database, await migrations());
+      const repository = new D1Repository(new SQLiteD1Database(database));
+      await repository.ensureUser("device_a", new Date("2026-08-03T13:00:00.000Z"));
+      const initialContext = {
+        summary: "最初の問題",
+        problem: null,
+        visible_work: [],
+        question_seeds: [],
+        topics: [],
+        revision: 1,
+      };
+      await repository.createSession({
+        session: session("session_1", {
+          started_at: "2026-08-03T13:30:00.000Z",
+          topic_ids: ["M1-NIJI-GURAFU"],
+          context: initialContext,
+        }),
+        maxAnalysesPerDay: 99,
+      });
+
+      const update = (summary: string) =>
+        repository.updateSessionContextIfRevision({
+          sessionId: "session_1",
+          expectedRevision: 1,
+          topicIds: ["M1-NIJI-GURAFU"],
+          context: { ...initialContext, summary, revision: 2 },
+        });
+      expect(await Promise.all([update("a"), update("b")])).toEqual([true, false]);
+      expect((await repository.getSession("session_1"))?.context?.revision).toBe(2);
+    } finally {
+      database.close();
+    }
+  });
+
+  /** 残高のSUMと書き込みが1文になっていることを、実際のSQLiteで固定する。 */
+  it("残高1800秒から1200秒と600秒を確保し、それ以上は始めない", async () => {
     const database = openDatabase();
     try {
       apply(database, await migrations());
@@ -301,32 +491,48 @@ describeWithSqlite("D1の授業枠", () => {
         });
       }
 
-      const started = [];
-      for (let index = 0; index < 4; index += 1) {
-        started.push(
-          await repository.startSession({
+      const started = await Promise.all(
+        Array.from({ length: 3 }, (_, index) =>
+          repository.startSession({
             sessionId: `session_${index}`,
             deviceId: "device_a",
             startedAt: "2026-08-03T13:30:00.000Z",
             localDate: "2026-08-03",
-            maxPerDay: 3,
+            secondsPerDay: 1800,
+            sessionMaxSeconds: 1200,
+            minimumSessionSeconds: 180,
+            maxStartsPerDay: 20,
           }),
-        );
-      }
+        ),
+      );
 
       expect(started).toEqual([
-        { started: true, alreadyStarted: false, sessionsToday: 1 },
-        { started: true, alreadyStarted: false, sessionsToday: 2 },
-        { started: true, alreadyStarted: false, sessionsToday: 3 },
+        {
+          started: true,
+          alreadyStarted: false,
+          sessionsToday: 1,
+          maxSeconds: 1200,
+          remainingSecondsToday: 600,
+        },
+        {
+          started: true,
+          alreadyStarted: false,
+          sessionsToday: 2,
+          maxSeconds: 600,
+          remainingSecondsToday: 0,
+        },
         { started: false },
       ]);
-      expect(await repository.countStartedSessionsOnDate("device_a", "2026-08-03")).toBe(3);
+      expect(await repository.getDailySessionUsage("device_a", "2026-08-03")).toEqual({
+        consumedSeconds: 1800,
+        sessionsStarted: 2,
+      });
     } finally {
       database.close();
     }
   });
 
-  it("同じセッションを始め直しても数え直さない(つなぎ直しで枠を失わない)", async () => {
+  it("同じセッションを始め直しても仮押さえを重ねない", async () => {
     const database = openDatabase();
     try {
       apply(database, await migrations());
@@ -340,19 +546,179 @@ describeWithSqlite("D1の授業枠", () => {
           deviceId: "device_a",
           startedAt: "2026-08-03T13:30:00.000Z",
           localDate: "2026-08-03",
-          maxPerDay: 1,
+          secondsPerDay: 1200,
+          sessionMaxSeconds: 1200,
+          minimumSessionSeconds: 180,
+          maxStartsPerDay: 20,
         });
 
-      expect(await start()).toEqual({ started: true, alreadyStarted: false, sessionsToday: 1 });
-      expect(await start()).toEqual({ started: true, alreadyStarted: true, sessionsToday: 1 });
-      expect(await repository.countStartedSessionsOnDate("device_a", "2026-08-03")).toBe(1);
+      expect(await start()).toEqual({
+        started: true,
+        alreadyStarted: false,
+        sessionsToday: 1,
+        maxSeconds: 1200,
+        remainingSecondsToday: 0,
+      });
+      expect(await start()).toEqual({
+        started: true,
+        alreadyStarted: true,
+        sessionsToday: 1,
+        maxSeconds: 1200,
+        remainingSecondsToday: 0,
+      });
     } finally {
       database.close();
     }
   });
 
-  // 撮った日ではなく始めた日で数える。日付をまたいで始めた会話は、その日の1本。
-  it("数える日を、会話が始まった日へ書き直す", async () => {
+  it("完了実績で未使用分を返し、残り600秒を次の max_seconds にする", async () => {
+    const database = openDatabase();
+    try {
+      apply(database, await migrations());
+      const repository = new D1Repository(new SQLiteD1Database(database));
+      await repository.ensureUser("device_a", new Date("2026-08-03T13:00:00.000Z"));
+      await repository.createSession({ session: session("first"), maxAnalysesPerDay: 99 });
+      await repository.createSession({ session: session("second"), maxAnalysesPerDay: 99 });
+
+      const start = (sessionId: string) =>
+        repository.startSession({
+          sessionId,
+          deviceId: "device_a",
+          startedAt: "2026-08-03T13:00:00.000Z",
+          localDate: "2026-08-03",
+          secondsPerDay: 1200,
+          sessionMaxSeconds: 1200,
+          minimumSessionSeconds: 180,
+          maxStartsPerDay: 20,
+        });
+      expect((await start("first")).started).toBe(true);
+      await repository.completeSession({
+        sessionId: "first",
+        completedAt: "2026-08-03T13:10:00.000Z",
+        durationSeconds: 600,
+      });
+
+      expect(await start("second")).toMatchObject({
+        started: true,
+        maxSeconds: 600,
+        remainingSecondsToday: 0,
+      });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("残高179秒では始めず、180秒ならそのまま配る", async () => {
+    const database = openDatabase();
+    try {
+      apply(database, await migrations());
+      const repository = new D1Repository(new SQLiteD1Database(database));
+      await repository.ensureUser("device_a", new Date("2026-08-03T13:00:00.000Z"));
+      await repository.createSession({
+        session: session("used", {
+          status: "completed",
+          started_at: "2026-08-03T12:00:00.000Z",
+          max_seconds: 1200,
+          duration_seconds: 1021,
+          completed_at: "2026-08-03T12:17:01.000Z",
+          quota_settled_at: "2026-08-03T12:17:01.000Z",
+        }),
+        maxAnalysesPerDay: 99,
+      });
+      await repository.createSession({ session: session("candidate"), maxAnalysesPerDay: 99 });
+      const start = () =>
+        repository.startSession({
+          sessionId: "candidate",
+          deviceId: "device_a",
+          startedAt: "2026-08-03T13:00:00.000Z",
+          localDate: "2026-08-03",
+          secondsPerDay: 1200,
+          sessionMaxSeconds: 1200,
+          minimumSessionSeconds: 180,
+          maxStartsPerDay: 20,
+        });
+
+      expect(await start()).toEqual({ started: false });
+      await repository.completeSession({
+        sessionId: "used",
+        completedAt: "2026-08-03T12:17:00.000Z",
+        durationSeconds: 1020,
+      });
+      expect(await start()).toMatchObject({ started: true, maxSeconds: 180 });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("残高があっても非公開の開始回数ガードを越えない", async () => {
+    const database = openDatabase();
+    try {
+      apply(database, await migrations());
+      const repository = new D1Repository(new SQLiteD1Database(database));
+      await repository.ensureUser("device_a", new Date("2026-08-03T13:00:00.000Z"));
+      await repository.createSession({ session: session("first"), maxAnalysesPerDay: 99 });
+      await repository.createSession({ session: session("second"), maxAnalysesPerDay: 99 });
+      const start = (sessionId: string) =>
+        repository.startSession({
+          sessionId,
+          deviceId: "device_a",
+          startedAt: "2026-08-03T13:00:00.000Z",
+          localDate: "2026-08-03",
+          secondsPerDay: 3600,
+          sessionMaxSeconds: 180,
+          minimumSessionSeconds: 180,
+          maxStartsPerDay: 1,
+        });
+
+      expect((await start("first")).started).toBe(true);
+      expect(await start("second")).toEqual({ started: false });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("/complete が来ない回は max_seconds + grace 後に仮押さえ額で自動精算する", async () => {
+    const database = openDatabase();
+    try {
+      apply(database, await migrations());
+      const repository = new D1Repository(new SQLiteD1Database(database));
+      await repository.ensureUser("device_a", new Date("2026-08-03T13:00:00.000Z"));
+      await repository.createSession({ session: session("session_1"), maxAnalysesPerDay: 99 });
+      await repository.startSession({
+        sessionId: "session_1",
+        deviceId: "device_a",
+        startedAt: "2026-08-03T13:00:00.000Z",
+        localDate: "2026-08-03",
+        secondsPerDay: 1200,
+        sessionMaxSeconds: 1200,
+        minimumSessionSeconds: 180,
+        maxStartsPerDay: 20,
+      });
+
+      expect(
+        await repository.settleExpiredSessions({
+          deviceId: "device_a",
+          now: "2026-08-03T13:22:00.000Z",
+          graceSeconds: 120,
+        }),
+      ).toBe(0);
+      expect(
+        await repository.settleExpiredSessions({
+          deviceId: "device_a",
+          now: "2026-08-03T13:22:01.000Z",
+          graceSeconds: 120,
+        }),
+      ).toBe(1);
+      expect(await repository.getSession("session_1")).toMatchObject({
+        duration_seconds: 1200,
+        quota_settled_at: "2026-08-03T13:22:01.000Z",
+      });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("JSTの日付をまたいだ会話は、始めた翌日の時間に数える", async () => {
     const database = openDatabase();
     try {
       apply(database, await migrations());
@@ -366,12 +732,19 @@ describeWithSqlite("D1の授業枠", () => {
           deviceId: "device_a",
           startedAt: "2026-08-03T15:10:00.000Z",
           localDate: "2026-08-04",
-          maxPerDay: 1,
+          secondsPerDay: 1200,
+          sessionMaxSeconds: 1200,
+          minimumSessionSeconds: 180,
+          maxStartsPerDay: 20,
         }),
-      ).toEqual({ started: true, alreadyStarted: false, sessionsToday: 1 });
+      ).toMatchObject({ started: true, maxSeconds: 1200 });
 
-      expect(await repository.countStartedSessionsOnDate("device_a", "2026-08-03")).toBe(0);
-      expect(await repository.countStartedSessionsOnDate("device_a", "2026-08-04")).toBe(1);
+      expect(
+        (await repository.getDailySessionUsage("device_a", "2026-08-03")).consumedSeconds,
+      ).toBe(0);
+      expect(
+        (await repository.getDailySessionUsage("device_a", "2026-08-04")).consumedSeconds,
+      ).toBe(1200);
     } finally {
       database.close();
     }
@@ -392,10 +765,15 @@ describeWithSqlite("D1の授業枠", () => {
           deviceId: "device_b",
           startedAt: "2026-08-03T13:30:00.000Z",
           localDate: "2026-08-03",
-          maxPerDay: 1,
+          secondsPerDay: 1200,
+          sessionMaxSeconds: 1200,
+          minimumSessionSeconds: 180,
+          maxStartsPerDay: 20,
         }),
       ).toEqual({ started: false });
-      expect(await repository.countStartedSessionsOnDate("device_a", "2026-08-03")).toBe(0);
+      expect(
+        (await repository.getDailySessionUsage("device_a", "2026-08-03")).sessionsStarted,
+      ).toBe(0);
     } finally {
       database.close();
     }
@@ -447,7 +825,9 @@ describeWithSqlite("D1の授業枠", () => {
           .get("device_a")?.["count"],
       ).toBe(3);
       // 0008 は既存行を「会話が始まったもの」として埋める(行が在ること = 1回だった頃の意味)。
-      expect(await repository.countStartedSessionsOnDate("device_a", "2026-08-03")).toBe(2);
+      expect(
+        (await repository.getDailySessionUsage("device_a", "2026-08-03")).sessionsStarted,
+      ).toBe(2);
     } finally {
       database.close();
     }

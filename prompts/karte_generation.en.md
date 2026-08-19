@@ -2,7 +2,7 @@
 id: karte_generation
 locale: en
 model_role: karte
-variables: [photo_summary, allowed_topics, transcript, is_premium]
+variables: [problem_text, photo_summary, allowed_topics, transcript, is_premium]
 ---
 
 Build a "karte" from the whole conversation transcript. Output JSON only.
@@ -23,6 +23,8 @@ understanding. Never write a score, a percentage, or an evaluation.
 
 - `said_well`: only what the student actually said out loud. Never promote something they
   did not say into "explained". At most 3 items.
+  "I did it" on the analogous problem only reports that they finished trying, so it never
+  belongs here by itself. Use only the explanation of *why* that they subsequently said.
 - `holes`: **the places where the explanation stopped, or where no reason came out.** At most 3.
   - Write `desc` in the form "the explanation stopped at ~". Never "they cannot do ~" or
     "~ is insufficient".
@@ -57,9 +59,15 @@ That is not a guess on your part — they told you. It is exactly the kind of ga
 is looking for.
 
 - "I don't know", "no idea", "we haven't done that", "I forgot"
+- "I couldn't do it", "I couldn't solve it" on the analogous problem (including the on-screen
+  "I couldn't do it" signal)
 - "kind of", "I guess", "not sure", "I can't explain it"
 - "I can't explain this yet. Could you ask it a different way?" (the signal sent when they
   tap "I can't explain this yet" on screen)
+
+For "I couldn't do it / I couldn't solve it", record a hole under that analogous problem's
+topic and quote the report itself, briefly and verbatim, in `evidence`. Do not replace it with
+what the senpai later retaught, and do not invent a new karte field.
 
 When the same phrase comes up more than once, split them **by the topic they were said
 about, not just by how many times** (at most 3, highest severity first). If more than
@@ -73,6 +81,14 @@ A karte that records none of the places they said they did not know is a **wrong
 - Arithmetic mistakes (this app looks at the explanation, not the computation)
 - Silence alone (if they explained it afterwards, it is not a hole)
 - Anything that was simply not picked up by the microphone
+
+## Today's problem (context)
+
+{{problem_text}}
+
+This is context for identifying what the conversation refers to. Merely reading the question
+aloud is not evidence that the student explained the method. Do not use it as evidence for
+`said_well` or `holes`.
 
 ## Today's notes
 

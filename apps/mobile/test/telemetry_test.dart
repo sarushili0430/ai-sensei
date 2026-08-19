@@ -137,9 +137,15 @@ void main() {
         naturalWidth: 470,
       ),
       DegradationEvent.boardTooNarrow(availableWidth: 198, assumedWidth: 340),
+      DegradationEvent.figureSvgFailed(svgLength: 1234, error: FormatException),
       DegradationEvent.passNotSent(
         sessionId: 'ses_1',
         phase: 'explainBack',
+        error: StateError,
+      ),
+      DegradationEvent.solvingReportNotSent(
+        sessionId: 'ses_1',
+        phase: 'senpaiTeaching',
         error: StateError,
       ),
     ];
@@ -220,6 +226,19 @@ void main() {
 
       expect(event.data.values.every((Object? v) => v is num), isTrue);
     });
+
+    test('SVGの失敗は本文を持たず、長さと例外型だけを持つ', () {
+      final DegradationEvent event = DegradationEvent.figureSvgFailed(
+        svgLength: 1234,
+        error: FormatException,
+      );
+
+      expect(event.data, <String, Object?>{
+        'svg_length': 1234,
+        'error': 'FormatException',
+      });
+      expect(event.data.values, isNot(contains(poison)));
+    });
   });
 
   group('間引きの鍵', () {
@@ -255,6 +274,22 @@ void main() {
           error: StateError,
         ).dedupeKey,
         'ses_1',
+      );
+    });
+
+    test('SVGの失敗は例外型と本文長が同じ再buildを1件にする', () {
+      final DegradationEvent event = DegradationEvent.figureSvgFailed(
+        svgLength: 100,
+        error: FormatException,
+      );
+
+      expect(event.dedupeKey, 'FormatException/100');
+      expect(
+        DegradationEvent.figureSvgFailed(
+          svgLength: 101,
+          error: FormatException,
+        ).dedupeKey,
+        isNot(event.dedupeKey),
       );
     });
   });

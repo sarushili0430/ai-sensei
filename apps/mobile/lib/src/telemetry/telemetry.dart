@@ -22,6 +22,7 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 ///   - LaTeX が縮小率の下限を割って横スクロールに落ちた([Degradation.latexScaleFloor])
 ///     — **agent 側の式の分割が効いていない**シグナル(計画書 §3-6b の宿題そのもの)
 ///   - 板書の実効幅が実測の前提(340pt)を割った([Degradation.boardTooNarrow])
+///   - 配送されたSVGを端末で解釈できなかった([Degradation.figureSvgFailed])
 ///
 /// だから `captureException` ではなく **`captureMessage(level: warning)`** を使う。
 /// クラッシュの棚に混ぜると、本当に落ちたものが埋もれる。
@@ -62,13 +63,26 @@ enum Degradation {
   /// 「収まるはずの式」が横スクロールに落ちる。
   boardTooNarrow('board_too_narrow'),
 
+  /// サーバで検証済みのはずのSVGを、端末の `flutter_svg` が解釈できなかった。
+  /// 空行へ縮退して授業は続けるが、記録しないと図が消えた事実を誰も観測できない。
+  figureSvgFailed('figure_svg_failed'),
+
   /// 「うまく言えない」を押したのに、先輩に伝えられなかった。
   ///
   /// **約束3(パスを恥にしない)は、パスが残ることで成立している。**
   /// 送れないと穴として価値化されず、その生徒にとっては
   /// 「言えなかったのに、何も起きなかった」だけになる。しかも
   /// **画面上は何事もなく進む**ので、本人にもこちらにも見えない。
-  passNotSent('pass_not_sent');
+  passNotSent('pass_not_sent'),
+
+  /// 類題の「できた / できなかった」を押したのに、先輩に伝えられなかった。
+  ///
+  /// **この経路の壊れ方は、パスより静かで長い。** 先輩は解答待ちの間だけ
+  /// 15秒判定を外してセッションの残り時間まで待つので、申告が届かないと
+  /// **何分でも黙ったまま**になる。押した生徒からは「ボタンが効かない」に見え、
+  /// 画面にはボタンが消えたことしか起きない。声でも申告できる作りにしてあるが、
+  /// **押して駄目だった事実が残らないと、その静けさの原因を追えない。**
+  solvingReportNotSent('solving_report_not_sent');
 
   const Degradation(this.id);
 
@@ -233,6 +247,22 @@ class DegradationEvent {
     );
   }
 
+  /// 図のSVGを描けなかった。**SVG本文は受け取らない**ので、監視へ流しようがない。
+  factory DegradationEvent.figureSvgFailed({
+    required int svgLength,
+    required Type error,
+  }) {
+    return DegradationEvent._(
+      Degradation.figureSvgFailed,
+      // 同じSVGの再buildは1件にする。本文のhashを持たず、長さで図ごとに近似する。
+      dedupeKey: '${error.toString()}/$svgLength',
+      data: _sanitize(<String, Object?>{
+        'svg_length': svgLength,
+        'error': error.toString(),
+      }),
+    );
+  }
+
   /// 「うまく言えない」を送れなかった。
   ///
   /// **パスの文言は受け取らない。** 引数に無いので、渡しようがない。
@@ -247,6 +277,29 @@ class DegradationEvent {
       Degradation.passNotSent,
       // 1セッションに1件。同じ会話で何度も詰まるのは**正常**なので、
       // そのたびに飛ばすと「送信経路が壊れている」ほうが埋もれる。
+      dedupeKey: sessionId ?? 'unknown',
+      data: _sanitize(<String, Object?>{
+        'session_id': sessionId,
+        'phase': phase,
+        'error': error.toString(),
+      }),
+    );
+  }
+
+  /// 類題の本人申告を送れなかった。
+  ///
+  /// **申告の文言は受け取らない。**「できた / できなかった」のどちらだったかも
+  /// 送らない —— 送信できなかった事実と、どこで起きたかで足りる。
+  /// [error] は [DegradationEvent.passNotSent] と同じ理由で型だけ受け取る。
+  factory DegradationEvent.solvingReportNotSent({
+    required String? sessionId,
+    required String phase,
+    required Type error,
+  }) {
+    return DegradationEvent._(
+      Degradation.solvingReportNotSent,
+      // パスと同じく1セッションに1件。送信経路が壊れている事実が知りたいので、
+      // 同じ会話で二度押されたぶんを別々に飛ばしても情報は増えない。
       dedupeKey: sessionId ?? 'unknown',
       data: _sanitize(<String, Object?>{
         'session_id': sessionId,

@@ -287,6 +287,39 @@ describe("runBoardLesson", () => {
     expect(result.reason).toBe("completed");
   });
 
+  it("類題を送る前に止めると、板書にも音声にも類題を出さない", async () => {
+    const spoken: number[] = [];
+    const sink = recordingSink();
+    const board = channelWith(sink).startBoard();
+
+    const result = await runBoardLesson({
+      llm: stubLlm(
+        lessonJson([
+          step(0, "D = b^2 - 4ac"),
+          {
+            index: 1,
+            speech: "じゃあ、数だけ替えたこれはどうなる?",
+            board: { kind: "latex", tex: "x^2 - 5x + 6 = 0" },
+            awaits_solving: true,
+          },
+          step(2, "x = 99"),
+        ]),
+      ),
+      system: "s",
+      locale: "ja",
+      delivery: board,
+      stopBefore: (delivered) => delivered.awaits_solving === true,
+      speak: async (delivered) => {
+        spoken.push(delivered.index);
+      },
+    });
+
+    expect(spoken).toEqual([0]);
+    expect(result.steps.map((delivered) => delivered.index)).toEqual([0]);
+    expect(result.step_count).toBe(1);
+    expect(result.reason).toBe("completed");
+  });
+
   it("疑問符で終わる第一声でも止まる(問題文が読めなかった授業の入口)", async () => {
     const sink = recordingSink();
     const board = channelWith(sink).startBoard();

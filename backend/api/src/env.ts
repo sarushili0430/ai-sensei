@@ -44,8 +44,8 @@ export type Bindings = {
   /** `"error"` にすると全リクエストの1行を落として失敗だけ残す。既定は info。 */
   LOG_LEVEL?: string;
 
-  FREE_SESSIONS_PER_DAY?: string;
-  PREMIUM_SESSIONS_PER_DAY?: string;
+  FREE_SECONDS_PER_DAY?: string;
+  PREMIUM_SECONDS_PER_DAY?: string;
   FREE_SESSION_MAX_SECONDS?: string;
   PREMIUM_SESSION_MAX_SECONDS?: string;
 
@@ -60,8 +60,8 @@ export type Bindings = {
    * 一般公開の日に「なぜか誰も課金画面を見ない」という形で発覚する。
    */
   BETA_OPEN_ACCESS_UNTIL?: string;
-  /** β開放中の1日の授業本数。使い放題の体感を出しつつ、暴走だけ止める高さにする。 */
-  BETA_SESSIONS_PER_DAY?: string;
+  /** β開放中の1日の持ち時間。従量原価と同じ秒数で暴走を止める。 */
+  BETA_SECONDS_PER_DAY?: string;
 };
 
 /**
@@ -90,26 +90,27 @@ export type AppEnv = {
 };
 
 export type Limits = {
-  freeSessionsPerDay: number;
-  premiumSessionsPerDay: number;
+  freeSecondsPerDay: number;
+  premiumSecondsPerDay: number;
   freeSessionMaxSeconds: number;
   premiumSessionMaxSeconds: number;
   /** クローズドβの開放期限。`null` は通常営業(= 課金した人だけがPremium)。 */
   betaOpenAccessUntil: Date | null;
-  betaSessionsPerDay: number;
+  betaSecondsPerDay: number;
 };
 
 export function readLimits(env: Bindings): Limits {
   return {
-    freeSessionsPerDay: toInt(env.FREE_SESSIONS_PER_DAY, 1),
-    // 通常利用の1日1〜2回には当てず、異常利用だけを止める最小のフェアユース上限。
-    premiumSessionsPerDay: toInt(env.PREMIUM_SESSIONS_PER_DAY, 3),
+    // 従来の1本×20分をそのまま秒に写し、短い授業の未使用分を次へ返す。
+    freeSecondsPerDay: toInt(env.FREE_SECONDS_PER_DAY, 1200),
+    // 従来の3本×20分と同じ実効上限。回数ではなく会話時間で原価を押さえる。
+    premiumSecondsPerDay: toInt(env.PREMIUM_SECONDS_PER_DAY, 3600),
     // 無料のお試しも品質を落とさず、設計の15〜20分を完走できる上端を既定値にする。
     freeSessionMaxSeconds: toInt(env.FREE_SESSION_MAX_SECONDS, 1200),
     premiumSessionMaxSeconds: toInt(env.PREMIUM_SESSION_MAX_SECONDS, 1200),
     betaOpenAccessUntil: toDate(env.BETA_OPEN_ACCESS_UNTIL),
-    // 通常利用(1日1〜2回)には絶対に当たらず、原価の暴走だけを止める高さ。
-    betaSessionsPerDay: toInt(env.BETA_SESSIONS_PER_DAY, 10),
+    // 従来の10本×20分と同じ開放幅。テスターでも従量原価は同じだけ動く。
+    betaSecondsPerDay: toInt(env.BETA_SECONDS_PER_DAY, 12000),
   };
 }
 

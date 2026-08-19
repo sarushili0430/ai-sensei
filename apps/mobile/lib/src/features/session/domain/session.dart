@@ -111,6 +111,8 @@ abstract class LiveKitConnection with _$LiveKitConnection {
 abstract class SessionLimits with _$SessionLimits {
   const factory SessionLimits({
     @JsonKey(name: 'max_seconds') required int maxSeconds,
+    @JsonKey(name: 'remaining_seconds_today')
+    required int remainingSecondsToday,
 
     /// この応答時点から、今日さらに授業を始められるか。
     @JsonKey(name: 'lesson_allowed_today') required bool lessonAllowedToday,
@@ -121,7 +123,7 @@ abstract class SessionLimits with _$SessionLimits {
 
 /// 写真を読んだ結果。**まだ部屋の鍵は入っていない。**
 ///
-/// 単元と問題文を確かめる画面のための値で、ここまでは**今日の1回を使わない**
+/// 単元と問題文を確かめる画面のための値で、ここまでは**日次の持ち時間を押さえない**
 /// (数えるのは会話が始まったとき = [SessionStart])。撮って単元を見ただけで
 /// 「今日はここまで」になっていたのを直したときに、応答ごと2つに分けた。
 @freezed
@@ -153,12 +155,36 @@ abstract class SessionAnalysis with _$SessionAnalysis {
   factory SessionAnalysis.fromJson(Map<String, dynamic> json) => _$SessionAnalysisFromJson(json);
 }
 
-/// 始まった会話。**この応答が返った時点で、今日の1回を使っている。**
+/// 会話中に追加した問題写真の解析結果。
+///
+/// 作成時の [SessionAnalysis] とほぼ同じだが、agentへの制御通知で使う
+/// [contextRevision] が必須。問題文や許可集合をRPCへ載せず、この番号だけを知らせる。
+@freezed
+abstract class AddedSessionProblem with _$AddedSessionProblem {
+  const factory AddedSessionProblem({
+    @JsonKey(name: 'session_id') required String sessionId,
+    required String kind,
+    @JsonKey(name: 'detected_topics')
+    required List<DetectedTopic> detectedTopics,
+    SessionProblem? problem,
+    @JsonKey(
+      name: 'problem_outcome',
+      unknownEnumValue: JsonKey.nullForUndefinedEnumValue,
+    )
+    ProblemOutcome? problemOutcome,
+    @JsonKey(name: 'context_revision') required int contextRevision,
+  }) = _AddedSessionProblem;
+
+  factory AddedSessionProblem.fromJson(Map<String, dynamic> json) =>
+      _$AddedSessionProblemFromJson(json);
+}
+
+/// 始まった会話。**この応答が返った時点で、その回の会話時間は仮押さえ済み。**
 ///
 /// 部屋の鍵(`livekit`)と上限がここにしか無いのは仕様で、枠の確保と
 /// トークンの発行がサーバ側の同じ1操作になっている(`api.ts` の
 /// `startSessionResponseSchema`)。解析の時点で鍵を配ると、
-/// 鍵を持っている = いつでも始められる になり、数える位置を移した意味が消える。
+/// 鍵を持っている = いつでも始められる になり、仮押さえを開始時に行う意味が消える。
 @freezed
 abstract class SessionStart with _$SessionStart {
   const factory SessionStart({
@@ -177,6 +203,7 @@ abstract class SessionResult with _$SessionResult {
   const factory SessionResult({
     required Karte karte,
     required Progress progress,
+    required SessionLimits limits,
 
     /// 初回カルテで穴が見えた直後だけ true。
     @JsonKey(name: 'show_paywall') required bool showPaywall,

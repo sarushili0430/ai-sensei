@@ -85,7 +85,7 @@ describe("buildKarte", () => {
     expect(karte.holes).toHaveLength(1);
   });
 
-  it("プロンプトに写真の要約とtranscriptを渡す", async () => {
+  it("プロンプトに問題文・写真の要約・transcriptを渡す", async () => {
     let captured = "";
     await buildKarte({
       context,
@@ -99,7 +99,9 @@ describe("buildKarte", () => {
     });
 
     const system = captured;
+    expect(system).toContain("x^2 - 3x + 2 = 0 を解け");
     expect(system).toContain("円と直線の位置関係");
+    expect(system).toContain("問題文を読み上げただけ");
     expect(system).toContain("ユーザー: 距離で比べました");
     expect(system).not.toContain("{{");
   });
@@ -177,6 +179,32 @@ describe("withUncertaintyHole", () => {
     expect(karteDraftSchema.safeParse(karte).success).toBe(true);
   });
 
+  /**
+   * **問題を差し替えたセッションでは、推測でトピックを付けない。**
+   *
+   * transcript は全問題ぶんが1本に並ぶのに、`allowed_topic_ids` は最後の問題のもの。
+   * 1問目の「わからない」を2問目の単元に付けると、本人が触れていない単元の復習が
+   * 1/3/7日後に届く。誤った単元へ連れて行くより、ここは黙るほうがまだ直せる。
+   */
+  it("会話中に問題を差し替えたセッションでは、推測の穴を足さない", () => {
+    const switched = readSessionContext(
+      sessionMetadataJson({
+        session_id: "ses_switched",
+        problem_text: "2問目: y = x^2 の接線を求めよ",
+        max_seconds: 300,
+        allowed_topics: "- M2-ZUKEI-ENCHOKU",
+        allowed_topic_ids: ["M2-ZUKEI-ENCHOKU"],
+        context_revision: 2,
+      }),
+    );
+
+    const karte = withUncertaintyHole(emptyKarte(), switched, [
+      said("えっと、そこはわからないです"),
+    ]);
+
+    expect(karte.holes).toHaveLength(0);
+  });
+
   it("何度も言われているほど、次に効くものとして扱う", () => {
     const once = withUncertaintyHole(emptyKarte(), context, [said("わからないです")]);
     const twice = withUncertaintyHole(emptyKarte(), context, [
@@ -187,6 +215,13 @@ describe("withUncertaintyHole", () => {
     expect(once.holes[0]?.severity).toBe("medium");
     expect(twice.holes[0]?.severity).toBe("high");
     expect(twice.holes[0]?.evidence).toBe("わからないです / そこも習ってないです");
+  });
+
+  it("類題の「できなかった」を新しい欄ではなく穴の evidence に残す", () => {
+    const karte = withUncertaintyHole(emptyKarte(), context, [said("できなかった")]);
+
+    expect(karte.holes).toHaveLength(1);
+    expect(karte.holes[0]?.evidence).toBe("できなかった");
   });
 
   it("LLMが穴を書けているときは足さない(数を水増ししない)", () => {
@@ -343,7 +378,7 @@ describe("英語のセッション", () => {
   const englishContext = readSessionContext(
     sessionMetadataJson({
       session_id: "ses_en",
-      problem_text: "x^2 - 3x + 2 = 0 を解け",
+      problem_text: "Solve x^2 - 3x + 2 = 0.",
       visible_work: "- 因数分解しかけて止まっている",
       locale: "en",
       max_seconds: 300,

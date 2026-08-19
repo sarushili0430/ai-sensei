@@ -21,7 +21,11 @@ void main() {
   const ProgressSummary exhaustedWithoutHoles = ProgressSummary(
     progress: Progress(streakDays: 3, filledHoles: 4, openHoles: 0),
     isPremium: false,
-    limits: SessionLimits(maxSeconds: 1200, lessonAllowedToday: false),
+    limits: SessionLimits(
+      maxSeconds: 1200,
+      remainingSecondsToday: 0,
+      lessonAllowedToday: false,
+    ),
   );
 
   Future<void> pumpHome(
@@ -46,6 +50,27 @@ void main() {
     expect(find.text(ja.homeGreeting), findsOneWidget);
     // 締めていない日に「今日はここまで」を先出ししない(残数の匂わせになる)。
     expect(find.text(ja.lessonEnoughForToday), findsNothing);
+    expect(find.text(ja.homeRemainingMinutes(20)), findsOneWidget);
+  });
+
+  testWidgets('残り秒数は分未満を切り捨てて、今日の残りとして出す', (WidgetTester tester) async {
+    const ProgressSummary partial = ProgressSummary(
+      progress: sampleProgress,
+      isPremium: false,
+      limits: SessionLimits(
+        maxSeconds: 600,
+        remainingSecondsToday: 599,
+        lessonAllowedToday: true,
+      ),
+    );
+
+    await pumpHome(tester, partial);
+
+    expect(
+      find.byKey(const ValueKey<String>('home-remaining-time')),
+      findsOneWidget,
+    );
+    expect(find.text(ja.homeRemainingMinutes(9)), findsOneWidget);
   });
 
   testWidgets('先輩が締めた日は、押せる先が復習に入れ替わる', (WidgetTester tester) async {

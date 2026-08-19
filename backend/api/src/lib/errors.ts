@@ -12,14 +12,14 @@ const messages: Record<ApiErrorCode, { ja: string; en: string; status: number }>
     status: 401,
   },
   free_limit_reached: {
-    ja: "今日のセッションはここまでです。また明日、続きを聞かせてください。",
-    en: "That's all for today. Come back tomorrow and tell me the rest.",
+    ja: "今日の持ち時間は使い切りました。また明日、続きを聞かせてください。",
+    en: "You've used today's lesson time. Come back tomorrow and tell me the rest.",
     status: 402,
   },
   fair_use_limit_reached: {
     // Premiumの上限値は見せず、§6-3どおり先輩が学習を締める言い方にする。
-    ja: "今日はここまでにしよっか。詰め込みすぎても入らないから、また明日続きをやろう。",
-    en: "Let's stop here for today. Cramming more won't help it stick, so let's continue tomorrow.",
+    ja: "今日の持ち時間は使い切ったよ。また明日続きをやろう。",
+    en: "You've used today's lesson time. Let's continue tomorrow.",
     status: 429,
   },
   premium_required: {
@@ -34,6 +34,13 @@ const messages: Record<ApiErrorCode, { ja: string; en: string; status: number }>
     ja: "写真からノートを読み取れませんでした。もう一度撮ってみてください。",
     en: "We couldn't read any notes in this photo. Could you take another one?",
     status: 422,
+  },
+  problem_photo_limit_reached: {
+    // 追加写真だけを止める。授業そのものまで「今日はここまで」にしないことで、
+    // いま開いている問題をそのまま続けられる非終端の失敗にする。
+    ja: "この授業で追加できる写真はここまでです。今の問題はそのまま続けられます。",
+    en: "That's all the photos you can add to this lesson. You can keep working on the current problem.",
+    status: 429,
   },
   /**
    * 手入力の問題文をガードレールが落とした(`PATCH /v1/sessions/{id}/problem`)。

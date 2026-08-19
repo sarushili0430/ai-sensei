@@ -2,6 +2,7 @@ import type { BoardStep } from "@ai-sensei/contract";
 import { describe, expect, it } from "vitest";
 import { readSessionContext } from "./context.ts";
 import {
+  practiceTeachBackPrompt,
   reviewOpening,
   senpaiBoardLessonPrompt,
   startsWithBoardLesson,
@@ -9,6 +10,7 @@ import {
   teachBackPrompt,
   wroteOnBoard,
 } from "./senpai.ts";
+import { problemPhotoBridge, problemPhotoFailedBridge } from "./session-control.ts";
 import { sessionMetadataJson } from "./test-support.ts";
 
 /**
@@ -133,6 +135,44 @@ describe("復習から板書授業への接続", () => {
       ]),
     ).toBe(teachBackPrompt("ja"));
   });
+
+  it("類題まで出したあとに受け渡しを忘れたら、その類題の理由説明へ戻す", () => {
+    const solving: BoardStep = {
+      index: 1,
+      speech: "じゃあ、この類題はどうなる?",
+      board: { kind: "latex", tex: "x^2 - 5x + 6 = 0" },
+      awaits_solving: true,
+    };
+    const answered: BoardStep = {
+      index: 2,
+      speech: "正答はこう。",
+      board: { kind: "text", body: "異なる2つの実数解" },
+    };
+
+    expect(teachBackFallback(reviewContext, [solving, answered])).toBe(
+      practiceTeachBackPrompt("ja"),
+    );
+  });
+
+  it("できなかった後の教え直しを、類題の正答を書けた分岐とは扱わない", () => {
+    const solving: BoardStep = {
+      index: 1,
+      speech: "じゃあ、この類題はどうなる?",
+      board: { kind: "latex", tex: "x^2 - 5x + 6 = 0" },
+      awaits_solving: true,
+    };
+    const askedWhere: BoardStep = {
+      index: 2,
+      speech: "そっか。どこで止まった?",
+      board: null,
+      awaits_student: true,
+    };
+    const retaught = step("まずDに数字を入れるところを一緒にやろう。");
+
+    expect(teachBackFallback(reviewContext, [solving, askedWhere, retaught])).toBe(
+      teachBackPrompt("ja"),
+    );
+  });
 });
 
 describe("板書に何か書いたか", () => {
@@ -143,5 +183,14 @@ describe("板書に何か書いたか", () => {
 
   it("1つでも板書に載っていれば true", () => {
     expect(wroteOnBoard([{ index: 0, speech: "ここ。", board: null }, step("こう。")])).toBe(true);
+  });
+});
+
+describe("会話中の追加写真", () => {
+  it("解析中と失敗時のつなぎを日英で持つ", () => {
+    expect(problemPhotoBridge("ja")).toContain("ちょっと待って");
+    expect(problemPhotoBridge("en")).toContain("moment");
+    expect(problemPhotoFailedBridge("ja")).toContain("今の問題");
+    expect(problemPhotoFailedBridge("en")).toContain("current problem");
   });
 });

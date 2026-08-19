@@ -15,7 +15,12 @@ import {
   type CurriculumSubject,
   subjectOfTopicId,
 } from "@ai-sensei/curriculum";
-import { drawFigure } from "@ai-sensei/figure";
+import {
+  type FigureQualityIssue,
+  drawFigure,
+  figureViewBoxHeight,
+  figureViewBoxWidth,
+} from "@ai-sensei/figure";
 import {
   type AllowedTopics,
   type LatexRejectionReason,
@@ -174,7 +179,13 @@ export type BoardStepRejection = {
    * `schema` は契約違反(長さ・形)、`figure` は**解けなかった作図**。
    */
   kind: "latex" | "syntax" | "schema" | "figure";
-  reason: LatexRejectionReason | "syntax" | "schema" | "figure" | "figure_too_large";
+  reason:
+    | LatexRejectionReason
+    | "syntax"
+    | "schema"
+    | "figure"
+    | "figure_quality"
+    | "figure_too_large";
   /** 何が引っかかったか(ログ用)。 */
   detail: string;
   /** **会話の言語で書かれた再生成の指示。**そのままプロンプトに足せる。 */
@@ -280,8 +291,20 @@ export function checkLatexSyntax(tex: string): { ok: true } | { ok: false; detai
 }
 
 export type StepVerdict =
-  | { ok: true; step: BoardStep }
+  | { ok: true; step: BoardStep; figureStats?: FigureDeliveryStats }
   | { ok: false; rejection: BoardStepRejection };
+
+/** 配送済みの図を、本文なしで分類するための統計。 */
+export type FigureDeliveryStats = {
+  itemCount: number;
+  svgBytes: number;
+  minPointDistancePx: number | null;
+  minEdgeAngleDeg: number | null;
+  labelCollisionCount: number;
+  maxOverflowPx: number;
+  repaired: boolean;
+  changes: string[];
+};
 
 /**
  * 手順1つを検証する。**ワイヤーに出る前の最後の関門**。
@@ -402,14 +425,18 @@ export function validateStep(
     // 落ちた理由はそのまま直しの指示になるので、既存の作り直しの輪に乗せる。
     const drawn = drawFigure(board.items);
     if (!drawn.ok) {
+      const qualityIssues = drawn.stage === "quality" ? drawn.quality?.issues : undefined;
+      const qualityFailure = qualityIssues !== undefined;
       return {
         ok: false,
         rejection: {
           index,
           kind: "figure",
-          reason: "figure",
+          reason: qualityFailure ? "figure_quality" : "figure",
           detail: drawn.errors.join(" / "),
-          guidance: figureGuidanceByLocale[locale](drawn.errors),
+          guidance: qualityFailure
+            ? figureQualityGuidanceByLocale[locale](qualityIssues)
+            : figureGuidanceByLocale[locale](drawn.errors),
           raw,
         },
       };
@@ -432,7 +459,24 @@ export function validateStep(
       ok: true,
       step: {
         ...parsed.data,
-        board: { ...board, svg: drawn.svg, alt: describeFigure(board.items, locale) },
+        board: {
+          ...board,
+          // 自動修正で動かした自由度も一緒に運ぶ。SVGとitemsが食い違うと、
+          // 端末で描き直すD-21の経路に切り替えた日に元の崩れへ戻ってしまう。
+          items: drawn.items,
+          svg: drawn.svg,
+          alt: describeFigure(drawn.items, locale),
+        },
+      },
+      figureStats: {
+        itemCount: drawn.items.length,
+        svgBytes: drawn.svg.length,
+        minPointDistancePx: drawn.quality.metrics.minPointDistancePx,
+        minEdgeAngleDeg: drawn.quality.metrics.minEdgeAngleDeg,
+        labelCollisionCount: drawn.quality.metrics.labelCollisionCount,
+        maxOverflowPx: drawn.quality.metrics.maxOverflowPx,
+        repaired: drawn.repaired,
+        changes: drawn.changes,
       },
     };
   }
@@ -494,6 +538,51 @@ const figureGuidanceByLocale: Record<CurriculumLocale, (errors: readonly string[
       `The figure could not be drawn (${errors.join(" / ")}). `,
       "Do not compute coordinates or lengths yourself — declare the relations only. ",
       "Define every point before using it, and place fixed-length figures with from and dist.",
+    ].join(""),
+};
+
+function describeQualityIssue(issue: FigureQualityIssue, locale: CurriculumLocale): string {
+  const [first = "?", second = "?"] = issue.entities;
+  if (locale === "en") {
+    switch (issue.invariant) {
+      case "point_distance":
+        return `${first} and ${second} are only ${issue.actual}px apart (${issue.deficit}px below the ${issue.threshold}px minimum)`;
+      case "edge_angle":
+        return `the angle at ${first} is ${issue.actual}° (${issue.deficit}° below the ${issue.threshold}° minimum)`;
+      case "label_collision":
+        return `the labels ${first} and ${second} overlap`;
+      case "viewbox_overflow":
+        return `an element extends ${issue.actual}px beyond the viewBox`;
+    }
+  }
+  switch (issue.invariant) {
+    case "point_distance":
+      return `${first}と${second}の間が${issue.actual}pxしかなく、基準${issue.threshold}pxを${issue.deficit}px下回っています`;
+    case "edge_angle":
+      return `${first}の角が${issue.actual}°しかなく、基準${issue.threshold}°を${issue.deficit}°下回っています`;
+    case "label_collision":
+      return `ラベル「${first}」「${second}」が重なっています`;
+    case "viewbox_overflow":
+      return `要素がviewBoxから${issue.actual}pxはみ出しています`;
+  }
+}
+
+/** 解けたが崩れ、自動修正でも直らなかったときの的を絞った指示。 */
+const figureQualityGuidanceByLocale: Record<
+  CurriculumLocale,
+  (issues: readonly FigureQualityIssue[]) => string
+> = {
+  ja: (issues) =>
+    [
+      `図は解けましたが、可読性検査に通りませんでした(${issues.map((issue) => describeQualityIssue(issue, "ja")).join(" / ")})。`,
+      "点配置の at / deg / dist は関係を変えない範囲で散らし、つぶれた角と密集を避けてください。",
+      "自動修正できない密集は、語彙にない構図を近い要素で代用した可能性があります。近い図で代用せず、figureで表せなければlatexかtextの一行へ置き換えてください。",
+    ].join(""),
+  en: (issues) =>
+    [
+      `The figure solves, but it failed the readability check (${issues.map((issue) => describeQualityIssue(issue, "en")).join(" / ")}). `,
+      "Spread the visual at / deg / dist values without changing the declared relations, so points and angles do not collapse. ",
+      "If that cannot be repaired, you may be approximating a construction that the vocabulary cannot express. Do not substitute a similar-looking diagram; use a one-line latex or text element instead.",
     ].join(""),
 };
 
@@ -582,7 +671,7 @@ export type BoardChannelOptions = {
   /**
    * このセッションで教えてよい単元。**見出しの照合に使う**({@link validateHead})。
    *
-   * `backend/api` が既に前提2段ぶん(`conversationPrerequisiteDepth`)を含めて
+   * `backend/api` が既に前提チェーン全体(`conversationPrerequisiteDepth`)を含めて
    * 載せてくるので、ここで**さらに広げない**(`karte.ts` が
    * `prerequisiteDepth: 0` で組むのと同じ理由)。
    *
@@ -643,6 +732,14 @@ export type AppendBoardOptions = {
    * 板書が音声より何行先に出ていると読みにくいかを見てから決める値。
    */
   onStep?: (step: BoardStep) => void | Promise<void>;
+  /**
+   * 検証を通った手順を**送る前に**、この回の説明を意図的に終えるか。
+   *
+   * 残り時間が少ないときの類題は、送ってから無視すると生徒だけが解き始めてしまう。
+   * そのため `board_open` / `board_step` / TTS のどれよりも前に抑止する。
+   * これは契約違反や割り込みではないので、結果は `completed` のまま返す。
+   */
+  stopBefore?: (step: BoardStep) => boolean;
   /**
    * 手順を1つ出し終えた時点で、**そこで説明を打ち切るか**を決める。
    *
@@ -709,9 +806,9 @@ export class BoardChannel {
    * 授業の教科。**許可トピックの接頭辞から決まる**(ADR 0007)ので、
    * 呼び出し側が別に持たなくてよい。数学しか無かった頃と同じ既定は `math`。
    */
-  private readonly subject: CurriculumSubject;
+  private subject: CurriculumSubject;
   private readonly sink: BoardSink;
-  private readonly allowedTopics: AllowedTopics | undefined;
+  private allowedTopics: AllowedTopics | undefined;
   private readonly newBoardId: () => string;
   private readonly log: Pick<JobLogger, "info" | "warn"> | undefined;
   private seq = 0;
@@ -736,6 +833,19 @@ export class BoardChannel {
   /** 次に送る封筒の `seq`(テストと検算用)。 */
   get nextSeq(): number {
     return this.seq;
+  }
+
+  /**
+   * 次の問題を開く前に、サーバから読み直した許可集合へ差し替える。
+   * 既に開いている `BoardDelivery` は作成時の集合を保持するので、1問目の検証規則が
+   * 途中で変わることはない。次の `startBoard()` だけが更新後の集合を見る。
+   */
+  updateAllowedTopicIds(allowedTopicIds: readonly string[]): void {
+    this.subject =
+      (allowedTopicIds[0] === undefined ? undefined : subjectOfTopicId(allowedTopicIds[0])) ??
+      "math";
+    // 前提はAPIが計算済み。ここでさらに広げない。
+    this.allowedTopics = buildAllowedTopics(allowedTopicIds, { prerequisiteDepth: 0 });
   }
 
   /**
@@ -863,6 +973,7 @@ export class BoardDelivery {
       chunks,
       signal,
       onStep,
+      stopBefore,
       stopAfter,
       repair,
       repairHead,
@@ -873,12 +984,12 @@ export class BoardDelivery {
     const before = this.sent;
     let reason: BoardCloseReason = "completed";
     /**
-     * {@link AppendBoardOptions.stopAfter} で自分から降りたか。
+     * {@link AppendBoardOptions.stopBefore} / `stopAfter` で自分から降りたか。
      *
      * **途中で切れた出力(`board_stream_truncated`)と区別する**ために要る。
      * こちらは残りを**読まないと決めた**だけで、壊れてはいない。
      */
-    let handedOver = false;
+    let stoppedIntentionally = false;
 
     if (this.closed) {
       // 上限で閉じた板書に積もうとした。呼び出し側は知らずに呼びうるので、
@@ -984,6 +1095,17 @@ export class BoardDelivery {
             break consume;
           }
 
+          // 類題を出せる残り時間がない場合など、**生徒へ見せる前**に止める。
+          // openIfNeeded より前なので、抑止した1手順だけの出力が前の板書を白紙にしない。
+          if (stopBefore?.(verdict.step) === true) {
+            this.log?.info("board_step_suppressed", {
+              board_id: this.boardId,
+              index: verdict.step.index,
+            });
+            stoppedIntentionally = true;
+            break consume;
+          }
+
           // **手順が1つ確定してから板書を開く。**`board_open` は前の板書を消す信号なので、
           // 中身が1行も無い出力(`steps: []`)や、最初の手順から検証に落ちる出力で
           // これを送ると、**生徒が読んでいた板書を白紙にしただけで終わる**。
@@ -995,6 +1117,25 @@ export class BoardDelivery {
             board_id: this.boardId,
             step: verdict.step,
           });
+          if (verdict.figureStats !== undefined) {
+            const stats = verdict.figureStats;
+            // itemsやSVG本文は未成年の問題内容を含みうる。寸法とlint統計だけを残し、
+            // 「配送されたが崩れた」型を #112 のログ上で分類できるようにする。
+            this.log?.info("board_figure_delivered", {
+              board_id: this.boardId,
+              index: verdict.step.index,
+              item_count: stats.itemCount,
+              svg_bytes: stats.svgBytes,
+              viewbox_width: figureViewBoxWidth,
+              viewbox_height: figureViewBoxHeight,
+              min_point_distance_px: stats.minPointDistancePx,
+              min_edge_angle_deg: stats.minEdgeAngleDeg,
+              label_collision_count: stats.labelCollisionCount,
+              max_overflow_px: stats.maxOverflowPx,
+              auto_repaired: stats.repaired,
+              repair_changes: stats.changes.join(",") || "none",
+            });
+          }
           this.sent += 1;
           position += 1;
 
@@ -1009,7 +1150,7 @@ export class BoardDelivery {
               board_id: this.boardId,
               index: verdict.step.index,
             });
-            handedOver = true;
+            stoppedIntentionally = true;
             break consume;
           }
         }
@@ -1018,7 +1159,7 @@ export class BoardDelivery {
       // ルートの `}` まで読めていない = 途中で切れた出力。送った手順は有効だが、
       // 「1回ぶん全部送った」とは言えないので `completed` にはしない。
       // **自分から降りた回は別**(残りを読まないと決めただけで、壊れていない)。
-      if (reason === "completed" && !handedOver && !parser.completed) {
+      if (reason === "completed" && !stoppedIntentionally && !parser.completed) {
         this.log?.warn("board_stream_truncated", {
           board_id: this.boardId,
           appended: this.sent - before,
@@ -1031,7 +1172,7 @@ export class BoardDelivery {
       // 「読み切れたが空だった」は成功ではない。1件も送っていないぶん受信側には
       // 何も起きないが、**成功として返してはいけない** —
       // 呼び出し側が「板書は出た」と思って音声だけ進めてしまう。
-      if (reason === "completed" && this.sent === before) {
+      if (reason === "completed" && !stoppedIntentionally && this.sent === before) {
         this.log?.warn(head === null ? "board_head_missing" : "board_lesson_empty", {
           board_id: this.boardId,
           opened: this.opened,
@@ -1054,7 +1195,7 @@ export class BoardDelivery {
     // 上流を離す。番を渡して降りたときも同じ — 残りの手順は**読まないと決めた**ので、
     // 接続を掴んだままだと、誰も聞かない板書の出力トークンを払い続ける
     // (`lesson.ts` の `createAnthropicLessonClient` が HTTP ごと切る)。
-    if (reason === "interrupted" || handedOver) releaseIterator(iterator);
+    if (reason === "interrupted" || stoppedIntentionally) releaseIterator(iterator);
 
     // 上限に達した板書だけは、ここで閉じる。
     if (this.opened && !this.closed && this.sent >= boardStepsMaxCount) {

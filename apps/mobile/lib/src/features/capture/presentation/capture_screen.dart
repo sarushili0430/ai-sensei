@@ -49,9 +49,9 @@ import '../application/capture_controller.dart';
 ///   2. 撮った直後の1枚をそのまま送っていたので、ぶれていても気づけないまま
 ///      Vision LLMに通していた
 ///
-/// **今日の1回を使うのはここではない。** 数えるのは会話が始まったときなので
+/// **日次の持ち時間を押さえるのはここではない。** 押さえるのは会話が始まったときなので
 /// (`api.ts` の `startSessionResponseSchema`)、解析まで進んでから撮り直しても
-/// 授業の回数は減らない。
+/// 授業の持ち時間は減らない。
 ///
 /// **どちらか1枚で始められる**(§4-1)。1枚に問題とノートの両方が写ることが
 /// 多いので、2枚必須にすると撮影の摩擦だけが増える。ここで出すのは「撮れ」ではなく
@@ -368,7 +368,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     await ref.read(captureControllerProvider.notifier).analyze(locale: locale);
   }
 
-  /// 外した単元を反映してから会話を始める。**今日の1回を使うのはここ。**
+  /// 外した単元を反映してから会話を始める。**日次の持ち時間を押さえるのはここ。**
   ///
   /// 失敗したときの「もう一度」もここへ戻す(理由は [_body] のエラー分岐)。
   Future<void> _start() async {
@@ -470,8 +470,8 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
         // ここを `_pick` に固定していると、[CaptureController.setPhoto] が
         // 解析済みの状態を守って写真を捨てるので、カメラだけが何度も開いて
         // エラーが消えない画面になる。しかも会話の開始で落ちた場合は、
-        // サーバ側で枠を押さえていることがあり、撮り直すとその1回を捨てる。
-        // `/start` は同じIDなら二重に数えないので、押し直すほうが正しい
+        // サーバ側で会話時間を押さえていることがあり、撮り直すとその仮押さえを捨てる。
+        // `/start` は同じIDなら二重に確保しないので、押し直すほうが正しい
         // (セッションごと消えていれば `analysis` も捨てられ、撮り直しに戻る)。
         onRetry: lessonLimitReached
             ? null
@@ -667,7 +667,7 @@ class _PhotoSlot extends StatelessWidget {
                         )
                       // **切り取らない。** この枠は飾りではなく、「これで
                       // 合っている?」を解析の前に確かめる場所(ぶれ・見切れに
-                      // 気づけないまま今日の1回が消えるのを止めるために置いた)。
+                      // 気づけないまま解析枠を消費するのを止めるために置いた)。
                       // `cover` は端を落とすので、**紙面が切れていることが
                       // いちばん出る場所がちょうど隠れる。** アルバムから
                       // 選べるようになって、横長の写真も長いスクリーンショットも
@@ -854,12 +854,42 @@ class _TopicConfirm extends ConsumerStatefulWidget {
   ConsumerState<_TopicConfirm> createState() => _TopicConfirmState();
 }
 
+String _problemOutcomeMessage(AppStrings strings, ProblemOutcome? outcome) =>
+    switch (outcome) {
+      ProblemOutcome.tooLong => strings.captureProblemTooLong,
+      ProblemOutcome.solutionIncluded => strings.captureProblemHadSolution,
+      ProblemOutcome.notAProblem => strings.captureProblemNotAQuestion,
+      _ => strings.captureProblemNotRead,
+    };
+
+/// 読み取れなかった理由ごとの、**次に撮るときの具体策**。
+///
+/// いまのセッションは写真を破棄済みなので、主導線は下の手入力。それでも原因別の
+/// 撮り方を残しておけば、次の授業で同じ落ち方を繰り返さずに済む。
+String _problemOutcomeGuidance(AppStrings strings, ProblemOutcome? outcome) =>
+    switch (outcome) {
+      ProblemOutcome.tooLong => strings.captureProblemTooLongGuidance,
+      ProblemOutcome.solutionIncluded => strings.captureProblemHadSolutionGuidance,
+      ProblemOutcome.notAProblem => strings.captureProblemNotAQuestionGuidance,
+      _ => strings.captureProblemNotReadGuidance,
+    };
+
 class _TopicConfirmState extends ConsumerState<_TopicConfirm> {
   /// 問題文を打ち込んでいる最中か。
   ///
   /// **画面ごと差し替えない。** 別画面にすると、いま確かめている単元のチップが
   /// 見えなくなり、戻ってくるまで何を直しているのか分からなくなる。
-  bool _editing = false;
+  late bool _editing;
+
+  @override
+  void initState() {
+    super.initState();
+    // **読めなかったときは、打ち直しを主導線にする。** 以前は「問題文を入力する」を
+    // 押さないかぎり欄が開かず、その横で開始ボタンは有効だった。ノートだけを撮る
+    // 使い方では、そのまま `(問題の写真なし)` へ進むほうが自然な導線になっていた。
+    // キャンセルすれば従来どおり空のまま始められるので、2枚目は必須にしていない。
+    _editing = widget.state.problem == null;
+  }
 
   /// 打ち直しを送っている最中。
   ///
@@ -924,6 +954,8 @@ class _TopicConfirmState extends ConsumerState<_TopicConfirm> {
                 if (_editing)
                   _ProblemEditor(
                     initialText: problem?.text ?? '',
+                    problemMissing: problem == null,
+                    outcome: state.problemOutcome,
                     saving: _saving,
                     error: _editError,
                     onCancel: () => setState(() {
@@ -961,6 +993,27 @@ class _TopicConfirmState extends ConsumerState<_TopicConfirm> {
           ),
         ),
         const SizedBox(height: AppSpacing.md),
+        if (problem == null) ...<Widget>[
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.md,
+              vertical: AppSpacing.sm,
+            ),
+            decoration: BoxDecoration(
+              color: AppColors.streak.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(AppRadius.button),
+            ),
+            child: Text(
+              strings.captureProblemStartWarning,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppColors.ink,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+        ],
         // 外した単元は始める前に反映される。飛ばすと、サーバ側のセッションは
         // 解析時のままで、外した単元を先輩が教えてしまう([CaptureController]）。
         ChunkyButton(
@@ -1010,15 +1063,6 @@ class _ProblemReadback extends StatelessWidget {
 
   final VoidCallback onEdit;
 
-  /// 落ち方ごとの一行。**「撮り直して」とは言わない** — 撮り直しの導線は
-  /// この画面に無く(セッションはもう作られている)、言えば行き止まりが増える。
-  String _outcomeMessage(AppStrings strings) => switch (outcome) {
-        ProblemOutcome.tooLong => strings.captureProblemTooLong,
-        ProblemOutcome.solutionIncluded => strings.captureProblemHadSolution,
-        ProblemOutcome.notAProblem => strings.captureProblemNotAQuestion,
-        _ => strings.captureProblemNotRead,
-      };
-
   @override
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
@@ -1043,7 +1087,15 @@ class _ProblemReadback extends StatelessWidget {
           ] else ...<Widget>[
             // **咎めない書き方にする。** 撮った本人に落ち度がある言い方をすると、
             // 直せる口が隣にあっても押しにくくなる。
-            Text(_outcomeMessage(strings), style: Theme.of(context).textTheme.bodyLarge),
+            Text(
+              _problemOutcomeMessage(strings, outcome),
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              _problemOutcomeGuidance(strings, outcome),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
             const SizedBox(height: AppSpacing.xs),
             Text(strings.captureProblemFixHint, style: Theme.of(context).textTheme.bodySmall),
           ],
@@ -1069,6 +1121,8 @@ class _ProblemReadback extends StatelessWidget {
 class _ProblemEditor extends StatefulWidget {
   const _ProblemEditor({
     required this.initialText,
+    required this.problemMissing,
+    required this.outcome,
     required this.saving,
     required this.error,
     required this.onCancel,
@@ -1077,6 +1131,11 @@ class _ProblemEditor extends StatefulWidget {
 
   /// 読み取れていた本文。読めていなければ空(いちから打つ)。
   final String initialText;
+
+  /// 読めなかった問題を足す欄か、読めていた問題を直す欄か。
+  /// 前者では、入力欄を最初から開いても**なぜ開いたか**が消えないよう理由を出す。
+  final bool problemMissing;
+  final ProblemOutcome? outcome;
   final bool saving;
 
   /// サーバに弾かれた理由。**そのまま出す**(煽らない文体で書かれている)。
@@ -1114,6 +1173,23 @@ class _ProblemEditorState extends State<_ProblemEditor> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          if (widget.problemMissing) ...<Widget>[
+            Text(
+              _problemOutcomeMessage(strings, widget.outcome),
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              _problemOutcomeGuidance(strings, widget.outcome),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              strings.captureProblemFixHint,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: AppSpacing.md),
+          ],
           TextField(
             controller: _controller,
             autofocus: true,

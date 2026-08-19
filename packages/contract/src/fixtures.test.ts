@@ -22,7 +22,9 @@ import {
   planDayMinutesMax,
   planDaysMaxCount,
   planTurnSchema,
+  sessionControlRequestSchema,
   sessionMetadataSchema,
+  startSessionResponseSchema,
   studyPlanDraftSchema,
   studyPlanSchema,
 } from "./index.ts";
@@ -251,6 +253,15 @@ describe("板書のスキーマ", () => {
     expect(boardStepSchema.safeParse(step({ awaits_student: false })).success).toBe(true);
     expect(boardStepSchema.safeParse(step()).success).toBe(true);
     expect(boardStepSchema.safeParse(step({ awaits_student: "yes" })).success).toBe(false);
+  });
+
+  // 類題を解く沈黙は通常の会話待ちと別扱いにする(#152)。optionalなのは、
+  // フィールドを知らない旧agentが送った手順も引き続き読めるようにするため。
+  it("awaits_solving は true / false / 省略のどれでも読める(booleanでなければ弾く)", () => {
+    expect(boardStepSchema.safeParse(step({ awaits_solving: true })).success).toBe(true);
+    expect(boardStepSchema.safeParse(step({ awaits_solving: false })).success).toBe(true);
+    expect(boardStepSchema.safeParse(step()).success).toBe(true);
+    expect(boardStepSchema.safeParse(step({ awaits_solving: "yes" })).success).toBe(false);
   });
 
   // 板書は「1手順=1行」であって、答案の貼り付け場所ではない。
@@ -624,6 +635,23 @@ describe("学習計画のスキーマ", () => {
 });
 
 describe("APIスキーマ", () => {
+  it("会話中の制御通知に問題文や許可集合を混ぜない", () => {
+    const notification = loadFixture("session-control-request") as Record<string, unknown>;
+    expect(sessionControlRequestSchema.safeParse(notification).success).toBe(true);
+    expect(
+      sessionControlRequestSchema.safeParse({
+        ...notification,
+        problem_text: "この内容をagentへ直接渡してはいけない",
+      }).success,
+    ).toBe(false);
+    expect(
+      sessionControlRequestSchema.safeParse({
+        ...notification,
+        allowed_topic_ids: ["M1-NIJI-GURAFU"],
+      }).success,
+    ).toBe(false);
+  });
+
   it("kind=review には hole_id が要る(復習は穴が起点)", () => {
     expect(createSessionRequestSchema.safeParse({ kind: "review" }).success).toBe(false);
     expect(createSessionRequestSchema.safeParse({ kind: "review", hole_id: "hol_1" }).success).toBe(
@@ -677,16 +705,23 @@ describe("APIスキーマ", () => {
     ).toBe(false);
   });
 
-  it("授業上限は残数を返さず、今日の可否だけを返す", () => {
-    const response = loadFixture("create-session-response") as Record<string, unknown>;
-    const withRemainingCount = {
-      ...response,
-      limits: { max_seconds: 300, remaining_sessions_today: 0 },
-    };
+  it("授業上限は回数ではなく、今日の残り秒数を返す", () => {
+    const response = loadFixture("start-session-response") as Record<string, unknown>;
+    const limits = (response["limits"] ?? {}) as Record<string, unknown>;
 
-    // §6-3「UIに数字は一切出さない」を、古い数値契約を拒否することで守る。
-    expect(createSessionResponseSchema.safeParse(withRemainingCount).success).toBe(false);
-    expect(createSessionResponseSchema.safeParse(response).success).toBe(true);
+    expect(startSessionResponseSchema.safeParse(response).success).toBe(true);
+    expect(
+      startSessionResponseSchema.safeParse({
+        ...response,
+        limits: { ...limits, remaining_seconds_today: undefined },
+      }).success,
+    ).toBe(false);
+    expect(
+      startSessionResponseSchema.safeParse({
+        ...response,
+        limits: { ...limits, remaining_sessions_today: 0 },
+      }).success,
+    ).toBe(false);
   });
 
   it("transcriptのroleは assistant / user のみ", () => {

@@ -65,7 +65,7 @@
         "this / that / these / those を距離と数で使い分けられる",
         "その代名詞が何を指しているかを、前の文から判断できる"
       ],
-      "prerequisites": [],
+      "prerequisites": ["JE-BUNKOZO-KIHON"],
       "keywords": ["人称代名詞", "所有格", "目的格", "指示代名詞", "所有代名詞"]
     },
     {
@@ -79,7 +79,7 @@
         "which / whose を使って選ばせたり持ち主を尋ねたりできる",
         "答えの形から、どの疑問詞で聞くべきだったかを判断できる"
       ],
-      "prerequisites": ["JE-DOUSHI-IPPAN"],
+      "prerequisites": ["JE-DOUSHI-IPPAN", "JE-BUNKOZO-KIHON"],
       "keywords": ["疑問詞", "疑問文", "whose", "how many", "how long", "how much"]
     },
     {
@@ -121,7 +121,7 @@
         "英語の語順が意味を決めることを、日本語との違いから説明できる",
         "同じ動詞でも補語をとるか目的語をとるかを判断できる"
       ],
-      "prerequisites": [],
+      "prerequisites": ["JE-DOUSHI-BE", "JE-DOUSHI-IPPAN"],
       "keywords": ["語順", "主語", "目的語", "補語", "SVC", "SVO", "文の要素"]
     },
     {
@@ -255,7 +255,7 @@
         "as ... as を使って同じ程度を表せる",
         "-er / more のどちらを使うかを語の形から判断できる"
       ],
-      "prerequisites": [],
+      "prerequisites": ["JE-BUNKOZO-KIHON"],
       "keywords": ["比較級", "最上級", "原級", "比較表現", "as as", "the most"]
     },
     {
