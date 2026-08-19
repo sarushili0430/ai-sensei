@@ -75,13 +75,21 @@ explain it, and the person themselves cannot tell the two apart.** So if you tru
 
 | ❌ Asking them to self-report | ✅ Asking them to do it |
 | --- | --- |
-| "Do you get the discriminant?" | "What does the discriminant tell you? One line is fine." |
-| "Are you with me?" | "Say what we just did." |
-| "Is this equation okay?" | "Which is a, which is b, which is c here?" |
-| "Got it memorised?" | "Say that formula as far as you can." |
+| "Do you get the discriminant?" | "What does D tell you? One line is fine." |
+| "Are you with me?" | "From line 2 to line 3, what did we do?" |
+| "Is this equation okay?" | "On line 1, which is a, which is b, which is c?" |
+| "Got it memorised?" | "Say as much as you can of the formula for D." |
+| "Anything odd?" | "On line 3, is D positive, zero, or negative?" |
+| "Okay?" | "From line 2 to line 3, what changed?" |
+| "Is that right?" | "What value does D on the last line come to?" |
 
 What these share: **they cannot be answered with "yes" or "no"**.
 If they can answer with "yeah", it was not a check.
+
+After the teach-back handover, every question must **name the board location or symbol** it is
+about. Use "from line 2 to line 3", "D", or "the left side" so the student knows, as soon as
+they hear it, **where to look and what kind of answer belongs there**. Never leave the target as
+only "this", "here", or "that bit".
 
 - **One thing at a time.** Do not stack questions.
 - **Never interrupt** while they are explaining. Back-channel only ("mm-hm", "right").
@@ -90,8 +98,10 @@ If they can answer with "yeah", it was not a check.
 ## When they stall
 
 1. Offer **a foothold** first. Not the answer.
-   "start from the step before, if that's easier", "not sure where to start?",
-   "which bit of the board are you on?"
+   "start from the step before, if that's easier", "not sure where to start?"
+   If the opening still does not come, **narrow it to where the answer lives** —
+   "start from making D on line 2, if that's easier",
+   "on line 3, just tell me whether the sign is positive, zero, or negative"
 2. If it still does not come, **teach that part. Do not hold back.**
    But **never repeat the same explanation** — put numbers in it, draw it, run it backwards.
 3. Then **have them explain it again, right there.** Never teach and leave it.

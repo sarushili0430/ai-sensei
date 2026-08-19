@@ -257,7 +257,7 @@ describe("組み立て済みプロンプト", () => {
   );
 
   it("few-shotと音声補正ヒントを同梱する", () => {
-    expect(conversation).toContain("なんで(2)でいきなり判別式にしたの?");
+    expect(conversation).toContain("(2)で、なんでいきなり判別式にしたの?");
     expect(conversation).toContain("さんぶんのに");
   });
 
@@ -307,7 +307,7 @@ describe("組み立て済みプロンプト", () => {
 
   it("英語の会話プロンプトに日本語が混ざらない", () => {
     expect(english).toContain("You are the user's **senpai**");
-    expect(english).toContain("Why'd you go straight to the discriminant");
+    expect(english).toContain("In part (2), why'd you go straight to the discriminant");
     expect(english).toContain("square root of 3");
     expect(english).toContain("It is not something the user has explained.");
     expect(english).not.toMatch(/[ぁ-んァ-ン一-龯]/);
@@ -626,6 +626,65 @@ describe("設計上の約束がプロンプトに書かれている", () => {
     expect(en).toContain("never ask them to self-report");
     expect(en).toContain('"tell me the first step"');
     expect(en).toContain('cannot answer with "yes" or "no"');
+  });
+
+  /**
+   * 問いの音声は消えるので、対象を聞き取れなかった生徒にも「答えの置き場」が残る形を
+   * 見本ごと固定する。対象の自然言語判定は無理筋なので、ここで見るのはプロンプトの
+   * 規約と既存 JSON 見本だけ。`validateStep` へリジェクト条件は足さない。
+   */
+  it("授業中の問いは対象を名指しし、短い Q 行を板書に残す", () => {
+    const boardJa = getPrompt("senpai_board", "ja").body;
+    const boardEn = getPrompt("senpai_board", "en").body;
+    const englishLessonJa = getPrompt("senpai_board_english", "ja").body;
+    const conversationJa = getPrompt("senpai_conversation", "ja").body;
+    const conversationEn = getPrompt("senpai_conversation", "en").body;
+    const fewShotJa = getPrompt("question_types_few_shot", "ja").body;
+    const fewShotEn = getPrompt("question_types_few_shot", "en").body;
+
+    for (const body of [boardJa, englishLessonJa, conversationJa]) {
+      expect(body).toContain("板書の場所か記号");
+      for (const vagueCheck of ["「おかしくない?」", "「いい?」", "「合ってる?」"]) {
+        expect(body).toContain(vagueCheck);
+      }
+    }
+    expect(fewShotJa).toContain("板書の場所か記号を名指しする");
+
+    for (const body of [boardEn, conversationEn]) {
+      expect(body).toMatch(/name(?:s)? the board location or symbol/i);
+      for (const vagueCheck of ['"Anything odd?"', '"Okay?"', '"Is that right?"']) {
+        expect(body).toContain(vagueCheck);
+      }
+    }
+    expect(fewShotEn).toContain("names its board location or symbol");
+
+    for (const body of [boardJa, boardEn, englishLessonJa]) {
+      expect(body).toMatch(/"board": \{ "kind": "text", "body": "Q:/);
+      // #152 と衝突する教え返しの受け渡しだけは、従来どおり `board: null` のまま。
+      expect(body.match(/"board": null,\s*"awaits_student": true/g) ?? []).toHaveLength(1);
+    }
+
+    expect(boardJa).toContain('"body": "Q: 2行目の D はいくつ?"');
+    expect(boardEn).toContain('"body": "Q: what is D on line 2?"');
+    expect(englishLessonJa).toContain('"body": "Q: have lived はいつまで続く?"');
+  });
+
+  it("返事が無いときは1段具体化し、それでも無ければ自分で答える", () => {
+    for (const body of [
+      getPrompt("senpai_board", "ja").body,
+      getPrompt("senpai_board_english", "ja").body,
+    ]) {
+      expect(body).toContain("同じ問いを言い直しません");
+      expect(body).toContain("二択");
+      expect(body).toContain("それでも返事が無ければ");
+      expect(body).toContain("軽く自分で答えて先へ進みます");
+    }
+
+    const en = getPrompt("senpai_board", "en").body;
+    expect(en).toContain("do not repeat or rephrase the same question");
+    expect(en).toContain("give two choices");
+    expect(en).toContain("If there is still no reply");
+    expect(en).toContain("say the answer lightly yourself and move on");
   });
 
   it("先輩のプロンプトは音声ヒントを同梱し、英語版に日本語が混ざらない", () => {

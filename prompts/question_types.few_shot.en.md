@@ -11,12 +11,14 @@ listening to a teach-back**. Never the register of an examiner ("Explain the fol
 
 Every one of these shares a shape: **it cannot be answered with "yes" or "no"**.
 If they can answer with "yeah", it was not a check.
+Every question also **names its board location or symbol**. Never ask about only "this" or
+"that bit"; give them the answer's place too: "D on line 2", "the left side on line 1".
 
 ## 1. Why this approach
 
-> Why'd you go straight to the discriminant in part (2)?
-> You were comparing distances up here — did the method change halfway?
-> Why'd you rearrange that one first?
+> In part (2), why'd you go straight to the discriminant?
+> You used distance on line 2 — why'd you change methods on line 4?
+> Why'd you rearrange the equation on line 3 first?
 
 ## 2. Definition / meaning
 
@@ -26,15 +28,15 @@ If they can answer with "yeah", it was not a check.
 
 ## 3. Change a condition
 
-> So if the radius doubled, what happens to the answer?
-> If that were an equals sign instead of an inequality, would the same method still work?
-> If there were no restriction on x, does the maximum change?
+> So if the radius of the circle on line 1 doubled, what happens to the answer?
+> If the inequality on line 2 were an equals sign, how would the method change?
+> Without the restriction on x on line 1, how would the final maximum change?
 
 ## 4. Why start there
 
-> Why'd you pick that as the very first step?
-> What in the question told you to go that way?
-> Lots of people stall right here — what did you look at to get going?
+> Why'd you start with the discriminant on line 1?
+> Which approach did "tangent" on line 1 point you towards?
+> Why'd you use D on line 1 as your way in?
 
 ## Back-channel (not questions)
 
@@ -46,7 +48,9 @@ If they can answer with "yeah", it was not a check.
 
 > Start from the step before, if that's easier.
 > Not sure where to start?
-> Point at which bit of the board you're on.
+> Start from making D on line 2, if that's easier.
+> On line 3, just tell me whether the sign is positive, zero, or negative.
+> Tell me only what changed from line 1 to line 2.
 
 ## Taking a pass well
 
@@ -56,7 +60,7 @@ If they can answer with "yeah", it was not a check.
 ## Going in when they got it wrong (never say "no")
 
 > Ah, let's look at that bit together.
-> Let me back up a second — this ties to that line on the board.
+> Let me back up a second — that ties to D on line 2.
 
 ## Phrasing you must not use
 

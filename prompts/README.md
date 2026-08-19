@@ -116,6 +116,7 @@ variables: [photo_summary, visible_work, allowed_topics, question_seeds, lesson_
 | 1手順=1行(`\\` を使わない・多行環境を使わない) | `contract` の `tex` の正規表現 / `guardrail` の `row_separator_outside_environment` |
 | 長い式は `=` の前で割って2手順にする | **コード側の相手がまだいない**(計画書 §3-6b。W2でNode側の幅推定を入れるまで、ここはプロンプトだけが守っている) |
 | 答えを待つ問いかけには `awaits_student: true` を付け、`steps` をそこで終える(授業は往復する) | `contract` の `boardStepSchema.awaits_student` + `senpai.ts` の `stepAwaitsStudent`(欄が無い手順だけ `handsTurnToStudent` の言い回し推測に落ちる)。`backend/agent/src/lesson.ts` の `stopAfter` がそこで止め、答えを受けた続きは `lesson-loop.ts` が同じ板書に積む |
+| 切り分け・節目の問いは板書の場所か記号を名指しし、`text` の短い `Q:` 行にも残す | 対象の名指しは機械判定しない。`lesson-loop.ts` が `awaits_student: true` の `board_kind` だけを記録し、`none` の割合を観測する |
 | 教え返しへの受け渡しは「じゃあ今の、**自分の言葉で説明してみて**」の形で言い、**途中の問いかけには「説明して」を使わない** | `senpai.ts` の `asksForTeachBack`。**授業の往復を終える唯一の合図**なので、文言の族を変えるときは判定とテストも一緒に変える |
 
 学習計画(`study_plan`)の二重書きの相手は、さらに別です:

@@ -14,6 +14,7 @@ import { studentSilenceMarker } from "./senpai.ts";
  *   3. 説明の途中の発話がパスを中止し、**会話へ落とさず**続きのパスで応えること
  *   4. 安全弁(回数・セッション終了)で降りるとき、積み残しの発話を
  *      取り出さないこと(記録も返事も会話モードが引き取る)
+ *   5. 答え待ちの問いが板書に残ったかを、本文なしの種別ログで観測できること
  */
 
 const step = (index: number, speech: string, tex?: string): unknown => ({
@@ -28,6 +29,14 @@ const stepAwaiting = (index: number, speech: string, awaits: boolean, tex?: stri
   speech,
   board: tex === undefined ? null : { kind: "latex", tex },
   awaits_student: awaits,
+});
+
+/** 問いを画面に残す、`text` の短い Q 行。Issue #153 の推奨形。 */
+const stepAwaitingWithQuestion = (index: number, speech: string, question: string): unknown => ({
+  index,
+  speech,
+  board: { kind: "text", body: `Q: ${question}` },
+  awaits_student: true,
 });
 
 function lessonJson(steps: readonly unknown[]): string {
@@ -330,6 +339,39 @@ describe("runLessonLoop", () => {
     // 同じ板書に積まれ続けている(completed で途切れていない)
     expect(sink.sent.filter((message) => message.type === "board_open")).toHaveLength(1);
     expect(result.step_count).toBe(4);
+  });
+
+  it("答え待ちの問いは、本文を出さず板書の有無と種類を観測する", async () => {
+    const board = boardWith(recordingSink());
+    const llm = stubLlm(
+      lessonJson([stepAwaitingWithQuestion(0, "1行目の D、符号はどれ?", "1行目の D の符号は?")]),
+      // プロンプトから外れた `board: null` も拒否せず、割合を測れる形で記録する。
+      lessonJson([stepAwaiting(0, "2行目から3行目、何をした?", true)]),
+      lessonJson([stepAwaiting(0, "じゃあ今の、自分の言葉で説明してみて。", true)]),
+    );
+    const observations: Record<string, unknown>[] = [];
+    const utterances = new StudentUtterances();
+
+    const result = await loopWith(llm, board, {
+      utterances,
+      log: {
+        info: (event: string, fields: Record<string, unknown> = {}) => {
+          if (event === "lesson_awaiting_question_board") observations.push(fields);
+        },
+        warn: (_event: string) => undefined,
+      },
+      speak: async (delivered) => {
+        if (!delivered.speech.includes("説明して")) {
+          setTimeout(() => utterances.push("答え"), 5);
+        }
+      },
+    });
+
+    expect(result.reason).toBe("handed_over");
+    expect(observations).toEqual([
+      { pass: 1, board_kind: "text", board_missing: false },
+      { pass: 2, board_kind: "none", board_missing: true },
+    ]);
   });
 
   it("修辞疑問(awaits_student: false)では止まらず、そのまま教え続ける", async () => {

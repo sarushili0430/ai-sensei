@@ -13,6 +13,7 @@
  * | `conversation_started`       | セッションが立ち上がった(授業の**前**) |
  * | `review_hole_missing`        | 古いAPIの復習。板書なし会話へ縮退する |
  * | `lesson_interrupted_by_user` | 授業中に生徒が喋った。板書の生成を止めて会話へ |
+ * | `lesson_awaiting_question_board` | `awaits_student: true` の問いが板書へ残ったか |
  * | `lesson_finished`            | 授業1回ぶんが終わった(手順数・締め方・検証落ちの数) |
  * | `lesson_empty`               | 板書が1行も出せなかった。**8/16のゲートを見る指標** |
  * | `board_publisher_missing`    | Text Streams の送り口が無い。板書なしで会話だけ続ける |
