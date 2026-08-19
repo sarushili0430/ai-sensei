@@ -121,6 +121,7 @@ const phrases: Record<
     noSpeech: string;
     noNotesPhoto: string;
     noProblemPhoto: string;
+    directPrerequisites: string;
   }
 > = {
   ja: {
@@ -129,6 +130,7 @@ const phrases: Record<
     noSpeech: "(発話なし)",
     noNotesPhoto: "(ノートの写真なし)",
     noProblemPhoto: "(問題の写真なし)",
+    directPrerequisites: "1段手前の前提",
   },
   en: {
     noTopics: "(none — do not build a question; ask for another photo of the notes)",
@@ -136,6 +138,7 @@ const phrases: Record<
     noSpeech: "(nothing was said)",
     noNotesPhoto: "(no photo of their notes)",
     noProblemPhoto: "(no photo of the problem)",
+    directPrerequisites: "one step back",
   },
 };
 
@@ -174,19 +177,41 @@ export function formatTopicIndex(
     .join("\n");
 }
 
-/** 許可トピックの一覧を、プロンプトに貼れる形に整える。 */
+/**
+ * 許可トピックの一覧を、プロンプトに貼れる形に整える。
+ *
+ * **前提のIDを各行に添える。** 一覧は主題から根までを平らに並べたもので、
+ * 並び順からは親子も深さも読めない。先輩には「答えられなければ**1段手前の前提**へ
+ * 下る」と指示してあるので、どれが1段手前なのかがこの一覧に無いと、
+ * 別の枝の単元を「手前」だと思って降りていける。
+ *
+ * 一覧に**無い**前提は出さない。戻ってよい範囲はこのリストが境界なので、
+ * 外のIDを見せると、許可されていない単元を1段手前だと思わせることになる。
+ */
 export function formatAllowedTopics(
-  topics: readonly { id: string; course: string; unit: string; topic: string; goals: string[] }[],
+  topics: readonly {
+    id: string;
+    course: string;
+    unit: string;
+    topic: string;
+    goals: string[];
+    prerequisites?: readonly string[];
+  }[],
   locale: PromptLocale = "ja",
 ): string {
   if (topics.length === 0) return phrases[locale].noTopics;
+  const listed = new Set(topics.map((topic) => topic.id));
   return topics
-    .map((topic) =>
-      [
+    .map((topic) => {
+      const prerequisites = (topic.prerequisites ?? []).filter((id) => listed.has(id));
+      return [
         `- ${topic.id} — ${topic.course} / ${topic.unit} / ${topic.topic}`,
+        ...(prerequisites.length === 0
+          ? []
+          : [`    ${phrases[locale].directPrerequisites}: ${prerequisites.join(" / ")}`]),
         ...topic.goals.map((goal) => `    - ${goal}`),
-      ].join("\n"),
-    )
+      ].join("\n");
+    })
     .join("\n");
 }
 
