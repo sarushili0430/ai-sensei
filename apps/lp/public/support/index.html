@@ -106,10 +106,9 @@
     <p>
       このページは App Store Connect と Google Play Console の
       <strong>サポートURL</strong>（どちらも必須）に入れるためのものです。
-      <span class="fill">〔黄色の箇所〕</span>が未確定の値です。
-      フォームは体だけ用意してあり、<strong>Googleフォームの <code>FORM_ID</code> と
-      各項目の <code>entry.&lt;ID&gt;</code> を入れるまで送信できません</strong>
-      （押すと「接続がまだです」と出ます。詳しくはこのページのソースのコメント）。
+      フォームはGoogleフォームに繋いであり、送信は通ります。
+      残っているのは<span class="fill">〔黄色の箇所〕</span>の書きもので、
+      とくに<strong>運営者名・所在地・返信までの目安</strong>は空のままでは出せません。
       <strong>審査担当者がここを開いて「サポート情報がある」ことを確かめます。</strong>
     </p>
   </div>
@@ -128,17 +127,28 @@
        に `entry.<ID>=値` を POST すれば記録される。埋め込み(iframe)は
        見た目がGoogle側のままになるので、フォームの体だけこちらで持つ。
 
-       ■ 埋めるもの(4か所 + action)
+       ■ 項目を足す・入れ替えるときの entry.<ID> の取り方
          フォームの編集画面 > 右上の ⋮ > 「事前入力したURLを取得」
            → 各項目に見本の値を入れて「リンクを取得」
            → https://docs.google.com/forms/d/e/<FORM_ID>/viewform?usp=pp_url
                 &entry.111111=見本&entry.222222=見本 ...
          ここに出てくる <FORM_ID> を action に、`entry.<ID>` を下の name に写す。
          **viewform を formResponse に変えること**(viewform のままだと記録されない)。
+         並び順は質問の順とは限らないので、番号ではなく**入れた値で見分ける**。
 
-       ■ フォーム側の設定
+       ■ フォーム側の設定(ここを間違えると問い合わせが黙って消える)
          「回答を受け付ける」がオンで、**ログイン必須・メールアドレスの収集がオフ**
-         であること。オンだと未ログインのPOSTが黙って捨てられる。
+         であること。オンだと未ログインのPOSTが捨てられる。
+
+         **フォーム側で「必須」にしてよいのは、下で required を付けている
+         「種類」と「内容」だけ。** 端末IDと返信先は任意なので、フォーム側も
+         任意にしておくこと。ここを必須にすると、空のまま送られた回答に
+         Googleが 400 を返す —— そして下の no-cors ではそれが見えないので、
+         **画面には「送信しました」と出たまま中身だけ捨てられる**。
+         (実測: 必須のまま空で送ると 400 "This is a required question"、
+          4項目埋めると 200。urlencoded でも multipart でも同じ。)
+
+         同じ理由で「回答の検証」も付けないこと。弾かれても気づけない。
 
        ■ JavaScriptを1つだけ置いている
          LPは「JSなし」で通してきた(README「作りの前提」)。ここだけ例外で、
@@ -153,14 +163,16 @@
          つまり「Googleが受け付けたか」はこちらから確かめられない。
          下の「送信しました」は、通信が最後まで行ったことしか意味していない。
          必須項目の取りこぼしなどはここでは捕まらないので、フォーム側の必須設定は
-         **こちらの required と食い違わせないこと**。
+         **こちらの required と食い違わせないこと**(上の「フォーム側の設定」)。
+         捕まえられるのは通信そのものが落ちたときだけで、そちらは
+         「送信できませんでした」を出してページに留まる(実測で確認済み)。
        ============================================================ -->
   <form class="support-form" id="ask" method="post"
-        action="https://docs.google.com/forms/d/e/〔FORM_ID〕/formResponse">
+        action="https://docs.google.com/forms/d/e/1FAIpQLSeVTEUo3JuHO9NdQMVBCDOOpWYholL9yr51BrGt3OxneGpi-w/formResponse">
 
     <div class="field">
       <label for="ask-kind">お問い合わせの種類</label>
-      <select id="ask-kind" name="entry.〔種類のID〕" required>
+      <select id="ask-kind" name="entry.1443754578" required>
         <option value="" selected disabled>選んでください</option>
         <option>不具合・うまく動かない</option>
         <option>先輩の説明や板書、質問がおかしい</option>
@@ -172,13 +184,13 @@
 
     <div class="field">
       <label for="ask-body">お問い合わせ内容</label>
-      <textarea id="ask-body" name="entry.〔内容のID〕" rows="6" required
+      <textarea id="ask-body" name="entry.43879837" rows="6" required
                 placeholder="どの画面で、何をしたときに、どうなったかを書いていただけると助かります。"></textarea>
     </div>
 
     <div class="field">
       <label for="ask-device">端末ID <span class="field-opt">(任意)</span></label>
-      <input id="ask-device" type="text" name="entry.〔端末IDのID〕" autocomplete="off"
+      <input id="ask-device" type="text" name="entry.2107337437" autocomplete="off"
              placeholder="設定 &gt; 端末ID(問い合わせ用) からコピーできます">
       <p class="field-note">
         不具合の報告のときだけで大丈夫です。アカウントが無いぶん、
@@ -188,7 +200,7 @@
 
     <div class="field">
       <label for="ask-mail">返信先のメールアドレス <span class="field-opt">(任意)</span></label>
-      <input id="ask-mail" type="email" name="entry.〔返信先のID〕" autocomplete="email"
+      <input id="ask-mail" type="email" name="entry.326801306" autocomplete="email"
              placeholder="例: you@example.com">
       <p class="field-note">返信が要るときだけご記入ください。登録は要りません。</p>
     </div>
