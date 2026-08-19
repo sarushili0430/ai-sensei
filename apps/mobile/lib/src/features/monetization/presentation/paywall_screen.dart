@@ -13,16 +13,17 @@ import 'purchase_messages.dart';
 /// ペイウォール(初回カルテ直後)。
 ///
 /// HAMM賞は**誠実さ**を見る。ここで守ること:
-///   - 「無料のまま続ける」を同じ画面に、隠さず置く
-///   - 解約できることを明記する
+///   - 離脱の口(左上の×)を、隠さず・押しやすい場所に置く
+///   - 自動更新されることと、解約できることを明記する
 ///   - カウントダウン・煽り文言・閉じにくいUIを使わない
+///   - 引き止めない(閉じるときに確認ダイアログを挟まない)
 ///
 /// 出す順番は2段構え:
 ///   1. RevenueCat のペイウォール(ダッシュボードで文言と価格を差し替えられる)
 ///   2. 1が出せないときは、下の自前ペイウォール
 ///
 /// 自前のほうを消さないのは、鍵の無いビルド・古いOS・ダッシュボード未設定の
-/// どれでも「無料継続の導線がある画面」が必ず出るようにするため。
+/// どれでも「閉じられて、無料のまま使い続けられる画面」が必ず出るようにするため。
 /// golden test が見ているのもこちら。
 class PaywallScreen extends ConsumerStatefulWidget {
   const PaywallScreen({super.key});
@@ -54,7 +55,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         context.replaceWithThanks();
       case PaywallResult.restored:
         context.replaceWithThanks(restored: true);
-      // 閉じただけ。「無料のまま続ける」を押したのと同じ扱いにする。
+      // 閉じただけ。自前ペイウォールの×を押したのと同じ扱いにする。
       case PaywallResult.cancelled:
       case PaywallResult.notPresented:
         context.closeOrGoHome();
@@ -76,7 +77,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 /// 取れていなければ価格を約束しない文言に落とし、**購入ボタン自体を出さない**
 /// (押せるのに買えない、が一番わるい。無効なボタンで「このプランで」と
 /// 言っても、指すプランが画面に無い)。代わりに置くのは取り直す口だけで、
-/// それも鍵のあるビルドに限る。「無料のまま続ける」は常に残す。
+/// それも鍵のあるビルドに限る。**左上の×は、何があっても常に残す**
+/// (買う口が無い画面で出口まで無いと、本当に何も出来ない画面になる)。
 class _ManualPaywall extends ConsumerStatefulWidget {
   const _ManualPaywall();
 
@@ -168,6 +170,25 @@ class _ManualPaywallState extends ConsumerState<_ManualPaywall> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
+            // 離脱の口。**この画面で唯一の出口なので、絶対に消さないこと。**
+            //
+            // 以前はここではなく下に「無料のまま続ける」を置いていた。
+            // RevenueCat のペイウォールが左上に×を出す(`displayCloseButton: true`)
+            // ので、同じ位置に同じものを置いて、リモートと自前で離脱の場所を
+            // 揃えている。
+            //
+            // ラベルには [AppStrings.paywallDismiss] をそのまま使う。
+            // 読み上げが「閉じる」だと、閉じたあと何が起きるのか分からない —
+            // **押しても損をしないことまで言う**のが §6 の約束のほう。
+            Align(
+              alignment: Alignment.centerLeft,
+              child: IconButton(
+                icon: const Icon(Icons.close),
+                color: AppColors.ink,
+                tooltip: strings.paywallDismiss,
+                onPressed: _busy ? null : context.closeOrGoHome,
+              ),
+            ),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.symmetric(
@@ -242,11 +263,6 @@ class _ManualPaywallState extends ConsumerState<_ManualPaywall> {
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ),
-                  // 無料継続の導線は隠さない。押しても損をしないことが分かる文言にする。
-                  GhostButton(
-                    label: strings.paywallDismiss,
-                    onPressed: _busy ? null : context.closeOrGoHome,
-                  ),
                   Text(
                     strings.paywallCancelNote,
                     textAlign: TextAlign.center,

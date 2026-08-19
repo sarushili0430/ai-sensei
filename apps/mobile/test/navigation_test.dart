@@ -410,7 +410,7 @@ void main() {
 
   // カルテの「今日はここまで」は go で来る(push ではない)。ルート直下へ
   // 移しても、閉じたときの着地はホームのまま。
-  testWidgets('カルテ → ペイウォール → 無料のまま続ける でホームに戻る',
+  testWidgets('カルテ → ペイウォール → ×を押す でホームに戻る',
       (WidgetTester tester) async {
     final GoRouter router = await pumpRouter(
       tester,
@@ -432,7 +432,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(PaywallScreen), findsOneWidget);
 
-    await tester.tap(find.text(strings.paywallDismiss));
+    await tester.tap(
+      find.byWidgetPredicate(
+        (Widget w) => w is IconButton && w.tooltip == strings.paywallDismiss,
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.byType(HomeScreen), findsOneWidget);
   });

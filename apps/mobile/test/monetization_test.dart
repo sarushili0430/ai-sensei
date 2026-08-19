@@ -531,8 +531,14 @@ void main() {
       // テストは鍵の無いビルド(`RevenueCatConfig.isConfigured == false`)。
       // ここで `refresh()` は何もしないので、取り直す口も出さない。
       expect(find.text(ja.paywallReload), findsNothing);
-      // 買う口が消えても、無料継続とApp Reviewの必須要件は残す。
-      expect(find.text(ja.paywallDismiss), findsOneWidget);
+      // 買う口が消えても、離脱の口とApp Reviewの必須要件は残す。
+      // ここで×まで消えると、買えないうえに閉じられない画面になる。
+      expect(
+        find.byWidgetPredicate(
+          (Widget w) => w is IconButton && w.tooltip == ja.paywallDismiss,
+        ),
+        findsOneWidget,
+      );
       expect(find.text(ja.paywallCancelNote), findsOneWidget);
       expect(find.text(ja.paywallRestore), findsOneWidget);
     });
