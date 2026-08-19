@@ -179,6 +179,32 @@ describe("withUncertaintyHole", () => {
     expect(karteDraftSchema.safeParse(karte).success).toBe(true);
   });
 
+  /**
+   * **問題を差し替えたセッションでは、推測でトピックを付けない。**
+   *
+   * transcript は全問題ぶんが1本に並ぶのに、`allowed_topic_ids` は最後の問題のもの。
+   * 1問目の「わからない」を2問目の単元に付けると、本人が触れていない単元の復習が
+   * 1/3/7日後に届く。誤った単元へ連れて行くより、ここは黙るほうがまだ直せる。
+   */
+  it("会話中に問題を差し替えたセッションでは、推測の穴を足さない", () => {
+    const switched = readSessionContext(
+      sessionMetadataJson({
+        session_id: "ses_switched",
+        problem_text: "2問目: y = x^2 の接線を求めよ",
+        max_seconds: 300,
+        allowed_topics: "- M2-ZUKEI-ENCHOKU",
+        allowed_topic_ids: ["M2-ZUKEI-ENCHOKU"],
+        context_revision: 2,
+      }),
+    );
+
+    const karte = withUncertaintyHole(emptyKarte(), switched, [
+      said("えっと、そこはわからないです"),
+    ]);
+
+    expect(karte.holes).toHaveLength(0);
+  });
+
   it("何度も言われているほど、次に効くものとして扱う", () => {
     const once = withUncertaintyHole(emptyKarte(), context, [said("わからないです")]);
     const twice = withUncertaintyHole(emptyKarte(), context, [
