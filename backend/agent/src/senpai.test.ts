@@ -241,6 +241,40 @@ describe("問題文の音読", () => {
     expect(problemTextIsMissing(missing)).toBe(true);
   });
 
+  /**
+   * **断った返事を問題文にしない。**
+   *
+   * 「わかりません」「読めない」は解答マーカーも式だけの断片も含まないので
+   * `checkProblemText` を素通りする。そのまま採用すると、それが以降のパスと
+   * カルテの `problem_text` として居座り、**問題文が無いままのほうがまだましな形**で
+   * 嘘の文脈が残る。読めなかったのなら定型句のままにしておくのが正しい。
+   */
+  it.each([
+    ["わかりません", "ja"],
+    ["えっと、わかんない", "ja"],
+    ["読めない", "ja"],
+    ["ちょっと待って", "ja"],
+    ["I can't read it", "en"],
+    ["No idea", "en"],
+  ] as const)("音読を断った返事は問題文にしない: %s", (spoken, locale) => {
+    const missing = missingProblemContext(locale);
+
+    expect(rememberSpokenProblemText(missing, spoken)).toEqual({
+      accepted: false,
+      reason: "not_a_problem",
+    });
+    expect(problemTextIsMissing(missing)).toBe(true);
+  });
+
+  // 文中に「わからない」が出てくるだけの問題文は通す(先頭だけを見ているため)。
+  it("「わからない」を含む問題文そのものは採用する", () => {
+    const missing = missingProblemContext();
+    const spoken = "x がわからないときの解き方を求めよ。";
+
+    expect(rememberSpokenProblemText(missing, spoken)).toMatchObject({ accepted: true });
+    expect(missing.problem_text).toBe(spoken);
+  });
+
   it("600字を超えた発話は途中で切らずに採用しない", () => {
     const missing = missingProblemContext();
     const tooLong = `次の値を求めよ。${"あ".repeat(600)}`;
