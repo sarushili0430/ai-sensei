@@ -1,6 +1,11 @@
-import type { BoardStep } from "@ai-sensei/contract";
+import { type BoardStep, problemTextMaxLength } from "@ai-sensei/contract";
 import type { CurriculumLocale } from "@ai-sensei/curriculum";
-import { boardLessonSystemPrompt, conversationSystemPrompt } from "@ai-sensei/prompts";
+import { checkProblemText, normalizeMathSpeech } from "@ai-sensei/guardrail";
+import {
+  boardLessonSystemPrompt,
+  conversationSystemPrompt,
+  formatProblemText,
+} from "@ai-sensei/prompts";
 import { type SessionContext, subjectOf } from "./context.ts";
 
 /**
@@ -195,6 +200,98 @@ export function stepAwaitsStudent(
   locale: CurriculumLocale,
 ): boolean {
   return step.awaits_student ?? handsTurnToStudent(step.speech, locale);
+}
+
+/**
+ * 生徒に問題文の音読を頼む言い回し。
+ *
+ * **完全な意図分類ではなく、観測と状態遷移のための狭い族**にする。
+ * 「問題」という語だけで拾うと、ふつうの切り分け質問まで音読扱いになり、直後の
+ * 答えで `problem_text` を上書きしてしまう。問題/設問と、読む・言う・教えるの
+ * 両方があるときだけ拾う。
+ * 8〜30字の幅は助詞や丁寧表現を挟める一方、別の文まで結びつけない長さ。
+ * 英語命令形の末尾15字は `out loud` / `to me` を収めるためにだけ空ける。
+ *
+ * **「教えて」だけは間を3字に詰める。** 読む・言うと違って「教えて」は
+ * 音読以外の依頼にも付くので、8字空けると「この問題、**何を聞かれてるか**教えて」
+ * 「この問題、**どこまでやったか**教えて」— 問題文が無いときこそ出る切り分けの質問 —
+ * まで音読依頼になり、その答えが問題文として居座る。読む・言う側は
+ * 「問題、**ちょっと**読んでもらっていい?」を拾うために8字のまま残す。
+ */
+const PROBLEM_READOUT_PATTERNS: Record<CurriculumLocale, readonly RegExp[]> = {
+  ja: [
+    /問題(?:文)?(?:を|[、,\s])*.{0,8}(?:読んで(?:もら|くれ|みて|ください|ほしい)|読み上げて(?:もら|くれ|みて|ください|ほしい)|言って(?:もら|くれ|みて|ください|ほしい))/u,
+    /問題(?:文)?(?:を|[、,\s])*.{0,3}教えて/u,
+    /問題(?:文)?(?:を|[、,\s])*.{0,8}(?:読んで|読み上げて)[?？!！。]?\s*$/u,
+  ],
+  en: [
+    /\b(?:can|could|would|will)\s+you\b.{0,30}\b(?:read|say)\b.{0,30}\b(?:question|problem)\b/iu,
+    /\bplease\b.{0,20}\b(?:read|say)\b.{0,30}\b(?:question|problem)\b/iu,
+    /^\s*(?:read|say)\b.{0,30}\b(?:question|problem)\b.{0,15}[.?!]?\s*$/iu,
+    /\btell me\b.{0,30}\b(?:question|problem)\b/iu,
+    /\bwhat does (?:the )?(?:question|problem) say\b/iu,
+  ],
+};
+
+export function asksForProblemReadout(speech: string, locale: CurriculumLocale): boolean {
+  const normalized = speech.trim();
+  if (normalized.length === 0) return false;
+  return PROBLEM_READOUT_PATTERNS[locale].some((pattern) => pattern.test(normalized));
+}
+
+/** metadata の定型句が、まだ問題文を受け取っていない唯一の印。 */
+export function problemTextIsMissing(
+  context: Pick<SessionContext, "locale" | "problem_text">,
+): boolean {
+  return context.problem_text === formatProblemText(null, context.locale);
+}
+
+export type SpokenProblemMemoryResult =
+  | { accepted: true; length: number }
+  | {
+      accepted: false;
+      reason:
+        | "not_new"
+        | "already_present"
+        | "empty"
+        | "too_long"
+        | "solution_included"
+        | "not_a_problem";
+    };
+
+/**
+ * 音読を頼んだ直後の発話を、**この agent のメモリ上だけ**で問題文として覚える。
+ *
+ * 発話の字面だけで「これは音読」と判定しない。呼び出すのは授業ループが
+ * `asksForProblemReadout` かつ `awaits_student: true` の直後だと確定した場合だけ。
+ * ここは採用条件と差し替えだけを持つ。
+ *
+ * **APIへは書き戻さない。** 今回は同じオブジェクトを差し替えることで、次パス、
+ * 教え返し、カルテ生成まで同じ問題文を使う。永続化は #130/#150 の統一文脈で、
+ * この関数の採用結果を `PATCH /problem` へつなげればよい。
+ */
+export function rememberSpokenProblemText(
+  context: SessionContext,
+  spoken: string,
+): SpokenProblemMemoryResult {
+  if (context.kind !== "new") return { accepted: false, reason: "not_new" };
+  if (!problemTextIsMissing(context)) return { accepted: false, reason: "already_present" };
+
+  // transcript と同じ正規化を先に通す。音読した「エックス二乗」をそのまま
+  // system prompt に貼るより、板書LLMが式として読める形へ揃えるほうが安全。
+  const text = normalizeMathSpeech(spoken, context.locale).text.trim();
+  if (text.length === 0) return { accepted: false, reason: "empty" };
+  if (text.length > problemTextMaxLength) return { accepted: false, reason: "too_long" };
+
+  // 本人が入力した問題文と同じ側で見る。答えまで読み上げた発話を採用すると、
+  // 写真と手入力で塞いだ解答混入の穴が音声経路から開く。
+  const verdict = checkProblemText(text, "manual");
+  if (!verdict.ok) return { accepted: false, reason: verdict.reason };
+
+  // SessionContext は entry からカルテ生成まで同じ参照を運ぶ。ここで欄だけを
+  // 差し替えれば、パスごとに組み直す system() と終了時のカルテが両方追随する。
+  context.problem_text = text;
+  return { accepted: true, length: text.length };
 }
 
 /**
@@ -479,9 +576,9 @@ export const lessonContinuationRecapMaxLength = 4000;
  */
 const CONTINUATION_INSTRUCTION: Record<
   CurriculumLocale,
-  (recap: string, lastIsStudent: boolean) => string
+  (recap: string, lastIsStudent: boolean, problemReadoutAlreadyRequested: boolean) => string
 > = {
-  ja: (recap, lastIsStudent) =>
+  ja: (recap, lastIsStudent, problemReadoutAlreadyRequested) =>
     [
       "ここまでの授業のやりとりです。番号つきの行はあなたが板書に積んだ手順、「生徒:」の行はそのときの生徒の発話です。",
       "",
@@ -491,6 +588,11 @@ const CONTINUATION_INSTRUCTION: Record<
       "- `title` と `topic_ids` は前回と同じものを書きます(板書は開き直されず、手順は同じ板書の下に積まれます)。",
       "- `steps` の `index` はまた 0 から数えます。",
       "- すでに板書に出した手順を繰り返さない・書き直さないこと。続きだけを書きます。",
+      // 条件付きの行は**要素ごと落とす**。空文字を混ぜて join すると、
+      // 頼んでいない回(ほとんどの回)の箇条書きが空行で分断される。
+      ...(problemReadoutAlreadyRequested
+        ? ["- 問題文の読み上げはもう一度頼みません。直前の生徒の発話を受けて続けてください。"]
+        : []),
       // 続きを頼む理由は2つある。答えを受けての続きと、途中で切れた説明の続き。
       // 生徒が何も言っていないのに「直前の生徒の言葉に応えろ」と書くと、
       // 言われていない言葉への返事を作り始める。
@@ -498,7 +600,7 @@ const CONTINUATION_INSTRUCTION: Record<
         ? "- 最初の手順の `speech` は、直前の生徒の言葉への短い応えから始めてください。"
         : "- 説明は途中で切れています。最後の手順のすぐ続きから教えてください。",
     ].join("\n"),
-  en: (recap, lastIsStudent) =>
+  en: (recap, lastIsStudent, problemReadoutAlreadyRequested) =>
     [
       'This is the lesson so far. Numbered lines are the steps you have already put on the board; "Student:" lines are what the student said in between.',
       "",
@@ -508,6 +610,11 @@ const CONTINUATION_INSTRUCTION: Record<
       "- Write the same `title` and `topic_ids` as before (the board is not reopened; new steps stack under the same board).",
       "- Number `steps` from `index` 0 again.",
       "- Never repeat or rewrite steps that are already on the board — write only what comes next.",
+      ...(problemReadoutAlreadyRequested
+        ? [
+            "- Do not ask the student to read the question again. Continue from what they just said.",
+          ]
+        : []),
       lastIsStudent
         ? "- Start the first step's `speech` with a short response to what the student just said."
         : "- The explanation broke off. Pick it up right after the last step.",
@@ -520,7 +627,14 @@ export function lessonContinuationInstruction(
 ): string {
   const label = locale === "en" ? "Student" : "生徒";
   const lines = renderTurnLines(turns, locale, label, lessonContinuationRecapMaxLength, "tail");
-  return CONTINUATION_INSTRUCTION[locale](lines.join("\n"), turns.at(-1)?.kind === "student");
+  const problemReadoutAlreadyRequested = turns.some(
+    (turn) => turn.kind === "step" && asksForProblemReadout(turn.step.speech, locale),
+  );
+  return CONTINUATION_INSTRUCTION[locale](
+    lines.join("\n"),
+    turns.at(-1)?.kind === "student",
+    problemReadoutAlreadyRequested,
+  );
 }
 
 export type SenpaiConversationInput = {

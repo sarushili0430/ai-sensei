@@ -85,7 +85,7 @@ describe("buildKarte", () => {
     expect(karte.holes).toHaveLength(1);
   });
 
-  it("プロンプトに写真の要約とtranscriptを渡す", async () => {
+  it("プロンプトに問題文・写真の要約・transcriptを渡す", async () => {
     let captured = "";
     await buildKarte({
       context,
@@ -99,7 +99,9 @@ describe("buildKarte", () => {
     });
 
     const system = captured;
+    expect(system).toContain("x^2 - 3x + 2 = 0 を解け");
     expect(system).toContain("円と直線の位置関係");
+    expect(system).toContain("問題文を読み上げただけ");
     expect(system).toContain("ユーザー: 距離で比べました");
     expect(system).not.toContain("{{");
   });
@@ -343,7 +345,7 @@ describe("英語のセッション", () => {
   const englishContext = readSessionContext(
     sessionMetadataJson({
       session_id: "ses_en",
-      problem_text: "x^2 - 3x + 2 = 0 を解け",
+      problem_text: "Solve x^2 - 3x + 2 = 0.",
       visible_work: "- 因数分解しかけて止まっている",
       locale: "en",
       max_seconds: 300,

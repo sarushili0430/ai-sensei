@@ -116,6 +116,7 @@ describe("教科ごとの音声補正ヒント", () => {
   it("カルテ生成でも教科で切り替わる", () => {
     const karte = karteSystemPrompt(
       {
+        problem_text: "Read the following passage and answer the question.",
         photo_summary: "現在完了の練習問題",
         allowed_topics: "- JE-JISEI-KANRYO",
         transcript: "先輩: なんでですか?",
@@ -280,6 +281,7 @@ describe("組み立て済みプロンプト", () => {
   it("カルテ生成プロンプトも組み立てられる", () => {
     const karte = karteSystemPrompt(
       {
+        problem_text: "円 x^2 + y^2 = 5 と直線の共有点を求めよ。",
         photo_summary: "円と直線",
         allowed_topics: "- M2-ZUKEI-ENCHOKU",
         transcript: "先輩: なんでですか?",
@@ -288,6 +290,8 @@ describe("組み立て済みプロンプト", () => {
       { subject: "math" },
     );
     expect(karte).toContain("said_well");
+    expect(karte).toContain("円 x^2 + y^2 = 5");
+    expect(karte).toContain("問題文を読み上げただけ");
     expect(karte).toContain("先輩: なんでですか?");
   });
 
@@ -316,6 +320,7 @@ describe("組み立て済みプロンプト", () => {
   it("英語のカルテ生成プロンプトも組み立てられる", () => {
     const karte = karteSystemPrompt(
       {
+        problem_text: "Find the intersections of the circle and line.",
         photo_summary: "A line-and-circle problem",
         allowed_topics: "- A2-COORD-CIRCLE",
         transcript: "Senpai: Why is that?",
@@ -324,6 +329,8 @@ describe("組み立て済みプロンプト", () => {
       { locale: "en", subject: "math" },
     );
     expect(karte).toContain("said_well");
+    expect(karte).toContain("Find the intersections");
+    expect(karte).toContain("Merely reading the question");
     expect(karte).toContain("Senpai: Why is that?");
     expect(karte).not.toMatch(/[ぁ-んァ-ン一-龯]/);
   });
@@ -401,6 +408,18 @@ describe("設計上の約束がプロンプトに書かれている", () => {
       const body = getPrompt("senpai_board", locale).body;
       expect(body, `senpai_board (${locale}) が ${noProblem} を見ていない`).toContain(noProblem);
     }
+  });
+
+  it("問題文が入っているときは、冒頭で復唱も音読依頼もしないと明記する", () => {
+    const ja = getPrompt("senpai_board", "ja").body;
+    const en = getPrompt("senpai_board", "en").body;
+    const englishLessonJa = getPrompt("senpai_board_english", "ja").body;
+
+    expect(ja).toContain("冒頭で問題文を復唱せず");
+    expect(ja).toContain("読み上げを頼まず");
+    expect(en).toContain("do not repeat it or ask the student to read it aloud");
+    expect(englishLessonJa).toContain("冒頭で問題文を復唱せず");
+    expect(englishLessonJa).toContain("読み上げを頼まず");
   });
 
   // 「ノートが無いときは口頭で『どこまでやってみた?』と聞く」案は明示的に見送られた。
@@ -597,6 +616,10 @@ describe("設計上の約束がプロンプトに書かれている", () => {
     // 選び方が「最初の1問」まで書かれていること(理由だけだとモデルは並べ続ける)。
     expect(getPrompt("photo_analysis", "ja").body).toContain("いちばん最初の問題");
     expect(getPrompt("photo_analysis", "en").body).toContain("The first problem on the page");
+    expect(getPrompt("photo_analysis", "ja").body).toContain(
+      "ページ全体を書き起こしてはいけません",
+    );
+    expect(getPrompt("photo_analysis", "en").body).toContain("Never transcribe the whole page");
   });
 
   /**

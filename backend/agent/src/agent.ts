@@ -31,6 +31,8 @@ import {
   asksForBoard,
   lessonFailedPrompt,
   lessonSteps,
+  problemTextIsMissing,
+  rememberSpokenProblemText,
   reviewOpening,
   senpaiBoardLessonPrompt,
   senpaiConversationPrompt,
@@ -493,6 +495,10 @@ function lessonRunner(options: TeachOptions, board: BoardDelivery) {
       signal,
       utterances,
       record,
+      problemReadoutMemory: {
+        isMissing: () => problemTextIsMissing(context),
+        remember: (text) => rememberSpokenProblemText(context, text),
+      },
       // 答え待ちのタイムアウトの瞬間に生徒がまだ話していたら、言い終わりを待つ。
       isStudentSpeaking: () => session.userState === "speaking",
       remainingSeconds: remaining,

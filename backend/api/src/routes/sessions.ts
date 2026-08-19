@@ -516,6 +516,10 @@ sessionsRoute.post("/:sessionId/start", async (c) => {
     kind: session.kind,
     locale: allowedTopicsLocale(allowed),
     topic_ids: [...allowed.primary],
+    // `problem_resolved` と session_id でつなぐと、解析後も問題文が空のまま
+    // 会話まで進んだ率が分かる。本文は他者の著作物なので、存在と落ち方だけを残す。
+    problem_present: context.problem != null,
+    problem_outcome: context.problem_outcome ?? null,
     max_seconds: allowance.maxSeconds,
     agent_dispatch: dispatch ? "explicit" : "automatic",
     // 押し直し・つなぎ直しでトークンだけ出し直した回。枠は数え直していない。

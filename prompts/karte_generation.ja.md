@@ -2,7 +2,7 @@
 id: karte_generation
 locale: ja
 model_role: karte
-variables: [photo_summary, allowed_topics, transcript, is_premium]
+variables: [problem_text, photo_summary, allowed_topics, transcript, is_premium]
 ---
 
 会話のtranscript全体から「カルテ」を作ります。出力はJSONのみ。
@@ -68,6 +68,13 @@ variables: [photo_summary, allowed_topics, transcript, is_premium]
 - 計算ミスそのもの(このアプリが見るのは説明であって計算ではない)
 - 沈黙だけ(そのあと説明できていれば穴ではない)
 - 声が拾えなかっただけの箇所
+
+## 今日の問題(文脈)
+
+{{problem_text}}
+
+これは会話が何を指しているかを特定するための文脈です。問題文を読み上げただけの発話は、
+解き方を説明できた証拠ではありません。`said_well` や `holes` の根拠にしないでください。
 
 ## 今日のノート
 

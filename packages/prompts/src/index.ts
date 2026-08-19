@@ -243,6 +243,7 @@ export function studyPlanSystemPrompt(
 /** カルテ生成用のプロンプト。教科に合った音声補正ヒントを同梱する。 */
 export function karteSystemPrompt(
   variables: {
+    problem_text: string;
     photo_summary: string;
     allowed_topics: string;
     transcript: string;

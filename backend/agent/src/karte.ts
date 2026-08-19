@@ -44,6 +44,10 @@ export async function buildKarte({
 }: BuildKarteOptions): Promise<KarteDraft> {
   const system = karteSystemPrompt(
     {
+      // 読み上げで補った問題文も同じセッション文脈に入る。カルテ側では
+      // 「何について話したか」の照合にだけ使い、説明できた証拠にはしない
+      // (`karte_generation.*.md` がその線引きを持つ)。
+      problem_text: context.problem_text,
       photo_summary: context.photo_summary,
       allowed_topics: context.allowed_topics,
       transcript: renderTranscript(transcript, context.locale),

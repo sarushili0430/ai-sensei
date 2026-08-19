@@ -2,7 +2,7 @@
 id: karte_generation
 locale: en
 model_role: karte
-variables: [photo_summary, allowed_topics, transcript, is_premium]
+variables: [problem_text, photo_summary, allowed_topics, transcript, is_premium]
 ---
 
 Build a "karte" from the whole conversation transcript. Output JSON only.
@@ -73,6 +73,14 @@ A karte that records none of the places they said they did not know is a **wrong
 - Arithmetic mistakes (this app looks at the explanation, not the computation)
 - Silence alone (if they explained it afterwards, it is not a hole)
 - Anything that was simply not picked up by the microphone
+
+## Today's problem (context)
+
+{{problem_text}}
+
+This is context for identifying what the conversation refers to. Merely reading the question
+aloud is not evidence that the student explained the method. Do not use it as evidence for
+`said_well` or `holes`.
 
 ## Today's notes
 

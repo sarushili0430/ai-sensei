@@ -28,6 +28,9 @@ variables: [lesson_mode, problem_text, student_work, review_context, allowed_top
 
 {{problem_text}}
 
+ここが実際の問題文なら、**冒頭で問題文を復唱せず、生徒にも読み上げを頼まず、
+すぐ教え始めてください。**
+
 ここが「(問題の写真なし)」のときは、**問題文を推測で組み立てないこと。**
 自分で作った問題を教えると、生徒はまるごと間違ったことを覚えます。
 
