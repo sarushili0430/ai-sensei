@@ -343,6 +343,8 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
   while (true) {
     passes += 1;
     let skippedSolving = false;
+    /** 2回目の読み上げ依頼を配送前に落としたか。観測して警告に出す。 */
+    let blockedProblemReadout = false;
     const solvingReportForPass = pendingSolvingReport;
 
     // このパスの中止条件は「セッションの終わり」か「生徒が話し始めた」。
@@ -371,6 +373,18 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
         // 次の1パスと教え返しに120秒を残せないときは、送信前に従来の締めへ縮退する。
         // `review` も同じ口で抑止し、プロンプトがぶれても Issue の `new` 限定を守る。
         stopBefore: (step) => {
+          /**
+           * **2回目の読み上げ依頼は、板書とTTSへ出る前に落とす。**
+           *
+           * 継続の指示で「もう一度頼まない」と書いてはいるが、モデルが外したときに
+           * 事後のログだけでは遅い —— `runBoardLesson` は手順を配送して `speak` を
+           * 呼んでから返るので、観測した時点で**生徒にはもう二度目が届いている**。
+           * 「毎回読ませる」を直しに来た変更なので、ここは観測ではなく門にする。
+           */
+          if (problemReadoutRequests >= 1 && asksForProblemReadout(step.speech, locale)) {
+            blockedProblemReadout = true;
+            return true;
+          }
           if (!stepAwaitsSolving(step)) return false;
           const shouldSkip =
             !practiceProblemEnabled ||
@@ -427,6 +441,11 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
       } else {
         log?.info("problem_readout_requested", fields);
       }
+    }
+
+    // 生徒には届いていない(配送前に落とした)が、プロンプトが守られなかった事実は残す。
+    if (blockedProblemReadout) {
+      log?.warn("problem_readout_blocked", { pass: passes });
     }
 
     if (skippedSolving) {

@@ -468,15 +468,53 @@ describe("runLessonLoop", () => {
       },
     });
 
-    expect(warnings).toContainEqual({
-      event: "problem_readout_unexpected",
-      fields: {
-        pass: 2,
-        problem_present: true,
-        repeated: true,
-        awaits_student: true,
+    /**
+     * **2回目は観測ではなく、配送前に落とす。**
+     *
+     * `runBoardLesson` は手順を配送して `speak` を呼んでから返るので、事後に
+     * 気づいても**生徒にはもう二度目が届いている**。「毎回読ませる」を直しに来た
+     * 変更なので門にしてあり、届かなかった事実だけが warn に残る。
+     */
+    expect(warnings).toContainEqual({ event: "problem_readout_blocked", fields: { pass: 2 } });
+    expect(warnings.map((warning) => warning.event)).not.toContain("problem_readout_unexpected");
+  });
+
+  it("2回目の音読依頼は板書にもTTSにも出さない", async () => {
+    const sink = recordingSink();
+    const board = boardWith(sink);
+    const llm = stubLlm(
+      lessonJson([stepAwaiting(0, "問題、読んでもらってもいい?", true)]),
+      lessonJson([stepAwaiting(0, "もう一度、問題を読んでくれる?", true)]),
+    );
+    const utterances = new StudentUtterances();
+    const spoken: string[] = [];
+    let remembered = false;
+
+    await loopWith(llm, board, {
+      utterances,
+      problemReadoutMemory: {
+        isMissing: () => !remembered,
+        remember: (text) => {
+          remembered = true;
+          return { accepted: true, length: text.length };
+        },
       },
+      speak: async (delivered) => {
+        spoken.push(delivered.speech);
+        if (!remembered && delivered.speech.includes("読んでもらってもいい")) {
+          setTimeout(() => utterances.push("x^2 = 4 を解け。"), 5);
+        }
+      },
+      remainingSeconds: () => (llm.systems.length < 2 ? 300 : 0),
     });
+
+    // 1回目は届く。2回目はTTSにも板書にも出ない。
+    expect(spoken.filter((speech) => speech.includes("読ん"))).toHaveLength(1);
+    expect(
+      sink.sent.filter(
+        (message) => message.type === "board_step" && message.step.speech.includes("もう一度"),
+      ),
+    ).toHaveLength(0);
   });
 
   it("説明の途中の発話はパスを中止し、続きのパスで応える(会話へ落とさない)", async () => {
