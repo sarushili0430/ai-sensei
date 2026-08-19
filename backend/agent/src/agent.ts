@@ -536,7 +536,7 @@ async function teachWithBoard(options: TeachOptions): Promise<TaughtLesson | und
     sink: createTextStreamBoardSink(publisher),
     // **教える範囲の妥当性**を見るための許可集合(計画書 §8)。
     // 見出しの `topic_ids` がここから外れていたら作り直させる。
-    // 前提2段ぶんは backend/api が既に入れてくるので、こちらでは広げない。
+    // 前提チェーン全体は backend/api が既に入れてくるので、こちらでは広げない。
     allowedTopicIds: context.allowed_topic_ids,
     log,
   });
