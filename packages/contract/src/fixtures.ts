@@ -10,6 +10,7 @@ import {
   createPlanSessionResponseSchema,
   createSessionRequestSchema,
   createSessionResponseSchema,
+  finishSessionResponseSchema,
   planResponseSchema,
   planSessionMetadataSchema,
   progressResponseSchema,
@@ -37,6 +38,8 @@ export const fixtureSchemas = {
   // 部屋の鍵はこちらにだけ載る。写真を読んだ応答(create-session-response)と
   // 別のfixtureにしてあること自体が、「持ち時間を押さえるのは会話の開始」の形。
   "start-session-response": startSessionResponseSchema,
+  // 会話を終えた合図。仮押さえを実測へ精算し、ホームが表示を戻すための残高が載る。
+  "finish-session-response": finishSessionResponseSchema,
   "complete-session-request": completeSessionRequestSchema,
   "complete-session-response": completeSessionResponseSchema,
   // LiveKitトークンに載って agent に届く会話文脈。HTTPのボディではないので

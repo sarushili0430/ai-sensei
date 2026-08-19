@@ -3,6 +3,7 @@ import {
   type AddSessionProblemPhotoResponse,
   type CreateSessionRequest,
   type CreateSessionResponse,
+  type FinishSessionResponse,
   type ProblemOutcome,
   type SessionMetadata,
   type SessionProblem,
@@ -824,6 +825,83 @@ sessionsRoute.post("/:sessionId/start", async (c) => {
     },
   };
 
+  return c.json(response, 200);
+});
+
+/**
+ * POST /v1/sessions/{id}/finish
+ *
+ * **アプリが会話を終えた合図。仮押さえを、その瞬間までの実測へ前倒しで精算する。**
+ *
+ * `/start` は1回の上限まるごとを仮押さえし、実測への精算は agent の `/complete` が
+ * 行う — が、それはカルテ生成のあとで、agent が来なかった回・落ちた回には来ない。
+ * この口が無かった頃、5分で終えた会話もホームの残り時間は上限まるごと減ったままで、
+ * `/complete` が来ない回はトークンの寿命後に**上限額のまま**精算されていた
+ * (テスターの「20分経ってなくても20分引かれる」の正体)。
+ *
+ * ## クライアントを信じない、はここでも守る
+ *
+ * リクエストに秒数は載せない(載っていても読まない)。**経過はサーバが
+ * `started_at` と受信時刻から測る**ので、早めに呼んでも呼んだ時点までの実測が
+ * 記録されるだけ。呼んだあとも部屋に居座った場合は、会話の終わりに agent の
+ * `/complete` が本当の実測で上書きする(`completeSession` は無条件に書く)。
+ * 改竄クライアントが得られるのは「agentが死んだ部屋に残る」だけで、
+ * そこにSTT/LLM/TTSの従量原価は無い。
+ *
+ * ## カルテの流れは変えない
+ *
+ * `status` は open のまま。カルテ生成→ `/complete` → `/result` の列はこの口と
+ * 独立に進む(ここで completed にすると、カルテの無い離脱が streak に混ざる —
+ * `settleExpiredSessions` と同じ判断)。
+ */
+sessionsRoute.post("/:sessionId/finish", async (c) => {
+  const { repository, now } = c.get("services");
+  const log = c.get("log");
+  const deviceId = c.get("deviceId");
+  const at = now();
+  const limits = readLimits(c.env);
+
+  const sessionId = c.req.param("sessionId");
+  const session = await repository.getSession(sessionId);
+  // 他人のセッションの残高は見せない(存在も漏らさない)。
+  if (!session || session.device_id !== deviceId) throw apiError("session_not_found");
+
+  const settled = await repository.settleSessionEarly({
+    sessionId,
+    deviceId,
+    now: at.toISOString(),
+  });
+  // 精算できなかったのは「もう /complete が書いた」「まだ始まっていない」のどちらかで、
+  // どちらも異常ではない。応答は精算後の残高だけを返せばよい。
+  if (settled) {
+    const after = await repository.getSession(sessionId);
+    // この行の量が実際に返した時間。/complete が来ない回がどれだけ救えているかは、
+    // ここと settleExpiredSessions の差でしか観測できない。
+    log?.info("session_finished_early", {
+      session_id: sessionId,
+      kind: session.kind,
+      duration_seconds: after?.duration_seconds ?? null,
+      max_seconds: session.max_seconds,
+    });
+  }
+
+  const user = await repository.getUser(deviceId);
+  const usage = await repository.getDailySessionUsage(deviceId, toLocalDate(at));
+  const remainingSecondsToday = Math.max(
+    0,
+    secondsPerDay({ user, now: at, limits }) - usage.consumedSeconds,
+  );
+  const response: FinishSessionResponse = {
+    session_id: sessionId,
+    limits: {
+      max_seconds: sessionMaxSeconds({ user, now: at, limits }),
+      remaining_seconds_today: remainingSecondsToday,
+      lesson_allowed_today: canStartSessionToday({
+        remainingSecondsToday,
+        sessionsToday: usage.sessionsStarted,
+      }),
+    },
+  };
   return c.json(response, 200);
 });
 

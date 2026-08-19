@@ -6,11 +6,14 @@ import type { UserRecord } from "../repository/types.ts";
  *
  * Free    : 1日1200秒 / Premiumと同じ最長20分 / 当日のカルテ閲覧まで
  * Premium : 1日3600秒の非表示フェアユース上限 / 最長20分
- * βテスト : 期間中は全員がPremium相当。持ち時間は `BETA_SECONDS_PER_DAY`
+ * βテスト : 期間中は全員がPremium相当。持ち時間は `BETA_SECONDS_PER_DAY`、
+ *           1回の上限は `BETA_SESSION_MAX_SECONDS` で上書き可
  *           ({@link isBetaOpenAccess})
  *
  * **数えるのは「先輩と話した合計時間」**。`POST /start` でその回の
  * `max_seconds` を仮押さえし、`POST /complete` で実績秒数へ精算する。
+ * アプリが先に会話を終えたときは `POST /finish` が経過秒で前倒し精算する
+ * (agent が来なかった・落ちた回に、仮押さえ額のまま引かれ続けないため)。
  */
 
 export function isPremiumNow(user: UserRecord | null, now: Date): boolean {
@@ -117,7 +120,9 @@ export function analysesPerDay(input: {
 }): number {
   // 従来の「20分の授業1本につき解析5回」と同じ幅を、日次秒数から導出する。
   // 1回未満の持ち時間に上書きされても無料の解析5回は減らさない。
-  const sessionSlots = Math.max(1, Math.floor(secondsPerDay(input) / sessionMaxSeconds(input)));
+  // 割る単位は**プランの上限のまま**(β開放の上書きを混ぜない)。β中に1回を
+  // 60分へ伸ばすと、この式が本数を1/3に数え、撮り直しの枠が黙って縮むため。
+  const sessionSlots = Math.max(1, Math.floor(secondsPerDay(input) / planSessionMaxSeconds(input)));
   return sessionSlots * analysesPerSessionSlot;
 }
 
@@ -129,8 +134,8 @@ export function canStartSessionToday(input: SessionLimitInput): boolean {
   );
 }
 
-/** 1回の会話の長さ。**プランで品質は変えない**ので、分岐はこの1か所だけ。 */
-export function sessionMaxSeconds(input: {
+/** プラン(無料/Premium)が決める1回の上限。β開放の上書きは含まない。 */
+function planSessionMaxSeconds(input: {
   user: UserRecord | null;
   now: Date;
   limits: Limits;
@@ -138,6 +143,23 @@ export function sessionMaxSeconds(input: {
   return hasPremiumAccess(input)
     ? input.limits.premiumSessionMaxSeconds
     : input.limits.freeSessionMaxSeconds;
+}
+
+/**
+ * 1回の会話の長さ。**プランで品質は変えない**ので、プランの分岐はこの1か所だけ。
+ *
+ * β開放中だけ `BETA_SESSION_MAX_SECONDS` で上書きできる(未設定ならPremiumと同じ)。
+ * 精算が実測ベースになったので、長い上限は「使わなければ返る仮押さえ」でしかなく、
+ * テスターの「20分で切れる」を env だけで直せる。日次の持ち時間
+ * (`betaSecondsPerDay`)と同じく、βの期限が切れれば自動で通常へ戻る。
+ */
+export function sessionMaxSeconds(input: {
+  user: UserRecord | null;
+  now: Date;
+  limits: Limits;
+}): number {
+  if (isBetaOpenAccess(input)) return input.limits.betaSessionMaxSeconds;
+  return planSessionMaxSeconds(input);
 }
 
 /**

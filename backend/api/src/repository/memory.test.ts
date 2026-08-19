@@ -329,6 +329,118 @@ describe("MemoryRepository.startSession", () => {
       maxSeconds: 900,
     });
   });
+
+  /** アプリの「会話を終えた」による前倒し精算。期限を待たず、経過秒の実測で返す。 */
+  it("終了合図は経過秒を実測として精算し、残りを同じ日の残高へ返す", async () => {
+    const repository = new MemoryRepository();
+    await seed(repository, ["a", "b"]);
+    await start(repository, "a", { startedAt: "2026-08-03T13:00:00.000Z" });
+
+    expect(
+      await repository.settleSessionEarly({
+        sessionId: "a",
+        deviceId: "device_a",
+        now: "2026-08-03T13:05:00.000Z",
+      }),
+    ).toBe(true);
+    expect(repository.sessions.get("a")).toMatchObject({
+      status: "open",
+      duration_seconds: 300,
+      quota_settled_at: "2026-08-03T13:05:00.000Z",
+    });
+    expect(await start(repository, "b", { startedAt: "2026-08-03T13:06:00.000Z" })).toMatchObject({
+      started: true,
+      maxSeconds: 900,
+    });
+  });
+
+  it("終了合図の再送は最初の実測のまま動かさない", async () => {
+    const repository = new MemoryRepository();
+    await seed(repository, ["a"]);
+    await start(repository, "a", { startedAt: "2026-08-03T13:00:00.000Z" });
+    await repository.settleSessionEarly({
+      sessionId: "a",
+      deviceId: "device_a",
+      now: "2026-08-03T13:05:00.000Z",
+    });
+
+    expect(
+      await repository.settleSessionEarly({
+        sessionId: "a",
+        deviceId: "device_a",
+        now: "2026-08-03T13:15:00.000Z",
+      }),
+    ).toBe(false);
+    expect(repository.sessions.get("a")?.duration_seconds).toBe(300);
+  });
+
+  it("終了合図の精算は仮押さえ額を越えない(遅れて呼ばれても満額まで)", async () => {
+    const repository = new MemoryRepository();
+    await seed(repository, ["a"]);
+    await start(repository, "a", { startedAt: "2026-08-03T13:00:00.000Z" });
+
+    await repository.settleSessionEarly({
+      sessionId: "a",
+      deviceId: "device_a",
+      now: "2026-08-03T14:00:00.000Z",
+    });
+    expect(repository.sessions.get("a")?.duration_seconds).toBe(1200);
+  });
+
+  it("終了合図は他人の行・未開始の行・実測済みの行に触らない", async () => {
+    const repository = new MemoryRepository();
+    await seed(repository, ["started", "not_started"]);
+    await start(repository, "started", { startedAt: "2026-08-03T13:00:00.000Z" });
+
+    // 他人からの申告。
+    expect(
+      await repository.settleSessionEarly({
+        sessionId: "started",
+        deviceId: "device_b",
+        now: "2026-08-03T13:05:00.000Z",
+      }),
+    ).toBe(false);
+    // まだ会話が始まっていない行。
+    expect(
+      await repository.settleSessionEarly({
+        sessionId: "not_started",
+        deviceId: "device_a",
+        now: "2026-08-03T13:05:00.000Z",
+      }),
+    ).toBe(false);
+    // /complete が先に実測を書いた行(agentの実測が正)。
+    await repository.completeSession({
+      sessionId: "started",
+      completedAt: "2026-08-03T13:08:00.000Z",
+      durationSeconds: 480,
+    });
+    expect(
+      await repository.settleSessionEarly({
+        sessionId: "started",
+        deviceId: "device_a",
+        now: "2026-08-03T13:09:00.000Z",
+      }),
+    ).toBe(false);
+    expect(repository.sessions.get("started")?.duration_seconds).toBe(480);
+  });
+
+  // 読めない値をゼロ精算(=持ち時間の返金)の側へ倒さない。期限精算が満額で拾う。
+  it("壊れた started_at は前倒しでは精算しない", async () => {
+    const repository = new MemoryRepository();
+    await repository.createSession({
+      session: session("broken", { started_at: "not-a-date", max_seconds: 1200 }),
+      maxAnalysesPerDay: 99,
+    });
+
+    expect(
+      await repository.settleSessionEarly({
+        sessionId: "broken",
+        deviceId: "device_a",
+        now: "2026-08-03T13:05:00.000Z",
+      }),
+    ).toBe(false);
+    expect(repository.sessions.get("broken")?.duration_seconds).toBeNull();
+  });
 });
 
 describe("MemoryRepository.listKartesOnLocalDates", () => {

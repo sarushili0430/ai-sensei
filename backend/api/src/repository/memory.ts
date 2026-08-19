@@ -109,6 +109,35 @@ export class MemoryRepository implements Repository {
     return settled;
   }
 
+  async settleSessionEarly(input: {
+    sessionId: string;
+    deviceId: string;
+    now: string;
+  }): Promise<boolean> {
+    const session = this.sessions.get(input.sessionId);
+    if (
+      !session ||
+      session.device_id !== input.deviceId ||
+      session.started_at === null ||
+      // /complete が先に実測を書いた行には触らない(agentの実測が正)。
+      session.duration_seconds !== null
+    ) {
+      return false;
+    }
+    const startedMs = new Date(session.started_at).getTime();
+    // 壊れた started_at はここでは精算せず、期限精算(仮押さえ額)に任せる(D1と同じ)。
+    if (Number.isNaN(startedMs)) return false;
+
+    const maxSeconds = session.max_seconds ?? legacySessionMaxSeconds;
+    const elapsedSeconds = Math.floor((new Date(input.now).getTime() - startedMs) / 1000);
+    this.sessions.set(session.id, {
+      ...session,
+      duration_seconds: Math.min(maxSeconds, Math.max(0, elapsedSeconds)),
+      quota_settled_at: input.now,
+    });
+    return true;
+  }
+
   async createSession(input: {
     session: SessionRecord;
     maxAnalysesPerDay: number;

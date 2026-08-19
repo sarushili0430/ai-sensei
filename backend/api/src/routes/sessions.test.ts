@@ -1,11 +1,13 @@
 import type {
   AddSessionProblemPhotoResponse,
   CreateSessionResponse,
+  FinishSessionResponse,
   SessionMetadata,
   StartSessionResponse,
 } from "@ai-sensei/contract";
 import {
   createSessionResponseSchema,
+  finishSessionResponseSchema,
   problemTextMaxLength,
   sessionMetadataSchema,
   sessionPhotoParts,
@@ -99,6 +101,15 @@ function startSession(
         ...headers,
       },
     },
+    env,
+  );
+}
+
+/** 会話を終えた合図。仮押さえを経過秒へ前倒しで精算する。 */
+function finishSession(sessionId: string, headers: Record<string, string> = {}, env = bindings) {
+  return app.request(
+    `/v1/sessions/${sessionId}/finish`,
+    { method: "POST", headers: { "x-device-id": testDeviceId, ...headers } },
     env,
   );
 }
@@ -770,6 +781,154 @@ describe("POST /v1/sessions/{id}/start", () => {
     expect(
       (await services.repository.getDailySessionUsage(testDeviceId, "2026-08-03")).sessionsStarted,
     ).toBe(1);
+  });
+
+  it("β開放中は BETA_SESSION_MAX_SECONDS まで1回で話せる", async () => {
+    const beta = testBindings({
+      BETA_OPEN_ACCESS_UNTIL: "2026-12-31T00:00:00.000Z",
+      BETA_SESSION_MAX_SECONDS: "3600",
+    });
+
+    const started = await analyzeThenStart(createSessionForm(), beta);
+
+    expect(started.limits.max_seconds).toBe(3600);
+    // 仮押さえは60分ぶん。短く終えれば /finish・/complete が実測へ精算して返す。
+    expect(started.limits.remaining_seconds_today).toBe(12000 - 3600);
+    const metadata = await metadataOf<{ max_seconds: number }>(started, beta);
+    expect(metadata.max_seconds).toBe(3600);
+  });
+});
+
+/**
+ * **仮押さえを実測へ戻す口。**
+ *
+ * テスターの不具合報告: 5分で終えても残り時間が20分まるごと減ったまま。
+ * `/complete`(カルテと一緒に届く精算)を待つ間も、agentが来なかった回も、
+ * 仮押さえ額が残高から引かれ続けていた。アプリが会話を終えた瞬間に
+ * この口で精算し、以後は経過秒だけが引かれていることを固定する。
+ */
+describe("POST /v1/sessions/{id}/finish", () => {
+  async function analyzeAndStart(): Promise<string> {
+    const created = await post(createSessionForm());
+    expect(created.status).toBe(201);
+    const session = (await created.json()) as CreateSessionResponse;
+    expect((await startSession(session.session_id)).status).toBe(200);
+    return session.session_id;
+  }
+
+  it("会話を終えると、仮押さえではなく経過秒だけが残高から引かれる", async () => {
+    const sessionId = await analyzeAndStart();
+
+    // 開始から5分で「今日はここまで」。
+    services.now = () => new Date("2026-08-03T13:29:07.000Z");
+    const response = await finishSession(sessionId);
+    expect(response.status).toBe(200);
+
+    const body = (await response.json()) as FinishSessionResponse;
+    expect(finishSessionResponseSchema.safeParse(body).success).toBe(true);
+    expect(body.limits.remaining_seconds_today).toBe(1200 - 300);
+    expect(body.limits.lesson_allowed_today).toBe(true);
+
+    // 行は実測で精算済み。ただしカルテの無い離脱を streak に混ぜないため open のまま。
+    expect(await services.repository.getSession(sessionId)).toMatchObject({
+      status: "open",
+      duration_seconds: 300,
+      quota_settled_at: "2026-08-03T13:29:07.000Z",
+    });
+  });
+
+  it("精算で返った時間で、同じ日にもう一度始められる", async () => {
+    const sessionId = await analyzeAndStart();
+    services.now = () => new Date("2026-08-03T13:29:07.000Z");
+    expect((await finishSession(sessionId)).status).toBe(200);
+
+    // 無料1200秒のうち実測300秒だけ使ったので、次の回は900秒で始められる。
+    const next = await post(createSessionForm());
+    const nextSession = (await next.json()) as CreateSessionResponse;
+    const started = await startSession(nextSession.session_id);
+    expect(started.status).toBe(200);
+    expect(((await started.json()) as StartSessionResponse).limits.max_seconds).toBe(900);
+  });
+
+  it("/complete が先に書いた実測は上書きしない(agentの実測が正)", async () => {
+    const sessionId = await analyzeAndStart();
+    await services.repository.completeSession({
+      sessionId,
+      completedAt: "2026-08-03T13:32:07.000Z",
+      durationSeconds: 480,
+    });
+
+    services.now = () => new Date("2026-08-03T13:33:07.000Z");
+    const response = await finishSession(sessionId);
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as FinishSessionResponse).limits.remaining_seconds_today).toBe(
+      1200 - 480,
+    );
+    expect((await services.repository.getSession(sessionId))?.duration_seconds).toBe(480);
+  });
+
+  it("先に精算しても、あとから来た /complete の実測が勝つ", async () => {
+    const sessionId = await analyzeAndStart();
+    services.now = () => new Date("2026-08-03T13:26:07.000Z");
+    expect((await finishSession(sessionId)).status).toBe(200);
+    expect((await services.repository.getSession(sessionId))?.duration_seconds).toBe(120);
+
+    // 早めに精算して部屋に居座っても、会話の終わりに agent が本当の実測で上書きする。
+    await services.repository.completeSession({
+      sessionId,
+      completedAt: "2026-08-03T13:44:07.000Z",
+      durationSeconds: 1200,
+    });
+    expect((await services.repository.getSession(sessionId))?.duration_seconds).toBe(1200);
+  });
+
+  it("経過が上限を越えていても、引くのは仮押さえ額まで", async () => {
+    const sessionId = await analyzeAndStart();
+
+    // 40分後(上限20分の倍)。精算は max_seconds で頭打ちにする。
+    services.now = () => new Date("2026-08-03T14:04:07.000Z");
+    const response = await finishSession(sessionId);
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as FinishSessionResponse).limits.remaining_seconds_today).toBe(
+      0,
+    );
+    expect((await services.repository.getSession(sessionId))?.duration_seconds).toBe(1200);
+  });
+
+  it("まだ始めていないセッションからは何も引かない", async () => {
+    const created = await post(createSessionForm());
+    const session = (await created.json()) as CreateSessionResponse;
+
+    const response = await finishSession(session.session_id);
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as FinishSessionResponse).limits.remaining_seconds_today).toBe(
+      1200,
+    );
+    expect((await services.repository.getSession(session.session_id))?.duration_seconds).toBeNull();
+  });
+
+  it("再送しても最初の実測のまま動かない", async () => {
+    const sessionId = await analyzeAndStart();
+    services.now = () => new Date("2026-08-03T13:29:07.000Z");
+    expect((await finishSession(sessionId)).status).toBe(200);
+
+    services.now = () => new Date("2026-08-03T13:39:07.000Z");
+    expect((await finishSession(sessionId)).status).toBe(200);
+    expect((await services.repository.getSession(sessionId))?.duration_seconds).toBe(300);
+  });
+
+  it("他人のセッションは精算できない(存在も漏らさない)", async () => {
+    const sessionId = await analyzeAndStart();
+
+    const response = await finishSession(sessionId, {
+      "x-device-id": "99999999-8888-7777-6666-555555555555",
+    });
+    expect(response.status).toBe(404);
+    expect((await services.repository.getSession(sessionId))?.duration_seconds).toBeNull();
+  });
+
+  it("知らないセッションは404", async () => {
+    expect((await finishSession("ses_unknown")).status).toBe(404);
   });
 });
 

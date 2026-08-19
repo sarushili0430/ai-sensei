@@ -238,6 +238,16 @@ export type Repository = {
     graceSeconds: number;
   }): Promise<number>;
   /**
+   * アプリの「会話を終えた」を受けて、仮押さえを**経過秒の実測**へ前倒しで精算する。
+   *
+   * 経過はサーバが `started_at` と `now` から測り、`max_seconds` を上限に丸める。
+   * クライアントの申告秒数は受け取らない(早めに呼んでも、それ以降の会話は
+   * agent の `/complete` が実測で上書きする)ので、改竄で得をする道が無い。
+   * `/complete` が先に実測を書いた行には触らない(agentの実測が正)。
+   * 壊れた `started_at` は精算せず、期限精算(仮押さえ額)に任せる。
+   */
+  settleSessionEarly(input: { sessionId: string; deviceId: string; now: string }): Promise<boolean>;
+  /**
    * セッション行を作る道はこの操作だけにする。上限の確認と作成を分ける道を残すと、
    * 将来また「数えてから入れる」が書けてしまうため。
    *

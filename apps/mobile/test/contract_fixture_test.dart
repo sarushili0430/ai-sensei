@@ -165,6 +165,19 @@ void main() {
       expect(analysis.detectedTopics.last.isConfident, isFalse);
     });
 
+    // 会話終了の前倒し精算。ここが読めないと、カルテを待たずに残り時間を
+    // 戻す手段が無くなり、「5分で終えても20分減ったまま」に戻る。
+    test('finish-session-response.json をパースできる', () {
+      final SessionFinish finish = SessionFinish.fromJson(
+        loadFixture('finish-session-response'),
+      );
+
+      expect(finish.sessionId, isNotEmpty);
+      expect(finish.limits.maxSeconds, isPositive);
+      expect(finish.limits.remainingSecondsToday, 932);
+      expect(finish.limits.lessonAllowedToday, isTrue);
+    });
+
     test('complete-session-response.json をパースできる', () {
       final SessionResult result = SessionResult.fromJson(
         loadFixture('complete-session-response'),

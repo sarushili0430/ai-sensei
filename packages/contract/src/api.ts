@@ -392,6 +392,28 @@ export const startSessionResponseSchema = z
 export type StartSessionResponse = z.infer<typeof startSessionResponseSchema>;
 
 /**
+ * POST /v1/sessions/{id}/finish のレスポンス。**会話を終えた合図で、仮押さえを実測へ精算する。**
+ *
+ * `/start` が押さえるのは1回の上限まるごと(仮押さえ)。実測への精算は本来
+ * agent の `/complete` が行うが、それはカルテ生成のあとに届く。この口が無かった頃、
+ * アプリは会話を終えても**トークンの寿命が切れるまで上限まるごと引かれた残高**を
+ * 見続けていた(先輩が来なかった回・カルテが作れなかった回は、そのまま上限額で
+ * 精算されていた)。
+ *
+ * **経過時間はサーバが測る。** リクエストに秒数は載せない(載せても信じない)。
+ * `started_at` からの経過を `max_seconds` を上限に記録するだけなので、
+ * 早めに申告しても得をせず、agent の `/complete` が届けばそちらの実測で上書きされる。
+ */
+export const finishSessionResponseSchema = z
+  .object({
+    session_id: z.string().min(1),
+    /** 精算後の日次残高。ホームはこの値で表示を戻す。 */
+    limits: sessionLimitsSchema,
+  })
+  .strict();
+export type FinishSessionResponse = z.infer<typeof finishSessionResponseSchema>;
+
+/**
  * PATCH /v1/sessions/{id}/topics のリクエスト。
  *
  * チップUIで外した単元を、**セッションを作り直さずに**反映する。

@@ -340,6 +340,9 @@ class SessionController extends _$SessionController {
       }
     } catch (error) {
       await _teardown();
+      // 部屋に入れなくても `/start` の仮押さえは生きている。ここで精算しないと、
+      // 話せなかった20分がトークンの寿命後に満額で引かれる。
+      unawaited(_settleQuota());
       state = state.copyWith(
         phase: SessionPhase.failed,
         failure: SessionFailure.connection,
@@ -414,6 +417,7 @@ class SessionController extends _$SessionController {
     if (_senpaiIdentity == null) {
       // 先輩が来ないまま部屋が閉じた。会話は成立していないのでカルテも無い。
       unawaited(_teardown());
+      unawaited(_settleQuota());
       state = state.copyWith(
         phase: SessionPhase.failed,
         failure: SessionFailure.connection,
@@ -426,6 +430,9 @@ class SessionController extends _$SessionController {
   Future<void> _onSenpaiNeverCame() async {
     if (_senpaiIdentity != null) return;
     await _teardown();
+    // 会話は成立していない。仮押さえを数十秒の実測へ戻し、待たされた上に
+    // 20分ぶん引かれる、という二重の理不尽を残さない。
+    unawaited(_settleQuota());
     state = state.copyWith(
       phase: SessionPhase.failed,
       failure: SessionFailure.senpaiUnavailable,
@@ -805,6 +812,13 @@ class SessionController extends _$SessionController {
 
     await _teardown();
 
+    // 会話を終えた瞬間に、仮押さえを実測へ精算する。カルテ(/result)を
+    // 待たずに残り時間が戻るので、「5分で終えたのに20分減った」が消える。
+    // /result が届けばそちらの残高(agentの実測で精算済み)が上書きする。
+    await _settleQuota();
+    // 精算を待つあいだに画面を離れられた。この先の書き戻し先はもう無い。
+    if (!ref.mounted) return;
+
     final String? sessionId = _sessionId;
     if (!talked) return;
 
@@ -869,6 +883,33 @@ class SessionController extends _$SessionController {
   /// 会話画面(AutoDispose)の寿命を超えて持ち回る結果を置く。
   void _publish(SessionOutcome outcome) {
     ref.read(sessionOutcomeControllerProvider.notifier).set(outcome);
+  }
+
+  /// 仮押さえを実測へ精算し、ホームの残り時間へ反映する。
+  ///
+  /// 精算そのものはサーバが `started_at` からの経過で行う(秒数は送らない)。
+  /// `/complete` はカルテ生成のあとにしか届かず、先輩が来なかった回には来ない —
+  /// ここを呼ばないと、その間ずっと(最悪の場合は当日いっぱい)残高は
+  /// 上限ぶん減ったままに見える。
+  ///
+  /// **失敗しても会話の結末は変えない。** 精算はサーバ側にも二重の網がある
+  /// (/result の残高と、トークン寿命後の期限精算)ので、ここでは記録だけ残す。
+  Future<void> _settleQuota() async {
+    final String? sessionId = _sessionId;
+    if (sessionId == null) return;
+    try {
+      final SessionFinish settled =
+          await ref.read(apiClientProvider).finishSession(sessionId);
+      // 待っているあいだに画面を離れた・別のセッションが始まった。書き戻さない。
+      if (!ref.mounted || _sessionId != sessionId) return;
+      ref.read(progressControllerProvider.notifier).applySessionLimits(
+            maxSeconds: settled.limits.maxSeconds,
+            remainingSecondsToday: settled.limits.remainingSecondsToday,
+            lessonAllowedToday: settled.limits.lessonAllowedToday,
+          );
+    } catch (error) {
+      debugPrint('残り時間の精算を送れませんでした(結果取得か期限精算が拾います): ${error.runtimeType}');
+    }
   }
 
   /// 後片付けは**絶対に投げない**。

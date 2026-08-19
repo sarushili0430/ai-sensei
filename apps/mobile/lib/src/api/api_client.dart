@@ -225,6 +225,24 @@ class ApiClient {
     return SessionStart.fromJson(_decode(response));
   }
 
+  /// 会話を終えたことを伝え、仮押さえを実測(経過秒)へ精算する。
+  ///
+  /// `/start` は1回の上限まるごとを仮押さえするので、ここを呼ばないと
+  /// カルテと一緒に届く精算(`/complete`)まで、ホームの残り時間は
+  /// 上限ぶん減ったままになる(先輩が来なかった回は永遠に戻らない)。
+  ///
+  /// **秒数は送らない。** 経過はサーバが `started_at` から測る。
+  /// 再送しても最初の実測のまま動かないので、失敗したらそのまま呼び直してよい。
+  Future<SessionFinish> finishSession(String sessionId) async {
+    final http.Response response = await _client
+        .post(
+          Uri.parse('$baseUrl/v1/sessions/$sessionId/finish'),
+          headers: _headers,
+        )
+        .timeout(_timeout);
+    return SessionFinish.fromJson(_decode(response));
+  }
+
   /// 会話後の結果を取りに行く。カルテ生成が終わるまでサーバは202を返すので、
   /// 生成中は null を返して呼び出し側に待たせる。
   Future<SessionResult?> fetchSessionResult(String sessionId) async {

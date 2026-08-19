@@ -22,6 +22,7 @@ const limits = {
   premiumSessionMaxSeconds: 1200,
   betaOpenAccessUntil: null,
   betaSecondsPerDay: 12000,
+  betaSessionMaxSeconds: 1200,
 };
 const now = new Date("2026-08-03T13:24:07.000Z"); // 22:24 JST
 
@@ -98,8 +99,27 @@ describe("β開放中の使い放題", () => {
     expect(secondsPerDay({ user: user(), now, limits: betaLimits })).toBe(12000);
   });
 
-  it("会話の長さはPremiumと同じ(質はプランで変えない)", () => {
+  it("1回の上限を上書きしなければ、会話の長さはPremiumと同じ", () => {
     expect(sessionMaxSeconds({ user: user(), now, limits: betaLimits })).toBe(1200);
+  });
+
+  it("BETA_SESSION_MAX_SECONDS は開放中だけ1回の上限を伸ばす", () => {
+    const longSessions = { ...betaLimits, betaSessionMaxSeconds: 3600 };
+    expect(sessionMaxSeconds({ user: user(), now, limits: longSessions })).toBe(3600);
+    // 期限が切れたら、値が残っていても通常の上限へ勝手に戻る。
+    const expired = {
+      ...longSessions,
+      betaOpenAccessUntil: new Date("2026-08-01T00:00:00.000Z"),
+    };
+    expect(sessionMaxSeconds({ user: user(), now, limits: expired })).toBe(1200);
+  });
+
+  it("1回の上限を伸ばしても、日次の解析の幅は縮まない", () => {
+    // 12000秒 ÷ 20分 = 10本ぶんの解析枠。1回を60分にしても割る単位は20分のまま。
+    const longSessions = { ...betaLimits, betaSessionMaxSeconds: 3600 };
+    expect(analysesPerDay({ user: user(), now, limits: longSessions })).toBe(
+      analysesPerDay({ user: user(), now, limits: betaLimits }),
+    );
   });
 
   it("上限に当たっても課金導線へ倒さない(無料枠ではなくフェアユース扱い)", () => {

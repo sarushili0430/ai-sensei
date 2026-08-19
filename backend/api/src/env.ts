@@ -62,6 +62,13 @@ export type Bindings = {
   BETA_OPEN_ACCESS_UNTIL?: string;
   /** β開放中の1日の持ち時間。従量原価と同じ秒数で暴走を止める。 */
   BETA_SECONDS_PER_DAY?: string;
+  /**
+   * β開放中の1回の会話の上限。未設定ならPremiumと同じ(= 伸ばすときだけ入れる)。
+   *
+   * **3600以下で使うこと。** `/complete` は agent の実測を60分で切り詰めるので
+   * (`complete.ts`)、それより長い上限は精算だけが短く記録される。
+   */
+  BETA_SESSION_MAX_SECONDS?: string;
 };
 
 /**
@@ -97,9 +104,12 @@ export type Limits = {
   /** クローズドβの開放期限。`null` は通常営業(= 課金した人だけがPremium)。 */
   betaOpenAccessUntil: Date | null;
   betaSecondsPerDay: number;
+  /** β開放中の1回の会話の上限。通常営業では参照されない。 */
+  betaSessionMaxSeconds: number;
 };
 
 export function readLimits(env: Bindings): Limits {
+  const premiumSessionMaxSeconds = toInt(env.PREMIUM_SESSION_MAX_SECONDS, 1200);
   return {
     // 従来の1本×20分をそのまま秒に写し、短い授業の未使用分を次へ返す。
     freeSecondsPerDay: toInt(env.FREE_SECONDS_PER_DAY, 1200),
@@ -107,10 +117,12 @@ export function readLimits(env: Bindings): Limits {
     premiumSecondsPerDay: toInt(env.PREMIUM_SECONDS_PER_DAY, 3600),
     // 無料のお試しも品質を落とさず、設計の15〜20分を完走できる上端を既定値にする。
     freeSessionMaxSeconds: toInt(env.FREE_SESSION_MAX_SECONDS, 1200),
-    premiumSessionMaxSeconds: toInt(env.PREMIUM_SESSION_MAX_SECONDS, 1200),
+    premiumSessionMaxSeconds,
     betaOpenAccessUntil: toDate(env.BETA_OPEN_ACCESS_UNTIL),
     // 従来の10本×20分と同じ開放幅。テスターでも従量原価は同じだけ動く。
     betaSecondsPerDay: toInt(env.BETA_SECONDS_PER_DAY, 12000),
+    // 既定はPremiumと同じ長さ。伸ばすのはβの env を明示したときだけ。
+    betaSessionMaxSeconds: toInt(env.BETA_SESSION_MAX_SECONDS, premiumSessionMaxSeconds),
   };
 }
 

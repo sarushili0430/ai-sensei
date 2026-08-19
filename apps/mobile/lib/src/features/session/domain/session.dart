@@ -197,6 +197,21 @@ abstract class SessionStart with _$SessionStart {
   factory SessionStart.fromJson(Map<String, dynamic> json) => _$SessionStartFromJson(json);
 }
 
+/// 会話を終えた合図(`POST /v1/sessions/{id}/finish`)への応答。
+///
+/// `/start` の仮押さえを**その瞬間までの実測**へ精算したあとの残高が入る。
+/// カルテ([SessionResult])はエージェントの生成を待つが、残り時間の表示は
+/// これで先に戻せる。経過はサーバが測るので、リクエストには何も載せない。
+@freezed
+abstract class SessionFinish with _$SessionFinish {
+  const factory SessionFinish({
+    @JsonKey(name: 'session_id') required String sessionId,
+    required SessionLimits limits,
+  }) = _SessionFinish;
+
+  factory SessionFinish.fromJson(Map<String, dynamic> json) => _$SessionFinishFromJson(json);
+}
+
 /// セッション終了後に受け取る結果。
 @freezed
 abstract class SessionResult with _$SessionResult {

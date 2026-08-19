@@ -125,6 +125,32 @@ export class D1Repository implements Repository {
     return changesOf(settled.meta);
   }
 
+  async settleSessionEarly(input: {
+    sessionId: string;
+    deviceId: string;
+    now: string;
+  }): Promise<boolean> {
+    // 実測を書けるのは、まだ誰も実測を書いていない行だけ(/complete の上書きは常に勝つ)。
+    // 経過の計算をUPDATEに入れてあるので、読み取りと書き込みの間で別の精算と競合しない。
+    const settled = await this.db
+      .prepare(
+        `UPDATE sessions
+            SET duration_seconds = MIN(
+                  COALESCE(max_seconds, ${legacySessionMaxSeconds}),
+                  MAX(0, unixepoch(?) - unixepoch(started_at))
+                ),
+                quota_settled_at = ?
+          WHERE id = ?
+            AND device_id = ?
+            AND started_at IS NOT NULL
+            AND unixepoch(started_at) IS NOT NULL
+            AND duration_seconds IS NULL`,
+      )
+      .bind(input.now, input.now, input.sessionId, input.deviceId)
+      .run();
+    return changesOf(settled.meta) > 0;
+  }
+
   async createSession(input: {
     session: SessionRecord;
     maxAnalysesPerDay: number;

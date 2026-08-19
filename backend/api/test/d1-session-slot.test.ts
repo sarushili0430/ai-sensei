@@ -718,6 +718,107 @@ describeWithSqlite("D1の授業枠", () => {
     }
   });
 
+  /** アプリの「会話を終えた」で仮押さえを経過秒へ前倒しで精算するSQL。 */
+  it("終了合図は経過秒で精算し、再送・実測済み・壊れた日時には触らない", async () => {
+    const database = openDatabase();
+    try {
+      apply(database, await migrations());
+      const repository = new D1Repository(new SQLiteD1Database(database));
+      await repository.ensureUser("device_a", new Date("2026-08-03T13:00:00.000Z"));
+      await repository.createSession({ session: session("session_1"), maxAnalysesPerDay: 99 });
+      await repository.startSession({
+        sessionId: "session_1",
+        deviceId: "device_a",
+        startedAt: "2026-08-03T13:00:00.000Z",
+        localDate: "2026-08-03",
+        secondsPerDay: 1200,
+        sessionMaxSeconds: 1200,
+        minimumSessionSeconds: 180,
+        maxStartsPerDay: 20,
+      });
+
+      // 5分で終えた会話は300秒だけを引く(行はopenのままでstreakに混ぜない)。
+      expect(
+        await repository.settleSessionEarly({
+          sessionId: "session_1",
+          deviceId: "device_a",
+          now: "2026-08-03T13:05:00.000Z",
+        }),
+      ).toBe(true);
+      expect(await repository.getSession("session_1")).toMatchObject({
+        status: "open",
+        duration_seconds: 300,
+        quota_settled_at: "2026-08-03T13:05:00.000Z",
+      });
+      expect(await repository.getDailySessionUsage("device_a", "2026-08-03")).toEqual({
+        consumedSeconds: 300,
+        sessionsStarted: 1,
+      });
+
+      // 再送は最初の実測のまま。あとから届いた /complete の実測だけが上書きできる。
+      expect(
+        await repository.settleSessionEarly({
+          sessionId: "session_1",
+          deviceId: "device_a",
+          now: "2026-08-03T13:15:00.000Z",
+        }),
+      ).toBe(false);
+      await repository.completeSession({
+        sessionId: "session_1",
+        completedAt: "2026-08-03T13:08:00.000Z",
+        durationSeconds: 480,
+      });
+      expect((await repository.getSession("session_1"))?.duration_seconds).toBe(480);
+
+      // 壊れた started_at はゼロ精算の側へ倒さず、期限精算(仮押さえ額)に任せる。
+      await repository.createSession({
+        session: session("broken", { started_at: "not-a-date", max_seconds: 1200 }),
+        maxAnalysesPerDay: 99,
+      });
+      expect(
+        await repository.settleSessionEarly({
+          sessionId: "broken",
+          deviceId: "device_a",
+          now: "2026-08-03T13:20:00.000Z",
+        }),
+      ).toBe(false);
+      expect((await repository.getSession("broken"))?.duration_seconds).toBeNull();
+    } finally {
+      database.close();
+    }
+  });
+
+  it("遅れて届いた終了合図は仮押さえ額で頭打ちにする", async () => {
+    const database = openDatabase();
+    try {
+      apply(database, await migrations());
+      const repository = new D1Repository(new SQLiteD1Database(database));
+      await repository.ensureUser("device_a", new Date("2026-08-03T13:00:00.000Z"));
+      await repository.createSession({ session: session("session_1"), maxAnalysesPerDay: 99 });
+      await repository.startSession({
+        sessionId: "session_1",
+        deviceId: "device_a",
+        startedAt: "2026-08-03T13:00:00.000Z",
+        localDate: "2026-08-03",
+        secondsPerDay: 1800,
+        sessionMaxSeconds: 1200,
+        minimumSessionSeconds: 180,
+        maxStartsPerDay: 20,
+      });
+
+      expect(
+        await repository.settleSessionEarly({
+          sessionId: "session_1",
+          deviceId: "device_a",
+          now: "2026-08-03T14:00:00.000Z",
+        }),
+      ).toBe(true);
+      expect((await repository.getSession("session_1"))?.duration_seconds).toBe(1200);
+    } finally {
+      database.close();
+    }
+  });
+
   it("JSTの日付をまたいだ会話は、始めた翌日の時間に数える", async () => {
     const database = openDatabase();
     try {
