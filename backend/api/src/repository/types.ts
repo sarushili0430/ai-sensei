@@ -20,7 +20,8 @@ export type UserRecord = {
  * 単元を絞り込んだあとにトークンを出し直すとき、写真をもう一度
  * 解析しないで済むように、解析の結果をセッションに残しておく。
  */
-export type SessionContext = {
+/** 1問ぶんの解析結果。問題写真そのものは含めない(解析後に破棄するため)。 */
+export type SessionMaterialContext = {
   summary: string;
   /**
    * 解析が読み取った問題。読めなければ null。
@@ -50,6 +51,21 @@ export type SessionContext = {
   question_seeds: string[];
   /** 検出時の確信度。チップUIの表示を、単元を絞ったあとも同じに保つ。 */
   topics: { topic_id: string; confidence: number }[];
+  /** この問題にノート写真があったか。追加の問題写真だけなら false。 */
+  has_notes_photo?: boolean;
+};
+
+export type SessionContext = SessionMaterialContext & {
+  /**
+   * 会話中の差し替え版。初期解析を1とし、問題を足すたび1つ進める。
+   * 古い行には無いので省略可能。読む側は1として扱う。
+   */
+  revision?: number;
+  /**
+   * セッションで扱った問題の列。カルテはセッション1本のままなので、過去の問題を
+   * 捨てずに追記する。一方、上の直下フィールドは「いま教える問題」を指す。
+   */
+  materials?: SessionMaterialContext[];
 };
 
 export type SessionRecord = {
@@ -80,6 +96,8 @@ export type SessionRecord = {
    * セッションは行にはなるが、先輩とは1度も話していない。
    */
   started_at: string | null;
+  /** 初回解析を含む、このセッションで使った解析枠。 */
+  analysis_count: number;
 };
 
 /**
@@ -213,6 +231,28 @@ export type Repository = {
     /** その日に許す授業の本数(無料1 / Premium 3)。 */
     maxPerDay: number;
   }): Promise<SessionStartResult>;
+  /**
+   * 会話中の追加解析枠を条件付きで1つ押さえる。同時押しでも上限を越えない1操作。
+   */
+  reserveSessionAnalysis(input: {
+    sessionId: string;
+    deviceId: string;
+    localDate: string;
+    maxAnalysesPerSession: number;
+    maxAnalysesPerDay: number;
+  }): Promise<boolean>;
+  /** 写真を読めず解析が成立しなかったとき、押さえた追加枠を返す。 */
+  releaseSessionAnalysis(sessionId: string): Promise<void>;
+  /**
+   * 追加解析の結果を、読んだrevisionがまだ最新のときだけ書き戻す。
+   * falseなら呼び出し側は最新を読み直してマージし、同時更新を取りこぼさない。
+   */
+  updateSessionContextIfRevision(input: {
+    sessionId: string;
+    expectedRevision: number;
+    topicIds: string[];
+    context: SessionContext;
+  }): Promise<boolean>;
   /** 写真解析のあとに、確定した単元と写真キー、会話の文脈を書き戻す。 */
   updateSessionTopics(input: {
     sessionId: string;

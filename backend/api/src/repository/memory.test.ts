@@ -17,6 +17,7 @@ function session(id: string, overrides: Partial<SessionRecord> = {}): SessionRec
     duration_seconds: null,
     context: null,
     started_at: null,
+    analysis_count: 1,
     ...overrides,
   };
 }
@@ -60,6 +61,30 @@ describe("MemoryRepository.createSession", () => {
       await repository.createSession({ session: session("retried"), maxAnalysesPerDay: 1 }),
     ).toBe(true);
     expect(repository.sessions.size).toBe(1);
+  });
+
+  it("会話中に足した解析も、次のセッション作成の日次上限へ合算する", async () => {
+    const repository = new MemoryRepository();
+    await repository.createSession({
+      session: session("started", { started_at: "2026-08-03T13:30:00.000Z" }),
+      maxAnalysesPerDay: 99,
+    });
+    expect(
+      await repository.reserveSessionAnalysis({
+        sessionId: "started",
+        deviceId: "device_a",
+        localDate: "2026-08-03",
+        maxAnalysesPerSession: 5,
+        maxAnalysesPerDay: 2,
+      }),
+    ).toBe(true);
+
+    expect(
+      await repository.createSession({
+        session: session("over_limit"),
+        maxAnalysesPerDay: 2,
+      }),
+    ).toBe(false);
   });
 });
 

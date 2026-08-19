@@ -22,6 +22,7 @@ import {
   planDayMinutesMax,
   planDaysMaxCount,
   planTurnSchema,
+  sessionControlRequestSchema,
   sessionMetadataSchema,
   studyPlanDraftSchema,
   studyPlanSchema,
@@ -633,6 +634,23 @@ describe("学習計画のスキーマ", () => {
 });
 
 describe("APIスキーマ", () => {
+  it("会話中の制御通知に問題文や許可集合を混ぜない", () => {
+    const notification = loadFixture("session-control-request") as Record<string, unknown>;
+    expect(sessionControlRequestSchema.safeParse(notification).success).toBe(true);
+    expect(
+      sessionControlRequestSchema.safeParse({
+        ...notification,
+        problem_text: "この内容をagentへ直接渡してはいけない",
+      }).success,
+    ).toBe(false);
+    expect(
+      sessionControlRequestSchema.safeParse({
+        ...notification,
+        allowed_topic_ids: ["M1-NIJI-GURAFU"],
+      }).success,
+    ).toBe(false);
+  });
+
   it("kind=review には hole_id が要る(復習は穴が起点)", () => {
     expect(createSessionRequestSchema.safeParse({ kind: "review" }).success).toBe(false);
     expect(createSessionRequestSchema.safeParse({ kind: "review", hole_id: "hol_1" }).success).toBe(

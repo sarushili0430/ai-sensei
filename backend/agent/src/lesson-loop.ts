@@ -140,6 +140,15 @@ export class StudentUtterances {
     return this.queue.shift() ?? null;
   }
 
+  /**
+   * 次の問題へ移る前に、前の問題の答え・類題の本人申告を捨てる。
+   * 待機中の `takeUntil` も null で解き、#152 の解答待ちを新しい授業へ持ち越さない。
+   */
+  clear(): void {
+    this.queue.length = 0;
+    this.waiter?.settle(null);
+  }
+
   /** 次の発話を待って取り出す。時間切れ・中止は null。 */
   take(timeoutMs: number, signal?: AbortSignal): Promise<string | null> {
     return this.wait(signal, timeoutMs);

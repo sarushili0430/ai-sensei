@@ -1,5 +1,6 @@
 import type { ZodTypeAny } from "zod";
 import {
+  addSessionProblemPhotoResponseSchema,
   apiErrorSchema,
   completePlanSessionRequestSchema,
   completePlanSessionResponseSchema,
@@ -13,6 +14,7 @@ import {
   planSessionMetadataSchema,
   progressResponseSchema,
   reviewQueueResponseSchema,
+  sessionControlRequestSchema,
   sessionMetadataSchema,
   startSessionResponseSchema,
 } from "./api.ts";
@@ -31,6 +33,7 @@ import { planTurnSchema, studyPlanSchema } from "./plan.ts";
 export const fixtureSchemas = {
   "create-session-request": createSessionRequestSchema,
   "create-session-response": createSessionResponseSchema,
+  "add-session-problem-photo-response": addSessionProblemPhotoResponseSchema,
   // 部屋の鍵はこちらにだけ載る。写真を読んだ応答(create-session-response)と
   // 別のfixtureにしてあること自体が、「回数を数えるのは会話の開始」の形。
   "start-session-response": startSessionResponseSchema,
@@ -39,6 +42,8 @@ export const fixtureSchemas = {
   // LiveKitトークンに載って agent に届く会話文脈。HTTPのボディではないので
   // 「主なエンドポイント」の表には出てこないが、backend/api ↔ agent の契約そのもの。
   "session-metadata": sessionMetadataSchema,
+  // 本人の発話ではない制御信号。lk.chat に混ぜず、専用RPCで運ぶ。
+  "session-control-request": sessionControlRequestSchema,
   karte: karteSchema,
   "review-queue-response": reviewQueueResponseSchema,
   "progress-response": progressResponseSchema,

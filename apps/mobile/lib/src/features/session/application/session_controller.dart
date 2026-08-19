@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:livekit_client/livekit_client.dart';
@@ -7,12 +8,15 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../../api/api_client.dart';
 import '../../../audio/prerendered_audio.dart';
 import '../../../telemetry/telemetry.dart';
+import '../../capture/application/capture_controller.dart';
 import '../../karte/application/karte_controllers.dart';
 import '../../karte/application/last_board_controller.dart';
+import '../../settings/application/school_stage_controller.dart';
 import '../domain/board.dart';
 import '../domain/session.dart';
 import 'board_inbox.dart';
 import 'lesson_opening_audio.dart';
+import 'session_control.dart';
 
 part 'session_controller.g.dart';
 
@@ -56,6 +60,17 @@ enum SessionFailure {
   senpaiUnavailable,
 }
 
+/// 追加写真だけの失敗。会話全体を [SessionPhase.failed] へ落とさない。
+enum ProblemPhotoFailure {
+  /// 写真の取得・アップロード・解析が成立しなかった。
+  analysis,
+
+  /// サーバ更新は済んだが、agentへ更新通知を届けられなかった。
+  notification,
+}
+
+const Object _notChanged = Object();
+
 @immutable
 class SessionState {
   const SessionState({
@@ -64,6 +79,12 @@ class SessionState {
     this.lastSenpaiText,
     this.board = BoardSnapshot.empty,
     this.awaitingSolving = false,
+    this.problem,
+    this.isAddingProblemPhoto = false,
+    this.problemPhotoFailure,
+    this.problemPhotoErrorMessage,
+    this.problemPhotoLimitReached = false,
+    this.contextNotificationPending = false,
     this.failure,
     this.error,
     this.showPaywall = false,
@@ -83,6 +104,16 @@ class SessionState {
   /// 類題を解いている間だけ true。ボタンか声の申告を受けた瞬間に false にする。
   final bool awaitingSolving;
 
+  /// いま扱っている問題。追加解析が成功したら、初回の値から差し替わる。
+  final SessionProblem? problem;
+
+  /// カメラで撮ったあと、解析とagent通知が終わるまで true。
+  final bool isAddingProblemPhoto;
+  final ProblemPhotoFailure? problemPhotoFailure;
+  final String? problemPhotoErrorMessage;
+  final bool problemPhotoLimitReached;
+  final bool contextNotificationPending;
+
   /// `phase == failed` のときだけ入る。
   final SessionFailure? failure;
   final Object? error;
@@ -99,6 +130,12 @@ class SessionState {
     String? lastSenpaiText,
     BoardSnapshot? board,
     bool? awaitingSolving,
+    Object? problem = _notChanged,
+    bool? isAddingProblemPhoto,
+    Object? problemPhotoFailure = _notChanged,
+    Object? problemPhotoErrorMessage = _notChanged,
+    bool? problemPhotoLimitReached,
+    bool? contextNotificationPending,
     SessionFailure? failure,
     Object? error,
     bool? showPaywall,
@@ -110,6 +147,20 @@ class SessionState {
       lastSenpaiText: lastSenpaiText ?? this.lastSenpaiText,
       board: board ?? this.board,
       awaitingSolving: awaitingSolving ?? this.awaitingSolving,
+      problem: identical(problem, _notChanged)
+          ? this.problem
+          : problem as SessionProblem?,
+      isAddingProblemPhoto: isAddingProblemPhoto ?? this.isAddingProblemPhoto,
+      problemPhotoFailure: identical(problemPhotoFailure, _notChanged)
+          ? this.problemPhotoFailure
+          : problemPhotoFailure as ProblemPhotoFailure?,
+      problemPhotoErrorMessage: identical(problemPhotoErrorMessage, _notChanged)
+          ? this.problemPhotoErrorMessage
+          : problemPhotoErrorMessage as String?,
+      problemPhotoLimitReached:
+          problemPhotoLimitReached ?? this.problemPhotoLimitReached,
+      contextNotificationPending:
+          contextNotificationPending ?? this.contextNotificationPending,
       failure: failure ?? this.failure,
       error: error ?? this.error,
       showPaywall: showPaywall ?? this.showPaywall,
@@ -133,6 +184,7 @@ class SessionController extends _$SessionController {
   Timer? _senpaiWatchdog;
   String? _sessionId;
   String? _sessionKind;
+  int? _pendingContextRevision;
 
   /// 板書の受信。接続のたびに作り直す(板書はセッションをまたがない)。
   BoardInbox? _boardInbox;
@@ -204,8 +256,13 @@ class SessionController extends _$SessionController {
   }
 
   Future<void> connect(SessionStart session, {required String locale}) async {
+    final SessionProblem? initialProblem = _sessionId == session.sessionId
+        ? state.problem
+        : ref.read(captureControllerProvider).analysis?.problem;
     _sessionId = session.sessionId;
     _sessionKind = session.kind;
+    // 再接続のトークンmetadataはサーバが最新文脈から作るので、古いRPC再送は要らない。
+    _pendingContextRevision = null;
 
     final LessonOpeningAudio openingAudio = LessonOpeningAudio(
       ref.read(prerenderedAudioProvider),
@@ -239,6 +296,7 @@ class SessionController extends _$SessionController {
     state = SessionState(
       phase: SessionPhase.connecting,
       remainingSeconds: session.limits.maxSeconds,
+      problem: initialProblem,
     );
 
     try {
@@ -514,6 +572,134 @@ class SessionController extends _$SessionController {
     if (!_isTalking(state.phase)) return;
     // 声で「できた」「わかんない」と答えた経路でも、ボタンを二重に残さない。
     state = state.copyWith(phase: _listeningPhase, awaitingSolving: false);
+  }
+
+  /// 会話中に次の問題の紙面を追加する。
+  ///
+  /// 解析開始・完了は本人の発話ではないので `lk.chat` へ流さず、専用RPCを使う。
+  /// 完了通知にはrevisionしか載せず、agentは内部APIから問題文と許可集合を読み直す。
+  Future<void> addProblemPhoto(File photo, {required String locale}) async {
+    final String? sessionId = _sessionId;
+    if (sessionId == null ||
+        _sessionKind != 'new' ||
+        !_isTalking(state.phase) ||
+        state.isAddingProblemPhoto ||
+        state.contextNotificationPending ||
+        state.problemPhotoLimitReached) {
+      return;
+    }
+
+    state = state.copyWith(
+      isAddingProblemPhoto: true,
+      awaitingSolving: false,
+      problemPhotoFailure: null,
+      problemPhotoErrorMessage: null,
+    );
+
+    // 先に一言を頼み、その裏でアップロードする。通知が落ちても解析は進め、
+    // 完了通知でもう一度RPC経路を確かめる。
+    try {
+      await _sessionControl().problemPhotoAnalyzing(
+        destinationIdentity: _requiredSenpaiIdentity(),
+        sessionId: sessionId,
+      );
+    } catch (error) {
+      debugPrint('追加写真の解析開始を先輩へ通知できませんでした: ${error.runtimeType}');
+    }
+
+    try {
+      final AddedSessionProblem added = await ref
+          .read(apiClientProvider)
+          .addSessionProblemPhoto(
+            sessionId: sessionId,
+            problemPhoto: photo,
+            locale: locale,
+            schoolStage: ref.read(schoolStageControllerProvider).wireValue,
+          );
+      if (!ref.mounted || _sessionId != sessionId) return;
+
+      _pendingContextRevision = added.contextRevision;
+      state = state.copyWith(
+        problem: added.problem,
+        isAddingProblemPhoto: false,
+        problemPhotoFailure: null,
+        problemPhotoErrorMessage: null,
+        contextNotificationPending: true,
+      );
+      await retryProblemContextNotification();
+    } catch (error) {
+      if (!ref.mounted || _sessionId != sessionId) return;
+      await _notifyProblemPhotoFailed(sessionId);
+      final ApiException? apiError = error is ApiException ? error : null;
+      state = state.copyWith(
+        isAddingProblemPhoto: false,
+        problemPhotoFailure: ProblemPhotoFailure.analysis,
+        problemPhotoErrorMessage: apiError?.message.isNotEmpty == true
+            ? apiError!.message
+            : null,
+        problemPhotoLimitReached: apiError?.isProblemPhotoLimitReached ?? false,
+        contextNotificationPending: false,
+      );
+    }
+  }
+
+  /// サーバ更新後にRPCだけ落ちた場合の再送。写真をもう一度解析しない。
+  Future<void> retryProblemContextNotification() async {
+    final String? sessionId = _sessionId;
+    final int? revision = _pendingContextRevision;
+    if (sessionId == null ||
+        revision == null ||
+        !state.contextNotificationPending) {
+      return;
+    }
+
+    try {
+      await _sessionControl().contextUpdated(
+        destinationIdentity: _requiredSenpaiIdentity(),
+        sessionId: sessionId,
+        contextRevision: revision,
+      );
+      if (!ref.mounted || _sessionId != sessionId) return;
+      _pendingContextRevision = null;
+      state = state.copyWith(
+        contextNotificationPending: false,
+        problemPhotoFailure: null,
+        problemPhotoErrorMessage: null,
+      );
+    } catch (error) {
+      if (!ref.mounted || _sessionId != sessionId) return;
+      state = state.copyWith(
+        isAddingProblemPhoto: false,
+        contextNotificationPending: true,
+        problemPhotoFailure: ProblemPhotoFailure.notification,
+        problemPhotoErrorMessage: null,
+      );
+      debugPrint('更新した問題を先輩へ通知できませんでした: ${error.runtimeType}');
+    }
+  }
+
+  SessionControlClient _sessionControl() {
+    final LocalParticipant? participant = _room?.localParticipant;
+    if (participant == null) throw StateError('LiveKitの参加者がまだ接続されていません');
+    return SessionControlClient(participant.performRpc);
+  }
+
+  String _requiredSenpaiIdentity() {
+    final String? identity = _senpaiIdentity;
+    if (identity == null) throw StateError('先輩がまだルームに参加していません');
+    return identity;
+  }
+
+  Future<void> _notifyProblemPhotoFailed(String sessionId) async {
+    try {
+      await _sessionControl().problemPhotoFailed(
+        destinationIdentity: _requiredSenpaiIdentity(),
+        sessionId: sessionId,
+      );
+    } catch (error) {
+      // 画面には解析失敗を出す。通知失敗で元のエラーを上書きしない。
+      debugPrint('追加写真の失敗を先輩へ通知できませんでした: ${error.runtimeType}');
+    }
   }
 
   /// 類題の「できた / できなかった」。音声と同じ `lk.chat` へ流す。

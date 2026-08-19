@@ -106,6 +106,41 @@ class ApiClient {
     return SessionAnalysis.fromJson(_decode(response));
   }
 
+  /// 会話中に、次に扱う問題の紙面を追加する。
+  ///
+  /// `problem_photo` だけを送り、ノート用の `photo` には絶対に入れない。
+  /// 紙面はサーバで解析後に破棄される。許可単元は送らず、解析結果からサーバが
+  /// `buildAllowedTopics` を通し直すので、端末から会話範囲を広げる口にはならない。
+  Future<AddedSessionProblem> addSessionProblemPhoto({
+    required String sessionId,
+    required File problemPhoto,
+    String locale = 'ja',
+    String schoolStage = 'high_school',
+  }) async {
+    final http.MultipartRequest request =
+        http.MultipartRequest(
+            'POST',
+            Uri.parse('$baseUrl/v1/sessions/$sessionId/problem-photo'),
+          )
+          ..headers.addAll(_headers)
+          ..fields['meta'] = jsonEncode(<String, dynamic>{
+            'locale': locale,
+            'school_stage': schoolStage,
+          })
+          ..files.add(
+            await http.MultipartFile.fromPath(
+              'problem_photo',
+              problemPhoto.path,
+              contentType: MediaType('image', 'jpeg'),
+            ),
+          );
+
+    final http.Response response = await http.Response.fromStream(
+      await _client.send(request),
+    ).timeout(_uploadTimeout);
+    return AddedSessionProblem.fromJson(_decode(response));
+  }
+
   /// チップUIで外した単元をサーバへ反映する。
   ///
   /// セッションは作り直さない。作り直すと同じ写真をもう一度Vision LLMに通すことになり、
@@ -334,6 +369,7 @@ class ApiException implements Exception {
   bool get isPremiumRequired => code == 'premium_required';
   bool get isPhotoUnreadable =>
       code == 'photo_unreadable' || code == 'out_of_scope';
+  bool get isProblemPhotoLimitReached => code == 'problem_photo_limit_reached';
   bool get isHoleNotFound => code == 'hole_not_found';
 
   /// セッションが消えている(他人のもの・完了済み・上限時間を過ぎた押し直し)。

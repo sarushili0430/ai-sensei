@@ -10,6 +10,7 @@ import {
   teachBackPrompt,
   wroteOnBoard,
 } from "./senpai.ts";
+import { problemPhotoBridge, problemPhotoFailedBridge } from "./session-control.ts";
 import { sessionMetadataJson } from "./test-support.ts";
 
 /**
@@ -182,5 +183,14 @@ describe("板書に何か書いたか", () => {
 
   it("1つでも板書に載っていれば true", () => {
     expect(wroteOnBoard([{ index: 0, speech: "ここ。", board: null }, step("こう。")])).toBe(true);
+  });
+});
+
+describe("会話中の追加写真", () => {
+  it("解析中と失敗時のつなぎを日英で持つ", () => {
+    expect(problemPhotoBridge("ja")).toContain("ちょっと待って");
+    expect(problemPhotoBridge("en")).toContain("moment");
+    expect(problemPhotoFailedBridge("ja")).toContain("今の問題");
+    expect(problemPhotoFailedBridge("en")).toContain("current problem");
   });
 });

@@ -28,10 +28,21 @@ export class TranscriptCollector {
 
   // parameter property を使わない理由は `log.ts` と同じ(ADR 0002 の型ストリップ)。
   private readonly startedAt: Date;
-  private readonly context: SessionContext;
+  private context: SessionContext;
 
   constructor(startedAt: Date, context: SessionContext) {
     this.startedAt = startedAt;
+    this.context = context;
+  }
+
+  /**
+   * 会話中に問題が差し替わったら、以降の音声正規化とカルテの許可集合を更新する。
+   * 既に積んだ発話はセッション1本の記録として残し、問題ごとには分割しない。
+   */
+  updateContext(context: SessionContext): void {
+    if (context.session_id !== this.context.session_id) {
+      throw new Error("別のセッション文脈へ差し替えることはできません");
+    }
     this.context = context;
   }
 

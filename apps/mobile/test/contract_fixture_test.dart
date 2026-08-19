@@ -83,6 +83,16 @@ void main() {
       expect(analysis.detectedTopics.first.course, 'Algebra 2');
     });
 
+    test('会話中に追加した問題とcontext revisionを共有fixtureから読める', () {
+      final AddedSessionProblem added = AddedSessionProblem.fromJson(
+        loadFixture('add-session-problem-photo-response'),
+      );
+
+      expect(added.sessionId, isNotEmpty);
+      expect(added.problem?.text, contains('頂点'));
+      expect(added.contextRevision, 2);
+    });
+
     // 問題文(§4-1 グラウンディング)。ここが落ちていると、授業の前に
     // 読み合わせる画面に何も出ず、誤読が15分後まで表面化しない。
     test('読み取った問題文を、出どころつきで読める', () {

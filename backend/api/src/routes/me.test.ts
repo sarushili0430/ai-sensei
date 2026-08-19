@@ -55,6 +55,7 @@ function sessionRow(id: string, overrides: Partial<SessionRecord> = {}): Session
     duration_seconds: null,
     context: null,
     started_at: null,
+    analysis_count: 1,
     ...overrides,
   };
 }

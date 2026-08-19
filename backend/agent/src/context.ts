@@ -1,6 +1,7 @@
 import {
   type PlanSessionMetadata,
   type SessionMetadata,
+  apiPaths,
   planSessionMetadataSchema,
   sessionMetadataSchema,
 } from "@ai-sensei/contract";
@@ -110,6 +111,43 @@ export function resolveSessionContext(
   throw new InvalidSessionContextError(
     errors.length > 0 ? errors.join(" / ") : "セッション文脈がどこにも載っていません",
   );
+}
+
+/**
+ * 会話中に更新された文脈を、agentの内部資格で正本から読み直す。
+ *
+ * LiveKit RPCのpayloadには問題文も許可集合も載せない。アプリが送るのは更新の合図だけで、
+ * 実際に教える内容はこの経路でD1由来の値を受け取る。開始時に確定した持ち時間と
+ * Premium状態は差し替えない — 写真を足す操作で時間を延長できないようにするため。
+ */
+export async function fetchSessionContext(input: {
+  apiBaseUrl: string;
+  internalToken: string;
+  current: SessionContext;
+  fetcher?: typeof fetch;
+}): Promise<SessionContext> {
+  const fetcher = input.fetcher ?? fetch;
+  const base = input.apiBaseUrl.replace(/\/$/, "");
+  const response = await fetcher(`${base}${apiPaths.sessionContext(input.current.session_id)}`, {
+    headers: { authorization: `Bearer ${input.internalToken}` },
+    signal: AbortSignal.timeout(5_000),
+  });
+  if (!response.ok) {
+    throw new InvalidSessionContextError(`最新文脈を取得できませんでした: HTTP ${response.status}`);
+  }
+
+  const raw = await response.text();
+  const fetched = readSessionContext(raw);
+  if (fetched.session_id !== input.current.session_id || fetched.kind !== input.current.kind) {
+    throw new InvalidSessionContextError("最新文脈のセッション識別が一致しません");
+  }
+
+  return {
+    ...fetched,
+    // このIssueでは時間の扱いを変えない。更新APIの値で開始時の期限を上書きしない。
+    max_seconds: input.current.max_seconds,
+    is_premium: input.current.is_premium,
+  };
 }
 
 /**

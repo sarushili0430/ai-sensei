@@ -425,4 +425,53 @@ void main() {
       expect(state.canStart, isTrue);
     });
   });
+
+  group('会話中の問題写真', () {
+    test('専用endpointのproblem_photo枠へ送り、許可単元は端末から渡さない', () async {
+      http.Request? sent;
+      final MockClient client = MockClient((http.Request request) async {
+        sent = request;
+        final Map<String, dynamic> response = _analysisJson(
+          'ses_1',
+          <String>['M1-NIJI-GURAFU'],
+          problem: <String, dynamic>{
+            'text': '二次関数の頂点を求めよ。',
+            'source': 'problem_photo',
+          },
+        )..['context_revision'] = 2;
+        return http.Response.bytes(
+          utf8.encode(jsonEncode(response)),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json; charset=utf-8',
+          },
+        );
+      });
+      final ApiClient api = ApiClient(
+        baseUrl: 'http://test',
+        deviceId: 'device-1',
+        client: client,
+      );
+
+      final AddedSessionProblem added = await api.addSessionProblemPhoto(
+        sessionId: 'ses_1',
+        problemPhoto: problemPhoto,
+        locale: 'ja',
+        schoolStage: 'high_school',
+      );
+
+      expect(sent?.method, 'POST');
+      expect(sent?.url.path, '/v1/sessions/ses_1/problem-photo');
+      final String body = utf8.decode(sent!.bodyBytes, allowMalformed: true);
+      final Set<String> names = RegExp(
+        r'(?:^|;\s)name="([^"]+)"',
+        multiLine: true,
+      ).allMatches(body).map((RegExpMatch match) => match.group(1)!).toSet();
+      expect(names, <String>{'meta', 'problem_photo'});
+      expect(body, contains('"school_stage":"high_school"'));
+      expect(body, isNot(contains('allowed_topic_ids')));
+      expect(body, isNot(contains('topic_ids')));
+      expect(added.contextRevision, 2);
+    });
+  });
 }
