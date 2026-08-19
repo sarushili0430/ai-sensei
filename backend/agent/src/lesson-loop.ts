@@ -316,9 +316,21 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
 
     const lastStep = lessonSteps(turns).at(-1);
     const lastSpeech = lastStep?.speech ?? "";
+    const awaitsStudent = lastStep !== undefined && stepAwaitsStudent(lastStep, locale);
 
     // 「自分の言葉で説明してみて」まで来たら授業は完了。教え返しへ渡す。
     if (asksForTeachBack(lastSpeech, locale)) return summary("handed_over");
+
+    // 問いの内容は機械では判定しない。ただし `awaits_student: true` の授業中の問いは
+    // `text` の Q 行を残す規約なので、種類だけを全件記録すれば `none / 全件` の割合を
+    // 後から測れる。発話や板書本文は、学習内容をログへ出さないため意図的に含めない。
+    if (lastStep?.awaits_student === true) {
+      log?.info("lesson_awaiting_question_board", {
+        pass: passes,
+        board_kind: lastStep.board?.kind ?? "none",
+        board_missing: lastStep.board === null,
+      });
+    }
 
     // 安全弁。ここで降りるとき、積み残しの発話は**取り出さない** —
     // 記録も返事も、板書の要約を持った会話モード(呼び出し側)が引き取る。
@@ -361,7 +373,7 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
       return summary("interrupted");
     }
 
-    if (lastStep === undefined || !stepAwaitsStudent(lastStep, locale)) {
+    if (!awaitsStudent) {
       // 答えを待たずに言い切って終えた(番の渡し忘れ)。呼び出し側の
       // `teachBackFallback` が定型句で教え返しへ戻す。
       return summary("completed");

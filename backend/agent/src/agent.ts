@@ -623,9 +623,10 @@ async function teachWithBoard(options: TeachOptions): Promise<TaughtLesson | und
   // 「成功した授業」として通り抜けていた(`lesson_finished` は手順数しか見ていない)。
   // 生徒の画面は見出しだけの白い黒板で、先輩だけが喋り続ける。
   //
-  // ただし**問いかけで終わった回は正常**(切り分けの質問は `board: null` が正しい形)。
-  // 番を渡していれば黙って待つ — ここで立て直しの一言を足すと、答えようとしている
-  // 生徒に「板書が出せなかった」と被せることになる。
+  // ただし**問いかけで終わった回は、板書が無くても配送失敗にはしない**。新しい規約では
+  // `text` の Q 行を残すが、生成が `board: null` のままでも機械で弾かず、lesson-loop の
+  // 種別ログで観測する。番を渡していれば黙って待つ — ここで立て直しの一言を足すと、
+  // 答えようとしている生徒に「板書が出せなかった」と被せることになる。
   const lastStep = steps.at(-1);
   if (written === 0 && (lastStep === undefined || !stepAwaitsStudent(lastStep, context.locale))) {
     log.warn("lesson_wrote_nothing", {
