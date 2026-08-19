@@ -431,6 +431,28 @@ sessionsRoute.post("/:sessionId/problem-photo", async (c) => {
   const at = now();
   const limits = readLimits(c.env);
 
+  /**
+   * **会話が生きている窓の中だけ受け付ける。**`/start` と同じ境界を使う。
+   *
+   * `open` かつ `started_at` があるだけを条件にすると、開始だけして部屋に入らず
+   * IDを持っておいた端末が、**翌日以降にそのセッションの `local_date` へ向けて**
+   * 解析を投げられる。1本につき4枚積める枠を、古いIDをためた数だけ増やせるので、
+   * その日の日次枠を回避して Vision の原価が伸びる。
+   */
+  if (
+    !canReissueToken({
+      startedAt: session.started_at,
+      now: at,
+      maxSeconds: sessionMaxSeconds({ user, now: at, limits }),
+    })
+  ) {
+    log?.info("problem_photo_session_expired", {
+      session_id: sessionId,
+      started_at: session.started_at,
+    });
+    throw apiError("session_not_found", { locale: meta.locale });
+  }
+
   // 5という値と日次枠は entitlement が正。開始前の撮り直しも含む現行の日次門と、
   // このセッション5回の両方を同じ条件付きUPDATEで守る。
   const reserved = await repository.reserveSessionAnalysis({

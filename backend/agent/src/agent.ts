@@ -351,7 +351,11 @@ export default defineAgent({
         }
 
         if (control.type === "problem_photo_failed") {
-          boardContinuationAvailable = false;
+          // **既存の板書は生きたまま。**つなぎの一言で「今の問題をそのまま続けよう」と
+          // 言う以上、そのあとの「板書して」も従来どおり効かないと嘘になる。
+          // ここで `boardContinuationAvailable` を落とすと、次の周回で窓口
+          // (`boardRequestSink` / `serveBoardRequests`)が張り直されず、
+          // 板書へ追記する手段を持たない会話LLMが受けてしまう。
           agent.endLesson();
           await sayAndWait(session, problemPhotoFailedBridge(currentContext.locale), log, {
             addToChatCtx: false,
