@@ -69,6 +69,13 @@ class CaptureState {
   /// 読み取れた問題文。読めなければ null。
   SessionProblem? get problem => analysis?.problem;
 
+  /// [problem] がこうなった理由。**読めなかったときの文言がこれで変わる。**
+  ///
+  /// 「読み取れませんでした」だけを出すと、生徒には直しようのない行き止まりに
+  /// 見える。紙面を丸ごと撮っていたのか、解答まで写っていたのかが分かれば、
+  /// 次に何をすればいいかを名指しできる。
+  ProblemOutcome? get problemOutcome => analysis?.problemOutcome;
+
   List<DetectedTopic> get topics => analysis?.detectedTopics ?? const <DetectedTopic>[];
 
   List<String> get selectedTopicIds => topics
@@ -216,6 +223,40 @@ class CaptureController extends _$CaptureController {
     } catch (_) {
       _fail(_networkError(locale));
       return null;
+    }
+  }
+
+  /// 問題文を打ち直す(読めなかったときの救済と、誤読の訂正)。
+  ///
+  /// **写真は送り直さない。** 解答が混ざる・紙面を丸ごと写す、といった落ち方の
+  /// 原因は「紙面のどこを写したか」なので、同じ写真を投げ直しても同じものが返る。
+  /// サーバもVision LLMを回さないので、**解析の枠も今日の1回も減らない。**
+  ///
+  /// **失敗は戻り値で返し、[CaptureState.error] には入れない。**
+  /// この画面は `state.error` を**全面のエラー表示**に使っているので、
+  /// 打ち直しに失敗しただけで単元の確認ごと消えると、いま打った本文まで
+  /// 画面から消える(直せる場所へ戻る道も無くなる)。
+  Future<ApiException?> submitProblemText(String text, {String locale = 'ja'}) async {
+    final SessionAnalysis? current = state.analysis;
+    if (current == null) return null;
+    final String trimmed = text.trim();
+    if (trimmed.isEmpty) return null;
+
+    try {
+      final SessionAnalysis updated = await ref.read(apiClientProvider).updateSessionProblem(
+            sessionId: current.sessionId,
+            text: trimmed,
+            locale: locale,
+          );
+      state = state.copyWith(analysis: updated);
+      return null;
+    } on ApiException catch (error) {
+      // セッションごと消えているなら、握っている解析も捨てる。ここだけは
+      // 全面の表示に返す — 同じIDへ打ち直し続けても、404が返り続けるだけなので。
+      if (error.isSessionNotFound) _fail(error);
+      return error;
+    } catch (_) {
+      return _networkError(locale);
     }
   }
 

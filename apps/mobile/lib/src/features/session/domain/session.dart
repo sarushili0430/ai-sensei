@@ -44,7 +44,40 @@ enum ProblemSource {
   problemPhoto,
   @JsonValue('notes_photo')
   notesPhoto,
+
+  /// 生徒が自分で打ち直したもの。**写真ではない。**
+  ///
+  /// 読めなかったときの救済と、誤読の訂正がここに入る
+  /// ([ApiClient.updateSessionProblem])。
+  @JsonValue('manual')
+  manual,
 }
+
+/// 写真から問題文を取り出せたか。取り出せなかったなら、**どう落ちたか**
+/// (`api.ts` の `problemOutcomes`)。
+///
+/// **画面の文言がこれで変わる。** 「読み取れませんでした」だけを返すと、
+/// 生徒には直しようのない行き止まりに見える。紙面を丸ごと撮っているのか
+/// ([tooLong])、解答まで写っているのか([solutionIncluded])が分かれば、
+/// 次の一手を名指しできる。
+enum ProblemOutcome {
+  @JsonValue('read')
+  read,
+  @JsonValue('not_found')
+  notFound,
+  @JsonValue('too_long')
+  tooLong,
+  @JsonValue('solution_included')
+  solutionIncluded,
+  @JsonValue('not_a_problem')
+  notAProblem,
+}
+
+/// 問題文の上限。**正は `packages/contract` の `problemTextMaxLength`。**
+///
+/// ここに写しを置いているのは、入力欄がこの数で止まるため。サーバに弾かれてから
+/// 直すのでは往復が1つ増える。契約側を動かしたら、ここも一緒に動かすこと。
+const int problemTextMaxLength = 600;
 
 /// このセッションが扱う問題。**読み取れたときだけ存在する。**
 ///
@@ -104,6 +137,17 @@ abstract class SessionAnalysis with _$SessionAnalysis {
     /// 復習セッション(`kind: review`)のように写真を送らない経路もあるので、
     /// キーの有無ではなく値の有無だけを見る。
     SessionProblem? problem,
+
+    /// [problem] がこうなった理由。**写真を読んだセッションにだけ入る**
+    /// (復習は写真を使わないので null)。
+    ///
+    /// 知らない値が来たら null に落とす。サーバが落ち方を増やしたときに、
+    /// **古いアプリが確認画面ごと落ちる**のを避ける(文言が1つ減るだけで済む)。
+    @JsonKey(
+      name: 'problem_outcome',
+      unknownEnumValue: JsonKey.nullForUndefinedEnumValue,
+    )
+    ProblemOutcome? problemOutcome,
   }) = _SessionAnalysis;
 
   factory SessionAnalysis.fromJson(Map<String, dynamic> json) => _$SessionAnalysisFromJson(json);

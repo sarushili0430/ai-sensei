@@ -1,4 +1,10 @@
-import type { HoleSeverity, Locale, SessionProblem, StudyPlan } from "@ai-sensei/contract";
+import type {
+  HoleSeverity,
+  Locale,
+  ProblemOutcome,
+  SessionProblem,
+  StudyPlan,
+} from "@ai-sensei/contract";
 
 export type UserRecord = {
   device_id: string;
@@ -28,6 +34,18 @@ export type SessionContext = {
    * この欄が無い古い行は `undefined` で読めるので、`?? null` で受けること。
    */
   problem?: SessionProblem | null;
+  /**
+   * {@link problem} が `null` になった理由(読めたときは `"read"`)。
+   *
+   * **確認画面が「次の一手」を出すために要る。** 紙面を丸ごと撮っているのか、
+   * 解答まで写っているのかで、生徒に言うことが変わる。ここに残していないと、
+   * 単元を絞り込んだ瞬間(PATCH /topics)に理由だけが消え、同じ画面が
+   * 「読み取れませんでした」しか言えなくなる。
+   *
+   * 写真を読んでいないセッション(復習)と、この欄が無い古い行では `undefined`。
+   * 呼び出し側は `?? null` で受けること。
+   */
+  problem_outcome?: ProblemOutcome | null;
   visible_work: string[];
   question_seeds: string[];
   /** 検出時の確信度。チップUIの表示を、単元を絞ったあとも同じに保つ。 */

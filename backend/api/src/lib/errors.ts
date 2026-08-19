@@ -35,6 +35,21 @@ const messages: Record<ApiErrorCode, { ja: string; en: string; status: number }>
     en: "We couldn't read any notes in this photo. Could you take another one?",
     status: 422,
   },
+  /**
+   * 手入力の問題文をガードレールが落とした(`PATCH /v1/sessions/{id}/problem`)。
+   *
+   * **写真の話ではないので `photo_unreadable` と分ける。** あちらは
+   * 「もう一度撮ってみてください」で、いま打ち直した人には的外れになる。
+   *
+   * 落ち方(`solution_included` / `not_a_problem`)で文言を分けない。
+   * 打った本人には本文が見えているので、**次の一手は「答えを消す」か
+   * 「設問まで入れる」のどちらか**で、両方を一度に言っても短く収まる。
+   */
+  problem_unreadable: {
+    ja: "問題文として読み取れませんでした。答えや解説を外して、「〜を求めよ」まで入れてみてください。",
+    en: "We couldn't read that as a question. Leave the answer out, and include what it asks you to do.",
+    status: 422,
+  },
   // **教科名を数え上げない。** 課程を足すたびに文言を直す作りにすると、
   // どこかで必ず古いままになり、対応しているのに「対応していません」と返る。
   out_of_scope: {

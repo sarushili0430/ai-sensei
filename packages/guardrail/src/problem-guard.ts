@@ -30,7 +30,8 @@ import type { CurriculumLocale } from "@ai-sensei/curriculum";
  * **入っていない判定と、その理由**:
  *   - 「よって」「したがって」 … 設問側にも出うる(「よって得られる値を答えよ」)
  *   - 裸の `Answer:` … 問題集の**解答欄の見出し**として空欄の上に印刷されている。
- *     生徒が解く前の紙面にも載っているので、解答が混ざった証拠にならない
+ *     生徒が解く前の紙面にも載っているので、解答が混ざった証拠にならない。
+ *     **手入力にはこの理由が立たない**ので、そちらでだけ拾う({@link typedAnswerHeading})
  *   - 数値が並んでいる(`(1) 2個 (2) k=±√10`)… 設問の選択肢と区別がつかない
  *
  * 長さの上限は `@ai-sensei/contract` の `problemTextMaxLength` と `backend/api` の
@@ -56,6 +57,43 @@ const solutionHeadings: readonly RegExp[] = [
   // ゆえに。設問には出ず、解答の途中にしか出ない。
   /∴|\\therefore\b/u,
 ];
+
+/**
+ * 生徒が**自分で打ち込んだ**問題文にだけ当てる、追加の見出し。
+ *
+ * 上の一覧が裸の `Answer:` と `答え:` を入れていないのは、**紙面には解く前から
+ * 空欄の解答欄が印刷されている**から(`Answer: ______`)。書き起こしにそれが
+ * 混ざるのは普通のことで、答えが写った証拠にならない。
+ *
+ * **その理由は手入力には効かない。** 空欄の解答欄を、わざわざ自分で打ち込む生徒は
+ * いない。打たれた `答え: 4` は、**紙面の体裁ではなく答えそのもの**で、
+ * そのまま渡せば先輩は解き方を組み立てずに答えを写す — 写真の側で塞いだ穴が、
+ * 手入力の側から開く。
+ *
+ * ただし**空欄のままの見出しは通す**(`Answer: ______` を打ってきた人まで
+ * 弾かない)。見ているのはコロンの右に**中身があるか**だけ。
+ */
+const typedAnswerHeading = /(?:^|[\n。.])\s*(?:答え?|answers?|ans\.?)\s*[:：]([^\n]*)/iu;
+
+/** 解答欄の空欄(`______` `___` `- - -`)。中身が書かれていない印。 */
+const blankAnswerBox = /^[\s_＿\u2010-\u2015\u30fc…．.-]*$/u;
+
+/** 打ち込まれた本文に、**答えそのもの**が続く見出しがあるか。 */
+function hasTypedAnswer(text: string): boolean {
+  const match = typedAnswerHeading.exec(text);
+  if (match === null) return false;
+  return !blankAnswerBox.test(match[1] ?? "");
+}
+
+/**
+ * 問題文がどこから来たか。**当てる見出しの数が変わる**({@link typedAnswerHeading})。
+ *
+ * 既定は `photo`。写真の書き起こしのほうが通す幅が広い — 紙面には設問以外のものが
+ * 一緒に写るので、そこを厳しくすると**正当な問題文を落として `null` に戻す**
+ * (= 問題が写っているのに見ないまま教える)ほうへ倒れる。
+ */
+export const problemTextOrigins = ["photo", "manual"] as const;
+export type ProblemTextOrigin = (typeof problemTextOrigins)[number];
 
 /**
  * 散文が1語でもあるか。**「何を問われているか」が書かれている印**として使う。
@@ -89,12 +127,22 @@ export type ProblemVerdict =
  * **ロケールを取らない。** 解答の見出しは日本語と英語で文字種が重ならない
  * (「解答」と `Solution:`)ので、両方を同時に当てても取り違えが起きない。
  * 引数を1つ減らし、「間違ったロケールを渡して素通りする」経路自体を無くしてある。
+ *
+ * **出どころは取る。** ロケールと違って、これは**通す幅そのもの**を決める
+ * ({@link ProblemTextOrigin})。写真にだけ許している例外(裸の `Answer:` を
+ * 解答欄の見出しとして通す)は、生徒が自分で打った本文には理由が立たない。
+ * 既定を `photo` にしてあるので、渡し忘れても**緩いほうに倒れる** —
+ * 厳しいほうを既定にすると、写真経路で正当な問題文を落として
+ * 「問題が写っているのに見ないまま教える」に戻る。
  */
-export function checkProblemText(text: string): ProblemVerdict {
+export function checkProblemText(
+  text: string,
+  origin: ProblemTextOrigin = "photo",
+): ProblemVerdict {
   const trimmed = text.trim();
 
   const heading = solutionHeadings.find((pattern) => pattern.test(trimmed));
-  if (heading !== undefined) {
+  if (heading !== undefined || (origin === "manual" && hasTypedAnswer(trimmed))) {
     return {
       ok: false,
       reason: "solution_included",

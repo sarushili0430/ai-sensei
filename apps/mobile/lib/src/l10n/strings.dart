@@ -329,12 +329,81 @@ class AppStrings {
 
   /// 読み取った問題文の見出し。**誤読がいちばん早く表面化する場所。**
   ///
-  /// 「合っていますか?」と聞かない。ここで直す手段が無い(セッションは
-  /// もう作られている)のに問いかけると、答えようのない問いになる。
-  /// 事実として置いておけば、ちがっていれば会話の最初に本人が言う —
-  /// それが計画書 §1-1 の「誤読の保険」そのもの。
+  /// **それでも「合っていますか?」とは聞かない。** 直す口はできたが
+  /// ([captureProblemEdit])、問いかけにすると全員が答えを迫られる。
+  /// 事実として置いておけば、ちがっている人だけが直しにいける。
   String get captureProblemTitle =>
       _pick('先輩は、この問題だと思っています', 'This is the problem your senpai sees');
+
+  /// 読み取った問題文を、生徒が自分で直す。
+  ///
+  /// **ここが無かったあいだ、誤読を直す唯一の手段は会話の最初に口で言うことだった。**
+  /// 読み合わせの枠を出しておきながら、そこから直せないのは片手落ちだった。
+  String get captureProblemEdit => _pick('問題文を直す', 'Fix the question');
+
+  /// 問題文が読めなかったときの入口。**[captureProblemEdit] と入れ替わる。**
+  String get captureProblemAdd => _pick('問題文を入力する', 'Type the question');
+
+  /// 読み取れなかったことを、**落ち方ごとに言う**(`api.ts` の `problemOutcomes`)。
+  /// どれを出すかを選ぶのは画面の側。ここは文言だけを持つ。
+  ///
+  /// ## なぜ出すようになったか
+  ///
+  /// ここは長いあいだ**意図して無言**だった。読めなかったと告げると、撮り直さない
+  /// かぎり消えない警告になり、**任意のはずの2枚目が事実上の必須**になるため。
+  /// その結果、失敗が最初に表に出るのは会話の中 —
+  /// 「問題、読んでもらってもいい?」と、**画面に見えている問題を声で入れ直す**
+  /// ところだった(外部テスターが挙げた唯一の不満)。
+  ///
+  /// **直せる口([captureProblemAdd])と同時に出すなら、警告にはならない。**
+  /// その場で終わる話になるので、撮り直しを迫っていない。
+  ///
+  /// ## 落ち方をまとめない
+  ///
+  /// ぜんぶ「読み取れませんでした」に畳むと、生徒からは同じ行き止まりに見える。
+  /// 紙面を丸ごと撮ったのか、解答まで写ったのかで**次の一手が違う**。
+  ///
+  /// これは落ち方が分からないとき/`not_found` のとき。**既定の言い方。**
+  String get captureProblemNotRead =>
+      _pick('問題文は読み取れませんでした', "We couldn't read the question");
+
+  /// `too_long` — 紙面を丸ごと撮っている。
+  String get captureProblemTooLong => _pick(
+        'ページ全体が写っていたようで、問題文を絞り込めませんでした',
+        "That looked like a whole page, so we couldn't pin down the question",
+      );
+
+  /// `solution_included` — 解答・解説まで写っている。
+  /// **咎めない。** 「答えが写っています」ではなく、こちらが使わなかったと言う。
+  String get captureProblemHadSolution => _pick(
+        '答えや解説まで写っていたので、問題文としては使いません',
+        'The answer was in the shot too, so we left it out',
+      );
+
+  /// `not_a_problem` — 式だけで、何を問われているかが無い。
+  String get captureProblemNotAQuestion => _pick(
+        '式だけで、何を聞かれているかまでは読み取れませんでした',
+        'We only got the expression, not what it asks you to do',
+      );
+
+  /// 上の行に続けて、**直すと何が変わるか**だけを言う。
+  ///
+  /// 「撮り直してください」とは言わない。撮り直しの導線はこの画面には無く
+  /// (セッションはもう作られている)、言えば行き止まりを増やすだけになる。
+  String get captureProblemFixHint => _pick(
+        '入れておくと、先輩が最初に聞き直しません',
+        'Type it in and your senpai will not have to ask you for it',
+      );
+
+  /// 打ち込む欄のプレースホルダ。**解答を入れないことだけ先に言う。**
+  /// サーバのガードレールが落とすので、ここで言わないと打ち直しが2往復になる。
+  String get captureProblemFieldHint => _pick(
+        '問題文だけを入れてね(答えは入れない)',
+        'Just the question — leave the answer out',
+      );
+
+  String get captureProblemSave => _pick('これで進む', 'Use this');
+  String get captureProblemCancel => _pick('やめる', 'Cancel');
 
   /// カメラを断られたとき。黙ってホームに戻さない。
   ///

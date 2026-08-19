@@ -17,6 +17,7 @@ import { planDateSchema, planSourceSchema, studyPlanDraftSchema, studyPlanSchema
 export const apiPaths = {
   createSession: "/v1/sessions",
   updateSessionTopics: (sessionId: string) => `/v1/sessions/${sessionId}/topics`,
+  updateSessionProblem: (sessionId: string) => `/v1/sessions/${sessionId}/problem`,
   startSession: (sessionId: string) => `/v1/sessions/${sessionId}/start`,
   completeSession: (sessionId: string) => `/v1/sessions/${sessionId}/complete`,
   progress: "/v1/me/progress",
@@ -121,10 +122,46 @@ export const problemTextMaxLength = 600;
  * この欄はいま**観測のため**にある。
  *
  * どれくらいの生徒が実際に2枚送るかは、この値でしか観測できない。
+ *
+ * `manual` は写真ではなく、生徒が自分で打ち直した問題文
+ * ({@link updateSessionProblemRequestSchema})。**写真の2枠と対等に並べてある**のは、
+ * 「問題文がどこから来たか」が1つの軸だから — 別の欄に分けると、
+ * 「本文はあるが出どころが無い」を作れなくした {@link sessionProblemSchema} の縛りが緩む。
+ * 手入力がどれくらい使われるかも、`problem_photo` と同じ物差しで読める。
  */
-export const problemSources = ["problem_photo", "notes_photo"] as const;
+export const problemSources = ["problem_photo", "notes_photo", "manual"] as const;
 export const problemSourceSchema = z.enum(problemSources);
 export type ProblemSource = (typeof problemSources)[number];
+
+/**
+ * 写真から問題文を取り出せたか。取り出せなかったなら、**どう落ちたか**。
+ *
+ * サーバ内部のログ用の値だった(`backend/api` の `resolveSessionProblem`)。
+ * **応答に載せたのは、落ち方ごとに直し方が違うから。**
+ * `too_long` は「紙面を丸ごと撮っている」、`solution_included` は「解答が写っている」で、
+ * どちらも次の一手が具体的に決まる。ぜんぶ「読み取れませんでした」に畳むと、
+ * 生徒には同じ行き止まりに見え、直しようがない。
+ *
+ * | 値 | 何が起きたか |
+ * | --- | --- |
+ * | `read` | 読み取れた({@link SessionProblem} が入っている) |
+ * | `not_found` | 設問が写っていない・書き起こせなかった |
+ * | `too_long` | {@link problemTextMaxLength} を超えた(ページ全体を写している) |
+ * | `solution_included` | 解答・解説が混ざっていた |
+ * | `not_a_problem` | 式だけの断片で、何を問われているか書かれていない |
+ *
+ * **`read` 以外でもセッションは成立する。** ここは警告ではなく、
+ * 手入力({@link updateSessionProblemRequestSchema})への案内の材料。
+ */
+export const problemOutcomes = [
+  "read",
+  "not_found",
+  "too_long",
+  "solution_included",
+  "not_a_problem",
+] as const;
+export const problemOutcomeSchema = z.enum(problemOutcomes);
+export type ProblemOutcome = (typeof problemOutcomes)[number];
 
 /**
  * セッションが扱う問題。**読み取れたときだけ存在する。**
@@ -263,6 +300,16 @@ export const createSessionResponseSchema = z
      *      授業が始まる前の手当て。
      */
     problem: sessionProblemSchema.nullable(),
+    /**
+     * `problem` がこうなった理由。**写真を読んだセッションでだけ入る**
+     * (復習は写真を使わないので `null`)。
+     *
+     * `problem` の有無だけでは、生徒に返せる言葉が「読み取れませんでした」しか無い。
+     * 落ち方が分かれば、**次の一手を名指しできる** — 紙面を丸ごと撮っているのか
+     * (`too_long`)、解答まで写っているのか(`solution_included`)。
+     * 値の意味は {@link problemOutcomes}。
+     */
+    problem_outcome: problemOutcomeSchema.nullable(),
   })
   .strict();
 export type CreateSessionResponse = z.infer<typeof createSessionResponseSchema>;
@@ -327,6 +374,52 @@ export type UpdateSessionTopicsRequestInput = z.input<typeof updateSessionTopics
  * **ここでもトークンは出さない** — 部屋の鍵が出るのは `/start` だけ。
  */
 export type UpdateSessionTopicsResponse = CreateSessionResponse;
+
+/**
+ * PATCH /v1/sessions/{id}/problem のリクエスト。
+ *
+ * **問題文を生徒が自分で入れ直す口。** 読めなかったとき(`problem: null`)の救済と、
+ * 誤読の訂正の両方がここを通る。
+ *
+ * ## なぜ要るか
+ *
+ * 問題の写真は解析後に破棄する({@link sessionPhotoParts})ので、
+ * **問題文の保存先は解析結果ひとつだけ**。読めなければ授業は
+ * 「問題、読んでもらってもいい?」から始まり、**画面に見えている問題を、
+ * 生徒がもう一度声で入力させられる**(外部テスターの唯一の不満だったもの)。
+ * 画面には読み合わせの枠があるのに、そこから直す手が無かった。
+ *
+ * ## 写真の撮り直しではない
+ *
+ * 送るのは**テキストだけ**。同じ紙面を投げ直しても、解答が混ざる原因は
+ * 「紙面のどこを写したか」なので同じものが返る(`problem-guard.ts` と同じ判断)。
+ * 加えて、ここでVision LLMを回さないので**解析の枠も原価も動かない** —
+ * 救済の口が上限に当たって塞がる、という裏返りが起きない。
+ *
+ * ## 中身は素通しにしない
+ *
+ * 打ち直した本文も `@ai-sensei/guardrail` の `checkProblemText()` を通す。
+ * 解答を貼り付けたまま送られると、先輩は解き方を組み立てずに答えを写す —
+ * **写真から来たときに塞いだ穴が、手入力の側から開く。**
+ * 落ちたときは `problem_unreadable` を返す(黙って `null` に畳まない。
+ * それでは「打ったのに何も変わらない」になり、この口を作った意味が消える)。
+ */
+export const updateSessionProblemRequestSchema = z
+  .object({
+    locale: localeSchema.default("ja"),
+    /**
+     * 生徒が打ち直した問題文。上限は写真から読んだときと同じ
+     * {@link problemTextMaxLength} — 先輩に渡ったあとの扱いは同じなので、
+     * 入口ごとに上限が違う理由が無い。
+     */
+    text: z.string().min(1).max(problemTextMaxLength),
+  })
+  .strict();
+export type UpdateSessionProblemRequest = z.infer<typeof updateSessionProblemRequestSchema>;
+export type UpdateSessionProblemRequestInput = z.input<typeof updateSessionProblemRequestSchema>;
+
+/** 返るものは作成時と同じ形。画面はこの応答でそのまま読み合わせを描き直せる。 */
+export type UpdateSessionProblemResponse = CreateSessionResponse;
 
 /**
  * **LiveKitトークンに載せて agent に渡す会話文脈。**
@@ -553,6 +646,12 @@ export const apiErrorCodes = [
   "fair_use_limit_reached",
   "premium_required",
   "photo_unreadable",
+  /**
+   * 手入力の問題文をガードレールが落とした
+   * ({@link updateSessionProblemRequestSchema})。**写真の話ではない**ので
+   * `photo_unreadable`(「もう一度撮ってみてください」)とは分けてある。
+   */
+  "problem_unreadable",
   "out_of_scope",
   "session_not_found",
   "hole_not_found",

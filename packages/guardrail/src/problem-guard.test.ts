@@ -95,6 +95,68 @@ describe("checkProblemText — 弾くべきもの", () => {
   });
 });
 
+/**
+ * **手入力(`PATCH /v1/sessions/{id}/problem`)にだけ効く一段。**
+ *
+ * 写真の書き起こしで裸の `Answer:` を通しているのは、紙面に**解く前から
+ * 空欄の解答欄が印刷されている**から。生徒が自分で打った本文には、その理由が立たない。
+ */
+describe("checkProblemText — 手入力のときだけ厳しく見る", () => {
+  it.each([
+    "Solve x + 3 = 7. Answer: x = 4",
+    "xを求めよ。答え: 4",
+    "次の方程式を解け。\n答: x = 1, 2",
+    "Find the roots.\nAns: 1 and 2",
+  ])("打ち込まれた答えを落とす: %s", (text) => {
+    expect(checkProblemText(text, "manual")).toMatchObject({
+      ok: false,
+      reason: "solution_included",
+    });
+    // **写真の側は変えない。** ここを厳しくすると、紙面の空欄の解答欄が
+    // 写っただけで問題文が null に戻る(= 問題を見ないまま教える)。
+    expect(checkProblemText(text).ok).toBe(true);
+  });
+
+  /**
+   * 空欄のままの見出しは、手入力でも通す。
+   * 打ってきた人まで弾くと、見ているのが「答えがあるか」ではなく
+   * 「解答欄の体裁を写したか」になってしまう。
+   */
+  it.each([
+    "Solve for x.  x + 3 = 7\nAnswer: ______",
+    "xを求めよ。\n答え:",
+    "xを求めよ。\n答え: ___",
+  ])("空欄の解答欄は手入力でも通す: %s", (text) => {
+    expect(checkProblemText(text, "manual").ok).toBe(true);
+  });
+
+  // 設問の中の「答え」は、コロンが無いので巻き込まれない。
+  it.each([
+    "答えは小数第2位を四捨五入して求めよ。",
+    "答えを整数で求めよ。",
+    "解答用紙に途中式も書くこと。x^2 - 3x + 2 = 0 を解け。",
+    "Answer the following questions about the graph of y = x^2.",
+  ])("設問の中の「答え」は手入力でも巻き込まない: %s", (text) => {
+    expect(checkProblemText(text, "manual").ok).toBe(true);
+  });
+
+  // 既定は写真。**渡し忘れたら緩いほうへ倒れる**(厳しいほうを既定にすると、
+  // 写真経路で正当な問題文を落として「見ないまま教える」に戻る)。
+  it("既定は写真の側(緩いほう)", () => {
+    expect(checkProblemText("xを求めよ。答え: 4")).toEqual(
+      checkProblemText("xを求めよ。答え: 4", "photo"),
+    );
+  });
+
+  // 写真の側で落ちるものは、手入力でも当然落ちる。
+  it("写真の側の見出しは、手入力でも落ちる", () => {
+    expect(checkProblemText("x^2 - 3x + 2 = 0 を解け。 【解答】x = 1, 2", "manual")).toMatchObject({
+      ok: false,
+      reason: "solution_included",
+    });
+  });
+});
+
 describe("再生成の指示", () => {
   it("すべての理由に、両方の言語の指示がある", () => {
     for (const locale of ["ja", "en"] as const) {

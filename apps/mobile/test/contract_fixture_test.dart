@@ -94,6 +94,33 @@ void main() {
       expect(analysis.problem!.text, contains('共有点の個数'));
       // 2枚目(問題の写真)から読めた場合。**この写真は解析後に破棄される。**
       expect(analysis.problem!.source, ProblemSource.problemPhoto);
+      expect(analysis.problemOutcome, ProblemOutcome.read);
+    });
+
+    /// 読めなかった理由。**これが落ちると、確認画面は落ち方に関係なく
+    /// 「読み取れませんでした」しか言えなくなる**(次の一手が名指しできない)。
+    test('読めなかった理由を、落ち方まで読める', () {
+      final Map<String, dynamic> json = loadFixture('create-session-response')
+        ..['problem'] = null
+        ..['problem_outcome'] = 'too_long';
+
+      expect(SessionAnalysis.fromJson(json).problemOutcome, ProblemOutcome.tooLong);
+    });
+
+    /// サーバが落ち方を増やしたときに、**古いアプリが確認画面ごと落ちない**。
+    test('知らない落ち方は null に落とす(画面を落とさない)', () {
+      final Map<String, dynamic> json = loadFixture('create-session-response')
+        ..['problem_outcome'] = 'something_new';
+
+      expect(SessionAnalysis.fromJson(json).problemOutcome, isNull);
+    });
+
+    /// 生徒が打ち直した問題文。**写真の2枠と同じ軸に並ぶ**(`api.ts` の `problemSources`)。
+    test('打ち直した問題文は、出どころが manual になる', () {
+      final Map<String, dynamic> json = loadFixture('create-session-response')
+        ..['problem'] = <String, dynamic>{'text': '共有点の個数を求めよ。', 'source': 'manual'};
+
+      expect(SessionAnalysis.fromJson(json).problem!.source, ProblemSource.manual);
     });
 
     test('1枚に両方写っていた場合は、出どころがノートの写真になる', () {

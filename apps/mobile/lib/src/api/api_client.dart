@@ -131,6 +131,39 @@ class ApiClient {
     return SessionAnalysis.fromJson(_decode(response));
   }
 
+  /// 問題文を、生徒が打ち直したもので置き換える。
+  ///
+  /// **読めなかったときの救済と、誤読の訂正。** 問題の紙面は解析後に破棄されるので、
+  /// あとから機械が読み直す手段は無い — ここが**授業が始まる前に直せる唯一の口**。
+  /// これが無かったとき、読めなかったセッションは
+  /// 「問題、読んでもらってもいい?」から始まり、**画面に見えている問題を、
+  /// 生徒がもう一度声で入れ直させられていた。**
+  ///
+  /// **写真は送らない。** サーバもVision LLMを回さないので、解析の枠を消費しない。
+  ///
+  /// 本文はサーバ側のガードレールを通る(解答が混ざっていれば `problem_unreadable`)。
+  /// **落ちたときに黙って進めない**ので、[ApiException] はそのまま投げる。
+  Future<SessionAnalysis> updateSessionProblem({
+    required String sessionId,
+    required String text,
+    String locale = 'ja',
+  }) async {
+    final http.Response response = await _client
+        .patch(
+          Uri.parse('$baseUrl/v1/sessions/$sessionId/problem'),
+          headers: <String, String>{
+            ..._headers,
+            'content-type': 'application/json; charset=utf-8',
+          },
+          body: jsonEncode(<String, dynamic>{
+            'locale': locale,
+            'text': text,
+          }),
+        )
+        .timeout(_timeout);
+    return SessionAnalysis.fromJson(_decode(response));
+  }
+
   /// 会話を始める。**ここで今日の1回を使う。**
   ///
   /// 部屋の鍵はこの応答にしか無い。枠の確保とトークンの発行はサーバ側の

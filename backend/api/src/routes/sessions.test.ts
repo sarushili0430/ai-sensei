@@ -7,6 +7,7 @@ import {
   startSessionResponseSchema,
 } from "@ai-sensei/contract";
 import { localeOfTopicId } from "@ai-sensei/curriculum";
+import { checkProblemText } from "@ai-sensei/guardrail";
 import { formatProblemText, formatVisibleWork, getPrompt } from "@ai-sensei/prompts";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../app.ts";
@@ -37,6 +38,22 @@ function post(form: FormData, headers: Record<string, string> = {}) {
   return app.request(
     "/v1/sessions",
     { method: "POST", body: form, headers: { "x-device-id": testDeviceId, ...headers } },
+    bindings,
+  );
+}
+
+function patchProblem(sessionId: string, body: unknown, headers: Record<string, string> = {}) {
+  return app.request(
+    `/v1/sessions/${sessionId}/problem`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(body),
+      headers: {
+        "content-type": "application/json",
+        "x-device-id": testDeviceId,
+        ...headers,
+      },
+    },
     bindings,
   );
 }
@@ -850,6 +867,211 @@ describe("問題文", () => {
     const claims = await verifyJwt(started.livekit.token, bindings.LIVEKIT_API_SECRET);
     const parsed = sessionMetadataSchema.safeParse(JSON.parse(String(claims?.["metadata"])));
     expect(parsed.success ? null : parsed.error.issues).toBeNull();
+  });
+});
+
+/**
+ * **問題文を、生徒が自分で打ち直す口**(`PATCH /v1/sessions/{id}/problem`)。
+ *
+ * 外部テスターの唯一の不満だったもの — 問題文が読めなかったセッションは、
+ * **画面に問題が見えているのに、生徒がもう一度声で読み上げさせられていた。**
+ * 紙面は解析後に破棄するので、あとから機械が読み直す手段は無い。
+ * ここが**開始前に直せる唯一の口**になる。
+ */
+describe("問題文の手入力", () => {
+  const rescueText = "円 x^2 + y^2 = 5 と直線 y = x + k の共有点の個数を求めよ。";
+
+  /** 問題文が読めなかったセッションを作る(救済の口が要るのはこの状態)。 */
+  async function unreadSession(): Promise<CreateSessionResponse> {
+    services = testServices({ analysis: { ...analysisFixture, problem_text: "" } });
+    const response = await post(createSessionForm());
+    expect(response.status).toBe(201);
+    return (await response.json()) as CreateSessionResponse;
+  }
+
+  it("読めなかった理由を応答に載せる(落ち方で次の一手が変わる)", async () => {
+    const session = await unreadSession();
+    expect(session.problem).toBeNull();
+    expect(session.problem_outcome).toBe("not_found");
+  });
+
+  it("紙面を丸ごと撮っていれば、そう分かる形で返す", async () => {
+    services = testServices({
+      analysis: { ...analysisFixture, problem_text: "あ".repeat(problemTextMaxLength + 1) },
+    });
+    const response = await post(createSessionForm());
+    const body = (await response.json()) as CreateSessionResponse;
+
+    // ぜんぶ not_found に畳むと、生徒には直しようのない行き止まりに見える。
+    expect(body.problem_outcome).toBe("too_long");
+  });
+
+  it("解答が混ざっていたときも、理由が残る", async () => {
+    services = testServices({
+      analysis: { ...analysisFixture, problem_text: "x^2 - 3x + 2 = 0 を解け。 【解答】x = 1, 2" },
+    });
+    const response = await post(createSessionForm());
+    const body = (await response.json()) as CreateSessionResponse;
+
+    expect(body.problem_outcome).toBe("solution_included");
+  });
+
+  // ここが本丸。**打ち直した問題文が、そのまま先輩に届く。**
+  it("打ち直した問題文が、会話の文脈に載る", async () => {
+    const session = await unreadSession();
+
+    const patched = await patchProblem(session.session_id, { text: rescueText });
+    expect(patched.status).toBe(200);
+    const body = (await patched.json()) as CreateSessionResponse;
+    expect(body.problem).toEqual({ text: rescueText, source: "manual" });
+    expect(body.problem_outcome).toBe("read");
+
+    const started = (
+      await startSession(session.session_id)
+    ).json() as Promise<StartSessionResponse>;
+    const metadata = await metadataOf<{ problem_text: string }>(await started);
+    // 「問題、読んでもらってもいい?」を出すプレースホルダには**もう戻らない**。
+    expect(metadata.problem_text).toBe(rescueText);
+    expect(metadata.problem_text).not.toBe(formatProblemText(null, "ja"));
+  });
+
+  // 誤読の訂正。読めていた問題文も、始まる前なら差し替えられる。
+  it("読めていた問題文も上書きできる(誤読の訂正)", async () => {
+    const created = await post(createSessionForm());
+    const session = (await created.json()) as CreateSessionResponse;
+    expect(session.problem?.text).toBe(analysisFixture.problem_text);
+
+    const patched = await patchProblem(session.session_id, { text: rescueText });
+    const body = (await patched.json()) as CreateSessionResponse;
+    expect(body.problem).toEqual({ text: rescueText, source: "manual" });
+  });
+
+  // 単元は動かさない。動かす口は PATCH /topics のほうだけ。
+  it("単元は変えない", async () => {
+    const session = await unreadSession();
+    const patched = await patchProblem(session.session_id, { text: rescueText });
+    const body = (await patched.json()) as CreateSessionResponse;
+
+    expect(body.detected_topics.map((topic) => topic.topic_id)).toEqual(
+      session.detected_topics.map((topic) => topic.topic_id),
+    );
+  });
+
+  // 単元を絞り込んでも、打ち直した問題文は残る(PATCH /topics と順不同で使える)。
+  it("そのあと単元を絞り込んでも、打ち直した問題文が残る", async () => {
+    const session = await unreadSession();
+    await patchProblem(session.session_id, { text: rescueText });
+
+    const narrowed = await patchTopics(session.session_id, { topic_ids: ["M2-ZUKEI-ENCHOKU"] });
+    const body = (await narrowed.json()) as CreateSessionResponse;
+    expect(body.problem).toEqual({ text: rescueText, source: "manual" });
+    expect(body.problem_outcome).toBe("read");
+  });
+
+  /**
+   * **写真から来た問題文に対して塞いだ穴が、手入力の側から開かないこと。**
+   * 解答を貼り付けたまま渡すと、先輩は解き方を組み立てずに答えを写す。
+   */
+  it("解答が混ざった本文は受け取らない", async () => {
+    const session = await unreadSession();
+
+    const response = await patchProblem(session.session_id, {
+      text: "x^2 - 3x + 2 = 0 を解け。 【解答】x = 1, 2",
+    });
+    expect(response.status).toBe(422);
+    expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+      "problem_unreadable",
+    );
+  });
+
+  /**
+   * **写真のときより厳しい一段が、この経路に繋がっている。**
+   *
+   * 裸の `Answer:` を通しているのは「紙面には解く前から空欄の解答欄が
+   * 印刷されている」からで、その理由は自分で打ち込んだ本文には立たない。
+   * ここが繋がっていないと、`答え: 4` がそのまま先輩に渡る。
+   */
+  it("打ち込まれた答えも受け取らない(写真の側は通す形でも)", async () => {
+    const withAnswer = "x を求めよ。 x + 3 = 7\n答え: 4";
+    // 写真の書き起こしとしては通る形。**手入力だから落ちる。**
+    expect(checkProblemText(withAnswer).ok).toBe(true);
+
+    const session = await unreadSession();
+    const response = await patchProblem(session.session_id, { text: withAnswer });
+
+    expect(response.status).toBe(422);
+    const stored = await services.repository.getSession(session.session_id);
+    expect(stored?.context?.problem ?? null).toBeNull();
+  });
+
+  // 空欄の解答欄までは弾かない(「答えがあるか」を見ていて、体裁は見ていない)。
+  it("空欄の解答欄が付いていても受け取る", async () => {
+    const session = await unreadSession();
+    const response = await patchProblem(session.session_id, {
+      text: "x を求めよ。 x + 3 = 7\n答え:",
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  /**
+   * **黙って null に畳まない。** 写真のときは畳んでよかった(撮り直す以外に
+   * 手が無い)が、打った本人が目の前にいるなら、直せる形で返さないと
+   * 「打ったのに何も変わらない」になり、この口を作った意味が消える。
+   */
+  it("落とした本文は、セッションにも書き込まない", async () => {
+    const session = await unreadSession();
+    await patchProblem(session.session_id, { text: "x^2 - 3x + 2 = 0" });
+
+    const stored = await services.repository.getSession(session.session_id);
+    expect(stored?.context?.problem ?? null).toBeNull();
+    expect(stored?.context?.problem_outcome).toBe("not_found");
+  });
+
+  // 上限は写真から読んだときと同じ。先頭で切ると、途中で切れた問題を教えることになる。
+  it("上限を超えた本文は落とす(切り詰めない)", async () => {
+    const session = await unreadSession();
+
+    const response = await patchProblem(session.session_id, {
+      text: `あ を求めよ。${"あ".repeat(problemTextMaxLength)}`,
+    });
+    expect(response.status).toBe(422);
+
+    const stored = await services.repository.getSession(session.session_id);
+    expect(stored?.context?.problem ?? null).toBeNull();
+  });
+
+  it("他人のセッションの問題文は書き換えられない", async () => {
+    const session = await unreadSession();
+
+    const response = await patchProblem(
+      session.session_id,
+      { text: rescueText },
+      { "x-device-id": "99999999-8888-7777-6666-555555555555" },
+    );
+    expect(response.status).toBe(404);
+  });
+
+  /**
+   * **Vision LLM を回さない。** 回すと、救済の口が解析の上限
+   * (`analysesPerDay`)に当たって塞がる — 読めなかった人ほど押す口なのに。
+   */
+  it("解析器を呼ばない(解析の枠も原価も動かさない)", async () => {
+    const session = await unreadSession();
+    const before = (services.analyzer as RecordingAnalyzer).calls.length;
+
+    await patchProblem(session.session_id, { text: rescueText });
+
+    expect((services.analyzer as RecordingAnalyzer).calls).toHaveLength(before);
+  });
+
+  // 打ち直しただけでは、今日の1回は減らない(数えるのは会話の開始だけ)。
+  it("打ち直しただけでは、今日の1回を使わない", async () => {
+    const session = await unreadSession();
+    await patchProblem(session.session_id, { text: rescueText });
+
+    const stored = await services.repository.getSession(session.session_id);
+    expect(stored?.started_at).toBeNull();
   });
 });
 
