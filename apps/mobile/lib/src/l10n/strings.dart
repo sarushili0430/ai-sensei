@@ -172,6 +172,10 @@ class AppStrings {
   /// ここでユーザーが選んでいるのは「教わる」こと。
   String get homeLesson => _pick('先輩に教わる', 'Get taught by your senpai');
 
+  /// 日次の持ち時間。先輩の発話ではなく、ホームの状態表示としてだけ数字を出す。
+  String homeRemainingMinutes(int minutes) =>
+      _pick('今日の残り $minutes分', '$minutes min left today');
+
   /// 数字を含む全文。祝福画面のように**文字だけで数を見せる**場所と、
   /// ホームのカウンターの読み上げ(`Semantics(label:)`)で使う。
   String streakDays(int days) => _pick('$days日つづけて説明中', '$days-day streak');
@@ -193,12 +197,10 @@ class AppStrings {
 
   /// 今日はもう授業をしない、という**先輩の判断**(§6-3)。
   ///
-  /// 「本日の残り回数 0/3」とは書かない。数字を見せた瞬間に不満になるし、
-  /// 見えていれば残りの使い道を計算し始める。上限は制限ではなく
-  /// 「詰め込みすぎても入らない」という先生の判断として出す。
+  /// 残り時間はホームに別途出すが、上限への到達は先輩が学習を締める言い方のままにする。
   String get lessonEnoughForToday => _pick(
-        '今日はここまでにしよっか。詰め込みすぎても入らないから。明日また続きやろう。',
-        "Let's call it a day. Cramming more won't stick — we'll pick this up tomorrow.",
+        '今日の持ち時間は使い切ったよ。明日また続きやろう。',
+        "You've used today's lesson time. Let's pick this up again tomorrow.",
       );
 
   /// 上の判断の隣に置く、契約への道。
@@ -227,7 +229,7 @@ class AppStrings {
   /// シャッターの前に立っていた(`capture_screen.dart` のコメント)。
   String get captureChooseTitle => _pick('何が手元にある?', 'What do you have?');
 
-  /// 解析はセッションを作る = 今日の1回を使う操作なので、その前に一度だけ挟む。
+  /// 解析はVision LLMの原価が発生するので、その前に一度だけ確認を挟む。
   String get captureReviewTitle => _pick('撮れました', 'Got it');
 
   /// 1枚も撮っていないときのヒント。**ノートが無いことを、先に許しておく。**
@@ -758,10 +760,9 @@ class AppStrings {
 
   /// Premium のセッション枠。
   ///
-  /// **「何問でも」と書いてはいけない。**`PREMIUM_SESSIONS_PER_DAY` の
+  /// **「何問でも」と書いてはいけない。** `PREMIUM_SECONDS_PER_DAY` の
   /// フェアユース上限があるので、無制限を約束すると**買ったあとにAPIが断る**。
-  /// §6-3 が数字を隠せと言っているのは**利用中の残数表示**の話であって、
-  /// 買うかどうかを決める場所で嘘をついてよいという意味ではない
+  /// ホームでは残り時間を見せるが、購入画面でも「無制限」と誤認させない。
   /// (HAMM の「誠実なペイウォール」に正面から反する)。
   /// 通常利用では一度も当たらない上限なので、**当たらないことを言う**。
   String get paywallEverydayQuestions => _pick('毎日、続けて何問も', 'Several questions a day');
@@ -792,7 +793,7 @@ class AppStrings {
   /// 買った。素直にお礼を言っていい唯一のケース。
   String get thanksTitle => _pick('ありがとうございます', 'Thank you');
   String get thanksBody =>
-      _pick('これから、いくらでも聞きます。', 'From now on, ask me as much as you like.');
+      _pick('これから、もっと長く話せます。', 'Now we have more lesson time together.');
 
   /// 無料トライアルが始まった。**お礼ではなく、事実から書く。**
   String thanksTrialTitle(int days) =>
@@ -813,7 +814,7 @@ class AppStrings {
 
   /// 解放されたもの。ペイウォールの比較表と同じ3つを、同じ順で出す。
   String get thanksUnlockedSessions =>
-      _pick('1日1回の上限がなくなりました', 'The once-a-day limit is gone');
+      _pick('今日の持ち時間が増えました', 'More lesson time each day');
   String get thanksUnlockedHistory =>
       _pick('埋めた穴が、ぜんぶ残ります', 'Every gap you fill stays on record');
   String get thanksUnlockedFollowup =>
@@ -954,8 +955,12 @@ class AppStrings {
   /// 英語の例文の読み上げ。**下線は音にならない**ので、focus を言葉にする。
   String boardSpeechSentence(String text, String gloss, String focus) {
     final StringBuffer buffer = StringBuffer(text);
-    if (gloss.isNotEmpty) buffer.write(_pick('。訳は $gloss', '. Meaning: $gloss'));
-    if (focus.isNotEmpty) buffer.write(_pick('。注目するのは $focus', '. The focus is $focus'));
+    if (gloss.isNotEmpty) {
+      buffer.write(_pick('。訳は $gloss', '. Meaning: $gloss'));
+    }
+    if (focus.isNotEmpty) {
+      buffer.write(_pick('。注目するのは $focus', '. The focus is $focus'));
+    }
     return buffer.toString();
   }
 

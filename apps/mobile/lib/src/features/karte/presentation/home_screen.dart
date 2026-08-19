@@ -18,7 +18,7 @@ import '../domain/karte.dart';
 /// - 数えるのは連続日数と埋めた穴だけ。XP・レベル・偏差値は出さない(§5-2)
 /// - 入口は2つ。今日の1手([_PrimaryAction])と、きのうの続き([_OpenHolesCard])
 /// - **下に置く操作はいつでも1つ**。並べず、同じ場所の中身を入れ替える
-/// - 回数の数字は出さない(§6-3)。上限は先輩の判断として文章で見せる
+/// - 授業回数は出さず、原価と同じ「今日の残り時間」だけを出す
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
@@ -41,6 +41,19 @@ class HomeScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               FadeSlideIn(child: _TopRow(progress: data.progress)),
+              if (summary.value != null)
+                FadeSlideIn(
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      strings.homeRemainingMinutes(
+                        data.limits.remainingSecondsToday ~/ 60,
+                      ),
+                      key: const ValueKey<String>('home-remaining-time'),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                ),
               // 顔とあいさつは**読む側**。収まれば中央、収まらなければここだけ動く。
               //
               // 以前は `Spacer` 2つで中央に置いていたが、それだと文言が伸びた瞬間に
@@ -271,19 +284,10 @@ class _OpenHolesCard extends ConsumerWidget {
   }
 }
 
-/// 今日はここまで、という**先輩の判断**(§6-3)。
-///
-/// ここは以前「今日の無料セッション: 残り1回」を出していた場所。
-/// **回数の数字は出さない**に変えた:
-///   - 数字を見せた瞬間に、上限は「先生の判断」ではなく「制限」になる(約束4)
-///   - 残りが見えていれば、ユーザーは残りの使い道を計算しはじめる。
-///     今日いちばん聞きたい1問を、明日に取っておく理由を作ってしまう
-///   - 通常利用(1日1〜2回)では一度も発火しない値にする設計なので、
-///     そもそも普段は出す数字が無い
-///
-/// **残っているあいだは何も出さない。** 「まだ大丈夫です」も残数の匂わせになる。
-/// 出すのは先輩が締めたときだけ。無料なら契約への道も置くが、Premium の
-/// フェアユース上限では、すでに契約している人へ課金導線を重ねない。
+/// 今日はここまで、という**先輩の判断**。
+/// 残り時間の数字は画面上部の状態表示に限り、先輩の発話には混ぜない。
+/// 無料なら契約への道も置くが、Premium のフェアユース上限では、
+/// すでに契約している人へ課金導線を重ねない。
 ///
 /// 締めた日はあいさつも [AppStrings.homeGreetingDone] に変わっているので、
 /// ここは**同じことを繰り返さない**説明に徹する(「今日はここまで」の理由)。

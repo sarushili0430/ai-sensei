@@ -23,6 +23,7 @@ import {
   planDaysMaxCount,
   planTurnSchema,
   sessionMetadataSchema,
+  startSessionResponseSchema,
   studyPlanDraftSchema,
   studyPlanSchema,
 } from "./index.ts";
@@ -686,16 +687,23 @@ describe("APIスキーマ", () => {
     ).toBe(false);
   });
 
-  it("授業上限は残数を返さず、今日の可否だけを返す", () => {
-    const response = loadFixture("create-session-response") as Record<string, unknown>;
-    const withRemainingCount = {
-      ...response,
-      limits: { max_seconds: 300, remaining_sessions_today: 0 },
-    };
+  it("授業上限は回数ではなく、今日の残り秒数を返す", () => {
+    const response = loadFixture("start-session-response") as Record<string, unknown>;
+    const limits = (response["limits"] ?? {}) as Record<string, unknown>;
 
-    // §6-3「UIに数字は一切出さない」を、古い数値契約を拒否することで守る。
-    expect(createSessionResponseSchema.safeParse(withRemainingCount).success).toBe(false);
-    expect(createSessionResponseSchema.safeParse(response).success).toBe(true);
+    expect(startSessionResponseSchema.safeParse(response).success).toBe(true);
+    expect(
+      startSessionResponseSchema.safeParse({
+        ...response,
+        limits: { ...limits, remaining_seconds_today: undefined },
+      }).success,
+    ).toBe(false);
+    expect(
+      startSessionResponseSchema.safeParse({
+        ...response,
+        limits: { ...limits, remaining_sessions_today: 0 },
+      }).success,
+    ).toBe(false);
   });
 
   it("transcriptのroleは assistant / user のみ", () => {

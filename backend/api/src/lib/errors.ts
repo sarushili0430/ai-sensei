@@ -12,14 +12,14 @@ const messages: Record<ApiErrorCode, { ja: string; en: string; status: number }>
     status: 401,
   },
   free_limit_reached: {
-    ja: "今日のセッションはここまでです。また明日、続きを聞かせてください。",
-    en: "That's all for today. Come back tomorrow and tell me the rest.",
+    ja: "今日の持ち時間は使い切りました。また明日、続きを聞かせてください。",
+    en: "You've used today's lesson time. Come back tomorrow and tell me the rest.",
     status: 402,
   },
   fair_use_limit_reached: {
     // Premiumの上限値は見せず、§6-3どおり先輩が学習を締める言い方にする。
-    ja: "今日はここまでにしよっか。詰め込みすぎても入らないから、また明日続きをやろう。",
-    en: "Let's stop here for today. Cramming more won't help it stick, so let's continue tomorrow.",
+    ja: "今日の持ち時間は使い切ったよ。また明日続きをやろう。",
+    en: "You've used today's lesson time. Let's continue tomorrow.",
     status: 429,
   },
   premium_required: {

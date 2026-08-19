@@ -4,14 +4,13 @@ import type { UserRecord } from "../repository/types.ts";
 /**
  * 授業枠の判定。**サーバ側で枠を確保する**(クライアント改竄対策)。
  *
- * Free    : 1日1セッション / Premiumと同じ最長20分 / 当日のカルテ閲覧まで
- * Premium : 通常の1日1〜2回には当たらない非表示のフェアユース上限 / 最長20分
- * βテスト : 期間中は全員がPremium相当。本数だけ `BETA_SESSIONS_PER_DAY` で緩める
+ * Free    : 1日1200秒 / Premiumと同じ最長20分 / 当日のカルテ閲覧まで
+ * Premium : 1日3600秒の非表示フェアユース上限 / 最長20分
+ * βテスト : 期間中は全員がPremium相当。持ち時間は `BETA_SECONDS_PER_DAY`
  *           ({@link isBetaOpenAccess})
  *
- * **数えるのは「先輩と話した回数」**で、写真を読んだ回数ではない
- * (枠を押さえるのは `POST /v1/sessions/{id}/start`)。撮って単元を確かめただけの
- * 人が、会話を1度もしないまま「今日はここまで」になるのを止めるための線引き。
+ * **数えるのは「先輩と話した合計時間」**。`POST /start` でその回の
+ * `max_seconds` を仮押さえし、`POST /complete` で実績秒数へ精算する。
  */
 
 export function isPremiumNow(user: UserRecord | null, now: Date): boolean {
@@ -53,7 +52,12 @@ export function hasPremiumAccess(input: {
 }
 
 export type SessionAllowance =
-  | { allowed: true; maxSeconds: number; lessonAllowedToday: boolean }
+  | {
+      allowed: true;
+      maxSeconds: number;
+      remainingSecondsToday: number;
+      lessonAllowedToday: boolean;
+    }
   | {
       allowed: false;
       lessonAllowedToday: false;
@@ -62,25 +66,35 @@ export type SessionAllowance =
     };
 
 type SessionLimitInput = {
-  user: UserRecord | null;
+  remainingSecondsToday: number;
   sessionsToday: number;
-  now: Date;
-  limits: Limits;
 };
 
-/** その日に始められる本数。無料とPremiumの分岐はここだけ。 */
-export function sessionsPerDay(input: {
+/** その日に使える会話時間。無料とPremiumの分岐はここだけ。 */
+export function secondsPerDay(input: {
   user: UserRecord | null;
   now: Date;
   limits: Limits;
 }): number {
   // β開放中は「使い放題」の体感を出すが、上限そのものは外さない。
   // LiveKit・STT・LLM・TTSの従量原価はテスターでも同じだけ動く。
-  if (isBetaOpenAccess(input)) return input.limits.betaSessionsPerDay;
+  if (isBetaOpenAccess(input)) return input.limits.betaSecondsPerDay;
   return isPremiumNow(input.user, input.now)
-    ? input.limits.premiumSessionsPerDay
-    : input.limits.freeSessionsPerDay;
+    ? input.limits.premiumSecondsPerDay
+    : input.limits.freeSecondsPerDay;
 }
+
+/**
+ * 授業開始に必要な最低の持ち時間。
+ * 3分未満では「教える → 教え返す → 締める」を成立させられない。
+ */
+export const minimumSessionSeconds = 180;
+
+/**
+ * 持ち時間とは別の異常利用ガード。
+ * 20回は3分単位で日次枠を切り分けても通常は届かず、開始連打だけを止められる。
+ */
+export const maxSessionStartsPerDay = 20;
 
 /**
  * 1回の授業に何度まで写真を読み直してよいか。
@@ -90,7 +104,6 @@ export function sessionsPerDay(input: {
  * 解析だけを延々と繰り返してVision LLMの原価を積む使い方はここで止まる。
  *
  * 環境変数にしていないのは、これがユーザーに見せる約束ではないから。
- * 見せる約束(1日に何回話せるか)は `FREE_SESSIONS_PER_DAY` 側にある。
  * なお読み取れなかった写真は行ごと消えるので、この数に入るのは
  * **解析が通ったぶんだけ**。
  */
@@ -102,12 +115,18 @@ export function analysesPerDay(input: {
   now: Date;
   limits: Limits;
 }): number {
-  return sessionsPerDay(input) * analysesPerSessionSlot;
+  // 従来の「20分の授業1本につき解析5回」と同じ幅を、日次秒数から導出する。
+  // 1回未満の持ち時間に上書きされても無料の解析5回は減らさない。
+  const sessionSlots = Math.max(1, Math.floor(secondsPerDay(input) / sessionMaxSeconds(input)));
+  return sessionSlots * analysesPerSessionSlot;
 }
 
-/** 上限の数値を返さず、いま授業を始められるかだけを共有する。 */
+/** 残高と非公開の開始回数ガードから、いま授業を始められるかを判定する。 */
 export function canStartSessionToday(input: SessionLimitInput): boolean {
-  return input.sessionsToday < sessionsPerDay(input);
+  return (
+    input.remainingSecondsToday >= minimumSessionSeconds &&
+    input.sessionsToday < maxSessionStartsPerDay
+  );
 }
 
 /** 1回の会話の長さ。**プランで品質は変えない**ので、分岐はこの1か所だけ。 */
@@ -134,8 +153,8 @@ export const tokenGraceSeconds = 120;
  * **最初の鍵がまだ生きているあいだだけ**。
  *
  * `started_at` があれば無条件に出し直せると、**部屋に入らないまま開いた
- * セッションを1本持っておく**道ができる。その1本は最初の日に数えられているので、
- * 翌日に鍵だけ出し直せば、今日の枠を減らさずに授業がもう1回増える
+ * セッションを1本持っておく**道ができる。その時間は最初の日に仮押さえされているので、
+ * 翌日に鍵だけ出し直せば、今日の残高を減らさずに授業時間が増える
  * (会話が成立しなければ `/complete` も来ないので、行は open のまま残り続ける)。
  *
  * 窓を最初のトークンの寿命に合わせると、再送で救えるのは
@@ -153,14 +172,14 @@ export function canReissueToken(input: {
   return elapsedMs <= (input.maxSeconds + tokenGraceSeconds) * 1000;
 }
 
-/** 枠を押さえたあとの応答。`sessionsToday` は押さえた分を含む当日の本数。 */
+/** 枠を押さえたあとの応答。残高は今回の仮押さえ後。 */
 export function startedAllowance(
-  input: SessionLimitInput,
+  input: SessionLimitInput & { maxSeconds: number },
 ): Extract<SessionAllowance, { allowed: true }> {
   return {
     allowed: true,
-    maxSeconds: sessionMaxSeconds(input),
-    // 旧判定のremaining > 1は、確保後の本数で「上限未満」を見ることと等価。
+    maxSeconds: input.maxSeconds,
+    remainingSecondsToday: input.remainingSecondsToday,
     lessonAllowedToday: canStartSessionToday(input),
   };
 }

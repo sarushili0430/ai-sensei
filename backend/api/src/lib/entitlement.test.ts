@@ -3,24 +3,25 @@ import type { UserRecord } from "../repository/types.ts";
 import {
   analysesPerDay,
   canReissueToken,
+  canStartSessionToday,
   hasPremiumAccess,
   isBetaOpenAccess,
   isPremiumNow,
   limitReachedAllowance,
+  secondsPerDay,
   secondsUntilLocalMidnight,
   sessionMaxSeconds,
-  sessionsPerDay,
   shouldShowPaywall,
   startedAllowance,
 } from "./entitlement.ts";
 
 const limits = {
-  freeSessionsPerDay: 1,
-  premiumSessionsPerDay: 3,
+  freeSecondsPerDay: 1200,
+  premiumSecondsPerDay: 3600,
   freeSessionMaxSeconds: 1200,
   premiumSessionMaxSeconds: 1200,
   betaOpenAccessUntil: null,
-  betaSessionsPerDay: 10,
+  betaSecondsPerDay: 12000,
 };
 const now = new Date("2026-08-03T13:24:07.000Z"); // 22:24 JST
 
@@ -93,8 +94,8 @@ describe("isBetaOpenAccess / hasPremiumAccess", () => {
 });
 
 describe("β開放中の使い放題", () => {
-  it("1日の本数が BETA_SESSIONS_PER_DAY まで開く", () => {
-    expect(sessionsPerDay({ user: user(), now, limits: betaLimits })).toBe(10);
+  it("1日の持ち時間が BETA_SECONDS_PER_DAY まで開く", () => {
+    expect(secondsPerDay({ user: user(), now, limits: betaLimits })).toBe(12000);
   });
 
   it("会話の長さはPremiumと同じ(質はプランで変えない)", () => {
@@ -108,44 +109,46 @@ describe("β開放中の使い放題", () => {
 
   it("使い放題でも上限は外さない(従量原価はテスターでも同じだけ動く)", () => {
     const allowance = startedAllowance({
-      user: user(),
+      maxSeconds: 1200,
+      remainingSecondsToday: 0,
       sessionsToday: 10,
-      now,
-      limits: betaLimits,
     });
     expect(allowance.lessonAllowedToday).toBe(false);
   });
 });
 
-describe("sessionsPerDay / startedAllowance / limitReachedAllowance", () => {
-  it("無料ユーザーの1回目は通る", () => {
-    const freeUser = user();
-    expect(sessionsPerDay({ user: freeUser, now, limits })).toBe(1);
-    const allowance = startedAllowance({ user: freeUser, sessionsToday: 1, now, limits });
-    expect(allowance).toEqual({ allowed: true, maxSeconds: 1200, lessonAllowedToday: false });
+describe("secondsPerDay / startedAllowance / limitReachedAllowance", () => {
+  it("無料と1200秒、Premiumは3600秒を1日の持ち時間にする", () => {
+    expect(secondsPerDay({ user: user(), now, limits })).toBe(1200);
+    expect(secondsPerDay({ user: user({ is_premium: true }), now, limits })).toBe(3600);
   });
 
-  it("無料枠を使い切るまでは、今日もう一度授業を受けられる", () => {
-    const twoLessonLimits = { ...limits, freeSessionsPerDay: 2 };
-    const first = startedAllowance({
-      user: user(),
-      sessionsToday: 1,
-      now,
-      limits: twoLessonLimits,
-    });
-    const second = startedAllowance({
-      user: user(),
-      sessionsToday: 2,
-      now,
-      limits: twoLessonLimits,
-    });
-
-    expect(first.lessonAllowedToday).toBe(true);
-    expect(second.lessonAllowedToday).toBe(false);
+  it("残高が3分未満なら始めず、境界の180秒なら始められる", () => {
+    expect(canStartSessionToday({ remainingSecondsToday: 179, sessionsToday: 0 })).toBe(false);
+    expect(canStartSessionToday({ remainingSecondsToday: 180, sessionsToday: 0 })).toBe(true);
   });
 
-  it("無料ユーザーの2回目は止める", () => {
-    expect(sessionsPerDay({ user: user(), now, limits })).toBe(1);
+  it("残高があっても1日20回の開始ガードで止める", () => {
+    expect(canStartSessionToday({ remainingSecondsToday: 1200, sessionsToday: 19 })).toBe(true);
+    expect(canStartSessionToday({ remainingSecondsToday: 1200, sessionsToday: 20 })).toBe(false);
+  });
+
+  it("仮押さえ後の残高が最低単位以上なら、今日もう一度始められる", () => {
+    expect(
+      startedAllowance({
+        maxSeconds: 600,
+        remainingSecondsToday: 600,
+        sessionsToday: 1,
+      }),
+    ).toEqual({
+      allowed: true,
+      maxSeconds: 600,
+      remainingSecondsToday: 600,
+      lessonAllowedToday: true,
+    });
+  });
+
+  it("無料ユーザーの持ち時間到達は課金導線側の理由を返す", () => {
     const allowance = limitReachedAllowance({ user: user(), now, limits });
     expect(allowance).toMatchObject({
       allowed: false,
@@ -160,23 +163,8 @@ describe("sessionsPerDay / startedAllowance / limitReachedAllowance", () => {
     expect(allowance.retryAfterSeconds).toBe(5753);
   });
 
-  it("Premiumは通常利用の1日1〜2回ではフェアユース上限に当たらない", () => {
+  it("Premiumの持ち時間到達はフェアユース扱いで翌日まで止める", () => {
     const premiumUser = user({ is_premium: true });
-    expect(sessionsPerDay({ user: premiumUser, now, limits })).toBe(3);
-    for (const sessionsBeforeReservation of [0, 1, 2]) {
-      const allowance = startedAllowance({
-        user: premiumUser,
-        sessionsToday: sessionsBeforeReservation + 1,
-        now,
-        limits,
-      });
-      expect(allowance.allowed).toBe(true);
-    }
-  });
-
-  it("Premiumは3回を使ったあとの4回目を翌日まで止める", () => {
-    const premiumUser = user({ is_premium: true });
-    expect(sessionsPerDay({ user: premiumUser, now, limits })).toBe(3);
     const allowance = limitReachedAllowance({ user: premiumUser, now, limits });
     expect(allowance).toEqual({
       allowed: false,
@@ -187,20 +175,13 @@ describe("sessionsPerDay / startedAllowance / limitReachedAllowance", () => {
   });
 
   it("無料とPremiumで1回の上限時間を変えない", () => {
-    const free = startedAllowance({ user: user(), sessionsToday: 1, now, limits });
-    const premium = startedAllowance({
-      user: user({ is_premium: true }),
-      sessionsToday: 1,
-      now,
-      limits,
-    });
-    expect(free.maxSeconds).toBe(1200);
-    expect(premium).toEqual({ allowed: true, maxSeconds: 1200, lessonAllowedToday: true });
+    expect(sessionMaxSeconds({ user: user(), now, limits })).toBe(1200);
+    expect(sessionMaxSeconds({ user: user({ is_premium: true }), now, limits })).toBe(1200);
   });
 });
 
 /**
- * 解析の上限は「見せない上限」。1日に話せる回数(見せる約束)とは別に持ち、
+ * 解析の上限は「見せない上限」。日次の持ち時間とは別に持ち、
  * **撮り直しでは絶対に当たらない**ことをここで固定する。
  */
 describe("analysesPerDay", () => {
@@ -209,13 +190,9 @@ describe("analysesPerDay", () => {
     expect(analysesPerDay({ user: user({ is_premium: true }), now, limits })).toBe(15);
   });
 
-  it("授業の回数より必ず緩い(解析の上限が先に当たると、数える位置を戻したのと同じ)", () => {
-    for (const premium of [false, true]) {
-      const someone = user({ is_premium: premium });
-      expect(analysesPerDay({ user: someone, now, limits })).toBeGreaterThan(
-        sessionsPerDay({ user: someone, now, limits }),
-      );
-    }
+  it("持ち時間が1回の上限未満に上書きされても、無料の解析5回は減らない", () => {
+    const short = { ...limits, freeSecondsPerDay: 600 };
+    expect(analysesPerDay({ user: user(), now, limits: short })).toBe(5);
   });
 });
 
@@ -223,8 +200,8 @@ describe("analysesPerDay", () => {
  * 押し直しでトークンを出し直せる窓。
  *
  * 無条件に出し直せると、**部屋に入らないまま開いたセッションが、期限のない
- * 鍵の引換券**になる(その1本は最初の日に数えられているので、翌日に押せば
- * 今日の枠を減らさずに授業が1回増える)。
+ * 鍵の引換券**になる(その時間は最初の日に仮押さえされているので、翌日に押せば
+ * 今日の残高を減らさずに授業時間が増える)。
  */
 describe("canReissueToken", () => {
   const startedAt = "2026-08-03T13:00:00.000Z";

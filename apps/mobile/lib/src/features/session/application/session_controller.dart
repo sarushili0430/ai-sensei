@@ -229,7 +229,11 @@ class SessionController extends _$SessionController {
     // ホームへ戻ったときに古い可否を見せないよう、その真偽値をそのまま引き継ぐ。
     ref
         .read(progressControllerProvider.notifier)
-        .applyLessonAllowance(session.limits.lessonAllowedToday);
+        .applySessionLimits(
+          maxSeconds: session.limits.maxSeconds,
+          remainingSecondsToday: session.limits.remainingSecondsToday,
+          lessonAllowedToday: session.limits.lessonAllowedToday,
+        );
 
     // 前の会話の結果を持ち越さない。持ち越したまま今回のカルテが作れないと、
     // 祝福もカルテ画面も**前回のカルテ**を「今日のカルテ」として出してしまう。
@@ -644,6 +648,11 @@ class SessionController extends _$SessionController {
 
       ref.read(latestKarteControllerProvider.notifier).set(result.karte);
       ref.read(progressControllerProvider.notifier).applyFromSession(result.progress);
+      ref.read(progressControllerProvider.notifier).applySessionLimits(
+            maxSeconds: result.limits.maxSeconds,
+            remainingSecondsToday: result.limits.remainingSecondsToday,
+            lessonAllowedToday: result.limits.lessonAllowedToday,
+          );
       // 復習キューはkeepAlive。前回のopen状態から候補を選ばないよう、
       // 次にカルテ/復習画面が読むときは完了後の状態を取り直させる。
       ref.invalidate(reviewControllerProvider);

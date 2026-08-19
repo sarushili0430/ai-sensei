@@ -8,6 +8,7 @@
   "is_premium": false,
   "limits": {
     "max_seconds": 300,
+    "remaining_seconds_today": 900,
     "lesson_allowed_today": true
   }
 }

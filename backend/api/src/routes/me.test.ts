@@ -55,11 +55,13 @@ function sessionRow(id: string, overrides: Partial<SessionRecord> = {}): Session
     duration_seconds: null,
     context: null,
     started_at: null,
+    max_seconds: null,
+    quota_settled_at: null,
     ...overrides,
   };
 }
 
-/** 会話まで進んだセッション。**数えられるのはこれだけ**(`started_at` が入っている)。 */
+/** 会話まで進んだセッション。**時間集計に入るのはこれだけ**(`started_at` が入っている)。 */
 async function startedSession(id: string, overrides: Partial<SessionRecord> = {}): Promise<void> {
   await services.repository.createSession({
     session: sessionRow(id, { started_at: "2026-08-03T13:00:00.000Z", ...overrides }),
@@ -120,13 +122,62 @@ describe("GET /v1/me/progress", () => {
       last_session_date: null,
     });
     expect(body.limits.lesson_allowed_today).toBe(true);
+    expect(body.limits.remaining_seconds_today).toBe(1200);
   });
 
-  it("無料ユーザーが今日の枠を使ったあとは授業不可を返す", async () => {
+  it("無料ユーザーが今日の1200秒を仮押さえしたあとは授業不可を返す", async () => {
     await startedSession("ses_today", { status: "open" });
 
     const body = (await (await get("/v1/me/progress")).json()) as ProgressResponse;
     expect(body.limits.lesson_allowed_today).toBe(false);
+  });
+
+  it("完了実績と進行中の仮押さえを両方引いて残り時間を返す", async () => {
+    await startedSession("ses_completed", {
+      status: "completed",
+      started_at: "2026-08-03T13:00:00.000Z",
+      max_seconds: 1200,
+      duration_seconds: 300,
+      completed_at: "2026-08-03T13:05:00.000Z",
+      quota_settled_at: "2026-08-03T13:05:00.000Z",
+    });
+    await startedSession("ses_active", {
+      started_at: "2026-08-03T13:20:00.000Z",
+      max_seconds: 600,
+    });
+
+    const body = (await (await get("/v1/me/progress")).json()) as ProgressResponse;
+    expect(body.limits.remaining_seconds_today).toBe(300);
+    expect(body.limits.lesson_allowed_today).toBe(true);
+  });
+
+  it("未完了のまま寿命を過ぎた回は、仮押さえ額を実績として自動精算する", async () => {
+    await startedSession("ses_expired", {
+      started_at: "2026-08-03T13:00:00.000Z",
+      max_seconds: 600,
+    });
+
+    const body = (await (await get("/v1/me/progress")).json()) as ProgressResponse;
+    expect(body.limits.remaining_seconds_today).toBe(600);
+    expect(await services.repository.getSession("ses_expired")).toMatchObject({
+      duration_seconds: 600,
+      quota_settled_at: "2026-08-03T13:24:07.000Z",
+    });
+  });
+
+  it("JSTの前日に使った時間は、今日の残高から引かない", async () => {
+    await startedSession("ses_yesterday", {
+      local_date: "2026-08-02",
+      status: "completed",
+      max_seconds: 1200,
+      duration_seconds: 1200,
+      completed_at: "2026-08-02T13:20:00.000Z",
+      quota_settled_at: "2026-08-02T13:20:00.000Z",
+    });
+
+    const body = (await (await get("/v1/me/progress")).json()) as ProgressResponse;
+    expect(body.limits.remaining_seconds_today).toBe(1200);
+    expect(body.limits.lesson_allowed_today).toBe(true);
   });
 
   /**
@@ -151,7 +202,7 @@ describe("GET /v1/me/progress", () => {
     expect(body.limits.max_seconds).toBe(1200);
   });
 
-  it("Premiumも3回を使ったあとは今日の授業不可だけを返す", async () => {
+  it("Premiumも3600秒を使ったあとは今日の授業不可だけを返す", async () => {
     await makePremium();
     for (let count = 0; count < 3; count += 1) {
       await startedSession(`ses_premium_${count}`, {
@@ -163,7 +214,11 @@ describe("GET /v1/me/progress", () => {
 
     const body = (await (await get("/v1/me/progress")).json()) as ProgressResponse;
     expect(body.is_premium).toBe(true);
-    expect(body.limits).toEqual({ max_seconds: 1200, lesson_allowed_today: false });
+    expect(body.limits).toEqual({
+      max_seconds: 1200,
+      remaining_seconds_today: 0,
+      lesson_allowed_today: false,
+    });
   });
 
   it("デバイスIDがなければ401", async () => {
@@ -181,7 +236,7 @@ describe("GET /v1/me/progress", () => {
 describe("クローズドβの開放中", () => {
   const betaBindings = testBindings({
     BETA_OPEN_ACCESS_UNTIL: "2026-09-30T15:00:00.000Z",
-    BETA_SESSIONS_PER_DAY: "10",
+    BETA_SECONDS_PER_DAY: "12000",
   });
   const getAsBetaTester = (path: string) =>
     app.request(path, { headers: { "x-device-id": testDeviceId } }, betaBindings);
@@ -189,17 +244,21 @@ describe("クローズドβの開放中", () => {
   it("課金していない人にも is_premium: true を返す(アプリの課金導線が出ない)", async () => {
     const body = (await (await getAsBetaTester("/v1/me/progress")).json()) as ProgressResponse;
     expect(body.is_premium).toBe(true);
-    expect(body.limits).toEqual({ max_seconds: 1200, lesson_allowed_today: true });
+    expect(body.limits).toEqual({
+      max_seconds: 1200,
+      remaining_seconds_today: 12000,
+      lesson_allowed_today: true,
+    });
   });
 
-  it("無料枠の1本を使っても、今日はまだ授業を受けられる", async () => {
+  it("通常の1200秒を仮押さえしても、βの持ち時間はまだ残る", async () => {
     await startedSession("ses_today", { status: "open" });
 
     const body = (await (await getAsBetaTester("/v1/me/progress")).json()) as ProgressResponse;
     expect(body.limits.lesson_allowed_today).toBe(true);
   });
 
-  it("使い放題でも上限は外さない(10本使ったら今日はおしまい)", async () => {
+  it("使い放題でも上限は外さない(12000秒使ったら今日はおしまい)", async () => {
     for (let count = 0; count < 10; count += 1) {
       await startedSession(`ses_beta_${count}`, {
         status: "completed",

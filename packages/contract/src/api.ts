@@ -265,8 +265,13 @@ export const sessionLimitsSchema = z
     /** サーバが強制する上限。無料・Premiumとも、15〜20分の授業を完走できる最長20分。 */
     max_seconds: z.number().int().positive(),
     /**
+     * 完了実績と進行中の仮押さえを引いた、今日の残り秒数。
+     * ホームの分表示の正本で、クライアントがこの値から開始可否を再判定しない。
+     */
+    remaining_seconds_today: z.number().int().min(0),
+    /**
      * この応答時点から、今日さらに授業を始められるか。
-     * §6-3「UIに数字は一切出さない」を契約の形で守るため、残数ではなく可否だけを返す。
+     * 3分の最低単位と非公開の開始回数ガードもサーバが加味した結果。
      */
     lesson_allowed_today: z.boolean(),
   })
@@ -275,13 +280,13 @@ export const sessionLimitsSchema = z
 /**
  * POST /v1/sessions のレスポンス。**写真を読んだ結果だけで、部屋の鍵は入っていない。**
  *
- * ここに `livekit` と `limits` が無いのは仕様。**1日の回数を数えるのは
- * 「写真を読んだとき」ではなく「会話が始まったとき」**にしたので
- * (`startSessionResponseSchema`)、解析の応答は枠の判定を通らない。
+ * ここに `livekit` と `limits` が無いのは仕様。**日次の持ち時間を押さえるのは
+ * 「写真を読んだとき」ではなく「会話が始まったとき」**なので
+ * (`startSessionResponseSchema`)、解析の応答は時間枠の判定を通らない。
  *
  * トークンを解析の時点で配ると、その分け方は成立しない。**トークンを持っている =
  * いつでも会話を始められる**ので、鍵を先に渡してから「会話の開始で数える」と言っても、
- * 数える口をクライアント側に置いたのと同じことになる。だから枠の確保とトークンの発行を
+ * 確保の判断をクライアント側に置いたのと同じことになる。だから時間の確保とトークンの発行を
  * `POST /v1/sessions/{id}/start` の1操作に束ね、この応答は**単元と問題文の読み合わせ**
  * だけを返す。
  */
@@ -326,21 +331,21 @@ export type StartSessionRequest = z.infer<typeof startSessionRequestSchema>;
 export type StartSessionRequestInput = z.input<typeof startSessionRequestSchema>;
 
 /**
- * POST /v1/sessions/{id}/start のレスポンス。**ここが「1回」を数える唯一の場所。**
+ * POST /v1/sessions/{id}/start のレスポンス。**ここが会話時間を仮押さえする唯一の場所。**
  *
  * 以前は写真を読んだ時点(`POST /v1/sessions`)で今日の枠を押さえていた。
  * 原価(Vision LLM)が発生するのがそこだったからだが、そのぶん
  * **撮って単元を確かめただけの人が、会話を1度もしないまま「今日はここまで」**に
- * なっていた。生徒から見れば1回とは「先輩と話した回数」なので、数える場所を
- * ここへ移してある。
+ * なっていた。生徒から見れば使った時間は「先輩と実際に話した時間」なので、
+ * 仮押さえする場所をここへ移してある。
  *
- * 枠の確保とトークンの発行は**サーバ側の同じ1操作**で、順番も入れ替えられない。
- * 枠を取れなければトークンは出ないし、トークンが出たなら枠は取れている。
+ * 残高の確認と `max_seconds` の確保は**サーバ側の同じ1操作**。
+ * 確保できなければトークンは出ず、トークンが出たならその時間は仮押さえ済み。
  * (解析だけを繰り返して原価を積む道は、`POST /v1/sessions` 側の別の上限で塞ぐ。
- * そちらは1日の授業回数よりずっと緩い、異常利用だけを止める上限。)
+ * そちらは想定する授業本数よりずっと緩い、異常利用だけを止める上限。)
  *
- * **再送しても二重に数えない。** 同じセッションで2度目を呼ぶと、最初に押さえた
- * 枠のままトークンだけ出し直す(通信が切れて押し直したときのため)。
+ * **再送しても二重に確保しない。** 同じセッションで2度目を呼ぶと、最初の
+ * `max_seconds` のままトークンだけ出し直す(通信が切れて押し直したときのため)。
  */
 export const startSessionResponseSchema = z
   .object({
@@ -566,6 +571,8 @@ export const completeSessionResponseSchema = z
     karte: karteSchema,
     review_schedule: z.array(reviewScheduleEntrySchema),
     progress: progressSchema,
+    /** 実績秒数で精算した直後の、ホーム用の日次残高。 */
+    limits: sessionLimitsSchema,
     /** 初回カルテ直後にペイウォールを出すかどうか(出す位置はサーバが決める)。 */
     show_paywall: z.boolean(),
   })

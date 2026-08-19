@@ -544,7 +544,11 @@ const SessionStart _sampleSessionStart = SessionStart(
   kind: 'realtime',
   livekit:
       LiveKitConnection(url: 'wss://example', token: 'token', room: 'room'),
-  limits: SessionLimits(maxSeconds: 300, lessonAllowedToday: true),
+  limits: SessionLimits(
+    maxSeconds: 300,
+    remainingSecondsToday: 900,
+    lessonAllowedToday: true,
+  ),
 );
 
 /// 撮影から渡される解析の結果(単元と問題文)。会話の開始とは別の値。

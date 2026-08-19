@@ -45,12 +45,17 @@
               "type": "integer",
               "exclusiveMinimum": 0
             },
+            "remaining_seconds_today": {
+              "type": "integer",
+              "minimum": 0
+            },
             "lesson_allowed_today": {
               "type": "boolean"
             }
           },
           "required": [
             "max_seconds",
+            "remaining_seconds_today",
             "lesson_allowed_today"
           ],
           "additionalProperties": false

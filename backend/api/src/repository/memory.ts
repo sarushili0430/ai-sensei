@@ -1,5 +1,6 @@
 import type { StudyPlan } from "@ai-sensei/contract";
 import type {
+  DailySessionUsage,
   HoleRecord,
   KarteRecord,
   PlanSessionRecord,
@@ -10,6 +11,7 @@ import type {
   SessionStartResult,
   UserRecord,
 } from "./types.ts";
+import { legacySessionMaxSeconds } from "./types.ts";
 
 /**
  * テストと `wrangler dev --local` の代替用。
@@ -58,8 +60,53 @@ export class MemoryRepository implements Repository {
     });
   }
 
-  async countStartedSessionsOnDate(deviceId: string, localDate: string): Promise<number> {
-    return this.startedOnDate(deviceId, localDate).length;
+  async getDailySessionUsage(deviceId: string, localDate: string): Promise<DailySessionUsage> {
+    return this.dailySessionUsage(deviceId, localDate);
+  }
+
+  private dailySessionUsage(deviceId: string, localDate: string): DailySessionUsage {
+    const sessions = this.startedOnDate(deviceId, localDate);
+    return {
+      consumedSeconds: sessions.reduce(
+        (total, session) =>
+          total + (session.duration_seconds ?? session.max_seconds ?? legacySessionMaxSeconds),
+        0,
+      ),
+      sessionsStarted: sessions.length,
+    };
+  }
+
+  async settleExpiredSessions(input: {
+    deviceId: string;
+    now: string;
+    graceSeconds: number;
+  }): Promise<number> {
+    // D1と同じく時間だけを精算し、カルテの無い離脱をstreakには数えない。
+    const nowMs = new Date(input.now).getTime();
+    let settled = 0;
+    for (const session of this.sessions.values()) {
+      if (
+        session.device_id !== input.deviceId ||
+        session.started_at === null ||
+        session.quota_settled_at !== null
+      ) {
+        continue;
+      }
+
+      const startedMs = new Date(session.started_at).getTime();
+      const maxSeconds = session.max_seconds ?? legacySessionMaxSeconds;
+      const expired =
+        Number.isNaN(startedMs) || startedMs + (maxSeconds + input.graceSeconds) * 1000 < nowMs;
+      if (session.duration_seconds === null && !expired) continue;
+
+      this.sessions.set(session.id, {
+        ...session,
+        duration_seconds: session.duration_seconds ?? maxSeconds,
+        quota_settled_at: session.completed_at ?? input.now,
+      });
+      settled += 1;
+    }
+    return settled;
   }
 
   async createSession(input: {
@@ -86,22 +133,37 @@ export class MemoryRepository implements Repository {
     deviceId: string;
     startedAt: string;
     localDate: string;
-    maxPerDay: number;
+    secondsPerDay: number;
+    sessionMaxSeconds: number;
+    minimumSessionSeconds: number;
+    maxStartsPerDay: number;
   }): Promise<SessionStartResult> {
     const session = this.sessions.get(input.sessionId);
     if (!session || session.device_id !== input.deviceId) return { started: false };
 
     // 再送は数え直さない。最初に押さえた枠のまま、その日の本数だけを返す。
     if (session.started_at !== null) {
+      const usage = this.dailySessionUsage(input.deviceId, input.localDate);
       return {
         started: true,
         alreadyStarted: true,
-        sessionsToday: this.startedOnDate(session.device_id, session.local_date).length,
+        sessionsToday: usage.sessionsStarted,
+        maxSeconds: session.max_seconds ?? legacySessionMaxSeconds,
+        remainingSecondsToday: Math.max(0, input.secondsPerDay - usage.consumedSeconds),
       };
     }
 
-    const startedToday = this.startedOnDate(input.deviceId, input.localDate).length;
-    if (startedToday >= input.maxPerDay) return { started: false };
+    // D1の条件付きUPDATEと同じく、確認から書き込みまでawaitを挟まない。
+    // ここでyieldすると、同時開始が全員同じ古い残高を見られる。
+    const usage = this.dailySessionUsage(input.deviceId, input.localDate);
+    const remainingSeconds = Math.max(0, input.secondsPerDay - usage.consumedSeconds);
+    if (
+      remainingSeconds < input.minimumSessionSeconds ||
+      usage.sessionsStarted >= input.maxStartsPerDay
+    ) {
+      return { started: false };
+    }
+    const maxSeconds = Math.min(input.sessionMaxSeconds, remainingSeconds);
 
     /** D1と同じく、確認から書き込みまでawaitを挟まない(挟むと同時実行が両方通る)。 */
     this.sessions.set(session.id, {
@@ -110,8 +172,16 @@ export class MemoryRepository implements Repository {
       // 数える日は「会話が始まった日」。解析だけして日付をまたいだ回を、
       // 撮った日のほうへ数えないため(D1側の UPDATE と同じ)。
       local_date: input.localDate,
+      max_seconds: maxSeconds,
+      quota_settled_at: null,
     });
-    return { started: true, alreadyStarted: false, sessionsToday: startedToday + 1 };
+    return {
+      started: true,
+      alreadyStarted: false,
+      sessionsToday: usage.sessionsStarted + 1,
+      maxSeconds,
+      remainingSecondsToday: remainingSeconds - maxSeconds,
+    };
   }
 
   private startedOnDate(deviceId: string, localDate: string): SessionRecord[] {
@@ -159,6 +229,7 @@ export class MemoryRepository implements Repository {
       status: "completed",
       completed_at: input.completedAt,
       duration_seconds: input.durationSeconds,
+      quota_settled_at: input.completedAt,
     });
   }
 

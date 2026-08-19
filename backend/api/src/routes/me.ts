@@ -22,7 +22,13 @@ import {
 import { Hono } from "hono";
 import type { AppEnv } from "../env.ts";
 import { readLimits } from "../env.ts";
-import { canStartSessionToday, hasPremiumAccess } from "../lib/entitlement.ts";
+import {
+  canStartSessionToday,
+  hasPremiumAccess,
+  secondsPerDay,
+  sessionMaxSeconds,
+  tokenGraceSeconds,
+} from "../lib/entitlement.ts";
 import { apiError } from "../lib/errors.ts";
 import type { HoleRecord } from "../repository/types.ts";
 
@@ -39,20 +45,32 @@ meRoute.get("/progress", async (c) => {
   const premium = hasPremiumAccess({ user, now: at, limits });
   const localDate = toLocalDate(at);
 
-  const [sessionDates, holes, sessionsToday] = await Promise.all([
+  // /complete が来ない回も、トークンの寿命を過ぎたら仮押さえ額で精算する。
+  await repository.settleExpiredSessions({
+    deviceId,
+    now: at.toISOString(),
+    graceSeconds: tokenGraceSeconds,
+  });
+  const [sessionDates, holes, usage] = await Promise.all([
     repository.sessionDates(deviceId),
     repository.listHoles(deviceId),
-    // 数えるのは**会話が始まった**セッションだけ。撮って単元を確かめただけの
-    // セッションでホームの導線を閉じない。
-    repository.countStartedSessionsOnDate(deviceId, localDate),
+    repository.getDailySessionUsage(deviceId, localDate),
   ]);
+  const remainingSecondsToday = Math.max(
+    0,
+    secondsPerDay({ user, now: at, limits }) - usage.consumedSeconds,
+  );
 
   const response: ProgressResponse = {
     progress: computeProgress(sessionDates, holes, localDate),
     is_premium: premium,
     limits: {
-      max_seconds: premium ? limits.premiumSessionMaxSeconds : limits.freeSessionMaxSeconds,
-      lesson_allowed_today: canStartSessionToday({ user, sessionsToday, now: at, limits }),
+      max_seconds: sessionMaxSeconds({ user, now: at, limits }),
+      remaining_seconds_today: remainingSecondsToday,
+      lesson_allowed_today: canStartSessionToday({
+        remainingSecondsToday,
+        sessionsToday: usage.sessionsStarted,
+      }),
     },
   };
   return c.json(response);

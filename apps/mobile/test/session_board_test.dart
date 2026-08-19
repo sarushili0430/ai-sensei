@@ -650,7 +650,11 @@ class FakeCaptureController extends CaptureController {
       sessionId: 'ses_1',
       kind: 'new',
       livekit: LiveKitConnection(url: 'wss://example', token: 't', room: 'ses_1'),
-      limits: SessionLimits(maxSeconds: 1200, lessonAllowedToday: true),
+      limits: SessionLimits(
+        maxSeconds: 1200,
+        remainingSecondsToday: 1200,
+        lessonAllowedToday: true,
+      ),
     ),
   );
 }
