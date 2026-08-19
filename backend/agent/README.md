@@ -4,8 +4,8 @@
 
 ```
 フェーズ1「授業」   板書LLM(Claude) → 手順単位で LiveKit Text Streams → 直後にTTS
-フェーズ2「教え返し」 VAD(Silero) → STT(Deepgram) → Claude(先輩ペルソナ)
-                     → TTS(Deepgram Aura-2)。割り込みと相づちはフレームワーク側。
+フェーズ2「教え返し」 VAD(Silero) → STT(Deepgram nova-3) → Claude(先輩ペルソナ)
+                     → TTS(Gemini TTS)。割り込みと相づちはフレームワーク側。
 ```
 
 **WebRTCは書かない。** ここで書くのは3つだけ:
@@ -99,20 +99,22 @@ LLMに無理やり穴を作らせない。空のカルテは失敗ではない�
 
 ## ロケール
 
-`locale` はAPIが受け付ける値なので、STT・TTS・最初の挨拶をそれに合わせる。
-日本語モデルのまま英語を流すと認識が崩れて会話にならない。
+`locale` はAPIが受け付ける値なので、STT・読み方の指示・最初の挨拶をそれに合わせる。
+日本語のSTTモデルのまま英語を流すと認識が崩れて会話にならない。
+**声だけはロケールで変えない**([ADR 0008](../../docs/adr.md#adr-0008))。
 
 **プロンプトも言語ごとに別本**を使う(`prompts/<id>.<locale>.md`)。
 日本語の本文に「英語で答える」を足す作りはやめた
 ([ADR 0005](../../docs/adr.md#adr-0005))。ペルソナも禁止事項も
 few-shot も、その言語で書かれたものをそのまま渡す。
 
-言語で変わるのはこの4つ。ひとつでも取り違えると、英語で話しながら日本語の
+言語で変わるのはこの5つ。ひとつでも取り違えると、英語で話しながら日本語の
 基準でガードレールを引くことになる。
 
 | | 切り替えるもの |
 | --- | --- |
-| STT / TTS | `deepgram` のモデル(`DEEPGRAM_TTS_MODEL_JA` / `_EN`) |
+| STT | `deepgram.STT` の `language` |
+| TTS | 読み方の指示と文分割器だけ。**声は日英で同じ1つ**([ADR 0008](../../docs/adr.md#adr-0008)) |
 | プロンプト | `conversationSystemPrompt(vars, locale)` / `boardLessonSystemPrompt(vars, locale)` / `karteSystemPrompt(vars, locale)` |
 | transcriptの整形 | ロール名(`先輩:` / `Senpai:`) |
 | 定型の一言 | `senpai.ts`(教え返しへの受け渡し・復習の入り)。冒頭の無音埋めだけはモバイルの同梱アセット |
@@ -120,6 +122,25 @@ few-shot も、その言語で書かれたものをそのまま渡す。
 
 許可トピックは `locale` を見ずに済む。topic_id の接頭辞がロケールごとに
 分かれているので、APIが渡した許可リストがそのまま課程を決める。
+
+## 声(TTS)
+
+聞く側と喋る側でベンダーが分かれている([ADR 0008](../../docs/adr.md#adr-0008))。
+組み立ては `voice-session.ts` の `createSenpaiTts()` 1箇所。
+
+| | |
+| --- | --- |
+| モデル | 既定 `gemini-2.5-flash-tts`(GA)。`GEMINI_TTS_MODEL` で `gemini-3.1-flash-tts-preview` へ |
+| 声 | `Leda` 固定。**日英で同じ1つ**(Geminiのボイスは言語を選ばない) |
+| 正 | `senpai-voice.ts`。冒頭の同梱音声を焼くスクリプトも同じ定数を読む |
+
+**Gemini TTS はストリーミングを持たない。**`tts.StreamAdapter` で包んで文分割器を
+渡している。包み忘れるとSDKが既定の分割器を当て、日本語が「。」で切れなくなって
+生成が終わるまで1文も喋らない。**分割された1文がそのまま1リクエスト**なので、
+最初の音までの待ちは `sentence-tokenizer.ja.ts` の切り方でほぼ決まる。
+
+数式の読み替え(`toSpeakableJa`)は**残してある**。Geminiは記号を読めるが、
+「1/2 → にぶんのいち」のような日本語の数学の読み順まではモデルの気分に任せない。
 
 ## ログと監視
 

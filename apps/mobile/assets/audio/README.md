@@ -16,22 +16,25 @@
 文字(吹き出し)はすべての cue で残るため、消音モード・アプリ側の音声無効化・ファイル
 欠落でも情報は失われません。
 
-## Deepgram の実音声へ差し替える
+## Gemini TTS の実音声へ差し替える
 
-`backend/agent` と同じ API キー・声モデルを設定し、リポジトリルートで実行します。
+`backend/agent` と同じ API キー・声を設定し、リポジトリルートで実行します。
 
 ```bash
 node --experimental-strip-types --env-file=backend/agent/.env \
   scripts/generate-prerendered-audio.ts
 ```
 
-`.env` を使わない場合は `DEEPGRAM_API_KEY` を環境変数で渡してください。モデルの既定値も
-agent と同じです。
+`.env` を使わない場合は `GOOGLE_API_KEY` を環境変数で渡してください。モデルと声の
+既定値は agent と同じ定数(`backend/agent/src/senpai-voice.ts`)を読んでいます。
 
-- ja: `DEEPGRAM_TTS_MODEL_JA`、未指定なら `aura-2-izanami-ja`
-- en: `DEEPGRAM_TTS_MODEL_EN`、未指定なら `aura-2-andromeda-en`
+- モデル: `GEMINI_TTS_MODEL`、未指定なら `gemini-2.5-flash-tts`
+- 声: `GEMINI_TTS_VOICE`、未指定なら `Leda`。**日英で同じ1つ**([ADR 0008](../../../../docs/adr.md#adr-0008))
 
-スクリプトは Deepgram `/v1/speak` から AAC を受け、インストール済みの `ffmpeg` で m4a に
+**会話中と同じ読み方の指示まで含めて同じ形で投げます。**ここがずれると、冒頭の一言だけ
+別人が喋ってから先輩の声にバトンタッチする、といういちばん気づきにくい壊れ方をします。
+
+スクリプトは Gemini から生PCMを受け、インストール済みの `ffmpeg` で AAC へ焼いて m4a に
 包み、完成したファイルだけを原子的に同名へ差し替えます。送るのは上表の固定文だけで、
 ユーザーの問題・板書・発話は読みません。生成対象を API 呼び出しなしで確認するには:
 

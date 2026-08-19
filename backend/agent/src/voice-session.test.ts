@@ -1,5 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { jaSpeakable, ttsTextTransformsForLocale } from "./voice-session.ts";
+import { type AgentConfig, loadConfig } from "./config.ts";
+import { ttsInstructionsForLocale } from "./senpai-voice.ts";
+import {
+  createGeminiTts,
+  createSenpaiTts,
+  jaSpeakable,
+  sentenceTokenizerForLocale,
+  ttsTextTransformsForLocale,
+} from "./voice-session.ts";
+
+/** 既定値まで通した設定。モデル名を直書きすると config.ts とずれても気づけない。 */
+function testConfig(overrides: Record<string, string> = {}): AgentConfig {
+  return loadConfig({
+    API_BASE_URL: "http://localhost:8787",
+    INTERNAL_API_TOKEN: "token",
+    LIVEKIT_URL: "wss://example.livekit.cloud",
+    LIVEKIT_API_KEY: "key",
+    LIVEKIT_API_SECRET: "secret",
+    ANTHROPIC_API_KEY: "key",
+    DEEPGRAM_API_KEY: "key",
+    GOOGLE_API_KEY: "key",
+    ...overrides,
+  });
+}
 
 function textStream(chunks: readonly string[]): ReadableStream<string> {
   return new ReadableStream<string>({
@@ -33,5 +56,68 @@ describe("ttsTextTransformsForLocale", () => {
 
   it("英語ロケールには日本語の読み替えを渡さない", () => {
     expect(ttsTextTransformsForLocale("en")).toEqual(["filter_markdown", "filter_emoji"]);
+  });
+});
+
+describe("createGeminiTts", () => {
+  it("既定は 2.5 で、環境変数1つで 3.1 に替わる", () => {
+    expect(createGeminiTts(testConfig(), "ja").opts.model).toBe("gemini-2.5-flash-tts");
+
+    const next = testConfig({ GEMINI_TTS_MODEL: "gemini-3.1-flash-tts-preview" });
+    expect(createGeminiTts(next, "ja").opts.model).toBe("gemini-3.1-flash-tts-preview");
+  });
+
+  // Deepgramは言語がモデル名に埋まっていて日英で別ボイスだった。Geminiは1つの声が
+  // 両方を喋るので、ロケールで先輩が別人にならない(ADR 0008)。
+  it("先輩の声はロケールで変わらない", () => {
+    const config = testConfig();
+    expect(createGeminiTts(config, "ja").opts.voiceName).toBe("Leda");
+    expect(createGeminiTts(config, "en").opts.voiceName).toBe(
+      createGeminiTts(config, "ja").opts.voiceName,
+    );
+  });
+});
+
+describe("ttsInstructionsForLocale", () => {
+  // 読ませているのは授業の本文で、生成モデルは問いかけに答えてしまえる。
+  // 板書と声がずれた瞬間に授業が成立しないので、どのロケールでも必ず釘を刺す。
+  it("省略・追加・翻訳・返答をどのロケールでも禁じる", () => {
+    for (const locale of ["ja", "en"] as const) {
+      expect(ttsInstructionsForLocale(locale)).toContain(
+        "Do not omit, add, translate, or answer anything",
+      );
+    }
+  });
+
+  it("日本語のときだけ、混ざった英単語の読み方を指示する", () => {
+    expect(ttsInstructionsForLocale("ja")).toContain("English words");
+    expect(ttsInstructionsForLocale("en")).not.toContain("English words");
+  });
+});
+
+describe("sentenceTokenizerForLocale", () => {
+  it("日本語は句点で切る(SDK既定は半角の文末記号しか見ない)", () => {
+    expect(sentenceTokenizerForLocale("ja").tokenize("ここを見て。プラスだよね。")).toEqual([
+      "ここを見て。",
+      "プラスだよね。",
+    ]);
+  });
+
+  it("英語は既定の英語向け規則のまま", () => {
+    expect(
+      sentenceTokenizerForLocale("en").tokenize(
+        "Look at the discriminant here. It is positive, so what does that tell us?",
+      ),
+    ).toEqual(["Look at the discriminant here.", "It is positive, so what does that tell us?"]);
+  });
+});
+
+describe("createSenpaiTts", () => {
+  // Gemini TTS は `stream()` が例外を投げる非ストリーミング実装。包まずに渡すと
+  // SDKが既定のBasicSentenceTokenizerで勝手に包み、日本語が句点で切れなくなる。
+  it("StreamAdapterで包んでからセッションへ渡す", () => {
+    const tts = createSenpaiTts(testConfig(), "ja");
+    expect(tts.capabilities.streaming).toBe(true);
+    expect(tts.label).toContain("StreamAdapter");
   });
 });

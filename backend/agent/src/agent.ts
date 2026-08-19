@@ -677,7 +677,7 @@ async function teachWithBoard(options: TeachOptions): Promise<TaughtLesson> {
   const taught: TaughtLesson = { board, turns: [], runLesson };
 
   // 冒頭の一言はモバイルが同梱アセットから鳴らす(§3-2)。ここでも同じ文を
-  // `session.say()` すると、固定文に毎回 Deepgram の従量原価が戻るだけでなく、
+  // `session.say()` すると、固定文に毎回 TTS の従量原価が戻るだけでなく、
   // ローカル音声と重なって「先輩が2人いる」ように聞こえる。agent はすぐ板書生成へ
   // 入り、最初の手順または発話が届いた時点でモバイル側がアセットを止める。
 
