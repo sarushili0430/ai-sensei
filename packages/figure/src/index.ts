@@ -13,6 +13,30 @@ export { compile, compile2, solve } from "./solve.js";
 export type { Draw, Item, Pt, Solved } from "./solve.js";
 export { render } from "./render.js";
 export {
+  createFigureLayout,
+  figureHorizontalMargin,
+  figureVerticalMargin,
+  figureViewBoxHeight,
+  figureViewBoxWidth,
+} from "./layout.js";
+export type { FigureBounds, FigureClip, FigureLayout } from "./layout.js";
+export {
+  applyFigureLabelLayout,
+  figureLabelGapPx,
+  figureMaxOverflowPx,
+  figureMinEdgeAngleDeg,
+  figureMinPointDistancePx,
+  figureRelationsPreserved,
+  lintFigure,
+  repairFigure,
+} from "./quality.js";
+export type {
+  FigureQualityInvariant,
+  FigureQualityIssue,
+  FigureQualityReport,
+  FigureRepairResult,
+} from "./quality.js";
+export {
   figureCoordinateLimit,
   figureExpressionMaxLength,
   figureItemsMaxCount,
@@ -22,14 +46,28 @@ export {
 } from "./schema.ts";
 export type { FigureItems } from "./schema.ts";
 
+import type { FigureQualityReport } from "./quality.js";
+import { repairFigure } from "./quality.js";
 import { render } from "./render.js";
-import { parseFigure } from "./schema.ts";
-import { solve } from "./solve.js";
+import { type FigureItems, parseFigure } from "./schema.ts";
 
 /** {@link drawFigure} の結果。**描けたか、描けなかったかを型で分ける。** */
 export type FigureResult =
-  | { ok: true; svg: string; points: Record<string, { x: number; y: number }> }
-  | { ok: false; errors: string[] };
+  | {
+      ok: true;
+      svg: string;
+      points: Record<string, { x: number; y: number }>;
+      items: FigureItems;
+      quality: FigureQualityReport;
+      repaired: boolean;
+      changes: string[];
+    }
+  | {
+      ok: false;
+      errors: string[];
+      stage: "parse" | "solve" | "quality";
+      quality?: FigureQualityReport;
+    };
 
 /**
  * 検査 → 解く → 描く、をひとまとめにしたもの。
@@ -41,11 +79,31 @@ export type FigureResult =
  */
 export function drawFigure(input: unknown): FigureResult {
   const parsed = parseFigure(input);
-  if (!parsed.ok) return { ok: false, errors: parsed.errors };
+  if (!parsed.ok) return { ok: false, errors: parsed.errors, stage: "parse" };
   try {
-    const solved = solve(parsed.items);
-    return { ok: true, svg: render(solved), points: solved.pts };
+    const repaired = repairFigure(parsed.items);
+    if (!repaired.ok) {
+      return {
+        ok: false,
+        errors: repaired.quality.issues.map((issue) => issue.message),
+        stage: "quality",
+        quality: repaired.quality,
+      };
+    }
+    return {
+      ok: true,
+      svg: render(repaired.solved),
+      points: repaired.solved.pts,
+      items: repaired.items,
+      quality: repaired.quality,
+      repaired: repaired.repaired,
+      changes: repaired.changes,
+    };
   } catch (error) {
-    return { ok: false, errors: [error instanceof Error ? error.message : String(error)] };
+    return {
+      ok: false,
+      errors: [error instanceof Error ? error.message : String(error)],
+      stage: "solve",
+    };
   }
 }

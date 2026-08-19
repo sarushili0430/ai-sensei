@@ -3,6 +3,14 @@
 // これは同時に、D-19/D-20 で勧めた「サーバで解いて SVG を送る」経路の実物。
 // Flutter 側は SVG を描くだけになるので、語彙が増えても端末側は1行も増えない。
 
+import {
+  figureViewBoxHeight as H,
+  figureViewBoxWidth as W,
+  createFigureLayout,
+  isInsideFigureClip,
+} from "./layout.js";
+import { applyFigureLabelLayout } from "./quality.js";
+
 const BOARD = "#2f3a35";
 const CHALK = "#edeae0";
 const DIM = "#a8ada4";
@@ -15,9 +23,6 @@ const ROLE = {
 const role = (as) => ROLE[as] || { c: CHALK, w: 1.8 };
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const f = (v) => (Math.abs(v) < 1e-9 ? 0 : Math.round(v * 100) / 100);
-
-const W = 320;
-const H = 224;
 
 /**
  * 図の文字に使う書体。
@@ -91,114 +96,13 @@ const line = (x1, y1, x2, y2, o = {}) => {
 };
 
 // ---- 幾何(座標を持つもの)は、まとめて枠に収める ----
-function geometric(draws) {
-  const xs = [];
-  const ys = [];
-  // **軸が宣言されていれば、それを枠の正とする。**
-  // y=1/(x-2) のように極を持つ曲線は min/max が発散し、
-  // 素直に全点を囲むと図が1本の線に潰れる(実際そうなった)。
-  const ax = draws.find((d) => d.t === "axes");
-  const clip = ax ? { x0: ax.span[0], x1: ax.span[1], y0: ax.span[2], y1: ax.span[3] } : null;
-  const inClip = (p) =>
-    !clip ||
-    (p.x >= clip.x0 - 1e-9 &&
-      p.x <= clip.x1 + 1e-9 &&
-      p.y >= clip.y0 - 1e-9 &&
-      p.y <= clip.y1 + 1e-9);
-  const eat = (p) => {
-    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return;
-    if (!inClip(p)) return;
-    xs.push(p.x);
-    ys.push(p.y);
-  };
-
-  // **重なったラベルは、無いのと同じ。**
-  // 点が近くに集まると `A(1, 0)` と `B(3, 0)` と目盛りが団子になる。
-  // 置いた場所を覚えておいて、ぶつかったら上下にずらす。
-  // ずらす先も全部ふさがっていたら、そこは**描かない**(重ねて出すより読める)。
-  const placed = [];
-  const placeLabel = (cx, cy, text, size, emit) => {
-    const w = String(text).length * size * 0.62;
-    const h = size * 1.15;
-    for (const dy of [0, -14, 14, -26, 26, -38, 38]) {
-      const box = { x0: cx - w / 2, x1: cx + w / 2, y0: cy + dy - h, y1: cy + dy + 3 };
-      const hit = placed.some(
-        (q) => box.x0 < q.x1 && box.x1 > q.x0 && box.y0 < q.y1 && box.y1 > q.y0,
-      );
-      if (hit) continue;
-      placed.push(box);
-      return emit(cy + dy);
-    }
-    return "";
-  };
-  for (const d of draws) {
-    eat(d.p);
-    eat(d.a);
-    eat(d.b);
-    eat(d.o);
-    eat(d.c);
-    // **散布図の点は `[x, y]` の配列なので、`{x,y}` だけ見ていると枠に入らない。**
-    // 最初これで点が画面の外に飛び、`r = 0.999` だけが出ている絵になった。
-    if (d.t === "scatter") d.ps.forEach((p) => eat({ x: p[0], y: p[1] }));
-    else (d.ps || []).forEach(eat);
-    (d.cells || []).forEach(eat);
-    if (d.t === "complexPlane") {
-      xs.push(-d.span, d.span);
-      ys.push(-d.span, d.span);
-    }
-    if (d.t === "circle") {
-      xs.push(d.c.x - d.r, d.c.x + d.r);
-      ys.push(d.c.y - d.r, d.c.y + d.r);
-    }
-    if (d.t === "ellipse") {
-      xs.push(d.c.x - d.rx, d.c.x + d.rx);
-      ys.push(d.c.y - d.ry, d.c.y + d.ry);
-    }
-    if (d.t === "axes") {
-      xs.push(d.span[0], d.span[1]);
-      ys.push(d.span[2], d.span[3]);
-    }
-    if (d.t === "unitCircle") {
-      xs.push(-1.25, 1.25);
-      ys.push(-1.25, 1.25);
-    }
-    if (d.t === "conic") {
-      const r = d.kind === "parabola" ? d.a * 4 : d.c * 1.3;
-      xs.push(-r, r);
-      ys.push(-r * 0.75, r * 0.75);
-    }
-    if (d.t === "riemann")
-      d.bars.forEach((x) => {
-        xs.push(x.from, x.to);
-        ys.push(0, x.h);
-      });
-    if (d.t === "asymptote") {
-      if (d.x !== undefined) xs.push(d.x);
-      if (d.y !== undefined) ys.push(d.y);
-    }
-  }
-  if (!xs.length) {
-    xs.push(-1, 1);
-    ys.push(-1, 1);
-  }
-  const pad = 26;
-  let x0 = Math.min(...xs);
-  let x1 = Math.max(...xs);
-  let y0 = Math.min(...ys);
-  let y1 = Math.max(...ys);
-  if (x1 - x0 < 1e-9) {
-    x0 -= 1;
-    x1 += 1;
-  }
-  if (y1 - y0 < 1e-9) {
-    y0 -= 1;
-    y1 += 1;
-  }
-  const k = Math.min((W - pad * 2) / (x1 - x0), (H - pad * 2) / (y1 - y0));
-  const cx = (x0 + x1) / 2;
-  const cy = (y0 + y1) / 2;
-  const X = (x) => W / 2 + (x - cx) * k;
-  const Y = (y) => H / 2 - (y - cy) * k; // y は上向き
+function geometric(result) {
+  const draws = result.draws;
+  const layout = createFigureLayout(result);
+  const inClip = (point) => isInsideFigureClip(point, layout.clip);
+  const k = layout.scale;
+  const X = layout.x;
+  const Y = layout.y; // y は上向き
   const out = [];
 
   for (const d of draws) {
@@ -247,7 +151,8 @@ function geometric(draws) {
         if (d.label || d.part !== undefined) {
           const mx = (X(d.a.x) + X(d.b.x)) / 2;
           const my = (Y(d.a.y) + Y(d.b.y)) / 2;
-          out.push(txt(mx, my - 5, d.label ?? d.part, { fill: r.c, size: 10 }));
+          const offset = d.labelOffset ?? { x: 0, y: -5 };
+          out.push(txt(mx + offset.x, my + offset.y, d.label ?? d.part, { fill: r.c, size: 10 }));
         }
         break;
       case "vec":
@@ -261,7 +166,8 @@ function geometric(draws) {
         if (d.label) {
           const mx = (X(d.a.x) + X(d.b.x)) / 2;
           const my = (Y(d.a.y) + Y(d.b.y)) / 2;
-          out.push(txt(mx + 8, my - 4, d.label, { fill: r.c, size: 10 }));
+          const offset = d.labelOffset ?? { x: 8, y: -4 };
+          out.push(txt(mx + offset.x, my + offset.y, d.label, { fill: r.c, size: 10 }));
         }
         break;
       case "poly": {
@@ -403,10 +309,11 @@ function geometric(draws) {
             a1 +
             ((a2 - a1 + Math.PI * 3) % (Math.PI * 2) > Math.PI ? a2 - a1 - Math.PI * 2 : a2 - a1) /
               2;
+          const offset = d.labelOffset ?? { x: 0, y: 0 };
           out.push(
             txt(
-              X(d.o.x) + (ra + 12) * Math.cos(am),
-              Y(d.o.y) + (ra + 12) * Math.sin(am) + 3,
+              X(d.o.x) + (ra + 12) * Math.cos(am) + offset.x,
+              Y(d.o.y) + (ra + 12) * Math.sin(am) + 3 + offset.y,
               d.label,
               { fill: ROLE.key.c, size: 9 },
             ),
@@ -435,19 +342,24 @@ function geometric(draws) {
           `<circle cx="${f(X(d.p.x))}" cy="${f(Y(d.p.y))}" r="${d.small ? 2.2 : 2.8}" fill="${CHALK}"/>`,
         );
         // **名前と座標を別々の行に出すと、点が集まったところで必ず重なる。**
-        // 座標を出すときは1つのラベルにまとめ、置き場所も譲り合う。
+        // 座標を出すときは1つのラベルにまとめ、品質修正が選んだ空き方角へ置く。
         if (d.coord) {
           const text = `${d.name ?? ""}${d.coord}`;
+          const offset = d.labelOffset ?? { x: 0, y: -8 };
           out.push(
-            placeLabel(X(d.p.x), Y(d.p.y) - 8, text, 10, (y) =>
-              txt(X(d.p.x), y, text, { fill: ROLE.key.c, size: 10, weight: 600 }),
-            ),
+            txt(X(d.p.x) + offset.x, Y(d.p.y) + offset.y, text, {
+              fill: ROLE.key.c,
+              size: 10,
+              weight: 600,
+            }),
           );
         } else if (d.name) {
+          const offset = d.labelOffset ?? { x: 0, y: -7 };
           out.push(
-            placeLabel(X(d.p.x), Y(d.p.y) - 7, d.name, 10, (y) =>
-              txt(X(d.p.x), y, d.name, { size: 10, weight: 600 }),
-            ),
+            txt(X(d.p.x) + offset.x, Y(d.p.y) + offset.y, d.name, {
+              size: 10,
+              weight: 600,
+            }),
           );
         }
         break;
@@ -865,5 +777,5 @@ export function render(result) {
   for (const d of draws) {
     if (SPECIAL[d.t]) return SPECIAL[d.t](d, draws);
   }
-  return geometric(draws);
+  return geometric(applyFigureLabelLayout(result));
 }

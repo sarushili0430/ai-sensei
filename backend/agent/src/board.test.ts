@@ -1349,6 +1349,29 @@ describe("figure(作図)", () => {
     expect(board.alt).toContain("多角形");
   });
 
+  it("つぶれた三角形は関係を保ったまま自動修正し、修正後のitemsを運ぶ", () => {
+    const items = [
+      { pt: "A", at: [0, 0] },
+      { pt: "B", from: "A", dist: 6, deg: 0 },
+      { pt: "C", from: "A", dist: 4, deg: 2 },
+      { poly: ["A", "B", "C"] },
+    ];
+    const verdict = validateStep(figureStep(items), 0, "ja");
+
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok) return;
+    expect(verdict.figureStats).toMatchObject({ repaired: true, labelCollisionCount: 0 });
+    expect(verdict.figureStats?.changes).toContain("angle_resampling");
+    const board = verdict.step.board;
+    if (board?.kind !== "figure") return;
+    const repairedB = board.items.find((item) => item.pt === "B");
+    const repairedC = board.items.find((item) => item.pt === "C");
+    expect(repairedB?.from).toBe("A");
+    expect(repairedC?.from).toBe("A");
+    expect(repairedB?.deg).not.toBe(0);
+    expect(repairedC?.deg).not.toBe(2);
+  });
+
   it("解けない図は落とし、理由をそのまま直しの指示にする", () => {
     const verdict = validateStep(figureStep([{ circle: "K", center: "O", r: 3 }]), 0, "ja");
     expect(verdict.ok).toBe(false);
@@ -1371,6 +1394,65 @@ describe("figure(作図)", () => {
     expect(verdict.ok).toBe(false);
     if (verdict.ok) return;
     expect(verdict.rejection.detail).toContain("実際の長さ");
+  });
+
+  it("自動修正できない密集は、測定値と語彙代用の注意つきで作り直させる", () => {
+    const points = Array.from({ length: 40 }, (_, index) => ({
+      pt: `P${index}`,
+      on: "K",
+      deg: 0,
+    }));
+    const verdict = validateStep(
+      figureStep([
+        { pt: "O", at: [0, 0], hide: true },
+        { circle: "K", center: "O", r: 3 },
+        ...points,
+      ]),
+      0,
+      "ja",
+    );
+
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) return;
+    expect(verdict.rejection.reason).toBe("figure_quality");
+    expect(verdict.rejection.guidance).toContain("基準16px");
+    expect(verdict.rejection.guidance).toContain("語彙にない構図");
+    expect(verdict.rejection.guidance).toContain("近い図で代用せず");
+  });
+
+  it("配送した図は本文を残さず、viewBoxと品質統計だけをログする", async () => {
+    const sink = recordingSink();
+    const info = vi.fn();
+    const channel = new BoardChannel({
+      sessionId: "ses_1",
+      locale: "ja",
+      sink,
+      newBoardId: () => "brd_figure",
+      log: { info, warn: vi.fn() },
+    });
+    const raw = figureStep([
+      { pt: "A", at: [0, 0] },
+      { pt: "B", from: "A", dist: 6, deg: 0 },
+      { pt: "C", from: "A", dist: 4, deg: 2 },
+      { poly: ["A", "B", "C"] },
+    ]);
+
+    await deliverOnce(channel, { chunks: stream([lessonJson([raw])]) });
+
+    expect(info).toHaveBeenCalledWith(
+      "board_figure_delivered",
+      expect.objectContaining({
+        board_id: "brd_figure",
+        viewbox_width: 320,
+        viewbox_height: 224,
+        label_collision_count: 0,
+        max_overflow_px: 0,
+        auto_repaired: true,
+      }),
+    );
+    const fields = info.mock.calls.find(([event]) => event === "board_figure_delivered")?.[1];
+    expect(fields).not.toHaveProperty("items");
+    expect(fields).not.toHaveProperty("svg");
   });
 
   it("先輩が svg を書いてきても、契約が受け取らない", () => {

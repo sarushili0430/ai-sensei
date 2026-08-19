@@ -98,17 +98,20 @@ void main() {
     /// 壊れたSVGで**画面ごと落とさない**。板書の1行が抜けるほうが軽い
     /// (`board.ts` の「壊れたら止まる。ただし今あるものは消さない」と同じ判断)。
     testWidgets('壊れたSVGが来ても例外画面にしない', (WidgetTester tester) async {
+      final List<Object> errors = <Object>[];
       await tester.pumpWidget(
-        host(
-          const BoardElement.figure(
-            items: <Map<String, dynamic>>[],
-            svg: '<svg><this is not svg',
-            alt: '図',
+        MaterialApp(
+          home: Scaffold(
+            body: FigureElementView(
+              svg: '<svg><this is not svg',
+              onSvgError: errors.add,
+            ),
           ),
         ),
       );
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+      expect(errors, isNotEmpty, reason: '空行への縮退をSentryへ残す経路まで通ること');
     });
   });
 

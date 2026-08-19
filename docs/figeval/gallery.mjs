@@ -9,8 +9,8 @@
 // 出てくるのは wireframe_board_v2.html に貼るための断片。
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { render } from "../../packages/figure/src/render.js";
 import { PROBLEMS } from "./problems.mjs";
-import { render } from "./render.mjs";
 import { solve } from "./solver.mjs";
 
 const OUT = new URL("./out/", import.meta.url);

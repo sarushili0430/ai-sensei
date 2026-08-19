@@ -1,5 +1,12 @@
-// 8問。**採点は「描けたか」ではなく「図が正しいか」**。
+// 全40問。**採点は「描けたか」ではなく「図が正しいか」**。
 // どれも「作図で組み立てたときだけ成り立ち、座標を当てずっぽうで書くと崩れる」量を測る。
+
+// 配送済みの実物は保存されていなかったため、報告の4分類を最小入力に正規化したfixtureを
+// package側と共有する。check.mjs が毎回「検出でき、修正後は通る」ことを先に検算する。
+export {
+  figureQualityFixtures as READABILITY_FIXTURES,
+  readableFigureFixture as READABLE_FIGURE_FIXTURE,
+} from "../../packages/figure/src/quality-fixtures.js";
 
 const deg = (a, o, b) => {
   const u = Math.atan2(a.y - o.y, a.x - o.x);

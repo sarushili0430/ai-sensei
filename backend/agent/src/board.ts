@@ -15,7 +15,12 @@ import {
   type CurriculumSubject,
   subjectOfTopicId,
 } from "@ai-sensei/curriculum";
-import { drawFigure } from "@ai-sensei/figure";
+import {
+  type FigureQualityIssue,
+  drawFigure,
+  figureViewBoxHeight,
+  figureViewBoxWidth,
+} from "@ai-sensei/figure";
 import {
   type AllowedTopics,
   type LatexRejectionReason,
@@ -174,7 +179,13 @@ export type BoardStepRejection = {
    * `schema` は契約違反(長さ・形)、`figure` は**解けなかった作図**。
    */
   kind: "latex" | "syntax" | "schema" | "figure";
-  reason: LatexRejectionReason | "syntax" | "schema" | "figure" | "figure_too_large";
+  reason:
+    | LatexRejectionReason
+    | "syntax"
+    | "schema"
+    | "figure"
+    | "figure_quality"
+    | "figure_too_large";
   /** 何が引っかかったか(ログ用)。 */
   detail: string;
   /** **会話の言語で書かれた再生成の指示。**そのままプロンプトに足せる。 */
@@ -280,8 +291,20 @@ export function checkLatexSyntax(tex: string): { ok: true } | { ok: false; detai
 }
 
 export type StepVerdict =
-  | { ok: true; step: BoardStep }
+  | { ok: true; step: BoardStep; figureStats?: FigureDeliveryStats }
   | { ok: false; rejection: BoardStepRejection };
+
+/** 配送済みの図を、本文なしで分類するための統計。 */
+export type FigureDeliveryStats = {
+  itemCount: number;
+  svgBytes: number;
+  minPointDistancePx: number | null;
+  minEdgeAngleDeg: number | null;
+  labelCollisionCount: number;
+  maxOverflowPx: number;
+  repaired: boolean;
+  changes: string[];
+};
 
 /**
  * 手順1つを検証する。**ワイヤーに出る前の最後の関門**。
@@ -402,14 +425,18 @@ export function validateStep(
     // 落ちた理由はそのまま直しの指示になるので、既存の作り直しの輪に乗せる。
     const drawn = drawFigure(board.items);
     if (!drawn.ok) {
+      const qualityIssues = drawn.stage === "quality" ? drawn.quality?.issues : undefined;
+      const qualityFailure = qualityIssues !== undefined;
       return {
         ok: false,
         rejection: {
           index,
           kind: "figure",
-          reason: "figure",
+          reason: qualityFailure ? "figure_quality" : "figure",
           detail: drawn.errors.join(" / "),
-          guidance: figureGuidanceByLocale[locale](drawn.errors),
+          guidance: qualityFailure
+            ? figureQualityGuidanceByLocale[locale](qualityIssues)
+            : figureGuidanceByLocale[locale](drawn.errors),
           raw,
         },
       };
@@ -432,7 +459,24 @@ export function validateStep(
       ok: true,
       step: {
         ...parsed.data,
-        board: { ...board, svg: drawn.svg, alt: describeFigure(board.items, locale) },
+        board: {
+          ...board,
+          // 自動修正で動かした自由度も一緒に運ぶ。SVGとitemsが食い違うと、
+          // 端末で描き直すD-21の経路に切り替えた日に元の崩れへ戻ってしまう。
+          items: drawn.items,
+          svg: drawn.svg,
+          alt: describeFigure(drawn.items, locale),
+        },
+      },
+      figureStats: {
+        itemCount: drawn.items.length,
+        svgBytes: drawn.svg.length,
+        minPointDistancePx: drawn.quality.metrics.minPointDistancePx,
+        minEdgeAngleDeg: drawn.quality.metrics.minEdgeAngleDeg,
+        labelCollisionCount: drawn.quality.metrics.labelCollisionCount,
+        maxOverflowPx: drawn.quality.metrics.maxOverflowPx,
+        repaired: drawn.repaired,
+        changes: drawn.changes,
       },
     };
   }
@@ -494,6 +538,51 @@ const figureGuidanceByLocale: Record<CurriculumLocale, (errors: readonly string[
       `The figure could not be drawn (${errors.join(" / ")}). `,
       "Do not compute coordinates or lengths yourself — declare the relations only. ",
       "Define every point before using it, and place fixed-length figures with from and dist.",
+    ].join(""),
+};
+
+function describeQualityIssue(issue: FigureQualityIssue, locale: CurriculumLocale): string {
+  const [first = "?", second = "?"] = issue.entities;
+  if (locale === "en") {
+    switch (issue.invariant) {
+      case "point_distance":
+        return `${first} and ${second} are only ${issue.actual}px apart (${issue.deficit}px below the ${issue.threshold}px minimum)`;
+      case "edge_angle":
+        return `the angle at ${first} is ${issue.actual}° (${issue.deficit}° below the ${issue.threshold}° minimum)`;
+      case "label_collision":
+        return `the labels ${first} and ${second} overlap`;
+      case "viewbox_overflow":
+        return `an element extends ${issue.actual}px beyond the viewBox`;
+    }
+  }
+  switch (issue.invariant) {
+    case "point_distance":
+      return `${first}と${second}の間が${issue.actual}pxしかなく、基準${issue.threshold}pxを${issue.deficit}px下回っています`;
+    case "edge_angle":
+      return `${first}の角が${issue.actual}°しかなく、基準${issue.threshold}°を${issue.deficit}°下回っています`;
+    case "label_collision":
+      return `ラベル「${first}」「${second}」が重なっています`;
+    case "viewbox_overflow":
+      return `要素がviewBoxから${issue.actual}pxはみ出しています`;
+  }
+}
+
+/** 解けたが崩れ、自動修正でも直らなかったときの的を絞った指示。 */
+const figureQualityGuidanceByLocale: Record<
+  CurriculumLocale,
+  (issues: readonly FigureQualityIssue[]) => string
+> = {
+  ja: (issues) =>
+    [
+      `図は解けましたが、可読性検査に通りませんでした(${issues.map((issue) => describeQualityIssue(issue, "ja")).join(" / ")})。`,
+      "点配置の at / deg / dist は関係を変えない範囲で散らし、つぶれた角と密集を避けてください。",
+      "自動修正できない密集は、語彙にない構図を近い要素で代用した可能性があります。近い図で代用せず、figureで表せなければlatexかtextの一行へ置き換えてください。",
+    ].join(""),
+  en: (issues) =>
+    [
+      `The figure solves, but it failed the readability check (${issues.map((issue) => describeQualityIssue(issue, "en")).join(" / ")}). `,
+      "Spread the visual at / deg / dist values without changing the declared relations, so points and angles do not collapse. ",
+      "If that cannot be repaired, you may be approximating a construction that the vocabulary cannot express. Do not substitute a similar-looking diagram; use a one-line latex or text element instead.",
     ].join(""),
 };
 
@@ -995,6 +1084,25 @@ export class BoardDelivery {
             board_id: this.boardId,
             step: verdict.step,
           });
+          if (verdict.figureStats !== undefined) {
+            const stats = verdict.figureStats;
+            // itemsやSVG本文は未成年の問題内容を含みうる。寸法とlint統計だけを残し、
+            // 「配送されたが崩れた」型を #112 のログ上で分類できるようにする。
+            this.log?.info("board_figure_delivered", {
+              board_id: this.boardId,
+              index: verdict.step.index,
+              item_count: stats.itemCount,
+              svg_bytes: stats.svgBytes,
+              viewbox_width: figureViewBoxWidth,
+              viewbox_height: figureViewBoxHeight,
+              min_point_distance_px: stats.minPointDistancePx,
+              min_edge_angle_deg: stats.minEdgeAngleDeg,
+              label_collision_count: stats.labelCollisionCount,
+              max_overflow_px: stats.maxOverflowPx,
+              auto_repaired: stats.repaired,
+              repair_changes: stats.changes.join(",") || "none",
+            });
+          }
           this.sent += 1;
           position += 1;
 

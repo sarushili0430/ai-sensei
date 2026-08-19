@@ -15,6 +15,22 @@ const r = drawFigure([
 r.ok ? r.svg : r.errors;
 ```
 
+`drawFigure()` は solve 後に可読性lintを通す。点間距離・辺の最小角・ラベル衝突・
+320×224 viewBox からのはみ出しを測り、崩れていれば関係を保ったまま固定順の候補で
+`at` / 点配置用 `deg` / 見栄え用 `dist` とラベル方角を直す。各候補は再度 `solve()` し、
+関係宣言が同一であることも検算してから採用する。
+
+純関数だけを個別に使うこともできる:
+
+```ts
+const solved = solve(items);
+const report = lintFigure(solved); // invariant / actual / threshold / deficit
+const repaired = repairFigure(items); // 同じ入力なら同じ候補・同じ結果
+```
+
+閾値は `quality.js`、320×224への座標変換と正規化した余白は `layout.js` が正。
+品質検査とレンダラが同じ変換を使うので、lintとSVGで内外判定がずれない。
+
 ## 考え方
 
 **モデルが書くのは「関係」だけで、座標はこちらが決める。**
@@ -25,6 +41,8 @@ r.ok ? r.svg : r.errors;
 - 比は `part` で書かせ、`part` どうしの比が実際の長さの比と合うかを見る
 - 増減表の符号と矢印は曲線から出す。渡すのは極値の x だけ
 - 箱ひげ図の五数要約・散布図の相関係数・正規分布の面積は、データから計算する
+- ラベルは点の8方位、線の両側から空いている候補を決定的に選ぶ
+- 極端な縦横比は短い側の仮想範囲を広げ、円と角度を歪めず10:7へ収める
 
 ## なぜ `solve.js` / `render.js` だけ JS なのか
 

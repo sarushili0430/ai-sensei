@@ -22,6 +22,7 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 ///   - LaTeX が縮小率の下限を割って横スクロールに落ちた([Degradation.latexScaleFloor])
 ///     — **agent 側の式の分割が効いていない**シグナル(計画書 §3-6b の宿題そのもの)
 ///   - 板書の実効幅が実測の前提(340pt)を割った([Degradation.boardTooNarrow])
+///   - 配送されたSVGを端末で解釈できなかった([Degradation.figureSvgFailed])
 ///
 /// だから `captureException` ではなく **`captureMessage(level: warning)`** を使う。
 /// クラッシュの棚に混ぜると、本当に落ちたものが埋もれる。
@@ -61,6 +62,10 @@ enum Degradation {
   /// 縮小率の判定はこの幅を基準にしているので、ここが痩せると
   /// 「収まるはずの式」が横スクロールに落ちる。
   boardTooNarrow('board_too_narrow'),
+
+  /// サーバで検証済みのはずのSVGを、端末の `flutter_svg` が解釈できなかった。
+  /// 空行へ縮退して授業は続けるが、記録しないと図が消えた事実を誰も観測できない。
+  figureSvgFailed('figure_svg_failed'),
 
   /// 「うまく言えない」を押したのに、先輩に伝えられなかった。
   ///
@@ -229,6 +234,22 @@ class DegradationEvent {
       data: _sanitize(<String, Object?>{
         'available_width': availableWidth.round(),
         'assumed_width': assumedWidth,
+      }),
+    );
+  }
+
+  /// 図のSVGを描けなかった。**SVG本文は受け取らない**ので、監視へ流しようがない。
+  factory DegradationEvent.figureSvgFailed({
+    required int svgLength,
+    required Type error,
+  }) {
+    return DegradationEvent._(
+      Degradation.figureSvgFailed,
+      // 同じSVGの再buildは1件にする。本文のhashを持たず、長さで図ごとに近似する。
+      dedupeKey: '${error.toString()}/$svgLength',
+      data: _sanitize(<String, Object?>{
+        'svg_length': svgLength,
+        'error': error.toString(),
       }),
     );
   }
