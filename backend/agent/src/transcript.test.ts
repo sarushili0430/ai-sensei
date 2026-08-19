@@ -64,6 +64,20 @@ describe("TranscriptCollector", () => {
     expect(collector.hasUserSpeech).toBe(true);
   });
 
+  it("問題差し替え後の許可集合をカルテ用に使う", () => {
+    const collector = new TranscriptCollector(startedAt, context);
+    const next = readSessionContext(
+      sessionMetadataJson({
+        ...context,
+        context_revision: 2,
+        allowed_topic_ids: ["M1-NIJI-GURAFU"],
+      }),
+    );
+
+    collector.updateContext(next);
+    expect(collector.allowedTopics.primary).toEqual(new Set(["M1-NIJI-GURAFU"]));
+  });
+
   /**
    * 答えの漏れは**もう見ていない**(ピボット計画 v1 §0 の改正・§8 の「捨てる」列)。
    * 先輩は詰まった箇所を教えるのが仕事なので、当てたままだと

@@ -12,6 +12,7 @@ import '../../../theme/motion.dart';
 import '../../../theme/tokens.dart';
 import '../../capture/application/capture_controller.dart';
 import '../application/board_inbox.dart';
+import '../application/problem_photo_picker.dart';
 import '../application/session_controller.dart';
 import '../domain/session.dart';
 import 'board/board_style.dart';
@@ -37,6 +38,9 @@ class SessionScreen extends ConsumerStatefulWidget {
 }
 
 class _SessionScreenState extends ConsumerState<SessionScreen> {
+  bool _isTakingProblemPhoto = false;
+  bool _problemPhotoPickFailed = false;
+
   @override
   void initState() {
     super.initState();
@@ -51,6 +55,36 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
             locale: Localizations.localeOf(context).languageCode,
           );
     });
+  }
+
+  Future<void> _takeProblemPhoto() async {
+    if (_isTakingProblemPhoto) return;
+    setState(() {
+      _isTakingProblemPhoto = true;
+      _problemPhotoPickFailed = false;
+    });
+
+    try {
+      final photo = await ref.read(problemPhotoPickerProvider).takePhoto();
+      if (!mounted) return;
+      setState(() => _isTakingProblemPhoto = false);
+      // カメラを閉じただけなら失敗扱いにしない。会話へそのまま戻る。
+      if (photo == null) return;
+      await ref
+          .read(sessionControllerProvider.notifier)
+          .addProblemPhoto(
+            photo,
+            locale: Localizations.localeOf(context).languageCode,
+          );
+    } on Object catch (error, stack) {
+      // カメラ権限やプラグインの失敗で会話画面ごと落とさない。
+      debugPrint('会話中の問題写真を取得できませんでした: $error\n$stack');
+      if (!mounted) return;
+      setState(() {
+        _isTakingProblemPhoto = false;
+        _problemPhotoPickFailed = true;
+      });
+    }
   }
 
   @override
@@ -88,7 +122,9 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
     // 解析が読み取れた問題。読めなければ `null` で、そのときは何も出さない
     // (「問題が読めませんでした」と書くと、先輩が読み上げを頼む前に
     // 生徒が撮り直しに行ってしまう)。
-    final SessionProblem? problem = ref.watch(captureControllerProvider).analysis?.problem;
+    final SessionProblem? problem = state.problem;
+    final SessionStart? session = ref.watch(captureControllerProvider).session;
+    final bool canAddProblem = session?.kind == 'new';
 
     return Scaffold(
       body: SafeArea(
@@ -113,6 +149,22 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
               if (problem != null) ...<Widget>[
                 const SizedBox(height: AppSpacing.sm),
                 _Inset(child: _ProblemBlock(text: problem.text)),
+              ],
+              if (canAddProblem) ...<Widget>[
+                const SizedBox(height: AppSpacing.sm),
+                _Inset(
+                  child: _ProblemPhotoAction(
+                    state: state,
+                    isTakingPhoto: _isTakingProblemPhoto,
+                    pickFailed: _problemPhotoPickFailed,
+                    disabled:
+                        wrappingUp || state.phase == SessionPhase.connecting,
+                    onAdd: _takeProblemPhoto,
+                    onRetryNotification: () => ref
+                        .read(sessionControllerProvider.notifier)
+                        .retryProblemContextNotification(),
+                  ),
+                ),
               ],
               if (board.hasBoard) ...<Widget>[
                 const SizedBox(height: AppSpacing.md),
@@ -222,6 +274,82 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 次の問題を足す操作。失敗しても会話全体の操作は残し、現在の問題を続けられる。
+class _ProblemPhotoAction extends StatelessWidget {
+  const _ProblemPhotoAction({
+    required this.state,
+    required this.isTakingPhoto,
+    required this.pickFailed,
+    required this.disabled,
+    required this.onAdd,
+    required this.onRetryNotification,
+  });
+
+  final SessionState state;
+  final bool isTakingPhoto;
+  final bool pickFailed;
+  final bool disabled;
+  final VoidCallback onAdd;
+  final VoidCallback onRetryNotification;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppStrings strings = AppStrings.of(context);
+    final bool busy = isTakingPhoto || state.isAddingProblemPhoto;
+    final bool notificationPending = state.contextNotificationPending;
+    final String? error = switch (state.problemPhotoFailure) {
+      ProblemPhotoFailure.analysis =>
+        state.problemPhotoErrorMessage ?? strings.sessionProblemPhotoFailed,
+      ProblemPhotoFailure.notification =>
+        strings.sessionProblemNotificationFailed,
+      null when pickFailed => strings.sessionProblemPhotoFailed,
+      null => null,
+    };
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        if (busy)
+          Row(
+            children: <Widget>[
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2.5),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(child: Text(strings.sessionAddingProblem)),
+            ],
+          )
+        else if (notificationPending)
+          OutlinedButton.icon(
+            onPressed: disabled ? null : onRetryNotification,
+            icon: const Icon(Icons.refresh),
+            label: Text(strings.sessionProblemNotificationRetry),
+          )
+        else
+          OutlinedButton.icon(
+            onPressed: disabled || state.problemPhotoLimitReached
+                ? null
+                : onAdd,
+            icon: const Icon(Icons.add_a_photo_outlined),
+            label: Text(strings.sessionAddProblem),
+          ),
+        if (error != null) ...<Widget>[
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            error,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: AppColors.inkMuted),
+          ),
+        ],
+      ],
     );
   }
 }

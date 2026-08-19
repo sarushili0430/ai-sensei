@@ -134,9 +134,9 @@ export class D1Repository implements Repository {
      * 上限確認とINSERTは同じSQL文に入れる。SQLiteでは1文が原子的に実行され、
      * 書き込みも直列化されるため、同時実行は同じ古いCOUNTを見たまま両方通れない。
      *
-     * ここで数えるのは**その日に作った行の全部**(started_at は見ない)。
+     * ここで数えるのは**その日の analysis_count の合計**(started_at は見ない)。
      * 解析の原価は会話を始めたかどうかに関係なく発生するので、始めなかった
-     * セッションもこちらの上限には数える。
+     * セッションも、始めた会話へ追加した写真も同じ上限に数える。
      *
      * day_seqのUNIQUE INDEXは意図的に使わない。デプロイはマイグレーションが先なので、
      * 列を書かない旧Workerが既定値0を重ねる窓でINDEXがあると、2行目から失敗するため。
@@ -148,7 +148,8 @@ export class D1Repository implements Repository {
             photo_key, topic_ids, hole_id, duration_seconds, context, started_at,
             max_seconds, quota_settled_at)
          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-          WHERE (SELECT COUNT(*) FROM sessions WHERE device_id = ? AND local_date = ?) < ?`,
+          WHERE (SELECT COALESCE(SUM(analysis_count), 0) FROM sessions
+                  WHERE device_id = ? AND local_date = ?) < ?`,
       )
       .bind(
         session.id,
@@ -304,6 +305,77 @@ export class D1Repository implements Repository {
       return { ...startedResult, alreadyStarted: true };
     }
     return { started: false };
+  }
+
+  async reserveSessionAnalysis(input: {
+    sessionId: string;
+    deviceId: string;
+    localDate: string;
+    maxAnalysesPerSession: number;
+    maxAnalysesPerDay: number;
+  }): Promise<boolean> {
+    /**
+     * 上限確認と加算を同じUPDATEにする。SQLiteは1文の書き込みを直列化するので、
+     * 同時に2枚届いても、セッション5回と既存の日次解析枠のどちらも越えない。
+     */
+    const result = await this.db
+      .prepare(
+        `UPDATE sessions
+            SET analysis_count = analysis_count + 1
+          WHERE id = ?
+            AND device_id = ?
+            AND kind = 'new'
+            AND status = 'open'
+            AND started_at IS NOT NULL
+            AND analysis_count < ?
+            AND (SELECT COALESCE(SUM(analysis_count), 0) FROM sessions
+                  WHERE device_id = ? AND local_date = ?) < ?`,
+      )
+      .bind(
+        input.sessionId,
+        input.deviceId,
+        input.maxAnalysesPerSession,
+        input.deviceId,
+        input.localDate,
+        input.maxAnalysesPerDay,
+      )
+      .run();
+    return changesOf(result.meta) > 0;
+  }
+
+  async releaseSessionAnalysis(sessionId: string): Promise<void> {
+    await this.db
+      .prepare(
+        `UPDATE sessions
+            SET analysis_count = MAX(1, analysis_count - 1)
+          WHERE id = ?`,
+      )
+      .bind(sessionId)
+      .run();
+  }
+
+  async updateSessionContextIfRevision(input: {
+    sessionId: string;
+    expectedRevision: number;
+    topicIds: string[];
+    context: SessionContext;
+  }): Promise<boolean> {
+    const result = await this.db
+      .prepare(
+        `UPDATE sessions
+            SET topic_ids = ?, context = ?
+          WHERE id = ?
+            AND status = 'open'
+            AND COALESCE(json_extract(context, '$.revision'), 1) = ?`,
+      )
+      .bind(
+        JSON.stringify(input.topicIds),
+        JSON.stringify(input.context),
+        input.sessionId,
+        input.expectedRevision,
+      )
+      .run();
+    return changesOf(result.meta) > 0;
   }
 
   async updateSessionTopics(input: {

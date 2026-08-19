@@ -169,6 +169,18 @@ describe("StudentUtterances", () => {
     utterances.push("もう聞こえない");
     expect(heard).toBe(1);
   });
+
+  it("新しい問題へ移ると、類題の解答待ちと積み残しを消す", async () => {
+    const utterances = new StudentUtterances();
+    utterances.push("前の問題はできた");
+    expect(utterances.pending).toBe(true);
+    utterances.clear();
+    expect(utterances.pending).toBe(false);
+
+    const waiting = utterances.takeUntil(new AbortController().signal);
+    utterances.clear();
+    await expect(waiting).resolves.toBeNull();
+  });
 });
 
 describe("runLessonLoop", () => {

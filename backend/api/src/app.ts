@@ -119,9 +119,9 @@ export function createApp(options: CreateAppOptions = {}) {
 }
 
 const deviceAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
-  // agentからの /complete は内部トークンで入るため、デバイスIDを持たない
-  // (/result はアプリが呼ぶので、デバイスIDが要る)
-  if (c.req.path.endsWith("/complete")) return next();
+  // agentからの /complete と /context は内部トークンで入るため、デバイスIDを持たない。
+  // どちらも各ルートで Bearer を検証する(/result はアプリなのでデバイスIDが要る)。
+  if (c.req.path.endsWith("/complete") || c.req.path.endsWith("/context")) return next();
 
   const deviceId = c.req.header("x-device-id");
   if (!isValidDeviceId(deviceId)) throw apiError("unauthorized");

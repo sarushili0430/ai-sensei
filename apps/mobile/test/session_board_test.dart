@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:ai_sensei/src/common_widgets/senpai_face.dart';
 import 'package:ai_sensei/src/features/capture/application/capture_controller.dart';
 import 'package:ai_sensei/src/features/session/application/board_inbox.dart';
+import 'package:ai_sensei/src/features/session/application/problem_photo_picker.dart';
 import 'package:ai_sensei/src/features/session/application/session_controller.dart';
 import 'package:ai_sensei/src/features/session/domain/board.dart';
 import 'package:ai_sensei/src/features/session/domain/session.dart';
@@ -111,12 +113,22 @@ void main() {
     test('board_open は前の板書を消す(別の問題に移るとき)', () {
       final BoardInbox inbox = BoardInbox(sessionId: sessionId);
       inbox.accept(open(0));
-      inbox.accept(step(1, 0));
+      inbox.accept(step(1, 0, body: '1問目', awaitsSolving: true));
+      expect(inbox.snapshot.awaitsSolving, isTrue);
       inbox.accept(close(2, 1));
 
       inbox.accept(open(3, boardId: 'brd_2', title: '三角比'));
       expect(inbox.snapshot.steps, isEmpty);
       expect(inbox.snapshot.title, '三角比');
+      // #152 の解答待ちは1問目の状態。2枚目を開いた時点で必ず消える。
+      expect(inbox.snapshot.awaitsSolving, isFalse);
+
+      inbox.accept(step(4, 0, boardId: 'brd_2', body: 'sin 30° = 1/2'));
+      expect(inbox.snapshot.steps, hasLength(1));
+      expect(
+        (inbox.snapshot.steps.single.board! as TextElement).body,
+        'sin 30° = 1/2',
+      );
     });
 
     /// **黙って握りつぶさない。**抜けたまま積むと、生徒は
@@ -201,22 +213,34 @@ void main() {
       Locale locale = const Locale('ja'),
       Size size = phoneSurface,
       SessionProblem? problem,
+      ProblemPhotoPicker? problemPhotoPicker,
     }) async {
+      final SessionState initial = problem == null
+          ? state
+          : state.copyWith(problem: problem);
       await pumpApp(
         tester,
         const SessionScreen(),
         locale: locale,
         size: size,
         overrides: <Object?>[
-          captureControllerProvider.overrideWith(() => FakeCaptureController(problem)),
-          sessionControllerProvider.overrideWith(() => FakeSessionController(state)),
+          captureControllerProvider.overrideWith(
+            () => FakeCaptureController(problem),
+          ),
+          sessionControllerProvider.overrideWith(
+            () => FakeSessionController(initial),
+          ),
+          problemPhotoPickerProvider.overrideWithValue(
+            problemPhotoPicker ?? FakeProblemPhotoPicker(),
+          ),
         ],
       );
       final ProviderContainer container = ProviderScope.containerOf(
         tester.element(find.byType(SessionScreen)),
         listen: false,
       );
-      return container.read(sessionControllerProvider.notifier) as FakeSessionController;
+      return container.read(sessionControllerProvider.notifier)
+          as FakeSessionController;
     }
 
     SessionState teaching(List<String> lines, {String? gapReason}) => SessionState(
@@ -395,6 +419,80 @@ void main() {
       expect(find.text(ja.sessionProblemCollapse), findsOneWidget);
       // 開いても板書は画面に残る(押し出さない)。
       expect(find.byType(BoardElementView), findsOneWidget);
+    });
+
+    testWidgets('会話中に問題写真を撮り、解析後の問題へ表示を差し替える', (WidgetTester tester) async {
+      final FakeProblemPhotoPicker picker = FakeProblemPhotoPicker(
+        File('/tmp/session_problem.jpg'),
+      );
+      final FakeSessionController controller = await pumpSession(
+        tester,
+        teaching(<String>['1問目の板書']),
+        problem: const SessionProblem(
+          text: '1問目を解け。',
+          source: ProblemSource.problemPhoto,
+        ),
+        problemPhotoPicker: picker,
+      );
+
+      await tester.tap(find.text(ja.sessionAddProblem));
+      await tester.pump();
+
+      expect(picker.calls, 1);
+      expect(controller.addedProblemPhotos, hasLength(1));
+      expect(find.textContaining('2問目'), findsOneWidget);
+    });
+
+    testWidgets('追加解析中も会話の終了操作を残し、無音の待ち画面にしない', (WidgetTester tester) async {
+      final SessionState initial = teaching(<String>['1問目の板書']);
+      final FakeSessionController controller = await pumpSession(
+        tester,
+        initial,
+      );
+      // 無限に回る進捗表示は pumpApp の初期 settle 後に出す。
+      controller.push(initial.copyWith(isAddingProblemPhoto: true));
+      await tester.pump();
+
+      expect(find.text(ja.sessionAddingProblem), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.text(ja.sessionPass), findsOneWidget);
+      expect(find.text(ja.sessionEnd), findsOneWidget);
+    });
+
+    testWidgets('解析上限でも行き止まりにせず、今の問題を続けられる', (WidgetTester tester) async {
+      await pumpSession(
+        tester,
+        teaching(<String>['1問目の板書']).copyWith(
+          problemPhotoFailure: ProblemPhotoFailure.analysis,
+          problemPhotoErrorMessage: '追加できる写真は5回までです。今の問題は続けられます。',
+          problemPhotoLimitReached: true,
+        ),
+      );
+
+      expect(find.textContaining('今の問題は続けられます'), findsOneWidget);
+      final OutlinedButton add = tester.widget(
+        find.widgetWithText(OutlinedButton, ja.sessionAddProblem),
+      );
+      expect(add.onPressed, isNull);
+      expect(find.text(ja.sessionPass), findsOneWidget);
+      expect(find.text(ja.sessionEnd), findsOneWidget);
+    });
+
+    testWidgets('解析済みなら、写真を再送せずagent通知だけを再試行できる', (WidgetTester tester) async {
+      final FakeSessionController controller = await pumpSession(
+        tester,
+        teaching(<String>['1問目の板書']).copyWith(
+          problemPhotoFailure: ProblemPhotoFailure.notification,
+          contextNotificationPending: true,
+        ),
+      );
+
+      expect(find.text(ja.sessionProblemNotificationFailed), findsOneWidget);
+      await tester.tap(find.text(ja.sessionProblemNotificationRetry));
+      await tester.pump();
+
+      expect(controller.notificationRetries, 1);
+      expect(controller.addedProblemPhotos, isEmpty);
     });
 
     testWidgets('とぎれたら、板書は残したままそのことを出す', (WidgetTester tester) async {
@@ -665,6 +763,8 @@ class FakeSessionController extends SessionController {
 
   final SessionState _initial;
   final List<String> solvingReports = <String>[];
+  final List<File> addedProblemPhotos = <File>[];
+  int notificationRetries = 0;
 
   @override
   SessionState build() => _initial;
@@ -678,6 +778,36 @@ class FakeSessionController extends SessionController {
     await super.reportSolving(message);
   }
 
+  @override
+  Future<void> addProblemPhoto(File photo, {required String locale}) async {
+    addedProblemPhotos.add(photo);
+    state = state.copyWith(
+      problem: const SessionProblem(
+        text: '2問目を解け。',
+        source: ProblemSource.problemPhoto,
+      ),
+      awaitingSolving: false,
+    );
+  }
+
+  @override
+  Future<void> retryProblemContextNotification() async {
+    notificationRetries += 1;
+  }
+
   /// 板書が1行増えた、を再現する。
   void push(SessionState next) => state = next;
+}
+
+class FakeProblemPhotoPicker implements ProblemPhotoPicker {
+  FakeProblemPhotoPicker([this.photo]);
+
+  final File? photo;
+  int calls = 0;
+
+  @override
+  Future<File?> takePhoto() async {
+    calls += 1;
+    return photo;
+  }
 }

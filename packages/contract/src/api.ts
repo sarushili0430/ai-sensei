@@ -16,6 +16,9 @@ import { planDateSchema, planSourceSchema, studyPlanDraftSchema, studyPlanSchema
 
 export const apiPaths = {
   createSession: "/v1/sessions",
+  addSessionProblemPhoto: (sessionId: string) => `/v1/sessions/${sessionId}/problem-photo`,
+  /** agent だけが内部トークンで読む、会話中の最新文脈。 */
+  sessionContext: (sessionId: string) => `/v1/sessions/${sessionId}/context`,
   updateSessionTopics: (sessionId: string) => `/v1/sessions/${sessionId}/topics`,
   updateSessionProblem: (sessionId: string) => `/v1/sessions/${sessionId}/problem`,
   startSession: (sessionId: string) => `/v1/sessions/${sessionId}/start`,
@@ -320,6 +323,37 @@ export const createSessionResponseSchema = z
 export type CreateSessionResponse = z.infer<typeof createSessionResponseSchema>;
 
 /**
+ * POST /v1/sessions/{id}/problem-photo の multipart `meta`。
+ *
+ * **許可トピックは受け取らない。** 追加写真から検出した単元を既存の単元へ
+ * 足し、前提をどこまで許すかはサーバが `buildAllowedTopics` で決め直す。
+ * 端末から許可集合を送れる形にすると、写真と無関係な単元へ会話中に広げられる。
+ */
+export const addSessionProblemPhotoRequestSchema = z
+  .object({
+    /** エラー文言の言語。会話の言語は既存セッションの topic_id から決める。 */
+    locale: localeSchema.default("ja"),
+    school_stage: schoolStageSchema.default("high_school"),
+  })
+  .strict();
+export type AddSessionProblemPhotoRequest = z.infer<typeof addSessionProblemPhotoRequestSchema>;
+export type AddSessionProblemPhotoRequestInput = z.input<
+  typeof addSessionProblemPhotoRequestSchema
+>;
+
+/**
+ * 会話中に新しい問題を読み取った結果。
+ *
+ * 作成時の読み合わせに `context_revision` だけを足す。アプリはこの問題文へ
+ * 表示を差し替え、revision を LiveKit の制御通知に載せる。ただし agent は
+ * 通知の中身を正本として使わず、内部APIから同じrevisionの文脈を読み直す。
+ */
+export const addSessionProblemPhotoResponseSchema = createSessionResponseSchema.extend({
+  context_revision: z.number().int().positive(),
+});
+export type AddSessionProblemPhotoResponse = z.infer<typeof addSessionProblemPhotoResponseSchema>;
+
+/**
  * POST /v1/sessions/{id}/start のリクエスト。
  *
  * `locale` は**エラー文言の言語**だけに使う。会話の言語はセッションに残した
@@ -485,6 +519,14 @@ export const sessionMetadataSchema = z
     allowed_topics: z.string(),
     /** ガードレールの照合に使う生のID。前提トピックまで含む。 */
     allowed_topic_ids: z.array(topicIdSchema),
+    /**
+     * `sessions.context` の版。会話中の追加写真を二重通知しても、同じ問題を
+     * 二度開き直さないために使う。
+     *
+     * ローリングデプロイ中は古いAPIのmetadataに無いので省略可能。新しいAPIは
+     * 初期文脈を1として必ず入れ、agentは省略時だけ1として扱う。
+     */
+    context_revision: z.number().int().positive().optional(),
     is_premium: z.boolean(),
     /**
      * 復習で**今回教え直す穴だけ**。新しいAPIは復習で1件、新規授業で `null` を送る。
@@ -519,6 +561,52 @@ export const sessionMetadataSchema = z
     path: ["review_hole"],
   });
 export type SessionMetadata = z.infer<typeof sessionMetadataSchema>;
+
+/** agent が内部トークンで読む最新文脈。形は開始時metadataと同じ。 */
+export const sessionContextResponseSchema = sessionMetadataSchema;
+export type SessionContextResponse = z.infer<typeof sessionContextResponseSchema>;
+
+/* -------------------------------------------------------------------------- */
+/* 会話中の制御通知(LiveKit RPC。本人の発話ではない)                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * app → agent の専用RPC名。
+ *
+ * `lk.chat` は本人の発話とtranscriptの入口なので使わない。写真解析の開始・完了は
+ * 制御信号であり、カルテの材料へ混ぜると「ユーザーが説明した内容」という原則が壊れる。
+ */
+export const sessionControlRpcMethod = "ai-sensei.session-control";
+export const sessionControlProtocolVersion = 1;
+
+const sessionControlBaseSchema = z.object({
+  v: z.literal(sessionControlProtocolVersion),
+  session_id: z.string().min(1),
+});
+
+/**
+ * 通知に問題文・解析結果・許可集合は載せない。`context_updated` を受けた agent は
+ * INTERNAL_API_TOKEN でAPIを読み直し、アプリ由来の内容を信頼しない。
+ */
+export const sessionControlRequestSchema = z.discriminatedUnion("type", [
+  sessionControlBaseSchema.extend({ type: z.literal("problem_photo_analyzing") }).strict(),
+  sessionControlBaseSchema
+    .extend({
+      type: z.literal("context_updated"),
+      context_revision: z.number().int().positive(),
+    })
+    .strict(),
+  sessionControlBaseSchema.extend({ type: z.literal("problem_photo_failed") }).strict(),
+]);
+export type SessionControlRequest = z.infer<typeof sessionControlRequestSchema>;
+
+export const sessionControlResponseSchema = z
+  .object({
+    v: z.literal(sessionControlProtocolVersion),
+    accepted: z.literal(true),
+  })
+  .strict();
+export type SessionControlResponse = z.infer<typeof sessionControlResponseSchema>;
 
 /** 会話ログ。assistant=後輩の発話、user=ユーザーの説明。 */
 export const transcriptMessageSchema = z
@@ -653,6 +741,8 @@ export const apiErrorCodes = [
   "fair_use_limit_reached",
   "premium_required",
   "photo_unreadable",
+  /** 会話は続けられる。追加写真だけが、このセッションの5回枠を使い切った。 */
+  "problem_photo_limit_reached",
   /**
    * 手入力の問題文をガードレールが落とした
    * ({@link updateSessionProblemRequestSchema})。**写真の話ではない**ので

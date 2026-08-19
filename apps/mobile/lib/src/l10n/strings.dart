@@ -513,6 +513,21 @@ class AppStrings {
   String get sessionProblemExpand => _pick('続きを読む', 'Read more');
   String get sessionProblemCollapse => _pick('畳む', 'Show less');
 
+  /// 会話中に、次に扱う問題の紙面を撮る。本人の発話ではなく制御経路で先輩へ伝える。
+  String get sessionAddProblem => _pick('問題を追加', 'Add a problem');
+  String get sessionAddingProblem =>
+      _pick('問題を見ています…', 'Looking at the problem…');
+  String get sessionProblemPhotoFailed => _pick(
+    '問題を読み取れませんでした。今の問題はそのまま続けられます。',
+    "We couldn't read that problem. You can keep working on the current one.",
+  );
+  String get sessionProblemNotificationFailed => _pick(
+    '問題は読み取れましたが、先輩への連絡が届きませんでした。',
+    "We read the problem, but couldn't notify your senpai.",
+  );
+  String get sessionProblemNotificationRetry =>
+      _pick('先輩にもう一度伝える', 'Notify again');
+
   /// 板書がとぎれたとき(封筒の欠落・順序違反を検知した)。
   ///
   /// **黙って虫食いのまま出さない。**抜けたことに気づけないと、

@@ -35,6 +35,13 @@ const messages: Record<ApiErrorCode, { ja: string; en: string; status: number }>
     en: "We couldn't read any notes in this photo. Could you take another one?",
     status: 422,
   },
+  problem_photo_limit_reached: {
+    // 追加写真だけを止める。授業そのものまで「今日はここまで」にしないことで、
+    // いま開いている問題をそのまま続けられる非終端の失敗にする。
+    ja: "この授業で追加できる写真はここまでです。今の問題はそのまま続けられます。",
+    en: "That's all the photos you can add to this lesson. You can keep working on the current problem.",
+    status: 429,
+  },
   /**
    * 手入力の問題文をガードレールが落とした(`PATCH /v1/sessions/{id}/problem`)。
    *
