@@ -367,10 +367,21 @@ class AppStrings {
   String get captureProblemNotRead =>
       _pick('問題文は読み取れませんでした', "We couldn't read the question");
 
+  /// `not_found` — 問題の指示まで写真に入っていない/読めない。
+  String get captureProblemNotReadGuidance => _pick(
+        '次に撮るなら、問題文が端まで写るようにすると読み取りやすくなります',
+        'Next time, include the whole question in the shot so it is easier to read',
+      );
+
   /// `too_long` — 紙面を丸ごと撮っている。
   String get captureProblemTooLong => _pick(
         'ページ全体が写っていたようで、問題文を絞り込めませんでした',
         "That looked like a whole page, so we couldn't pin down the question",
+      );
+
+  String get captureProblemTooLongGuidance => _pick(
+        '次に撮るなら、問題の部分だけを切り抜くと読み取りやすくなります',
+        'Next time, crop to just the question so it is easier to read',
       );
 
   /// `solution_included` — 解答・解説まで写っている。
@@ -380,10 +391,20 @@ class AppStrings {
         'The answer was in the shot too, so we left it out',
       );
 
+  String get captureProblemHadSolutionGuidance => _pick(
+        '次に撮るなら、解答が写らないように問題だけを入れると読み取りやすくなります',
+        'Next time, keep the answer out and include only the question so it is easier to read',
+      );
+
   /// `not_a_problem` — 式だけで、何を問われているかが無い。
   String get captureProblemNotAQuestion => _pick(
         '式だけで、何を聞かれているかまでは読み取れませんでした',
         'We only got the expression, not what it asks you to do',
+      );
+
+  String get captureProblemNotAQuestionGuidance => _pick(
+        '次に撮るなら、「〜を求めよ」まで入れると読み取りやすくなります',
+        'Next time, include the instruction such as “solve” or “find” so it is easier to read',
       );
 
   /// 上の行に続けて、**直すと何が変わるか**だけを言う。
@@ -393,6 +414,13 @@ class AppStrings {
   String get captureProblemFixHint => _pick(
         '入れておくと、先輩が最初に聞き直しません',
         'Type it in and your senpai will not have to ask you for it',
+      );
+
+  /// 問題文が空のまま開始できることと、その結果を開始ボタンの直前で明示する。
+  /// **止める文言にはしない。** 2枚目の写真を事実上の必須へ戻さないため。
+  String get captureProblemStartWarning => _pick(
+        'このまま始めると、最初に先輩が問題を聞き直します',
+        'If you start as-is, your senpai will ask you for the question first',
       );
 
   /// 打ち込む欄のプレースホルダ。**解答を入れないことだけ先に言う。**

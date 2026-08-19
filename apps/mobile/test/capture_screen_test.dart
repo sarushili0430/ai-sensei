@@ -550,14 +550,17 @@ void main() {
   ///
   /// **直せる口と同時に出すなら、警告にならない。** その場で終わる話になる。
   group('問題文が読めなかったとき', () {
-    testWidgets('黙って進めず、直せる口と一緒にそう言う', (WidgetTester tester) async {
+    testWidgets('黙って進めず、打ち直し欄を最初から主導線として出す', (WidgetTester tester) async {
       await pumpCapture(tester);
       await takeNotes(tester);
 
       await startLesson(tester);
 
       expect(find.text(ja.captureProblemNotRead), findsOneWidget);
-      expect(find.text(ja.captureProblemAdd), findsOneWidget);
+      expect(find.text(ja.captureProblemNotReadGuidance), findsOneWidget);
+      expect(find.byType(TextField), findsOneWidget);
+      expect(find.text(ja.captureProblemFixHint), findsOneWidget);
+      expect(find.text(ja.captureProblemStartWarning), findsOneWidget);
       // 読み合わせの見出しは出ない(読めていないので、見せる本文が無い)。
       expect(find.text(ja.captureProblemTitle), findsNothing);
       // 行き止まりにもしない。単元の確認まで進んでいる。
@@ -572,6 +575,7 @@ void main() {
       await startLesson(tester);
 
       expect(find.text(ja.captureProblemTooLong), findsOneWidget);
+      expect(find.text(ja.captureProblemTooLongGuidance), findsOneWidget);
       expect(find.text(ja.captureProblemNotRead), findsNothing);
     });
 
@@ -581,6 +585,16 @@ void main() {
       await startLesson(tester);
 
       expect(find.text(ja.captureProblemHadSolution), findsOneWidget);
+      expect(find.text(ja.captureProblemHadSolutionGuidance), findsOneWidget);
+    });
+
+    testWidgets('式だけだったときは、設問の指示まで入れるよう案内する', (WidgetTester tester) async {
+      await pumpCapture(tester, problemOutcome: 'not_a_problem');
+      await takeNotes(tester);
+      await startLesson(tester);
+
+      expect(find.text(ja.captureProblemNotAQuestion), findsOneWidget);
+      expect(find.text(ja.captureProblemNotAQuestionGuidance), findsOneWidget);
     });
 
     /// サーバが落ち方を増やしても、確認画面ごと落ちない。
@@ -603,10 +617,12 @@ void main() {
     Future<void> typeProblem(
       WidgetTester tester,
       String text, {
-      required String opener,
+      String? opener,
     }) async {
-      await tester.tap(find.text(opener));
-      await tester.pumpAndSettle();
+      if (opener != null) {
+        await tester.tap(find.text(opener));
+        await tester.pumpAndSettle();
+      }
       await tester.enterText(find.byType(TextField), text);
       await tester.pumpAndSettle();
       await tester.tap(find.text(ja.captureProblemSave));
@@ -619,7 +635,7 @@ void main() {
       await takeNotes(tester);
       await startLesson(tester);
 
-      await typeProblem(tester, typed, opener: ja.captureProblemAdd);
+      await typeProblem(tester, typed);
 
       expect(find.text(ja.captureProblemTitle), findsOneWidget);
       expect(find.text(typed), findsOneWidget);
@@ -635,7 +651,7 @@ void main() {
       await takeNotes(tester);
       await startLesson(tester);
 
-      await typeProblem(tester, typed, opener: ja.captureProblemAdd);
+      await typeProblem(tester, typed);
 
       final http.Request patched = calls.lastWhere(
         (http.BaseRequest it) => it.url.path.endsWith('/problem'),
@@ -675,8 +691,7 @@ void main() {
       await takeNotes(tester);
       await startLesson(tester);
 
-      await typeProblem(tester, 'x^2 - 3x + 2 = 0 【解答】x = 1, 2',
-          opener: ja.captureProblemAdd);
+      await typeProblem(tester, 'x^2 - 3x + 2 = 0 【解答】x = 1, 2');
 
       expect(find.text(message), findsOneWidget);
       // 打った本文も、単元のチップも残っている。
@@ -691,9 +706,6 @@ void main() {
       await takeNotes(tester);
       await startLesson(tester);
 
-      await tester.tap(find.text(ja.captureProblemAdd));
-      await tester.pumpAndSettle();
-
       final ChunkyButton button = tester.widget<ChunkyButton>(
         find.widgetWithText(ChunkyButton, ja.captureStart),
       );
@@ -705,13 +717,18 @@ void main() {
       await takeNotes(tester);
       await startLesson(tester);
 
-      await tester.tap(find.text(ja.captureProblemAdd));
-      await tester.pumpAndSettle();
       await tester.tap(find.text(ja.captureProblemCancel));
       await tester.pumpAndSettle();
 
       expect(find.byType(TextField), findsNothing);
       expect(find.text(ja.captureProblemNotRead), findsOneWidget);
+      expect(find.text(ja.captureProblemStartWarning), findsOneWidget);
+
+      // 2枚目を事実上の必須にはしない。結果を明示したうえで、空のまま進める。
+      final ChunkyButton button = tester.widget<ChunkyButton>(
+        find.widgetWithText(ChunkyButton, ja.captureStart),
+      );
+      expect(button.onPressed, isNotNull);
     });
   });
 
@@ -742,7 +759,15 @@ void main() {
   testWidgets('会話の開始で落ちたら、「もう一度」は開始をやり直す(カメラを開かない)',
       (WidgetTester tester) async {
     final List<http.BaseRequest> calls = <http.BaseRequest>[];
-    await pumpCapture(tester, calls: calls, failStart: true);
+    await pumpCapture(
+      tester,
+      calls: calls,
+      failStart: true,
+      problem: <String, dynamic>{
+        'text': 'x^2 - 3x + 2 = 0 を解け。',
+        'source': 'notes_photo',
+      },
+    );
     await takeNotes(tester);
     await startLesson(tester);
 

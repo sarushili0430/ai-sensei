@@ -38,13 +38,18 @@ function lessonJson(steps: readonly unknown[]): string {
   });
 }
 
-/** 出力を呼び出し順に返すLLM。呼ばれた `user`(指示)を記録する。 */
-function stubLlm(...outputs: readonly string[]): LessonLlm & { asked: string[] } {
+/** 出力を呼び出し順に返すLLM。呼ばれた system と `user`(指示)を記録する。 */
+function stubLlm(
+  ...outputs: readonly string[]
+): LessonLlm & { asked: string[]; systems: string[] } {
   const asked: string[] = [];
+  const systems: string[] = [];
   let call = 0;
   return {
     asked,
-    stream({ user }) {
+    systems,
+    stream({ system, user }) {
+      systems.push(system);
       asked.push(user);
       const output = outputs[Math.min(call, outputs.length - 1)] ?? "";
       call += 1;
@@ -206,6 +211,120 @@ describe("runLessonLoop", () => {
       "step",
       "step",
     ]);
+  });
+
+  it("音読依頼の直後の発話を覚え、次パスの system へ問題文として渡す", async () => {
+    const board = boardWith(recordingSink());
+    const llm = stubLlm(
+      lessonJson([stepAwaiting(0, "問題、読んでもらってもいい?", true)]),
+      lessonJson([
+        step(0, "じゃあ、この式を整理するね。", "x^2 - 3x + 2 = 0"),
+        stepAwaiting(1, "じゃあ今の、自分の言葉で説明してみて。", true),
+      ]),
+    );
+    const utterances = new StudentUtterances();
+    const spoken = "次の二次方程式 x^2 - 3x + 2 = 0 を解け。";
+    let remembered: string | null = null;
+
+    const result = await loopWith(llm, board, {
+      system: () => `今日の問題: ${remembered ?? "(問題の写真なし)"}`,
+      utterances,
+      problemReadoutMemory: {
+        isMissing: () => remembered === null,
+        remember: (text) => {
+          remembered = text;
+          return { accepted: true, length: text.length };
+        },
+      },
+      speak: async (delivered) => {
+        if (delivered.speech.includes("読んでもらってもいい")) {
+          setTimeout(() => utterances.push(spoken), 5);
+        }
+      },
+    });
+
+    expect(result.reason).toBe("handed_over");
+    expect(remembered).toBe(spoken);
+    expect(llm.systems[0]).toContain("(問題の写真なし)");
+    expect(llm.systems[1]).toContain(spoken);
+    expect(llm.asked[1]).toContain("問題文の読み上げはもう一度頼みません");
+  });
+
+  it("問題文があるのに音読を頼んだパスを、本文なしの縮退ログにする", async () => {
+    const board = boardWith(recordingSink());
+    const llm = stubLlm(lessonJson([stepAwaiting(0, "問題、読んでもらってもいい?", true)]));
+    const infos: { event: string; fields: Record<string, unknown> }[] = [];
+    const warnings: { event: string; fields: Record<string, unknown> }[] = [];
+
+    await loopWith(llm, board, {
+      remainingSeconds: () => 30,
+      problemReadoutMemory: {
+        isMissing: () => false,
+        remember: () => ({ accepted: false, reason: "already_present" }),
+      },
+      log: {
+        info: (event, fields = {}) => infos.push({ event, fields }),
+        warn: (event, fields = {}) => warnings.push({ event, fields }),
+      },
+    });
+
+    expect(infos).toContainEqual({
+      event: "lesson_opening_observed",
+      fields: { problem_present: true, problem_readout_requested: true },
+    });
+    expect(warnings).toContainEqual({
+      event: "problem_readout_unexpected",
+      fields: {
+        pass: 1,
+        problem_present: true,
+        repeated: false,
+        awaits_student: true,
+      },
+    });
+    expect(JSON.stringify(warnings)).not.toContain("問題、読んで");
+  });
+
+  it("2パス目でも音読を頼んだら、繰り返しとして観測する", async () => {
+    const board = boardWith(recordingSink());
+    const llm = stubLlm(
+      lessonJson([stepAwaiting(0, "問題、読んでもらってもいい?", true)]),
+      lessonJson([stepAwaiting(0, "もう一度、問題を読んでくれる?", true)]),
+    );
+    const utterances = new StudentUtterances();
+    const warnings: { event: string; fields: Record<string, unknown> }[] = [];
+    let remembered = false;
+
+    await loopWith(llm, board, {
+      utterances,
+      problemReadoutMemory: {
+        isMissing: () => !remembered,
+        remember: (text) => {
+          remembered = true;
+          return { accepted: true, length: text.length };
+        },
+      },
+      speak: async (delivered) => {
+        if (!remembered && delivered.speech.includes("読んでもらってもいい")) {
+          setTimeout(() => utterances.push("x^2 = 4 を解け。"), 5);
+        }
+      },
+      // 2パス目の観測後は答えを待たず、安全弁で終了させる。
+      remainingSeconds: () => (llm.systems.length < 2 ? 300 : 0),
+      log: {
+        info: () => undefined,
+        warn: (event, fields = {}) => warnings.push({ event, fields }),
+      },
+    });
+
+    expect(warnings).toContainEqual({
+      event: "problem_readout_unexpected",
+      fields: {
+        pass: 2,
+        problem_present: true,
+        repeated: true,
+        awaits_student: true,
+      },
+    });
   });
 
   it("説明の途中の発話はパスを中止し、続きのパスで応える(会話へ落とさない)", async () => {

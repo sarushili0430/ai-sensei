@@ -25,6 +25,8 @@ When there is no second photo, look for the problem on the notes photo instead.
 
 **If this is empty, the tutor teaches without ever seeing the problem.**
 If it is visible, you must fill it in.
+Even when the whole worksheet or workbook page is visible, transcribe **only the first problem**
+selected by the rules below. Never transcribe the whole page.
 
 - **Copy it as written.** Do not paraphrase, do not summarize, do not tidy the notation.
 - If there are parts (1), (2), **include the parts too**.

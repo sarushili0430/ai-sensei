@@ -10,6 +10,8 @@ import {
 import type { JobLogger } from "./log.ts";
 import {
   type LessonTurn,
+  type SpokenProblemMemoryResult,
+  asksForProblemReadout,
   asksForTeachBack,
   lessonContinuationInstruction,
   lessonSteps,
@@ -213,6 +215,14 @@ export type RunLessonLoopOptions = {
   utterances: StudentUtterances;
   /** 消費した発話をtranscriptへ写す口(`collector.add`)。 */
   record: (text: string) => void;
+  /**
+   * 問題文の音読を頼んだ直後だけ使う、セッション内メモリへの書き込み口。
+   * 本文をログへ渡さず、採用結果だけを返す。
+   */
+  problemReadoutMemory?: {
+    isMissing: () => boolean;
+    remember: (text: string) => SpokenProblemMemoryResult;
+  };
   /** タイムアウトの瞬間に生徒が話しているか(`session.userState`)。 */
   isStudentSpeaking?: () => boolean;
   remainingSeconds: () => number;
@@ -247,6 +257,7 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
     signal,
     utterances,
     record,
+    problemReadoutMemory,
     isStudentSpeaking = () => false,
     remainingSeconds,
     log,
@@ -262,6 +273,29 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
   let opened = false;
   let stepCount = 0;
   let passes = 0;
+  let problemReadoutRequests = priorTurns.filter(
+    (turn) => turn.kind === "step" && asksForProblemReadout(turn.step.speech, locale),
+  ).length;
+
+  /** 音読依頼の直後の発話だけを問題文として採用する。本文はログに出さない。 */
+  const rememberProblemReadout = (step: BoardStep | undefined, text: string): void => {
+    if (
+      step === undefined ||
+      problemReadoutMemory === undefined ||
+      !problemReadoutMemory.isMissing() ||
+      !asksForProblemReadout(step.speech, locale) ||
+      !stepAwaitsStudent(step, locale)
+    ) {
+      return;
+    }
+
+    const remembered = problemReadoutMemory.remember(text);
+    if (remembered.accepted) {
+      log?.info("problem_readout_captured", { pass: passes, length: remembered.length });
+    } else {
+      log?.info("problem_readout_rejected", { pass: passes, reason: remembered.reason });
+    }
+  };
 
   const summary = (reason: LessonLoopReason): LessonLoopResult => ({
     board_id: boardId,
@@ -317,6 +351,33 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
     const lastStep = lessonSteps(turns).at(-1);
     const lastSpeech = lastStep?.speech ?? "";
 
+    // 第一声と problem_resolved を session_id で突き合わせるための観測口。
+    // speech 本文は問題文を含みうるので残さず、定型の依頼だったかだけを見る。
+    const readoutSteps = result.steps.filter((step) => asksForProblemReadout(step.speech, locale));
+    const problemWasMissing = problemReadoutMemory?.isMissing() ?? false;
+    if (passes === 1 && priorTurns.length === 0) {
+      log?.info("lesson_opening_observed", {
+        problem_present: !problemWasMissing,
+        problem_readout_requested: readoutSteps.length > 0,
+      });
+    }
+    for (const readoutStep of readoutSteps) {
+      problemReadoutRequests += 1;
+      const fields = {
+        pass: passes,
+        problem_present: !problemWasMissing,
+        repeated: problemReadoutRequests > 1,
+        awaits_student: stepAwaitsStudent(readoutStep, locale),
+      };
+      if (fields.problem_present || fields.repeated) {
+        // 問題文があるのに頼んだ / 2パス目以降も頼んだ、のどちらもユーザーへ
+        // 同じ聞き直しを届けた縮退。Sentry側でも本文なしで気づける warn にする。
+        log?.warn("problem_readout_unexpected", fields);
+      } else {
+        log?.info("problem_readout_requested", fields);
+      }
+    }
+
     // 「自分の言葉で説明してみて」まで来たら授業は完了。教え返しへ渡す。
     if (asksForTeachBack(lastSpeech, locale)) return summary("handed_over");
 
@@ -335,6 +396,7 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
     const interjection = utterances.tryTake();
     if (interjection !== null) {
       record(interjection);
+      rememberProblemReadout(lastStep, interjection);
       turns.push({ kind: "student", text: interjection });
       log?.info("lesson_interjection", { pass: passes });
       continue;
@@ -381,6 +443,7 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
       log?.info("lesson_answer_timeout", { pass: passes });
     } else {
       record(answer);
+      rememberProblemReadout(lastStep, answer);
       turns.push({ kind: "student", text: answer });
     }
   }

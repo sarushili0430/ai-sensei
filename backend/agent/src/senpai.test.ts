@@ -1,14 +1,18 @@
 import type { BoardStep } from "@ai-sensei/contract";
+import { formatProblemText } from "@ai-sensei/prompts";
 import { describe, expect, it } from "vitest";
 import { readSessionContext } from "./context.ts";
 import {
   type LessonTurn,
   asksForBoard,
+  asksForProblemReadout,
   asksForTeachBack,
   handsTurnToStudent,
   lessonContinuationInstruction,
   lessonFailedPrompt,
   lessonRecapMaxLength,
+  problemTextIsMissing,
+  rememberSpokenProblemText,
   renderLessonRecap,
   reviewOpening,
   senpaiConversationPrompt,
@@ -166,6 +170,92 @@ describe("stepAwaitsStudent", () => {
   });
 });
 
+describe("問題文の音読", () => {
+  it.each([
+    ["問題、読んでもらってもいい?", "ja"],
+    ["問題文を読み上げてくれる?", "ja"],
+    ["Can you read the question out to me?", "en"],
+    ["Tell me what the problem says.", "en"],
+  ] as const)("音読を頼む発話だけを拾う: %s", (speech, locale) => {
+    expect(asksForProblemReadout(speech, locale)).toBe(true);
+  });
+
+  it("ふつうの切り分け質問を音読と取り違えない", () => {
+    expect(asksForProblemReadout("この問題、まず何する?", "ja")).toBe(false);
+    expect(asksForProblemReadout("What do you do first in this problem?", "en")).toBe(false);
+    expect(asksForProblemReadout("問題を読んで考えてみるね。", "ja")).toBe(false);
+    expect(asksForProblemReadout("I'll read the question first.", "en")).toBe(false);
+  });
+
+  /**
+   * **「教えて」で終わる切り分けは、問題文が無いときこそ出る。**
+   * ここを音読と取り違えると、その答え(「たぶん x を求めるやつ」)が
+   * `problem_text` として居座り、以降のパスとカルテまで巻き込む。
+   */
+  it("「〜か教えて」の切り分けを音読依頼と取り違えない", () => {
+    expect(asksForProblemReadout("この問題、何を聞かれてるか教えて", "ja")).toBe(false);
+    expect(asksForProblemReadout("この問題、どこまでやったか教えて", "ja")).toBe(false);
+    expect(asksForProblemReadout("問題のどこで止まったか教えて", "ja")).toBe(false);
+    // 間を詰めた直接の依頼は拾えたままにする。
+    expect(asksForProblemReadout("問題文、教えてもらっていい?", "ja")).toBe(true);
+    expect(asksForProblemReadout("問題、ちょっと読んでもらっていい?", "ja")).toBe(true);
+  });
+
+  function missingProblemContext(locale: "ja" | "en" = "ja") {
+    return readSessionContext(
+      sessionMetadataJson({
+        session_id: `ses_missing_${locale}`,
+        locale,
+        problem_text: formatProblemText(null, locale),
+        allowed_topic_ids: ["M2-ZUKEI-ENCHOKU"],
+      }),
+    );
+  }
+
+  it("音読した問題文をメモリ上の文脈へ差し替える", () => {
+    const missing = missingProblemContext();
+    const spoken = "次の二次方程式 x^2 - 3x + 2 = 0 を解け。";
+
+    expect(problemTextIsMissing(missing)).toBe(true);
+    expect(rememberSpokenProblemText(missing, spoken)).toEqual({
+      accepted: true,
+      length: spoken.length,
+    });
+    expect(missing.problem_text).toBe(spoken);
+    expect(problemTextIsMissing(missing)).toBe(false);
+  });
+
+  it("答えまで読まれた発話は採用せず、定型句のまま保つ", () => {
+    const missing = missingProblemContext();
+
+    expect(rememberSpokenProblemText(missing, "x を求めよ。x + 3 = 7。答え: 4")).toEqual({
+      accepted: false,
+      reason: "solution_included",
+    });
+    expect(problemTextIsMissing(missing)).toBe(true);
+  });
+
+  it("600字を超えた発話は途中で切らずに採用しない", () => {
+    const missing = missingProblemContext();
+    const tooLong = `次の値を求めよ。${"あ".repeat(600)}`;
+
+    expect(rememberSpokenProblemText(missing, tooLong)).toEqual({
+      accepted: false,
+      reason: "too_long",
+    });
+    expect(problemTextIsMissing(missing)).toBe(true);
+  });
+
+  it("既に読めている問題文を後続の発話で上書きしない", () => {
+    const original = context.problem_text;
+    expect(rememberSpokenProblemText(context, "別の問題を解け。")).toEqual({
+      accepted: false,
+      reason: "already_present",
+    });
+    expect(context.problem_text).toBe(original);
+  });
+});
+
 describe("asksForBoard", () => {
   it("板書・黒板と名指しした発話だけを拾う", () => {
     expect(asksForBoard("板書して!", "ja")).toBe(true);
@@ -312,6 +402,15 @@ describe("lessonContinuationInstruction", () => {
     expect(instruction).toContain("生徒: 「えっと、12?」");
     expect(instruction).toContain("続きだけを書きます");
     expect(instruction).toContain("`index` はまた 0 から");
+  });
+
+  it("問題文の音読を一度頼んだあとは、同じ依頼を繰り返さないよう明示する", () => {
+    const instruction = lessonContinuationInstruction(
+      [step(0, "問題、読んでもらってもいい?", null), said("x を求めよ。")],
+      "ja",
+    );
+
+    expect(instruction).toContain("問題文の読み上げはもう一度頼みません");
   });
 
   // 答えの直前が読めないと、続きがその答えと噛み合わない。
