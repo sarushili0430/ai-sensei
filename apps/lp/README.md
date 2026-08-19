@@ -11,6 +11,9 @@ apps/lp/
     en/index.html        English
     beta/index.html      クローズドベータの参加手順(日本語)
     en/beta/index.html   同(English)
+    support/index.html   サポート窓口(日本語)。両ストアのサポートURLがここを指す
+    terms/index.html     利用規約(雛形)
+    privacy/index.html   プライバシーポリシー(雛形)
     styles.css           全ページで共有する唯一のスタイルシート
 ```
 
@@ -23,7 +26,7 @@ apps/lp/
 | 用途 | 使う場所 |
 | --- | --- |
 | マーケティングURL | App Store Connect(任意) |
-| サポートURL | App Store Connect / Google Play Console(**必須**。いまは GitHub Issues を窓口にしている) |
+| サポートURL | App Store Connect / Google Play Console(**必須**)。`public/support/` |
 | 提出資料からの導線 | Shipaton / Devpost / #BuildInPublic の投稿 |
 | クローズドテストのテスター募集 | `public/beta/`。SNS・学校・知人へ配るURLはここ1本にする |
 
@@ -40,9 +43,14 @@ apps/lp/
 
 ## 作りの前提
 
-- **ビルド工程なし・JavaScriptなし。** 素の HTML と CSS だけで、どこに置いても動きます。
+- **ビルド工程なし。** 素の HTML と CSS だけで、どこに置いても動きます。
   wrangler は配信のために使っているだけで、ビルドはしません
   (pnpm workspace に入っているのは、`pnpm --filter` から deploy を叩くためです)。
+- **JavaScript は `public/support/` の送信処理だけ**(そのページに直接書いてあります)。
+  Googleフォームへ投げたあとこのページに留まるための15行で、これが無いと
+  Googleの「回答を記録しました」の画面へ飛ばされます。**JSを切っていても
+  素のPOSTがそのまま働く形は残してあります**(その場合だけGoogleの画面に移る)。
+  他のページには1行も置かないこと —— 増やすなら、まずここを直してから。
 - **色・角丸・ボタンの厚みは `apps/mobile/lib/src/theme/tokens.dart` が正**で、`styles.css` はその写し。
   ずらすとストアのスクショと並んだときに別プロダクトに見えます。変えるときは先に tokens.dart を見ること。
 - **端末の画面はCSSで組んでいます**(`docs/store/screenshots/` の画像を貼っていません)。
@@ -123,7 +131,22 @@ GitHub App からpushできないため)。
 - [ ] **Premium の「改善利用オフ」トグルを実装する。** 規約に書いた以上、
       アプリに無ければ嘘になる。プライバシーポリシー第4条・利用規約第5条
 - [ ] 規約とポリシーの英語版。米国配信は Shipaton の参加要件なので、日本語だけでは足りない
-- [ ] `SUPPORT_EMAIL` → フッタの問い合わせ先に追加(いまは GitHub Issues のみ)
+- [ ] **Googleフォーム側で「端末ID」と「返信先のメールアドレス」の必須を外す。**
+      ページ側はこの2つを任意にしているので、**空で送られた回答に Google が 400 を返し、
+      no-cors のせいで画面には「送信しました」と出たまま中身だけ捨てられます**
+      (実測で確認済み)。あわせて返信先の「回答の検証」も外すこと。
+      必須にしてよいのは「種類」と「内容」だけ
+- [ ] **フォームの回答通知をオンにする。** 回答タブ > ⋮ > 「新しい回答についての
+      メール通知を受け取る」。無いと問い合わせが来ても誰も気づきません
+- [ ] **フォーム名を `カタルテ` に**(いまは `かたるて`)。Play Console と同じずれ
+      ([`docs/store/play_listing.md`](../../docs/store/play_listing.md))
+- [ ] `public/support/` の運営者名・所在地・返信の目安・更新日(ページの `fill`)
+- [ ] **Codemagic の変数グループ `mobile-dart-defines` に `SUPPORT_EMAIL` を入れる。**
+      値は `kfukejob@gmail.com`(`dart_defines/local.example.json` と同じ)。
+      アプリの「設定 > 気になった内容を報告する」はこの `mailto:` で、
+      **空だと行ごと消えます**(`settings_screen.dart` の `SupportLinks.hasSupportEmail`)。
+      審査メモはこの導線があることを前提に書いてあるので、空のまま出さないこと
+- [ ] `public/support/` の英語版。規約・ポリシーの英語版と同じ扱い(いまは日本語へ送っている)
 - [ ] `public/404.html` → 足したら `wrangler.jsonc` の `not_found_handling` を `"404-page"` に
 - [ ] **クローズドテストのトラックにリリースが載ったら、`public/beta/` と
       `public/en/beta/` のステップ2を押せるようにする。** 具体的には、`<li>` から
