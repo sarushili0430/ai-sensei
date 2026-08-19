@@ -14,17 +14,32 @@ import type { Locale } from "@ai-sensei/contract";
 /**
  * TTSのモデル。**2.5 で始めて、3.1 へは環境変数1つで切り替える。**
  *
- * 既定をGAの `gemini-2.5-flash-tts` に置くのは、previewのモデル名は予告なく
- * 消えることがあり、消えた瞬間に**先輩が一言も喋らないアプリ**になるため。
- * 3.1 を試すときは `GEMINI_TTS_MODEL=gemini-3.1-flash-tts-preview` を入れる。
- * 良ければこの定数を書き換えて、全環境で一度に切り替える。
+ * 実在するIDは {@link geminiTtsModels} の3つだけ。**綴りに注意** —
+ * 2.5 は `preview` が `tts` の**前**、3.1 は**後ろ**に来る(Googleの命名が揃っていない)。
  *
- * プラグイン(1.6.1)が型で持つのは次の4つ。型の外の名前も実体はAPIへそのまま
- * 渡るだけなので通るが、綴りの間違いは起動では分からず**最初に喋る瞬間に落ちる**。
- *   gemini-2.5-flash-tts / gemini-2.5-flash-lite-preview-tts /
- *   gemini-2.5-pro-tts / gemini-3.1-flash-tts-preview
+ * **プラグイン(1.6.1)の `GeminiTTSModels` 型を信用しないこと。**
+ * `gemini-2.5-flash-tts` / `gemini-2.5-pro-tts` という**存在しない名前**が入っている。
+ * `model` の型は `GeminiTTSModels | string` でAPIへ素通しなので、型は実在を保証しない。
+ * 存在しない名前を入れても起動は通り、**最初に喋る瞬間に落ちる**。
+ *
+ * **3つとも preview で、GAのTTSモデルは無い。**だから「モデルが消えた日に先輩が
+ * 無言になる」リスクは、どれを選んでも避けられない。手当ては、コードを変えずに
+ * `GEMINI_TTS_MODEL` だけで逃げられるようにしてあること。
+ * 恒久的に3.1へ倒すならこの定数を書き換えて、全環境で一度に切り替える。
  */
-export const defaultGeminiTtsModel = "gemini-2.5-flash-tts";
+export const defaultGeminiTtsModel = "gemini-2.5-flash-preview-tts";
+
+/**
+ * Gemini API が受け付けるTTSモデルID(2026-08 時点)。
+ *
+ * https://ai.google.dev/gemini-api/docs/speech-generation
+ * 増減はGoogleが決めるので、ここは**確かめた事実の記録**であって仕様ではない。
+ */
+export const geminiTtsModels = [
+  "gemini-2.5-flash-preview-tts",
+  "gemini-2.5-pro-preview-tts",
+  "gemini-3.1-flash-tts-preview",
+] as const;
 
 /**
  * 先輩の声。**キャラクターそのものなので、既定値で固定する。**

@@ -33,10 +33,9 @@ describe("loadConfig", () => {
     expect(config.GEMINI_TTS_VOICE).toBe("Leda");
   });
 
-  // preview のモデル名は予告なく消える。消えた瞬間に先輩が一言も喋らなくなるので、
-  // 既定はGAの2.5に置き、3.1は入れた人だけが踏む(ADR 0008)。
+  // 既定は2.5、3.1は入れた人だけが踏む(ADR 0008)。
   it("TTSの既定は 2.5 で、3.1 は環境変数で切り替える", () => {
-    expect(loadConfig(complete).GEMINI_TTS_MODEL).toBe("gemini-2.5-flash-tts");
+    expect(loadConfig(complete).GEMINI_TTS_MODEL).toBe("gemini-2.5-flash-preview-tts");
 
     const next = loadConfig({ ...complete, GEMINI_TTS_MODEL: "gemini-3.1-flash-tts-preview" });
     expect(next.GEMINI_TTS_MODEL).toBe("gemini-3.1-flash-tts-preview");
@@ -57,7 +56,7 @@ describe("loadConfig", () => {
       LLM_MODEL_KARTE: "",
     });
 
-    expect(config.GEMINI_TTS_MODEL).toBe("gemini-2.5-flash-tts");
+    expect(config.GEMINI_TTS_MODEL).toBe("gemini-2.5-flash-preview-tts");
     expect(config.GEMINI_TTS_VOICE).toBe("Leda");
     expect(config.LLM_MODEL_KARTE).toBe("claude-sonnet-5");
   });

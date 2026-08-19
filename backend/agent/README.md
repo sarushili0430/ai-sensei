@@ -130,7 +130,7 @@ few-shot も、その言語で書かれたものをそのまま渡す。
 
 | | |
 | --- | --- |
-| モデル | 既定 `gemini-2.5-flash-tts`(GA)。`GEMINI_TTS_MODEL` で `gemini-3.1-flash-tts-preview` へ |
+| モデル | 既定 `gemini-2.5-flash-preview-tts`。`GEMINI_TTS_MODEL` で `gemini-3.1-flash-tts-preview` へ |
 | 声 | `Leda` 固定。**日英で同じ1つ**(Geminiのボイスは言語を選ばない) |
 | 正 | `senpai-voice.ts`。冒頭の同梱音声を焼くスクリプトも同じ定数を読む |
 
@@ -141,6 +141,11 @@ few-shot も、その言語で書かれたものをそのまま渡す。
 
 数式の読み替え(`toSpeakableJa`)は**残してある**。Geminiは記号を読めるが、
 「1/2 → にぶんのいち」のような日本語の数学の読み順まではモデルの気分に任せない。
+
+**モデル名はプラグインの型を信用しないこと。**`GeminiTTSModels` には
+`gemini-2.5-flash-tts` のような**存在しない名前**が混じっている。`model` は
+`string` として素通しされるので、間違えても起動は通り、最初に喋る瞬間に落ちる。
+実在するIDは `senpai-voice.ts` の `geminiTtsModels` にまとめてある。
 
 ## ログと監視
 
