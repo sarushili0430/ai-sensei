@@ -242,6 +242,9 @@ abstract class BoardStep with _$BoardStep {
 
     /// null なら音声のみ(相づち・確認)。
     required BoardElement? board,
+
+    /// 類題を解き終わるまで待つ手順。true の間だけ自己申告ボタンを表示する。
+    @JsonKey(name: 'awaits_solving') bool? awaitsSolving,
   }) = _BoardStep;
 
   factory BoardStep.fromJson(Map<String, dynamic> json) => _$BoardStepFromJson(json);

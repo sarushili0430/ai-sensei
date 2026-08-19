@@ -119,7 +119,13 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
                 // **板書が主役。**残りの高さを全部渡す。
                 Expanded(child: _BoardStage(board: board)),
                 const SizedBox(height: AppSpacing.md),
-                _Inset(child: _LessonFooter(phase: state.phase, wrappingUp: wrappingUp)),
+                _Inset(
+                  child: _LessonFooter(
+                    phase: state.phase,
+                    wrappingUp: wrappingUp,
+                    awaitingSolving: state.awaitingSolving,
+                  ),
+                ),
               ] else
                 // **板書が無いときだけ、字幕を出す。**
                 //
@@ -160,17 +166,46 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
                     ],
                   ),
                 ),
-              // パスは恥ではない。穴の記録として価値がある。
-              _Inset(
-                child: GhostButton(
-                  label: strings.sessionPass,
-                  onPressed: wrappingUp
-                      ? null
-                      : () => ref
-                          .read(sessionControllerProvider.notifier)
-                          .pass(strings.sessionPassMessage),
+              if (state.awaitingSolving)
+                _Inset(
+                  child: Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: ChunkyButton(
+                          label: strings.sessionSolved,
+                          onPressed: wrappingUp
+                              ? null
+                              : () => ref
+                                  .read(sessionControllerProvider.notifier)
+                                  .reportSolving(strings.sessionSolvedMessage),
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: GhostButton(
+                          label: strings.sessionStuck,
+                          onPressed: wrappingUp
+                              ? null
+                              : () => ref
+                                  .read(sessionControllerProvider.notifier)
+                                  .reportSolving(strings.sessionStuckMessage),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                // パスは恥ではない。穴の記録として価値がある。
+                _Inset(
+                  child: GhostButton(
+                    label: strings.sessionPass,
+                    onPressed: wrappingUp
+                        ? null
+                        : () => ref
+                            .read(sessionControllerProvider.notifier)
+                            .pass(strings.sessionPassMessage),
+                  ),
                 ),
-              ),
               _Inset(
                 child: ChunkyButton(
                   label: wrappingUp ? strings.sessionSummarizing : strings.sessionEnd,
@@ -440,10 +475,15 @@ class _BoardGapNotice extends StatelessWidget {
 /// 文字で戻ってきて、**画面の主役が二重になる**(実機で、図と式が出ている下に
 /// 4段落の文字起こしが乗った)。ここが持つのは「いま誰の番か」だけ。
 class _LessonFooter extends StatelessWidget {
-  const _LessonFooter({required this.phase, required this.wrappingUp});
+  const _LessonFooter({
+    required this.phase,
+    required this.wrappingUp,
+    required this.awaitingSolving,
+  });
 
   final SessionPhase phase;
   final bool wrappingUp;
+  final bool awaitingSolving;
 
   @override
   Widget build(BuildContext context) {
@@ -462,11 +502,13 @@ class _LessonFooter extends StatelessWidget {
         Expanded(
           child: Text(
             // 番がどちらにあるかだけを、1行で。
-            yourTurn && !wrappingUp
-                ? strings.sessionExplainBack
-                : wrappingUp
-                    ? strings.sessionSummarizing
-                    : strings.sessionSenpaiTeaching,
+            awaitingSolving && !wrappingUp
+                ? strings.sessionSolving
+                : yourTurn && !wrappingUp
+                    ? strings.sessionExplainBack
+                    : wrappingUp
+                        ? strings.sessionSummarizing
+                        : strings.sessionSenpaiTeaching,
             style: Theme.of(context).textTheme.titleMedium,
           ),
         ),

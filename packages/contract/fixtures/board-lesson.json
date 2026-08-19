@@ -35,9 +35,14 @@
     },
     {
       "index": 6,
-      "speech": "そう。じゃあ今の、自分の言葉で説明してみて。",
-      "board": { "kind": "text", "body": "D > 0 → 異なる2つの実数解" },
-      "awaits_student": true
+      "speech": "流れは、この3つだけ。",
+      "board": { "kind": "text", "body": "係数を読む → Dを計算 → 符号で判断" }
+    },
+    {
+      "index": 7,
+      "speech": "じゃあ、この数だけ替えた問題だとどうなる? 解けたら教えて。",
+      "board": { "kind": "latex", "tex": "x^2 - 5x + 6 = 0" },
+      "awaits_solving": true
     }
   ]
 }

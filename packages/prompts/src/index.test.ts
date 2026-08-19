@@ -467,8 +467,14 @@ describe("設計上の約束がプロンプトに書かれている", () => {
 
     expect(ja).toContain("必ず `holes` に入れてください");
     expect(ja).toContain("間違ったカルテ");
+    expect(ja).toContain("「できなかった」「解けなかった」");
+    expect(ja).toContain("その申告をそのまま短く");
+    expect(ja).toContain("「できた」は解き終わりの合図");
     expect(en).toContain("put it in `holes`");
     expect(en).toContain("wrong karte");
+    expect(en).toContain('"I couldn\'t do it", "I couldn\'t solve it"');
+    expect(en).toContain("quote the report itself");
+    expect(en).toContain('"I did it" on the analogous problem only reports');
   });
 
   /**
@@ -573,14 +579,12 @@ describe("設計上の約束がプロンプトに書かれている", () => {
   });
 
   /**
-   * 授業は往復する(2026-08-14 のドッグフーディング報告への対応)。
+   * 授業は往復し、教え切ったあと同じ解法の類題1問へ進む(Issue #152)。
    *
-   * 「問いかけで `steps` を止めて答えを聞き、同じ板書に続きを積んで**教え切る**。
-   * 教え返しへの受け渡しは『自分の言葉で説明してみて』の形だけ」— この形は
-   * agent 側(`asksForTeachBack` / `runLessonLoop`)と二重書きで、プロンプト側だけ
-   * 消えると、**質問を1つしただけで授業が終わる**古い形に静かに戻る。
+   * `awaits_solving` と受け渡し文は agent / contract / mobile と二重書きなので、
+   * プロンプト側だけ消えると15秒で再促しする旧経路や、授業全体の自由再生へ戻る。
    */
-  it("授業の往復・答えまで書き切る解説が両方の言語に書かれている", () => {
+  it("授業の往復・類題からの教え返しが両方の言語に書かれている", () => {
     const ja = getPrompt("senpai_board", "ja").body;
     const en = getPrompt("senpai_board", "en").body;
 
@@ -590,25 +594,52 @@ describe("設計上の約束がプロンプトに書かれている", () => {
     expect(en).toContain("The lesson goes back and forth");
     expect(en).toContain("under the same board");
 
-    // 解説に重きを置く(2026-08-17): 答えの行まで板書で見せ切り、流れを一行に畳む。
-    // 数値替えの確認問題を出して解かせる形はここで廃止した — たしかめは教え返しの仕事。
+    // 解説は答えまで見せ切り、その直後に同じ解法の類題を1問だけ置く。
     expect(ja).toContain("答えまで、板書で見せ切る");
     expect(ja).toContain("答えの行まで");
-    expect(ja).toContain("練習問題は出しません");
+    expect(ja).toContain("数値だけを替えた類題を1問だけ自作します");
+    expect(ja).toContain("awaits_solving: true");
+    expect(ja).toContain("15秒の無回答判定を使いません");
+    expect(ja).toContain("残り120秒未満なら類題を出しません");
+    expect(ja).toContain("`review` では類題を出さず");
     expect(en).toContain("Write it through to the answer");
     expect(en).toContain("through to the answer line");
-    expect(en).toContain("Never pose a numbers-changed practice problem");
+    expect(en).toContain("exactly one analogous problem of your own");
+    expect(en).toContain("awaits_solving: true");
+    expect(en).toContain("never uses the 15-second no-answer timeout");
+    expect(en).toContain("fewer than 120 seconds remain");
+    expect(en).toContain("In `review`, pose no analogous problem");
 
-    // 受け渡しの文言は往復を終える唯一の合図(`asksForTeachBack` と二重書き)。
+    // 新しい受け渡しと、時間不足時だけ使う従来の受け渡しを両方残す。
     // 途中の問いかけに同じ言い方を許すと、授業の途中で教え返しへ切り替わる。
-    expect(ja).toContain("自分の言葉で説明してみて");
+    expect(ja).toContain("どうしてそうなるか、自分の言葉で説明してみて");
+    expect(ja).toContain("じゃあ今の、自分の言葉で説明してみて");
     expect(ja).toContain("途中の問いかけには「説明して」を使わない");
-    expect(en).toContain("in your own words");
+    expect(en).toContain("Now explain in your own words why it works out that way");
+    expect(en).toContain("Alright — now explain that back to me in your own words");
     expect(en).toContain("for a mid-lesson checkpoint");
 
-    // 教え返し側も、要約の最後の問いかけから会話を再開する(同じ質問を聞き直さない)
-    expect(getPrompt("senpai_conversation", "ja").body).toContain("その答えを聞くところから");
-    expect(getPrompt("senpai_conversation", "en").body).toContain("hearing their answer to it");
+    // 教え返し側は類題1問に対象を絞り、「できた」自体を理解の証拠にしない。
+    expect(getPrompt("senpai_conversation", "ja").body).toContain("その類題1問の理由");
+    expect(getPrompt("senpai_conversation", "ja").body).toContain(
+      "「できた」だけを「言えたこと」にせず",
+    );
+    expect(getPrompt("senpai_conversation", "en").body).toContain("why that one problem works");
+    expect(getPrompt("senpai_conversation", "en").body).toContain(
+      '"I did it" alone is not evidence',
+    );
+  });
+
+  it("英語科の日本語板書も、類題を待って理由の説明へ渡す", () => {
+    const englishLesson = getPrompt("senpai_board_english", "ja").body;
+
+    expect(englishLesson).toContain("数値や主語だけを替えた類題を1問だけ自作します");
+    expect(englishLesson).toContain("awaits_solving: true");
+    expect(englishLesson).toContain("15秒の無回答判定や再促しは使わず");
+    expect(englishLesson).toContain("類題と正答の両方");
+    expect(englishLesson).toContain("どうしてそうなるか、自分の言葉で説明してみて");
+    expect(englishLesson).toContain("残り120秒未満なら類題を出しません");
+    expect(englishLesson).toContain("`review` では類題を出さず");
   });
 
   /**

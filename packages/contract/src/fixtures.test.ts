@@ -253,6 +253,15 @@ describe("板書のスキーマ", () => {
     expect(boardStepSchema.safeParse(step({ awaits_student: "yes" })).success).toBe(false);
   });
 
+  // 類題を解く沈黙は通常の会話待ちと別扱いにする(#152)。optionalなのは、
+  // フィールドを知らない旧agentが送った手順も引き続き読めるようにするため。
+  it("awaits_solving は true / false / 省略のどれでも読める(booleanでなければ弾く)", () => {
+    expect(boardStepSchema.safeParse(step({ awaits_solving: true })).success).toBe(true);
+    expect(boardStepSchema.safeParse(step({ awaits_solving: false })).success).toBe(true);
+    expect(boardStepSchema.safeParse(step()).success).toBe(true);
+    expect(boardStepSchema.safeParse(step({ awaits_solving: "yes" })).success).toBe(false);
+  });
+
   // 板書は「1手順=1行」であって、答案の貼り付け場所ではない。
   // 1要素の上限・多行環境の禁止・手順数の上限の3つで塞ぐ。
   it("解答を丸ごと1要素に流し込めない", () => {

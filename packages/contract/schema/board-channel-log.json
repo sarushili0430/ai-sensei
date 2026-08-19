@@ -529,6 +529,9 @@
                       },
                       "awaits_student": {
                         "type": "boolean"
+                      },
+                      "awaits_solving": {
+                        "type": "boolean"
                       }
                     },
                     "required": [

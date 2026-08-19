@@ -142,6 +142,11 @@ void main() {
         phase: 'explainBack',
         error: StateError,
       ),
+      DegradationEvent.solvingReportNotSent(
+        sessionId: 'ses_1',
+        phase: 'senpaiTeaching',
+        error: StateError,
+      ),
     ];
 
     test('値は数値・真偽・文字列だけ(入れ子を持ち込まない)', () {

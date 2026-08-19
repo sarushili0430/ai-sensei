@@ -10,9 +10,12 @@ import {
 import type { JobLogger } from "./log.ts";
 import {
   type LessonTurn,
+  type SolvingReport,
   asksForTeachBack,
+  classifySolvingReport,
   lessonContinuationInstruction,
   lessonSteps,
+  stepAwaitsSolving,
   stepAwaitsStudent,
   studentSilenceMarker,
 } from "./senpai.ts";
@@ -24,7 +27,8 @@ import {
  *   生徒が答える
  *   2往復目: 答えを受けて、**同じ板書に**続きを積む
  *   …
- *   最後: 「じゃあ今の、自分の言葉で説明してみて」で教え返しへ渡す
+ *   最後(new): 類題を出し、解き終わりを待って、その理由の教え返しへ渡す
+ *   最後(review): 従来どおり、教えた内容そのものの教え返しへ渡す
  *
  * 配送層(`BoardDelivery.append()` × n → `close()`)は最初からこの往復を
  * 想定して作られていたが、呼び出し側が1往復で会話へ落としていた。その結果、
@@ -39,7 +43,10 @@ import {
  * 授業がどこまで続くかは板書LLMが決める(教え切ったかどうかは中身の話なので、
  * コードには判定できない)。合図は最後の手順:
  *
- *   - 「自分の言葉で説明してみて」(`asksForTeachBack`) → 授業は完了。教え返しへ
+ *   - 「どうしてそうなるか、自分の言葉で説明してみて」(`asksForTeachBack`)
+ *                                                              → 授業は完了。教え返しへ
+ *   - 類題を解く手順(`stepAwaitsSolving`)                  → 15秒判定を使わず、
+ *                                                              セッション残り時間まで待つ
  *   - 答えを待つ手順(`stepAwaitsStudent` — 一次は `awaits_student` の申告、
  *     欄が無ければ言い回しの推測)                       → 答えを待って、続きを積む
  *   - 答えを待たず言い切った                            → 渡し忘れ。呼び出し側の
@@ -135,6 +142,15 @@ export class StudentUtterances {
 
   /** 次の発話を待って取り出す。時間切れ・中止は null。 */
   take(timeoutMs: number, signal?: AbortSignal): Promise<string | null> {
+    return this.wait(signal, timeoutMs);
+  }
+
+  /** 次の発話を、外側の中止条件だけで待つ。類題の15秒タイムアウト回避に使う。 */
+  takeUntil(signal: AbortSignal): Promise<string | null> {
+    return this.wait(signal);
+  }
+
+  private wait(signal: AbortSignal | undefined, timeoutMs?: number): Promise<string | null> {
     const queued = this.queue.shift();
     if (queued !== undefined) return Promise.resolve(queued);
     if (signal?.aborted === true) return Promise.resolve(null);
@@ -144,13 +160,13 @@ export class StudentUtterances {
       const settle = (text: string | null) => {
         if (done) return;
         done = true;
-        clearTimeout(timer);
+        if (timer !== undefined) clearTimeout(timer);
         signal?.removeEventListener("abort", onAbort);
         if (this.waiter !== null && this.waiter.settle === settle) this.waiter = null;
         resolve(text);
       };
       const onAbort = () => settle(null);
-      const timer = setTimeout(() => settle(null), timeoutMs);
+      const timer = timeoutMs === undefined ? undefined : setTimeout(() => settle(null), timeoutMs);
       signal?.addEventListener("abort", onAbort, { once: true });
       this.waiter = { settle };
     });
@@ -213,6 +229,8 @@ export type RunLessonLoopOptions = {
   utterances: StudentUtterances;
   /** 消費した発話をtranscriptへ写す口(`collector.add`)。 */
   record: (text: string) => void;
+  /** 類題を出してよい授業か。本人申告済みの穴を扱う `review` では false。 */
+  practiceProblemEnabled: boolean;
   /** タイムアウトの瞬間に生徒が話しているか(`session.userState`)。 */
   isStudentSpeaking?: () => boolean;
   remainingSeconds: () => number;
@@ -247,6 +265,7 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
     signal,
     utterances,
     record,
+    practiceProblemEnabled,
     isStudentSpeaking = () => false,
     remainingSeconds,
     log,
@@ -262,6 +281,8 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
   let opened = false;
   let stepCount = 0;
   let passes = 0;
+  /** 類題の本人申告。直後の1パスだけに、採点せず分岐する指示として渡す。 */
+  let pendingSolvingReport: SolvingReport | undefined;
 
   const summary = (reason: LessonLoopReason): LessonLoopResult => ({
     board_id: boardId,
@@ -278,6 +299,8 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
 
   while (true) {
     passes += 1;
+    let skippedSolving = false;
+    const solvingReportForPass = pendingSolvingReport;
 
     // このパスの中止条件は「セッションの終わり」か「生徒が話し始めた」。
     // 生徒の発話で止めるのは §3-2 案Aの利点そのもの — ただし従来と違い、
@@ -297,7 +320,23 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
         speak,
         // 文脈が1つでもあれば継続の指示。初回の定型指示に戻るのは、
         // この板書でまだ何も起きていないときだけ。
-        instruction: turns.length === 0 ? undefined : lessonContinuationInstruction(turns, locale),
+        instruction:
+          turns.length === 0
+            ? undefined
+            : lessonContinuationInstruction(turns, locale, solvingReportForPass),
+        // 類題を見せてから「時間がないので答えなくてよい」とするのが一番混乱する。
+        // 次の1パスと教え返しに120秒を残せないときは、送信前に従来の締めへ縮退する。
+        // `review` も同じ口で抑止し、プロンプトがぶれても Issue の `new` 限定を守る。
+        stopBefore: (step) => {
+          if (!stepAwaitsSolving(step)) return false;
+          const shouldSkip =
+            !practiceProblemEnabled ||
+            passes >= maxPasses ||
+            remainingSeconds() < minContinueSeconds ||
+            delivery.isClosed;
+          if (shouldSkip) skippedSolving = true;
+          return shouldSkip;
+        },
         signal: passAbort.signal,
         log,
       });
@@ -311,11 +350,51 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
     boardId = result.board_id;
     opened = opened || result.opened;
     stepCount = result.step_count;
+    if (result.appended > 0) pendingSolvingReport = undefined;
 
     if (signal.aborted) return summary("interrupted");
 
+    const lastTurn = turns.at(-1);
     const lastStep = lessonSteps(turns).at(-1);
     const lastSpeech = lastStep?.speech ?? "";
+
+    if (skippedSolving) {
+      log?.info("lesson_solving_skipped", {
+        passes,
+        practice_problem_enabled: practiceProblemEnabled,
+        remaining_seconds: remainingSeconds(),
+      });
+      return summary("budget");
+    }
+
+    // 類題を解いている沈黙には通常の15秒タイムアウトを使わない。
+    // 待ちの安全弁はセッション残り時間だけで、時間切れの再促しもしない。
+    if (lastTurn?.kind === "step" && stepAwaitsSolving(lastTurn.step)) {
+      const remainingMs = Math.max(0, Math.floor(remainingSeconds() * 1000));
+      if (remainingMs === 0) return summary("interrupted");
+      const solvingDeadline = AbortSignal.timeout(remainingMs);
+      const solvingSignal = AbortSignal.any([signal, solvingDeadline]);
+      const report = await utterances.takeUntil(solvingSignal);
+
+      if (report === null) {
+        if (!signal.aborted) {
+          log?.info("lesson_solving_deadline", {
+            passes,
+            remaining_seconds: remainingSeconds(),
+          });
+        }
+        return summary("interrupted");
+      }
+
+      record(report);
+      turns.push({ kind: "student", text: report });
+      pendingSolvingReport = classifySolvingReport(report, locale);
+      log?.info("lesson_solving_report", {
+        pass: passes,
+        report: pendingSolvingReport,
+      });
+      continue;
+    }
 
     // 「自分の言葉で説明してみて」まで来たら授業は完了。教え返しへ渡す。
     if (asksForTeachBack(lastSpeech, locale)) return summary("handed_over");

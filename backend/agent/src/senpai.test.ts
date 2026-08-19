@@ -5,13 +5,17 @@ import {
   type LessonTurn,
   asksForBoard,
   asksForTeachBack,
+  classifySolvingReport,
   handsTurnToStudent,
   lessonContinuationInstruction,
   lessonFailedPrompt,
   lessonRecapMaxLength,
+  practiceTeachBackPrompt,
   renderLessonRecap,
   reviewOpening,
   senpaiConversationPrompt,
+  stepAwaitsInput,
+  stepAwaitsSolving,
   stepAwaitsStudent,
   studentSilenceMarker,
   teachBackPrompt,
@@ -66,6 +70,7 @@ const said = (text: string): LessonTurn => ({ kind: "student", text });
 describe("定型の一言", () => {
   it("言語ごとに別の文言を返す", () => {
     expect(teachBackPrompt("ja")).not.toBe(teachBackPrompt("en"));
+    expect(practiceTeachBackPrompt("ja")).not.toBe(practiceTeachBackPrompt("en"));
     expect(lessonFailedPrompt("ja")).not.toBe(lessonFailedPrompt("en"));
     expect(reviewOpening("ja")).not.toBe(reviewOpening("en"));
     expect(lessonFailedPrompt("ja", "review")).not.toBe(lessonFailedPrompt("en", "review"));
@@ -87,6 +92,7 @@ describe("定型の一言", () => {
   it("こちらから言う一言が、申告させる聞き方や催促になっていない", () => {
     const lines = [
       teachBackPrompt("ja"),
+      practiceTeachBackPrompt("ja"),
       lessonFailedPrompt("ja"),
       reviewOpening("ja"),
       lessonFailedPrompt("ja", "review"),
@@ -166,6 +172,43 @@ describe("stepAwaitsStudent", () => {
   });
 });
 
+describe("類題の解答待ち", () => {
+  it("通常の問いとは別の申告として読む", () => {
+    const solving = {
+      speech: "じゃあ、この類題はどうなる?",
+      awaits_student: false,
+      awaits_solving: true,
+    };
+    expect(stepAwaitsSolving(solving)).toBe(true);
+    expect(stepAwaitsInput(solving, "ja")).toBe(true);
+    expect(stepAwaitsStudent(solving, "ja")).toBe(false);
+  });
+
+  it("ボタンと声の言い換えを同じ本人申告へ分類し、否定形を先に見る", () => {
+    expect(classifySolvingReport("できた", "ja")).toBe("solved");
+    expect(classifySolvingReport("解けました", "ja")).toBe("solved");
+    expect(classifySolvingReport("できなかった", "ja")).toBe("stuck");
+    expect(classifySolvingReport("できませんでした", "ja")).toBe("stuck");
+    expect(classifySolvingReport("解けない", "ja")).toBe("stuck");
+    expect(classifySolvingReport("わかんない", "ja")).toBe("stuck");
+    expect(classifySolvingReport("I got it", "en")).toBe("solved");
+    expect(classifySolvingReport("I couldn't do it", "en")).toBe("stuck");
+    expect(classifySolvingReport("I can't solve it", "en")).toBe("stuck");
+    expect(classifySolvingReport("答えは2つ", "ja")).toBe("unclear");
+  });
+
+  /**
+   * 声で答える生徒は言い切りより「まだできてない」と言う。ここを落とすと
+   * `unclear` へ沈み、はっきり詰まりを伝えた生徒に「できた? 止まった?」と
+   * もう一度言わせることになる。
+   */
+  it("「〜できてない」も詰まりとして拾う", () => {
+    expect(classifySolvingReport("まだできてない", "ja")).toBe("stuck");
+    expect(classifySolvingReport("えっと、解けてない", "ja")).toBe("stuck");
+    expect(classifySolvingReport("まだできてません", "ja")).toBe("stuck");
+  });
+});
+
 describe("asksForBoard", () => {
   it("板書・黒板と名指しした発話だけを拾う", () => {
     expect(asksForBoard("板書して!", "ja")).toBe(true);
@@ -193,6 +236,8 @@ describe("asksForTeachBack", () => {
     expect(asksForTeachBack("じゃあ今の、自分の言葉で説明してみて。", "ja")).toBe(true);
     expect(asksForTeachBack(teachBackPrompt("ja"), "ja")).toBe(true);
     expect(asksForTeachBack(teachBackPrompt("en"), "en")).toBe(true);
+    expect(asksForTeachBack(practiceTeachBackPrompt("ja"), "ja")).toBe(true);
+    expect(asksForTeachBack(practiceTeachBackPrompt("en"), "en")).toBe(true);
     expect(asksForTeachBack("Now explain that back to me in your own words.", "en")).toBe(true);
   });
 
@@ -289,6 +334,34 @@ describe("renderLessonRecap", () => {
     expect(recap).not.toContain("40. 「");
   });
 
+  it("上限を超えても最後の類題と正答は lesson_recap に必ず残す", () => {
+    const many: LessonTurn[] = Array.from({ length: 30 }, (_, index) =>
+      step(index, "あ".repeat(90), { kind: "latex", tex: "x = 1" }),
+    );
+    many.push({
+      kind: "step",
+      step: {
+        index: 30,
+        speech: "じゃあ、この類題はどうなる?",
+        board: { kind: "latex", tex: "x^2 - 5x + 6 = 0" },
+        awaits_solving: true,
+      },
+    });
+    many.push(said("できた"));
+    many.push(
+      step(31, "正答はこう。", {
+        kind: "text",
+        body: "D = 1 > 0 → 異なる2つの実数解",
+      }),
+    );
+
+    const recap = renderLessonRecap(many, "ja");
+
+    expect(recap.length).toBeLessThanOrEqual(lessonRecapMaxLength);
+    expect(recap).toContain("x^2 - 5x + 6 = 0");
+    expect(recap).toContain("D = 1 > 0 → 異なる2つの実数解");
+  });
+
   // 空文字を返すと、見出しだけが残った節を先輩が読むことになり、
   // 「板書はあるが読めない」と解釈されうる。**無いことを書く。**
   it("授業前は「まだ無い」と書いた定型句を、会話の言語で返す", () => {
@@ -312,6 +385,16 @@ describe("lessonContinuationInstruction", () => {
     expect(instruction).toContain("生徒: 「えっと、12?」");
     expect(instruction).toContain("続きだけを書きます");
     expect(instruction).toContain("`index` はまた 0 から");
+  });
+
+  it("類題の本人申告に応じた分岐指示を足す", () => {
+    const solved = lessonContinuationInstruction([...turns, said("できた")], "ja", "solved");
+    const stuck = lessonContinuationInstruction([...turns, said("できなかった")], "ja", "stuck");
+
+    expect(solved).toContain("類題の正答");
+    expect(solved).toContain("正解したとは言わない");
+    expect(stuck).toContain("どこで止まった");
+    expect(stuck).toContain("責めず");
   });
 
   // 答えの直前が読めないと、続きがその答えと噛み合わない。

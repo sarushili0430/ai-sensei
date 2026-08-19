@@ -63,6 +63,7 @@ class SessionState {
     required this.remainingSeconds,
     this.lastSenpaiText,
     this.board = BoardSnapshot.empty,
+    this.awaitingSolving = false,
     this.failure,
     this.error,
     this.showPaywall = false,
@@ -79,6 +80,9 @@ class SessionState {
   /// 板書を受け取らない会話(既存の復習)では空のまま。
   final BoardSnapshot board;
 
+  /// 類題を解いている間だけ true。ボタンか声の申告を受けた瞬間に false にする。
+  final bool awaitingSolving;
+
   /// `phase == failed` のときだけ入る。
   final SessionFailure? failure;
   final Object? error;
@@ -94,6 +98,7 @@ class SessionState {
     int? remainingSeconds,
     String? lastSenpaiText,
     BoardSnapshot? board,
+    bool? awaitingSolving,
     SessionFailure? failure,
     Object? error,
     bool? showPaywall,
@@ -104,6 +109,7 @@ class SessionState {
       remainingSeconds: remainingSeconds ?? this.remainingSeconds,
       lastSenpaiText: lastSenpaiText ?? this.lastSenpaiText,
       board: board ?? this.board,
+      awaitingSolving: awaitingSolving ?? this.awaitingSolving,
       failure: failure ?? this.failure,
       error: error ?? this.error,
       showPaywall: showPaywall ?? this.showPaywall,
@@ -464,6 +470,7 @@ class SessionController extends _$SessionController {
     }
     state = state.copyWith(
       board: board,
+      awaitingSolving: board.awaitsSolving,
       phase: _isTalking(state.phase) ? SessionPhase.senpaiTeaching : state.phase,
     );
 
@@ -505,7 +512,38 @@ class SessionController extends _$SessionController {
 
   void onUserTurn() {
     if (!_isTalking(state.phase)) return;
-    state = state.copyWith(phase: _listeningPhase);
+    // 声で「できた」「わかんない」と答えた経路でも、ボタンを二重に残さない。
+    state = state.copyWith(phase: _listeningPhase, awaitingSolving: false);
+  }
+
+  /// 類題の「できた / できなかった」。音声と同じ `lk.chat` へ流す。
+  ///
+  /// 制御チャネルにすると transcript に残らず、声の言い換えと分岐が二本になる。
+  /// これは本人の発話そのものなので、既存の [pass] と同じ入口を使う。
+  Future<void> reportSolving(String message) async {
+    // 連打で同じ本人申告を二重に transcript へ載せない。
+    if (!state.awaitingSolving) return;
+    onUserTurn();
+    try {
+      await _room?.localParticipant?.sendText(
+        message,
+        options: SendTextOptions(topic: 'lk.chat'),
+      );
+    } catch (error) {
+      // 声でも申告できるので、送信失敗で会話画面自体は止めない。
+      //
+      // ただし**黙って落とさない。** 解答待ちの先輩は15秒判定を外して
+      // 残り時間まで待つので、届かないと会話が何分も止まったままになる。
+      // 押した本人には「ボタンが効かない」としか見えない静かな壊れ方なので、
+      // 事実だけ(文言は渡さない)を残して原因を追えるようにする。
+      Telemetry.report(
+        DegradationEvent.solvingReportNotSent(
+          sessionId: _sessionId,
+          phase: state.phase.name,
+          error: error.runtimeType,
+        ),
+      );
+    }
   }
 
   /// 「うまく言えない」。
@@ -562,11 +600,15 @@ class SessionController extends _$SessionController {
     // ここを `_teardown()` の後ろに置くと、「今日はここまで」を押してから
     // 数秒間、画面が押す前とまったく同じまま止まる。反応が無いので連打される。
     if (talked) {
-      state = state.copyWith(phase: SessionPhase.summarizing);
+      state = state.copyWith(
+        phase: SessionPhase.summarizing,
+        awaitingSolving: false,
+      );
     } else {
       // 先輩が来ていないので、カルテは作られない。待たせずに理由を出す。
       state = state.copyWith(
         phase: SessionPhase.failed,
+        awaitingSolving: false,
         failure: SessionFailure.senpaiUnavailable,
       );
     }
