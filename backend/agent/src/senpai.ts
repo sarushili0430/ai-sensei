@@ -419,12 +419,21 @@ function renderTurnLines(
   // そこだけ日本語で応答しはじめる(`render.ts` の `phrases` と同じ理由)。
   const [open, close] = locale === "en" ? ['"', '"'] : ["「", "」"];
 
+  /**
+   * **番号は `step.index` ではなく、板書に積まれた通し位置で振る。**
+   *
+   * 継続の指示は「`index` はまた 0 から数えます」なので、2パス目以降の手順は
+   * 1・2・3 を取り直す。それをそのまま書くと、要約の中に同じ番号が何度も並び、
+   * **問いかけで名指しする「2行目」がどの行なのか決まらなくなる** —
+   * 生徒に違う行を見せる誘導になる。板書は開き直さずに積み上がるので、
+   * ここで数え上げた位置がそのまま画面上の行にあたる。
+   */
+  let boardLine = 0;
   const all = turns.map((turn) => {
     if (turn.kind === "student") return `${studentLabel}: ${open}${turn.text}${close}`;
+    boardLine += 1;
     const board = describeBoard(turn.step.board, locale);
-    return `${turn.step.index + 1}. ${open}${turn.step.speech}${close}${
-      board === null ? "" : ` / ${board}`
-    }`;
+    return `${boardLine}. ${open}${turn.step.speech}${close}${board === null ? "" : ` / ${board}`}`;
   });
 
   const lines: string[] = [];

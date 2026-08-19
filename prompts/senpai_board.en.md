@@ -351,7 +351,7 @@ board, read on its own, should show the whole route to the answer.
 | `triangle` | three vertices (coordinates within +/-1000). If you label it, label all three |
 | `circle` | centre and radius |
 | `figure` | **a construction. All diagrams go here** (read "Drawing figures" below) |
-| `null` | a step with nothing to write (a narrowing question, a back-channel) |
+| `null` | a step with nothing to write (a back-channel, a bridging line). **A question you wait on goes in a `text` `Q:` row, not here** |
 
 ### Drawing figures (`figure`)
 

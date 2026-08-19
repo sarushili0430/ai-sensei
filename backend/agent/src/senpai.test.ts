@@ -314,6 +314,33 @@ describe("lessonContinuationInstruction", () => {
     expect(instruction).toContain("`index` はまた 0 から");
   });
 
+  /**
+   * **行番号は板書の通し位置で振る。**
+   *
+   * 継続の指示は「`index` はまた 0 から数えます」なので、2パス目の手順は
+   * `index` 0・1 を取り直す。それをそのまま番号にすると要約に 1・2 が二度並び、
+   * 問いかけで名指しする「2行目」がどの行か決まらなくなる —— 生徒に違う行を
+   * 見せる誘導になる。板書は開き直さず積み上がるので、通し位置が画面の行と一致する。
+   */
+  it("パスをまたいで `index` が振り直されても、行番号は板書の通し位置になる", () => {
+    const acrossPasses: LessonTurn[] = [
+      step(0, "まず、式をそのまま書くね。", { kind: "latex", tex: "x^2 - 3x + 2 = 0" }),
+      step(1, "因数分解するとこう。", { kind: "latex", tex: "(x-1)(x-2) = 0" }),
+      said("わかった"),
+      // 2パス目。`index` は 0 から振り直される。
+      step(0, "じゃあ解はこう。", { kind: "latex", tex: "x = 1, 2" }),
+      step(1, "3行目の右辺、どっちが大きい?", { kind: "text", body: "Q: 3行目の右辺は?" }),
+    ];
+
+    const instruction = lessonContinuationInstruction(acrossPasses, "ja");
+
+    expect(instruction).toContain("3. 「じゃあ解はこう。」");
+    expect(instruction).toContain("4. 「3行目の右辺、どっちが大きい?」");
+    // 1・2 が二度出てこない(2パス目が 1. から振り直されていない)。
+    expect(instruction.match(/^1\. /gm) ?? []).toHaveLength(1);
+    expect(instruction.match(/^2\. /gm) ?? []).toHaveLength(1);
+  });
+
   // 答えの直前が読めないと、続きがその答えと噛み合わない。
   // 教え返しの要約(先頭を残す)とは逆で、こちらは**末尾**を残す。
   it("溢れたら先頭を落として、直近のやりとりを残す", () => {
