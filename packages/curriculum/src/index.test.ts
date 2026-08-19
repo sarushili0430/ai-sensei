@@ -249,6 +249,33 @@ describe("prerequisitesOf", () => {
     expect(deep).toContain("M1-NIJI-GURAFU");
   });
 
+  it("動名詞から文構造・一般動詞を経てbe動詞まで戻れる", () => {
+    const ids = prerequisitesOf("JE-DOMEISHI", Number.POSITIVE_INFINITY).map((topic) => topic.id);
+
+    expect(ids).toEqual(
+      expect.arrayContaining([
+        "JE-FUTEISHI",
+        "JE-BUNKOZO-KIHON",
+        "JE-DOUSHI-IPPAN",
+        "JE-DOUSHI-BE",
+      ]),
+    );
+  });
+
+  it("高校数学と海外数列の入口が、説明に必要な基礎へつながる", () => {
+    const japanese = prerequisitesOf("M3-SEKIBUN-OYO", Number.POSITIVE_INFINITY).map(
+      (topic) => topic.id,
+    );
+    expect(japanese).toEqual(
+      expect.arrayContaining(["J3-KAZUSHIKI-INSU", "J3-ZUKEI-SANHEIHO", "J2-KAZUSHIKI-KEISAN"]),
+    );
+
+    const international = prerequisitesOf("A2-SEQ-RECURSION", Number.POSITIVE_INFINITY).map(
+      (topic) => topic.id,
+    );
+    expect(international).toEqual(expect.arrayContaining(["A1-FUNC-SLOPE", "A1-EXPO-RULES"]));
+  });
+
   it("海外の課程でも前提をたどれる(深掘りは同じ言語・同じ教科の中で閉じる)", () => {
     const ids = prerequisitesOf("A2-COORD-CIRCLE", 2).map((topic) => topic.id);
     expect(ids).toContain("A1-QUAD-SOLVE");

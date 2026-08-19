@@ -667,7 +667,7 @@
         "Explain where the sum formulas come from",
         "Decide which model a sequence follows and justify it"
       ],
-      "prerequisites": [],
+      "prerequisites": ["A1-FUNC-SLOPE", "A1-EXPO-RULES"],
       "keywords": [
         "arithmetic sequence",
         "geometric sequence",

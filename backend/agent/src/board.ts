@@ -671,7 +671,7 @@ export type BoardChannelOptions = {
   /**
    * このセッションで教えてよい単元。**見出しの照合に使う**({@link validateHead})。
    *
-   * `backend/api` が既に前提2段ぶん(`conversationPrerequisiteDepth`)を含めて
+   * `backend/api` が既に前提チェーン全体(`conversationPrerequisiteDepth`)を含めて
    * 載せてくるので、ここで**さらに広げない**(`karte.ts` が
    * `prerequisiteDepth: 0` で組むのと同じ理由)。
    *

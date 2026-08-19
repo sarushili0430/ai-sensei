@@ -508,6 +508,43 @@ describe("設計上の約束がプロンプトに書かれている", () => {
   });
 
   /**
+   * 固定2段へ戻ると、動名詞で詰まった生徒をbe動詞まで診断できない。
+   * 数学の日英と、日本語で教える英語授業の3本を同じ変更単位として固定する。
+   */
+  it("前提チェーン全体を1段ずつ切り分け、前提から主題へ戻る見本が3本にある", () => {
+    const ja = getPrompt("senpai_board", "ja").body;
+    const en = getPrompt("senpai_board", "en").body;
+    const englishLesson = getPrompt("senpai_board_english", "ja").body;
+
+    expect(ja).toContain("前提チェーン全体");
+    expect(ja).toContain("直接の前提へ1段だけ下り");
+    expect(ja).toContain("3問程度");
+    expect(ja).toContain("前提: 因数分解 — 積の形に直す");
+
+    expect(en).toContain("whole prerequisite");
+    expect(en).toContain("one direct prerequisite");
+    expect(en).toContain("about three narrowing questions");
+    expect(en).toContain("Prerequisite: factoring into a product");
+
+    expect(englishLesson).toContain("前提チェーン全体");
+    expect(englishLesson).toContain("直接の前提へ1段だけ下って");
+    expect(englishLesson).toContain("前提: be動詞 — 主語と説明をつなぐ");
+    expect(englishLesson).toContain(
+      '"topic_ids": ["JE-DOUSHI-BE", "JE-BUNKOZO-KIHON", "JE-DOMEISHI"]',
+    );
+  });
+
+  it("根から教え切れないときは、前提だけを教え返して締める", () => {
+    expect(getPrompt("senpai_board", "ja").body).toContain("今日は○○(いま教えている前提)だけ");
+    expect(getPrompt("senpai_board", "en").body).toContain(
+      "today, let's just do [the prerequisite]",
+    );
+    expect(getPrompt("senpai_board_english", "ja").body).toContain(
+      "今日は○○(いま教えている前提)だけ",
+    );
+  });
+
+  /**
    * **図形の授業が板書ごと落ちていた**(2026-08-12)。許可リストに ∠ も △ も ° も無く、
    * `\angle CAD = \angle ABC` は必ず弾かれる。落ちた手順は配送層がその回の説明ごと
    * 打ち切るので、**記号1つで授業が終わる**。
