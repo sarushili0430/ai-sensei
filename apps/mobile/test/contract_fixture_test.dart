@@ -62,7 +62,7 @@ void main() {
     });
 
     // **解析の応答に部屋の鍵は入らない。**入れると「鍵を持っている = いつでも
-    // 始められる」になり、回数を会話の開始で数える意味が消える。
+    // 始められる」になり、持ち時間を会話の開始で押さえる意味が消える。
     test('start-session-response.json をパースできる(部屋の鍵はこちらだけ)', () {
       final SessionStart session = SessionStart.fromJson(loadFixture('start-session-response'));
 
@@ -70,6 +70,7 @@ void main() {
       expect(session.livekit.room, session.sessionId);
       // 共有fixtureは契約の形を確かめるもの。運用上限の既定値はサーバ設定が正なので固定しない。
       expect(session.limits.maxSeconds, isPositive);
+      expect(session.limits.remainingSecondsToday, 0);
       expect(session.limits.lessonAllowedToday, isFalse);
     });
 
@@ -162,19 +163,22 @@ void main() {
       expect(result.karte.holes, hasLength(1));
       expect(result.progress.streakDays, 3);
       expect(result.progress.filledHoles, 4);
+      expect(result.limits.remainingSecondsToday, 932);
       expect(result.showPaywall, isTrue);
     });
   });
 
   group('進捗と復習のfixture', () {
     test('progress-response.json をパースできる', () {
-      final Progress progress = Progress.fromJson(
-        loadFixture('progress-response')['progress'] as Map<String, dynamic>,
+      final ProgressSummary summary = ProgressSummary.fromJson(
+        loadFixture('progress-response'),
       );
+      final Progress progress = summary.progress;
 
       expect(progress.streakDays, 3);
       expect(progress.openHoles, 1);
       expect(progress.lastSessionDate, '2026-08-03');
+      expect(summary.limits.remainingSecondsToday, 900);
     });
 
     test('review-queue-response.json をパースできる', () {

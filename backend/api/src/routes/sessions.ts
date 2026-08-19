@@ -40,8 +40,10 @@ import {
   canStartSessionToday,
   hasPremiumAccess,
   limitReachedAllowance,
+  maxSessionStartsPerDay,
+  minimumSessionSeconds,
+  secondsPerDay,
   sessionMaxSeconds,
-  sessionsPerDay,
   startedAllowance,
   tokenGraceSeconds,
 } from "../lib/entitlement.ts";
@@ -65,7 +67,7 @@ export const sessionsRoute = new Hono<AppEnv>();
  * 写真を受け取り、Vision LLMで単元を判定して、**単元と問題文の読み合わせだけ**を返す。
  * ここで作った許可トピックが、会話中のガードレールの基準になる。
  *
- * **ここでは今日の1回を数えない。** 数えるのは会話が始まったとき
+ * **ここでは日次の持ち時間を押さえない。** 押さえるのは会話が始まったとき
  * (`POST /v1/sessions/{id}/start`)。撮って単元を確かめただけで枠が消え、
  * 先輩と1度も話さないまま「今日はここまで」になっていたのを直したもの。
  *
@@ -73,7 +75,7 @@ export const sessionsRoute = new Hono<AppEnv>();
  *
  *   1. **もう今日の授業を使い切っていないか**(下の事前判定)。使い切った人に
  *      Vision LLMを回してから断るのは、原価の面でも体験の面でも損しかない
- *   2. **解析そのものの上限**(`analysesPerDay`)。1日の授業回数よりずっと緩く、
+ *   2. **解析そのものの上限**(`analysesPerDay`)。想定する授業本数よりずっと緩く、
  *      解析だけを延々と繰り返す使い方だけを止める
  */
 sessionsRoute.post("/", async (c) => {
@@ -99,7 +101,7 @@ sessionsRoute.post("/", async (c) => {
    * この上限は無力になる。
    *
    * 将来ユーザーのタイムゾーンに追随するなら、オフセットの出どころをサーバが決めることを
-   * 前提にし、countStartedSessionsOnDateの表示と枠の判定を同じ日付規則へ一緒に動かす。
+   * 前提にし、getDailySessionUsageの表示と枠の判定を同じ日付規則へ一緒に動かす。
    */
   const localDate = toLocalDate(at);
 
@@ -131,8 +133,22 @@ sessionsRoute.post("/", async (c) => {
    * 上限そのものは `/start` が守る。ここを消すと、使い切った人にも毎回
    * Vision LLMを回してから断ることになる。
    */
-  const startedToday = await repository.countStartedSessionsOnDate(deviceId, localDate);
-  if (!canStartSessionToday({ user, sessionsToday: startedToday, now: at, limits })) {
+  await repository.settleExpiredSessions({
+    deviceId,
+    now: at.toISOString(),
+    graceSeconds: tokenGraceSeconds,
+  });
+  const usage = await repository.getDailySessionUsage(deviceId, localDate);
+  const remainingSecondsToday = Math.max(
+    0,
+    secondsPerDay({ user, now: at, limits }) - usage.consumedSeconds,
+  );
+  if (
+    !canStartSessionToday({
+      remainingSecondsToday,
+      sessionsToday: usage.sessionsStarted,
+    })
+  ) {
     const limitReached = limitReachedAllowance({ user, now: at, limits });
     throw apiError(limitReached.reason, {
       locale,
@@ -177,8 +193,10 @@ sessionsRoute.post("/", async (c) => {
       hole_id: reviewHole?.id ?? null,
       duration_seconds: null,
       context: null,
-      // 会話はまだ始まっていない。ここが null のあいだ、この行は1回として数えない。
+      // 会話はまだ始まっていない。ここが null のあいだ、この行は時間集計に入れない。
       started_at: null,
+      max_seconds: null,
+      quota_settled_at: null,
     },
     maxAnalysesPerDay: analysesPerDay({ user, now: at, limits }),
   });
@@ -372,7 +390,7 @@ sessionsRoute.post("/", async (c) => {
 /**
  * POST /v1/sessions/{id}/start
  *
- * **会話を始める。ここが今日の1回を数える唯一の場所。**
+ * **会話を始める。ここが日次の持ち時間を仮押さえする唯一の場所。**
  *
  * 枠の確保とトークンの発行を1つの操作にまとめてあるのが要点で、順番は入れ替えられない
  * (枠を取れなければトークンは出ないし、トークンが出たなら枠は取れている)。
@@ -394,6 +412,14 @@ sessionsRoute.post("/:sessionId/start", async (c) => {
   const locale = parsed.success ? parsed.data.locale : "ja";
 
   const sessionId = c.req.param("sessionId");
+  // 離脱・クラッシュで /complete が来なかった回は、最初のトークンの寿命後に
+  // 仮押さえ額で精算する。残高のSUMは精算前もmax_secondsを数えるので、この更新と
+  // 同時に別の開始が来ても二重取りにはならない。
+  await repository.settleExpiredSessions({
+    deviceId,
+    now: at.toISOString(),
+    graceSeconds: tokenGraceSeconds,
+  });
   const session = await repository.getSession(sessionId);
   // 他人のセッションと、終わったセッションには触らせない。
   if (!session || session.device_id !== deviceId || session.status !== "open") {
@@ -417,14 +443,14 @@ sessionsRoute.post("/:sessionId/start", async (c) => {
    *
    * ここが無いと、部屋に入らないまま開いたセッションが**期限のない鍵の引換券**になる。
    * 会話が成立しなければ `/complete` は来ないので行は open のまま残り、
-   * 翌日そのIDで押せば、今日の枠を減らさずに授業がもう1回増えてしまう。
+   * 翌日そのIDで押せば、今日の残高を減らさずに授業時間が増えてしまう。
    */
   if (
     session.started_at !== null &&
     !canReissueToken({
       startedAt: session.started_at,
       now: at,
-      maxSeconds: sessionMaxSeconds({ user, now: at, limits }),
+      maxSeconds: session.max_seconds ?? sessionMaxSeconds({ user, now: at, limits }),
     })
   ) {
     // 「もう入る部屋が無い」は、アプリからは消えたセッションと同じ。
@@ -454,9 +480,12 @@ sessionsRoute.post("/:sessionId/start", async (c) => {
     sessionId: session.id,
     deviceId,
     startedAt: at.toISOString(),
-    // 数える日は、撮った日ではなく**始めた日**。日付をまたいで始めた会話は今日の1本。
+    // 数える日は、撮った日ではなく**始めた日**。日付をまたいで始めた会話は今日の時間。
     localDate: toLocalDate(at),
-    maxPerDay: sessionsPerDay({ user, now: at, limits }),
+    secondsPerDay: secondsPerDay({ user, now: at, limits }),
+    sessionMaxSeconds: sessionMaxSeconds({ user, now: at, limits }),
+    minimumSessionSeconds,
+    maxStartsPerDay: maxSessionStartsPerDay,
   });
   if (!started.started) {
     const limitReached = limitReachedAllowance({ user, now: at, limits });
@@ -466,10 +495,9 @@ sessionsRoute.post("/:sessionId/start", async (c) => {
     });
   }
   const allowance = startedAllowance({
-    user,
+    maxSeconds: started.maxSeconds,
+    remainingSecondsToday: started.remainingSecondsToday,
     sessionsToday: started.sessionsToday,
-    now: at,
-    limits,
   });
 
   const context: SessionContext = session.context ?? {
@@ -528,6 +556,7 @@ sessionsRoute.post("/:sessionId/start", async (c) => {
     livekit: { url: c.env.LIVEKIT_URL, token, room: session.id },
     limits: {
       max_seconds: allowance.maxSeconds,
+      remaining_seconds_today: allowance.remainingSecondsToday,
       lesson_allowed_today: allowance.lessonAllowedToday,
     },
   };
@@ -541,7 +570,7 @@ sessionsRoute.post("/:sessionId/start", async (c) => {
  * チップUIで外した単元を反映する。**セッションは作り直さない**。
  *
  * 以前はここで POST /v1/sessions をもう一度呼んでいたため、写真を撮って
- * 単元を確認しただけで無料枠(1日1回)を2回消費し、会話を始める瞬間に
+ * 単元を確認しただけで当時の無料枠(1日1回)を2回消費し、会話を始める瞬間に
  * 「今日のセッションはここまで」と言われていた。同じ写真を2度Vision LLMへ通す
  * ことにもなるので、単元が変わってもセッションは同じ行のまま書き換える。
  *

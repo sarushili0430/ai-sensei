@@ -96,6 +96,7 @@ abstract class Progress with _$Progress {
 abstract class SessionLimits with _$SessionLimits {
   const factory SessionLimits({
     @JsonKey(name: 'max_seconds') required int maxSeconds,
+    @JsonKey(name: 'remaining_seconds_today') required int remainingSecondsToday,
 
     /// この応答時点から、今日さらに授業を始められるか。
     @JsonKey(name: 'lesson_allowed_today') required bool lessonAllowedToday,
@@ -104,7 +105,7 @@ abstract class SessionLimits with _$SessionLimits {
   factory SessionLimits.fromJson(Map<String, dynamic> json) => _$SessionLimitsFromJson(json);
 
   static const SessionLimits unknown =
-      SessionLimits(maxSeconds: 1200, lessonAllowedToday: true);
+      SessionLimits(maxSeconds: 1200, remainingSecondsToday: 0, lessonAllowedToday: true);
 }
 
 /// `GET /v1/me/progress` の全体。ホームが読む。

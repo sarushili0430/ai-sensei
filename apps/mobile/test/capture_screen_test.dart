@@ -208,7 +208,7 @@ void main() {
       }
       // 部屋の鍵が出るのは会話の開始だけ。**解析の応答には載せない** —
       // 載せると、鍵を持っている = いつでも始められる になり、
-      // 回数を会話の開始で数える形が画面のテストからも見えなくなる。
+      // 持ち時間を会話の開始で押さえる形が画面のテストからも見えなくなる。
       final Map<String, dynamic> body = request.url.path.endsWith('/start')
           ? <String, dynamic>{
               'session_id': 'ses_1',
@@ -218,7 +218,11 @@ void main() {
                 'token': 'token',
                 'room': 'ses_1',
               },
-              'limits': <String, dynamic>{'max_seconds': 1200, 'lesson_allowed_today': false},
+              'limits': <String, dynamic>{
+                'max_seconds': 1200,
+                'remaining_seconds_today': 0,
+                'lesson_allowed_today': false,
+              },
             }
           : <String, dynamic>{
               'session_id': 'ses_1',
@@ -343,7 +347,7 @@ void main() {
     expect(find.text(ja.captureAddProblem), findsOneWidget);
   });
 
-  testWidgets('撮ったら、解析の前に一度止まる(今日の1回を使う前)', (WidgetTester tester) async {
+  testWidgets('撮ったら、解析の前に一度止まる(Vision原価が発生する前)', (WidgetTester tester) async {
     final List<http.BaseRequest> calls = <http.BaseRequest>[];
     await pumpCapture(tester, calls: calls);
     await takeNotes(tester);
@@ -738,7 +742,7 @@ void main() {
   ///
   /// 解析済みの状態では [CaptureController.setPhoto] が新しい写真を捨てるので、
   /// カメラだけが何度も開いてエラーが消えない。しかも会話の開始で落ちた場合は、
-  /// サーバ側で今日の枠を押さえていることがあり、撮り直すとその1回を捨てる。
+  /// サーバ側で会話時間を押さえていることがあり、撮り直すとその仮押さえを捨てる。
   testWidgets('会話の開始で落ちたら、「もう一度」は開始をやり直す(カメラを開かない)',
       (WidgetTester tester) async {
     final List<http.BaseRequest> calls = <http.BaseRequest>[];
@@ -760,7 +764,7 @@ void main() {
 
   testWidgets('Premium のフェアユース上限は、先輩が締めて再試行させない',
       (WidgetTester tester) async {
-    const String serverMessage = '上限3回です。Premiumを購入してください。';
+    const String serverMessage = '今日の持ち時間は使い切りました。';
     await pumpCapture(
       tester,
       errorCode: 'fair_use_limit_reached',

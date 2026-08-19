@@ -32,6 +32,25 @@ async function startSession(meta: Record<string, unknown> = {}): Promise<string>
   return ((await response.json()) as CreateSessionResponse).session_id;
 }
 
+/** 実運用どおり、解析後に `/start` で日次時間を仮押さえしてから返す。 */
+async function startConversation(meta: Record<string, unknown> = {}): Promise<string> {
+  const sessionId = await startSession(meta);
+  const response = await app.request(
+    `/v1/sessions/${sessionId}/start`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-device-id": testDeviceId,
+      },
+      body: JSON.stringify({ locale: "ja" }),
+    },
+    bindings,
+  );
+  expect(response.status).toBe(200);
+  return sessionId;
+}
+
 const karteDraft = {
   said_well: ["中心と直線の距離で判定する方針を、理由つきで説明できた"],
   holes: [
@@ -104,6 +123,17 @@ describe("POST /v1/sessions/{id}/complete", () => {
     expect(body.karte.holes).toHaveLength(1);
     expect(body.karte.holes[0]?.status).toBe("open");
     expect(body.karte.holes[0]?.quiz).toBe("判別式を使うと解の個数がわかる理由を説明できる?");
+  });
+
+  it("完了実績で仮押さえを精算し、返った未使用時間を limits に載せる", async () => {
+    const sessionId = await startConversation();
+
+    const body = (await (await complete(sessionId)).json()) as CompleteSessionResponse;
+    expect(body.limits).toEqual({
+      max_seconds: 1200,
+      remaining_seconds_today: 932,
+      lesson_allowed_today: true,
+    });
   });
 
   it("内部トークンがなければ401(agentからの呼び出しのみ許す)", async () => {

@@ -14,14 +14,22 @@ import {
 import { Hono } from "hono";
 import type { AppEnv, Limits } from "../env.ts";
 import { readLimits } from "../env.ts";
-import { hasPremiumAccess, shouldShowPaywall } from "../lib/entitlement.ts";
+import {
+  canStartSessionToday,
+  hasPremiumAccess,
+  secondsPerDay,
+  sessionMaxSeconds,
+  shouldShowPaywall,
+} from "../lib/entitlement.ts";
 import { apiError } from "../lib/errors.ts";
 import type {
+  DailySessionUsage,
   HoleRecord,
   KarteRecord,
   Repository,
   ReviewScheduleRecord,
   SessionRecord,
+  UserRecord,
 } from "../repository/types.ts";
 
 export const completeRoute = new Hono<AppEnv>();
@@ -118,7 +126,8 @@ completeRoute.post("/:sessionId/complete", async (c) => {
   }));
 
   const user = await repository.getUser(session.device_id);
-  const premium = hasPremiumAccess({ user, now: at, limits: readLimits(c.env) });
+  const currentLimits = readLimits(c.env);
+  const premium = hasPremiumAccess({ user, now: at, limits: currentLimits });
 
   const karteRecord: KarteRecord = {
     id: karteId,
@@ -188,6 +197,7 @@ completeRoute.post("/:sessionId/complete", async (c) => {
   const sessionDates = await repository.sessionDates(session.device_id);
   const allHoles = await repository.listHoles(session.device_id);
   const progress = computeProgress(sessionDates, allHoles, toLocalDate(at));
+  const usage = await repository.getDailySessionUsage(session.device_id, toLocalDate(at));
 
   const response: CompleteSessionResponse = {
     karte: {
@@ -206,6 +216,7 @@ completeRoute.post("/:sessionId/complete", async (c) => {
       scheduled_at: entry.scheduled_at,
     })),
     progress,
+    limits: sessionLimitsPayload({ user, usage, at, limits: currentLimits }),
     show_paywall: shouldShowPaywall({
       isPremium: premium,
       // セッション回数ではなく「カルテができた日数」で数えるので、
@@ -263,10 +274,12 @@ export async function buildResponse(input: {
 }): Promise<CompleteSessionResponse> {
   const { repository, at, session, stored, limits } = input;
 
-  const [sessionDates, allHoles, user] = await Promise.all([
+  const localDate = toLocalDate(at);
+  const [sessionDates, allHoles, user, usage] = await Promise.all([
     repository.sessionDates(session.device_id),
     repository.listHoles(session.device_id),
     repository.getUser(session.device_id),
+    repository.getDailySessionUsage(session.device_id, localDate),
   ]);
 
   return {
@@ -281,11 +294,38 @@ export async function buildResponse(input: {
       followup_question: stored.karte.followup_question,
     },
     review_schedule: [],
-    progress: computeProgress(sessionDates, allHoles, toLocalDate(at)),
+    progress: computeProgress(sessionDates, allHoles, localDate),
+    limits: sessionLimitsPayload({ user, usage, at, limits }),
     show_paywall: shouldShowPaywall({
       isPremium: hasPremiumAccess({ user, now: at, limits }),
       completedSessionCount: sessionDates.length,
       holesFound: stored.holes.length,
+    }),
+  };
+}
+
+/** 完了実績で仮押さえを精算した直後の、ホームと同じ日次残高。 */
+function sessionLimitsPayload(input: {
+  user: UserRecord | null;
+  usage: DailySessionUsage;
+  at: Date;
+  limits: Limits;
+}): {
+  max_seconds: number;
+  remaining_seconds_today: number;
+  lesson_allowed_today: boolean;
+} {
+  const remainingSecondsToday = Math.max(
+    0,
+    secondsPerDay({ user: input.user, now: input.at, limits: input.limits }) -
+      input.usage.consumedSeconds,
+  );
+  return {
+    max_seconds: sessionMaxSeconds({ user: input.user, now: input.at, limits: input.limits }),
+    remaining_seconds_today: remainingSecondsToday,
+    lesson_allowed_today: canStartSessionToday({
+      remainingSecondsToday,
+      sessionsToday: input.usage.sessionsStarted,
     }),
   };
 }

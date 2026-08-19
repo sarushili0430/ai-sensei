@@ -209,7 +209,7 @@ void main() {
   testWidgets('開始直前にPremium上限に当たっても課金導線を出さない', (WidgetTester tester) async {
     const ApiException failure = ApiException(
       code: 'fair_use_limit_reached',
-      message: '上限3回です。Premiumを購入してください。',
+      message: '今日の持ち時間は使い切りました。',
     );
     final FakeReviewController review = FakeReviewController(sampleReviewQueue);
     final _RecordingCaptureController capture = _RecordingCaptureController(
@@ -264,7 +264,11 @@ class _RecordingCaptureController extends CaptureController {
         token: 'token',
         room: 'ses_review',
       ),
-      limits: SessionLimits(maxSeconds: 1200, lessonAllowedToday: true),
+      limits: SessionLimits(
+        maxSeconds: 1200,
+        remainingSecondsToday: 1200,
+        lessonAllowedToday: true,
+      ),
     );
     state = const CaptureState(session: session);
     return session;

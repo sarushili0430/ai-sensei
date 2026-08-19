@@ -1,6 +1,7 @@
 import { type StudyPlan, studyPlanSchema } from "@ai-sensei/contract";
 import type { D1Database } from "../cloudflare.ts";
 import type {
+  DailySessionUsage,
   HoleRecord,
   KarteRecord,
   PlanSessionRecord,
@@ -11,6 +12,7 @@ import type {
   SessionStartResult,
   UserRecord,
 } from "./types.ts";
+import { legacySessionMaxSeconds } from "./types.ts";
 
 type UserRow = {
   device_id: string;
@@ -74,15 +76,53 @@ export class D1Repository implements Repository {
       .run();
   }
 
-  async countStartedSessionsOnDate(deviceId: string, localDate: string): Promise<number> {
+  async getDailySessionUsage(deviceId: string, localDate: string): Promise<DailySessionUsage> {
     const row = await this.db
       .prepare(
-        `SELECT COUNT(*) AS count FROM sessions
-          WHERE device_id = ? AND local_date = ? AND started_at IS NOT NULL`,
+        `SELECT
+           COALESCE(SUM(
+             CASE
+               WHEN duration_seconds IS NOT NULL THEN duration_seconds
+               ELSE COALESCE(max_seconds, ${legacySessionMaxSeconds})
+             END
+           ), 0) AS consumed_seconds,
+           COUNT(*) AS sessions_started
+         FROM sessions
+         WHERE device_id = ? AND local_date = ? AND started_at IS NOT NULL`,
       )
       .bind(deviceId, localDate)
-      .first<{ count: number }>();
-    return row?.count ?? 0;
+      .first<{ consumed_seconds: number; sessions_started: number }>();
+    return {
+      consumedSeconds: row?.consumed_seconds ?? 0,
+      sessionsStarted: row?.sessions_started ?? 0,
+    };
+  }
+
+  async settleExpiredSessions(input: {
+    deviceId: string;
+    now: string;
+    graceSeconds: number;
+  }): Promise<number> {
+    // ここで閉じるのは時間の会計だけ。statusまでcompletedにすると、カルテの無い
+    // 離脱を「授業を完了した日」としてstreakへ混ぜてしまう。
+    const settled = await this.db
+      .prepare(
+        `UPDATE sessions
+            SET duration_seconds = COALESCE(duration_seconds, max_seconds, ${legacySessionMaxSeconds}),
+                quota_settled_at = COALESCE(completed_at, ?)
+          WHERE device_id = ?
+            AND started_at IS NOT NULL
+            AND quota_settled_at IS NULL
+            AND (
+              duration_seconds IS NOT NULL
+              OR unixepoch(started_at) IS NULL
+              OR unixepoch(started_at) + COALESCE(max_seconds, ${legacySessionMaxSeconds}) + ?
+                   < unixepoch(?)
+            )`,
+      )
+      .bind(input.now, input.deviceId, input.graceSeconds, input.now)
+      .run();
+    return changesOf(settled.meta);
   }
 
   async createSession(input: {
@@ -105,8 +145,9 @@ export class D1Repository implements Repository {
       .prepare(
         `INSERT INTO sessions
            (id, device_id, kind, status, created_at, completed_at, local_date,
-            photo_key, topic_ids, hole_id, duration_seconds, context, started_at)
-         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            photo_key, topic_ids, hole_id, duration_seconds, context, started_at,
+            max_seconds, quota_settled_at)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
           WHERE (SELECT COUNT(*) FROM sessions WHERE device_id = ? AND local_date = ?) < ?`,
       )
       .bind(
@@ -123,6 +164,8 @@ export class D1Repository implements Repository {
         session.duration_seconds,
         session.context ? JSON.stringify(session.context) : null,
         session.started_at,
+        session.max_seconds,
+        session.quota_settled_at,
         session.device_id,
         session.local_date,
         input.maxAnalysesPerDay,
@@ -136,11 +179,15 @@ export class D1Repository implements Repository {
     deviceId: string;
     startedAt: string;
     localDate: string;
-    maxPerDay: number;
+    secondsPerDay: number;
+    sessionMaxSeconds: number;
+    minimumSessionSeconds: number;
+    maxStartsPerDay: number;
   }): Promise<SessionStartResult> {
     /**
-     * 授業枠の確保 = この1文。上限の確認と `started_at` の書き込みが同じ文なので、
-     * 同時に押された2本が同じ古いCOUNTを見て両方通ることがない。
+     * 授業時間の確保 = この1文。実績 + 仮押さえのSUM、開始回数のガード、
+     * `started_at` / `max_seconds` の書き込みが同じ文なので、同時開始も同じ残高を
+     * 二重に使えない。
      *
      * `started_at IS NULL` を条件に入れてあるので、**再送は2度目を数えない**
      * (changesが0になり、下で「もう始まっている」として読み直される)。
@@ -148,55 +195,113 @@ export class D1Repository implements Repository {
     const start = this.db
       .prepare(
         `UPDATE sessions
-            SET started_at = ?, local_date = ?
+            SET started_at = ?,
+                local_date = ?,
+                max_seconds = MIN(
+                  ?,
+                  ? - COALESCE((
+                    SELECT SUM(
+                      CASE
+                        WHEN counted.duration_seconds IS NOT NULL THEN counted.duration_seconds
+                        ELSE COALESCE(counted.max_seconds, ${legacySessionMaxSeconds})
+                      END
+                    )
+                    FROM sessions AS counted
+                    WHERE counted.device_id = sessions.device_id
+                      AND counted.local_date = ?
+                      AND counted.started_at IS NOT NULL
+                  ), 0)
+                ),
+                quota_settled_at = NULL
           WHERE id = ?
             AND device_id = ?
+            AND status = 'open'
             AND started_at IS NULL
+            AND ? - COALESCE((
+              SELECT SUM(
+                CASE
+                  WHEN counted.duration_seconds IS NOT NULL THEN counted.duration_seconds
+                  ELSE COALESCE(counted.max_seconds, ${legacySessionMaxSeconds})
+                END
+              )
+              FROM sessions AS counted
+              WHERE counted.device_id = sessions.device_id
+                AND counted.local_date = ?
+                AND counted.started_at IS NOT NULL
+            ), 0) >= ?
             AND (
-              SELECT COUNT(*) FROM sessions AS counted
-               WHERE counted.device_id = ?
-                 AND counted.local_date = ?
-                 AND counted.started_at IS NOT NULL
+              SELECT COUNT(*)
+              FROM sessions AS counted
+              WHERE counted.device_id = sessions.device_id
+                AND counted.local_date = ?
+                AND counted.started_at IS NOT NULL
             ) < ?`,
       )
       .bind(
         input.startedAt,
         input.localDate,
+        input.sessionMaxSeconds,
+        input.secondsPerDay,
+        input.localDate,
         input.sessionId,
         input.deviceId,
-        input.deviceId,
+        input.secondsPerDay,
         input.localDate,
-        input.maxPerDay,
+        input.minimumSessionSeconds,
+        input.localDate,
+        input.maxStartsPerDay,
       );
     // 「押さえられなかった」と「もう押さえてある」は結果が正反対なので、
     // changesだけでは決められない。同じトランザクションで行を読み直す。
     const read = this.db
       .prepare(
         `SELECT started_at,
+                status,
+                COALESCE(max_seconds, ${legacySessionMaxSeconds}) AS max_seconds,
                 (SELECT COUNT(*) FROM sessions AS counted
                   WHERE counted.device_id = sessions.device_id
-                    AND counted.local_date = sessions.local_date
-                    AND counted.started_at IS NOT NULL) AS sessions_today
+                    AND counted.local_date = ?
+                    AND counted.started_at IS NOT NULL) AS sessions_today,
+                COALESCE((
+                  SELECT SUM(
+                    CASE
+                      WHEN counted.duration_seconds IS NOT NULL THEN counted.duration_seconds
+                      ELSE COALESCE(counted.max_seconds, ${legacySessionMaxSeconds})
+                    END
+                  )
+                  FROM sessions AS counted
+                  WHERE counted.device_id = sessions.device_id
+                    AND counted.local_date = ?
+                    AND counted.started_at IS NOT NULL
+                ), 0) AS consumed_seconds
            FROM sessions
           WHERE id = ? AND device_id = ?`,
       )
-      .bind(input.sessionId, input.deviceId);
+      .bind(input.localDate, input.localDate, input.sessionId, input.deviceId);
 
-    const results = await this.db.batch<{ started_at: string | null; sessions_today: number }>([
-      start,
-      read,
-    ]);
+    const results = await this.db.batch<{
+      started_at: string | null;
+      status: SessionRecord["status"];
+      max_seconds: number;
+      sessions_today: number;
+      consumed_seconds: number;
+    }>([start, read]);
     const startResult = results[0];
     if (!startResult) throw new Error("授業枠のUPDATE結果がありません");
     const changes = changesOf(startResult.meta);
 
     const row = results[1]?.results[0];
     if (!row) return { started: false };
-    if (changes > 0)
-      return { started: true, alreadyStarted: false, sessionsToday: row.sessions_today };
+    const startedResult = {
+      started: true as const,
+      maxSeconds: row.max_seconds,
+      sessionsToday: row.sessions_today,
+      remainingSecondsToday: Math.max(0, input.secondsPerDay - row.consumed_seconds),
+    };
+    if (changes > 0) return { ...startedResult, alreadyStarted: false };
     // 更新できなかったのに始まっている = 前に押さえた枠がそのまま生きている。
-    if (row.started_at !== null) {
-      return { started: true, alreadyStarted: true, sessionsToday: row.sessions_today };
+    if (row.started_at !== null && row.status === "open") {
+      return { ...startedResult, alreadyStarted: true };
     }
     return { started: false };
   }
@@ -239,10 +344,11 @@ export class D1Repository implements Repository {
   }): Promise<void> {
     await this.db
       .prepare(
-        `UPDATE sessions SET status = 'completed', completed_at = ?, duration_seconds = ?
+        `UPDATE sessions
+            SET status = 'completed', completed_at = ?, duration_seconds = ?, quota_settled_at = ?
           WHERE id = ?`,
       )
-      .bind(input.completedAt, input.durationSeconds, input.sessionId)
+      .bind(input.completedAt, input.durationSeconds, input.completedAt, input.sessionId)
       .run();
   }
 

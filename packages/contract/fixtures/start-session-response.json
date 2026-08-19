@@ -8,6 +8,7 @@
   },
   "limits": {
     "max_seconds": 1200,
+    "remaining_seconds_today": 0,
     "lesson_allowed_today": false
   }
 }

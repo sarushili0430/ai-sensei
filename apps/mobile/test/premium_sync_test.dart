@@ -56,6 +56,7 @@ class _FakeServer {
         'is_premium': _premium,
         'limits': <String, dynamic>{
           'max_seconds': 1200,
+          'remaining_seconds_today': _premium ? 3600 : 1200,
           'lesson_allowed_today': _premium,
         },
       });

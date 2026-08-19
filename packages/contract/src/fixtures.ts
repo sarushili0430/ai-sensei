@@ -32,7 +32,7 @@ export const fixtureSchemas = {
   "create-session-request": createSessionRequestSchema,
   "create-session-response": createSessionResponseSchema,
   // 部屋の鍵はこちらにだけ載る。写真を読んだ応答(create-session-response)と
-  // 別のfixtureにしてあること自体が、「回数を数えるのは会話の開始」の形。
+  // 別のfixtureにしてあること自体が、「持ち時間を押さえるのは会話の開始」の形。
   "start-session-response": startSessionResponseSchema,
   "complete-session-request": completeSessionRequestSchema,
   "complete-session-response": completeSessionResponseSchema,

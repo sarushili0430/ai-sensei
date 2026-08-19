@@ -301,14 +301,22 @@ const Progress sampleProgress = Progress(
 const ProgressSummary sampleSummary = ProgressSummary(
   progress: sampleProgress,
   isPremium: false,
-  limits: SessionLimits(maxSeconds: 1200, lessonAllowedToday: true),
+  limits: SessionLimits(
+    maxSeconds: 1200,
+    remainingSecondsToday: 1200,
+    lessonAllowedToday: true,
+  ),
 );
 
 /// 初回起動のホーム。数えるものが何も無い状態。
 const ProgressSummary firstRunSummary = ProgressSummary(
   progress: Progress.empty,
   isPremium: false,
-  limits: SessionLimits(maxSeconds: 1200, lessonAllowedToday: true),
+  limits: SessionLimits(
+    maxSeconds: 1200,
+    remainingSecondsToday: 1200,
+    lessonAllowedToday: true,
+  ),
 );
 
 /// 今日はもう授業をしない日のホーム(§6-3「先輩の判断」)。
@@ -319,21 +327,33 @@ const ProgressSummary firstRunSummary = ProgressSummary(
 const ProgressSummary exhaustedSummary = ProgressSummary(
   progress: sampleProgress,
   isPremium: false,
-  limits: SessionLimits(maxSeconds: 1200, lessonAllowedToday: false),
+  limits: SessionLimits(
+    maxSeconds: 1200,
+    remainingSecondsToday: 0,
+    lessonAllowedToday: false,
+  ),
 );
 
 /// 契約していて、まだ授業を始められる人のホーム。
 const ProgressSummary premiumSummary = ProgressSummary(
   progress: sampleProgress,
   isPremium: true,
-  limits: SessionLimits(maxSeconds: 1200, lessonAllowedToday: true),
+  limits: SessionLimits(
+    maxSeconds: 1200,
+    remainingSecondsToday: 3600,
+    lessonAllowedToday: true,
+  ),
 );
 
 /// Premium のフェアユース上限。締めの言葉は出すが、課金導線は出してはいけない。
 const ProgressSummary premiumExhaustedSummary = ProgressSummary(
   progress: sampleProgress,
   isPremium: true,
-  limits: SessionLimits(maxSeconds: 1200, lessonAllowedToday: false),
+  limits: SessionLimits(
+    maxSeconds: 1200,
+    remainingSecondsToday: 0,
+    lessonAllowedToday: false,
+  ),
 );
 
 /// 親が読む今月のレポート。

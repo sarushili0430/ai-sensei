@@ -47,5 +47,10 @@
     "open_holes": 1,
     "last_session_date": "2026-08-03"
   },
+  "limits": {
+    "max_seconds": 1200,
+    "remaining_seconds_today": 932,
+    "lesson_allowed_today": true
+  },
   "show_paywall": true
 }
