@@ -11,6 +11,9 @@ apps/lp/
     en/index.html        English
     beta/index.html      クローズドベータの参加手順(日本語)
     en/beta/index.html   同(English)
+    support/index.html   サポート窓口(日本語)。両ストアのサポートURLがここを指す
+    terms/index.html     利用規約(雛形)
+    privacy/index.html   プライバシーポリシー(雛形)
     styles.css           全ページで共有する唯一のスタイルシート
 ```
 
@@ -23,7 +26,7 @@ apps/lp/
 | 用途 | 使う場所 |
 | --- | --- |
 | マーケティングURL | App Store Connect(任意) |
-| サポートURL | App Store Connect / Google Play Console(**必須**。いまは GitHub Issues を窓口にしている) |
+| サポートURL | App Store Connect / Google Play Console(**必須**)。`public/support/` |
 | 提出資料からの導線 | Shipaton / Devpost / #BuildInPublic の投稿 |
 | クローズドテストのテスター募集 | `public/beta/`。SNS・学校・知人へ配るURLはここ1本にする |
 
@@ -123,7 +126,17 @@ GitHub App からpushできないため)。
 - [ ] **Premium の「改善利用オフ」トグルを実装する。** 規約に書いた以上、
       アプリに無ければ嘘になる。プライバシーポリシー第4条・利用規約第5条
 - [ ] 規約とポリシーの英語版。米国配信は Shipaton の参加要件なので、日本語だけでは足りない
-- [ ] `SUPPORT_EMAIL` → フッタの問い合わせ先に追加(いまは GitHub Issues のみ)
+- [ ] **`public/support/` の窓口を押せるようにする。** Googleフォームを作って、
+      `.btn-soon` の span を `<a class="btn btn-primary" href="〔フォームのURL〕">` に差し替える。
+      **審査担当者はこのページを開いてサポート情報があることを確かめる**ので、
+      押せないまま提出しないこと。運営者名・所在地・返信の目安も同じページの `fill`
+- [ ] **アプリの問い合わせ導線もフォームに寄せるか決める。** いまは `SUPPORT_EMAIL` の
+      `mailto:`(`apps/mobile/lib/src/features/settings/data/support_links.dart`)で、
+      **空だと「設定 > 気になった内容を報告する」の行ごと消える**
+      (`settings_screen.dart` の `SupportLinks.hasSupportEmail`)。
+      審査メモはこの導線があることを前提に書いてあるので、
+      メールを用意するか、フォームのURL(端末ID・バージョンを事前入力)に替えるかを決める
+- [ ] `public/support/` の英語版。規約・ポリシーの英語版と同じ扱い(いまは日本語へ送っている)
 - [ ] `public/404.html` → 足したら `wrangler.jsonc` の `not_found_handling` を `"404-page"` に
 - [ ] **クローズドテストのトラックにリリースが載ったら、`public/beta/` と
       `public/en/beta/` のステップ2を押せるようにする。** 具体的には、`<li>` から
