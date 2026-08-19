@@ -379,6 +379,30 @@ function renderedBounds(result, layout, boxes) {
         layout.y(draw.c.y) + draw.ry * layout.scale,
       );
     }
+    /**
+     * **2次曲線は `a` / `b` からは描画範囲が読めない。**
+     *
+     * `render.js` は双曲線を `t = ±1.4` まで、放物線を `y = ±2a` までサンプリングし、
+     * 漸近線と準線はさらに外へ伸ばす。ここを数えないと、実際には上下へ30px近く
+     * はみ出している図が `maxOverflowPx: 0` として通り、**切れたグラフがそのまま届く**。
+     * 下の範囲は render 側のサンプリングと同じ値から出している。
+     */
+    if (draw.t === "conic") {
+      const center = draw.center ?? { x: 0, y: 0 };
+      const semiMinor = draw.b ?? draw.a;
+      const span =
+        draw.kind === "ellipse"
+          ? { x: draw.a, y: semiMinor }
+          : draw.kind === "hyperbola"
+            ? {
+                x: Math.max(draw.a * Math.cosh(1.4), draw.c * 1.25),
+                y: Math.max(semiMinor * Math.sinh(1.4), (semiMinor / draw.a) * draw.c * 1.25),
+              }
+            : // 放物線 y^2 = 4ax。x は頂点から a まで、準線 x = -a も引く。
+              { x: draw.a, y: 2 * draw.a };
+      eat({ x: center.x - span.x, y: center.y - span.y });
+      eat({ x: center.x + span.x, y: center.y + span.y });
+    }
   }
   for (const box of boxes) {
     xs.push(box.x0, box.x1);
@@ -560,11 +584,27 @@ function angleAtVertex(points, aName, oName, bName) {
  *
  * 元から主張とずれている図(LLMが90°でない角に直角マークを付けた)は、ここでは直さない。
  * 直すのは可読性だけで、幾何の誤りは作り直しの guidance が拾う。**前後で同じ**を見る。
+ *
+ * **数値ラベルの付いた角マーク(`arc`)も同じ扱い。** `{arc:["B","A","C"], label:"30°"}`
+ * は「その角は30°だ」と画面に書いているので、直角マークと変わらない主張になる。
+ * `right` だけを守ると、1.43°の角を70°へ開いたのにラベルは1.43°のまま、という
+ * 図ができる(実測)。`θ` のような記号名のラベルは値を主張していないので動かしてよい —
+ * `resampleDistances` が長さラベルを数値かどうかで見分けるのと同じ切り方。
  */
+const NUMERIC_ANGLE_LABEL = /^\d+(?:\.\d+)?\s*(?:°|度|deg)?$/;
+
+function declaredAngleVertices(item) {
+  if (Array.isArray(item.right) && item.right.length >= 3) return item.right;
+  if (!Array.isArray(item.arc) || item.arc.length < 3) return null;
+  const label = typeof item.label === "string" ? item.label.trim() : "";
+  return NUMERIC_ANGLE_LABEL.test(label) || item.showAngle === true ? item.arc : null;
+}
+
 function declaredAnglesPreserved(items, before, after) {
   for (const item of items) {
-    if (!Array.isArray(item.right) || item.right.length < 3) continue;
-    const [a, o, b] = item.right;
+    const vertices = declaredAngleVertices(item);
+    if (vertices === null) continue;
+    const [a, o, b] = vertices;
     const beforeAngle = angleAtVertex(before.pts, a, o, b);
     const afterAngle = angleAtVertex(after.pts, a, o, b);
     if (beforeAngle === null || afterAngle === null) continue;

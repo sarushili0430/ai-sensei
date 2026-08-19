@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { figureQualityFixtures, readableFigureFixture } from "./quality-fixtures.js";
-import { figureRelationsPreserved, lintFigure, repairFigure } from "./quality.js";
+import {
+  figureMaxOverflowPx,
+  figureRelationsPreserved,
+  lintFigure,
+  repairFigure,
+} from "./quality.js";
 import { solve } from "./solve.js";
 
 describe("solve後の図品質lint", () => {
@@ -18,6 +23,24 @@ describe("solve後の図品質lint", () => {
 
   it("正常な三角形は弾かない", () => {
     expect(lintFigure(solve(readableFigureFixture))).toMatchObject({ ok: true, issues: [] });
+  });
+
+  /**
+   * **2次曲線は `a` / `b` からは描画範囲が読めない。**
+   *
+   * `render.js` は双曲線を `t = ±1.4` までサンプリングし、漸近線はさらに外へ伸ばす。
+   * 走査から落とすと、実際には上下へ30px近く出ている図が `maxOverflowPx: 0` として
+   * 通り、**切れたグラフがそのまま生徒に届く**。
+   */
+  it("2次曲線のはみ出しを見落とさない", () => {
+    const hyperbola = lintFigure(solve([{ conic: "hyperbola", a: 3, b: 4 }]));
+
+    expect(hyperbola.metrics.maxOverflowPx).toBeGreaterThan(figureMaxOverflowPx);
+    expect(hyperbola.issues.some((issue) => issue.invariant === "viewbox_overflow")).toBe(true);
+
+    // 収まる2次曲線まで弾かないこと(偽陽性)。
+    expect(lintFigure(solve([{ conic: "ellipse", a: 4, b: 3 }])).metrics.maxOverflowPx).toBe(0);
+    expect(lintFigure(solve([{ conic: "parabola", a: 2 }])).metrics.maxOverflowPx).toBe(0);
   });
 });
 
@@ -91,5 +114,32 @@ describe("関係を保つ決定的な自動修正", () => {
     // 直角の主張が無い同じ形なら、従来どおり座標を置き直して直す。
     const withoutRightAngleMark = flatRightTriangle.filter((item) => !("right" in item));
     expect(repairFigure(withoutRightAngleMark)).toMatchObject({ ok: true, repaired: true });
+  });
+
+  /**
+   * **数値ラベルの付いた角マークも、直角マークと同じ「幾何の主張」。**
+   *
+   * `{arc:[...], label:"1.43°"}` は画面に角度を書いているので、座標を置き直すと
+   * 中身だけ70°になってラベルが嘘になる。`θ` のような記号名は値を主張していないので
+   * 動かしてよい —— 長さラベルを数値かどうかで見分けるのと同じ切り方。
+   */
+  it("数値ラベルの角マークは守り、記号ラベルなら従来どおり直す", () => {
+    const flat = [
+      { pt: "A", at: [0, 0] },
+      { pt: "B", at: [6, 0] },
+      { pt: "C", at: [4, 0.1] },
+      { seg: ["A", "B"] },
+      { seg: ["B", "C"] },
+      { seg: ["C", "A"] },
+    ];
+
+    expect(repairFigure([...flat, { arc: ["B", "A", "C"], label: "1.43°" }])).toMatchObject({
+      ok: false,
+      repaired: false,
+    });
+    expect(repairFigure([...flat, { arc: ["B", "A", "C"], label: "θ" }])).toMatchObject({
+      ok: true,
+      repaired: true,
+    });
   });
 });
