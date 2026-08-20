@@ -237,6 +237,52 @@ describe("observeVoiceMetrics", () => {
     });
   });
 
+  // 指示文は1万トークン級で毎ターン再送される(`conversation-llm.ts`)。効いているかは
+  // 「キャッシュから読めた割合」でしか分からないので、比まで出す。
+  it("会話LLMの入力トークンとキャッシュ読みを積み上げ、比を出す", () => {
+    const { emitter, observed } = setup();
+
+    function llmTurn(promptTokens: number, promptCachedTokens: number, at: number) {
+      emitter.emit(voice.AgentSessionEventTypes.MetricsCollected, {
+        type: "metrics_collected",
+        createdAt: at,
+        metrics: {
+          type: "llm_metrics",
+          label: "anthropic",
+          requestId: `req_${at}`,
+          timestamp: at,
+          durationMs: 500,
+          ttftMs: 200,
+          cancelled: false,
+          completionTokens: 40,
+          promptTokens,
+          promptCachedTokens,
+          totalTokens: promptTokens + 40,
+          tokensPerSecond: 80,
+        },
+      });
+    }
+
+    // 1ターン目は書き込みなのでヒット0。2・3ターン目で指示文ぶんが読めている。
+    llmTurn(10_000, 0, 1_000);
+    llmTurn(10_200, 9_800, 2_000);
+    llmTurn(10_400, 9_800, 3_000);
+
+    expect(observed.summary()).toMatchObject({
+      llm_prompt_tokens: 30_600,
+      llm_cached_tokens: 19_600,
+      llm_cache_hit_ratio: 0.64,
+    });
+  });
+
+  it("会話LLMが一度も動かなければキャッシュの比は null", () => {
+    expect(setup().observed.summary()).toMatchObject({
+      llm_prompt_tokens: 0,
+      llm_cached_tokens: 0,
+      llm_cache_hit_ratio: null,
+    });
+  });
+
   it("割り込みと相槌をイベントごとの増分から累積する", () => {
     const { emitter, observed } = setup();
 

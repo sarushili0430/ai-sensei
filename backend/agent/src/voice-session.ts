@@ -1,10 +1,10 @@
 import type { Locale } from "@ai-sensei/contract";
 import { toSpeakableJa } from "@ai-sensei/guardrail";
 import { type JobContext, inference, tokenize, tts, voice } from "@livekit/agents";
-import * as anthropic from "@livekit/agents-plugin-anthropic";
 import * as deepgram from "@livekit/agents-plugin-deepgram";
 import * as google from "@livekit/agents-plugin-google";
 import type { AgentConfig } from "./config.ts";
+import { CachedInstructionsLLM } from "./conversation-llm.ts";
 import { ttsInstructionsForLocale } from "./senpai-voice.ts";
 import { JapaneseSentenceTokenizer } from "./sentence-tokenizer.ja.ts";
 
@@ -107,11 +107,19 @@ export function createVoiceSession(options: VoiceSessionOptions): voice.AgentSes
     // `nova-3-general` を英語以外の言語で `nova-2-general` へ黙って戻すが、
     // `nova-3` はそのままAPIへ通す。同じモデルの別名なのに、名前で挙動が分かれる。
     stt: new deepgram.STT({
+      // **鍵は明示的に渡す。**プラグイン(1.6.1)の `defaultSTTOptions` は
+      // `process.env.DEEPGRAM_API_KEY` を**モジュール読み込み時に1度だけ**captureする。
+      // 渡さずに済ませると、検証済みの `config.DEEPGRAM_API_KEY` は使われないまま、
+      // importより後に環境変数を入れた経路(テスト・埋め込み利用)で鍵なしになる。
+      apiKey: config.DEEPGRAM_API_KEY,
       model: "nova-3",
       language: locale,
       interimResults: true,
     }),
-    llm: new anthropic.LLM({
+    // 素の `anthropic.LLM` ではなく `CachedInstructionsLLM`。1万トークン級の指示文が
+    // 毎ターン再送されるので、プロンプトキャッシュの印を足した版を使う。理由は
+    // `conversation-llm.ts`。効きは `voice_metrics` の `cached_tokens` で見る。
+    llm: new CachedInstructionsLLM({
       apiKey: config.ANTHROPIC_API_KEY,
       model: config.LLM_MODEL_CONVERSATION,
       // 先輩の文体を安定させたいので、振れ幅は小さめにする
@@ -138,6 +146,22 @@ export function createVoiceSession(options: VoiceSessionOptions): voice.AgentSes
       // 判定したときはmaxDelayへ切り替わる（加算ではない）。教え返しで考える時間は3秒超を
       // 確保しつつ、速く返せる場面まで遅くしない。
       endpointing: { maxDelay: 4_000 },
+      // **TTSもターン確定前に走らせる。** 既定は `enabled: true` / `preemptiveTts: false` で、
+      // LLMだけが先読みされ、TTSは `_waitForScheduled()` を抜けてから動き出す
+      // (SDK 1.6.1 `voice/agent_activity.ts` の `produceSegments` の起動位置)。
+      //
+      // Deepgramの頃はWSが張りっぱなしでTTFBが小さく、その待ちは見えなかった。
+      // Gemini TTS は1文=1リクエストで最初の音までが重いので、上の endpointing の待ち
+      // (minDelay 300ms、EOTが「まだ話す」と見たら maxDelay 4,000ms)と直列に積み上がる。
+      // 先に走らせれば、その待ちの裏でGeminiが回る。
+      //
+      // 代償は**外したぶんの合成を捨てる**こと。ターンが確定しなければ
+      // `speechHandle._cancel()` で破棄され、Gemini TTSのトークン課金だけが残る。
+      // 教え返しは生徒が長く喋って途中で言い直す場でハズレやすいので、
+      // 入れっぱなしにせず `preemptiveLeadTime`(隠せた時間)と
+      // `preemptive generation enabled but chat context or tools have changed`(ハズレ)の
+      // 比を見ること。既定の歯止め(`maxRetries: 3` / `maxSpeechDuration: 10,000ms`)は残す。
+      preemptiveGeneration: { preemptiveTts: true },
       interruption: {
         // adaptiveは重なり音声をクラウドへ送るため、未成年の会話内容を外へ出さない方針から
         // 今回は指定しない。ローカルのVADベース検出を使う。

@@ -20,6 +20,19 @@ export type VoiceMetricsSummary = {
   eou_delay_ms_avg: number | null;
   eou_delay_ms_max: number | null;
   llm_ttft_ms_avg: number | null;
+  /** 会話LLMへ送った入力トークン(キャッシュ読みを含む合計)。原価の主役はここ。 */
+  llm_prompt_tokens: number;
+  /** そのうちキャッシュから読めたぶん。単価は通常入力の 0.1 倍。 */
+  llm_cached_tokens: number;
+  /**
+   * `llm_cached_tokens / llm_prompt_tokens`。**プロンプトキャッシュが効いているかの一次指標。**
+   *
+   * 指示文は1万トークン級で毎ターン再送されるので、効いていれば 0.8 前後に張り付く。
+   * 0 のまま動かないときは、指示文が毎ターン変わっているか、
+   * Haiku 4.5 の最小長(4,096トークン)を割って黙って無視されているかのどちらか
+   * (`conversation-llm.ts`)。
+   */
+  llm_cache_hit_ratio: number | null;
   tts_ttfb_ms_avg: number | null;
   user_turns: number;
   false_interruptions: number;
@@ -34,6 +47,8 @@ export function observeVoiceMetrics(
 ): { summary: (at?: Date) => VoiceMetricsSummary } {
   const eouDelays: number[] = [];
   const llmTtfts: number[] = [];
+  let llmPromptTokens = 0;
+  let llmCachedTokens = 0;
   const ttsTtfbs: number[] = [];
   const agentSpeechRanges: SpeakingRange[] = [];
   const userSpeechRanges: SpeakingRange[] = [];
@@ -61,12 +76,19 @@ export function observeVoiceMetrics(
         break;
       case "llm_metrics":
         llmTtfts.push(metrics.ttftMs);
+        llmPromptTokens += metrics.promptTokens;
+        llmCachedTokens += metrics.promptCachedTokens;
         log.info("voice_metrics", {
           kind: metrics.type,
           label: metrics.label,
           request_id: metrics.requestId,
           speech_id: metrics.speechId,
           ttft_ms: metrics.ttftMs,
+          // レイテンシだけ見ていると原価が見えない。指示文の再送が会話の中身より
+          // 高くつく構造(`conversation-llm.ts`)なので、トークン数も1行に載せる。
+          prompt_tokens: metrics.promptTokens,
+          cached_tokens: metrics.promptCachedTokens,
+          completion_tokens: metrics.completionTokens,
         });
         break;
       case "tts_metrics":
@@ -182,6 +204,10 @@ export function observeVoiceMetrics(
         eou_delay_ms_avg: average(eouDelays),
         eou_delay_ms_max: maximum(eouDelays),
         llm_ttft_ms_avg: average(llmTtfts),
+        llm_prompt_tokens: llmPromptTokens,
+        llm_cached_tokens: llmCachedTokens,
+        llm_cache_hit_ratio:
+          llmPromptTokens === 0 ? null : roundToTwo(llmCachedTokens / llmPromptTokens),
         tts_ttfb_ms_avg: average(ttsTtfbs),
         user_turns: userTurns,
         false_interruptions: falseInterruptions,
