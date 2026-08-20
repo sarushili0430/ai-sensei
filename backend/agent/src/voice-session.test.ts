@@ -1,9 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { initializeLogger } from "@livekit/agents";
+import { beforeAll, describe, expect, it } from "vitest";
 import { type AgentConfig, loadConfig } from "./config.ts";
+import { CachedInstructionsLLM } from "./conversation-llm.ts";
 import { geminiTtsModels, ttsInstructionsForLocale } from "./senpai-voice.ts";
 import {
   createGeminiTts,
   createSenpaiTts,
+  createVoiceSession,
   jaSpeakable,
   sentenceTokenizerForLocale,
   ttsTextTransformsForLocale,
@@ -127,5 +130,48 @@ describe("createSenpaiTts", () => {
     const tts = createSenpaiTts(testConfig(), "ja");
     expect(tts.capabilities.streaming).toBe(true);
     expect(tts.label).toContain("StreamAdapter");
+  });
+});
+
+describe("createVoiceSession", () => {
+  // プラグインのコンストラクタが `log()` を触るため、セッションを組む前に要る。
+  beforeAll(() => initializeLogger({ pretty: false, level: "silent" }));
+
+  function session() {
+    return createVoiceSession({
+      // VADはWorkerのprewarmが積むもので、組み立ての検証には要らない。
+      ctx: { proc: { userData: {} } } as never,
+      config: testConfig(),
+      locale: "ja",
+      llmTemperature: 0.6,
+    });
+  }
+
+  // 既定は `preemptiveTts: false` で、TTSはターン確定まで動き出さない。
+  // Gemini TTS は最初の音までが重いので、endpointing の待ちと直列に積み上がる。
+  it("TTSもターン確定前に走らせる", () => {
+    const { preemptiveGeneration } = session().sessionOptions.turnHandling;
+    expect(preemptiveGeneration.enabled).toBe(true);
+    expect(preemptiveGeneration.preemptiveTts).toBe(true);
+  });
+
+  // 見切り発車は外したぶんを捨てる。既定の歯止めまで一緒に外していないことを縛る。
+  it("先読みの歯止めは既定のまま残す", () => {
+    const { preemptiveGeneration } = session().sessionOptions.turnHandling;
+    expect(preemptiveGeneration.maxRetries).toBe(3);
+    expect(preemptiveGeneration.maxSpeechDuration).toBe(10_000);
+  });
+
+  // `resolveEndpointing` は部分指定を既定へ併合する。preemptiveGeneration を足したことで
+  // 隣の endpointing が既定へ戻っていないか(併合の取りこぼし)をここで見る。
+  it("endpointing の指定を保つ", () => {
+    const { endpointing } = session().sessionOptions.turnHandling;
+    expect(endpointing.minDelay).toBe(300);
+    expect(endpointing.maxDelay).toBe(4_000);
+  });
+
+  // 1万トークン級の指示文が毎ターン再送されるので、素の `anthropic.LLM` では原価が乗る。
+  it("会話LLMはキャッシュの印を付ける版を使う", () => {
+    expect(session().llm).toBeInstanceOf(CachedInstructionsLLM);
   });
 });

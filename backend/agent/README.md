@@ -139,6 +139,22 @@ few-shot も、その言語で書かれたものをそのまま渡す。
 生成が終わるまで1文も喋らない。**分割された1文がそのまま1リクエスト**なので、
 最初の音までの待ちは `sentence-tokenizer.ja.ts` の切り方でほぼ決まる。
 
+正確には「**入力テキストの**ストリーミングを持たない」で、
+`capabilities.streaming === false` はそちらを指す。音声の**出力**はプラグインが
+`generateContentStream` で受けて届いたぶんから流している。Deepgramは
+セッション中ずっと開いたWSへ文字を流し込めたが、Geminiは1文ごとに新しいHTTP。
+最初の音までの重さはここから来る。
+
+文と文の間は詰まっている。`StreamAdapter` は `await prevTask` の**前**に
+次の文の `synthesize()` を呼び、`ChunkedStream` はコンストラクタで走り出すので、
+2文目以降は1文目の再生中に飛んでいる。効くのは**1文目のTTFBだけ**。
+
+その1文目を、`turnHandling.preemptiveGeneration.preemptiveTts` で
+**ターンが確定する前**から走らせている(SDK既定は `false` で、TTSは
+`_waitForScheduled()` を抜けてから動き出す)。endpointing の待ち
+(minDelay 300ms / maxDelay 4,000ms)の裏でGeminiが回るぶん、沈黙が短くなる。
+代償は**外したターンの合成を捨てる**こと。効きとハズレ率は下の `voice_metrics` で見る。
+
 数式の読み替え(`toSpeakableJa`)は**残してある**。Geminiは記号を読めるが、
 「1/2 → にぶんのいち」のような日本語の数学の読み順まではモデルの気分に任せない。
 
@@ -161,7 +177,8 @@ few-shot も、その言語で書かれたものをそのまま渡す。
 | `review_hole_missing` | 古いAPIが作った復習。板書なし会話へ縮退 | APIのデプロイ後も続くなら版ずれを疑う |
 | `lesson_finished` / `lesson_empty` | 授業1回ぶんの結果 | `lesson_empty` は8/16ゲートを見る指標 |
 | `board_figure_delivered` | 図を端末へ配送した | items/SVG本文は残さず、viewBox・最小距離/角・衝突・はみ出し・自動修正だけを見る |
-| `conversation_ended` | `completed` / `timeout` / `user_left` / `error` | 終わり方と発話数 |
+| `voice_metrics` | STT/LLM/TTS/EOTの1リクエストごと | レイテンシ(`ttft_ms` / `ttfb_ms` / `eou_delay_ms`)と原価(`prompt_tokens` / `cached_tokens`) |
+| `conversation_ended` | `completed` / `timeout` / `user_left` / `error` | 終わり方と発話数。`voice_metrics` のセッション集計もここに乗る |
 | `karte_built` / `karte_failed` | カルテ生成 | 穴の数と所要時間 |
 | `complete_posted` / `complete_failed` | APIへの送信 | **失敗するとカルテは表に出ない** |
 
@@ -172,6 +189,35 @@ few-shot も、その言語で書かれたものをそのまま渡す。
 会話の中身と写真の要約は送らない。
 
 `/complete` は落ちても3回まで送り直す(冪等なので二重にはならない)。
+
+### 原価は `conversation_ended` の1行で見る
+
+レイテンシだけ見ていると原価が見えない。とくに**会話LLMの指示文**は
+`senpai_conversation.<locale>.md`(日本語版11,000字)に板書の要約と写真の読み取りが
+載って1万トークン級になり、**毎ターン丸ごと再送される**。プラグイン(1.6.1)は
+`cache_control` を付けないので、`conversation-llm.ts` の `CachedInstructionsLLM` で
+指示文にプロンプトキャッシュの印を足している。
+
+| フィールド | 見かた |
+| --- | --- |
+| `llm_prompt_tokens` | 会話LLMへ送った入力の合計。原価の主役 |
+| `llm_cached_tokens` | そのうちキャッシュから読めたぶん(単価は通常入力の 0.1 倍) |
+| `llm_cache_hit_ratio` | **効いていれば 0.8 前後**。0 のまま動かないときは下を疑う |
+| `tts_ttfb_ms_avg` | 最初の音までの待ち。`preemptiveTts` の効きはここに出る |
+| `speech_ratio` | 生徒 ÷ 先輩。1未満なら教え返しが成立していない |
+
+`llm_cache_hit_ratio` が 0 のままなら、原因は2つのどちらか。
+
+- **指示文が毎ターン変わっている。** `agent.ts` の `updateInstructions` は
+  問題の切り替えと授業の終わりでしか呼ばない前提。呼ぶ頻度を上げると
+  キャッシュは死に、書き込みは通常の1.25倍なので**付けないより高くつく**
+- **指示文が短くなった。** Haiku 4.5 のキャッシュ最小長は4,096トークンで、
+  下回るとエラーも警告もなく黙って無視される
+
+先読み(`preemptiveTts`)の効きは、SDKが出すログで見る。
+`using preemptive generation` の `preemptiveLeadTime` が**隠せた時間**、
+`preemptive generation enabled but chat context or tools have changed` が**ハズレ**。
+ハズレたぶんの合成は捨てられるので、比が悪ければ `voice-session.ts` で外す。
 
 ## 答えの漏れの検知は、もう当てていない
 
