@@ -72,6 +72,14 @@ variables: [photo_summary, visible_work, allowed_topics, question_seeds, lesson_
 片方の言語だけ `renderPrompt` が落ちます(= その言語では会話が始まらない)。
 テストで見ています。
 
+**`senpai_board` に「呼び出しごとに変わる値」を足さないこと。** 授業は同じ板書へ
+何度も往復し(`lesson-loop.ts`)、そのたびに同じ system を送り直します。4万字級の
+本文が1文字でも変われば[プロンプトキャッシュ](../backend/agent/src/lesson.ts)の
+プレフィックスが外れ、**書き込みだけ払って一度も読み出せません**(TTFT =
+最初の手順までの沈黙も縮みません)。残り時間をこの本文から外したのはそのためで、
+いまは印より後ろの別ブロック(`senpaiBoardRemainingNote`)で渡しています。
+同じ理由が要る値が増えたときも、本文ではなくそちらへ足してください。
+
 ## 書くときの約束
 
 プロンプトは仕様書です。以下はコードのガードレール(`@ai-sensei/guardrail`)と

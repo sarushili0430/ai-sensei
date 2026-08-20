@@ -9,6 +9,10 @@ import { CachedInstructionsLLM } from "./conversation-llm.ts";
 import { GeminiLiveTTS } from "./gemini-live-tts.ts";
 import { ttsInstructionsForLocale } from "./senpai-voice.ts";
 import { JapaneseSentenceTokenizer } from "./sentence-tokenizer.ja.ts";
+import type { PendingSpeech, SpeechSynthesizer } from "./speech-prefetch.ts";
+
+/** `speech-prefetch.ts` と同じ別名(`@livekit/rtc-node` へ直接依存しない)。 */
+type AudioFrame = tts.SynthesizedAudio["frame"];
 
 /**
  * 音声パイプラインの組み立てをここだけに置く。
@@ -141,6 +145,73 @@ export function createSenpaiTts(config: AgentConfig, locale: Locale): tts.TTS {
     case "gemini":
       return new tts.StreamAdapter(createGeminiTts(config, locale), sentenceTokenizer);
   }
+}
+
+/**
+ * 先読み合成の口(`speech-prefetch.ts` が使う)。**セッションと同じTTS・同じ変換を通す。**
+ *
+ * `session.say(text, { audio })` は音声を渡した時点で `ttsNode` を通らないので、
+ * SDKが掛けている `ttsTextTransforms` も一緒に飛ぶ(1.6.1 `agent_activity.ts` の
+ * `ttsTask` は `audio` があるとTTS推論ごと省く)。**ここで自分で掛けないと、
+ * 先読みした手順だけ数式の読み(`toSpeakableJa`)とMarkdown除去が抜ける** —
+ * 「∠ABC」がそのまま読まれる手順と読まれない手順が混ざるという、いちばん気づきにくい壊れ方になる。
+ *
+ * 変換の一覧は {@link ttsTextTransformsForLocale} をそのまま使い、適用もSDKの
+ * `applyTextTransforms` に任せる。組み立てをこのファイルに閉じる約束(冒頭)を、
+ * 先読み経路でも守るため。
+ */
+export function createSpeechSynthesizer(options: {
+  tts: tts.TTS;
+  locale: Locale;
+}): SpeechSynthesizer {
+  const transforms = ttsTextTransformsForLocale(options.locale);
+
+  return (text: string): PendingSpeech => {
+    const abort = new AbortController();
+    const frames = (async (): Promise<readonly AudioFrame[] | null> => {
+      const spoken = await readAllText(
+        voice.textTransforms.applyTextTransforms(streamOfText(text), transforms),
+      );
+      if (abort.signal.aborted || spoken.trim() === "") return null;
+
+      const chunked = options.tts.synthesize(spoken, undefined, abort.signal);
+      const collected: AudioFrame[] = [];
+      try {
+        for await (const audio of chunked) collected.push(audio.frame);
+      } finally {
+        chunked.close();
+      }
+      // 中断されたぶんは渡さない。**途中まで**の音声を喋らせるくらいなら、
+      // 通常経路で最初から合成し直したほうが授業として正しい。
+      return abort.signal.aborted ? null : collected;
+    })().catch(() => null);
+
+    return { frames, cancel: () => abort.abort() };
+  };
+}
+
+function streamOfText(text: string): ReadableStream<string> {
+  return new ReadableStream<string>({
+    start(controller) {
+      controller.enqueue(text);
+      controller.close();
+    },
+  });
+}
+
+async function readAllText(stream: ReadableStream<string>): Promise<string> {
+  const reader = stream.getReader();
+  let text = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += value;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return text;
 }
 
 export function createVoiceSession(options: VoiceSessionOptions): voice.AgentSession {

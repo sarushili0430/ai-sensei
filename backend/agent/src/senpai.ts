@@ -459,7 +459,6 @@ export function renderReviewBoardContext(context: SessionContext): string {
 
 export type SenpaiBoardLessonInput = {
   context: SessionContext;
-  remainingSeconds: number;
 };
 
 /**
@@ -469,6 +468,9 @@ export type SenpaiBoardLessonInput = {
  * ここでは**どちらの入力も渡し、本文に mode で片方だけ選ばせる**。復習時にも
  * `problem_text` を契約どおりのプレースホルダのまま渡すことで、写真が無い事実を
  * 穴の説明で上書きしない。
+ *
+ * **残り時間はここに含めない**({@link senpaiBoardRemainingNote})。ここが返すものは
+ * 問題が変わるまで1バイトも動かない — それがプロンプトキャッシュの前提になる。
  */
 export function senpaiBoardLessonPrompt(input: SenpaiBoardLessonInput): string {
   const { context } = input;
@@ -479,10 +481,31 @@ export function senpaiBoardLessonPrompt(input: SenpaiBoardLessonInput): string {
       student_work: context.visible_work,
       review_context: renderReviewBoardContext(context),
       allowed_topics: context.allowed_topics,
-      remaining_seconds: input.remainingSeconds,
     },
     { locale: context.locale, subject: subjectOf(context) },
   );
+}
+
+/**
+ * 残り時間だけを載せる、systemの**最後の1行**。
+ *
+ * 本文(`senpai_board.*.md` の「締め方」)が「残り時間はいちばん最後に書いてある」と
+ * 言っている、その最後がここ。**キャッシュの印より後ろに置く**ので、パスごとに
+ * 変わってもプレフィックスは壊れない(`lesson.ts` の `systemTail`)。
+ *
+ * 短く保つこと。ここはキャッシュに載らない = 毎パス丸ごと課金される側で、
+ * 長い規約を足すとキャッシュの意味がその分だけ薄まる。
+ */
+export function senpaiBoardRemainingNote(
+  remainingSeconds: number,
+  locale: CurriculumLocale,
+): string {
+  // 負の残り時間は出さない。「-30秒」を読ませても締め方は決まらないし、
+  // 上限時間の打ち切りは `lesson-loop.ts` の安全弁が別に持っている。
+  const seconds = Math.max(0, Math.floor(remainingSeconds));
+  return locale === "en"
+    ? `You have ${seconds} seconds left in this lesson.`
+    : `この授業の残り時間は ${seconds} 秒です。`;
 }
 
 /**

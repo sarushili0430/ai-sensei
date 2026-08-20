@@ -147,6 +147,111 @@ describe("createAnthropicLessonClient", () => {
     expect(init.signal?.aborted).toBe(true);
   });
 
+  /**
+   * 板書のsystemは4万字級で、往復のたびに丸ごと再送される。印が無いと
+   * TTFT(= 最初の手順までの沈黙)も原価も、パスの数だけ素で払うことになる。
+   */
+  it("systemにプロンプトキャッシュの印を付ける", async () => {
+    const fetchImpl = stubFetch(deltaEvent("{}"));
+
+    await collect(
+      createAnthropicLessonClient({
+        apiKey: "sk-test",
+        model: "claude-sonnet-5",
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      }).stream({ system: "長い指示文", user: "u", maxTokens: 100 }),
+    );
+
+    const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.system).toEqual([
+      { type: "text", text: "長い指示文", cache_control: { type: "ephemeral" } },
+    ]);
+  });
+
+  /**
+   * 残り時間はパスごとに変わる。印より**後ろ**のブロックに置かないと、
+   * 4万字のプレフィックスがそのたびに外れて一度も読み出しヒットしない。
+   */
+  it("パスごとに変わるひとことは、印より後ろの別ブロックに置く", async () => {
+    const fetchImpl = stubFetch(deltaEvent("{}"));
+
+    await collect(
+      createAnthropicLessonClient({
+        apiKey: "sk-test",
+        model: "claude-sonnet-5",
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      }).stream({
+        system: "長い指示文",
+        systemTail: "この授業の残り時間は 540 秒です。",
+        user: "u",
+        maxTokens: 100,
+      }),
+    );
+
+    const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.system).toEqual([
+      { type: "text", text: "長い指示文", cache_control: { type: "ephemeral" } },
+      { type: "text", text: "この授業の残り時間は 540 秒です。" },
+    ]);
+    // 印は1つだけ。末尾にも付けると、毎パス変わる側でキャッシュを切り直してしまう。
+    expect(body.system[1].cache_control).toBeUndefined();
+  });
+
+  /** キャッシュが効いているかは、板書LLMではここでしか見えない(素の fetch なので)。 */
+  it("message_start の使用量を onUsage へ渡す", async () => {
+    const usageEvent = `event: message_start\ndata: ${JSON.stringify({
+      type: "message_start",
+      message: {
+        usage: {
+          input_tokens: 12,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 14_800,
+        },
+      },
+    })}\n\n`;
+    const fetchImpl = stubFetch(usageEvent + deltaEvent("{}"));
+    const seen: unknown[] = [];
+
+    const text = await collect(
+      createAnthropicLessonClient({
+        apiKey: "sk-test",
+        model: "claude-sonnet-5",
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        onUsage: (usage) => seen.push(usage),
+      }).stream({ system: "s", user: "u", maxTokens: 100 }),
+    );
+
+    // 使用量のイベントは本文に混ざらない。
+    expect(text).toBe("{}");
+    expect(seen).toEqual([
+      { input_tokens: 12, cache_creation_input_tokens: 0, cache_read_input_tokens: 14_800 },
+    ]);
+  });
+
+  /** 観測側で落ちても授業は続く(ログの都合で板書を止めない)。 */
+  it("onUsage が投げても本文は流れ続ける", async () => {
+    const usageEvent = `event: message_start\ndata: ${JSON.stringify({
+      type: "message_start",
+      message: { usage: { input_tokens: 1 } },
+    })}\n\n`;
+    const fetchImpl = stubFetch(usageEvent + deltaEvent("{}"));
+
+    const text = await collect(
+      createAnthropicLessonClient({
+        apiKey: "sk-test",
+        model: "claude-sonnet-5",
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        onUsage: () => {
+          throw new Error("ログが壊れた");
+        },
+      }).stream({ system: "s", user: "u", maxTokens: 100 }),
+    );
+
+    expect(text).toBe("{}");
+  });
+
   it("APIが失敗したら理由を付けて投げる", async () => {
     const fetchImpl = vi.fn(async () => new Response("nope", { status: 429 }));
 

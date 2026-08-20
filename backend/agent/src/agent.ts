@@ -36,6 +36,7 @@ import {
   rememberSpokenProblemText,
   reviewOpening,
   senpaiBoardLessonPrompt,
+  senpaiBoardRemainingNote,
   senpaiConversationPrompt,
   startsWithBoardLesson,
   stepAwaitsInput,
@@ -48,9 +49,10 @@ import {
   problemPhotoFailedBridge,
   registerSessionControl,
 } from "./session-control.ts";
+import { SpeechPrefetcher } from "./speech-prefetch.ts";
 import { TranscriptCollector } from "./transcript.ts";
 import { observeVoiceMetrics } from "./voice-metrics.ts";
-import { createVoiceSession } from "./voice-session.ts";
+import { createSpeechSynthesizer, createVoiceSession } from "./voice-session.ts";
 
 /**
  * 先輩AIのセッション。計画書 §2 のコアループの前半2つを回す。
@@ -621,41 +623,87 @@ function lessonRunner(options: TeachOptions, board: BoardDelivery) {
   const llm = createAnthropicLessonClient({
     apiKey: config.ANTHROPIC_API_KEY,
     model: config.LLM_MODEL_BOARD,
+    // 板書LLMは素の `fetch` なので、`voice_metrics` には載らない。
+    // キャッシュが効いているかはここでしか見えない(`lesson.ts` の `cache_control`)。
+    // 本文は載せない — 未成年の問題内容が混じる経路(`telemetry.ts` と同じ方針)。
+    onUsage: (usage) => {
+      const billable = usage.input_tokens + usage.cache_creation_input_tokens;
+      log.info("board_llm_usage", {
+        input_tokens: usage.input_tokens,
+        cache_creation_input_tokens: usage.cache_creation_input_tokens,
+        cache_read_input_tokens: usage.cache_read_input_tokens,
+        // 1パス目は書き込みだけなので0。2パス目以降も0のままなら、
+        // systemがパスごとに変わっている。
+        cache_hit_ratio:
+          usage.cache_read_input_tokens + billable === 0
+            ? null
+            : usage.cache_read_input_tokens / (usage.cache_read_input_tokens + billable),
+      });
+    },
   });
   const remaining = () => remainingSeconds(context, startedAt, new Date());
 
-  return (extra: { priorTurns?: readonly LessonTurn[]; maxPasses?: number }) =>
-    runLessonLoop({
-      llm,
-      // 新規は写真の問題、復習は review_hole を根拠にする。どちらも同じ板書規約を
-      // 通すが、穴を problem_text に偽装しない(`senpai.ts` の設計判断)。
-      // 残り時間はパスごとに織り込み直す — 往復は数分続くので、開始時の値のままだと
-      // 締めの判断が古いまま止まる。
-      system: () => senpaiBoardLessonPrompt({ context, remainingSeconds: remaining() }),
-      locale: context.locale,
-      delivery: board,
-      signal,
-      utterances,
-      record,
-      problemReadoutMemory: {
-        isMissing: () => problemTextIsMissing(context),
-        remember: (text) => rememberSpokenProblemText(context, text),
-      },
-      // Issue #152 の類題は新規授業だけ。復習は既に本人が申告した穴を教え直す場なので、
-      // 従来どおり「いま教えた内容」の教え返しへ直接渡す。
-      practiceProblemEnabled: context.kind === "new",
-      // 答え待ちのタイムアウトの瞬間に生徒がまだ話していたら、言い終わりを待つ。
-      isStudentSpeaking: () => session.userState === "speaking",
-      remainingSeconds: remaining,
-      log,
-      // **板書を出してから喋る**(§3-2)。読み上げ終わりまで待つのは、
-      // 待たないと板書だけが何行も先に進んで、音声が指す行と画面がずれるから。
-      // 代償は、作り直し(`defaultMaxRepairAttempts`)の待ちが音声の空白として
-      // そのまま出ること。どちらを採るかはW1のドッグフーディングで決める値。
-      speak: (step: BoardStep) => sayAndWait(session, step.speech, log, { addToChatCtx: false }),
-      priorTurns: extra.priorTurns,
-      maxPasses: extra.maxPasses,
-    });
+  // 手順ごとの読み上げを、前の手順を再生している裏で先に合成しておく
+  // (`speech-prefetch.ts`)。`session.tts` が無い構成では先読みしない —
+  // そのときは今までどおり手順ごとにTTFBを払う。
+  const prefetcher =
+    session.tts === undefined
+      ? undefined
+      : new SpeechPrefetcher({
+          synthesize: createSpeechSynthesizer({ tts: session.tts, locale: context.locale }),
+          log,
+        });
+
+  return async (extra: { priorTurns?: readonly LessonTurn[]; maxPasses?: number }) => {
+    try {
+      return await runLessonLoop({
+        llm,
+        // 新規は写真の問題、復習は review_hole を根拠にする。どちらも同じ板書規約を
+        // 通すが、穴を problem_text に偽装しない(`senpai.ts` の設計判断)。
+        //
+        // **残り時間はここに織り込まない。**ここが問題ごとに固定だからこそ、
+        // 4万字級の指示文がプロンプトキャッシュに載る(`lesson.ts` の `cache_control`)。
+        system: () => senpaiBoardLessonPrompt({ context }),
+        // 残り時間はキャッシュの印より後ろへ。往復は数分続くので、
+        // 開始時の値のままだと締めの判断が古いまま止まる。
+        systemTail: () => senpaiBoardRemainingNote(remaining(), context.locale),
+        wrapChunks: prefetcher === undefined ? undefined : (chunks) => prefetcher.observe(chunks),
+        locale: context.locale,
+        delivery: board,
+        signal,
+        utterances,
+        record,
+        problemReadoutMemory: {
+          isMissing: () => problemTextIsMissing(context),
+          remember: (text) => rememberSpokenProblemText(context, text),
+        },
+        // Issue #152 の類題は新規授業だけ。復習は既に本人が申告した穴を教え直す場なので、
+        // 従来どおり「いま教えた内容」の教え返しへ直接渡す。
+        practiceProblemEnabled: context.kind === "new",
+        // 答え待ちのタイムアウトの瞬間に生徒がまだ話していたら、言い終わりを待つ。
+        isStudentSpeaking: () => session.userState === "speaking",
+        remainingSeconds: remaining,
+        log,
+        // **板書を出してから喋る**(§3-2)。読み上げ終わりまで待つのは、
+        // 待たないと板書だけが何行も先に進んで、音声が指す行と画面がずれるから。
+        // 代償は、作り直し(`defaultMaxRepairAttempts`)の待ちが音声の空白として
+        // そのまま出ること。どちらを採るかはW1のドッグフーディングで決める値。
+        speak: (step: BoardStep) =>
+          sayAndWait(session, step.speech, log, {
+            addToChatCtx: false,
+            // 先読みが間に合っていれば音声を渡す(TTFBの沈黙が消える)。
+            // 間に合っていなければ `null` で、今までどおりここから合成が始まる。
+            audio: prefetcher?.take(step.speech) ?? undefined,
+          }),
+        priorTurns: extra.priorTurns,
+        maxPasses: extra.maxPasses,
+      });
+    } finally {
+      // 使わなかった先読みを捨てる。問いかけで降りた回・割り込まれた回に、
+      // 聞かれない音声の合成を走らせたままにしない。
+      prefetcher?.cancelAll();
+    }
+  };
 }
 
 /**
@@ -961,7 +1009,9 @@ async function sayAndWait(
   session: voice.AgentSession,
   text: string,
   log: JobLogger,
-  options?: { addToChatCtx?: boolean },
+  // `say()` の第2引数をそのまま受ける(先読み音声の `audio` を通すため。
+  // 型を自前で書き写すと、SDKが増やしたときにここだけ古くなる)。
+  options?: Parameters<voice.AgentSession["say"]>[1],
 ): Promise<void> {
   try {
     await session.say(text, options).waitForPlayout();
