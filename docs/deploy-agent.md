@@ -195,8 +195,12 @@ agentが読む環境変数は [`backend/agent/.env.example`](../backend/agent/.e
 | `DEEPGRAM_API_KEY` | 必須 | STT(聞く側) |
 | `GOOGLE_API_KEY` | 必須 | TTS(喋る側)。Gemini API の鍵([ADR 0008](adr.md#adr-0008)) |
 | `LLM_MODEL_CONVERSATION` / `LLM_MODEL_KARTE` | 任意 | 未設定なら `config.ts` の既定値 |
+| `TTS_ENGINE` | 任意 | 未設定なら `gemini`。`gemini-live` / `elevenlabs` へはこの1変数で切り替える |
 | `GEMINI_TTS_MODEL` | 任意 | 未設定なら `gemini-2.5-flash-preview-tts`。3.1 を試すときだけ入れる |
+| `GEMINI_LIVE_TTS_MODEL` | 任意 | `TTS_ENGINE=gemini-live` のときのモデル |
 | `GEMINI_TTS_VOICE` | 任意 | **ふつうは触らない**(声はキャラクターそのもの) |
+| `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICE_ID` | `elevenlabs` のとき必須 | 片方でも欠けると起動時に落ちる |
+| `ELEVENLABS_MODEL` | 任意 | 未設定なら `eleven_flash_v2_5`。`eleven_flash_v2` は**英語のみ** |
 | `SENTRY_DSN` | 任意 | 未設定ならSentryへは何も送らない |
 | `ENVIRONMENT` | 任意 | Sentryに出る名前。`develop` / `production` |
 | `LIVEKIT_AGENT_NAME` | 環境次第 | [§4](#4-ディスパッチ) |
@@ -212,6 +216,12 @@ agentが読む環境変数は [`backend/agent/.env.example`](../backend/agent/.e
 
 secretを入れ替えたら、**コードが変わっていなくてもデプロイし直す**(既に動いている
 ワーカーのプロセスには新しい値が入らない)。
+
+**`lk` のsecret更新はマージで、消したキーは残る。**`--secrets-file` から外しても
+向こうからは消えない。`GEMINI_TTS_ENGINE`(現 `TTS_ENGINE`)のように**改名した変数は
+古い名前が残っていると起動時に落ちる**ようにしてあるので、改名時は
+`lk agent update-secrets --secrets <旧名>=` で空にしてから deploy すること
+(黙って既定値へ戻るより、起動しないほうが安い)。
 
 ---
 

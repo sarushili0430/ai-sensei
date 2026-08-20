@@ -115,6 +115,47 @@ export const defaultGeminiLiveTtsModel = "gemini-2.5-flash-native-audio-preview-
  * プラグインが本文を `{指示}:\n"{本文}"` で包む前置きで、こちらはセッション全体に効く
  * システム指示。同じ文面を使い回すと、どちらかの都合で片方が壊れる。
  */
+/**
+ * ElevenLabs のモデルID(2026-08 時点、公式ドキュメントで確認したものだけ)。
+ *
+ * https://elevenlabs.io/docs/models
+ *
+ * **`_v2` と `_v2_5` の差が、そのまま「英語のみ / 32言語」の差。**Deepgramは言語が
+ * モデル名に埋まっていた(`aura-2-izanami-ja`)が、ElevenLabsは**バージョン番号に
+ * 埋まっている**。`eleven_flash_v2` を選ぶと日本語は喋れない。型(`TTSModels`)は
+ * 両方を等しく受けるので、ここでも**型は実在も適性も保証しない**。
+ */
+export const elevenLabsTtsModels = [
+  /** 32言語(日本語あり)。公称 ~75ms。**日本語を喋らせるならこれか下の2つ。** */
+  "eleven_flash_v2_5",
+  /** 29言語(日本語あり)。速さより質。 */
+  "eleven_multilingual_v2",
+  /** 70+言語(日本語あり)。 */
+  "eleven_v3",
+  /** **英語のみ。**日本語では使えない(名前が `flash_v2_5` と1文字違い)。 */
+  "eleven_flash_v2",
+] as const;
+
+/**
+ * ElevenLabs を使うときの既定モデル。**日英を1モデルで喋れて、いちばん速い版。**
+ *
+ * 公称 ~75ms は**モデルの推論レイテンシ**であって、こちらが測る TTFB ではない
+ * (ネットワーク往復・接続確立・キュー待ちを含まない)。比べるときは同じ土俵で測ること。
+ */
+export const defaultElevenLabsTtsModel = "eleven_flash_v2_5";
+
+/**
+ * 先輩の声(ElevenLabs)。**既定値を置かない。**
+ *
+ * Gemini の `Leda` は「少し年上の同級生」として**選んだ**結果なので定数で固定してある。
+ * ElevenLabs 側はまだ誰も選んでいない。プラグインには既定のボイスIDがあるが、
+ * それは**ElevenLabsが決めた誰か**であって先輩ではない。選ばないまま適当な声で
+ * 喋り出すより、`ELEVENLABS_VOICE_ID` が無ければ起動時に落とす
+ * (`DEEPGRAM_TTS_MODEL_JA` に既定値を置かなかったのと同じ理由)。
+ *
+ * 選んだら、ここに定数として書いて全環境で一度に切り替える。
+ */
+
 export function liveTtsSystemInstruction(locale: Locale): string {
   const language = locale === "en" ? "English" : "Japanese";
   const mixed =

@@ -38,7 +38,7 @@ export type GeminiLiveTtsOptions = {
  *   **2割高い**。安くはならない
  * - **Live は対話モデル**。読み上げは訓練の逆方向で、要約・相槌・返答が起きうる。
  *   歯止めは `liveTtsSystemInstruction` の1枚だけ
- * - preview。`GEMINI_TTS_ENGINE=tts` で即座に元のTTSモデルへ戻せるようにしてある
+ * - preview。`TTS_ENGINE=gemini` で即座に元のTTSモデルへ戻せるようにしてある
  *
  * 接続は `stream()` 1回につき1本 = **先輩の1発話につき1本**。SDKの `ttsNode` が
  * 発話ごとに `stream()` を呼ぶためで、Deepgramのプラグインと同じ寿命になる。

@@ -2,6 +2,7 @@ import type { Locale } from "@ai-sensei/contract";
 import { toSpeakableJa } from "@ai-sensei/guardrail";
 import { type JobContext, inference, tokenize, tts, voice } from "@livekit/agents";
 import * as deepgram from "@livekit/agents-plugin-deepgram";
+import * as elevenlabs from "@livekit/agents-plugin-elevenlabs";
 import * as google from "@livekit/agents-plugin-google";
 import type { AgentConfig } from "./config.ts";
 import { CachedInstructionsLLM } from "./conversation-llm.ts";
@@ -72,6 +73,35 @@ export function createGeminiTts(config: AgentConfig, locale: Locale): google.bet
 }
 
 /**
+ * 先輩の声(ElevenLabs)。**日英を1モデル・1ボイスで喋る**ので、ロケールで変わるのは
+ * `language` の指定だけ。声IDは環境変数が正で、既定値は置かない(`senpai-voice.ts`)。
+ *
+ * ADR 0003 で外したベンダーへ戻る道。外した理由は日本語が喋れないことではなく
+ * 「1社に寄せる」運用判断だったので、技術的な障害は無い。
+ *
+ * `wordTokenizer` に**文**の分割器を渡している。プラグインは `chunkLengthSchedule`
+ * 未指定なら `autoMode` を立て、そのとき「完全な文が来る」前提でWSへ流す。既定の分割器は
+ * 半角の文末記号しか見ないので、日本語は「。」で切れずに1文も送られないまま溜まる
+ * (Gemini/Deepgramで踏んだのと同じ罠。型は `WordTokenizer | SentenceTokenizer` で両方通る)。
+ */
+export function createElevenLabsTts(
+  config: AgentConfig,
+  locale: Locale,
+  sentenceTokenizer: tokenize.SentenceTokenizer,
+): elevenlabs.TTS {
+  return new elevenlabs.TTS({
+    apiKey: config.ELEVENLABS_API_KEY,
+    voiceId: config.ELEVENLABS_VOICE_ID,
+    model: config.ELEVENLABS_MODEL,
+    // **言語を明示する。**`eleven_flash_v2_5` は32言語を1モデルで喋るので、
+    // 指定しないと日本語の文に混ざった英単語で言語の推定が振れる。
+    // (モデルが言語指定を持たない版なら、プラグイン側で黙って無視されるだけ)
+    language: locale,
+    wordTokenizer: sentenceTokenizer,
+  });
+}
+
+/**
  * 文分割器。**Gemini TTS はストリーミングを持たないので、ここが実質のTTFB**になる。
  *
  * 分割された1文がそのまま1リクエストなので、句点まで溜めてから投げると
@@ -90,23 +120,27 @@ export function sentenceTokenizerForLocale(locale: Locale): tokenize.SentenceTok
  * それは半角の文末記号しか見ないので、日本語は生成が終わるまで1文も投げられず、
  * 授業の最初の一言が丸ごと遅れる。分割器をこちらで選ぶために、包む側もこちらが持つ。
  *
- * `GEMINI_TTS_ENGINE=live` のときは `GeminiLiveTTS`(WebSocket)へ差し替わる。
- * **どちらの経路でも同じ分割器を通す**ので、日本語の切り方は engine で変わらない。
+ * 包むのは `gemini` のときだけ。`gemini-live` と `elevenlabs` は最初からWSを張れる
+ * (`capabilities.streaming === true`)ので包まない。**どの経路でも同じ分割器を通す**ので、
+ * 日本語の切り方は engine で変わらない。
  */
 export function createSenpaiTts(config: AgentConfig, locale: Locale): tts.TTS {
   const sentenceTokenizer = sentenceTokenizerForLocale(locale);
-  if (config.GEMINI_TTS_ENGINE === "live") {
-    // Live は最初からWSを張れる(`capabilities.streaming === true`)ので包まない。
-    // 文の切り方は同じ分割器を内側で使う — 1文=1ターンなのは変わらないため。
-    return new GeminiLiveTTS({
-      apiKey: config.GOOGLE_API_KEY,
-      model: config.GEMINI_LIVE_TTS_MODEL,
-      voiceName: config.GEMINI_TTS_VOICE,
-      locale,
-      sentenceTokenizer,
-    });
+  switch (config.TTS_ENGINE) {
+    case "gemini-live":
+      // 文の切り方は同じ分割器を内側で使う — 1文=1ターンなのは変わらないため。
+      return new GeminiLiveTTS({
+        apiKey: config.GOOGLE_API_KEY,
+        model: config.GEMINI_LIVE_TTS_MODEL,
+        voiceName: config.GEMINI_TTS_VOICE,
+        locale,
+        sentenceTokenizer,
+      });
+    case "elevenlabs":
+      return createElevenLabsTts(config, locale, sentenceTokenizer);
+    case "gemini":
+      return new tts.StreamAdapter(createGeminiTts(config, locale), sentenceTokenizer);
   }
-  return new tts.StreamAdapter(createGeminiTts(config, locale), sentenceTokenizer);
 }
 
 export function createVoiceSession(options: VoiceSessionOptions): voice.AgentSession {
