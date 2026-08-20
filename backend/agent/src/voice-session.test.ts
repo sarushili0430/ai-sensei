@@ -2,6 +2,7 @@ import { initializeLogger } from "@livekit/agents";
 import { beforeAll, describe, expect, it } from "vitest";
 import { type AgentConfig, loadConfig } from "./config.ts";
 import { CachedInstructionsLLM } from "./conversation-llm.ts";
+import { GeminiLiveTTS } from "./gemini-live-tts.ts";
 import { geminiTtsModels, ttsInstructionsForLocale } from "./senpai-voice.ts";
 import {
   createGeminiTts,
@@ -124,6 +125,19 @@ describe("sentenceTokenizerForLocale", () => {
 });
 
 describe("createSenpaiTts", () => {
+  // Live は最初からWSを張れるので `StreamAdapter` で包まない。包むと1文ごとに
+  // `synthesize()` が呼ばれて、WSを張った意味が消える。
+  it("GEMINI_TTS_ENGINE=live でWSの実装へ差し替わる", () => {
+    const tts = createSenpaiTts(testConfig({ GEMINI_TTS_ENGINE: "live" }), "ja");
+    expect(tts).toBeInstanceOf(GeminiLiveTTS);
+    expect(tts.capabilities.streaming).toBe(true);
+    expect(tts.label).not.toContain("StreamAdapter");
+  });
+
+  it("既定(tts)では従来のGemini TTSのまま", () => {
+    expect(createSenpaiTts(testConfig(), "ja")).not.toBeInstanceOf(GeminiLiveTTS);
+  });
+
   // Gemini TTS は `stream()` が例外を投げる非ストリーミング実装。包まずに渡すと
   // SDKが既定のBasicSentenceTokenizerで勝手に包み、日本語が句点で切れなくなる。
   it("StreamAdapterで包んでからセッションへ渡す", () => {

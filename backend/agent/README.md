@@ -130,9 +130,32 @@ few-shot も、その言語で書かれたものをそのまま渡す。
 
 | | |
 | --- | --- |
+| 喋らせ方 | 既定 `tts`。`GEMINI_TTS_ENGINE=live` で Live API(WebSocket)へ。下の表を見てから選ぶ |
 | モデル | 既定 `gemini-2.5-flash-preview-tts`。`GEMINI_TTS_MODEL` で `gemini-3.1-flash-tts-preview` へ |
-| 声 | `Leda` 固定。**日英で同じ1つ**(Geminiのボイスは言語を選ばない) |
+| 声 | `Leda` 固定。**日英で同じ1つ**(Geminiのボイスは言語を選ばない)。**Live でも同じ `Leda` が使える** |
 | 正 | `senpai-voice.ts`。冒頭の同梱音声を焼くスクリプトも同じ定数を読む |
+
+### `tts` と `live` の選び方
+
+| | `tts`(既定) | `live` |
+| --- | --- | --- |
+| 実装 | `google.beta.TTS` + `StreamAdapter` | `GeminiLiveTTS`(`gemini-live-tts.ts`) |
+| 接続 | **1文ごとに新しいHTTP** | **1発話につきWS1本**。文はそのソケットへ |
+| 音声出力 | $10.00/1M(約 $0.015/分) | $12.00/1M(約 $0.018/分)。**2割高い** |
+| モデルの性格 | 読み上げに後訓練 | **対話に後訓練**。逐語読みは訓練の逆方向 |
+| 逐語で読む確度 | 高い | **低い**。要約・相槌・返答が起きうる |
+
+`live` を選ぶ理由は**単価ではなく接続の形**。安くはならない。歯止めは
+`liveTtsSystemInstruction`(`senpai-voice.ts`)の1枚だけなので、**入れたら必ず耳で確かめる**。
+板書と声がずれた瞬間に授業は成立しない(`lesson.ts`)。戻すのは `GEMINI_TTS_ENGINE=tts` の1変数。
+
+WSの寿命は**先輩の1発話ぶん**(数秒)。SDKの `ttsNode` が発話ごとに `stream()` を
+呼ぶためで、Live のセッション上限(音声のみ15分 / WS約10分)には**届かない**。
+`sessionResumption` も `contextWindowCompression` も要らないのはこのため。
+代わりに気にするのは**同時接続数**で、発話するたびにセッションを張るので、
+同時に喋っている授業の数がそのまま並列数になる(Live APIの上限は公開されていない)。
+
+文の切り方は `tts` / `live` のどちらでも `sentence-tokenizer.ja.ts` を通る。
 
 **Gemini TTS はストリーミングを持たない。**`tts.StreamAdapter` で包んで文分割器を
 渡している。包み忘れるとSDKが既定の分割器を当て、日本語が「。」で切れなくなって

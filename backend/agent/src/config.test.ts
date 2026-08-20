@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "./config.ts";
+import { geminiLiveTtsModels } from "./senpai-voice.ts";
 
 const complete = {
   API_BASE_URL: "http://localhost:8787",
@@ -91,5 +92,42 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ ...complete, LIVEKIT_URL: "example.livekit.cloud" })).toThrow(
       /URLとして読めません/,
     );
+  });
+});
+
+describe("GEMINI_TTS_ENGINE", () => {
+  it("既定は tts(読み上げに後訓練されたモデル)", () => {
+    expect(loadConfig(complete).GEMINI_TTS_ENGINE).toBe("tts");
+    expect(loadConfig({ ...complete, GEMINI_TTS_ENGINE: "" }).GEMINI_TTS_ENGINE).toBe("tts");
+  });
+
+  it("live へは環境変数1つで切り替わる", () => {
+    const config = loadConfig({ ...complete, GEMINI_TTS_ENGINE: "live" });
+    expect(config.GEMINI_TTS_ENGINE).toBe("live");
+    expect(config.GEMINI_LIVE_TTS_MODEL).toBe("gemini-2.5-flash-native-audio-preview-12-2025");
+  });
+
+  // 綴り間違いで黙って `tts` に落ちると、live を入れたつもりで比較してしまう。
+  it("知らない値は起動時に落とす", () => {
+    expect(() => loadConfig({ ...complete, GEMINI_TTS_ENGINE: "gemini-live" })).toThrow(
+      /GEMINI_TTS_ENGINE/,
+    );
+  });
+
+  it("live のモデルは実在するIDである", () => {
+    expect(geminiLiveTtsModels).toContain(loadConfig(complete).GEMINI_LIVE_TTS_MODEL);
+  });
+});
+
+describe("GEMINI_LIVE_TTS_MODEL", () => {
+  // 3.1 へは環境変数1つで行く。音声出力の単価は 2.5 と同じで、text入力だけ5割高い。
+  it("3.1 Flash Live へ切り替えられる", () => {
+    const config = loadConfig({
+      ...complete,
+      GEMINI_TTS_ENGINE: "live",
+      GEMINI_LIVE_TTS_MODEL: "gemini-3.1-flash-live-preview",
+    });
+    expect(config.GEMINI_LIVE_TTS_MODEL).toBe("gemini-3.1-flash-live-preview");
+    expect(geminiLiveTtsModels).toContain(config.GEMINI_LIVE_TTS_MODEL);
   });
 });
