@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "./config.ts";
-import { geminiLiveTtsModels } from "./senpai-voice.ts";
+import { elevenLabsTtsModels, geminiLiveTtsModels } from "./senpai-voice.ts";
 
 const complete = {
   API_BASE_URL: "http://localhost:8787",
@@ -95,22 +95,28 @@ describe("loadConfig", () => {
   });
 });
 
-describe("GEMINI_TTS_ENGINE", () => {
-  it("既定は tts(読み上げに後訓練されたモデル)", () => {
-    expect(loadConfig(complete).GEMINI_TTS_ENGINE).toBe("tts");
-    expect(loadConfig({ ...complete, GEMINI_TTS_ENGINE: "" }).GEMINI_TTS_ENGINE).toBe("tts");
+describe("TTS_ENGINE", () => {
+  it("既定は gemini(読み上げに後訓練されたモデル)", () => {
+    expect(loadConfig(complete).TTS_ENGINE).toBe("gemini");
+    expect(loadConfig({ ...complete, TTS_ENGINE: "" }).TTS_ENGINE).toBe("gemini");
   });
 
-  it("live へは環境変数1つで切り替わる", () => {
-    const config = loadConfig({ ...complete, GEMINI_TTS_ENGINE: "live" });
-    expect(config.GEMINI_TTS_ENGINE).toBe("live");
+  it("gemini-live へは環境変数1つで切り替わる", () => {
+    const config = loadConfig({ ...complete, TTS_ENGINE: "gemini-live" });
+    expect(config.TTS_ENGINE).toBe("gemini-live");
     expect(config.GEMINI_LIVE_TTS_MODEL).toBe("gemini-2.5-flash-native-audio-preview-12-2025");
   });
 
-  // 綴り間違いで黙って `tts` に落ちると、live を入れたつもりで比較してしまう。
+  // 綴り間違いで黙って `gemini` に落ちると、live を入れたつもりで比較してしまう。
   it("知らない値は起動時に落とす", () => {
-    expect(() => loadConfig({ ...complete, GEMINI_TTS_ENGINE: "gemini-live" })).toThrow(
-      /GEMINI_TTS_ENGINE/,
+    expect(() => loadConfig({ ...complete, TTS_ENGINE: "live" })).toThrow(/TTS_ENGINE/);
+  });
+
+  // 改名前の名前が secret に残ったままだと、TTS_ENGINE 未設定=gemini に落ちて
+  // 「Liveにしたつもりの環境が黙って戻る」。音を聞くまで気づけないので落とす。
+  it("旧名 GEMINI_TTS_ENGINE が残っていたら落とす", () => {
+    expect(() => loadConfig({ ...complete, GEMINI_TTS_ENGINE: "live" })).toThrow(
+      /GEMINI_TTS_ENGINE.*TTS_ENGINE へ改名/s,
     );
   });
 
@@ -124,10 +130,47 @@ describe("GEMINI_LIVE_TTS_MODEL", () => {
   it("3.1 Flash Live へ切り替えられる", () => {
     const config = loadConfig({
       ...complete,
-      GEMINI_TTS_ENGINE: "live",
+      TTS_ENGINE: "gemini-live",
       GEMINI_LIVE_TTS_MODEL: "gemini-3.1-flash-live-preview",
     });
     expect(config.GEMINI_LIVE_TTS_MODEL).toBe("gemini-3.1-flash-live-preview");
     expect(geminiLiveTtsModels).toContain(config.GEMINI_LIVE_TTS_MODEL);
+  });
+});
+
+describe("ElevenLabs", () => {
+  const withElevenLabs = {
+    ...complete,
+    TTS_ENGINE: "elevenlabs",
+    ELEVENLABS_API_KEY: "key",
+    ELEVENLABS_VOICE_ID: "voice",
+  };
+
+  it("既定モデルは日英を1つで喋れる版(英語のみの eleven_flash_v2 ではない)", () => {
+    const config = loadConfig(withElevenLabs);
+    expect(config.ELEVENLABS_MODEL).toBe("eleven_flash_v2_5");
+    expect(elevenLabsTtsModels).toContain(config.ELEVENLABS_MODEL);
+  });
+
+  // 鍵や声IDの入れ忘れは、無いと分かるのが「最初に喋る瞬間」になる。
+  it("engineがelevenlabsのとき、鍵と声IDが無ければ名前を出して落とす", () => {
+    expect(() => loadConfig({ ...withElevenLabs, ELEVENLABS_API_KEY: undefined })).toThrow(
+      /ELEVENLABS_API_KEY/,
+    );
+    expect(() => loadConfig({ ...withElevenLabs, ELEVENLABS_VOICE_ID: undefined })).toThrow(
+      /ELEVENLABS_VOICE_ID/,
+    );
+    // `KEY=` は空文字になる。「入っているが空」を通すと同じ壊れ方をする。
+    expect(() => loadConfig({ ...withElevenLabs, ELEVENLABS_API_KEY: "" })).toThrow(
+      /ELEVENLABS_API_KEY/,
+    );
+  });
+
+  // 使っていない環境に鍵を置かせない。engineを切り替えたときだけ必須になる。
+  it("engineがelevenlabsでなければ、鍵も声IDも要らない", () => {
+    expect(loadConfig(complete).ELEVENLABS_API_KEY).toBeUndefined();
+    expect(
+      loadConfig({ ...complete, TTS_ENGINE: "gemini-live" }).ELEVENLABS_VOICE_ID,
+    ).toBeUndefined();
   });
 });

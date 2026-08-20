@@ -1,4 +1,5 @@
 import { initializeLogger } from "@livekit/agents";
+import * as elevenlabs from "@livekit/agents-plugin-elevenlabs";
 import { beforeAll, describe, expect, it } from "vitest";
 import { type AgentConfig, loadConfig } from "./config.ts";
 import { CachedInstructionsLLM } from "./conversation-llm.ts";
@@ -27,6 +28,10 @@ function testConfig(overrides: Record<string, string> = {}): AgentConfig {
     ...overrides,
   });
 }
+
+// プラグインのコンストラクタが `log()` を触る(ElevenLabsはインスタンス変数の初期化で
+// 呼ぶので `new` した時点)。TTSを組み立てるテストが増えたのでファイル全体で先に入れる。
+beforeAll(() => initializeLogger({ pretty: false, level: "silent" }));
 
 function textStream(chunks: readonly string[]): ReadableStream<string> {
   return new ReadableStream<string>({
@@ -127,15 +132,33 @@ describe("sentenceTokenizerForLocale", () => {
 describe("createSenpaiTts", () => {
   // Live は最初からWSを張れるので `StreamAdapter` で包まない。包むと1文ごとに
   // `synthesize()` が呼ばれて、WSを張った意味が消える。
-  it("GEMINI_TTS_ENGINE=live でWSの実装へ差し替わる", () => {
-    const tts = createSenpaiTts(testConfig({ GEMINI_TTS_ENGINE: "live" }), "ja");
+  it("TTS_ENGINE=gemini-live でWSの実装へ差し替わる", () => {
+    const tts = createSenpaiTts(testConfig({ TTS_ENGINE: "gemini-live" }), "ja");
     expect(tts).toBeInstanceOf(GeminiLiveTTS);
     expect(tts.capabilities.streaming).toBe(true);
     expect(tts.label).not.toContain("StreamAdapter");
   });
 
-  it("既定(tts)では従来のGemini TTSのまま", () => {
-    expect(createSenpaiTts(testConfig(), "ja")).not.toBeInstanceOf(GeminiLiveTTS);
+  // ElevenLabs も自前でWSを張るので、こちらも包まない。
+  it("TTS_ENGINE=elevenlabs でElevenLabsへ差し替わる", () => {
+    const tts = createSenpaiTts(
+      testConfig({
+        TTS_ENGINE: "elevenlabs",
+        ELEVENLABS_API_KEY: "key",
+        ELEVENLABS_VOICE_ID: "voice",
+      }),
+      "ja",
+    );
+    expect(tts).toBeInstanceOf(elevenlabs.TTS);
+    expect(tts.capabilities.streaming).toBe(true);
+    expect(tts.label).not.toContain("StreamAdapter");
+    expect(tts.model).toBe("eleven_flash_v2_5");
+  });
+
+  it("既定(gemini)では従来のGemini TTSのまま", () => {
+    const tts = createSenpaiTts(testConfig(), "ja");
+    expect(tts).not.toBeInstanceOf(GeminiLiveTTS);
+    expect(tts).not.toBeInstanceOf(elevenlabs.TTS);
   });
 
   // Gemini TTS は `stream()` が例外を投げる非ストリーミング実装。包まずに渡すと
@@ -148,9 +171,6 @@ describe("createSenpaiTts", () => {
 });
 
 describe("createVoiceSession", () => {
-  // プラグインのコンストラクタが `log()` を触るため、セッションを組む前に要る。
-  beforeAll(() => initializeLogger({ pretty: false, level: "silent" }));
-
   function session() {
     return createVoiceSession({
       // VADはWorkerのprewarmが積むもので、組み立ての検証には要らない。

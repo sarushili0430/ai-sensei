@@ -130,24 +130,47 @@ few-shot も、その言語で書かれたものをそのまま渡す。
 
 | | |
 | --- | --- |
-| 喋らせ方 | 既定 `tts`。`GEMINI_TTS_ENGINE=live` で Live API(WebSocket)へ。下の表を見てから選ぶ |
+| 喋らせ方 | 既定 `gemini`。`TTS_ENGINE` で `gemini-live` / `elevenlabs` へ。下の表を見てから選ぶ |
 | モデル | 既定 `gemini-2.5-flash-preview-tts`。`GEMINI_TTS_MODEL` で `gemini-3.1-flash-tts-preview` へ |
-| 声 | `Leda` 固定。**日英で同じ1つ**(Geminiのボイスは言語を選ばない)。**Live でも同じ `Leda` が使える** |
+| 声 | `Leda` 固定。**日英で同じ1つ**(Geminiのボイスは言語を選ばない)。**Live でも同じ `Leda` が使える**。ElevenLabs は `ELEVENLABS_VOICE_ID` が正で**既定値を置かない** |
 | 正 | `senpai-voice.ts`。冒頭の同梱音声を焼くスクリプトも同じ定数を読む |
 
-### `tts` と `live` の選び方
+### engine の選び方
 
-| | `tts`(既定) | `live` |
-| --- | --- | --- |
-| 実装 | `google.beta.TTS` + `StreamAdapter` | `GeminiLiveTTS`(`gemini-live-tts.ts`) |
-| 接続 | **1文ごとに新しいHTTP** | **1発話につきWS1本**。文はそのソケットへ |
-| 音声出力 | $10.00/1M(約 $0.015/分) | $12.00/1M(約 $0.018/分)。**2割高い** |
-| モデルの性格 | 読み上げに後訓練 | **対話に後訓練**。逐語読みは訓練の逆方向 |
-| 逐語で読む確度 | 高い | **低い**。要約・相槌・返答が起きうる |
+| | `gemini`(既定) | `gemini-live` | `elevenlabs` |
+| --- | --- | --- | --- |
+| 実装 | `google.beta.TTS` + `StreamAdapter` | `GeminiLiveTTS`(`gemini-live-tts.ts`) | `elevenlabs.TTS`(プラグイン) |
+| 接続 | **1文ごとに新しいHTTP** | **1発話につきWS1本**。文はそのソケットへ | **WS**。プラグインが張る |
+| 音声出力の単価 | $10.00/1M(約 $0.015/分) | $12.00/1M(約 $0.018/分)。**2割高い** | 文字課金(ElevenLabsの契約次第) |
+| モデルの性格 | 読み上げに後訓練 | **対話に後訓練**。逐語読みは訓練の逆方向 | 読み上げ専用 |
+| 逐語で読む確度 | 高い | **低い**。要約・相槌・返答が起きうる | 高い |
+| 鍵 | `GOOGLE_API_KEY` | `GOOGLE_API_KEY` | `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID`(**両方必須**) |
 
-`live` を選ぶ理由は**単価ではなく接続の形**。安くはならない。歯止めは
+`gemini-live` を選ぶ理由は**単価ではなく接続の形**。安くはならない。歯止めは
 `liveTtsSystemInstruction`(`senpai-voice.ts`)の1枚だけなので、**入れたら必ず耳で確かめる**。
-板書と声がずれた瞬間に授業は成立しない(`lesson.ts`)。戻すのは `GEMINI_TTS_ENGINE=tts` の1変数。
+板書と声がずれた瞬間に授業は成立しない(`lesson.ts`)。戻すのは `TTS_ENGINE=gemini` の1変数。
+
+`elevenlabs` は ADR 0003 で外したベンダーへ戻る道。**外したのは日本語が喋れないから
+ではなく**「1社に寄せる」運用判断だった(ElevenLabsは1ボイスに言語を渡して日英を
+切り替えられる)。Gemini へ移った時点で STT:Deepgram / TTS:Google の2社構成に
+戻っているので、当時の前提はもう無い。
+
+#### 手元で測ったTTFB(参考値)
+
+同じ日本語2文・同じ分割器で、ラウンドロビン5回。**手元のMac(日本)からの実測**で、
+ワーカーが動く LiveKit の ap-south からは距離が違うので**絶対値は本番と一致しない**。
+
+| 経路 | 中央値 | 最小〜最大 |
+| --- | ---: | --- |
+| Deepgram Aura-2(`aura-2-izanami-ja`) | 764ms | 742〜1056ms |
+| Gemini TTS 2.5 flash | 3713ms | 3471〜5006ms |
+| Gemini TTS 3.1 flash | 1468ms | **1127〜8484ms**(二極化。5回中2回が8秒台) |
+| Gemini Live 3.1 flash | 1347ms | 1093〜1592ms(**いちばん安定**) |
+
+Live は音声が**ほぼ実時間ペースでしか届かない**(7.62秒の音声に7.56秒)。Aura-2 は約2.3倍、
+Gemini TTS は約6倍で届くので、**Live だけ再生バッファの余裕がほぼ無い**。TTFBに出ない
+差なので、乗り換えたら発話が途中で切れないかも一緒に見る。ElevenLabs はまだ未計測
+(`ELEVENLABS_API_KEY` が要る)。
 
 WSの寿命は**先輩の1発話ぶん**(数秒)。SDKの `ttsNode` が発話ごとに `stream()` を
 呼ぶためで、Live のセッション上限(音声のみ15分 / WS約10分)には**届かない**。
@@ -155,7 +178,9 @@ WSの寿命は**先輩の1発話ぶん**(数秒)。SDKの `ttsNode` が発話ご
 代わりに気にするのは**同時接続数**で、発話するたびにセッションを張るので、
 同時に喋っている授業の数がそのまま並列数になる(Live APIの上限は公開されていない)。
 
-文の切り方は `tts` / `live` のどちらでも `sentence-tokenizer.ja.ts` を通る。
+文の切り方は3つのどの engine でも `sentence-tokenizer.ja.ts` を通る。ElevenLabs は
+`wordTokenizer` に**文**の分割器を渡している(`chunkLengthSchedule` 未指定だと
+プラグインが `autoMode` を立て、完全な文が来る前提でWSへ流すため)。
 
 **Gemini TTS はストリーミングを持たない。**`tts.StreamAdapter` で包んで文分割器を
 渡している。包み忘れるとSDKが既定の分割器を当て、日本語が「。」で切れなくなって
