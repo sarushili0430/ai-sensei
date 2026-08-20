@@ -20,7 +20,10 @@
     "verify:bindings": "node --experimental-strip-types scripts/verify-wrangler-bindings.ts",
     "verify:curriculum": "node --experimental-strip-types scripts/verify-curriculum-prerequisites.ts",
     "verify:strip-types": "node --experimental-strip-types scripts/verify-strip-types.ts",
-    "verify": "pnpm run lint && pnpm run typecheck && pnpm run verify:curriculum && pnpm run verify:secrets && pnpm run verify:strip-types && pnpm test"
+    "verify:articles": "node --experimental-strip-types scripts/build-articles.ts --check",
+    "verify:skills": "node --experimental-strip-types scripts/verify-skills.ts",
+    "articles:build": "node --experimental-strip-types scripts/build-articles.ts",
+    "verify": "pnpm run lint && pnpm run typecheck && pnpm run verify:curriculum && pnpm run verify:secrets && pnpm run verify:strip-types && pnpm run verify:articles && pnpm run verify:skills && pnpm test"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

@@ -38,6 +38,12 @@ jobs:
               - "packages/**"
               - "prompts/**"
               - "scripts/**"
+              # 記事(apps/lp/articles/*.md)を直したら、生成物が最新かを見る必要がある。
+              # ここに apps/lp を入れておかないと、LPだけのコミットで verify:articles が流れない
+              - "apps/lp/**"
+              # 手順書は2箇所に同じものを置いている。片方だけのコミットをここで止める
+              - ".agents/skills/**"
+              - ".claude/skills/**"
               - "package.json"
               - "pnpm-lock.yaml"
               - "pnpm-workspace.yaml"
@@ -80,6 +86,18 @@ jobs:
       - name: Unit tests
         if: ${{ !cancelled() }}
         run: pnpm test
+
+      # 記事は `.md` が正で、配信するHTMLは生成物。**両方を同じコミットに入れる**約束が
+      # 守られているかを見る。生成し忘れると、直したはずの記事が古いまま公開される。
+      - name: Generated articles (up to date)
+        if: ${{ !cancelled() }}
+        run: pnpm run verify:articles
+
+      # Codex と Claude Code は別のディレクトリしか読まないので、同じ手順書を2箇所に置いている。
+      # 片方だけ直されるとエージェントによって振る舞いが変わるので、ここで一致を見る。
+      - name: Agent skills (in sync)
+        if: ${{ !cancelled() }}
+        run: pnpm run verify:skills
 
       # テストは Vitest/Node で通っても、Workers のバンドラ(esbuild)で落ちることがある。
       # 実際に JSON の import 属性で本番ビルドだけ壊れていたので、ここで必ず組む。

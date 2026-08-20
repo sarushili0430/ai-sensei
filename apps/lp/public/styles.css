@@ -1204,7 +1204,8 @@ footer a {
   white-space: nowrap;
 }
 
-.legal-back {
+.legal-back,
+.article-back {
   display: inline-block;
   margin-top: 40px;
   font-size: 14px;
@@ -1318,6 +1319,159 @@ footer a {
   border: 2px solid var(--hole);
   background: #fff5f8;
 }
+
+/* ------------------------------------------------------------------ *
+ * 記事(public/articles/)
+ *
+ * **このページのHTMLは手で書かない。** 正は apps/lp/articles/<slug>.md で、
+ * scripts/build-articles.ts が焼く(`pnpm run articles:build`)。
+ * ここを直しても、次の生成で消える。
+ *
+ * 規約(.legal)と分けてあるのは、あちらが**引かれる文書**で、こちらが**読み物**だから。
+ * 1行を短くして行間を広げてある —— 条を拾う目と、頭から読む目は別のもの。
+ * ------------------------------------------------------------------ */
+
+.article,
+.article-index {
+  max-width: 680px;
+  padding: 44px 20px 72px;
+  margin: 0 auto;
+}
+
+.article h1,
+.article-index h1 {
+  font-size: clamp(25px, 5.2vw, 33px);
+  line-height: 1.5;
+}
+
+.article .updated {
+  font-size: 12.5px;
+  color: var(--ink-mut);
+  margin-top: 12px;
+}
+
+.article-index .lede {
+  margin-top: 12px;
+}
+
+.article h2 {
+  font-size: 19px;
+  margin: 44px 0 0;
+  scroll-margin-top: 76px; /* sticky ヘッダの下に潜らせない */
+}
+
+.article h3 {
+  font-size: 16px;
+  margin: 30px 0 0;
+  scroll-margin-top: 76px;
+}
+
+.article p,
+.article li {
+  font-size: 15.5px;
+  line-height: 2.05;
+}
+
+.article p,
+.article ul,
+.article ol,
+.article blockquote {
+  margin: 16px 0 0;
+}
+
+.article ul,
+.article ol {
+  padding-left: 1.4em;
+}
+
+.article li + li {
+  margin-top: 8px;
+}
+
+/* 引用は左の1本線だけにする。囲むと板書のカードに見えて、本文より強くなる。 */
+.article blockquote {
+  border-left: 4px solid var(--said);
+  padding: 2px 0 2px 16px;
+}
+
+.article blockquote p {
+  margin: 0;
+  color: var(--ink-mut);
+}
+
+/* 目次。読む前に「どこへ連れて行かれるか」だけを見せる。 */
+.article-toc {
+  margin-top: 30px;
+  padding: 16px 20px 18px;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--r-card);
+}
+
+.article-toc-h {
+  font-weight: 900;
+  font-size: 13px;
+  color: var(--ink-mut);
+}
+
+.article-toc ol {
+  margin: 8px 0 0;
+  padding-left: 1.3em;
+  font-size: 14px;
+}
+
+.article-toc li + li {
+  margin-top: 6px;
+}
+
+/* 一覧。日付・題・要約の3行で1枚。行ではなく**面**を押せるようにする。 */
+.article-list {
+  margin: 26px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.article-list li + li {
+  margin-top: 14px;
+}
+
+.article-list a {
+  display: block;
+  padding: 18px 20px;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--r-card);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.article-list a:hover {
+  border-color: var(--blue);
+}
+
+.article-date {
+  display: block;
+  font-size: 12.5px;
+  color: var(--ink-mut);
+}
+
+.article-name {
+  display: block;
+  margin-top: 4px;
+  font-weight: 900;
+  font-size: 17px;
+  line-height: 1.55;
+}
+
+.article-lead {
+  display: block;
+  margin-top: 7px;
+  font-size: 13.5px;
+  color: var(--ink-mut);
+  line-height: 1.85;
+}
+
+/* 戻るリンクは .legal-back と同じ(選択子を共有している)。 */
 
 /* 端末の「アニメーションを減らす」を必ず通す(ADR 0004)。
    アプリ側が守っている約束を、入口のページで破らない。 */

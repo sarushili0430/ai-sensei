@@ -6,6 +6,9 @@
 apps/lp/
   wrangler.jsonc         Cloudflare Workers(静的アセット)の設定
   package.json           deploy / dev のスクリプト
+  articles/              記事の正(Markdown)。**public/ の外なので配信されない**
+    README.md            記事の書き方(front matter・書ける記法・中身の決まり)
+    <slug>.md            記事1本。ファイル名がそのままURLになる
   public/                ここだけが公開される
     index.html           日本語
     en/index.html        English
@@ -14,6 +17,9 @@ apps/lp/
     support/index.html   サポート窓口(日本語)。両ストアのサポートURLがここを指す
     terms/index.html     利用規約(雛形)
     privacy/index.html   プライバシーポリシー(雛形)
+    articles/            **生成物**。articles/*.md から焼く(手で直さない)
+      index.html         一覧(新しい順)
+      <slug>/index.html  記事
     styles.css           全ページで共有する唯一のスタイルシート
 ```
 
@@ -46,6 +52,8 @@ apps/lp/
 - **ビルド工程なし。** 素の HTML と CSS だけで、どこに置いても動きます。
   wrangler は配信のために使っているだけで、ビルドはしません
   (pnpm workspace に入っているのは、`pnpm --filter` から deploy を叩くためです)。
+  **記事だけは Markdown から焼きますが、焼いたHTMLをコミットする**ので、
+  配信するものは他のページと同じ素の静的ファイルのままです(後述)。
 - **JavaScript は `public/support/` の送信処理だけ**(そのページに直接書いてあります)。
   Googleフォームへ投げたあとこのページに留まるための15行で、これが無いと
   Googleの「回答を記録しました」の画面へ飛ばされます。**JSを切っていても
@@ -77,6 +85,29 @@ wrangler を通すと `/en` → `/en/` の寄せ方まで本番と同じにな�
 ```bash
 python3 -m http.server 4173 --directory apps/lp/public
 ```
+
+## 記事
+
+記事の正は `articles/<slug>.md`、配信されるのは
+`scripts/build-articles.ts` が焼いた `public/articles/` のHTMLです。
+**生成物を手で直さないこと** —— 次の生成で消えます。
+
+```bash
+pnpm run articles:build     # articles/*.md → public/articles/
+pnpm run verify:articles    # 生成物が .md と合っているかだけ見る(pnpm run verify と CI)
+```
+
+`.md` と生成物は**同じコミットに入れます**。片方だけだと `verify:articles` が落ちます。
+front matter の項目・書ける記法・中身の決まりは
+[`articles/README.md`](articles/README.md) にまとめてあります。
+
+書くのを Codex / Claude Code に任せるなら、スキル `post-article`
+(`.agents/skills/post-article/` と `.claude/skills/post-article/`)が同じ手順を持っています。
+
+**記事は日本語だけです。** 日英2枚1組の約束(このページの冒頭)は、いまのところ
+記事には掛けていません —— 規約・サポートの英語版と同じ扱いで、先に日本語を出します。
+英語版を書くときは `public/en/articles/` を足し、`public/en/index.html` のフッタにも
+導線を置いてください(いまは日本語のフッタにだけ `記事` があります)。
 
 ## 公開する
 
@@ -114,7 +145,10 @@ GitHub App からpushできないため)。
 `docs/design_direction_v0.html` の「提出前に埋めるもの」と対になっています。
 **無いものへのリンクは置かない**方針なので、値が決まるまでページには出していません。
 
-- [ ] 公開ドメイン → `<link rel="alternate" hreflang>` と `og:url` を絶対URLに直す(いまは相対)
+- [ ] 公開ドメイン → `<link rel="alternate" hreflang>` と `og:url` を絶対URLに直す(いまは相対)。
+      **記事側も同じ**で、`scripts/build-articles.ts` の `page()` に `og:url` と
+      `<link rel="canonical">` を足すのはドメインが決まってから(相対のcanonicalは
+      置くだけ害になる)
 - [ ] **`public/privacy/` と `public/terms/` は雛形。** 弁護士のレビューを受けて差し替える。
       各ページ冒頭の `.legal-draft` ブロックと、黄色でマークした `<span class="fill">` が
       未確定の箇所(運営者名・所在地・お問い合わせ先・制定日・保存期間・管轄裁判所)。
@@ -160,4 +194,6 @@ GitHub App からpushできないため)。
       iOS が先に出るので、**片方だけ出た状態**(App Storeのリンク + Google Playは「配信予定」)を
       一度は通ることになる。両方まとめて差し替えないこと。
       `styles.css` の `.btn-soon` は、そのときのために残してある
-- [ ] OGP画像(`og:image`)。1200×630。`apps/mobile/tool/` と同じく**コードから生成する**こと
+- [ ] OGP画像(`og:image`)。1200×630。`apps/mobile/tool/` と同じく**コードから生成する**こと。
+      記事は1本ずつ画像を持てる形にしていない(`twitter:card` だけ `summary_large_image` で
+      書いてあるので、**共通のOGP画像を入れるまでSNSでは画像なしで出ます**)

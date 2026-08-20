@@ -32,7 +32,7 @@ git add .github/workflows/ && git commit -m "ci: enable CI and deploy workflows"
 
 | ファイル | トリガ | 内容 |
 | -------- | ------ | ---- |
-| `ci.yml` | `develop`/`main` へのpush、全PR | `pnpm run lint`(Biome)/ `pnpm run typecheck` / `pnpm test` / Workerのdry-runビルド / Flutter(analyze + test)/ シークレット走査 |
+| `ci.yml` | `develop`/`main` へのpush、全PR | `pnpm run lint`(Biome)/ `pnpm run typecheck` / `pnpm test` / 記事の生成物とスキルの同期 / Workerのdry-runビルド / Flutter(analyze + test)/ シークレット走査 |
 | `deploy.yml` | `develop`/`main` へのpush(`backend/api` などに変更があったとき)、手動実行 | `backend/api` を Cloudflare Workers へデプロイ。`develop`→develop環境 / `main`→production環境 |
 | `deploy-agent.yml` | `develop`/`main` へのpush(`backend/agent` などに変更があったとき)、手動実行 | `backend/agent` を LiveKit Cloud へデプロイ(ソースを送り、ビルドは向こうで走る) |
 | `golden.yml` | **手動実行のみ** | golden test のPNGを Linux で焼き直し、artifact として出す(下記) |

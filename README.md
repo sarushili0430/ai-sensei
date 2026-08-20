@@ -37,6 +37,7 @@ Google Play の掲載テキスト(短い説明・詳しい説明の日英)・ス
 apps/mobile/        Flutter (iOS先行) + Riverpod 3 + livekit_client
 apps/mobile/widgetbook/  見た目の部品カタログ(Widgetbook)。**別パッケージ**。配布物に載せないため
 apps/lp/            紹介ページ(日英2枚・素のHTML/CSS)。Cloudflare Workers の静的アセットとして配信
+apps/lp/articles/   記事の正(Markdown)。`public/articles/` のHTMLはここから焼く(日本語のみ)
 backend/api/        Cloudflare Workers + Hono — セッション作成 / カルテ保存 / 課金webhook
 backend/agent/      LiveKit Agents — VAD・STT・LLM・TTSの会話パイプライン + 板書生成(先輩キャラ)
 packages/contract/  APIとカルテと板書(`board.ts`)のスキーマ + fixture(モバイル/サーバ双方で契約を検証)
@@ -44,7 +45,9 @@ packages/curriculum/カリキュラムマップ(純JSON。中学/高校の数学
 packages/guardrail/ topic_idホワイトリスト照合・板書LaTeXのコマンド照合・数式音声の正規化などの純関数
 prompts/            システムプロンプトとfew-shot(`<id>.<locale>.md`。日英で別本。板書つき授業は`senpai_board.*.md`)
 docs/               企画資料・ワイヤーフレーム・ADR
-scripts/            リポジトリ全体の検証スクリプト
+scripts/            リポジトリ全体の検証スクリプトと生成スクリプト
+.agents/skills/     Codex が読む手順書(`SKILL.md`)
+.claude/skills/     Claude Code が読む手順書。**中身は `.agents/skills/` と1文字まで同じ**
 ```
 
 TypeScript側(`backend/`・`packages/`)は pnpm workspaces でひとつに束ねています。
@@ -164,6 +167,11 @@ CIとデプロイのワークフローのテンプレートは [`docs/ci/`](docs
 Claude Code on the web で開くときは、`.claude/hooks/session-start.sh` が
 セッション開始時に走り、pnpm・Flutter SDK(`.fvmrc` のバージョン)・
 コード生成までを済ませます。**開いた時点で lint とテストが通る状態**になります。
+
+繰り返す作業はスキル(`SKILL.md`)にしてあります。いまあるのは記事の投稿
+(`post-article` —— [`apps/lp/articles/README.md`](apps/lp/articles/README.md))だけです。
+**Codex は `.agents/skills/`、Claude Code は `.claude/skills/` しか読まない**ので同じものを
+2箇所に置いていて、`pnpm run verify:skills` が一致を見ています(片方だけ直すとCIで落ちます)。
 
 Biomeがlintと整形の両方を担当します(ESLint + Prettierは入れていません)。
 
