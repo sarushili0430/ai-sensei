@@ -230,10 +230,20 @@ export type RunLessonLoopOptions = {
    * (固定文字列を1回だけ組むと、締めの判断が授業開始時の残り時間のまま止まる)。
    */
   system: () => string;
+  /**
+   * systemの末尾に足す、パスごとに変わるひとこと(残り時間)。
+   *
+   * **`system()` と分ける理由はプロンプトキャッシュ。**4万字級の指示文に残り時間を
+   * 織り込むと、パスごとにプレフィックスが変わって一度も読み出しヒットしない
+   * (`lesson.ts` の `cache_control` の説明)。
+   */
+  systemTail?: () => string;
   locale: CurriculumLocale;
   delivery: LessonLoopDelivery;
   /** 手順を1つ配送した直後の読み上げ。`runBoardLesson` の同名の穴。 */
   speak: (step: BoardStep) => Promise<void>;
+  /** LLMのチャンク列を包む層(先読み合成)。`runBoardLesson` の同名の穴。 */
+  wrapChunks?: (chunks: AsyncIterable<string>) => AsyncIterable<string>;
   /** セッションの終わり。発火したら途中でも即座に降りる(問いかけの途中でも)。 */
   signal: AbortSignal;
   /** 授業モード中の生徒の発話。`agent.ts` の `onUserTurnCompleted` が積む。 */
@@ -278,9 +288,11 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
   const {
     llm,
     system,
+    systemTail,
     locale,
     delivery,
     speak,
+    wrapChunks,
     signal,
     utterances,
     record,
@@ -360,9 +372,11 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
       result = await runBoardLesson({
         llm,
         system: system(),
+        systemTail: systemTail?.(),
         locale,
         delivery,
         speak,
+        wrapChunks,
         // 文脈が1つでもあれば継続の指示。初回の定型指示に戻るのは、
         // この板書でまだ何も起きていないときだけ。
         instruction:

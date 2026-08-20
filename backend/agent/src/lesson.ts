@@ -46,6 +46,13 @@ export const boardStreamTimeoutMs = 60_000;
 
 export type LessonStreamInput = {
   system: string;
+  /**
+   * systemの末尾に足す、**キャッシュの印より後ろ**のひとこと。
+   *
+   * パスごとに変わる事実(残り時間)の置き場。`system` に混ぜると4万字級の指示文が
+   * まるごとキャッシュから外れるので、分けて渡す({@link createAnthropicLessonClient})。
+   */
+  systemTail?: string;
   user: string;
   maxTokens: number;
   signal?: AbortSignal;
@@ -68,6 +75,20 @@ export type AnthropicLessonOptions = {
   baseUrl?: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  /**
+   * 入力トークンの内訳。**プロンプトキャッシュが効いているかの唯一の観測点。**
+   *
+   * 会話LLMは `voice_metrics` の `cached_tokens`(プラグインのメトリクス)で見られるが、
+   * 板書LLMは素の `fetch` なので、ここで出さないと誰も見ていない数字になる。
+   */
+  onUsage?: (usage: LessonLlmUsage) => void;
+};
+
+/** `message_start` が持つ入力トークンの内訳(欠けている項目は0で埋める)。 */
+export type LessonLlmUsage = {
+  input_tokens: number;
+  cache_creation_input_tokens: number;
+  cache_read_input_tokens: number;
 };
 
 /**
@@ -92,7 +113,7 @@ export function createAnthropicLessonClient(options: AnthropicLessonOptions): Le
   const timeoutMs = options.timeoutMs ?? boardStreamTimeoutMs;
 
   return {
-    async *stream({ system, user, maxTokens, signal }) {
+    async *stream({ system, systemTail, user, maxTokens, signal }) {
       // 割り込みでも上限時間でも、**HTTPごと切る**。
       // イテレータを離すだけだと接続は生きたままで、聞かれない板書の
       // 出力トークンを払い続ける(§6-1 の LLM 費目がそのぶん膨らむ)。
@@ -111,7 +132,30 @@ export function createAnthropicLessonClient(options: AnthropicLessonOptions): Le
           max_tokens: maxTokens,
           stream: true,
           thinking: { type: "disabled" },
-          system,
+          // **指示文にプロンプトキャッシュの印を付ける。**
+          //
+          // `senpai_board.ja.md` は43KBで、会話側(11KB)の4倍。しかも
+          // `senpai.ts` の設計どおり**systemは毎パス同じ正本**で、往復は最大6回
+          // (`defaultMaxLessonPasses`)。つまり最も効く形をしていて、
+          // 付けるまでは毎回まるごと再送していた。
+          //
+          // 効くのはTTFTと原価の両方だが、**この授業で先に見えるのはTTFT** —
+          // §3-2 が「最初の手順までの無音」と呼んだ沈黙が、そのまま短くなる。
+          // キャッシュ読みの単価は通常入力の 0.1 倍、書き込みは 1.25 倍。
+          //
+          // ブロック配列にするのは `cache_control` を置くため(文字列のままでは置けない)。
+          // 印は system の**最後のブロック**に1つ。Anthropic はキャッシュを
+          // 「印までのプレフィックス」として扱うので、これで system 全体が載る
+          // (`conversation-llm.ts` と同じ理由・同じ置き方)。
+          //
+          // **効きは `onUsage` で見ること。** `cache_read_input_tokens` が0のまま
+          // 動かないなら、systemがパスごとに変わっている(残り時間を埋め込む
+          // `system()` の作りを疑う)か、最小長を割っている。
+          system: [
+            { type: "text", text: system, cache_control: { type: "ephemeral" } },
+            // 印より**後ろ**。ここが毎パス変わってもプレフィックスは壊れない。
+            ...(systemTail === undefined ? [] : [{ type: "text", text: systemTail }]),
+          ],
           messages: [{ role: "user", content: user }],
         }),
         signal: aborter,
@@ -125,7 +169,7 @@ export function createAnthropicLessonClient(options: AnthropicLessonOptions): Le
         throw new Error("板書の生成にレスポンス本文がありません");
       }
 
-      yield* readTextDeltas(response.body);
+      yield* readTextDeltas(response.body, options.onUsage);
     },
   };
 }
@@ -141,7 +185,10 @@ export function createAnthropicLessonClient(options: AnthropicLessonOptions): Le
  * チャンクは行の途中で切れる(`decode(..., { stream: true })` がマルチバイトを跨ぐ)。
  * 残りはバッファに持ち越すだけで、下流の走査器と同じくチャンク境界を特別扱いしない。
  */
-export async function* readTextDeltas(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
+export async function* readTextDeltas(
+  body: ReadableStream<Uint8Array>,
+  onUsage?: (usage: LessonLlmUsage) => void,
+): AsyncGenerator<string> {
   const decoder = new TextDecoder();
   const reader = body.getReader();
   let buffer = "";
@@ -154,9 +201,17 @@ export async function* readTextDeltas(body: ReadableStream<Uint8Array>): AsyncGe
 
       let newline = buffer.indexOf("\n");
       while (newline !== -1) {
-        const text = textOfSseLine(buffer.slice(0, newline));
+        const event = eventOfSseLine(buffer.slice(0, newline));
         buffer = buffer.slice(newline + 1);
-        if (text !== null) yield text;
+        if (event?.type === "text") yield event.text;
+        // 観測は本流を止めない。呼び出し側のログが投げても板書は続ける。
+        if (event?.type === "usage" && onUsage !== undefined) {
+          try {
+            onUsage(event.usage);
+          } catch {
+            // ここで落ちるのは観測側の都合。授業には関係がない。
+          }
+        }
         newline = buffer.indexOf("\n");
       }
     }
@@ -166,14 +221,17 @@ export async function* readTextDeltas(body: ReadableStream<Uint8Array>): AsyncGe
   }
 }
 
+/** SSEの1行から読み取れたもの。テキストのデルタか、`message_start` の使用量。 */
+type LessonSseEvent = { type: "text"; text: string } | { type: "usage"; usage: LessonLlmUsage };
+
 /**
- * SSEの1行を読む。テキストのデルタなら中身、それ以外は `null`。
+ * SSEの1行を読む。テキストのデルタか使用量なら中身、それ以外は `null`。
  *
  * **壊れた `data:` 行は握り潰さずに投げる。**黙って読み飛ばすと、
  * 手順が1つ減ったまま板書が「完成」してしまう(`board-stream.ts` が
  * steps の要素型を検査しているのと同じ理由)。
  */
-function textOfSseLine(line: string): string | null {
+function eventOfSseLine(line: string): LessonSseEvent | null {
   const trimmed = line.trim();
   // `event:` 行・空行・`: ping` のコメント行はここで落ちる。
   if (!trimmed.startsWith("data:")) return null;
@@ -202,10 +260,30 @@ function textOfSseLine(line: string): string | null {
     );
   }
 
+  // 入力トークンの内訳は `message_start` にしか載らない(以降は出力側だけ)。
+  if (typed.type === "message_start") {
+    const usage = (typed as { message?: { usage?: unknown } }).message?.usage;
+    return usage === undefined ? null : { type: "usage", usage: readUsage(usage) };
+  }
+
   if (typed.type !== "content_block_delta") return null;
   const delta = typed.delta as { type?: unknown; text?: unknown } | undefined;
   if (delta?.type !== "text_delta" || typeof delta.text !== "string") return null;
-  return delta.text;
+  return { type: "text", text: delta.text };
+}
+
+/** 数でない項目は0として読む(モデルによっては欠ける。観測が理由で授業を止めない)。 */
+function readUsage(usage: unknown): LessonLlmUsage {
+  const fields = usage as Record<string, unknown>;
+  const count = (name: string): number => {
+    const value = fields[name];
+    return typeof value === "number" && Number.isFinite(value) ? value : 0;
+  };
+  return {
+    input_tokens: count("input_tokens"),
+    cache_creation_input_tokens: count("cache_creation_input_tokens"),
+    cache_read_input_tokens: count("cache_read_input_tokens"),
+  };
 }
 
 /** 板書を出す指示。systemと同じ言語で頼む(混ぜると出力の言語が揺れる)。 */
@@ -279,8 +357,10 @@ export type BoardLessonDelivery = {
 
 export type RunBoardLessonOptions = {
   llm: LessonLlm;
-  /** `boardLessonSystemPrompt()` の出力。 */
+  /** `boardLessonSystemPrompt()` の出力。**パスをまたいで同じ正本**であること。 */
   system: string;
+  /** 残り時間のひとこと(`senpaiBoardRemainingNote()`)。キャッシュの印より後ろに載る。 */
+  systemTail?: string;
   locale: CurriculumLocale;
   delivery: BoardLessonDelivery;
   /**
@@ -304,6 +384,18 @@ export type RunBoardLessonOptions = {
   instruction?: string;
   /** 検証済みの手順を、板書と音声へ出す前に抑止する条件。 */
   stopBefore?: (step: BoardStep) => boolean;
+  /**
+   * LLMのチャンク列を包む層。**先読み合成の差し込み口**で、既定は素通し。
+   *
+   * `speak` が読み上げ終わりまで待つ間、配送はチャンクを読まない。その裏で
+   * 先へ読み進めて次の手順の文を取り出すのが `speech-prefetch.ts` の仕事で、
+   * ここはその層を挟むためだけの穴。**LiveKitの型はここへ持ち込まない**
+   * (この層が実鍵なしでテストできることを保つ)。
+   *
+   * 作り直し({@link StepRepair})の呼び出しには掛けない — あれが返すのは
+   * 手順1つで、板書レッスンの形をしていないため。
+   */
+  wrapChunks?: (chunks: AsyncIterable<string>) => AsyncIterable<string>;
 };
 
 export type BoardLessonResult = BoardAppendResult & {
@@ -324,6 +416,7 @@ export async function runBoardLesson(options: RunBoardLessonOptions): Promise<Bo
   const {
     llm,
     system,
+    systemTail,
     locale,
     delivery,
     speak,
@@ -332,17 +425,21 @@ export async function runBoardLesson(options: RunBoardLessonOptions): Promise<Bo
     maxTokens = boardLessonMaxTokens,
     instruction,
     stopBefore,
+    wrapChunks,
   } = options;
 
   const steps: BoardStep[] = [];
 
+  const chunks = llm.stream({
+    system,
+    systemTail,
+    user: instruction ?? lessonInstruction[locale],
+    maxTokens,
+    signal,
+  });
+
   const result = await delivery.append({
-    chunks: llm.stream({
-      system,
-      user: instruction ?? lessonInstruction[locale],
-      maxTokens,
-      signal,
-    }),
+    chunks: wrapChunks === undefined ? chunks : wrapChunks(chunks),
     signal,
     stopBefore,
     onStep: async (step) => {

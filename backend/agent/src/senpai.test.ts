@@ -17,6 +17,8 @@ import {
   rememberSpokenProblemText,
   renderLessonRecap,
   reviewOpening,
+  senpaiBoardLessonPrompt,
+  senpaiBoardRemainingNote,
   senpaiConversationPrompt,
   stepAwaitsInput,
   stepAwaitsSolving,
@@ -646,5 +648,38 @@ describe("senpaiConversationPrompt", () => {
     expect(prompt).toContain("You are the user's **senpai**");
     expect(prompt).toContain("It is not something the user has explained.");
     expect(prompt).not.toMatch(/[ぁ-んァ-ン一-龯]/);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* 板書プロンプトの残り時間                                                    */
+/* -------------------------------------------------------------------------- */
+
+describe("板書プロンプトの残り時間", () => {
+  /**
+   * **ここが変わるとプロンプトキャッシュが毎パス外れる。**4万字級の指示文が
+   * まるごと書き直しになり、TTFT(= 最初の手順までの沈黙)も原価もパスの数だけ素で払う。
+   */
+  it("正本は残り時間で1バイトも変わらない", () => {
+    const first = senpaiBoardLessonPrompt({ context });
+    const second = senpaiBoardLessonPrompt({ context });
+
+    expect(second).toBe(first);
+    // 秒数そのものが本文へ紛れ込んでいないこと(本文は「最後に書いてある」と言うだけ)。
+    expect(first).toContain("いちばん最後");
+  });
+
+  it("残り時間はロケールに合わせた1行で出す", () => {
+    expect(senpaiBoardRemainingNote(540, "ja")).toBe("この授業の残り時間は 540 秒です。");
+    expect(senpaiBoardRemainingNote(540, "en")).toBe("You have 540 seconds left in this lesson.");
+  });
+
+  /** 「-30秒」を読ませても締め方は決まらない。打ち切りは `lesson-loop.ts` の安全弁の仕事。 */
+  it("残り時間が負でも0秒として出す", () => {
+    expect(senpaiBoardRemainingNote(-30, "ja")).toBe("この授業の残り時間は 0 秒です。");
+  });
+
+  it("秒は整数に丸める", () => {
+    expect(senpaiBoardRemainingNote(41.7, "ja")).toBe("この授業の残り時間は 41 秒です。");
   });
 });

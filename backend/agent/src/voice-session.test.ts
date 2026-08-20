@@ -8,6 +8,7 @@ import { geminiTtsModels, ttsInstructionsForLocale } from "./senpai-voice.ts";
 import {
   createGeminiTts,
   createSenpaiTts,
+  createSpeechSynthesizer,
   createVoiceSession,
   jaSpeakable,
   sentenceTokenizerForLocale,
@@ -207,5 +208,62 @@ describe("createVoiceSession", () => {
   // 1万トークン級の指示文が毎ターン再送されるので、素の `anthropic.LLM` では原価が乗る。
   it("会話LLMはキャッシュの印を付ける版を使う", () => {
     expect(session().llm).toBeInstanceOf(CachedInstructionsLLM);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* 先読み合成                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/** 何を渡されたかだけを覚えるTTS。音は作らない。 */
+function recordingTts() {
+  const asked: string[] = [];
+  const tts = {
+    asked,
+    synthesize(text: string) {
+      asked.push(text);
+      return {
+        close: () => undefined,
+        async *[Symbol.asyncIterator]() {
+          // 実装は `SynthesizedAudio` を流すが、ここで見たいのは入力の文字列だけ。
+        },
+      };
+    },
+  };
+  return tts as unknown as Parameters<typeof createSpeechSynthesizer>[0]["tts"] & {
+    asked: string[];
+  };
+}
+
+describe("createSpeechSynthesizer", () => {
+  /**
+   * `say(text, { audio })` は音声を渡した時点でSDKの `ttsTextTransforms` を通らない。
+   * ここで同じ変換を掛けないと、**先読みできた手順だけ数式の読みが崩れる** —
+   * 「∠ABC」が読まれる手順と読まれない手順が混ざる、いちばん気づきにくい壊れ方になる。
+   */
+  it("日本語は数式を読みに直してから合成する", async () => {
+    const tts = recordingTts();
+
+    await createSpeechSynthesizer({ tts, locale: "ja" })("ここ、∠ABC を見て。").frames;
+
+    expect(tts.asked).toEqual(["ここ、かくエービーシー を見て。"]);
+  });
+
+  it("英語は読み替えを掛けない", async () => {
+    const tts = recordingTts();
+
+    await createSpeechSynthesizer({ tts, locale: "en" })("Look at ∠ABC here.").frames;
+
+    expect(tts.asked).toEqual(["Look at ∠ABC here."]);
+  });
+
+  /** 中断したぶんは渡さない(途中までの音声を喋らせるより、合成し直すほうが正しい)。 */
+  it("中断したら音声を返さない", async () => {
+    const tts = recordingTts();
+    const pending = createSpeechSynthesizer({ tts, locale: "ja" })("ここ、見て。");
+
+    pending.cancel();
+
+    expect(await pending.frames).toBeNull();
   });
 });

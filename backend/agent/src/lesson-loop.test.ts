@@ -58,15 +58,18 @@ function lessonJson(steps: readonly unknown[]): string {
 /** 出力を呼び出し順に返すLLM。呼ばれた system と `user`(指示)を記録する。 */
 function stubLlm(
   ...outputs: readonly string[]
-): LessonLlm & { asked: string[]; systems: string[] } {
+): LessonLlm & { asked: string[]; systems: string[]; tails: (string | undefined)[] } {
   const asked: string[] = [];
   const systems: string[] = [];
+  const tails: (string | undefined)[] = [];
   let call = 0;
   return {
     asked,
     systems,
-    stream({ system, user }) {
+    tails,
+    stream({ system, systemTail, user }) {
       systems.push(system);
+      tails.push(systemTail);
       asked.push(user);
       const output = outputs[Math.min(call, outputs.length - 1)] ?? "";
       call += 1;
@@ -363,6 +366,67 @@ describe("runLessonLoop", () => {
       "step",
       "step",
     ]);
+  });
+
+  /**
+   * 残り時間はパスごとに読み直すが、**正本(`system`)は動かさない**。
+   * ここが混ざると4万字級の指示文がパスのたびにキャッシュから外れる
+   * (`lesson.ts` の `cache_control`)。
+   */
+  it("正本は据え置いたまま、残り時間だけをパスごとに読み直す", async () => {
+    const board = boardWith(recordingSink());
+    const llm = stubLlm(
+      lessonJson([stepAwaiting(0, "まず何する? 一言でいいよ。", true)]),
+      lessonJson([
+        step(0, "そう、そこを因数分解する。", "x^2 - 3x + 2 = 0"),
+        stepAwaiting(1, "じゃあ今の、自分の言葉で説明してみて。", true),
+      ]),
+    );
+    const utterances = new StudentUtterances();
+    let seconds = 600;
+
+    const result = await loopWith(llm, board, {
+      systemTail: () => `この授業の残り時間は ${seconds} 秒です。`,
+      utterances,
+      speak: async (delivered) => {
+        if (delivered.speech.includes("まず何する")) {
+          seconds = 480;
+          setTimeout(() => utterances.push("因数分解する。"), 5);
+        }
+      },
+    });
+
+    expect(result.passes).toBe(2);
+    expect(llm.systems[0]).toBe(llm.systems[1]);
+    expect(llm.tails).toEqual([
+      "この授業の残り時間は 600 秒です。",
+      "この授業の残り時間は 480 秒です。",
+    ]);
+  });
+
+  /** 先読み合成の差し込み口。素通しの層でも授業の進み方は変わらない。 */
+  it("wrapChunks を通してからLLMのチャンクを配送する", async () => {
+    const board = boardWith(recordingSink());
+    const llm = stubLlm(
+      lessonJson([
+        step(0, "まず整理するね。", "x^2 - 3x + 2 = 0"),
+        stepAwaiting(1, "じゃあ今の、自分の言葉で説明してみて。", true),
+      ]),
+    );
+    const seen: string[] = [];
+
+    const result = await loopWith(llm, board, {
+      wrapChunks: (chunks) =>
+        (async function* () {
+          for await (const chunk of chunks) {
+            seen.push(chunk);
+            yield chunk;
+          }
+        })(),
+    });
+
+    expect(result.reason).toBe("handed_over");
+    expect(seen.join("")).toContain("まず整理するね。");
   });
 
   it("音読依頼の直後の発話を覚え、次パスの system へ問題文として渡す", async () => {

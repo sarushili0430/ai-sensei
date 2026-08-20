@@ -822,7 +822,6 @@ describe("設計上の約束がプロンプトに書かれている", () => {
       student_work: "- 左辺を因数分解しかけて止まっている",
       review_context: "null",
       allowed_topics: "- M1-NIJI-FUTOSHIKI",
-      remaining_seconds: 600,
     };
     const ja = boardLessonSystemPrompt(variables, { locale: "ja", subject: "math" });
     expect(ja).toContain("x^2 - 3x + 2 < 0 を解け");
@@ -835,7 +834,6 @@ describe("設計上の約束がプロンプトに書かれている", () => {
         student_work: "- Started factorising the left side and stopped",
         review_context: "null",
         allowed_topics: "- A2-INEQ-QUADRATIC",
-        remaining_seconds: 600,
       },
       { locale: "en", subject: "math" },
     );
@@ -860,7 +858,6 @@ describe("設計上の約束がプロンプトに書かれている", () => {
           evidence: "形をそろえるため、だと思う",
         }),
         allowed_topics: "- M1-NIJI-GURAFU — 数学I / 二次関数 / 二次関数のグラフと平方完成",
-        remaining_seconds: 600,
       },
       { locale: "ja", subject: "math" },
     );
@@ -881,7 +878,6 @@ describe("設計上の約束がプロンプトに書かれている", () => {
           evidence: "I think it is just to make the terms match",
         }),
         allowed_topics: "- A1-QUAD-GRAPH — Algebra 1 / Quadratics / Parabolas",
-        remaining_seconds: 600,
       },
       { locale: "en", subject: "math" },
     );

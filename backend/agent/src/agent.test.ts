@@ -84,7 +84,7 @@ describe("復習から板書授業への接続", () => {
   it("review を冒頭から板書へ送り、写真の代わりに対象穴を根拠にする", () => {
     expect(startsWithBoardLesson(reviewContext)).toBe(true);
 
-    const prompt = senpaiBoardLessonPrompt({ context: reviewContext, remainingSeconds: 900 });
+    const prompt = senpaiBoardLessonPrompt({ context: reviewContext });
     expect(prompt).toContain("review");
     expect(prompt).toContain(reviewHole.desc);
     expect(prompt).toContain(reviewHole.evidence);

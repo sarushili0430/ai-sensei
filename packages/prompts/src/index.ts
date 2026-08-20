@@ -187,6 +187,12 @@ export function conversationSystemPrompt(
  * あれは「教え返しを聞きながら差し込む一言」(相づち・足場・掘り方)の見本で、
  * こちらの出力は板書JSONなので置き場がない。`speech` の文体は
  * `senpai_board.<locale>.md` の見本セクションが直接そろえている。
+ *
+ * **残り時間はここに入れない。**授業は往復するので、残り時間を本文へ織り込むと
+ * **パスごとにsystemが1文字変わる**。板書のsystemは4万字級で、それが変わるたびに
+ * プロンプトキャッシュのプレフィックスが外れ、毎回書き込みだけ払って一度も読めない
+ * (`lesson.ts` の `cache_control` の説明)。残り時間は印より後ろの別ブロックとして
+ * 渡す(`senpai.ts` の `senpaiBoardRemainingNote`)。
  */
 export function boardLessonSystemPrompt(
   variables: {
@@ -195,7 +201,6 @@ export function boardLessonSystemPrompt(
     student_work: string;
     review_context: string;
     allowed_topics: string;
-    remaining_seconds: number;
   },
   { locale = defaultPromptLocale, subject }: PromptContext,
 ): string {
