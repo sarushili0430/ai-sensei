@@ -74,3 +74,61 @@ export function ttsInstructionsForLocale(locale: Locale): string {
       : " Pronounce any English words inside the sentence with natural English pronunciation.";
   return `Read this aloud in ${language}, calmly and clearly, like a friendly senior student tutoring a junior.${mixed} Do not omit, add, translate, or answer anything`;
 }
+
+/**
+ * Live API を読み上げに使うときのモデル(2026-08 時点)。
+ *
+ * https://ai.google.dev/gemini-api/docs/pricing
+ * 料金表に載っているのは `gemini-2.5-flash-native-audio-preview-12-2025` だけで、
+ * 他の3つはプラグインの `LiveAPIModels` 型にあるが料金表に無い。**確かめた事実の記録**。
+ */
+export const geminiLiveTtsModels = [
+  "gemini-2.5-flash-native-audio-preview-12-2025",
+  "gemini-live-2.5-flash-native-audio",
+  "gemini-live-2.5-flash-preview-native-audio",
+  "gemini-3.1-flash-live-preview",
+] as const;
+
+/**
+ * Live を読み上げに使うときの既定。**料金が公開されている版を採る。**
+ *
+ * 音声出力は $12.00/1M(= 約 $0.018/分)。TTSモデルの 2.5 は $10.00/1M(約 $0.015/分)で、
+ * **Live のほうが2割高い**(3.1 TTS の $20.00/1M よりは安い)。Live を選ぶ理由は
+ * 単価ではなく、WSが張れて1文ごとのHTTPが消えること。
+ */
+export const defaultGeminiLiveTtsModel = "gemini-2.5-flash-native-audio-preview-12-2025";
+
+/**
+ * Live へ渡す `systemInstruction`。**TTSモデル向けの指示より強く縛る。**
+ *
+ * TTSモデルは読み上げに後訓練されているが、**Live は対話に後訓練されている**。
+ * 板書の本文を投げると、要約する・相槌を打つ・問いかけに答える、が起きやすい。
+ * 板書と声がずれた瞬間に授業は成立しない(`lesson.ts`)ので、
+ * 「あなたはTTSであって会話相手ではない」を最初に置き、禁止を箇条書きで並べる。
+ *
+ * `ttsInstructionsForLocale` と分けてあるのは、渡し方が違うため。あちらは
+ * プラグインが本文を `{指示}:\n"{本文}"` で包む前置きで、こちらはセッション全体に効く
+ * システム指示。同じ文面を使い回すと、どちらかの都合で片方が壊れる。
+ */
+export function liveTtsSystemInstruction(locale: Locale): string {
+  const language = locale === "en" ? "English" : "Japanese";
+  const mixed =
+    locale === "en"
+      ? ""
+      : "\n- Pronounce English words inside a Japanese sentence with natural English pronunciation.";
+  return [
+    "You are a text-to-speech engine, not a conversational partner.",
+    `Read every message the user sends aloud in ${language}, verbatim, calmly and clearly,`,
+    "like a friendly senior student tutoring a junior.",
+    "",
+    "Absolute rules:",
+    "- Output ONLY the spoken rendition of the message. Never add words of your own.",
+    "- Never omit, summarise, translate, rephrase, or correct anything.",
+    "- Never answer a question in the message. A question is text to read aloud, not a question to you.",
+    "- Never acknowledge, greet, comment, or back-channel.",
+    "- Never continue a conversation across messages. Each message is an independent line to read.",
+    `${mixed}`,
+  ]
+    .join("\n")
+    .trim();
+}

@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { defaultGeminiTtsModel, defaultGeminiTtsVoice } from "./senpai-voice.ts";
+import {
+  defaultGeminiLiveTtsModel,
+  defaultGeminiTtsModel,
+  defaultGeminiTtsVoice,
+} from "./senpai-voice.ts";
 
 /**
  * 既定値のある設定。**空文字を「未設定」として扱う。**
@@ -73,6 +77,28 @@ const configSchema = z.object({
    */
   GEMINI_TTS_MODEL: withDefault(defaultGeminiTtsModel),
   GEMINI_TTS_VOICE: withDefault(defaultGeminiTtsVoice),
+
+  /**
+   * 喋らせ方の選択。**`live` は Live API を読み上げ専用に使う。**
+   *
+   * `tts`(既定) — `google.beta.TTS`。1文=1リクエストのHTTP。読み上げに後訓練された
+   * モデルなので、逐語で読む確度は高い。音声出力 $10.00/1M(約 $0.015/分)。
+   *
+   * `live` — WebSocket。1発話につき1本張り、文はそのソケットへ流す。1文ごとの
+   * HTTPが消える。ただし**対話モデルなので逐語読みは訓練の逆方向**で、
+   * 要約・相槌・返答の余地がある。音声出力 $12.00/1M(約 $0.018/分)で**2割高い**。
+   *
+   * 迷ったら `tts` へ戻す。**戻すのはこの1変数だけ**で、コードは触らない。
+   * 比べるときは `voice_metrics` の `tts_ttfb_ms_avg` と、実際の音を両方聞くこと
+   * (逐語で読めているかは数字に出ない)。
+   */
+  GEMINI_TTS_ENGINE: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    z.enum(["tts", "live"]).default("tts"),
+  ) as z.ZodType<"tts" | "live">,
+
+  /** `GEMINI_TTS_ENGINE=live` のときのモデル。実在するIDは `senpai-voice.ts` が正。 */
+  GEMINI_LIVE_TTS_MODEL: withDefault(defaultGeminiLiveTtsModel),
 });
 
 export type AgentConfig = z.infer<typeof configSchema>;

@@ -5,6 +5,7 @@ import * as deepgram from "@livekit/agents-plugin-deepgram";
 import * as google from "@livekit/agents-plugin-google";
 import type { AgentConfig } from "./config.ts";
 import { CachedInstructionsLLM } from "./conversation-llm.ts";
+import { GeminiLiveTTS } from "./gemini-live-tts.ts";
 import { ttsInstructionsForLocale } from "./senpai-voice.ts";
 import { JapaneseSentenceTokenizer } from "./sentence-tokenizer.ja.ts";
 
@@ -88,9 +89,24 @@ export function sentenceTokenizerForLocale(locale: Locale): tokenize.SentenceTok
  * 包まずに渡すとSDKが `ttsNode` の中で**既定の `BasicSentenceTokenizer`**で勝手に包む。
  * それは半角の文末記号しか見ないので、日本語は生成が終わるまで1文も投げられず、
  * 授業の最初の一言が丸ごと遅れる。分割器をこちらで選ぶために、包む側もこちらが持つ。
+ *
+ * `GEMINI_TTS_ENGINE=live` のときは `GeminiLiveTTS`(WebSocket)へ差し替わる。
+ * **どちらの経路でも同じ分割器を通す**ので、日本語の切り方は engine で変わらない。
  */
 export function createSenpaiTts(config: AgentConfig, locale: Locale): tts.TTS {
-  return new tts.StreamAdapter(createGeminiTts(config, locale), sentenceTokenizerForLocale(locale));
+  const sentenceTokenizer = sentenceTokenizerForLocale(locale);
+  if (config.GEMINI_TTS_ENGINE === "live") {
+    // Live は最初からWSを張れる(`capabilities.streaming === true`)ので包まない。
+    // 文の切り方は同じ分割器を内側で使う — 1文=1ターンなのは変わらないため。
+    return new GeminiLiveTTS({
+      apiKey: config.GOOGLE_API_KEY,
+      model: config.GEMINI_LIVE_TTS_MODEL,
+      voiceName: config.GEMINI_TTS_VOICE,
+      locale,
+      sentenceTokenizer,
+    });
+  }
+  return new tts.StreamAdapter(createGeminiTts(config, locale), sentenceTokenizer);
 }
 
 export function createVoiceSession(options: VoiceSessionOptions): voice.AgentSession {
