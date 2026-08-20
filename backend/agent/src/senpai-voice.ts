@@ -76,16 +76,21 @@ export function ttsInstructionsForLocale(locale: Locale): string {
 }
 
 /**
- * Live API を読み上げに使うときのモデル(2026-08 時点)。
+ * Live API のモデルID(2026-08 時点、公式ドキュメントで確認したものだけ)。
  *
- * https://ai.google.dev/gemini-api/docs/pricing
- * 料金表に載っているのは `gemini-2.5-flash-native-audio-preview-12-2025` だけで、
- * 他の3つはプラグインの `LiveAPIModels` 型にあるが料金表に無い。**確かめた事実の記録**。
+ * https://ai.google.dev/gemini-api/docs/models
+ *
+ * **プラグインの `LiveAPIModels` 型を信用しないこと。**TTSの `GeminiTTSModels` と同じで、
+ * `gemini-live-2.5-flash-native-audio` / `gemini-live-2.5-flash-preview-native-audio` という
+ * **公式ドキュメントに無い名前**が入っている。`model` は string としてAPIへ素通しなので、
+ * 型は実在を保証しない。存在しない名前でも起動は通り、**最初に喋る瞬間に落ちる**。
+ *
+ * ここは**確かめた事実の記録**であって仕様ではない。増減はGoogleが決める。
  */
 export const geminiLiveTtsModels = [
+  /** Gemini 2.5 Flash Live。text入力 $0.50/1M・音声出力 $12.00/1M(約 $0.018/分)。 */
   "gemini-2.5-flash-native-audio-preview-12-2025",
-  "gemini-live-2.5-flash-native-audio",
-  "gemini-live-2.5-flash-preview-native-audio",
+  /** Gemini 3.1 Flash Live。音声出力は 2.5 と同じだが、text入力が $0.75/1M と5割高い。 */
   "gemini-3.1-flash-live-preview",
 ] as const;
 
