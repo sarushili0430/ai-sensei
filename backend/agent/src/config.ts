@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  defaultCartesiaTtsModel,
   defaultElevenLabsTtsModel,
   defaultGeminiLiveTtsModel,
   defaultGeminiTtsModel,
@@ -107,14 +108,18 @@ const configSchema = z
      * (外したのは日本語が喋れないからではなく、1社に寄せる運用判断だった)。
      * **鍵と声IDが要る**ので、この値のときだけ2つを必須にしている。
      *
+     * `cartesia` — 1文ごとのHTTP(`/tts/bytes`)。読み上げ専用モデル(Sonic)で、クレジット
+     * 課金(≒文字数)。elevenlabs と同じく**鍵と声IDが要る**ので、この値のときだけ必須にする。
+     * 組み立ての注意(なぜ StreamAdapter で包むか)は `voice-session.ts`。
+     *
      * 迷ったら `gemini` へ戻す。**戻すのはこの1変数だけ**で、コードは触らない。
      * 比べるときは `voice_metrics` の `tts_ttfb_ms_avg` と、実際の音を両方聞くこと
      * (逐語で読めているかは数字に出ない)。
      */
     TTS_ENGINE: z.preprocess(
       (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
-      z.enum(["gemini", "gemini-live", "elevenlabs"]).default("gemini"),
-    ) as z.ZodType<"gemini" | "gemini-live" | "elevenlabs">,
+      z.enum(["gemini", "gemini-live", "elevenlabs", "cartesia"]).default("gemini"),
+    ) as z.ZodType<"gemini" | "gemini-live" | "elevenlabs" | "cartesia">,
 
     /** `TTS_ENGINE=gemini-live` のときのモデル。実在するIDは `senpai-voice.ts` が正。 */
     GEMINI_LIVE_TTS_MODEL: withDefault(defaultGeminiLiveTtsModel),
@@ -130,6 +135,20 @@ const configSchema = z
 
     /** ElevenLabs のモデル。既定は日英を1つで喋れて最速の `eleven_flash_v2_5`。 */
     ELEVENLABS_MODEL: withDefault(defaultElevenLabsTtsModel),
+
+    /**
+     * Cartesia の鍵と声。**`TTS_ENGINE=cartesia` のときだけ必須**(下の `superRefine`)。
+     * 構えは ELEVENLABS_* と同じ — 使っていない環境に鍵を置かせず、engineを切り替えて
+     * 鍵を入れ忘れたら「最初に喋る瞬間」ではなく起動時に落とす。
+     *
+     * 声IDに既定値を置かない理由も同じ(`senpai-voice.ts`)。プラグインの
+     * `TTSDefaultVoiceId` はCartesiaが決めた誰かであって先輩ではない。
+     */
+    CARTESIA_API_KEY: optionalString(),
+    CARTESIA_VOICE_ID: optionalString(),
+
+    /** Cartesia のモデル。実在するIDは `senpai-voice.ts` の `cartesiaTtsModels` が正。 */
+    CARTESIA_TTS_MODEL: withDefault(defaultCartesiaTtsModel),
 
     /**
      * 旧名。**残っていたら起動時に落とす。**
@@ -149,13 +168,19 @@ const configSchema = z
         message: "は TTS_ENGINE へ改名しました(tts→gemini / live→gemini-live)。古い名前は消すこと",
       });
     }
-    if (config.TTS_ENGINE !== "elevenlabs") return;
-    for (const name of ["ELEVENLABS_API_KEY", "ELEVENLABS_VOICE_ID"] as const) {
+    // 外部ベンダーのTTSは鍵と声IDが揃って初めて喋れる。engineだけ切り替えて入れ忘れると
+    // 「最初に喋る瞬間」まで気づけないので、どちらのベンダーでも起動時に落とす。
+    if (config.TTS_ENGINE !== "elevenlabs" && config.TTS_ENGINE !== "cartesia") return;
+    const required =
+      config.TTS_ENGINE === "elevenlabs"
+        ? (["ELEVENLABS_API_KEY", "ELEVENLABS_VOICE_ID"] as const)
+        : (["CARTESIA_API_KEY", "CARTESIA_VOICE_ID"] as const);
+    for (const name of required) {
       if (config[name] === undefined) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: [name],
-          message: "TTS_ENGINE=elevenlabs のときは必須",
+          message: `TTS_ENGINE=${config.TTS_ENGINE} のときは必須`,
         });
       }
     }

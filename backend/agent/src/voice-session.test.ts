@@ -1,11 +1,13 @@
 import { initializeLogger } from "@livekit/agents";
+import * as cartesia from "@livekit/agents-plugin-cartesia";
 import * as elevenlabs from "@livekit/agents-plugin-elevenlabs";
 import { beforeAll, describe, expect, it } from "vitest";
 import { type AgentConfig, loadConfig } from "./config.ts";
 import { CachedInstructionsLLM } from "./conversation-llm.ts";
 import { GeminiLiveTTS } from "./gemini-live-tts.ts";
-import { geminiTtsModels, ttsInstructionsForLocale } from "./senpai-voice.ts";
+import { cartesiaTtsModels, geminiTtsModels, ttsInstructionsForLocale } from "./senpai-voice.ts";
 import {
+  createCartesiaTts,
   createGeminiTts,
   createSenpaiTts,
   createSpeechSynthesizer,
@@ -96,6 +98,29 @@ describe("createGeminiTts", () => {
   });
 });
 
+describe("createCartesiaTts", () => {
+  function cartesiaConfig(overrides: Record<string, string> = {}): AgentConfig {
+    return testConfig({
+      TTS_ENGINE: "cartesia",
+      CARTESIA_API_KEY: "key",
+      CARTESIA_VOICE_ID: "voice",
+      ...overrides,
+    });
+  }
+
+  // プラグインの `TTSModels` 型は `sonic-3` 止まりで、`model` は string として素通し。
+  // Gemini/Live/ElevenLabsと同じで、型は実在を保証しないので、実在リストで縛る。
+  it("既定は実在するモデルIDで、環境変数1つで 3.5 へ替わる", () => {
+    const tts = createCartesiaTts(cartesiaConfig(), "ja");
+    expect(tts).toBeInstanceOf(cartesia.TTS);
+    expect(tts.model).toBe("sonic-3");
+    expect(cartesiaTtsModels).toContain(tts.model);
+
+    const next = createCartesiaTts(cartesiaConfig({ CARTESIA_TTS_MODEL: "sonic-3.5" }), "ja");
+    expect(next.model).toBe("sonic-3.5");
+  });
+});
+
 describe("ttsInstructionsForLocale", () => {
   // 読ませているのは授業の本文で、生成モデルは問いかけに答えてしまえる。
   // 板書と声がずれた瞬間に授業が成立しないので、どのロケールでも必ず釘を刺す。
@@ -156,10 +181,28 @@ describe("createSenpaiTts", () => {
     expect(tts.model).toBe("eleven_flash_v2_5");
   });
 
+  // Cartesia は `streaming === true` を名乗るが、内部の文分割器はprivateで差し込めず、
+  // 半角の文末記号しか見ない。素で渡すと日本語が「。」で切れないので、
+  // StreamAdapterで包んで sentence-tokenizer.ja.ts を通す(voice-session.ts のcase)。
+  it("TTS_ENGINE=cartesia はStreamAdapterで包んだCartesiaへ差し替わる", () => {
+    const tts = createSenpaiTts(
+      testConfig({
+        TTS_ENGINE: "cartesia",
+        CARTESIA_API_KEY: "key",
+        CARTESIA_VOICE_ID: "voice",
+      }),
+      "ja",
+    );
+    expect(tts.label).toContain("StreamAdapter");
+    expect(tts.label).toContain("cartesia.TTS");
+    expect(tts.capabilities.streaming).toBe(true);
+  });
+
   it("既定(gemini)では従来のGemini TTSのまま", () => {
     const tts = createSenpaiTts(testConfig(), "ja");
     expect(tts).not.toBeInstanceOf(GeminiLiveTTS);
     expect(tts).not.toBeInstanceOf(elevenlabs.TTS);
+    expect(tts.label).not.toContain("cartesia");
   });
 
   // Gemini TTS は `stream()` が例外を投げる非ストリーミング実装。包まずに渡すと

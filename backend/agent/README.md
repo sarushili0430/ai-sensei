@@ -130,21 +130,21 @@ few-shot も、その言語で書かれたものをそのまま渡す。
 
 | | |
 | --- | --- |
-| 喋らせ方 | 既定 `gemini`。`TTS_ENGINE` で `gemini-live` / `elevenlabs` へ。下の表を見てから選ぶ |
+| 喋らせ方 | 既定 `gemini`。`TTS_ENGINE` で `gemini-live` / `elevenlabs` / `cartesia` へ。下の表を見てから選ぶ |
 | モデル | 既定 `gemini-2.5-flash-preview-tts`。`GEMINI_TTS_MODEL` で `gemini-3.1-flash-tts-preview` へ |
-| 声 | `Leda` 固定。**日英で同じ1つ**(Geminiのボイスは言語を選ばない)。**Live でも同じ `Leda` が使える**。ElevenLabs は `ELEVENLABS_VOICE_ID` が正で**既定値を置かない** |
+| 声 | `Leda` 固定。**日英で同じ1つ**(Geminiのボイスは言語を選ばない)。**Live でも同じ `Leda` が使える**。ElevenLabs / Cartesia は `ELEVENLABS_VOICE_ID` / `CARTESIA_VOICE_ID` が正で**既定値を置かない** |
 | 正 | `senpai-voice.ts`。冒頭の同梱音声を焼くスクリプトも同じ定数を読む |
 
 ### engine の選び方
 
-| | `gemini`(既定) | `gemini-live` | `elevenlabs` |
-| --- | --- | --- | --- |
-| 実装 | `google.beta.TTS` + `StreamAdapter` | `GeminiLiveTTS`(`gemini-live-tts.ts`) | `elevenlabs.TTS`(プラグイン) |
-| 接続 | **1文ごとに新しいHTTP** | **1発話につきWS1本**。文はそのソケットへ | **WS**。プラグインが張る |
-| 音声出力の単価 | $10.00/1M(約 $0.015/分) | $12.00/1M(約 $0.018/分)。**2割高い** | 文字課金(ElevenLabsの契約次第) |
-| モデルの性格 | 読み上げに後訓練 | **対話に後訓練**。逐語読みは訓練の逆方向 | 読み上げ専用 |
-| 逐語で読む確度 | 高い | **低い**。要約・相槌・返答が起きうる | 高い |
-| 鍵 | `GOOGLE_API_KEY` | `GOOGLE_API_KEY` | `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID`(**両方必須**) |
+| | `gemini`(既定) | `gemini-live` | `elevenlabs` | `cartesia` |
+| --- | --- | --- | --- | --- |
+| 実装 | `google.beta.TTS` + `StreamAdapter` | `GeminiLiveTTS`(`gemini-live-tts.ts`) | `elevenlabs.TTS`(プラグイン) | `cartesia.TTS`(プラグイン) + `StreamAdapter` |
+| 接続 | **1文ごとに新しいHTTP** | **1発話につきWS1本**。文はそのソケットへ | **WS**。プラグインが張る | **1文ごとにHTTP**(`/tts/bytes`)。keep-aliveで使い回し(下記) |
+| 音声出力の単価 | $10.00/1M(約 $0.015/分) | $12.00/1M(約 $0.018/分)。**2割高い** | 文字課金(ElevenLabsの契約次第) | クレジット課金(≒文字。Cartesiaの契約次第) |
+| モデルの性格 | 読み上げに後訓練 | **対話に後訓練**。逐語読みは訓練の逆方向 | 読み上げ専用 | 読み上げ専用 |
+| 逐語で読む確度 | 高い | **低い**。要約・相槌・返答が起きうる | 高い | 高い |
+| 鍵 | `GOOGLE_API_KEY` | `GOOGLE_API_KEY` | `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID`(**両方必須**) | `CARTESIA_API_KEY` + `CARTESIA_VOICE_ID`(**両方必須**) |
 
 `gemini-live` を選ぶ理由は**単価ではなく接続の形**。安くはならない。歯止めは
 `liveTtsSystemInstruction`(`senpai-voice.ts`)の1枚だけなので、**入れたら必ず耳で確かめる**。
@@ -154,6 +154,31 @@ few-shot も、その言語で書かれたものをそのまま渡す。
 ではなく**「1社に寄せる」運用判断だった(ElevenLabsは1ボイスに言語を渡して日英を
 切り替えられる)。Gemini へ移った時点で STT:Deepgram / TTS:Google の2社構成に
 戻っているので、当時の前提はもう無い。
+
+`cartesia` は読み上げ専用の Sonic 系。1ボイスに `language` を渡して日英を切り替えられる
+(ADR 0008 の採用理由と同じ形)。**プラグインは `streaming: true` を名乗るのに、
+`StreamAdapter` で包んでいる。**内部の `SynthesizeStream` は文分割器
+(`tokenize.basic.SentenceTokenizer`)をprivateでハードコードしていて(1.6.1と1.7.0の
+両方で確認。ElevenLabsの `wordTokenizer` に相当する差し込み口が無い)、半角の文末記号しか
+見ない — 素の `stream()` だと日本語は「。」で切れず、LLMが喋り終わるまで1文も合成されない
+(Gemini/Deepgram/ElevenLabsで3回踏んだのと同じ罠)。包んで `sentence-tokenizer.ja.ts` を通す。
+
+包んだ代償は1文=1リクエスト。**`synthesize()` の実体は `/tts/bytes` への素のHTTPS**で、
+プラグインのWSプール(`/tts/websocket`)は `stream()` 専用 — この経路では使われないので
+`prewarm()` も呼ばない(温まるのは使われないプール)。接続はNodeのグローバルエージェント
+(Node 19+ はkeep-alive既定)で使い回されるが、アイドルのソケットは数秒で閉じるため、
+**発話の1文目はTCP+TLSの確立を払いうる**。`wordTimestamps`(既定true)も `stream()` 専用の
+`add_timestamps` にしか乗らず、この経路には効かない。プラグインが分割器を公開したら、
+文をまたぐcontinuation(韻律の連続性)ごとネイティブ `stream()` へ移る余地がある。
+
+Cartesia の依存は**キャレット無しの `1.6.1` 完全固定**(elevenlabsと同じ)。このプラグインの
+peerDeps は `@livekit/agents: 1.6.1` の**完全一致指定**なので、`^1.6.1` と書くとプラグイン
+1.7.0(peerは agents 1.7.0 を要求)へ解決される事故がありうる。上げるときは agents 本体と同時に。
+
+授業冒頭の同梱音声は Gemini の `Leda` のまま焼いてある。`cartesia`(や `elevenlabs`)へ
+切り替えて試している間は**冒頭の一言だけ別人の声になる**既知の制限。採用を決めたら
+`scripts/generate-prerendered-audio.ts` に分岐を足して焼き直す(そのときも声の正は
+`senpai-voice.ts` の定数)。
 
 #### 手元で測ったTTFB(参考値)
 
@@ -169,8 +194,10 @@ few-shot も、その言語で書かれたものをそのまま渡す。
 
 Live は音声が**ほぼ実時間ペースでしか届かない**(7.62秒の音声に7.56秒)。Aura-2 は約2.3倍、
 Gemini TTS は約6倍で届くので、**Live だけ再生バッファの余裕がほぼ無い**。TTFBに出ない
-差なので、乗り換えたら発話が途中で切れないかも一緒に見る。ElevenLabs はまだ未計測
-(`ELEVENLABS_API_KEY` が要る)。
+差なので、乗り換えたら発話が途中で切れないかも一緒に見る。ElevenLabs と Cartesia は
+まだ未計測(それぞれ鍵と声IDが要る)。測ったら同じ土俵(同じ日本語2文・同じ分割器・
+ラウンドロビン5回)でこの表へ行を足す。Cartesia の公称 sub-90ms(sonic-3.5)は
+**モデルの推論レイテンシ**であって、接続確立とネットワーク往復を含むこのTTFBではない。
 
 WSの寿命は**先輩の1発話ぶん**(数秒)。SDKの `ttsNode` が発話ごとに `stream()` を
 呼ぶためで、Live のセッション上限(音声のみ15分 / WS約10分)には**届かない**。
@@ -178,9 +205,10 @@ WSの寿命は**先輩の1発話ぶん**(数秒)。SDKの `ttsNode` が発話ご
 代わりに気にするのは**同時接続数**で、発話するたびにセッションを張るので、
 同時に喋っている授業の数がそのまま並列数になる(Live APIの上限は公開されていない)。
 
-文の切り方は3つのどの engine でも `sentence-tokenizer.ja.ts` を通る。ElevenLabs は
+文の切り方は4つのどの engine でも `sentence-tokenizer.ja.ts` を通る。ElevenLabs は
 `wordTokenizer` に**文**の分割器を渡している(`chunkLengthSchedule` 未指定だと
-プラグインが `autoMode` を立て、完全な文が来る前提でWSへ流すため)。
+プラグインが `autoMode` を立て、完全な文が来る前提でWSへ流すため)。Cartesia は
+分割器を差し込めないので、`StreamAdapter` の側で通す(上記)。
 
 **Gemini TTS はストリーミングを持たない。**`tts.StreamAdapter` で包んで文分割器を
 渡している。包み忘れるとSDKが既定の分割器を当て、日本語が「。」で切れなくなって
