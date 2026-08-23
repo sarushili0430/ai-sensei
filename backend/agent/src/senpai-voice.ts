@@ -156,6 +156,45 @@ export const defaultElevenLabsTtsModel = "eleven_flash_v2_5";
  * 選んだら、ここに定数として書いて全環境で一度に切り替える。
  */
 
+/**
+ * Cartesia のモデルID(2026-08 時点、公式ドキュメントで確認したものだけ)。
+ *
+ * https://docs.cartesia.ai/build-with-cartesia/tts-models/latest
+ *
+ * **プラグイン(1.6.1)の `TTSModels` 型は `sonic-3` 止まり**で、`model` は
+ * `TTSModels | string` の素通し。Gemini/Live/ElevenLabsと同じで、型は実在を保証しない。
+ *
+ * 8/17にβが出た Sonic-3.6 は**まだ固有のIDを持たない**(`sonic-preview` 経由の提供のみで、
+ * GAは月内予定とだけ発表されている)。IDが公開されたら、確認してからここへ追記する。
+ */
+export const cartesiaTtsModels = [
+  /** プラグイン(1.6.1)の既定。公式は 3.5 への移行を案内しているが、受け付けは続いている。 */
+  "sonic-3",
+  /** 最新安定のエイリアス。42言語(日本語あり)・公称 sub-90ms。最新の日付版を自動で追う。 */
+  "sonic-3.5",
+  /** 3.5 の日付固定版。エイリアスが進んでも挙動が変わらないよう固定したいとき。 */
+  "sonic-3.5-2026-05-04",
+  /** β枠。8/17以降は Sonic-3.6 がここに乗っている。中身が予告なく替わるので本番では使わない。 */
+  "sonic-preview",
+] as const;
+
+/**
+ * Cartesia を使うときの既定モデル。**プラグイン既定と同じ安定版から始める。**
+ *
+ * 公称 sub-90ms の 3.5 を測るときは `CARTESIA_TTS_MODEL=sonic-3.5` の1変数で切り替える
+ * (公称は ElevenLabs の ~75ms と同じく**モデルの推論レイテンシ**で、こちらが測るTTFBではない)。
+ * 恒久的に倒すならこの定数を書き換えて全環境で一度に切り替える(Gemini 2.5/3.1 と同じ扱い)。
+ */
+export const defaultCartesiaTtsModel = "sonic-3";
+
+/**
+ * 先輩の声(Cartesia)。**ElevenLabsと同じ理由で既定値を置かない。**
+ *
+ * プラグインには `TTSDefaultVoiceId` が入っているが、それは**Cartesiaが決めた誰か**で
+ * あって先輩ではない。`CARTESIA_VOICE_ID` が無ければ起動時に落とす(`config.ts`)。
+ * 選んだら、ここに定数として書いて全環境で一度に切り替える。
+ */
+
 export function liveTtsSystemInstruction(locale: Locale): string {
   const language = locale === "en" ? "English" : "Japanese";
   const mixed =

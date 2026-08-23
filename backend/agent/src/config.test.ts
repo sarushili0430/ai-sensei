@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "./config.ts";
-import { elevenLabsTtsModels, geminiLiveTtsModels } from "./senpai-voice.ts";
+import { cartesiaTtsModels, elevenLabsTtsModels, geminiLiveTtsModels } from "./senpai-voice.ts";
 
 const complete = {
   API_BASE_URL: "http://localhost:8787",
@@ -171,6 +171,56 @@ describe("ElevenLabs", () => {
     expect(loadConfig(complete).ELEVENLABS_API_KEY).toBeUndefined();
     expect(
       loadConfig({ ...complete, TTS_ENGINE: "gemini-live" }).ELEVENLABS_VOICE_ID,
+    ).toBeUndefined();
+  });
+});
+
+describe("Cartesia", () => {
+  const withCartesia = {
+    ...complete,
+    TTS_ENGINE: "cartesia",
+    CARTESIA_API_KEY: "key",
+    CARTESIA_VOICE_ID: "voice",
+  };
+
+  it("既定モデルはプラグイン既定と同じ安定版で、実在するIDである", () => {
+    const config = loadConfig(withCartesia);
+    expect(config.CARTESIA_TTS_MODEL).toBe("sonic-3");
+    expect(cartesiaTtsModels).toContain(config.CARTESIA_TTS_MODEL);
+  });
+
+  // 3.5(公称 sub-90ms)へは環境変数1つで行く(Gemini 2.5/3.1 と同じ扱い)。
+  it("モデルは環境変数1つで 3.5 へ切り替えられる", () => {
+    const config = loadConfig({ ...withCartesia, CARTESIA_TTS_MODEL: "sonic-3.5" });
+    expect(config.CARTESIA_TTS_MODEL).toBe("sonic-3.5");
+    expect(cartesiaTtsModels).toContain(config.CARTESIA_TTS_MODEL);
+  });
+
+  // 鍵や声IDの入れ忘れは、無いと分かるのが「最初に喋る瞬間」になる。
+  it("engineがcartesiaのとき、鍵と声IDが無ければ名前を出して落とす", () => {
+    expect(() => loadConfig({ ...withCartesia, CARTESIA_API_KEY: undefined })).toThrow(
+      /CARTESIA_API_KEY/,
+    );
+    expect(() => loadConfig({ ...withCartesia, CARTESIA_VOICE_ID: undefined })).toThrow(
+      /CARTESIA_VOICE_ID/,
+    );
+    // `KEY=` は空文字になる。「入っているが空」を通すと同じ壊れ方をする。
+    expect(() => loadConfig({ ...withCartesia, CARTESIA_API_KEY: "" })).toThrow(/CARTESIA_API_KEY/);
+  });
+
+  // GOOGLE_API_KEY は engine を cartesia にしても必須のまま(意図的)。TTS_ENGINE は
+  // 未設定なら gemini に落ち、戻すのも「1変数だけ」が約束なので、フォールバック先の
+  // 鍵が無い環境を作らせない(config.ts の GOOGLE_API_KEY のコメント)。
+  it("engineがcartesiaでも、戻り先(gemini)の鍵は必須のまま", () => {
+    const { GOOGLE_API_KEY, ...missing } = withCartesia;
+    expect(() => loadConfig(missing)).toThrow(/GOOGLE_API_KEY/);
+  });
+
+  // 使っていない環境に鍵を置かせない。engineを切り替えたときだけ必須になる。
+  it("engineがcartesiaでなければ、鍵も声IDも要らない", () => {
+    expect(loadConfig(complete).CARTESIA_API_KEY).toBeUndefined();
+    expect(
+      loadConfig({ ...complete, TTS_ENGINE: "gemini-live" }).CARTESIA_VOICE_ID,
     ).toBeUndefined();
   });
 });

@@ -1,6 +1,7 @@
 import type { Locale } from "@ai-sensei/contract";
 import { toSpeakableJa } from "@ai-sensei/guardrail";
 import { type JobContext, inference, tokenize, tts, voice } from "@livekit/agents";
+import * as cartesia from "@livekit/agents-plugin-cartesia";
 import * as deepgram from "@livekit/agents-plugin-deepgram";
 import * as elevenlabs from "@livekit/agents-plugin-elevenlabs";
 import * as google from "@livekit/agents-plugin-google";
@@ -106,6 +107,25 @@ export function createElevenLabsTts(
 }
 
 /**
+ * 先輩の声(Cartesia)。ElevenLabsと同じく日英を1モデル・1ボイスで喋るので、ロケールで
+ * 変わるのは `language` だけ(型の `TTSLanguages` unionに 'ja' がある)。声IDは環境変数が
+ * 正で、既定値は置かない(`senpai-voice.ts`)。オプション名は `voiceId` ではなく **`voice`**。
+ *
+ * **鍵は明示的に渡す。**プラグイン(1.6.1)の `defaultTTSOptions` は
+ * `process.env.CARTESIA_API_KEY` を**モジュール読み込み時に1度だけ**captureする —
+ * Deepgramで踏んだのと同一の罠。渡さないと、検証済みの `config.CARTESIA_API_KEY` は
+ * 使われないまま、importより後に環境変数を入れた経路で鍵なしになる。
+ */
+export function createCartesiaTts(config: AgentConfig, locale: Locale): cartesia.TTS {
+  return new cartesia.TTS({
+    apiKey: config.CARTESIA_API_KEY,
+    model: config.CARTESIA_TTS_MODEL,
+    voice: config.CARTESIA_VOICE_ID,
+    language: locale,
+  });
+}
+
+/**
  * 文分割器。**Gemini TTS はストリーミングを持たないので、ここが実質のTTFB**になる。
  *
  * 分割された1文がそのまま1リクエストなので、句点まで溜めてから投げると
@@ -124,9 +144,10 @@ export function sentenceTokenizerForLocale(locale: Locale): tokenize.SentenceTok
  * それは半角の文末記号しか見ないので、日本語は生成が終わるまで1文も投げられず、
  * 授業の最初の一言が丸ごと遅れる。分割器をこちらで選ぶために、包む側もこちらが持つ。
  *
- * 包むのは `gemini` のときだけ。`gemini-live` と `elevenlabs` は最初からWSを張れる
- * (`capabilities.streaming === true`)ので包まない。**どの経路でも同じ分割器を通す**ので、
- * 日本語の切り方は engine で変わらない。
+ * 包むのは `gemini` と `cartesia`。`gemini-live` と `elevenlabs` は最初からWSを張れて
+ * **分割器も差し込める**ので包まない。`cartesia` は `streaming === true` を名乗るのに
+ * 分割器を差し込めないので包む(下のcaseの理由を読むこと)。**どの経路でも同じ分割器を
+ * 通す**ので、日本語の切り方は engine で変わらない。
  */
 export function createSenpaiTts(config: AgentConfig, locale: Locale): tts.TTS {
   const sentenceTokenizer = sentenceTokenizerForLocale(locale);
@@ -142,6 +163,22 @@ export function createSenpaiTts(config: AgentConfig, locale: Locale): tts.TTS {
       });
     case "elevenlabs":
       return createElevenLabsTts(config, locale, sentenceTokenizer);
+    case "cartesia":
+      // `capabilities.streaming === true` だが**あえて包む**。プラグインの `SynthesizeStream`
+      // は文分割器(`tokenize.basic.SentenceTokenizer`)をprivateでハードコードしていて
+      // (1.6.1と1.7.0の両方で確認。ElevenLabsの `wordTokenizer` に相当する差し込み口が無い)、
+      // それは半角の文末記号しか見ない。素の `stream()` だと日本語は「。」で切れず、
+      // LLMが最後まで喋り終わるまで1文も合成されない(Gemini/Deepgram/ElevenLabsで
+      // 3回踏んだのと同じ罠)。
+      //
+      // 代償は1文=1リクエスト。`synthesize()` の実体は `/tts/bytes` への**素のHTTPS**で、
+      // プラグインのWSプール(`/tts/websocket`)は `stream()` 専用 — この経路では使われない。
+      // **だから `prewarm()` は呼ばない**(温まるのは使われないプールで、WSが1本無駄に開くだけ)。
+      // 接続はNodeのグローバルエージェント(Node 19+ はkeep-alive既定)で使い回されるが、
+      // アイドルのソケットは数秒で閉じるので、発話の1文目はTCP+TLSの確立を払いうる。
+      // `wordTimestamps`(既定true)も `stream()` 専用で、この経路のペイロードには乗らない。
+      // 文をまたぐ韻律(continuation)へ移る余地はREADMEに記録してある。
+      return new tts.StreamAdapter(createCartesiaTts(config, locale), sentenceTokenizer);
     case "gemini":
       return new tts.StreamAdapter(createGeminiTts(config, locale), sentenceTokenizer);
   }

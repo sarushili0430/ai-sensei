@@ -56,6 +56,9 @@ importers:
       '@livekit/agents-plugin-anthropic':
         specifier: ^1.6.1
         version: 1.6.1(@livekit/agents@1.6.1(@livekit/rtc-node@0.13.33)(@types/node@22.20.1)(typescript@5.9.3)(zod@3.25.76))(@livekit/rtc-node@0.13.33)
+      '@livekit/agents-plugin-cartesia':
+        specifier: 1.6.1
+        version: 1.6.1(@livekit/agents@1.6.1(@livekit/rtc-node@0.13.33)(@types/node@22.20.1)(typescript@5.9.3)(zod@3.25.76))(@livekit/rtc-node@0.13.33)(zod@3.25.76)
       '@livekit/agents-plugin-deepgram':
         specifier: ^1.6.1
         version: 1.6.1(@livekit/agents@1.6.1(@livekit/rtc-node@0.13.33)(@types/node@22.20.1)(typescript@5.9.3)(zod@3.25.76))(@livekit/rtc-node@0.13.33)
@@ -909,6 +912,13 @@ packages:
     peerDependencies:
       '@livekit/agents': 1.6.1
       '@livekit/rtc-node': ^0.13.33
+
+  '@livekit/agents-plugin-cartesia@1.6.1':
+    resolution: {integrity: sha512-StPwKj2Gk0bVGoEHcmlIplDHiOZdHTmFCZkZ4whL22qgt+X15R1PYxxJunU+O2LPRlzV2+0brUUNJJLbZJxgiA==}
+    peerDependencies:
+      '@livekit/agents': 1.6.1
+      '@livekit/rtc-node': ^0.13.33
+      zod: ^3.25.76 || ^4.1.8
 
   '@livekit/agents-plugin-deepgram@1.6.1':
     resolution: {integrity: sha512-ePkUg747zCkLPapvSWACoUVCSMIZyMl2+x8m0f4UNbIo1KitdJyDqCUrjq7DsaleL8xZcORYpW4vT4fYJWy8uQ==}
@@ -2917,6 +2927,16 @@ snapshots:
       '@livekit/rtc-node': 0.13.33
     transitivePeerDependencies:
       - encoding
+
+  '@livekit/agents-plugin-cartesia@1.6.1(@livekit/agents@1.6.1(@livekit/rtc-node@0.13.33)(@types/node@22.20.1)(typescript@5.9.3)(zod@3.25.76))(@livekit/rtc-node@0.13.33)(zod@3.25.76)':
+    dependencies:
+      '@livekit/agents': 1.6.1(@livekit/rtc-node@0.13.33)(@types/node@22.20.1)(typescript@5.9.3)(zod@3.25.76)
+      '@livekit/rtc-node': 0.13.33
+      ws: 8.21.1
+      zod: 3.25.76
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
 
   '@livekit/agents-plugin-deepgram@1.6.1(@livekit/agents@1.6.1(@livekit/rtc-node@0.13.33)(@types/node@22.20.1)(typescript@5.9.3)(zod@3.25.76))(@livekit/rtc-node@0.13.33)':
     dependencies:
