@@ -77,7 +77,16 @@ const configSchema = z
     /** 聞く(STT)の鍵。喋る側は Gemini へ移したので、ここは STT 専用になった(ADR 0008)。 */
     DEEPGRAM_API_KEY: z.string().min(1),
 
-    /** 喋る(TTS)。Gemini TTS は Gemini API の鍵で通る(ADR 0008)。 */
+    /**
+     * 喋る(TTS)。Gemini TTS は Gemini API の鍵で通る(ADR 0008)。
+     *
+     * **`TTS_ENGINE` を elevenlabs / cartesia にしても必須のまま**(意図的)。
+     * ランタイムでこの鍵を使うのは gemini / gemini-live の経路だけだが、`TTS_ENGINE` は
+     * 未設定なら gemini に落ち、戻すときも「この1変数だけ」が約束(下のコメント)。
+     * engine 条件付きにすると、他ベンダー用に鍵を省いた環境が、戻した瞬間
+     * (あるいは変数が消えて黙って gemini に落ちた瞬間)に起動できなくなり、
+     * フォールバック先が常に喋れる保証が消える。
+     */
     GOOGLE_API_KEY: z.string().min(1),
 
     /**

@@ -208,6 +208,14 @@ describe("Cartesia", () => {
     expect(() => loadConfig({ ...withCartesia, CARTESIA_API_KEY: "" })).toThrow(/CARTESIA_API_KEY/);
   });
 
+  // GOOGLE_API_KEY は engine を cartesia にしても必須のまま(意図的)。TTS_ENGINE は
+  // 未設定なら gemini に落ち、戻すのも「1変数だけ」が約束なので、フォールバック先の
+  // 鍵が無い環境を作らせない(config.ts の GOOGLE_API_KEY のコメント)。
+  it("engineがcartesiaでも、戻り先(gemini)の鍵は必須のまま", () => {
+    const { GOOGLE_API_KEY, ...missing } = withCartesia;
+    expect(() => loadConfig(missing)).toThrow(/GOOGLE_API_KEY/);
+  });
+
   // 使っていない環境に鍵を置かせない。engineを切り替えたときだけ必須になる。
   it("engineがcartesiaでなければ、鍵も声IDも要らない", () => {
     expect(loadConfig(complete).CARTESIA_API_KEY).toBeUndefined();
