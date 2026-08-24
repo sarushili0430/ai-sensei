@@ -174,12 +174,15 @@ void main() {
   });
 
   // 古いディープリンクの保存画像も、行き止まりではなく復習へ寄せられる絵に更新する。
-  // PNGの比較元はCIでだけ更新するため、ここではルートとデータだけ新契約へ合わせる。
+  //
+  // **PNGの名前も `karte` から替える。** カルテ画面はもう無く、ここが撮るのは
+  // 寄せられた先の復習画面。`karte.png` のままだと、あとで開いた人が
+  // 「カルテの絵が復習になっている = goldenが腐っている」と読んで焼き直す。
   testWidgets('04 旧カルテ導線から復習', (WidgetTester tester) async {
     await expectRoutedGolden(
       tester,
       AppRoute.karte.path,
-      'karte',
+      'karte_redirect',
       reviews: samplePracticeQueue,
     );
   });
