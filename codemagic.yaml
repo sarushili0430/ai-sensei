@@ -150,6 +150,26 @@ workflows:
         EXTENSION_BUNDLE_ID: jp.co.aiSensei.OneSignalNotificationServiceExtension
         # assert_dart_defines が、どちらのRevenueCat鍵を要求するかの判定に使う
         TARGET_PLATFORM: ios
+        # OneSignal のネイティブ位置情報モジュール(OneSignalLocation)を
+        # **リンクしない**。
+        #
+        # 入れたままだと CoreLocation を参照するコードがバイナリに残り、
+        # アップロードのたびに App Store Connect から
+        #   ITMS-90683: Missing purpose string in Info.plist
+        #   (NSLocationWhenInUseUsageDescription)
+        # がメールで返る。ビルドが緑のまま数十分後に届くので、
+        # 気づくのは「配布したつもり」のあと —— だから元から断つ。
+        #
+        # このアプリは地理での出し分けを一切していない
+        # (`push_repository.dart` が起動時に Location.setShared(false) を呼び、
+        #  App のプライバシー申告でも位置情報は「収集しない」にしている)。
+        # 用途が無いので、Info.plist に用途文言を足すほうの直し方は取れない。
+        #
+        # 値は onesignal_flutter の Package.swift / podspec / build.gradle が
+        # **環境変数として**読む(`true` か `1` のときだけ効く)。
+        # 効いたかどうかは下の検査ステップが見る。
+        # 経緯は docs/ci/codemagic.md の「8. 位置情報を持ち込まない」。
+        ONESIGNAL_DISABLE_LOCATION: "true"
 
       # environment.ios_signing は **わざと書いていない**。
       #
@@ -378,6 +398,75 @@ workflows:
             --dart-define=SUPPORT_EMAIL="${SUPPORT_EMAIL:-}" \
             --export-options-plist="$HOME/export_options.plist"
 
+      # できあがったバイナリに **位置情報のAPIが混じっていないか**を最後に検める。
+      #
+      # ITMS-90683 は、アップロード自体は成功したあとにメールで返ってくる種類の
+      # 指摘なので、ビルドは緑・TestFlightにも並ぶ、という状態で見落とせる。
+      # 上の ONESIGNAL_DISABLE_LOCATION が(キャッシュや変数の消失で)効かなかった
+      # ときに気づけるのがここ。
+      #
+      # 判定は Apple と同じ規則にしてある:
+      #   バイナリが CoreLocation を参照している **かつ**
+      #   Info.plist に NSLocationWhenInUseUsageDescription が無い → NG。
+      # 将来ほんとうに位置情報を使うことになったら、用途文言を足せばここは通る。
+      - name: 位置情報のAPIを持ち込んでいないか (ITMS-90683)
+        working_directory: apps/mobile
+        script: |
+          set -euo pipefail
+
+          app="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app"
+          if [ ! -d "$app" ]; then
+            echo "アーカイブが見つからない: $app"
+            echo "flutter build ipa の出力先が変わった可能性がある。"
+            exit 1
+          fi
+
+          # 本体・埋め込みframework・拡張(.appex)を区別せず、
+          # .app の中の Mach-O を全部見る。CoreLocation を使うコードは、
+          # 静的リンクでもアプリ本体の LC_LOAD_DYLIB に現れる。
+          hits="$(mktemp)"
+          find "$app" -type f -print | while IFS= read -r f; do
+            if file -b "$f" | grep -q "Mach-O"; then
+              if otool -L "$f" 2>/dev/null | grep -q "/CoreLocation\.framework/"; then
+                printf '%s\n' "${f#$app/}" >> "$hits"
+              fi
+            fi
+          done
+
+          if [ ! -s "$hits" ]; then
+            echo "CoreLocation を参照しているバイナリは無い。ITMS-90683 は出ない。"
+            exit 0
+          fi
+
+          # 参照があっても、用途文言があるならAppleの規則上は正しい状態。
+          if plutil -extract NSLocationWhenInUseUsageDescription raw -o - \
+               "$app/Info.plist" >/dev/null 2>&1; then
+            echo "CoreLocation を参照しているが、用途文言(NSLocationWhenInUseUsageDescription)はある。"
+            echo "参照しているバイナリ:"
+            sed 's/^/  /' "$hits"
+            exit 0
+          fi
+
+          echo "NG: CoreLocation を参照しているのに、Info.plist に"
+          echo "    NSLocationWhenInUseUsageDescription が無い。"
+          echo "    このままアップロードすると ITMS-90683 がメールで返る。"
+          echo ""
+          echo "参照しているバイナリ:"
+          sed 's/^/  /' "$hits"
+          echo ""
+          if grep -q "OneSignalLocation" "$hits"; then
+            echo "OneSignalLocation が居る = 環境変数 ONESIGNAL_DISABLE_LOCATION が"
+            echo "このビルドに効いていない。読まれるのは依存を**解決するとき**なので、"
+            echo "SwiftPM / DerivedData のキャッシュを持ち回っていると復活する。"
+            echo "codemagic.yaml の environment.vars と、キャッシュ設定を見ること。"
+          else
+            echo "OneSignal 以外のSDKが持ち込んでいる。そのSDKを外すか、"
+            echo "**実際にその機能を使う場合にかぎり** Info.plist に用途文言を足す"
+            echo "(使わないのに足すのは、App のプライバシー申告と食い違う)。"
+          fi
+          echo "経緯は docs/ci/codemagic.md の「8. 位置情報を持ち込まない」。"
+          exit 1
+
     artifacts:
       - apps/mobile/build/ios/ipa/*.ipa
       # クラッシュのシンボル化(Sentry)に要る。
@@ -423,6 +512,12 @@ workflows:
       vars:
         # assert_dart_defines が、どちらのRevenueCat鍵を要求するかの判定に使う
         TARGET_PLATFORM: android
+        # iOS側と同じ理由で OneSignal の位置情報モジュールを外す。
+        # Androidではこのモジュールが ACCESS_COARSE_LOCATION /
+        # ACCESS_FINE_LOCATION を最終マニフェストに混ぜてくるので、
+        # 外さないと Play Console のデータセーフティ申告
+        # (docs/ci/store-setup.md の 2-6)と食い違う。
+        ONESIGNAL_DISABLE_LOCATION: "true"
       android_signing:
         # Codemagic UI > Code signing identities に登録した keystore の「名前」
         - ai-sensei-upload-keystore

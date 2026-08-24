@@ -47,6 +47,25 @@
 	     出せるようにするため。 -->
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>すでに撮ってあるノートや問題の写真を選ぶために使います。</string>
+	<!-- **NSLocationWhenInUseUsageDescription は、意図的に置いていない。**
+
+	     App Store Connect から
+	       ITMS-90683: Missing purpose string in Info.plist
+	     が返ったときに、ここに用途文言を足したくなる。足さないこと。
+
+	     このアプリは地理での出し分けを一切していない。位置を参照していたのは
+	     OneSignal のネイティブ位置情報モジュール(OneSignalLocation)だけで、
+	     いまは codemagic.yaml の ONESIGNAL_DISABLE_LOCATION でリンクごと
+	     外してある。使っていない以上、用途文言に書ける本当のことが無い。
+
+	     加えて、このキーを置くと permission_handler_apple の Package.swift が
+	     Info.plist を読んで PERMISSION_LOCATION を 1 にするので、
+	     いまはコンパイルから外れている CoreLocation のコードまで復活する。
+	     つまり「警告を消すために足す」と、参照が減るどころか増える。
+
+	     App のプライバシー申告でも位置情報は「収集しない」にしている
+	     (docs/ci/store-setup.md の 1-7)。ここだけ足すと申告と食い違う。
+	     経緯は docs/ci/codemagic.md の「8. 位置情報を持ち込まない」。 -->
 	<!-- 復習プッシュを受け取るのに要る。これが無いと、アプリが起きていない間の
 	     通知の下ごしらえ(Notification Service Extension)が動かない。 -->
 	<key>UIBackgroundModes</key>

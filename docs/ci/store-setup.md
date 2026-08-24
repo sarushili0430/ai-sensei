@@ -347,6 +347,17 @@ Team ID は Apple Developer の右上、またはメンバーシップのペー�
 | `NSPhotoLibraryUsageDescription` | 撮影済みの写真を選ぶ | `image_picker` |
 | `ITSAppUsesNonExemptEncryption` = `false` | 輸出コンプライアンスの手入力を省く | HTTPSのみ |
 
+**意図的に置いていないもの**:
+
+| キー | なぜ置かないか |
+| --- | --- |
+| `NSLocationWhenInUseUsageDescription` | 位置情報を使っていない。参照していたのは OneSignal の位置情報モジュールだけで、ビルドから外してある([`codemagic.md` の 8](./codemagic.md)) |
+| `NSUserTrackingUsageDescription` | 「トラッキング」を「なし」で申告しているため(1-7) |
+
+どちらも、足すと 1-7 のプライバシー申告と食い違う。
+`ITMS-90683`(用途文言が無い)がメールで返ってきたときに
+足したくなるキーなので、`Info.plist` 本体にも同じ注意書きを置いてある。
+
 **プッシュを配線するとき**に追加が要るもの(いまは未実装):
 
 - Xcode の Signing & Capabilities で **Push Notifications** を追加
