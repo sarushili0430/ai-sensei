@@ -1,12 +1,13 @@
 # ai-sensei
 
-**答えを教える。そのあと、あなたに教え返してもらう。**
+**「わかった」と言えるまで教える。3日後に、ほんとうにそうか聞く。**
 
 わからない問題を撮ると(ノートがあれば一緒に)、先輩AIが板書つきで教えてくれる。数式や計算は板書に書き、声は
 「ここ、Dを見てほしいんだけど — プラスだよね。だから?」と問いかけるだけ。
-教わったらすぐ、「じゃあ今の、説明してみて」と**教え返す**。説明に詰まった場所が、
-自分でも気づいていなかった **理解の穴** として「カルテ」に残り、1日・3日・7日後に
-もう一度たずねます。
+**授業を終わらせるのは生徒**で、画面下の「わかった」を押すまで同じ板書に積み続けます。
+押すと、その板書から **復習問題** が1問だけ作られ、3日後・7日後に通知で届く。
+テキストで答えるとAIが採点し、間違えた問題は翌日からもう一度たずねます
+([ADR 0009](docs/adr.md#adr-0009))。
 
 - ターゲット: 日本の中高生 / 対象科目: 中学数学・高校数学(数I・A・II・B・III・C)・中学英語・高校英語
 - 日本語と英語の2言語。**海外の学習者には海外の課程**(Algebra 1 / Geometry /
@@ -18,8 +19,11 @@
 何を作っていて何を作らないかの合意は [`docs/inception-deck.md`](docs/inception-deck.md) にまとめてあります
 (エレベーターピッチ・やらないことリスト・トレードオフスライダー)。スプリントの入口で読んでください。
 2026-08-09に「先輩AIが板書つきで教える → 教え返させる」へ差し替えた経緯と設計は
+(教え返しはその後 [ADR 0009](docs/adr.md#adr-0009) で畳みました)
 [`docs/pivot_plan_v1.md`](docs/pivot_plan_v1.md) にまとめてあります。
-画面設計と**画面遷移図**は [`docs/wireframe_v1.html`](docs/wireframe_v1.html)、ビジュアル方針は
+新コアループ(「わかった」→ 復習問題 → 通知)の**画面遷移図**は
+[`docs/core_loop_screens.html`](docs/core_loop_screens.html) が正です。
+旧ループの画面設計は [`docs/wireframe_v1.html`](docs/wireframe_v1.html)、ビジュアル方針は
 [`docs/design_direction_v0.html`](docs/design_direction_v0.html) を参照してください。
 アプリアイコン・ストア掲載スクリーンショット・App Store提出メタデータ(説明文・キーワード・審査メモ)も
 同じ `design_direction_v0.html` の後半にまとめてあります。スクショの実物は
@@ -37,9 +41,9 @@ Google Play の掲載テキスト(短い説明・詳しい説明の日英)・ス
 apps/mobile/        Flutter (iOS先行) + Riverpod 3 + livekit_client
 apps/mobile/widgetbook/  見た目の部品カタログ(Widgetbook)。**別パッケージ**。配布物に載せないため
 apps/lp/            紹介ページ(日英2枚・素のHTML/CSS)。Cloudflare Workers の静的アセットとして配信
-backend/api/        Cloudflare Workers + Hono — セッション作成 / カルテ保存 / 課金webhook
+backend/api/        Cloudflare Workers + Hono — セッション作成 / 復習問題の保存と採点 / 課金webhook
 backend/agent/      LiveKit Agents — VAD・STT・LLM・TTSの会話パイプライン + 板書生成(先輩キャラ)
-packages/contract/  APIとカルテと板書(`board.ts`)のスキーマ + fixture(モバイル/サーバ双方で契約を検証)
+packages/contract/  APIと復習問題(`practice.ts`)と板書(`board.ts`)のスキーマ + fixture(モバイル/サーバ双方で契約を検証)
 packages/curriculum/カリキュラムマップ(純JSON。中学/高校の数学と英語、海外の課程を別に持つ)
 packages/guardrail/ topic_idホワイトリスト照合・板書LaTeXのコマンド照合・数式音声の正規化などの純関数
 prompts/            システムプロンプトとfew-shot(`<id>.<locale>.md`。日英で別本。板書つき授業は`senpai_board.*.md`)
@@ -83,7 +87,7 @@ cp apps/mobile/dart_defines.example.env apps/mobile/dart_defines.env    # --dart
 | テンプレート | 中身 |
 | --- | --- |
 | `backend/api/.dev.vars.example` | LiveKit / Vision LLM / OneSignal / RevenueCat webhook / 内部トークン |
-| `backend/agent/.env.example` | LiveKit / 会話・カルテのLLM / STT(Deepgram)/ TTS(Gemini)/ 内部トークン |
+| `backend/agent/.env.example` | LiveKit / 会話・板書・復習問題のLLM / STT(Deepgram)/ TTS(Gemini)/ 内部トークン |
 | `apps/mobile/dart_defines.example.env` | **公開値のみ**(APIのURL・RevenueCat公開鍵・OneSignal App ID・Sentry DSN・規約URL・報告先メール) |
 
 課金まわりのダッシュボード設定とアプリ側の噛み合わせは
@@ -221,9 +225,10 @@ Flutter app ──HTTPS──▶ backend/api ──▶ LiveKit room 作成 + age
                           VAD → 日本語ストリーミングSTT → LLM(先輩ペルソナ)が
                           {speech, board} をストリーミング生成。手順が1つ完成するたびに
                           board を LiveKit Text Streams で送信し、直後に speech を TTS
-                          → 割り込み対応。終了時にtranscriptからカルテを生成し
+                          → 割り込み対応。「わかった」を押されたら板書から復習問題を1問作り、
                           backend/api の /v1/sessions/{id}/complete へPOST
-                          → OneSignalで翌日/3日後/7日後の再訪プッシュを予約
+                          → OneSignalで3日後/7日後の再訪プッシュを予約
+                          (不正解だった問題は、採点のたびに翌日/3日後/7日後を足す)
 ```
 
 先輩は「教える」区間だけ声で話し、数式・計算・図は板書として画面に積みます
@@ -239,7 +244,7 @@ Flutter app ──HTTPS──▶ backend/api ──▶ LiveKit room 作成 + age
 
 ## 2つの課程(日本 / 海外)
 
-`locale` は写真解析からカルテ・通知まで一本で通します。**言語だけでなく分類も
+`locale` は写真解析から復習問題・通知まで一本で通します。**言語だけでなく分類も
 切り替わります** — 海外の学習者に「数学II / 図形と方程式」と出しても、
 自分の教科書の目次と一致しないので穴のタグとして機能しないためです。
 
@@ -252,15 +257,18 @@ Flutter app ──HTTPS──▶ backend/api ──▶ LiveKit room 作成 + age
 | TTS | 読み方の指示だけ切り替え。**声は日英で同じ1つ**([ADR 0008](docs/adr.md#adr-0008)) | 同左 |
 | ガードレール | 答えの漏れ・範囲外の語・数式音声を日本語で | 同じものを英語で |
 
-穴(hole)に付いた `topic_id` の接頭辞が、その穴の言語を決めます。復習の通知と
-復習画面の一行は端末の言語設定ではなくこれに従うので、日本語で説明した穴が
+復習問題に付いた `topic_id` の接頭辞が、その問題の言語を決めます。復習の通知も
+採点の一言も端末の言語設定ではなくこれに従うので、日本語で教わった単元が
 英語の通知で届くことはありません([ADR 0005](docs/adr.md#adr-0005))。
 
 ## 設計上の約束(実装時に守ること)
 
-1. **教える。そのあと教え返させる。** 先輩が板書つきで教え、その場で「説明してみて」と聞き返す。
-2. **点数を出さない。** 数えるのは「連続日数」と「埋めた穴の数」だけ。
-3. **パスを恥にしない。** 説明できなかったことは、そのまま穴として価値化する。
+1. **教える。降りるのは生徒。** 先輩は言いっぱなしにせず節目ごとに問いかけるが、
+   授業を終わらせるのは「わかった」を押す生徒のほう([ADR 0009](docs/adr.md#adr-0009))。
+2. **点数を出さない。** 数えるのは「連続日数」と「解けた問題の数」だけ。
+   採点は `correct` / `incorrect` / `unclear` の3値で、点にも率にもしない。
+3. **間違いを恥にしない。** 不正解でも責める文面は書かず、通知の段が変わるだけ。
+   読み取れなかったときは `unclear` にして、**こちら側の不首尾として**言う。
 4. **煽らない。** 通知もペイウォールも、先輩の判断として書く。数字は見せず、命令や催促にもしない。
 
 ## ライセンス

@@ -240,6 +240,19 @@ Settings > Environments > `production` > **Required reviewers** に自分を入�
 CI(`ci.yml`)と検査が重複するが、デプロイジョブは単体で完結させている。
 CIが緑だった時点と実際にデプロイするコミットは別物になりうるため。
 
+### 順番: **API を先、agent をあと**
+
+新コアループ([ADR 0009](adr.md#adr-0009))を含む版は、この順でしか安全に出せない。
+
+- **新しい agent × 古い API** → `/complete` が `practice_problem` を送るが、古い API の
+  `completeSessionRequestSchema` は `.strict()` なので **400**。
+  会話は成立するのに完了だけが落ち、生徒からは「終わらない」に見える。
+- **古い agent × 新しい API** → `karte` を送ってくるが、新しい API はその欄を
+  optional のまま受けて**捨てる**。復習問題が作られないだけで、セッションは完了する。
+
+つまり**壊れない側は1つだけ**。API を先に出し、`/health` で名乗る環境を確かめてから
+agent を入れ替えること。`karte` の欄は旧 agent が全部入れ替わったら消す。
+
 コード変更なしで流し直したいとき(secretを入れ替えた後など)は、
 Actions > Deploy (backend/api) > **Run workflow** から環境を選ぶ。
 
@@ -336,7 +349,7 @@ pnpm --filter @ai-sensei/api tail:develop     # Workers Logs を流し見る
 | --- | --- |
 | 写真を撮ったあと進まない | `session_created` が出ているか。無ければ `photo_analysis_failed` / `session_rejected` |
 | 会話が始まらない(後輩が来ない) | agent側の `job_started`。無ければディスパッチ(`session_created` の `agent_dispatch`)を疑う |
-| 会話はできたがカルテが出ない | agent側の `karte_failed` / `complete_failed`、API側の `complete_unauthorized` / `karte_stored` |
+| 会話はできたが3日後に通知が来ない | agent側の `practice_problem_declined` / `practice_problem_failed` / `complete_failed`、API側の `complete_unauthorized` / `session_completed`(`practice_problem` が false)/ `practice_schedule_failed` |
 | ユーザーからの問い合わせ | レスポンスの `x-trace-id`。この値でログを引く |
 
 `SENTRY_DSN` を入れてあれば、`unhandled_error` と各 `*_failed` はSentryにも届く。
