@@ -1,56 +1,67 @@
 {
-  "$ref": "#/definitions/complete-session-response",
+  "$ref": "#/definitions/practice-answer-response",
   "definitions": {
-    "complete-session-response": {
+    "practice-answer-response": {
       "type": "object",
       "properties": {
-        "practice_problem": {
-          "anyOf": [
-            {
-              "type": "object",
-              "properties": {
-                "topic_id": {
-                  "type": "string",
-                  "pattern": "^(M1|MA|M2|MB|M3|MC|A1|GE|A2|PC|CL|ST|J1|J2|J3|JE|E1|E2|L1)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
-                },
-                "question": {
+        "attempt": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "problem_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "answered_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "response": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "verdict": {
+              "type": "string",
+              "enum": [
+                "correct",
+                "incorrect",
+                "unclear"
+              ]
+            },
+            "graded_by": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "comment": {
+              "anyOf": [
+                {
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 200
                 },
-                "id": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "session_id": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "board_id": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "created_at": {
-                  "type": "string",
-                  "format": "date-time"
+                {
+                  "type": "null"
                 }
-              },
-              "required": [
-                "topic_id",
-                "question",
-                "id",
-                "session_id",
-                "board_id",
-                "created_at"
-              ],
-              "additionalProperties": false
-            },
-            {
-              "type": "null"
+              ]
             }
-          ]
+          },
+          "required": [
+            "id",
+            "problem_id",
+            "answered_at",
+            "response",
+            "verdict",
+            "graded_by",
+            "comment"
+          ],
+          "additionalProperties": false
         },
-        "practice_schedule": {
+        "next_schedule": {
           "type": "array",
           "items": {
             "type": "object",
@@ -126,39 +137,12 @@
             "last_session_date"
           ],
           "additionalProperties": false
-        },
-        "limits": {
-          "type": "object",
-          "properties": {
-            "max_seconds": {
-              "type": "integer",
-              "exclusiveMinimum": 0
-            },
-            "remaining_seconds_today": {
-              "type": "integer",
-              "minimum": 0
-            },
-            "lesson_allowed_today": {
-              "type": "boolean"
-            }
-          },
-          "required": [
-            "max_seconds",
-            "remaining_seconds_today",
-            "lesson_allowed_today"
-          ],
-          "additionalProperties": false
-        },
-        "show_paywall": {
-          "type": "boolean"
         }
       },
       "required": [
-        "practice_problem",
-        "practice_schedule",
-        "progress",
-        "limits",
-        "show_paywall"
+        "attempt",
+        "next_schedule",
+        "progress"
       ],
       "additionalProperties": false
     }

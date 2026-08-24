@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  celebrationHeadline,
-  computeProgress,
-  computeStreak,
-  daysBetween,
-  toLocalDate,
-} from "./progress.ts";
+import { computeProgress, computeStreak, daysBetween, toLocalDate } from "./progress.ts";
 
 describe("toLocalDate", () => {
   it("JSTの日付に落とす", () => {
@@ -54,48 +48,81 @@ describe("computeStreak", () => {
 });
 
 describe("computeProgress", () => {
-  it("連続日数・埋めた穴・残りの穴を数える", () => {
-    const progress = computeProgress(
-      ["2026-08-02", "2026-08-03"],
-      [
+  it("連続日数・埋めた穴・残りの穴を数える(旧データ)", () => {
+    const progress = computeProgress({
+      sessionDates: ["2026-08-02", "2026-08-03"],
+      holes: [
         { status: "filled", filled_at: "2026-08-03T11:00:00.000Z" },
         { status: "filled", filled_at: "2026-08-02T11:00:00.000Z" },
         { status: "open", filled_at: null },
       ],
-      "2026-08-03",
-    );
+      today: "2026-08-03",
+    });
     expect(progress).toEqual({
       streak_days: 2,
       filled_holes: 2,
       open_holes: 1,
+      solved_problems: 0,
+      open_problems: 0,
       last_session_date: "2026-08-03",
     });
   });
 
+  it("正解した復習問題と、まだ解いていない復習問題を数える", () => {
+    const progress = computeProgress({
+      sessionDates: ["2026-08-03"],
+      problems: [{ id: "prb_1" }, { id: "prb_2" }, { id: "prb_3" }],
+      attempts: [
+        { problem_id: "prb_1", verdict: "correct" },
+        { problem_id: "prb_2", verdict: "incorrect" },
+        { problem_id: "prb_3", verdict: "unclear" },
+      ],
+      today: "2026-08-03",
+    });
+    // 不正解も `unclear` も、まだ解きにいく側。外れるのは正解した1問だけ。
+    expect(progress.solved_problems).toBe(1);
+    expect(progress.open_problems).toBe(2);
+  });
+
+  // 数えるのは**問題**であって解答回数ではない。回数にすると、
+  // 同じ1問を何度も解くほど数字が伸びる。
+  it("同じ問題に何度正解しても1問として数える", () => {
+    const progress = computeProgress({
+      sessionDates: [],
+      problems: [{ id: "prb_1" }],
+      attempts: [
+        { problem_id: "prb_1", verdict: "correct" },
+        { problem_id: "prb_1", verdict: "correct" },
+      ],
+      today: "2026-08-03",
+    });
+    expect(progress.solved_problems).toBe(1);
+    expect(progress.open_problems).toBe(0);
+  });
+
+  // ADR 0009 の移行期。穴と復習問題は別々に数え、足し合わせない。
+  it("穴と復習問題を混ぜて数えない", () => {
+    const progress = computeProgress({
+      sessionDates: [],
+      holes: [{ status: "filled", filled_at: "2026-08-02T11:00:00.000Z" }],
+      problems: [{ id: "prb_1" }],
+      attempts: [{ problem_id: "prb_1", verdict: "correct" }],
+      today: "2026-08-03",
+    });
+    expect(progress.filled_holes).toBe(1);
+    expect(progress.solved_problems).toBe(1);
+  });
+
   // 点数・正答率は持たない(数えるのは努力だけ)
   it("スコアに類するフィールドを持たない", () => {
-    const progress = computeProgress(["2026-08-03"], [], "2026-08-03");
+    const progress = computeProgress({ sessionDates: ["2026-08-03"], today: "2026-08-03" });
     expect(Object.keys(progress).sort()).toEqual([
       "filled_holes",
       "last_session_date",
       "open_holes",
+      "open_problems",
+      "solved_problems",
       "streak_days",
     ]);
-  });
-});
-
-describe("celebrationHeadline", () => {
-  const base = { streak_days: 1, filled_holes: 0, open_holes: 0, last_session_date: null };
-
-  it("穴が埋まった日はそれを最優先で祝う", () => {
-    expect(celebrationHeadline({ ...base, filled_holes: 3 }, 2)).toBe("穴が2つ、埋まりました");
-  });
-
-  it("埋まらなくても継続を認める", () => {
-    expect(celebrationHeadline({ ...base, streak_days: 4 }, 0)).toBe("4日つづけて説明できています");
-  });
-
-  it("初日は説明したこと自体をねぎらう", () => {
-    expect(celebrationHeadline(base, 0)).toBe("説明、ありがとうございました");
   });
 });

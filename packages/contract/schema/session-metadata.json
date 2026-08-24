@@ -57,6 +57,47 @@
         "is_premium": {
           "type": "boolean"
         },
+        "review_problem": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "topic_id": {
+                  "type": "string",
+                  "pattern": "^(M1|MA|M2|MB|M3|MC|A1|GE|A2|PC|CL|ST|J1|J2|J3|JE|E1|E2|L1)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+                },
+                "question": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "response": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "verdict": {
+                  "type": "string",
+                  "enum": [
+                    "correct",
+                    "incorrect",
+                    "unclear"
+                  ]
+                }
+              },
+              "required": [
+                "topic_id",
+                "question",
+                "response",
+                "verdict"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "review_hole": {
           "anyOf": [
             {

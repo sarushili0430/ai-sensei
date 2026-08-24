@@ -12,6 +12,8 @@ import {
   createSessionResponseSchema,
   planResponseSchema,
   planSessionMetadataSchema,
+  practiceAnswerResponseSchema,
+  practiceQueueResponseSchema,
   progressResponseSchema,
   reviewQueueResponseSchema,
   sessionControlRequestSchema,
@@ -46,6 +48,11 @@ export const fixtureSchemas = {
   "session-control-request": sessionControlRequestSchema,
   karte: karteSchema,
   "review-queue-response": reviewQueueResponseSchema,
+  // 復習問題(ADR 0009)。穴のキュー(review-queue-response)と**並べて残す**のは、
+  // 移行期に両方の形が同時に生きているため。片方だけにすると、
+  // 旧データを読む経路の形を誰も検査しなくなる。
+  "practice-queue-response": practiceQueueResponseSchema,
+  "practice-answer-response": practiceAnswerResponseSchema,
   "progress-response": progressResponseSchema,
   "api-error": apiErrorSchema,
   // 板書。LLMが出す形(board-lesson)と、data channel を流れる形(board-channel-log)は
@@ -87,6 +94,10 @@ export const fixtureFileSchemas: Record<string, FixtureName> = {
   "board-lesson.english": "board-lesson",
   "study-plan.en": "study-plan",
   "parent-report.en": "parent-report",
+  // 「わかった」の制御通知。`session-control-request` の本体は `context_updated` で、
+  // 判別共用体のもう一方はこのファイルでしか固定されない。消すと、
+  // **授業ループを降りる唯一の合図の形**を誰も検査しなくなる。
+  "session-control-request.understood": "session-control-request",
 };
 
 export const fixtureFileNames = Object.keys(fixtureFileSchemas);

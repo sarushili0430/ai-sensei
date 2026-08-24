@@ -19,6 +19,14 @@
               "type": "integer",
               "minimum": 0
             },
+            "solved_problems": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "open_problems": {
+              "type": "integer",
+              "minimum": 0
+            },
             "last_session_date": {
               "anyOf": [
                 {
@@ -35,6 +43,8 @@
             "streak_days",
             "filled_holes",
             "open_holes",
+            "solved_problems",
+            "open_problems",
             "last_session_date"
           ],
           "additionalProperties": false

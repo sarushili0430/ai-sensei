@@ -60,37 +60,63 @@ export type HoleLike = {
   filled_at?: string | null;
 };
 
+export type PracticeProblemLike = { id: string };
+export type PracticeAttemptLike = {
+  problem_id: string;
+  verdict: "correct" | "incorrect" | "unclear";
+};
+
 export type ProgressCounters = {
   streak_days: number;
   filled_holes: number;
   open_holes: number;
+  solved_problems: number;
+  open_problems: number;
   last_session_date: LocalDate | null;
 };
 
-export function computeProgress(
-  sessionDates: readonly LocalDate[],
-  holes: readonly HoleLike[],
-  today: LocalDate,
-): ProgressCounters {
-  const sorted = [...new Set(sessionDates)].sort();
+/**
+ * ホームのカウンター。
+ *
+ * **穴と復習問題は別々に数えて、足し合わせない**(ADR 0009)。同じ数字に混ぜると、
+ * 移行の前後で「解けた問題数」が二重計上になる — 埋めた穴は埋めた穴のまま、
+ * 新しく解いた問題は問題のまま数える。
+ *
+ * 引数をオブジェクトにしてあるのは、数える対象が3種類(セッション日・穴・復習問題)に
+ * 増えて、位置引数では呼び出し側で取り違えるため。
+ */
+export function computeProgress(input: {
+  sessionDates: readonly LocalDate[];
+  today: LocalDate;
+  /** @deprecated 旧データの穴。新しい画面は読まない(ADR 0009)。 */
+  holes?: readonly HoleLike[];
+  problems?: readonly PracticeProblemLike[];
+  attempts?: readonly PracticeAttemptLike[];
+}): ProgressCounters {
+  const holes = input.holes ?? [];
+  const problems = input.problems ?? [];
+  const attempts = input.attempts ?? [];
+  const sorted = [...new Set(input.sessionDates)].sort();
+
+  // 数えるのは**問題**であって解答回数ではない。同じ1問に3回正解しても1。
+  const solved = new Set(
+    attempts.filter((attempt) => attempt.verdict === "correct").map((a) => a.problem_id),
+  );
   return {
-    streak_days: computeStreak(sorted, today),
+    streak_days: computeStreak(sorted, input.today),
     filled_holes: holes.filter((hole) => hole.status === "filled").length,
     open_holes: holes.filter((hole) => hole.status === "open").length,
+    solved_problems: solved.size,
+    // 未解答も不正解も `unclear` も、まだ解きにいく側。正解した問題だけが外れる。
+    open_problems: problems.filter((problem) => !solved.has(problem.id)).length,
     last_session_date: sorted[sorted.length - 1] ?? null,
   };
 }
 
-/**
- * 祝福画面に出す一言。
- * 数字は「連続日数」と「埋めた穴」だけ。称賛は説明そのものに向ける。
- */
-export function celebrationHeadline(counters: ProgressCounters, filledThisSession: number): string {
-  if (filledThisSession > 0) {
-    return `穴が${filledThisSession}つ、埋まりました`;
-  }
-  if (counters.streak_days >= 2) {
-    return `${counters.streak_days}日つづけて説明できています`;
-  }
-  return "説明、ありがとうございました";
-}
+// `celebrationHeadline` はここにあった。**消したのは、言っていることが嘘になったから。**
+//
+// 「穴が◯つ、埋まりました」「◯日つづけて説明できています」は、どちらも
+// 教え返しと穴を前提にした文言で、ADR 0009 でその両方を畳んだ。祝福の見出しは
+// 「お疲れ様」— **生徒が自分で「わかった」を押したのに、先輩の側が到達を判定する**
+// 言い方をやめたため。文言はアプリ側(`AppStrings`)が正で、
+// ここ(サーバ)には一度も呼ばれる経路が無かった。

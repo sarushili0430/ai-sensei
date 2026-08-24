@@ -32,6 +32,10 @@
           "type": "string",
           "minLength": 1
         },
+        "problem_id": {
+          "type": "string",
+          "minLength": 1
+        },
         "topic_ids": {
           "type": "array",
           "items": {

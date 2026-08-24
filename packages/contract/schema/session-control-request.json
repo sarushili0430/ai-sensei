@@ -76,6 +76,29 @@
             "type"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "v": {
+              "type": "number",
+              "const": 1
+            },
+            "session_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "type": {
+              "type": "string",
+              "const": "understood"
+            }
+          },
+          "required": [
+            "v",
+            "session_id",
+            "type"
+          ],
+          "additionalProperties": false
         }
       ]
     }

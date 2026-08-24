@@ -1,0 +1,157 @@
+{
+  "$ref": "#/definitions/practice-queue-response",
+  "definitions": {
+    "practice-queue-response": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "problem": {
+                "type": "object",
+                "properties": {
+                  "topic_id": {
+                    "type": "string",
+                    "pattern": "^(M1|MA|M2|MB|M3|MC|A1|GE|A2|PC|CL|ST|J1|J2|J3|JE|E1|E2|L1)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+                  },
+                  "question": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "session_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "board_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                },
+                "required": [
+                  "topic_id",
+                  "question",
+                  "id",
+                  "session_id",
+                  "board_id",
+                  "created_at"
+                ],
+                "additionalProperties": false
+              },
+              "days_since": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "topic_label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 60
+              },
+              "last_verdict": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "correct",
+                      "incorrect",
+                      "unclear"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "problem",
+              "days_since",
+              "topic_label",
+              "last_verdict"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "solved": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "problem": {
+                "type": "object",
+                "properties": {
+                  "topic_id": {
+                    "type": "string",
+                    "pattern": "^(M1|MA|M2|MB|M3|MC|A1|GE|A2|PC|CL|ST|J1|J2|J3|JE|E1|E2|L1)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+                  },
+                  "question": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "session_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "board_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                },
+                "required": [
+                  "topic_id",
+                  "question",
+                  "id",
+                  "session_id",
+                  "board_id",
+                  "created_at"
+                ],
+                "additionalProperties": false
+              },
+              "topic_label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 60
+              },
+              "days_since_solved": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "problem",
+              "topic_label",
+              "days_since_solved"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 30
+        }
+      },
+      "required": [
+        "items",
+        "solved"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
