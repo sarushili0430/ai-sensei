@@ -17,9 +17,9 @@ class ConfettiBurst extends StatefulWidget {
 
   /// 降り続けるかどうか。
   ///
-  /// 一度きりの紙吹雪は2秒ほどで終わる。**そのあと何かを待たせる画面では、
-  /// 止まった紙吹雪が「固まった」に見える。** 待っているあいだは降り続け、
-  /// 待ちが終わったところで最後にもう一降りして止まる。
+  /// 一度きりの紙吹雪は数秒で**画面の下から抜けきって**終わる。そのあとも
+  /// 何かを待たせる画面では、紙が消えたところで祝いが終わって見えるので、
+  /// 待っているあいだは降り続け、待ちが終わったところで最後にもう一降りして止まる。
   final bool looping;
 
   @override
@@ -27,8 +27,13 @@ class ConfettiBurst extends StatefulWidget {
 }
 
 class _ConfettiBurstState extends State<ConfettiBurst> with SingleTickerProviderStateMixin {
-  /// 一度きりの紙吹雪。
-  static const Duration _burst = Duration(milliseconds: 2200);
+  /// 一度きりの紙吹雪。**最後の1枚が画面の下へ抜けきるまでの長さ**。
+  ///
+  /// 以前は 2.2秒で、いちばん遅い紙は画面の半ばまでしか降りていなかった。
+  /// `forward()` はそこで止まって値を保つので、**紙が空中に貼りついたまま
+  /// 残る**(実機で確認)。降り方の速さは変えず、[_burstSpan] のぶんだけ
+  /// 時間を伸ばして、全部を下から出しきる。
+  static const Duration _burst = Duration(milliseconds: 3600);
 
   /// 降り続けるときの一周。急かさない速さにする(待たせている画面なので)。
   static const Duration _loop = Duration(milliseconds: 4200);
@@ -44,7 +49,10 @@ class _ConfettiBurstState extends State<ConfettiBurst> with SingleTickerProvider
   ///
   /// 何も描かないのではなく、紙が散らばりきった瞬間で止める。
   /// 動きが苦手なだけで、祝われたい気持ちは同じなので。
-  static const double _stillFrame = 0.35;
+  ///
+  /// 止める場所は**降り具合で決める**([_scatterFall])。進み具合の生の値で
+  /// 持つと、[_burstSpan] を触るたびに絵が動いてしまう。
+  static const double _stillFrame = _scatterFall / _burstSpan;
 
   @override
   void didChangeDependencies() {
@@ -111,6 +119,34 @@ class _ConfettiBurstState extends State<ConfettiBurst> with SingleTickerProvider
   }
 }
 
+/// 降り始めがいちばん遅い紙の待ち(進み具合)。
+const double _maxDelay = 0.35;
+
+/// いちばん遅い紙の速さと、速さの幅。
+const double _minSpeed = 0.75;
+const double _speedSpread = 0.5;
+
+/// 画面の上のどこから降らせるか(画面の高さぶん。負 = 画面の外)。
+const double _startFall = -0.15;
+
+/// 降り具合 1 が、画面の高さの何ぶんにあたるか。
+const double _fallRate = 1.25;
+
+/// 薄くなり始める降り具合と、消す降り具合。
+const double _fadeFall = 0.85;
+const double _exitFall = 1.2;
+
+/// 散らばりきった絵と見なす降り具合([_ConfettiBurstState._stillFrame])。
+const double _scatterFall = 0.35;
+
+/// 一度きりのとき、進み具合の 1 をどこまで伸ばして読むか。
+///
+/// **いちばん遅く降り始めた、いちばん遅い紙が、下から抜けきるところ**に
+/// 合わせてある。ここが足りないと、まだ空にいる紙が終わりでそのまま止まり、
+/// 画面の途中に紙が貼りついたまま残る —— 紙吹雪が「固まった」に見えるのは
+/// これが原因だった。速さの上限や待ちを触ったら、この式が追いかける。
+const double _burstSpan = _maxDelay + _exitFall / (_minSpeed * _fallRate);
+
 /// 紙1枚ぶん。位置も回転も**固定の種**から作る。
 /// 毎回違う絵にすると golden が撮れないし、違う必要もない。
 List<_Piece> _buildPieces(int count) {
@@ -125,8 +161,8 @@ List<_Piece> _buildPieces(int count) {
   return List<_Piece>.generate(count, (int i) {
     return _Piece(
       x: random.nextDouble(),
-      delay: random.nextDouble() * 0.35,
-      speed: 0.75 + random.nextDouble() * 0.5,
+      delay: random.nextDouble() * _maxDelay,
+      speed: _minSpeed + random.nextDouble() * _speedSpread,
       drift: (random.nextDouble() - 0.5) * 0.22,
       spin: (random.nextDouble() - 0.5) * 8,
       width: 5 + random.nextDouble() * 5,
@@ -174,22 +210,24 @@ class _ConfettiPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     for (final _Piece piece in pieces) {
       // 一度きりのときは、紙ごとの速さの差がそのまま散らばりになる。
+      // 進み具合は [_burstSpan] 倍して読む —— 1 で終わる時計のまま
+      // 最後まで降らせると、いちばん遅い紙が空中で止まる。
       //
       // 降り続けるときは**同じ速さで位相だけずらす**。速さを紙ごとに変えると
       // 一周するたびに位相が寄っていき、「どっと降って、しばらく空」の
       // 繰り返しになる。位相をずらして回せば、継ぎ目のないひとつづきに見える。
       final double local = looping
           ? (progress + piece.delay + piece.x) % 1.0
-          : (progress - piece.delay) * piece.speed;
+          : (progress * _burstSpan - piece.delay) * piece.speed;
       if (local <= 0) continue;
 
       // 落ちきったら消す。溜まった紙を床に描くと、画面の下が重くなる。
-      final double fall = local * 1.25;
-      if (fall > 1.2) continue;
+      final double fall = local * _fallRate;
+      if (fall > _exitFall) continue;
 
-      final double dy = -0.15 + fall;
+      final double dy = _startFall + fall;
       final double dx = piece.x + piece.drift * math.sin(local * math.pi * 2);
-      final double fade = fall > 0.85 ? (1.2 - fall) / 0.35 : 1.0;
+      final double fade = fall > _fadeFall ? (_exitFall - fall) / (_exitFall - _fadeFall) : 1.0;
 
       canvas.save();
       canvas.translate(dx * size.width, dy * size.height);
