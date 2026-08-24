@@ -22,7 +22,7 @@
 /// あわせてフィーチャーグラフィック(`docs/store/feature-graphic/`・1024x500)も
 /// ここで描く。Playでは**必須**で、これが無いと公開できない。
 ///
-/// 並び順は inception-deck §3。①授業(板書)②祝福 ③カルテ ④連続日数 ⑤復習。
+/// 並び順は inception-deck §3。①授業(板書)②祝福 ③復習問題 ④連続日数 ⑤復習。
 /// **デッキ §3 と同期していること。**片方だけ直すと、ストア素材と正文がずれる。
 library;
 
@@ -35,8 +35,6 @@ import 'package:ai_sensei/src/api/device_id.dart';
 import 'package:ai_sensei/src/brand/app_mark.dart';
 import 'package:ai_sensei/src/features/capture/application/capture_controller.dart';
 import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
-import 'package:ai_sensei/src/features/karte/application/last_board_controller.dart';
-import 'package:ai_sensei/src/features/karte/domain/last_board.dart';
 // `SessionLimits` は karte / session の両方に別々の定義がある。ここで要るのは
 // `SessionStart` が持つ session 側なので、karte 側を隠す。
 import 'package:ai_sensei/src/features/karte/domain/karte.dart'
@@ -128,8 +126,12 @@ void main() {
       testWidgets('${copy.locale} ${shot.slug}', (WidgetTester tester) async {
         // ラスタライズ(toImage)は本物の非同期を要るので、pumpと分けて
         // runAsync の中で回す。fake_async のゾーンで呼ぶと完了しない。
-        final GlobalKey plainKey =
-            await _pump(tester, shot, copy.locale, _plainLogical);
+        final GlobalKey plainKey = await _pump(
+          tester,
+          shot,
+          copy.locale,
+          _plainLogical,
+        );
         await tester.runAsync(() async {
           _write(
             '$_outDir/${copy.locale}/plain/${shot.slug}.png',
@@ -138,17 +140,23 @@ void main() {
         });
 
         for (final _Frame frame in _frames) {
-          final GlobalKey key =
-              await _pump(tester, shot, copy.locale, frame.logical);
+          final GlobalKey key = await _pump(
+            tester,
+            shot,
+            copy.locale,
+            frame.logical,
+          );
           await tester.runAsync(() async {
             _write(
               '$_outDir/${copy.locale}/${frame.dir}/${shot.slug}.png',
-              await _png(await _compose(
-                await _capture(key),
-                copy,
-                frame.pixels,
-                topRatio: frame.topRatio,
-              )),
+              await _png(
+                await _compose(
+                  await _capture(key),
+                  copy,
+                  frame.pixels,
+                  topRatio: frame.topRatio,
+                ),
+              ),
             );
           });
         }
@@ -171,7 +179,11 @@ void main() {
 // --- 実画面のレンダリング ---
 
 Future<GlobalKey> _pump(
-    WidgetTester tester, _Shot shot, String locale, Size logical) async {
+  WidgetTester tester,
+  _Shot shot,
+  String locale,
+  Size logical,
+) async {
   await tester.binding.setSurfaceSize(logical);
   tester.view.physicalSize = logical;
   tester.view.devicePixelRatio = 1;
@@ -187,8 +199,11 @@ Future<GlobalKey> _pump(
     await tester.pumpWidget(
       RepaintBoundary(
         key: key,
-        child:
-            wrapApp(screen, overrides: shot.overrides, locale: Locale(locale)),
+        child: wrapApp(
+          screen,
+          overrides: shot.overrides,
+          locale: Locale(locale),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -243,8 +258,10 @@ Future<ui.Image> _compose(
   canvas.drawRect(
     Rect.fromLTWH(0, 0, w, h),
     Paint()
-      ..shader = ui.Gradient.linear(
-          Offset.zero, Offset(0, h), <Color>[_canvasTop, _canvasBottom]),
+      ..shader = ui.Gradient.linear(Offset.zero, Offset(0, h), <Color>[
+        _canvasTop,
+        _canvasBottom,
+      ]),
   );
 
   final double captionBottom = _drawCaption(
@@ -270,8 +287,10 @@ Future<ui.Image> _compose(
     height = width * (screen.height / screen.width);
   }
   final Rect dst = Rect.fromLTWH((w - width) / 2, top, width, height);
-  final RRect clip =
-      RRect.fromRectAndRadius(dst, Radius.circular(width * 0.045));
+  final RRect clip = RRect.fromRectAndRadius(
+    dst,
+    Radius.circular(width * 0.045),
+  );
 
   canvas.drawRRect(
     clip.shift(const Offset(0, 10)),
@@ -320,18 +339,25 @@ double _drawCaption(
 
   final Offset origin = Offset(centerX - painter.width / 2, top);
 
-  final int start =
-      copy.marker == null ? -1 : copy.headline.indexOf(copy.marker!);
+  final int start = copy.marker == null
+      ? -1
+      : copy.headline.indexOf(copy.marker!);
   if (start >= 0) {
     final List<TextBox> boxes = painter.getBoxesForSelection(
       TextSelection(
-          baseOffset: start, extentOffset: start + copy.marker!.length),
+        baseOffset: start,
+        extentOffset: start + copy.marker!.length,
+      ),
     );
     for (final TextBox box in boxes) {
       final Rect r = box.toRect().shift(origin);
       canvas.drawRect(
         Rect.fromLTRB(
-            r.left, r.top + r.height * 0.52, r.right, r.top + r.height * 0.96),
+          r.left,
+          r.top + r.height * 0.52,
+          r.right,
+          r.top + r.height * 0.96,
+        ),
         Paint()..color = copy.markerColor.withValues(alpha: 0.92),
       );
     }
@@ -360,8 +386,10 @@ Future<ui.Image> _featureGraphic(_FeatureCopy copy) async {
   canvas.drawRect(
     Rect.fromLTWH(0, 0, w, h),
     Paint()
-      ..shader = ui.Gradient.linear(
-          Offset.zero, Offset(w, h), <Color>[_canvasTop, _canvasBottom]),
+      ..shader = ui.Gradient.linear(Offset.zero, Offset(w, h), <Color>[
+        _canvasTop,
+        _canvasBottom,
+      ]),
   );
 
   const double margin = 72;
@@ -418,12 +446,19 @@ Future<ui.Image> _featureGraphic(_FeatureCopy copy) async {
   final int start = copy.headline.indexOf(copy.marker);
   if (start >= 0) {
     for (final TextBox box in headline.getBoxesForSelection(
-      TextSelection(baseOffset: start, extentOffset: start + copy.marker.length),
+      TextSelection(
+        baseOffset: start,
+        extentOffset: start + copy.marker.length,
+      ),
     )) {
       final Rect r = box.toRect().shift(origin);
       canvas.drawRect(
         Rect.fromLTRB(
-            r.left, r.top + r.height * 0.52, r.right, r.top + r.height * 0.96),
+          r.left,
+          r.top + r.height * 0.52,
+          r.right,
+          r.top + r.height * 0.96,
+        ),
         Paint()..color = AppColors.said.withValues(alpha: 0.92),
       );
     }
@@ -470,10 +505,9 @@ const List<_FeatureCopy> _featureCopy = <_FeatureCopy>[
   ),
 ];
 
-Future<Uint8List> _png(ui.Image image) async =>
-    (await image.toByteData(format: ui.ImageByteFormat.png))!
-        .buffer
-        .asUint8List();
+Future<Uint8List> _png(ui.Image image) async => (await image.toByteData(
+  format: ui.ImageByteFormat.png,
+))!.buffer.asUint8List();
 
 void _write(String path, Uint8List bytes) {
   final File file = File(path);
@@ -514,9 +548,9 @@ class _Shot {
     this.location,
     this.overrides = const <Object?>[],
   }) : assert(
-          (screen == null) != (location == null),
-          'screen か location のどちらか一方だけを渡すこと',
-        );
+         (screen == null) != (location == null),
+         'screen か location のどちらか一方だけを渡すこと',
+       );
 
   final String slug;
 
@@ -533,17 +567,20 @@ class _Shot {
 /// ルータ経由で撮るときの起動時の値。
 /// 渡さないと初回起動と見なされ、オンボーディングが出る。
 List<Object?> _bootOverrides() => <Object?>[
-      onboardedProvider.overrideWithValue(true),
-      deviceIdProvider.overrideWithValue('11111111-2222-3333-4444-555555555555'),
-    ];
+  onboardedProvider.overrideWithValue(true),
+  deviceIdProvider.overrideWithValue('11111111-2222-3333-4444-555555555555'),
+];
 
 /// 会話画面は撮影から渡されたセッションが無いとホームへ戻る。
 /// スクショでは通信しないので、繋がった体の状態を差し込む。
 const SessionStart _sampleSessionStart = SessionStart(
   sessionId: 'ses_1',
   kind: 'realtime',
-  livekit:
-      LiveKitConnection(url: 'wss://example', token: 'token', room: 'room'),
+  livekit: LiveKitConnection(
+    url: 'wss://example',
+    token: 'token',
+    room: 'room',
+  ),
   limits: SessionLimits(
     maxSeconds: 300,
     remainingSecondsToday: 900,
@@ -587,25 +624,6 @@ class _FakeCaptureController extends CaptureController {
   );
 }
 
-/// カルテに残る板書。3枚目の「根拠」の節をここで埋める。
-class _FakeLastBoardController extends LastBoardController {
-  @override
-  LastBoard build() => const LastBoard(
-        steps: <BoardStep>[
-          BoardStep(
-            index: 0,
-            speech: 'まず、式をそのまま書くね。',
-            board: BoardElement.latex(tex: 'x^2 - 3x + 2 = 0'),
-          ),
-          BoardStep(
-            index: 1,
-            speech: '判別式は、この形だったよね。',
-            board: BoardElement.latex(tex: 'D = (-3)^2 - 4 \\cdot 1 \\cdot 2 = 1'),
-          ),
-        ],
-      );
-}
-
 final List<_Shot> _shots = <_Shot>[
   // 1枚目は**授業モード(板書つき)**。ピボット前は「後輩が答えを知らないまま
   // 聞いてくる」画面だったが、それは改正前の約束1(答えを教えない)そのもので、
@@ -641,7 +659,8 @@ final List<_Shot> _shots = <_Shot>[
                   index: 2,
                   speech: '判別式は、この形だったよね。',
                   board: BoardElement.latex(
-                      tex: 'D = (-3)^2 - 4 \\cdot 1 \\cdot 2 = 1'),
+                    tex: 'D = (-3)^2 - 4 \\cdot 1 \\cdot 2 = 1',
+                  ),
                 ),
               ],
             ),
@@ -663,47 +682,44 @@ final List<_Shot> _shots = <_Shot>[
     screen: const CelebrationScreen(),
     overrides: <Object?>[
       progressControllerProvider.overrideWith(FakeProgressController.new),
-      latestKarteControllerProvider.overrideWith(FakeLatestKarteController.new),
       sessionOutcomeControllerProvider.overrideWith(
         () => FakeSessionOutcomeController(const SessionOutcome()),
       ),
     ],
     copy: const <_Copy>[
-      _Copy(locale: 'ja', headline: '教え返せると、先輩の顔が輝く。', marker: '先輩の顔が輝く'),
+      _Copy(locale: 'ja', headline: '「わかった」の3日後、復習問題が届く。', marker: '復習問題が届く'),
       _Copy(
         locale: 'en',
-        headline: 'Teach it back well and your senpai lights up.',
-        marker: 'your senpai lights up',
+        headline: 'Tap “Got it.” Review it again in 3 days.',
+        marker: 'again in 3 days',
       ),
     ],
   ),
   // ここから3枚は常設タブの下。ルータ経由で撮って、下部ナビゲーションを写す。
   _Shot(
-    slug: '03-karte',
-    location: AppRoute.karte.path,
+    slug: '03-practice',
+    location: AppRoute.review.path,
     overrides: <Object?>[
-      latestKarteControllerProvider.overrideWith(FakeLatestKarteController.new),
-      sessionOutcomeControllerProvider.overrideWith(
-        () => FakeSessionOutcomeController(const SessionOutcome()),
-      ),
-      // 「先輩が書いたもの」の節(ADR 0006)。カルテの「根拠」なので落とさない。
-      lastBoardControllerProvider.overrideWith(_FakeLastBoardController.new),
       progressControllerProvider.overrideWith(FakeProgressController.new),
       reviewControllerProvider.overrideWith(
-        () => FakeReviewController(const ReviewQueue(items: <ReviewQueueItem>[])),
+        () => FakeReviewController(
+          PracticeQueue(
+            items: <PracticeQueueItem>[samplePracticeQueue.items.first],
+          ),
+        ),
       ),
     ],
     copy: <_Copy>[
       const _Copy(
         locale: 'ja',
-        headline: '説明が止まった場所が、そのまま「理解の穴」に。',
-        marker: '理解の穴',
+        headline: '先輩の板書から、復習問題を1問。',
+        marker: '復習問題を1問',
         markerColor: AppColors.hole,
       ),
       const _Copy(
         locale: 'en',
-        headline: 'Where you stalled becomes a gap on your karte.',
-        marker: 'a gap',
+        headline: 'One review question, straight from the lesson board.',
+        marker: 'One review question',
         markerColor: AppColors.hole,
       ),
     ],
@@ -715,20 +731,20 @@ final List<_Shot> _shots = <_Shot>[
       progressControllerProvider.overrideWith(FakeProgressController.new),
       // 「きのうの続き」のカードに、件数ではなく単元の中身を出すため。
       reviewControllerProvider.overrideWith(
-        () => FakeReviewController(sampleReviewQueue),
+        () => FakeReviewController(samplePracticeQueue),
       ),
     ],
     copy: const <_Copy>[
       _Copy(
         locale: 'ja',
-        headline: '数えるのは点数ではなく、続けた日数と埋めた穴。',
-        marker: '続けた日数と埋めた穴',
+        headline: '数えるのは点数ではなく、続けた日数と解けた問題。',
+        marker: '続けた日数と解けた問題',
         markerColor: AppColors.streak,
       ),
       _Copy(
         locale: 'en',
-        headline: 'We count days and gaps filled. Never a score.',
-        marker: 'days and gaps filled',
+        headline: 'We count days and solved problems. Never a score.',
+        marker: 'days and solved problems',
         markerColor: AppColors.streak,
       ),
     ],
@@ -740,16 +756,9 @@ final List<_Shot> _shots = <_Shot>[
       progressControllerProvider.overrideWith(FakeProgressController.new),
       reviewControllerProvider.overrideWith(
         () => FakeReviewController(
-          ReviewQueue(
-            items: <ReviewQueueItem>[
-              ReviewQueueItem(
-                hole: sampleKarte.holes.first,
-                daysSince: 3,
-                prompt: '3日前の「判別式のなぜ」、いまなら説明できますか?',
-                quiz: '判別式を使うと解の個数がわかる理由を説明できる?',
-              ),
-            ],
-            filled: <FilledHole>[sampleFilledHole],
+          PracticeQueue(
+            items: <PracticeQueueItem>[samplePracticeQueue.items.first],
+            solved: <SolvedPractice>[sampleSolvedPractice],
           ),
         ),
       ),
@@ -758,7 +767,8 @@ final List<_Shot> _shots = <_Shot>[
       _Copy(
         locale: 'ja',
         headline: '埋まるまで、翌日・3日後・7日後にまた聞いてくる。',
-          marker: '翌日・3日後・7日後'),
+        marker: '翌日・3日後・7日後',
+      ),
       _Copy(
         locale: 'en',
         headline: 'Your senpai asks again after 1, 3 and 7 days.',

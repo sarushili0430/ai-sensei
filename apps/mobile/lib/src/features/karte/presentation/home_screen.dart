@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -15,18 +17,42 @@ import '../domain/karte.dart';
 
 /// ホーム。カメラの起動ボタンではなく**ハブ**。
 ///
-/// - 数えるのは連続日数と埋めた穴だけ。XP・レベル・偏差値は出さない(§5-2)
-/// - 入口は2つ。今日の1手([_PrimaryAction])と、きのうの続き([_OpenHolesCard])
+/// - 数えるのは連続日数と解けた問題だけ。XP・レベル・偏差値は出さない(§5-2)
+/// - 入口は2つ。今日の1手([_PrimaryAction])と、復習問題([_OpenProblemsCard])
 /// - **下に置く操作はいつでも1つ**。並べず、同じ場所の中身を入れ替える
 /// - 授業回数は出さず、原価と同じ「今日の残り時間」だけを出す
-class HomeScreen extends ConsumerWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+
+    final AsyncValue<ProgressSummary> progress = ref.read(progressControllerProvider);
+    // 初回表示は provider の build が同じ値を取得する。すでに値があるのは、
+    // 授業の外側ルートからホームのシェルが作り直されたときなので、その境界だけ
+    // サーバを正として再確認する。毎フレーム呼ぶと画面を開いているだけで通信が増える。
+    if (progress.value != null) {
+      unawaited(ref.read(progressControllerProvider.notifier).reloadQuietly());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
     final AsyncValue<ProgressSummary> summary = ref.watch(progressControllerProvider);
     final ProgressSummary data = summary.value ?? ProgressSummary.empty;
+    final int remainingSecondsToday = data.limits.remainingSecondsToday;
+    // 0秒は直下の「使い切った」説明と同じ状態なので、残っているように読める
+    // 「1分未満」にはしない。上は0分、下は理由という並びなら矛盾せず読める。
+    final String remainingTime = remainingSecondsToday > 0 && remainingSecondsToday < 60
+        ? strings.homeRemainingLessThanMinute
+        : strings.homeRemainingMinutes(remainingSecondsToday ~/ 60);
 
     // 今日はもう授業をしない、と先輩が決めた状態(§6-3)。
     // 撮ってから断られるより、ここで先に「今日はここまで」と言われるほうがいい。
@@ -46,9 +72,7 @@ class HomeScreen extends ConsumerWidget {
                   child: Align(
                     alignment: Alignment.centerRight,
                     child: Text(
-                      strings.homeRemainingMinutes(
-                        data.limits.remainingSecondsToday ~/ 60,
-                      ),
+                      remainingTime,
                       key: const ValueKey<String>('home-remaining-time'),
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
@@ -86,13 +110,16 @@ class HomeScreen extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: AppSpacing.lg),
-              FadeSlideIn.staggered(index: 2, child: _OpenHolesCard(progress: data.progress)),
+              FadeSlideIn.staggered(
+                index: 2,
+                child: _OpenProblemsCard(progress: data.progress),
+              ),
               const SizedBox(height: AppSpacing.md),
               FadeSlideIn.staggered(
                 index: 3,
                 child: _PrimaryAction(
                   enoughForToday: enoughForToday,
-                  hasOpenHoles: data.progress.openHoles > 0,
+                  hasOpenProblems: data.progress.openProblems > 0,
                 ),
               ),
               const SizedBox(height: AppSpacing.sm),
@@ -123,16 +150,19 @@ class HomeScreen extends ConsumerWidget {
 ///
 /// 締めた日を復習へ向けるのは、上限に当たった人の道を途切れさせないため。
 class _PrimaryAction extends StatelessWidget {
-  const _PrimaryAction({required this.enoughForToday, required this.hasOpenHoles});
+  const _PrimaryAction({
+    required this.enoughForToday,
+    required this.hasOpenProblems,
+  });
 
   final bool enoughForToday;
-  final bool hasOpenHoles;
+  final bool hasOpenProblems;
 
   @override
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
 
-    if (enoughForToday && hasOpenHoles) {
+    if (enoughForToday && hasOpenProblems) {
       return ChunkyButton(
         key: const ValueKey<String>('home-primary-review'),
         label: strings.reviewTitle,
@@ -158,7 +188,10 @@ class _TopRow extends StatelessWidget {
     final AppStrings strings = AppStrings.of(context);
     return Row(
       children: <Widget>[
-        // 数えている2つ。余白を持つのはこちらなので、Spacer は要らない。
+        // **数えている2つは、左端と右端に離して置く**(キャンバスの
+        // `justify-content: space-between`)。隣り合わせると
+        // 「3日つづけて12問解けた」と1つの文に読めてしまい、別々の数だと
+        // 分かるまでに一拍かかる。
         //
         // Premium のチップが並ぶぶん、横幅の狭い端末では入りきらなくなる。
         // 縮めば読めるものを RenderFlex の縞模様にしない — 入るときは
@@ -169,24 +202,35 @@ class _TopRow extends StatelessWidget {
             alignment: Alignment.centerLeft,
             child: Row(
               children: <Widget>[
+                // 炎はキャンバスの形。**数字だけだと何の数か読まないと分からない**
+                // ので、連続日数の側にだけ印を付ける(解けた問題の側は色で分ける)。
+                const CustomPaint(
+                  size: Size.square(20),
+                  painter: _StreakFlamePainter(),
+                ),
+                const SizedBox(width: AppSpacing.sm),
                 _Counter(
                   value: progress.streakDays,
                   suffix: strings.streakDaysSuffix,
                   semanticsLabel: strings.streakDays(progress.streakDays),
                   color: AppColors.streak,
                 ),
-                const SizedBox(width: AppSpacing.md),
-                _Counter(
-                  value: progress.filledHoles,
-                  prefix: strings.filledHolesPrefix,
-                  suffix: strings.filledHolesSuffix,
-                  semanticsLabel: strings.filledHoles(progress.filledHoles),
-                  color: AppColors.blue,
-                  tooltip: strings.parentReportOpen,
-                  onTap: () => context.push(AppRoute.parentReport.path),
-                ),
               ],
             ),
+          ),
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerRight,
+          child: _Counter(
+            value: progress.solvedProblems,
+            prefix: strings.solvedProblemsPrefix,
+            suffix: strings.solvedProblemsSuffix,
+            semanticsLabel: strings.solvedProblems(progress.solvedProblems),
+            color: AppColors.blue,
+            tooltip: strings.parentReportOpen,
+            onTap: () => context.push(AppRoute.parentReport.path),
           ),
         ),
         // 契約している印。契約が無ければ何も出ない。
@@ -196,19 +240,19 @@ class _TopRow extends StatelessWidget {
   }
 }
 
-/// きのうの続き。再訪の起点で、通知の着地先でもある。
+/// 復習問題。再訪の起点で、通知の着地先でもある。
 ///
-/// 穴がゼロのときは代わりに「最初の1枚から始まる」と書く。
+/// 問題がゼロのときは代わりに「最初の1枚から始まる」と書く。
 /// 初回起動のホームが、押すもののない空白にならないように。
 ///
 /// 先輩が今日を締めた日は、すぐ下の [_PrimaryAction] も同じ復習画面へ行く。
 /// **重ねているのは意図**で、このカードは「何が残っているか」を出す説明、
 /// 下のボタンは「それをやる」操作。行き先が同じでも、読む順に並んでいる。
 ///
-/// **穴の件数は出さない。** 未完了の数は、穴を資産ではなく借金に見せる。
-/// 複数あるときも、次に向き合う内容が分かれば十分なので直近の1件だけを出す。
-class _OpenHolesCard extends ConsumerWidget {
-  const _OpenHolesCard({required this.progress});
+/// **問題の件数は出す。** 穴では件数が借金に見えたが、問題は解けば減る有限の
+/// 作業量なので、残りを隠すより「何問やればよいか」が分かるほうが着手しやすい。
+class _OpenProblemsCard extends ConsumerWidget {
+  const _OpenProblemsCard({required this.progress});
 
   final Progress progress;
 
@@ -216,7 +260,7 @@ class _OpenHolesCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final AppStrings strings = AppStrings.of(context);
 
-    if (progress.openHoles == 0) {
+    if (progress.openProblems == 0) {
       return Text(
         strings.homeFirstRun,
         textAlign: TextAlign.center,
@@ -224,11 +268,8 @@ class _OpenHolesCard extends ConsumerWidget {
       );
     }
 
-    // キューの取得前・失敗時にも内容を出せるよう、会話直後のカルテも候補にする。
-    // 両方に同じ穴がいても、日付で選ぶだけなので表示は1件のまま変わらない。
-    final ReviewQueue? queue = ref.watch(reviewControllerProvider).value;
-    final Karte? latestKarte = ref.watch(latestKarteControllerProvider);
-    final Hole? recentHole = _mostRecentOpenHole(queue, latestKarte);
+    final PracticeQueue? queue = ref.watch(reviewControllerProvider).value;
+    final PracticeQueueItem? next = queue?.items.firstOrNull;
 
     return GestureDetector(
       onTap: () => context.push(AppRoute.review.path),
@@ -241,19 +282,41 @@ class _OpenHolesCard extends ConsumerWidget {
         ),
         child: Row(
           children: <Widget>[
+            // キャンバスの 40pt の丸。**8pt の点から替えた** — 穴のカードは
+            // 「何かが残っている」を示す点で足りたが、復習問題のカードは
+            // 押して解きにいく操作なので、掴める大きさの印を置く。
             Container(
-              width: 8,
-              height: 8,
-              decoration: const BoxDecoration(color: AppColors.hole, shape: BoxShape.circle),
+              width: 40,
+              height: 40,
+              decoration: const BoxDecoration(
+                color: AppColors.said,
+                shape: BoxShape.circle,
+              ),
+              child: const Center(
+                child: CustomPaint(
+                  size: Size.square(20),
+                  painter: _PracticeMarkPainter(),
+                ),
+              ),
             ),
-            const SizedBox(width: AppSpacing.sm),
+            // キャンバスの gap。`AppSpacing` の刻み(8/16)の中間で、
+            // 40pt の丸と本文のあいだだけこの値。
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text(strings.reviewTitle, style: Theme.of(context).textTheme.titleMedium),
                   Text(
-                    recentHole?.description ?? strings.homeOpenHoleLabel,
+                    strings.homeOpenProblems(progress.openProblems),
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  Text(
+                    next == null
+                        ? strings.homeOpenProblemLabel
+                        : strings.homePracticeSource(
+                            next.daysSince,
+                            next.topicLabel,
+                          ),
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
@@ -266,22 +329,6 @@ class _OpenHolesCard extends ConsumerWidget {
     );
   }
 
-  Hole? _mostRecentOpenHole(ReviewQueue? queue, Karte? latestKarte) {
-    Hole? mostRecent;
-    final List<Hole> candidates = <Hole>[
-      if (queue != null)
-        for (final ReviewQueueItem item in queue.items) item.hole,
-      if (latestKarte != null) ...latestKarte.holes,
-    ];
-
-    for (final Hole hole in candidates) {
-      if (hole.status != HoleStatus.open) continue;
-      if (mostRecent == null || hole.createdAt.isAfter(mostRecent.createdAt)) {
-        mostRecent = hole;
-      }
-    }
-    return mostRecent;
-  }
 }
 
 /// 今日はここまで、という**先輩の判断**。
@@ -368,7 +415,7 @@ class _Counter extends StatelessWidget {
         child: Row(
           children: <Widget>[
             if (prefix.isNotEmpty) Text(prefix, style: textTheme.bodySmall),
-            // 数えているのはこの2つだけ(連続日数と埋めた穴)。
+            // 数えているのはこの2つだけ(連続日数と解けた問題)。
             // 増えたことが見えるように、0から数え上げる。
             CountUpText(value, style: textTheme.titleLarge?.copyWith(color: color)),
             if (suffix.isNotEmpty) Text(suffix, style: textTheme.bodySmall),
@@ -378,9 +425,62 @@ class _Counter extends StatelessWidget {
     );
 
     // ホームへ新しいカードを足すと、狭い端末で今日の1手を下へ押し出す。
-    // すでにレポートの中心指標である「埋めた穴」を入口にし、見た目の第三カウンターは
+    // すでにレポートの中心指標である「解けた問題」を入口にし、見た目の第三カウンターは
     // 作らない。Tooltipとbutton semanticsで、長押し・読み上げでは行き先も伝える。
     final String? message = tooltip;
     return message == null ? counter : Tooltip(message: message, child: counter);
   }
+}
+
+/// 連続日数の炎。**フォントの絵文字に任せない** — 端末ごとに別の絵が出るし、
+/// 色も指定できない(`session_screen.dart` の × と同じ理由)。
+class _StreakFlamePainter extends CustomPainter {
+  const _StreakFlamePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double s = size.width / 20;
+    final Path path = Path()
+      ..moveTo(10 * s, 2.5 * s)
+      ..cubicTo(12.2 * s, 5.1 * s, 13.3 * s, 7.1 * s, 13.3 * s, 8.6 * s)
+      // 内側のえぐり(`a3.3 3.3 0 0 1 -6.6 0`)。sweep-flag が 1 なので既定のまま。
+      ..arcToPoint(Offset(6.7 * s, 8.6 * s), radius: Radius.circular(3.3 * s))
+      ..cubicTo(6.7 * s, 7.8 * s, 7.0 * s, 7.0 * s, 7.5 * s, 6.1 * s)
+      ..cubicTo(6.2 * s, 7.5 * s, 5 * s, 9.4 * s, 5 * s, 11.4 * s)
+      // **外側の弧だけ反時計回り**(`a5 5 0 0 0 10 0`。sweep-flag が 0)。
+      // 既定の時計回りのままだと胴が上へ折り返して、炎が目のような形に潰れる。
+      ..arcToPoint(
+        Offset(15 * s, 11.4 * s),
+        radius: Radius.circular(5 * s),
+        clockwise: false,
+      )
+      ..cubicTo(15 * s, 8.4 * s, 13.3 * s, 5.4 * s, 10 * s, 2.5 * s)
+      ..close();
+    canvas.drawPath(path, Paint()..color = AppColors.streak);
+  }
+
+  @override
+  bool shouldRepaint(_StreakFlamePainter oldDelegate) => false;
+}
+
+/// 復習カードの印。**問題が並んでいること**を、3本の線で示す。
+class _PracticeMarkPainter extends CustomPainter {
+  const _PracticeMarkPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double s = size.width / 20;
+    final Paint paint = Paint()
+      ..color = AppColors.ink
+      ..strokeWidth = 2 * s
+      ..strokeCap = StrokeCap.round;
+    canvas
+      ..drawLine(Offset(4 * s, 5.5 * s), Offset(16 * s, 5.5 * s), paint)
+      ..drawLine(Offset(4 * s, 10 * s), Offset(16 * s, 10 * s), paint)
+      // 3本目だけ短い。同じ長さで揃えると「表」に見えて、問題の列に見えない。
+      ..drawLine(Offset(4 * s, 14.5 * s), Offset(11 * s, 14.5 * s), paint);
+  }
+
+  @override
+  bool shouldRepaint(_PracticeMarkPainter oldDelegate) => false;
 }

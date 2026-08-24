@@ -19,9 +19,16 @@ class PushSetup extends _$PushSetup {
   Future<void> build() async {
     final PushRepository repository = ref.read(pushRepositoryProvider);
     await repository.configure(deviceId: ref.read(deviceIdProvider));
-    repository.onOpened((String? holeId) {
-      // 穴の指定までは見ない。復習画面に同じ穴がカードで出ている。
-      ref.read(pendingDeepLinkProvider.notifier).set(AppRoute.review.path);
+    repository.onOpened((String? problemId) {
+      // **名指しされた問題をそのまま開く。**通知は1問ぶんで、開いた先が
+      // 別の問題だと「30秒で終わる」という約束がその場で崩れる。
+      // 旧 `hole_id` の通知(移行期に飛んでいる)は `null` で来るので、
+      // 復習の先頭へ落ちる — 踏んで壊れないことだけを保証する(#180)。
+      ref.read(pendingDeepLinkProvider.notifier).set(
+            problemId == null
+                ? AppRoute.review.path
+                : '${AppRoute.review.path}?problem=$problemId',
+          );
     });
   }
 }

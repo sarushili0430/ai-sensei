@@ -19,7 +19,7 @@ import '../support/harness.dart';
 /// 主要画面の golden test。
 ///
 /// 見ているのは「崩れていないか」よりも **設計上の約束が画面に出ているか**:
-/// 点数が出ていないか、穴がピンクのマーカーで示されているか、
+/// 点数が出ていないか、復習問題と解けた履歴が同じ画面にあるか、
 /// ペイウォールに無料継続の導線が残っているか。
 ///
 /// 生成はCI(Linux)を正とする:
@@ -28,8 +28,10 @@ import '../support/harness.dart';
 void main() {
   setUpAll(loadAppFonts);
 
-  Future<void> capture(WidgetTester tester, String name) =>
-      expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/$name.png'));
+  Future<void> capture(WidgetTester tester, String name) => expectLater(
+    find.byType(MaterialApp),
+    matchesGoldenFile('goldens/$name.png'),
+  );
 
   Future<void> expectGolden(
     WidgetTester tester,
@@ -53,7 +55,7 @@ void main() {
     String location,
     String name, {
     ProgressSummary progress = firstRunSummary,
-    ReviewQueue reviews = const ReviewQueue(items: <ReviewQueueItem>[]),
+    PracticeQueue reviews = const PracticeQueue(items: <PracticeQueueItem>[]),
     List<Object?> overrides = const <Object?>[],
   }) async {
     await setSurface(tester);
@@ -65,9 +67,15 @@ void main() {
       overrides: <Object?>[
         preferencesProvider.overrideWithValue(preferences),
         onboardedProvider.overrideWithValue(true),
-        deviceIdProvider.overrideWithValue('11111111-2222-3333-4444-555555555555'),
-        progressControllerProvider.overrideWith(() => FakeProgressController(progress)),
-        reviewControllerProvider.overrideWith(() => FakeReviewController(reviews)),
+        deviceIdProvider.overrideWithValue(
+          '11111111-2222-3333-4444-555555555555',
+        ),
+        progressControllerProvider.overrideWith(
+          () => FakeProgressController(progress),
+        ),
+        reviewControllerProvider.overrideWith(
+          () => FakeReviewController(reviews),
+        ),
         ...overrides,
       ].cast(),
     );
@@ -124,7 +132,7 @@ void main() {
       AppRoute.home.path,
       'home',
       progress: sampleSummary,
-      reviews: sampleReviewQueue,
+      reviews: samplePracticeQueue,
     );
   });
 
@@ -139,14 +147,14 @@ void main() {
   });
 
   // 契約している人のホーム。右上に印が出ているか、
-  // それが数えている2つ(連続日数・埋めた穴)を押し出していないか。
+  // それが数えている2つ(連続日数・解けた問題)を押し出していないか。
   testWidgets('02c ホーム(Premium)', (WidgetTester tester) async {
     await expectRoutedGolden(
       tester,
       AppRoute.home.path,
       'home_premium',
       progress: premiumSummary,
-      reviews: sampleReviewQueue,
+      reviews: samplePracticeQueue,
       overrides: premiumOverrides(),
     );
   });
@@ -158,7 +166,6 @@ void main() {
       'celebration',
       overrides: <Object?>[
         progressControllerProvider.overrideWith(FakeProgressController.new),
-        latestKarteControllerProvider.overrideWith(FakeLatestKarteController.new),
         sessionOutcomeControllerProvider.overrideWith(
           () => FakeSessionOutcomeController(const SessionOutcome()),
         ),
@@ -166,21 +173,18 @@ void main() {
     );
   });
 
-  testWidgets('04 カルテ', (WidgetTester tester) async {
+  // 古いディープリンクの保存画像も、行き止まりではなく復習へ寄せられる絵に更新する。
+  // PNGの比較元はCIでだけ更新するため、ここではルートとデータだけ新契約へ合わせる。
+  testWidgets('04 旧カルテ導線から復習', (WidgetTester tester) async {
     await expectRoutedGolden(
       tester,
       AppRoute.karte.path,
       'karte',
-      overrides: <Object?>[
-        latestKarteControllerProvider.overrideWith(FakeLatestKarteController.new),
-        sessionOutcomeControllerProvider.overrideWith(
-          () => FakeSessionOutcomeController(const SessionOutcome(showPaywall: true)),
-        ),
-      ],
+      reviews: samplePracticeQueue,
     );
   });
 
-  // 「埋めにいく穴」と「埋めた穴」が同じ画面に並んでいるか。
+  // 「解く問題」と「解けた問題」が同じ画面に並んでいるか。
   // 後者がペイウォールの謳う「履歴」で、別画面は作らない。
   testWidgets('05 復習(Premium)', (WidgetTester tester) async {
     await expectRoutedGolden(
@@ -188,16 +192,9 @@ void main() {
       AppRoute.review.path,
       'review',
       progress: premiumSummary,
-      reviews: ReviewQueue(
-        items: <ReviewQueueItem>[
-          ReviewQueueItem(
-            hole: sampleKarte.holes.first,
-            daysSince: 3,
-            prompt: '3日前の「判別式のなぜ」、いまなら説明できますか?',
-            quiz: '判別式を使うと解の個数がわかる理由を説明できる?',
-          ),
-        ],
-        filled: <FilledHole>[sampleFilledHole],
+      reviews: PracticeQueue(
+        items: <PracticeQueueItem>[samplePracticeQueue.items.first],
+        solved: <SolvedPractice>[sampleSolvedPractice],
       ),
     );
   });

@@ -4,9 +4,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../api/device_id.dart';
 
 import '../features/capture/presentation/capture_screen.dart';
-import '../features/karte/application/karte_controllers.dart';
 import '../features/karte/presentation/home_screen.dart';
-import '../features/karte/presentation/karte_screen.dart';
 import '../features/karte/presentation/review_screen.dart';
 import '../features/monetization/application/entitlement_controller.dart';
 import '../features/monetization/presentation/paywall_screen.dart';
@@ -55,18 +53,20 @@ GoRouter appRouter(Ref ref) {
                 path: AppRoute.home.path,
                 builder: (_, _) => const HomeScreen(),
                 routes: <RouteBase>[
+                  // `/karte` はここにあった。**カルテ画面ごと畳んだ**(ADR 0009)。
+                  // 復習問題の履歴が「今日の記録」を引き継いだので、
+                  // 別の画面として残す理由が無くなっている。
+                  // 旧アプリのディープリンクは `/review` へ寄せる(下の redirect)。
                   GoRoute(
                     path: AppRoute.karte.segment,
-                    builder: (_, _) => const KarteScreen(),
-                    // 直近のカルテが無いのにこの画面に来ても、出せるものが無い。
-                    // 「うまくいきませんでした」を理由なく見せるより、ホームへ戻す。
-                    redirect: (_, _) => ref.read(latestKarteControllerProvider) == null
-                        ? AppRoute.home.path
-                        : null,
+                    redirect: (_, _) => AppRoute.review.path,
                   ),
                   GoRoute(
                     path: AppRoute.review.segment,
-                    builder: (_, _) => const ReviewScreen(),
+                    // `?problem=prb_...` は通知の名指し。無ければ先頭の問題を開く。
+                    builder: (_, GoRouterState state) => ReviewScreen(
+                      problemId: state.uri.queryParameters['problem'],
+                    ),
                   ),
                   GoRoute(
                     path: AppRoute.parentReport.segment,

@@ -201,11 +201,14 @@ abstract class SessionStart with _$SessionStart {
 @freezed
 abstract class SessionResult with _$SessionResult {
   const factory SessionResult({
-    required Karte karte,
+    @JsonKey(name: 'practice_problem')
+    required PracticeProblem? practiceProblem,
+    @JsonKey(name: 'practice_schedule')
+    required List<PracticeScheduleEntry> practiceSchedule,
     required Progress progress,
     required SessionLimits limits,
 
-    /// 初回カルテで穴が見えた直後だけ true。
+    /// 初回の復習問題ができた直後だけ true。出す位置はサーバが決める。
     @JsonKey(name: 'show_paywall') required bool showPaywall,
   }) = _SessionResult;
 

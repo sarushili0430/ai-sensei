@@ -79,6 +79,7 @@ class SessionState {
     this.lastSenpaiText,
     this.board = BoardSnapshot.empty,
     this.awaitingSolving = false,
+    this.isUnderstood = false,
     this.problem,
     this.isAddingProblemPhoto = false,
     this.problemPhotoFailure,
@@ -88,7 +89,6 @@ class SessionState {
     this.failure,
     this.error,
     this.showPaywall = false,
-    this.resultMissing = false,
   });
 
   final SessionPhase phase;
@@ -104,6 +104,10 @@ class SessionState {
   /// 類題を解いている間だけ true。ボタンか声の申告を受けた瞬間に false にする。
   final bool awaitingSolving;
 
+  /// 「わかった」を受け取ったか。RPCの完了ではなく、押した瞬間に true にする。
+  /// 通信を待っているあいだ再び押せると、同じ到達宣言が複数回届いてしまう。
+  final bool isUnderstood;
+
   /// いま扱っている問題。追加解析が成功したら、初回の値から差し替わる。
   final SessionProblem? problem;
 
@@ -118,11 +122,13 @@ class SessionState {
   final SessionFailure? failure;
   final Object? error;
 
-  /// サーバが「ここで出す」と判断したときだけ true(初回カルテで穴が見えた直後)。
+  /// サーバが「ここで出す」と判断したときだけ true(初回の復習問題ができた直後)。
+  ///
+  /// **この画面では使わない。**判断は `/complete` の応答に乗って
+  /// `SessionOutcome` へ流れ、祝福画面が読む。ここに残しているのは
+  /// 会話画面のテストから終了の形を確かめるため。
   final bool showPaywall;
 
-  /// カルテを待ちきれなかった。祝福だけ見せて、カルテは後で取りに行く。
-  final bool resultMissing;
 
   SessionState copyWith({
     SessionPhase? phase,
@@ -130,6 +136,7 @@ class SessionState {
     String? lastSenpaiText,
     BoardSnapshot? board,
     bool? awaitingSolving,
+    bool? isUnderstood,
     Object? problem = _notChanged,
     bool? isAddingProblemPhoto,
     Object? problemPhotoFailure = _notChanged,
@@ -139,7 +146,6 @@ class SessionState {
     SessionFailure? failure,
     Object? error,
     bool? showPaywall,
-    bool? resultMissing,
   }) {
     return SessionState(
       phase: phase ?? this.phase,
@@ -147,6 +153,7 @@ class SessionState {
       lastSenpaiText: lastSenpaiText ?? this.lastSenpaiText,
       board: board ?? this.board,
       awaitingSolving: awaitingSolving ?? this.awaitingSolving,
+      isUnderstood: isUnderstood ?? this.isUnderstood,
       problem: identical(problem, _notChanged)
           ? this.problem
           : problem as SessionProblem?,
@@ -164,7 +171,6 @@ class SessionState {
       failure: failure ?? this.failure,
       error: error ?? this.error,
       showPaywall: showPaywall ?? this.showPaywall,
-      resultMissing: resultMissing ?? this.resultMissing,
     );
   }
 }
@@ -214,6 +220,22 @@ class SessionController extends _$SessionController {
   String? _senpaiIdentity;
   bool _finishing = false;
 
+  /// LiveKitを実際に立てず、カルテ待ち以降の終了境界だけをテストできるようにする。
+  @protected
+  bool get sessionHadConversation => _senpaiIdentity != null;
+
+  /// 通信SDKの成否と終了後の残高同期を一つのテストに混ぜないための境界。
+  @protected
+  String? get activeSessionId => _sessionId;
+
+  /// 制御RPCの境界。実ルームを立てず、連打が何通になるかだけを検査できるようにする。
+  @protected
+  SessionControlClient get sessionControlClient => _sessionControl();
+
+  /// 宛先の解決もLiveKitから切り離し、制御RPCの検査にルーム接続を持ち込まない。
+  @protected
+  String get activeSenpaiIdentity => _requiredSenpaiIdentity();
+
   /// 先輩が部屋に来るのを待つ時間。
   ///
   /// エージェントのワーカーが動いていない・ディスパッチされていないときは、
@@ -235,8 +257,8 @@ class SessionController extends _$SessionController {
   /// 最長1分「考えています」のまま止まり、押しても何も起きない画面を見せ続ける
   /// ことになる。ここまで待って来なければ先に祝福へ進み、カルテは祝福画面が
   /// 受け取りに行く([SessionOutcomeController.retrieveKarte])。
-  static const Duration _karteGrace = Duration(seconds: 8);
-  static const Duration _kartePollInterval = Duration(seconds: 1);
+  static const Duration _resultGrace = Duration(seconds: 8);
+  static const Duration _resultPollInterval = Duration(seconds: 1);
 
   /// 封筒1通を読み切るまでの上限。
   ///
@@ -292,10 +314,9 @@ class SessionController extends _$SessionController {
           lessonAllowedToday: session.limits.lessonAllowedToday,
         );
 
-    // 前の会話の結果を持ち越さない。持ち越したまま今回のカルテが作れないと、
-    // 祝福もカルテ画面も**前回のカルテ**を「今日のカルテ」として出してしまう。
+    // 前の会話の結果を持ち越さない。持ち越したまま今回が時間切れで終わると、
+    // 祝福画面が**前回の「わかった」**を今日の到達として出してしまう。
     ref.read(sessionOutcomeControllerProvider.notifier).clear();
-    ref.read(latestKarteControllerProvider.notifier).clear();
 
     state = SessionState(
       phase: SessionPhase.connecting,
@@ -706,6 +727,38 @@ class SessionController extends _$SessionController {
     }
   }
 
+  /// 画面下の「わかった」。本人の発話ではないので、transcript ではなく制御RPCへ送る。
+  Future<void> understood() async {
+    if (state.isUnderstood || !_isTalking(state.phase)) return;
+
+    final String? sessionId = activeSessionId;
+    final String phase = state.phase.name;
+    // **通信より先に塞ぐ。** RPCの完了を待ってから無効化すると、その待ち時間の
+    // 二度押しが別々の到達宣言になり、agentの終了処理が重複する。
+    state = state.copyWith(isUnderstood: true, awaitingSolving: false);
+
+    try {
+      if (sessionId == null) {
+        throw StateError('セッションIDがまだありません');
+      }
+      await sessionControlClient.understood(
+        destinationIdentity: activeSenpaiIdentity,
+        sessionId: sessionId,
+      );
+    } catch (error) {
+      // 到達宣言を送れなくても、板書と会話はその場に残す。失敗画面へ落とすと、
+      // 通信の不首尾を生徒の操作で直させる行き止まりになる。
+      // ただし黙って落とすと、押したのに声が止まらない原因を追えない。
+      Telemetry.report(
+        DegradationEvent.understoodNotSent(
+          sessionId: sessionId,
+          phase: phase,
+          error: error.runtimeType,
+        ),
+      );
+    }
+  }
+
   /// 類題の「できた / できなかった」。音声と同じ `lk.chat` へ流す。
   ///
   /// 制御チャネルにすると transcript に残らず、声の言い換えと分岐が二本になる。
@@ -772,10 +825,17 @@ class SessionController extends _$SessionController {
 
   /// 会話を終える。
   ///
-  /// カルテはエージェントが作ってサーバへ送るので、アプリは
-  /// `/v1/sessions/{id}/result` を見に行って結果を受け取る。
-  /// ここで受け取らないと、祝福もカルテも空のまま表示されてしまう。
-  Future<void> finish() async {
+  /// **結果を待たない。**復習問題の生成は `/complete` の裏で走り、アプリは
+  /// それを待たずに祝福へ進む(ADR 0009 の決定14。祝福画面の「いま作ってるところ。
+  /// 待たなくて大丈夫。」がその事実そのもの)。ここで待つと、#175 で剥がした
+  /// 「祝福の前でカルテを待つ」がそのまま戻ってくる。
+  ///
+  /// [ending] は**降り方**。渡されなければ状態から決める:
+  /// 「わかった」を押していれば [SessionEnding.understood]、そうでなければ
+  /// 残り時間が尽きて先輩が締めた [SessionEnding.timeLimit]。
+  /// × から「やめる」を選んだときだけ、画面側が [SessionEnding.other] を渡す
+  /// (その道は祝福も「今日はここまで」も出さず、ホームへ戻るだけ)。
+  Future<void> finish({SessionEnding? ending}) async {
     if (_finishing) return;
     _finishing = true;
 
@@ -784,18 +844,18 @@ class SessionController extends _$SessionController {
     _ticker?.cancel();
     _ticker = null;
 
-    final bool talked = _senpaiIdentity != null;
+    final bool talked = sessionHadConversation;
 
     // **画面を先に動かす。** 片付け(切断の完了待ち)には数秒かかるので、
-    // ここを `_teardown()` の後ろに置くと、「今日はここまで」を押してから
-    // 数秒間、画面が押す前とまったく同じまま止まる。反応が無いので連打される。
+    // ここを `_teardown()` の後ろに置くと、押してから数秒間、画面が押す前と
+    // まったく同じまま止まる。反応が無いので連打される。
     if (talked) {
       state = state.copyWith(
         phase: SessionPhase.summarizing,
         awaitingSolving: false,
       );
     } else {
-      // 先輩が来ていないので、カルテは作られない。待たせずに理由を出す。
+      // 先輩が来ていないので、復習問題も作られない。待たせずに理由を出す。
       state = state.copyWith(
         phase: SessionPhase.failed,
         awaitingSolving: false,
@@ -805,65 +865,71 @@ class SessionController extends _$SessionController {
 
     await _teardown();
 
-    final String? sessionId = _sessionId;
+    final String? sessionId = activeSessionId;
     if (!talked) return;
 
+    _publish(
+      SessionOutcome(
+        kind: _sessionKind,
+        ending: ending ??
+            (state.isUnderstood ? SessionEnding.understood : SessionEnding.timeLimit),
+      ),
+    );
+    state = state.copyWith(phase: SessionPhase.finished);
+
     if (sessionId == null) {
-      _publish(SessionOutcome(resultMissing: true, kind: _sessionKind));
-      state = state.copyWith(phase: SessionPhase.finished, resultMissing: true);
+      // セッションIDが無い = `/start` まで行っていない。取りに行く先も無い。
       return;
     }
 
+    // **画面を止めずに、残りをあとから合わせる。**
+    //
+    // 取りに行くのは3つ: 残高(#175 — 使った秒数はサーバ側で確定している)、
+    // 進捗、そして初回のペイウォールを出すかどうか。
+    // どれも祝福画面が**出たあとで**差し替わって困らないものだけにしてある。
+    unawaited(_syncOutcomeAfterFinish(sessionId));
+  }
+
+  /// 祝福へ進んだあとに、サーバの側で確定したものを拾いに行く。
+  ///
+  /// **ここで待たせない**のが要点なので、失敗しても画面には出さない。
+  /// 落としているのは「残り分数の更新」と「初回のペイウォール」で、
+  /// どちらも次にホームを開いた時点で取り直される(`reloadQuietly`)。
+  Future<void> _syncOutcomeAfterFinish(String sessionId) async {
+    SessionResult? result;
     try {
-      final SessionResult? result = await ref.read(apiClientProvider).awaitSessionResult(
+      result = await ref.read(apiClientProvider).awaitSessionResult(
             sessionId,
-            interval: _kartePollInterval,
-            attempts: _karteGrace.inSeconds ~/ _kartePollInterval.inSeconds,
+            interval: _resultPollInterval,
+            attempts: _resultGrace.inSeconds ~/ _resultPollInterval.inSeconds,
           );
-      // 待っているあいだに画面を離れられた。書き戻す先がもう無い。
-      if (!ref.mounted) return;
-
-      if (result == null) {
-        // 生成が間に合わなかった。祝福は見せて、カルテは祝福画面が取りに行く。
-        _publish(
-          SessionOutcome(resultMissing: true, sessionId: sessionId, kind: _sessionKind),
-        );
-        state = state.copyWith(phase: SessionPhase.finished, resultMissing: true);
-        return;
-      }
-
-      ref.read(latestKarteControllerProvider.notifier).set(result.karte);
-      ref.read(progressControllerProvider.notifier).applyFromSession(result.progress);
-      ref.read(progressControllerProvider.notifier).applySessionLimits(
-            maxSeconds: result.limits.maxSeconds,
-            remainingSecondsToday: result.limits.remainingSecondsToday,
-            lessonAllowedToday: result.limits.lessonAllowedToday,
-          );
-      // 復習キューはkeepAlive。前回のopen状態から候補を選ばないよう、
-      // 次にカルテ/復習画面が読むときは完了後の状態を取り直させる。
-      ref.invalidate(reviewControllerProvider);
-      _publish(
-        SessionOutcome(
-          showPaywall: result.showPaywall,
-          sessionId: sessionId,
-          kind: _sessionKind,
-        ),
-      );
-      state = state.copyWith(
-        phase: SessionPhase.finished,
-        showPaywall: result.showPaywall,
-      );
-    } catch (error) {
-      if (!ref.mounted) return;
-      _publish(
-        SessionOutcome(resultMissing: true, sessionId: sessionId, kind: _sessionKind),
-      );
-      state = state.copyWith(
-        phase: SessionPhase.finished,
-        resultMissing: true,
-        error: error,
-      );
+    } catch (error, stack) {
+      debugPrint('セッションの結果を取りに行けませんでした: $error\n$stack');
     }
+    if (!ref.mounted) return;
+
+    if (result == null) {
+      // `/complete` がまだ来ていない。**残高だけはサーバから取り直す**(#175)。
+      await ref.read(progressControllerProvider.notifier).reloadQuietly();
+      return;
+    }
+
+    ref.read(progressControllerProvider.notifier).applyFromSession(result.progress);
+    ref.read(progressControllerProvider.notifier).applySessionLimits(
+          maxSeconds: result.limits.maxSeconds,
+          remainingSecondsToday: result.limits.remainingSecondsToday,
+          lessonAllowedToday: result.limits.lessonAllowedToday,
+        );
+    // 復習キューはkeepAlive。今日できた問題が並ぶよう、次に読むときは取り直させる。
+    ref.invalidate(reviewControllerProvider);
+
+    if (!result.showPaywall) return;
+    // ペイウォールの判断はサーバが持つ。**祝福が出たあとに立っても遅くない** —
+    // 出す場所は祝福画面の中で、画面を作り直さずにそのまま反映される。
+    final SessionOutcome current = ref.read(sessionOutcomeControllerProvider);
+    _publish(
+      SessionOutcome(showPaywall: true, kind: current.kind, ending: current.ending),
+    );
   }
 
   /// 会話画面(AutoDispose)の寿命を超えて持ち回る結果を置く。

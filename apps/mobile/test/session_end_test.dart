@@ -1,7 +1,12 @@
+import 'dart:async';
+
+import 'package:ai_sensei/src/api/api_client.dart';
 import 'package:ai_sensei/src/common_widgets/chunky_button.dart';
-import 'package:ai_sensei/src/common_widgets/confetti.dart';
 import 'package:ai_sensei/src/features/capture/application/capture_controller.dart';
 import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
+import 'package:ai_sensei/src/features/karte/domain/karte.dart'
+    as karte
+    show ProgressSummary, SessionLimits;
 import 'package:ai_sensei/src/features/session/application/session_controller.dart';
 import 'package:ai_sensei/src/features/session/domain/session.dart';
 import 'package:ai_sensei/src/features/session/presentation/celebration_screen.dart';
@@ -10,11 +15,12 @@ import 'package:ai_sensei/src/l10n/strings.dart';
 import 'package:ai_sensei/src/theme/app_theme.dart';
 import 'package:ai_sensei/src/theme/tokens.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
 
-/// 会話の終わり(「今日はここまで」→ 祝福 → カルテ)のテスト。
+/// 会話の終わり(「わかった」または離脱 → 終了画面)のテスト。
 ///
 /// ここに並べてあるのは、実機のユーザーテストで出た3つの報告のうち
 /// アプリ側の2つ:
@@ -39,7 +45,6 @@ void main() {
         const CelebrationScreen(),
         overrides: <Object?>[
           progressControllerProvider.overrideWith(FakeProgressController.new),
-          latestKarteControllerProvider.overrideWith(FakeLatestKarteController.new),
           sessionOutcomeControllerProvider.overrideWith(
             () => FakeSessionOutcomeController(const SessionOutcome()),
           ),
@@ -56,94 +61,55 @@ void main() {
       // 敷きたかったのは色であって透明度。見た目は据え置きであること。
       expect(
         AppColors.celebration,
-        Color.alphaBlend(AppColors.streak.withValues(alpha: 0.08), AppColors.background),
+        Color.alphaBlend(
+          AppColors.streak.withValues(alpha: 0.08),
+          AppColors.background,
+        ),
       );
       // テーマの地も同様(こちらは元から不透明)。
       expect(AppTheme.light().scaffoldBackgroundColor.a, 1.0);
     });
   });
 
-  /// カルテを待っている祝福画面には、必ず出口がある。
-  ///
-  /// この画面は `go()` で来るので戻る先が無い。カルテが届くまで
-  /// 押せるものが1つも無いと、待つ以外にできることがない行き止まりになる。
-  group('祝福画面', () {
-    Future<void> pumpWaiting(WidgetTester tester) => pumpApp(
+  /// 復習問題の生成完了を待たず、降り方だけで終了画面を確定する。
+  /// この画面は `go()` で来るので、押せる出口が無い状態を作ると行き止まりになる。
+  group('終了画面', () {
+    Future<void> pumpEnding(WidgetTester tester, SessionEnding ending) =>
+        pumpApp(
           tester,
           const CelebrationScreen(),
           overrides: <Object?>[
             progressControllerProvider.overrideWith(FakeProgressController.new),
-            latestKarteControllerProvider.overrideWith(EmptyLatestKarteController.new),
             sessionOutcomeControllerProvider.overrideWith(
-              () => FakeSessionOutcomeController(
-                const SessionOutcome(resultMissing: true, sessionId: 'ses_1'),
-              ),
+              () =>
+                  FakeSessionOutcomeController(SessionOutcome(ending: ending)),
             ),
           ],
         );
 
-    testWidgets('カルテが届いていれば、カルテへ進むボタンを出す', (WidgetTester tester) async {
-      await pumpApp(
-        tester,
-        const CelebrationScreen(),
-        overrides: <Object?>[
-          progressControllerProvider.overrideWith(FakeProgressController.new),
-          latestKarteControllerProvider.overrideWith(FakeLatestKarteController.new),
-          sessionOutcomeControllerProvider.overrideWith(
-            () => FakeSessionOutcomeController(const SessionOutcome()),
-          ),
-        ],
+    testWidgets('「わかった」は生成を待たず、3日後の問題と2つの出口を出す', (WidgetTester tester) async {
+      await pumpEnding(tester, SessionEnding.understood);
+
+      expect(find.text(ja.celebrationTitle), findsOneWidget);
+      expect(find.text(ja.celebrationPracticeTitle), findsOneWidget);
+      expect(find.text(ja.celebrationPracticeBody), findsOneWidget);
+      expect(
+        find.byKey(const Key('celebration-another-lesson')),
+        findsOneWidget,
       );
-
-      expect(find.text(ja.karteTitle), findsOneWidget);
-      // 届いているのに「ホームにもどる」を出すと、逃げ道のほうが目立つ。
-      expect(find.text(ja.sessionBackHome), findsNothing);
+      expect(find.byKey(const Key('celebration-done')), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
     });
 
-    testWidgets('カルテを待っているあいだも行き止まりにしない', (WidgetTester tester) async {
-      await pumpWaiting(tester);
-      expect(find.text(ja.sessionBackHome), findsOneWidget);
-    });
+    testWidgets('時間切れは祝福せず、問題を作らない理由とホームへの出口を出す', (WidgetTester tester) async {
+      await pumpEnding(tester, SessionEnding.timeLimit);
 
-    /// 待っているあいだ、**押せないボタン以外のもの**を出す。
-    ///
-    /// 文言の変わらない無効なボタンだけが置いてあると、待っているのか
-    /// 壊れたのかが読めない。何を待っているのかを言葉で出す。
-    testWidgets('カルテを待っているあいだ、何を待っているのかを出す', (WidgetTester tester) async {
-      await pumpWaiting(tester);
-
-      expect(find.text(ja.karteWriting), findsOneWidget);
-      expect(find.text(ja.karteRetrieving), findsOneWidget);
-      final ChunkyButton button = tester.widget(find.byType(ChunkyButton));
-      expect(button.onPressed, isNull);
-    });
-
-    /// 待たせる画面から**動きを消さない**。
-    ///
-    /// 紙吹雪は一度きりだと2秒で止まる。そのあとカルテを待つ数十秒は
-    /// 画面がまったく動かなくなり、固まったようにしか見えない。
-    testWidgets('カルテを待っているあいだ、紙吹雪は降り続ける', (WidgetTester tester) async {
-      await pumpWaiting(tester);
-
-      final ConfettiBurst confetti = tester.widget(find.byType(ConfettiBurst));
-      expect(confetti.looping, isTrue);
-    });
-
-    testWidgets('カルテが届いていれば、紙吹雪は一度きりで終わる', (WidgetTester tester) async {
-      await pumpApp(
-        tester,
-        const CelebrationScreen(),
-        overrides: <Object?>[
-          progressControllerProvider.overrideWith(FakeProgressController.new),
-          latestKarteControllerProvider.overrideWith(FakeLatestKarteController.new),
-          sessionOutcomeControllerProvider.overrideWith(
-            () => FakeSessionOutcomeController(const SessionOutcome()),
-          ),
-        ],
-      );
-
-      final ConfettiBurst confetti = tester.widget(find.byType(ConfettiBurst));
-      expect(confetti.looping, isFalse);
+      expect(find.text(ja.timeLimitTitle), findsOneWidget);
+      expect(find.text(ja.timeLimitBody), findsOneWidget);
+      expect(find.text(ja.timeLimitCardTitle), findsOneWidget);
+      expect(find.text(ja.timeLimitCardBody), findsOneWidget);
+      expect(find.text(ja.celebrationPracticeTitle), findsNothing);
+      expect(find.byKey(const Key('time-limit-home')), findsOneWidget);
     });
   });
 
@@ -157,7 +123,7 @@ void main() {
       expect(const AppStrings(Locale('en')).remaining(0), '0:00 left');
     });
 
-    testWidgets('時間切れの会話画面は 0:00 を出す', (WidgetTester tester) async {
+    testWidgets('時間切れの会話画面は、残り1秒で止めず終了処理を明示する', (WidgetTester tester) async {
       await pumpApp(
         tester,
         const SessionScreen(),
@@ -165,64 +131,180 @@ void main() {
           captureControllerProvider.overrideWith(FakeCaptureController.new),
           sessionControllerProvider.overrideWith(
             () => FakeSessionController(
-              const SessionState(phase: SessionPhase.summarizing, remainingSeconds: 0),
+              const SessionState(
+                phase: SessionPhase.summarizing,
+                remainingSeconds: 0,
+              ),
             ),
           ),
         ],
       );
 
-      expect(find.text(ja.remaining(0)), findsOneWidget);
+      expect(find.text(ja.sessionSummarizing), findsWidgets);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.text(ja.remaining(1)), findsNothing);
     });
   });
 
-  /// 「今日はここまで」は、**押した瞬間に**押せなくなること。
+  /// 終了画面を出すことと、結果・残高をあとから合わせることは別々の仕事。
   ///
-  /// 以前は `finish()` が先に片付け(切断の完了待ち)をしてから状態を変えて
-  /// いたため、押しても数秒間、画面が押す前とまったく同じままだった。
-  /// 反応が無いので連打される。
-  group('会話画面の「今日はここまで」', () {
-    Future<void> pumpSession(WidgetTester tester, SessionPhase phase) => pumpApp(
-          tester,
-          const SessionScreen(),
-          overrides: <Object?>[
-            captureControllerProvider.overrideWith(FakeCaptureController.new),
-            sessionControllerProvider.overrideWith(
-              () => FakeSessionController(
-                SessionState(phase: phase, remainingSeconds: 120),
-              ),
-            ),
-          ],
-        );
+  /// 結果がまだ届かないときも、`/start` の仮押さえを表示したままにせず、
+  /// 画面は先に終え、サーバで確定した残高だけを裏で取り直す。
+  test('結果の再確認を待たずに画面を終え、残高はあとから更新する', () async {
+    const karte.ProgressSummary reserved = karte.ProgressSummary(
+      progress: sampleProgress,
+      isPremium: false,
+      limits: karte.SessionLimits(
+        maxSeconds: 1200,
+        remainingSecondsToday: 0,
+        lessonAllowedToday: false,
+      ),
+    );
+    const karte.ProgressSummary settled = karte.ProgressSummary(
+      progress: sampleProgress,
+      isPremium: false,
+      limits: karte.SessionLimits(
+        maxSeconds: 1200,
+        remainingSecondsToday: 900,
+        lessonAllowedToday: true,
+      ),
+    );
+    final _MissingResultApiClient api = _MissingResultApiClient();
+    final ProviderContainer container = ProviderContainer(
+      overrides: <Object?>[
+        apiClientProvider.overrideWithValue(api),
+        progressControllerProvider.overrideWith(
+          () => _ReservedProgressController(reserved),
+        ),
+        sessionControllerProvider.overrideWith(
+          _CompletingSessionController.new,
+        ),
+      ].cast(),
+    );
+    addTearDown(container.dispose);
+    final ProviderSubscription<SessionState> subscription = container.listen(
+      sessionControllerProvider,
+      (_, _) {},
+    );
+    addTearDown(subscription.close);
 
-    bool endButtonEnabled(WidgetTester tester) {
+    await container.read(progressControllerProvider.future);
+    final Future<void> finishing = container
+        .read(sessionControllerProvider.notifier)
+        .finish(ending: SessionEnding.understood);
+    await finishing;
+    await api.progressRequested.future;
+
+    expect(api.resultAttempts, 8, reason: '結果の再確認は画面遷移のあとでだけ続ける');
+    expect(api.resultInterval, const Duration(seconds: 1));
+    expect(
+      container.read(sessionControllerProvider).phase,
+      SessionPhase.finished,
+    );
+    expect(
+      container.read(sessionOutcomeControllerProvider).ending,
+      SessionEnding.understood,
+    );
+    // 再取得が返る前も loading へ落とさず、直前の数字を残す。
+    expect(
+      container
+          .read(progressControllerProvider)
+          .value
+          ?.limits
+          .remainingSecondsToday,
+      0,
+    );
+
+    api.progress.complete(settled);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(api.progressCalls, 1);
+    expect(
+      container
+          .read(progressControllerProvider)
+          .value
+          ?.limits
+          .remainingSecondsToday,
+      900,
+    );
+    expect(
+      container
+          .read(progressControllerProvider)
+          .value
+          ?.limits
+          .lessonAllowedToday,
+      isTrue,
+    );
+  });
+
+  group('授業画面の降り方', () {
+    Future<FakeSessionController> pumpSession(
+      WidgetTester tester,
+      SessionPhase phase,
+    ) async {
+      await pumpApp(
+        tester,
+        const SessionScreen(),
+        overrides: <Object?>[
+          captureControllerProvider.overrideWith(FakeCaptureController.new),
+          sessionControllerProvider.overrideWith(
+            () => FakeSessionController(
+              SessionState(phase: phase, remainingSeconds: 120),
+            ),
+          ),
+        ],
+      );
+      final ProviderContainer container = ProviderScope.containerOf(
+        tester.element(find.byType(SessionScreen)),
+        listen: false,
+      );
+      return container.read(sessionControllerProvider.notifier)
+          as FakeSessionController;
+    }
+
+    bool understoodButtonEnabled(WidgetTester tester) {
       final ChunkyButton button = tester.widget(find.byType(ChunkyButton));
       return button.onPressed != null;
     }
 
-    testWidgets('会話中は押せる', (WidgetTester tester) async {
+    testWidgets('会話中は「わかった」と左上の × を出す', (WidgetTester tester) async {
       await pumpSession(tester, SessionPhase.listening);
-      expect(find.text(ja.sessionEnd), findsOneWidget);
-      expect(endButtonEnabled(tester), isTrue);
-      // まだ聞いているので「うまく言えない」も押せる。
-      expect(find.widgetWithText(GhostButton, ja.sessionPass), findsOneWidget);
-      final GhostButton pass = tester.widget(find.byType(GhostButton));
-      expect(pass.onPressed, isNotNull);
+      expect(find.text(ja.sessionUnderstood), findsOneWidget);
+      expect(understoodButtonEnabled(tester), isTrue);
+      expect(find.byKey(const Key('session-close')), findsOneWidget);
+      expect(find.text(ja.sessionEnd), findsNothing);
+      expect(find.text(ja.sessionPass), findsNothing);
     });
 
-    testWidgets('押したあとは押せなくなり、何をしているかを出す', (WidgetTester tester) async {
+    testWidgets('終了処理に入ったあとは「わかった」を押せなくする', (WidgetTester tester) async {
       await pumpSession(tester, SessionPhase.summarizing);
 
-      // 文言が変わる = 受け取ってあることが読んで分かる。
-      expect(find.text(ja.sessionEnd), findsNothing);
+      expect(find.text(ja.sessionUnderstood), findsOneWidget);
       expect(find.text(ja.sessionSummarizing), findsWidgets);
-      expect(endButtonEnabled(tester), isFalse);
-
-      // 会話は終わっているので、パスも押させない。
-      final GhostButton pass = tester.widget(find.byType(GhostButton));
-      expect(pass.onPressed, isNull);
+      expect(understoodButtonEnabled(tester), isFalse);
 
       // 待たせている場所を出す。
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    });
+
+    testWidgets('×から「やめる」を選ぶと、離脱理由を付けて finish() に合流する', (
+      WidgetTester tester,
+    ) async {
+      final FakeSessionController controller = await pumpSession(
+        tester,
+        SessionPhase.senpaiTeaching,
+      );
+
+      await tester.tap(find.byKey(const Key('session-close')));
+      await tester.pumpAndSettle();
+      expect(find.text(ja.sessionQuitTitle), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(GhostButton, ja.sessionQuit));
+      await tester.pumpAndSettle();
+
+      expect(controller.finishCalls, 1);
+      expect(controller.lastEnding, SessionEnding.other);
+      expect(find.text(ja.sessionQuitTitle), findsNothing);
     });
   });
 }
@@ -231,22 +313,26 @@ void main() {
 class FakeCaptureController extends CaptureController {
   @override
   CaptureState build() => const CaptureState(
-        analysis: SessionAnalysis(
-          sessionId: 'ses_1',
-          kind: 'new',
-          detectedTopics: <DetectedTopic>[],
-        ),
-        session: SessionStart(
-          sessionId: 'ses_1',
-          kind: 'new',
-          livekit: LiveKitConnection(url: 'wss://example', token: 't', room: 'ses_1'),
-          limits: SessionLimits(
-            maxSeconds: 1200,
-            remainingSecondsToday: 1200,
-            lessonAllowedToday: true,
-          ),
-        ),
-      );
+    analysis: SessionAnalysis(
+      sessionId: 'ses_1',
+      kind: 'new',
+      detectedTopics: <DetectedTopic>[],
+    ),
+    session: SessionStart(
+      sessionId: 'ses_1',
+      kind: 'new',
+      livekit: LiveKitConnection(
+        url: 'wss://example',
+        token: 't',
+        room: 'ses_1',
+      ),
+      limits: SessionLimits(
+        maxSeconds: 1200,
+        remainingSecondsToday: 1200,
+        lessonAllowedToday: true,
+      ),
+    ),
+  );
 }
 
 /// 状態を固定して画面だけを見る。LiveKitにはつなぎに行かせない。
@@ -254,10 +340,71 @@ class FakeSessionController extends SessionController {
   FakeSessionController(this._state);
 
   final SessionState _state;
+  int finishCalls = 0;
+  SessionEnding? lastEnding;
 
   @override
   SessionState build() => _state;
 
   @override
   Future<void> connect(SessionStart session, {required String locale}) async {}
+
+  @override
+  Future<void> finish({SessionEnding? ending}) async {
+    finishCalls += 1;
+    lastEnding = ending;
+  }
+}
+
+/// LiveKitを立てず、先輩と話したあとの終了処理だけを本物の `finish()` へ通す。
+class _CompletingSessionController extends SessionController {
+  @override
+  SessionState build() =>
+      const SessionState(phase: SessionPhase.listening, remainingSeconds: 300);
+
+  @override
+  bool get sessionHadConversation => true;
+
+  @override
+  String? get activeSessionId => 'ses_1';
+}
+
+class _ReservedProgressController extends ProgressController {
+  _ReservedProgressController(this._reserved);
+
+  final karte.ProgressSummary _reserved;
+
+  @override
+  Future<karte.ProgressSummary> build() async => _reserved;
+}
+
+/// 結果は未着のまま、残高の再取得だけを任意の時点で返すAPI。
+class _MissingResultApiClient extends ApiClient {
+  _MissingResultApiClient()
+    : super(baseUrl: 'http://test', deviceId: 'device-session-end');
+
+  final Completer<void> progressRequested = Completer<void>();
+  final Completer<karte.ProgressSummary> progress =
+      Completer<karte.ProgressSummary>();
+  int progressCalls = 0;
+  int? resultAttempts;
+  Duration? resultInterval;
+
+  @override
+  Future<SessionResult?> awaitSessionResult(
+    String sessionId, {
+    Duration interval = const Duration(seconds: 2),
+    int attempts = 5,
+  }) async {
+    resultAttempts = attempts;
+    resultInterval = interval;
+    return null;
+  }
+
+  @override
+  Future<karte.ProgressSummary> fetchProgress() {
+    progressCalls += 1;
+    if (!progressRequested.isCompleted) progressRequested.complete();
+    return progress.future;
+  }
 }

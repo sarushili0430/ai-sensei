@@ -174,11 +174,17 @@ class AppStrings {
 
   /// 日次の持ち時間。先輩の発話ではなく、ホームの状態表示としてだけ数字を出す。
   String homeRemainingMinutes(int minutes) =>
-      _pick('今日の残り $minutes分', '$minutes min left today');
+      _pick('今日はあと $minutes分', '$minutes min left today');
+
+  /// 分へ切り捨てると0に見えるが、まだ授業できる1〜59秒。
+  String get homeRemainingLessThanMinute =>
+      _pick('今日はあと 1分未満', 'Less than 1 min left today');
 
   /// 数字を含む全文。祝福画面のように**文字だけで数を見せる**場所と、
   /// ホームのカウンターの読み上げ(`Semantics(label:)`)で使う。
-  String streakDays(int days) => _pick('$days日つづけて説明中', '$days-day streak');
+  /// **「説明中」は落とした。**教え返しを畳んだ(ADR 0009)ので、
+  /// 続いているのは説明ではなく「教わりにきた日」のほう。
+  String streakDays(int days) => _pick('$days日つづけて', '$days-day streak');
   String filledHoles(int count) => _pick('埋めた穴 $count', '$count gaps filled');
 
   /// ホームのカウンター用。**数字は `CountUpText` が別に描く**ので、ここには
@@ -187,12 +193,35 @@ class AppStrings {
   ///
   /// 空白の要不要も文字列側で持つ(ja「3日…」は詰める、「埋めた穴 4」は空ける)。
   /// 分けるのは**見た目だけ**で、読み上げには上の全文を渡す。
-  String get streakDaysSuffix => _pick('日つづけて説明中', '-day streak');
+  String get streakDaysSuffix => _pick('日つづけて', '-day streak');
   String get filledHolesPrefix => _pick('埋めた穴 ', '');
   String get filledHolesSuffix => _pick('', ' gaps filled');
 
+  /// 解けた復習問題の数。**穴の数と足さない**(ADR 0009。単位が違う)。
+  String solvedProblems(int count) => _pick('$count問 解けた', '$count solved');
+  String get solvedProblemsPrefix => _pick('', '');
+  String get solvedProblemsSuffix => _pick('問 解けた', ' solved');
+
   /// ホームの復習カード。再訪の起点で、通知の着地先でもある。
-  /// 詳細がまだ手元に無い短い間も、件数に逃げず内容のカードとして見せる。
+  ///
+  /// **件数を出す。**穴のときは「未完了の数は、穴を資産ではなく借金に見せる」として
+  /// 隠していたが、復習問題は**解けば減る作業量**で、しかも1問30秒。
+  /// 何問あるかが分かるほうが着手しやすい(ADR 0009 の画面遷移キャンバス)。
+  String homeOpenProblems(int count) =>
+      _pick('解きにいく問題が $count問', '$count question${count == 1 ? '' : 's'} to answer');
+
+  /// 由来がまだ手元に無い短い間の一行。件数だけの画面にしない。
+  String get homeOpenProblemLabel => _pick('この前 教わったところから', 'From what you learned');
+
+  /// 由来。「3日前の『判別式』から」。
+  String homePracticeSource(int daysSince, String topicLabel) => _pick(
+        daysSince <= 0 ? '今日の「$topicLabel」から' : '$daysSince日前の「$topicLabel」から',
+        daysSince <= 0
+            ? 'From today\'s "$topicLabel"'
+            : 'From "$topicLabel", $daysSince day${daysSince == 1 ? '' : 's'} ago',
+      );
+
+  /// 旧・穴のカード。移行前の記録を読む画面にだけ残す。
   String get homeOpenHoleLabel => _pick('前に見つけた単元', 'A topic you found before');
 
   /// 今日はもう授業をしない、という**先輩の判断**(§6-3)。
@@ -489,6 +518,17 @@ class AppStrings {
   String get sessionSenpaiTeaching =>
       _pick('先輩が説明しています', 'Your senpai is explaining');
 
+  /// 授業画面の状態表示。字幕ではなく、青い点の隣に短く置く。
+  String get sessionTeachingStatus =>
+      _pick('先輩が説明中', 'Your senpai is explaining');
+
+  /// 到達の宣言。押しやすさを損なうので、確認や評価のニュアンスを足さない。
+  String get sessionUnderstood => _pick('わかった', 'Got it');
+
+  /// 「わかった」を受け取った直後。褒めたり採点したりせず、起きた事実だけを伝える。
+  String get sessionVoiceStopped =>
+      _pick('声を止めたよ', 'Your senpai has stopped talking');
+
   /// 教え返し。板書は残したまま、こちらが喋る番になったとき
   /// (コアループ §2「じゃあ今の、説明してみて」)。
   String get sessionExplainBack => _pick('説明してみて', 'Now you explain it');
@@ -546,6 +586,18 @@ class AppStrings {
       );
   String get sessionEnd => _pick('今日はここまで', "That's it for today");
 
+  /// 左上の × の読み上げ。見た目に文字は出さないが、操作の行き先は名前で伝える。
+  String get sessionClose => _pick('授業をやめる', 'Leave the lesson');
+
+  String get sessionQuitTitle => _pick('授業をやめる?', 'Leave this lesson?');
+  String get sessionQuitBody => _pick(
+        'ここでやめると、今日の復習問題は作らないよ。つづきは、また今度でも大丈夫。',
+        "If you leave now, we won't make today's review question. "
+            "It's okay to pick this up another time.",
+      );
+  String get sessionContinue => _pick('つづける', 'Keep going');
+  String get sessionQuit => _pick('やめる', 'Leave');
+
   /// つながらなかったとき。**「聞いています」のまま黙らせない。**
   String get sessionConnectionFailed => _pick(
         'つながりませんでした。電波のいいところで、もう一度おためしください。',
@@ -566,7 +618,97 @@ class AppStrings {
     return _pick('のこり $minutes:$rest', '$minutes:$rest left');
   }
 
-  // --- 祝福 ---
+  // --- 祝福(④)と、途中で降りたとき(④') ---
+
+  /// 「わかった」で降りたときの見出し。
+  ///
+  /// **旧「教わりきったね」は使わない。**生徒が自分で「わかった」を押したのに、
+  /// 先輩の側が到達を判定している言い方になる(ADR 0009)。
+  String get celebrationTitle => _pick('お疲れ様', 'Nice work');
+  String get celebrationAnotherLesson => _pick('もう1問 教わる', 'Learn one more');
+  String get celebrationDone => _pick('今日はここまで', "That's it for today");
+
+  /// 祝福のカード。**生成を待たないことを、画面の文言でも守る。**
+  String get celebrationPracticeTitle =>
+      _pick('今日の問題は、3日後に送るね', "I'll send today's question in 3 days");
+  String get celebrationPracticeBody => _pick(
+        'いま作ってるところ。待たなくて大丈夫。',
+        "I'm putting it together now — no need to wait.",
+      );
+
+  /// 残り時間で降りたときの見出し。**祝福していないことが文字でも分かる形に。**
+  String get timeLimitTitle => _pick('今日はここまでにしよっか', "Let's stop here for today");
+  String get timeLimitBody =>
+      _pick('つづきは、また今度いっしょにやろう。', "We'll pick this up next time.");
+
+  /// 途中で降りたときのカード。**責めない**(約束3)。
+  String get timeLimitCardTitle =>
+      _pick('今日は問題を出さないでおくね', "I won't send a question today");
+  String get timeLimitCardBody => _pick(
+        'まだ途中だから、あとで聞かれても答えにくいと思う。',
+        "We didn't finish, so it'd be a rough thing to be asked about later.",
+      );
+
+  // --- 復習問題を解く ---
+
+  /// 解答画面のヘッダ。「3日前の復習」。
+  String practiceHeader(int daysSince) => _pick(
+        daysSince <= 0 ? '今日の復習' : '$daysSince日前の復習',
+        daysSince <= 0
+            ? "Today's review"
+            : 'Review from $daysSince day${daysSince == 1 ? '' : 's'} ago',
+      );
+  String get practiceAnswerHint => _pick('こたえ', 'Your answer');
+
+  /// **完璧を求めない。**書けるところまでで送ってよいことを、入力の下で言う。
+  String get practiceAnswerHelper => _pick(
+        'とちゅうの式だけでも、言葉だけでも大丈夫。',
+        'Just the working, or just words — either is fine.',
+      );
+  String get practiceSubmit => _pick('こたえる', 'Answer');
+
+  /// 採点待ち。**待っている間に何が起きているか**を必ず出す。
+  String get practiceGrading => _pick('読んでるところ', 'Reading it');
+  String get practiceGradingProgress => _pick('採点中', 'Grading');
+  String get practiceGradingCanClose =>
+      _pick('閉じても、あとで結果を見られるよ', 'You can close this — the result will keep');
+
+  String get practiceCorrect => _pick('言えてる', 'You have it');
+
+  /// **責めない。**「まちがい」ではなく「まだ」。
+  String get practiceIncorrect => _pick('ここ、まだだね', 'Not quite there yet');
+
+  /// **こちら側の不首尾として言う。**生徒が詰まったのではない。
+  String get practiceUnclear => _pick('うまく読めなかった', "I couldn't read that");
+  String get practiceRetry => _pick('もう一度こたえる', 'Answer again');
+  String get practiceYourAnswer => _pick('きみのこたえ', 'Your answer');
+
+  /// 次の通知予定。1日後は「明日」と言う。
+  String practiceNextSchedule(List<int> days) {
+    final String when = days
+        .map((int day) => _ja
+            ? (day == 1 ? '明日' : '$day日後')
+            : (day == 1 ? 'tomorrow' : 'in $day days'))
+        .join(_ja ? '・' : ', ');
+    return _pick('つぎは $when にきくね', "I'll ask again $when");
+  }
+
+  /// `unclear` の帯。**間違い扱いにしないことを、その場で言い切る。**
+  String get practiceScheduleUnclear => _pick(
+        'まちがい扱いにはしない。通知も進めない。',
+        "This doesn't count as wrong, and the reminders don't move on.",
+      );
+
+  String practiceSolvedTitle(int count) =>
+      _pick('解けた問題 — $count', 'Solved — $count');
+  String practiceSolvedMeta(String topicLabel, int daysSinceSolved) => _pick(
+        daysSinceSolved <= 0 ? '$topicLabel ・ 今日' : '$topicLabel ・ $daysSinceSolved日前',
+        daysSinceSolved <= 0
+            ? '$topicLabel · today'
+            : '$topicLabel · $daysSinceSolved day${daysSinceSolved == 1 ? '' : 's'} ago',
+      );
+
+  /// @deprecated 旧・穴の祝福。移行前の記録を読む画面にだけ残す。
   String get celebrationThanks =>
       _pick('説明、ありがとうございました', 'Thanks for explaining');
   String celebrationFilled(int count) =>

@@ -82,7 +82,12 @@ enum Degradation {
   /// **何分でも黙ったまま**になる。押した生徒からは「ボタンが効かない」に見え、
   /// 画面にはボタンが消えたことしか起きない。声でも申告できる作りにしてあるが、
   /// **押して駄目だった事実が残らないと、その静けさの原因を追えない。**
-  solvingReportNotSent('solving_report_not_sent');
+  solvingReportNotSent('solving_report_not_sent'),
+
+  /// 「わかった」を押したのに、先輩へ制御通知を届けられなかった。
+  /// 画面は宣言を受け取って先にボタンを塞ぐため、記録しないと
+  /// 「押したのに声が止まらない」という壊れ方がこちらから見えない。
+  understoodNotSent('understood_not_sent');
 
   const Degradation(this.id);
 
@@ -157,7 +162,7 @@ const int maxFieldLength = 200;
 /// **コンストラクタは private で、名前つきの生成子からしか作れない。**
 /// [Telemetry.report] が生のMapを受け取らないのはそのためで、
 /// 「payload に何を入れてよいか」の判断を**このファイルの外に出さない**。
-/// 5種目を足すときも、ここに生成子を1つ増やすことになる —— 送ってよいものの
+/// 種類を足すときも、ここに生成子を1つ増やすことになる —— 送ってよいものの
 /// 規則([SentryConfig] のコメント)が目に入る場所で書かれる。
 ///
 /// ## 文字列を入れてよいのは3種類だけ
@@ -300,6 +305,28 @@ class DegradationEvent {
       Degradation.solvingReportNotSent,
       // パスと同じく1セッションに1件。送信経路が壊れている事実が知りたいので、
       // 同じ会話で二度押されたぶんを別々に飛ばしても情報は増えない。
+      dedupeKey: sessionId ?? 'unknown',
+      data: _sanitize(<String, Object?>{
+        'session_id': sessionId,
+        'phase': phase,
+        'error': error.toString(),
+      }),
+    );
+  }
+
+  /// 「わかった」の制御通知を送れなかった。
+  ///
+  /// 到達の宣言には自由文が無いので、失敗した事実・場所・例外型だけを持つ。
+  /// [error] は接続先やトークンを混ぜないよう、例外本文ではなく型だけを受け取る。
+  factory DegradationEvent.understoodNotSent({
+    required String? sessionId,
+    required String phase,
+    required Type error,
+  }) {
+    return DegradationEvent._(
+      Degradation.understoodNotSent,
+      // ボタン自体を1回で塞ぐが、再buildや将来の再試行が入っても
+      // 同じセッションの通信不調を重ねて数えない。
       dedupeKey: sessionId ?? 'unknown',
       data: _sanitize(<String, Object?>{
         'session_id': sessionId,

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,6 +13,7 @@ import '../../../routing/routes.dart';
 import '../../../theme/motion.dart';
 import '../../../theme/tokens.dart';
 import '../../capture/application/capture_controller.dart';
+import '../../karte/application/karte_controllers.dart';
 import '../application/board_inbox.dart';
 import '../application/problem_photo_picker.dart';
 import '../application/session_controller.dart';
@@ -40,6 +43,7 @@ class SessionScreen extends ConsumerStatefulWidget {
 class _SessionScreenState extends ConsumerState<SessionScreen> {
   bool _isTakingProblemPhoto = false;
   bool _problemPhotoPickFailed = false;
+  bool _exitConfirmationOpen = false;
 
   @override
   void initState() {
@@ -87,15 +91,61 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
     }
   }
 
+  Future<void> _confirmExit() async {
+    final SessionState state = ref.read(sessionControllerProvider);
+    if (_exitConfirmationOpen ||
+        state.isUnderstood ||
+        state.phase == SessionPhase.summarizing ||
+        state.phase == SessionPhase.finished) {
+      return;
+    }
+
+    _exitConfirmationOpen = true;
+    final bool leave = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          barrierColor: AppColors.ink.withValues(alpha: 0.55),
+          builder: (BuildContext dialogContext) => PopScope<Object?>(
+            // 確認を出したあとに戻るジェスチャだけで離脱できると、× に確認を
+            // 挟んだ意味が消える。どちらの選択かを明示して閉じてもらう。
+            canPop: false,
+            child: _ExitConfirmationDialog(
+              onContinue: () => Navigator.of(dialogContext).pop(false),
+              onExit: () => Navigator.of(dialogContext).pop(true),
+            ),
+          ),
+        ) ??
+        false;
+    _exitConfirmationOpen = false;
+    if (!mounted || !leave) return;
+
+    // 終了そのものは時間切れと同じ [SessionController.finish] に合流させる。
+    // 画面側で切断を別に作ると、agent が離脱理由を確定する経路と食い違い、
+    // 作らないはずの復習問題を待つ画面になりうる。
+    //
+    // **降り方だけは分ける。**「やめる」は ④'(今日はここまで)も出さずに
+    // ホームへ戻る道で、時間切れとは見せるものが違う(ADR 0009 の画面遷移)。
+    unawaited(
+      ref
+          .read(sessionControllerProvider.notifier)
+          .finish(ending: SessionEnding.other),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
     final SessionState state = ref.watch(sessionControllerProvider);
 
     ref.listen<SessionState>(sessionControllerProvider, (SessionState? previous, SessionState next) {
-      if (next.phase == SessionPhase.finished) {
-        context.go(AppRoute.celebration.path);
-      }
+      if (next.phase != SessionPhase.finished) return;
+      // **④' が出るのは残り時間が理由のときだけ。**「やめる」で降りた回に
+      // 「今日はここまでにしよっか」を出すと、自分で選んだ離脱に先輩の締めが
+      // 重なって、やめたことを咎められたように読める(ADR 0009)。
+      final SessionEnding ending = ref.read(sessionOutcomeControllerProvider).ending;
+      context.go(
+        ending == SessionEnding.other ? AppRoute.home.path : AppRoute.celebration.path,
+      );
     });
 
     // 会話が始まらなかったときは、顔と字幕のまま黙らない。
@@ -125,21 +175,25 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
     final SessionProblem? problem = state.problem;
     final SessionStart? session = ref.watch(captureControllerProvider).session;
     final bool canAddProblem = session?.kind == 'new';
+    final bool lessonSession = session?.kind == 'new' || session?.kind == 'review';
 
-    return Scaffold(
+    final Widget screen = Scaffold(
       body: SafeArea(
-        // **横の余白は子ごとに付ける。**板書だけは画面の左右いっぱいまで伸ばしたい
-        // (板は面であってカードではない。`board_view.dart`)。全体を包んで
-        // しまうと板が中央に浮いた掲示物になり、内側に余白を足せば実効幅が
-        // 340ptを割って式が横スクロールに落ちる。
+        // **横の余白は子ごとに付ける。**全体を1つの `Padding` で包まないのは、
+        // 板書だけが「角丸の面」で、そこに差し込む縦位置の調整が他と違うから
+        // (`_BoardStage`)。余白の値そのものはどの子も `AppSpacing.lg` で揃う。
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
           child: Column(
             children: <Widget>[
               _Inset(
                 child: _SessionHeader(
-                  title: board.title,
-                  remaining: strings.remaining(state.remainingSeconds),
+                  closeLabel: strings.sessionClose,
+                  // 「わかった」の直後に × で先に切断すると、到達が離脱へ
+                  // 上書きされて復習問題が作られない競合になるため、ここも同時に塞ぐ。
+                  onClose: wrappingUp || state.isUnderstood
+                      ? null
+                      : () => unawaited(_confirmExit()),
                 ),
               ),
               // **問題文は板書より上に、常に出す。**見出し(`board.title`)は
@@ -169,13 +223,13 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
               if (board.hasBoard) ...<Widget>[
                 const SizedBox(height: AppSpacing.md),
                 // **板書が主役。**残りの高さを全部渡す。
-                Expanded(child: _BoardStage(board: board)),
+                Expanded(child: _Inset(child: _BoardStage(board: board))),
                 const SizedBox(height: AppSpacing.md),
                 _Inset(
-                  child: _LessonFooter(
-                    phase: state.phase,
+                  child: _LessonStatus(
                     wrappingUp: wrappingUp,
                     awaitingSolving: state.awaitingSolving,
+                    isUnderstood: state.isUnderstood,
                   ),
                 ),
               ] else
@@ -211,14 +265,25 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
                         size: 160,
                       ),
                       const SizedBox(height: AppSpacing.md),
-                      _StatusIndicator(phase: state.phase, wrappingUp: wrappingUp),
+                      if (state.isUnderstood)
+                        _LessonStatus(
+                          wrappingUp: wrappingUp,
+                          awaitingSolving: false,
+                          isUnderstood: true,
+                        )
+                      else
+                        _StatusIndicator(phase: state.phase, wrappingUp: wrappingUp),
                       const SizedBox(height: AppSpacing.md),
                       // 差し替わるときに入れ替わりが見えるよう、文ごとに切り替える。
                       _Subtitle(text: subtitle, align: TextAlign.center),
                     ],
                   ),
                 ),
-              if (state.awaitingSolving)
+              // 状態の一行と操作のあいだ。**詰めると読めない** — キャンバスは
+              // 縦の並びが 16pt 刻みで、ここだけ 0 にすると「先輩が説明中」が
+              // ボタンの縁に食い込む。
+              const SizedBox(height: AppSpacing.md),
+              if (lessonSession && state.awaitingSolving && !state.isUnderstood)
                 _Inset(
                   child: Row(
                     children: <Widget>[
@@ -246,6 +311,22 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
                     ],
                   ),
                 )
+              else if (lessonSession)
+                // 類題の二択は、最後の板書手順が明示した短い解答待ちだけに出る。
+                // その返答が無いと既存の類題経路が進まないため、その間だけ
+                // 「わかった」と入れ替える。並べると画面下の操作が2つになり、
+                // どちらが今の問いへの返事か分からなくなる。
+                _Inset(
+                  child: ChunkyButton(
+                    label: strings.sessionUnderstood,
+                    sunkWhenDisabled: state.isUnderstood,
+                    onPressed: wrappingUp || state.isUnderstood
+                        ? null
+                        : () => unawaited(
+                            ref.read(sessionControllerProvider.notifier).understood(),
+                          ),
+                  ),
+                )
               else
                 // パスは恥ではない。穴の記録として価値がある。
                 _Inset(
@@ -258,22 +339,32 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
                             .pass(strings.sessionPassMessage),
                   ),
                 ),
-              _Inset(
-                child: ChunkyButton(
-                  label: wrappingUp ? strings.sessionSummarizing : strings.sessionEnd,
-                  color: AppColors.border,
-                  foregroundColor: AppColors.ink,
-                  // 押した瞬間に押せなくなる。もう受け取ってあることが、
-                  // 文言と色の両方で分かるようにする。
-                  onPressed: wrappingUp
-                      ? null
-                      : () => ref.read(sessionControllerProvider.notifier).finish(),
+              if (!lessonSession)
+                _Inset(
+                  child: ChunkyButton(
+                    label: wrappingUp ? strings.sessionSummarizing : strings.sessionEnd,
+                    color: AppColors.border,
+                    foregroundColor: AppColors.ink,
+                    // 押した瞬間に押せなくなる。もう受け取ってあることが、
+                    // 文言と色の両方で分かるようにする。
+                    onPressed: wrappingUp
+                        ? null
+                        : () => ref.read(sessionControllerProvider.notifier).finish(),
+                  ),
                 ),
-              ),
             ],
           ),
         ),
       ),
+    );
+    return PopScope<Object?>(
+      // セッションのルートを先に外すと、確認の裏で controller も破棄される。
+      // OS の戻る操作も × と同じ入口へ集め、板書と残り時間を保ったまま確認する。
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, Object? result) {
+        if (!didPop) unawaited(_confirmExit());
+      },
+      child: screen,
     );
   }
 }
@@ -354,30 +445,139 @@ class _ProblemPhotoAction extends StatelessWidget {
   }
 }
 
-/// 上段。残り時間と、板書があればその見出し(「この板書は何の問題か」)。
+/// 上段。**× だけ。**
+///
+/// 板書の見出しは板の中(`BoardView.title`)へ、残り時間はホームへ移した
+/// (`docs/core_loop_screens.html`)。授業中の画面に数字を置かないのは約束4
+/// (「煽らない。数字も見せない」)で、**残り時間の数字がいちばん急かす** —
+/// 時間が尽きるときは先輩が「今日はここまでにしよっか」と言って降りるので、
+/// 生徒が自分で秒数を見張る必要はない。
 class _SessionHeader extends StatelessWidget {
-  const _SessionHeader({required this.title, required this.remaining});
+  const _SessionHeader({required this.closeLabel, required this.onClose});
 
-  final String? title;
-  final String remaining;
+  final String closeLabel;
+  final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: <Widget>[
-        if (title != null)
-          Expanded(
-            child: Text(
-              title!,
-              style: Theme.of(context).textTheme.titleMedium,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          )
-        else
-          const Spacer(),
-        Text(remaining, style: Theme.of(context).textTheme.bodySmall),
+        // キャンバスの `margin-left: -10px`。当たり判定44ptを保ったまま、
+        // × の線そのものを画面の左余白に揃える。
+        Transform.translate(
+          offset: const Offset(-10, 0),
+          child: _SessionCloseButton(label: closeLabel, onPressed: onClose),
+        ),
+        const Spacer(),
       ],
+    );
+  }
+}
+
+/// 標準位置の離脱操作。図形の線幅まで仕様なので、フォントの × には任せない。
+class _SessionCloseButton extends StatelessWidget {
+  const _SessionCloseButton({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      enabled: onPressed != null,
+      label: label,
+      child: SizedBox.square(
+        key: const Key('session-close'),
+        dimension: 44,
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: onPressed,
+            child: const Center(
+              child: CustomPaint(
+                key: Key('session-close-mark'),
+                size: Size.square(20),
+                painter: _CloseMarkPainter(),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CloseMarkPainter extends CustomPainter {
+  const _CloseMarkPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Paint paint = Paint()
+      ..color = AppColors.inkMuted
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round;
+    const double inset = 4;
+    canvas
+      ..drawLine(
+        const Offset(inset, inset),
+        Offset(size.width - inset, size.height - inset),
+        paint,
+      )
+      ..drawLine(
+        Offset(size.width - inset, inset),
+        Offset(inset, size.height - inset),
+        paint,
+      );
+  }
+
+  @override
+  bool shouldRepaint(_CloseMarkPainter oldDelegate) => false;
+}
+
+class _ExitConfirmationDialog extends StatelessWidget {
+  const _ExitConfirmationDialog({required this.onContinue, required this.onExit});
+
+  final VoidCallback onContinue;
+  final VoidCallback onExit;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppStrings strings = AppStrings.of(context);
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      insetPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 305),
+        child: DecoratedBox(
+          key: const Key('session-exit-dialog-card'),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(AppRadius.card),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Text(strings.sessionQuitTitle, style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: AppSpacing.md),
+                Text(
+                  strings.sessionQuitBody,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: AppColors.inkMuted,
+                      ),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                ChunkyButton(label: strings.sessionContinue, onPressed: onContinue),
+                GhostButton(label: strings.sessionQuit, onPressed: onExit),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -547,16 +747,23 @@ class _BoardStageState extends State<_BoardStage> {
     // 縮んで、1〜2行しか書いていない授業では**画面の途中で板が終わる**。
     // スクロールすると板の上下の縁も一緒に動くので、黒板ではなく黒い紙に見える。
     // ここで授業の高さいっぱいに敷いておけば、書いた量に関わらず板は板のまま。
-    return ColoredBox(
-      color: BoardStyle.surface,
-      child: SingleChildScrollView(
-        controller: _controller,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            BoardView(steps: widget.board.steps),
-            if (widget.board.hasGap) const _BoardGapNotice(),
-          ],
+    //
+    // **角を丸めるのもここ。**丸めるべき高さを知っているのはこの層だけで、
+    // [BoardView] の中で丸めると「中身の高さの角丸」がスクロールと一緒に動く。
+    // `ClipRRect` で内側も切るのは、いちばん上の行が角へ食い込むのを防ぐため。
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppRadius.card),
+      child: ColoredBox(
+        color: BoardStyle.surface,
+        child: SingleChildScrollView(
+          controller: _controller,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              BoardView(steps: widget.board.steps, title: widget.board.title),
+              if (widget.board.hasGap) const _BoardGapNotice(),
+            ],
+          ),
         ),
       ),
     );
@@ -596,58 +803,59 @@ class _BoardGapNotice extends StatelessWidget {
   }
 }
 
-/// 授業中の下の帯。**板書を消さずに**、先輩と自分の番を出す場所。
+/// 授業中の下の状態表示。**板書を消さずに**、いま起きていることだけを短く出す。
 ///
 /// **字幕は置かない。**板書が出ているあいだ、読むべきものは板書のほうにある。
 /// ここに先輩の発話をそのまま流すと、板書に追い出したはずの説明が
 /// 文字で戻ってきて、**画面の主役が二重になる**(実機で、図と式が出ている下に
-/// 4段落の文字起こしが乗った)。ここが持つのは「いま誰の番か」だけ。
-class _LessonFooter extends StatelessWidget {
-  const _LessonFooter({
-    required this.phase,
+/// 4段落の文字起こしが乗った)。ここが持つのは状態だけ。
+class _LessonStatus extends StatelessWidget {
+  const _LessonStatus({
     required this.wrappingUp,
     required this.awaitingSolving,
+    required this.isUnderstood,
   });
 
-  final SessionPhase phase;
   final bool wrappingUp;
   final bool awaitingSolving;
+  final bool isUnderstood;
 
   @override
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
-    final bool yourTurn = phase == SessionPhase.explainBack;
+    final Widget mark;
+    final String text;
+
+    if (isUnderstood) {
+      mark = const Icon(Icons.check_rounded, size: 18, color: AppColors.blue);
+      text = strings.sessionVoiceStopped;
+    } else if (wrappingUp) {
+      mark = const SizedBox.square(
+        dimension: 16,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+      text = strings.sessionSummarizing;
+    } else {
+      mark = const DecoratedBox(
+        decoration: BoxDecoration(color: AppColors.blue, shape: BoxShape.circle),
+        child: SizedBox.square(dimension: 8),
+      );
+      text = awaitingSolving ? strings.sessionSolving : strings.sessionTeachingStatus;
+    }
 
     return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
       children: <Widget>[
-        // 顔は消さない(隣にいることが授業モードの体験そのもの)が、
-        // 主役は板書なので小さく置く。
-        SenpaiFace(
-          mood: yourTurn ? SenpaiMood.listening : SenpaiMood.neutral,
-          size: 64,
-        ),
-        const SizedBox(width: AppSpacing.md),
-        Expanded(
-          child: Text(
-            // 番がどちらにあるかだけを、1行で。
-            awaitingSolving && !wrappingUp
-                ? strings.sessionSolving
-                : yourTurn && !wrappingUp
-                    ? strings.sessionExplainBack
-                    : wrappingUp
-                        ? strings.sessionSummarizing
-                        : strings.sessionSenpaiTeaching,
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-        ),
+        mark,
         const SizedBox(width: AppSpacing.sm),
-        _StatusIndicator(phase: phase, wrappingUp: wrappingUp),
+        Flexible(child: Text(text, style: Theme.of(context).textTheme.bodySmall)),
       ],
     );
   }
 }
 
-/// 画面の左右の余白。**板書だけがこれを付けない**(板は画面幅いっぱいに敷く)。
+/// 画面の左右の余白。**板書も含めて、どの子も同じ値**
+/// (`docs/core_loop_screens.html`。板は角丸のカードとして地の上に置く)。
 class _Inset extends StatelessWidget {
   const _Inset({required this.child});
 

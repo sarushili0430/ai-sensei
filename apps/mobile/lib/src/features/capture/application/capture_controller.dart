@@ -34,7 +34,7 @@ class CaptureState {
     this.problemPhoto,
     this.analysis,
     this.session,
-    this.reviewHoleId,
+    this.reviewProblemId,
     this.excludedTopicIds = const <String>{},
     this.isSubmitting = false,
     this.error,
@@ -55,12 +55,12 @@ class CaptureState {
   /// 始まった会話。**入った時点で日次の持ち時間を仮押さえしている**(部屋の鍵つき)。
   final SessionStart? session;
 
-  /// [analysis] が復習セッションのとき、その対象の穴。
+  /// [analysis] が復習セッションのとき、その起点になった復習問題。
   ///
-  /// **同じ穴で押し直されたときに、セッションを作り直さない**ために持つ
+  /// **同じ問題で押し直されたときに、セッションを作り直さない**ために持つ
   /// ([startReview])。作り直すと、前回の `/start` がサーバに届いていた場合に
   /// もう1回ぶんの時間を仮押さえしてしまう。
-  final String? reviewHoleId;
+  final String? reviewProblemId;
 
   final Set<String> excludedTopicIds;
   final bool isSubmitting;
@@ -102,7 +102,7 @@ class CaptureState {
     File? problemPhoto,
     SessionAnalysis? analysis,
     SessionStart? session,
-    String? reviewHoleId,
+    String? reviewProblemId,
     Set<String>? excludedTopicIds,
     bool? isSubmitting,
     ApiException? error,
@@ -113,7 +113,7 @@ class CaptureState {
       problemPhoto: problemPhoto ?? this.problemPhoto,
       analysis: analysis ?? this.analysis,
       session: session ?? this.session,
-      reviewHoleId: reviewHoleId ?? this.reviewHoleId,
+      reviewProblemId: reviewProblemId ?? this.reviewProblemId,
       excludedTopicIds: excludedTopicIds ?? this.excludedTopicIds,
       isSubmitting: isSubmitting ?? this.isSubmitting,
       error: clearError ? null : (error ?? this.error),
@@ -260,25 +260,29 @@ class CaptureController extends _$CaptureController {
     }
   }
 
-  /// 復習(プッシュ起点)。写真は送らず、埋めにいく穴を指定する。
+  /// 復習(プッシュ起点)。写真は送らず、間違えた復習問題を指定する。
   ///
   /// 単元を確かめる画面が無いので、作成と開始を続けて呼ぶ。
   /// **数える位置は新規授業と同じ**(開始のほう)。
   ///
-  /// **同じ穴で押し直されたら、セッションは作り直さない。** 作成は通って
+  /// **同じ問題で押し直されたら、セッションは作り直さない。** 作成は通って
   /// `/start` だけが落ちた(通信が切れた)ときに作り直すと、最初の開始が
   /// サーバに届いていた場合にもう1回ぶんの枠を使う。同じIDで始め直せば、
   /// サーバは二重に数えない。
-  Future<SessionStart?> startReview(String holeId, {String locale = 'ja'}) async {
+  Future<SessionStart?> startReview(String problemId, {String locale = 'ja'}) async {
     final SessionAnalysis? pending =
-        state.reviewHoleId == holeId && state.session == null ? state.analysis : null;
-    state = CaptureState(isSubmitting: true, analysis: pending, reviewHoleId: holeId);
+        state.reviewProblemId == problemId && state.session == null ? state.analysis : null;
+    state = CaptureState(
+      isSubmitting: true,
+      analysis: pending,
+      reviewProblemId: problemId,
+    );
 
     try {
       final SessionAnalysis analysis = pending ??
           await ref.read(apiClientProvider).createSession(
                 kind: 'review',
-                holeId: holeId,
+                problemId: problemId,
                 locale: locale,
               );
       // **開始の前に残す。** ここで落ちても、次の一押しが同じセッションを始め直せる。

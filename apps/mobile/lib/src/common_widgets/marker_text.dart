@@ -26,10 +26,19 @@ enum MarkerColor {
 }
 
 class MarkerText extends StatefulWidget {
-  const MarkerText(this.text, {required this.marker, this.delay = Duration.zero, super.key});
+  const MarkerText(
+    this.text, {
+    required this.marker,
+    this.delay = Duration.zero,
+    this.style,
+    super.key,
+  });
 
   final String text;
   final MarkerColor marker;
+
+  /// 見出しにも同じ蛍光マーカーを使えるよう、未指定時だけ従来の本文書式へ戻す。
+  final TextStyle? style;
 
   /// 引き始めるまでの待ち。行ごとにずらして順番に引く。
   final Duration delay;
@@ -82,7 +91,7 @@ class _MarkerTextState extends State<MarkerText> with SingleTickerProviderStateM
   Widget build(BuildContext context) {
     // ペンを走らせる速さ。等速だと機械的なので、終わりで少しだけ緩める。
     final Animation<double> progress = CurvedAnimation(parent: _controller, curve: AppCurves.enter);
-    final TextStyle? style = Theme.of(context).textTheme.bodyLarge;
+    final TextStyle? style = widget.style ?? Theme.of(context).textTheme.bodyLarge;
 
     return AnimatedBuilder(
       animation: progress,

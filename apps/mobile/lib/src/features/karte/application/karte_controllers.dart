@@ -2,13 +2,15 @@ import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../api/api_client.dart';
-import '../../session/domain/session.dart';
 import '../domain/karte.dart';
 
 part 'karte_controllers.g.dart';
 
-/// ホーム画面が読む進捗。カウンター(連続日数・埋めた穴)と、今日の残り時間。
-/// 学習成果として数えるのは連続日数と埋めた穴だけで、授業回数や点数は持たない。
+/// `features/karte/` は旧カルテ中心の名だが、移動すると広い import 差分になるため
+/// この issue では名前を残し、復習問題への置き換えだけを行う。
+///
+/// ホーム画面が読む進捗。学習成果として数えるのは連続日数と解けた問題で、
+/// 授業回数や点数は持たない。
 @Riverpod(keepAlive: true)
 class ProgressController extends _$ProgressController {
   @override
@@ -22,7 +24,25 @@ class ProgressController extends _$ProgressController {
     );
   }
 
+  /// いま見えている進捗を残したまま、サーバの正しい値へ差し替える。
+  ///
+  /// `/v1/me/progress` は残高だけを読むには重いが、セッション終了・ホーム復帰の
+  /// 各境界で1回ずつ読むだけ。そのために専用APIを増やすと契約・実装・テストが
+  /// 二重になるので、既存の経路を使い、通信中も前の表示を残す。
+  Future<void> reloadQuietly() async {
+    try {
+      final ProgressSummary progress = await ref.read(apiClientProvider).fetchProgress();
+      if (!ref.mounted) return;
+      state = AsyncValue<ProgressSummary>.data(progress);
+    } on Object catch (error, stack) {
+      // ホームの体裁を整えるための再確認なので、取得失敗で前の数字まで消すと
+      // 一時的な通信不良のたびに残り時間の行そのものがちらつく。
+      debugPrint('進捗を静かに取り直せませんでした(前の表示を残します): $error\n$stack');
+    }
+  }
+
   /// `/start` の仮押さえ後の残高と可否を、サーバの応答からそのまま引き継ぐ。
+  /// 応答が無いときやホーム復帰時にサーバを正として取り直す場合は [reloadQuietly] を使う。
   void applySessionLimits({
     required int maxSeconds,
     required int remainingSecondsToday,
@@ -42,6 +62,7 @@ class ProgressController extends _$ProgressController {
 
   /// セッション直後は、サーバが返した進捗をそのまま反映する(再取得しない)。
   /// 授業可否はセッション開始時に [applySessionLimits] で反映済み。
+  /// 結果そのものが届かなかった場合は、この引き継ぎではなく [reloadQuietly] を使う。
   void applyFromSession(Progress progress) {
     final ProgressSummary previous = state.value ?? ProgressSummary.empty;
     state = AsyncValue<ProgressSummary>.data(
@@ -50,52 +71,132 @@ class ProgressController extends _$ProgressController {
   }
 }
 
-/// 復習キュー(プッシュ起点)。小テストと1/3/7日の再訪は無料でも中身を返す。
+/// 復習キュー(プッシュ起点)。問題と採点つき解答は無料でも中身を返す。
 @Riverpod(keepAlive: true)
 class ReviewController extends _$ReviewController {
   @override
-  Future<ReviewQueue> build() => ref.read(apiClientProvider).fetchReviews();
+  Future<PracticeQueue> build() => ref.read(apiClientProvider).fetchPractice();
 
   Future<void> refresh() async {
-    state = const AsyncValue<ReviewQueue>.loading();
+    state = const AsyncValue<PracticeQueue>.loading();
     state = await AsyncValue.guard(
-      () => ref.read(apiClientProvider).fetchReviews(),
+      () => ref.read(apiClientProvider).fetchPractice(),
+    );
+  }
+}
+
+/// 通知が名指しした1問。**リストに無い問題でも開けるようにする。**
+///
+/// 正解した問題にも7日後の通知は届く(作成時に決めた段は取り消さない。ADR 0009)。
+/// その問題は `items` から `solved` へ回っていて、`solved` にも直近ぶんしか
+/// 載らないので、**よく解く生徒ほど自分の通知を開けなくなる**。
+/// 通知の宛先の解決だけは、リストではなく1問ぶんのAPIで行う。
+@riverpod
+Future<PracticeQueueItem> practiceProblem(Ref ref, String problemId) =>
+    ref.read(apiClientProvider).fetchPracticeProblem(problemId);
+
+/// 画面を離れても残す、問題ごとの解答・採点状態。
+///
+/// 採点中に route が破棄されても TextEditingController の寿命へ解答を預けない。
+/// そうしないと通知を閉じて戻っただけで、本人が書いた式が消えてしまう。
+@immutable
+class PracticeAnswersState {
+  const PracticeAnswersState({
+    this.drafts = const <String, String>{},
+    this.grading = const <String>{},
+    this.answers = const <String, PracticeAnswer>{},
+    this.errors = const <String, Object>{},
+  });
+
+  final Map<String, String> drafts;
+  final Set<String> grading;
+  final Map<String, PracticeAnswer> answers;
+  final Map<String, Object> errors;
+
+  String draftFor(String problemId) => drafts[problemId] ?? '';
+  bool isGrading(String problemId) => grading.contains(problemId);
+  PracticeAnswer? answerFor(String problemId) => answers[problemId];
+  Object? errorFor(String problemId) => errors[problemId];
+}
+
+@Riverpod(keepAlive: true)
+class PracticeAnswerController extends _$PracticeAnswerController {
+  @override
+  PracticeAnswersState build() => const PracticeAnswersState();
+
+  void updateDraft(String problemId, String response) {
+    state = PracticeAnswersState(
+      drafts: <String, String>{...state.drafts, problemId: response},
+      grading: state.grading,
+      answers: state.answers,
+      errors: <String, Object>{...state.errors}..remove(problemId),
     );
   }
 
-  /// 小テストの自己申告を送り、成功したら次の1問へ進めるためキューを読み直す。
-  Future<bool> answer(String holeId, ReviewOutcome outcome) async {
+  Future<bool> submit(String problemId) async {
+    final String response = state.draftFor(problemId).trim();
+    if (response.isEmpty || state.isGrading(problemId)) return false;
+
+    state = PracticeAnswersState(
+      drafts: state.drafts,
+      grading: <String>{...state.grading, problemId},
+      answers: state.answers,
+      errors: <String, Object>{...state.errors}..remove(problemId),
+    );
+
     try {
-      final ReviewAnswer answer = await ref
+      final PracticeAnswer answer = await ref
           .read(apiClientProvider)
-          .answerReview(holeId, outcome);
-
-      // 「言えた」で穴が埋まったときだけ、応答に入っている進捗をそのまま使う。
-      // 再取得するとキューとホームで反映の瞬間がずれるため、セッション直後と同じ扱いにする。
-      if (outcome == ReviewOutcome.saidIt) {
-        ref
-            .read(progressControllerProvider.notifier)
-            .applyFromSession(answer.progress);
-      }
-
-      await refresh();
-      return state.when(
-        data: (_) => true,
-        error: (_, _) => false,
-        loading: () => false,
+          .answerPractice(problemId, response);
+      ref
+          .read(progressControllerProvider.notifier)
+          .applyFromSession(answer.progress);
+      state = PracticeAnswersState(
+        drafts: <String, String>{
+          ...state.drafts,
+          problemId: answer.attempt.response,
+        },
+        grading: <String>{...state.grading}..remove(problemId),
+        answers: <String, PracticeAnswer>{...state.answers, problemId: answer},
+        errors: <String, Object>{...state.errors}..remove(problemId),
       );
-    } catch (error, stack) {
-      debugPrint('小テストの自己申告を送れませんでした: $error\n$stack');
+      return true;
+    } on Object catch (error, stack) {
+      debugPrint('復習問題を採点できませんでした: $error\n$stack');
+      state = PracticeAnswersState(
+        drafts: state.drafts,
+        grading: <String>{...state.grading}..remove(problemId),
+        answers: state.answers,
+        errors: <String, Object>{...state.errors, problemId: error},
+      );
       return false;
     }
+  }
+
+  /// `unclear` は間違いではないので、同じ文を残したまま編集へ戻す。
+  void retry(String problemId) {
+    state = PracticeAnswersState(
+      drafts: state.drafts,
+      grading: <String>{...state.grading}..remove(problemId),
+      answers: <String, PracticeAnswer>{...state.answers}..remove(problemId),
+      errors: <String, Object>{...state.errors}..remove(problemId),
+    );
+  }
+
+  void clear(String problemId) {
+    state = PracticeAnswersState(
+      drafts: <String, String>{...state.drafts}..remove(problemId),
+      grading: <String>{...state.grading}..remove(problemId),
+      answers: <String, PracticeAnswer>{...state.answers}..remove(problemId),
+      errors: <String, Object>{...state.errors}..remove(problemId),
+    );
   }
 }
 
 /// セッションの結果のうち、画面をまたいで持ち回るもの。
 ///
-/// 会話画面は AutoDispose なので、祝福・カルテ画面に着いたときには
-/// もう破棄されている。ペイウォールを出すかどうかは**サーバの判断**なので、
-/// 会話画面の寿命と切り離して保持する。
+/// 会話画面は AutoDispose なので、祝福画面に着いたときにはもう破棄されている。
+/// 「わかった」と時間切れを見た目で分けるため、終了理由を画面の寿命と切り離す。
 @Riverpod(keepAlive: true)
 class SessionOutcomeController extends _$SessionOutcomeController {
   @override
@@ -104,78 +205,26 @@ class SessionOutcomeController extends _$SessionOutcomeController {
   void set(SessionOutcome outcome) => state = outcome;
 
   void clear() => state = const SessionOutcome();
-
-  /// 待ちきれなかったカルテを、あとから取りに行く。
-  ///
-  /// カルテ生成は会話のあとに数秒〜十数秒かかる。待ち切れずに祝福画面へ
-  /// 進んだあとも、**サーバにはできている**ことが多い。ここが無いと、
-  /// せっかく見つけた穴が二度と見られないまま消える。
-  Future<bool> retrieveKarte() async {
-    final String? sessionId = state.sessionId;
-    if (sessionId == null) return false;
-
-    final SessionResult? result = await ref
-        .read(apiClientProvider)
-        .fetchSessionResult(sessionId);
-    if (result == null) return false;
-
-    ref.read(latestKarteControllerProvider.notifier).set(result.karte);
-    ref
-        .read(progressControllerProvider.notifier)
-        .applyFromSession(result.progress);
-    ref
-        .read(progressControllerProvider.notifier)
-        .applySessionLimits(
-          maxSeconds: result.limits.maxSeconds,
-          remainingSecondsToday: result.limits.remainingSecondsToday,
-          lessonAllowedToday: result.limits.lessonAllowedToday,
-        );
-    // keepAliveの復習キューには、前回読んだopen状態が残りうる。カルテ画面で
-    // 「今回と重なる過去の穴」を選ぶ前に、完了後の状態を取り直させる。
-    ref.invalidate(reviewControllerProvider);
-    state = SessionOutcome(
-      showPaywall: result.showPaywall,
-      sessionId: sessionId,
-      kind: state.kind,
-    );
-    return true;
-  }
 }
+
+enum SessionEnding { understood, timeLimit, other }
 
 @immutable
 class SessionOutcome {
   const SessionOutcome({
     this.showPaywall = false,
-    this.resultMissing = false,
-    this.sessionId,
     this.kind,
+    this.ending = SessionEnding.understood,
   });
 
-  /// 初回カルテで穴が見えた直後だけ true。
+  /// 初回の復習問題ができた直後だけ true。
   final bool showPaywall;
 
-  /// カルテの生成を待ちきれなかった。
-  final bool resultMissing;
-
-  /// あとからカルテを取りに行くためのセッションID。
-  final String? sessionId;
-
-  /// 授業後だけ過去の穴を聞き直すために、会話画面の寿命を越えて持つ種類。
+  /// 復習セッションかどうかを、会話画面の寿命を越えて持つ種類。
   /// `SessionStart` の契約を通った値だけが入り、画面側で推測し直さない。
   final String? kind;
 
+  final SessionEnding ending;
+
   bool get isNewLesson => kind == 'new';
-}
-
-/// 直近のカルテ。セッション完了時に置かれ、カルテ画面が読む。
-@Riverpod(keepAlive: true)
-class LatestKarteController extends _$LatestKarteController {
-  @override
-  Karte? build() => null;
-
-  void set(Karte karte) => state = karte;
-
-  /// 会話を始めるときに空にする。前回のカルテを残したまま今回のカルテが
-  /// 作れないと、古い穴が「今日のカルテ」として出てしまう。
-  void clear() => state = null;
 }

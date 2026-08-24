@@ -5,10 +5,12 @@ import 'package:ai_sensei/src/features/session/application/session_control.dart'
 import 'package:flutter_test/flutter_test.dart';
 import 'package:livekit_client/livekit_client.dart';
 
-Map<String, dynamic> loadControlFixture() =>
+Map<String, dynamic> loadControlFixture([
+  String name = 'session-control-request',
+]) =>
     jsonDecode(
           File(
-            '../../packages/contract/fixtures/session-control-request.json',
+            '../../packages/contract/fixtures/$name.json',
           ).readAsStringSync(),
         )
         as Map<String, dynamic>;
@@ -68,6 +70,28 @@ void main() {
       ),
       <String>['problem_photo_analyzing', 'problem_photo_failed'],
     );
+  });
+
+  test('「わかった」は契約fixtureどおり、本文を足さず専用RPCへ送る', () async {
+    PerformRpcParams? sent;
+    final SessionControlClient client = SessionControlClient((
+      PerformRpcParams params,
+    ) async {
+      sent = params;
+      return '{"v":1,"accepted":true}';
+    });
+    final Map<String, dynamic> fixture = loadControlFixture(
+      'session-control-request.understood',
+    );
+
+    await client.understood(
+      destinationIdentity: 'agent_1',
+      sessionId: fixture['session_id'] as String,
+    );
+
+    expect(sent?.method, sessionControlRpcMethod);
+    expect(sent?.destinationIdentity, 'agent_1');
+    expect(jsonDecode(sent!.payload), fixture);
   });
 
   test('壊れたackを成功扱いにしない', () async {

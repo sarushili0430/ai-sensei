@@ -111,7 +111,7 @@ void main() {
 
   /// **固定したいのは「パスの文言を送っていない」ではない。**
   /// 「縮退の payload に、ユーザー由来の自由文が1つも入らない」ほう。
-  /// 前者は1か所を守るが、後者は**これから足される5種目も守る**。
+  /// 前者は1か所を守るが、後者は**これから足されるすべての種類も守る**。
   ///
   /// 構造としては `DegradationEvent` のコンストラクタが private で、
   /// 名前つきの生成子からしか作れないことが担保になっている
@@ -121,7 +121,7 @@ void main() {
     /// 発話・カルテ・問題文のつもりの毒。**どこにも現れてはいけない。**
     const String poison = '判別式は、解が何個あるか調べるやつです。円 x^2 + y^2 = 5 と直線 y = x + k について…';
 
-    /// 生成子が作れる全種類。**5種目を足したらここにも足すこと。**
+    /// 生成子が作れる全種類。**種類を足したらここにも足すこと。**
     List<DegradationEvent> allEvents() => <DegradationEvent>[
       DegradationEvent.boardGap(
         sessionId: 'ses_1',
@@ -144,6 +144,11 @@ void main() {
         error: StateError,
       ),
       DegradationEvent.solvingReportNotSent(
+        sessionId: 'ses_1',
+        phase: 'senpaiTeaching',
+        error: StateError,
+      ),
+      DegradationEvent.understoodNotSent(
         sessionId: 'ses_1',
         phase: 'senpaiTeaching',
         error: StateError,
@@ -220,6 +225,20 @@ void main() {
       expect(event.data.keys, <String>['session_id', 'phase', 'error']);
     });
 
+    test('「わかった」の失敗も、例外の型名しか持たない', () {
+      final DegradationEvent event = DegradationEvent.understoodNotSent(
+        sessionId: 'ses_1',
+        phase: 'senpaiTeaching',
+        error: StateError,
+      );
+
+      expect(event.data, <String, Object?>{
+        'session_id': 'ses_1',
+        'phase': 'senpaiTeaching',
+        'error': 'StateError',
+      });
+    });
+
     test('板書の幅は数値しか持たない', () {
       final DegradationEvent event =
           DegradationEvent.boardTooNarrow(availableWidth: 198, assumedWidth: 340);
@@ -277,6 +296,17 @@ void main() {
       );
     });
 
+    test('「わかった」の失敗も1セッションに1件', () {
+      expect(
+        DegradationEvent.understoodNotSent(
+          sessionId: 'ses_1',
+          phase: 'senpaiTeaching',
+          error: StateError,
+        ).dedupeKey,
+        'ses_1',
+      );
+    });
+
     test('SVGの失敗は例外型と本文長が同じ再buildを1件にする', () {
       final DegradationEvent event = DegradationEvent.figureSvgFailed(
         svgLength: 100,
@@ -328,6 +358,11 @@ void main() {
     test('パスが送れなかったことを記録する種類がある', () {
       expect(Degradation.values, contains(Degradation.passNotSent));
       expect(Degradation.passNotSent.id, 'pass_not_sent');
+    });
+
+    test('「わかった」が送れなかったことを記録する種類がある', () {
+      expect(Degradation.values, contains(Degradation.understoodNotSent));
+      expect(Degradation.understoodNotSent.id, 'understood_not_sent');
     });
   });
 }
