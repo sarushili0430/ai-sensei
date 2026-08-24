@@ -12,7 +12,8 @@ export const promptIds = [
   "photo_analysis",
   "senpai_conversation",
   "question_types_few_shot",
-  "karte_generation",
+  "practice_problem",
+  "practice_grading",
   "math_speech_hints",
   "english_speech_hints",
   "senpai_board",
@@ -36,7 +37,8 @@ export const promptCatalog: Record<PromptId, readonly PromptLocale[]> = {
   photo_analysis: promptLocales,
   senpai_conversation: promptLocales,
   question_types_few_shot: promptLocales,
-  karte_generation: promptLocales,
+  practice_problem: promptLocales,
+  practice_grading: promptLocales,
   math_speech_hints: promptLocales,
   english_speech_hints: ["ja"],
   senpai_board: promptLocales,
@@ -245,20 +247,44 @@ export function studyPlanSystemPrompt(
   return renderPrompt(getPrompt("study_plan", locale), variables);
 }
 
-/** カルテ生成用のプロンプト。教科に合った音声補正ヒントを同梱する。 */
-export function karteSystemPrompt(
+/**
+ * 板書から復習問題を1問作るプロンプト(ADR 0009)。
+ *
+ * **`karteSystemPrompt` があった場所。**カルテを畳んだので、出題の役目だけが
+ * ここへ移った。材料が transcript(本人が説明した内容)から `board_recap`
+ * (先輩が教えた内容)へ**反転している**のがいちばんの違いで、その反転は
+ * ADR 0009 に書いてある。
+ *
+ * **音声補正ヒントは同梱しない。**あれはSTTを通った生徒の発話を読み直すための
+ * もので、ここの入力は板書(こちらが書いた文字)だから効く場所が無い。
+ * 出力もテキストの問題文で、読み上げない。
+ */
+export function practiceProblemSystemPrompt(
   variables: {
     problem_text: string;
-    photo_summary: string;
+    board_recap: string;
     allowed_topics: string;
-    transcript: string;
-    is_premium: string;
   },
-  { locale = defaultPromptLocale, subject }: PromptContext,
+  { locale = defaultPromptLocale }: { locale?: PromptLocale } = {},
 ): string {
-  return [
-    renderPrompt(getPrompt("karte_generation", locale), variables),
-    "---",
-    getPrompt(speechHintsId(subject), locale).body,
-  ].join("\n\n");
+  return renderPrompt(getPrompt("practice_problem", locale), variables);
+}
+
+/**
+ * 復習問題の解答を採点するプロンプト(ADR 0009)。
+ *
+ * **音声補正ヒントは同梱しない。**解答はテキスト入力で、STTを通っていない
+ * (通知から開いた場所で声を出せるとは限らないので、そう決めた)。
+ * 「さんぶんのに = 2/3」の補正をここへ持ち込むと、生徒が実際に打った文字を
+ * 別の式として読み直すことになる。
+ */
+export function practiceGradingSystemPrompt(
+  variables: {
+    question: string;
+    answer: string;
+    response: string;
+  },
+  { locale = defaultPromptLocale }: { locale?: PromptLocale } = {},
+): string {
+  return renderPrompt(getPrompt("practice_grading", locale), variables);
 }
