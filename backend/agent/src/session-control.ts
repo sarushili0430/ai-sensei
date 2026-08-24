@@ -17,6 +17,13 @@ export type RpcRegistrar = {
   unregisterRpcMethod(method: string): void;
 };
 
+/**
+ * inbox に積まれる制御通知。
+ *
+ * **`understood` はここに入らない。**あれは inbox(問題の差し替え待ち)ではなく
+ * `onUnderstood` のコールバックで直接扱う。型に入れると、待ち合わせを回している
+ * `agent.ts` の周回が「わかった」を1件消費して、写真の追加と同じ棚に並べてしまう。
+ */
 export type SessionControlEvent =
   | Extract<SessionControlRequest, { type: "problem_photo_analyzing" | "problem_photo_failed" }>
   | (Extract<SessionControlRequest, { type: "context_updated" }> & {
@@ -95,10 +102,27 @@ export function registerSessionControl(options: {
   getCurrentContext: () => SessionContext;
   fetchContext: () => Promise<SessionContext>;
   inbox: SessionControlInbox;
+  /**
+   * 画面下の「わかった」。**inbox には積まない。**
+   *
+   * inbox は「問題が差し替わるのを待つ」ための待ち合わせで、そこへ積むと
+   * `agent.ts` の周回が `understood` を1件消費してしまい、写真の追加と
+   * 同じ経路で扱われる。降りる合図はループそのものを畳む別の軸なので、
+   * ここで直接呼ぶ。**同期で呼ぶ**のは、読み上げを止めるまでの間を空けないため。
+   */
+  onUnderstood?: () => void;
   log: Pick<JobLogger, "info" | "warn" | "error">;
 }): () => void {
-  const { registrar, studentIdentity, sessionId, getCurrentContext, fetchContext, inbox, log } =
-    options;
+  const {
+    registrar,
+    studentIdentity,
+    sessionId,
+    getCurrentContext,
+    fetchContext,
+    inbox,
+    onUnderstood,
+    log,
+  } = options;
 
   registrar.registerRpcMethod(sessionControlRpcMethod, async (invocation) => {
     if (invocation.callerIdentity !== studentIdentity) {
@@ -118,6 +142,18 @@ export function registerSessionControl(options: {
     }
 
     const request = parsed.data;
+    if (request.type === "understood") {
+      // 二度押し・連打で二重に降りない。降りる合図は一度きりでよく、
+      // 呼び出し側は `AbortController` を叩くだけなので冪等。
+      log.info("session_understood", {});
+      onUnderstood?.();
+      return JSON.stringify(
+        sessionControlResponseSchema.parse({
+          v: sessionControlProtocolVersion,
+          accepted: true,
+        }),
+      );
+    }
     if (request.type === "context_updated") {
       const context = await fetchContext();
       const fetchedRevision = context.context_revision ?? 1;

@@ -13,7 +13,6 @@ import {
   type SolvingReport,
   type SpokenProblemMemoryResult,
   asksForProblemReadout,
-  asksForTeachBack,
   classifySolvingReport,
   lessonContinuationInstruction,
   lessonSteps,
@@ -29,8 +28,7 @@ import {
  *   生徒が答える
  *   2往復目: 答えを受けて、**同じ板書に**続きを積む
  *   …
- *   最後(new): 類題を出し、解き終わりを待って、その理由の教え返しへ渡す
- *   最後(review): 従来どおり、教えた内容そのものの教え返しへ渡す
+ *   最後: 生徒が画面下の「わかった」を押す(それまで積み続ける)
  *
  * 配送層(`BoardDelivery.append()` × n → `close()`)は最初からこの往復を
  * 想定して作られていたが、呼び出し側が1往復で会話へ落としていた。その結果、
@@ -39,29 +37,37 @@ import {
  * ドッグフーディングの報告は、この欠けた配線のことだった。
  *
  * ─────────────────────────────────────────────────────────────────────────
- * 【往復の終わり方】言い方で決める。回数と時間は安全弁
+ * 【往復の終わり方】降りるのは生徒。時間だけが安全弁(ADR 0009)
  * ─────────────────────────────────────────────────────────────────────────
  *
- * 授業がどこまで続くかは板書LLMが決める(教え切ったかどうかは中身の話なので、
- * コードには判定できない)。合図は最後の手順:
+ * **回数の上限は無い。**以前は6周(`defaultMaxLessonPasses`)で降りていたが、
+ * 6は生徒の理解と無関係な数字で、そこで切れた生徒は途中で放り出されていた。
+ * 押されるまで同じ板書に積む。
  *
- *   - 「どうしてそうなるか、自分の言葉で説明してみて」(`asksForTeachBack`)
- *                                                              → 授業は完了。教え返しへ
+ * 降りる条件は2つだけ:
+ *
+ *   - **`understood` が来た**(画面下の「わかった」)  → 読み上げごと即座に止めて降りる。
+ *                                                       復習問題が作られるのはこの道だけ
+ *   - **残り時間が締めの枠を切った**(`minContinueSeconds`)
+ *                                                     → 新しいパスを始めず、
+ *                                                       呼び出し側が締めの一言を言う
+ *
+ * 授業の中で起きることは変わらない。合図は最後の手順:
+ *
  *   - 類題を解く手順(`stepAwaitsSolving`)                  → 15秒判定を使わず、
  *                                                              セッション残り時間まで待つ
  *   - 答えを待つ手順(`stepAwaitsStudent` — 一次は `awaits_student` の申告、
  *     欄が無ければ言い回しの推測)                       → 答えを待って、続きを積む
- *   - 答えを待たず言い切った                            → 渡し忘れ。呼び出し側の
- *     `teachBackFallback` が定型句で教え返しへ戻す(1往復だった頃と同じ保険)
+ *   - 答えを待たず言い切った                            → 続きを積む。**降りない** —
+ *     降ろすのは生徒の「わかった」だけになった
  *
  * 言い回しの推測だけだった頃は、見本どおりの「まず何する? 一言でいいよ。」を
  * 渡し忘れと誤読して**1パス目で授業を終えていた**(以降の板書が二度と増えない)。
  * 申告を一次にした理由はそれ(`stepAwaitsStudent` のコメントと #122)。
  *
- * 言い方だけに任せると、生成が1回ぶれただけで永遠に教え続ける。だから
- * **回数(`maxPasses`)と残り時間(`minContinueSeconds`)の安全弁**を重ねる。
- * 安全弁で降りるときに問いかけが出たままでも、立て直しの一言は言わない —
- * 番はもう生徒にあり、答えは教え返しの会話LLM(板書の要約を持っている)が受ける。
+ * `maxPasses` は残してあるが、**既定は無い**。渡すのは教え返し中の再入
+ * (`agent.ts` の `serveBoardRequests`)だけで、あれは「板書して」1回への
+ * 応答の長さであって、授業そのものの上限ではない。
  *
  * ─────────────────────────────────────────────────────────────────────────
  * 【生徒の発話は2種類とも同じ口から入る】
@@ -77,9 +83,6 @@ import {
  * それは生徒の発話ではないので、カルテの材料に混ぜない。授業の列にだけ
  * `studentSilenceMarker` を残し、次のパスに「軽く自分で言って先へ進む」を選ばせる。
  */
-
-/** 授業の往復の上限。1パス最大12手順 × ここまでで、板書上限(40手順)に届く。 */
-export const defaultMaxLessonPasses = 6;
 
 /**
  * 問いかけへの答えを待つ時間。
@@ -101,11 +104,14 @@ export const defaultAnswerTimeoutMs = 15_000;
 export const answerGraceMs = 10_000;
 
 /**
- * 続きの往復に入ってよい残り時間の下限(秒)。
+ * 続きの往復に入ってよい残り時間の下限(秒)。**「締めに残す枠」**(ADR 0009)。
  *
- * これを切ったら新しい問いかけを始めず、いまの状態のまま教え返しへ渡す。
- * 教え返しが丸ごと消えると、カルテの材料(ユーザーの説明)が残らない —
- * このアプリの本体は教え返しなので、授業の続きより優先する。
+ * 以前は「教え返しに残す枠」だった。教え返しを畳んだので意味を移してあるが、
+ * **枠そのものは消さない。**上限回数を外しただけだと、天井が
+ * 「20分で突然切れる」に変わる — `waitForEnd` の `timeout` は会話の途中で切るので、
+ * 生徒には事故に見える。これを切ったら新しいパスを始めず、先輩から
+ * 「今日はここまでにしよっか」を言わせて降りる。**時間切れが事故に見えないように
+ * するのは、この一言だけ。**
  */
 export const defaultMinContinueSeconds = 120;
 
@@ -200,15 +206,25 @@ export class StudentUtterances {
 export type LessonLoopDelivery = BoardLessonDelivery & { readonly isClosed: boolean };
 
 export type LessonLoopReason =
-  /** 「自分の言葉で説明してみて」まで言えた。予定どおりの終わり方。 */
-  | "handed_over"
-  /** 問いかけずに言い切って終えた(渡し忘れ)。呼び出し側が定型句で締める。 */
+  /**
+   * 生徒が「わかった」を押した。**予定どおりの終わり方で、復習問題が作られる唯一の道。**
+   */
+  | "understood"
+  /** 問いかけずに言い切って終えた。再入(`maxPasses` つき)でだけ起きる。 */
   | "completed"
   /** セッションの終わり(上限時間・離脱)で降りた。 */
   | "interrupted"
   /** 作り直し不能・ストリーム破損・板書の上限。会話だけで続ける。 */
   | "error"
-  /** 回数か残り時間の安全弁。問いかけが出たままなら、答えは会話モードが受ける。 */
+  /**
+   * 残り時間が締めの枠(`minContinueSeconds`)を切った。
+   * **呼び出し側が締めの一言を言って、その場でセッションを終える。**
+   */
+  | "time_up"
+  /**
+   * 往復の上限(再入の `maxPasses`)か、出せない類題を落として降りた。
+   * **時間はまだ残っている**ので、セッションは終わらない。
+   */
   | "budget";
 
 export type LessonLoopResult = {
@@ -246,6 +262,18 @@ export type RunLessonLoopOptions = {
   wrapChunks?: (chunks: AsyncIterable<string>) => AsyncIterable<string>;
   /** セッションの終わり。発火したら途中でも即座に降りる(問いかけの途中でも)。 */
   signal: AbortSignal;
+  /**
+   * 画面下の「わかった」。**押された瞬間に降りる。**
+   *
+   * `signal`(セッションの終わり)と分けてあるのは、降り方が違うから —
+   * こちらは復習問題を作る道で、あちらは作らない道。混ぜると
+   * `reason` から出口を判定できなくなる。
+   *
+   * **読み上げを止めるのは呼び出し側の責務。**このループは
+   * LiveKit の `session` を知らないので、`interrupt({ force: true })` は
+   * `agent.ts` が同じ合図に乗せて打つ。ここで止められるのは生成と待ち合わせだけ。
+   */
+  understood?: AbortSignal;
   /** 授業モード中の生徒の発話。`agent.ts` の `onUserTurnCompleted` が積む。 */
   utterances: StudentUtterances;
   /** 消費した発話をtranscriptへ写す口(`collector.add`)。 */
@@ -294,6 +322,7 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
     speak,
     wrapChunks,
     signal,
+    understood,
     utterances,
     record,
     problemReadoutMemory,
@@ -301,11 +330,24 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
     isStudentSpeaking = () => false,
     remainingSeconds,
     log,
-    maxPasses = defaultMaxLessonPasses,
+    maxPasses,
     answerTimeoutMs = defaultAnswerTimeoutMs,
     minContinueSeconds = defaultMinContinueSeconds,
     priorTurns = [],
   } = options;
+
+  /**
+   * 待ち合わせを解く合図。**セッションの終わりと「わかった」の両方**で解く。
+   *
+   * 分けたままにすると、問いかけの答えを15秒待っている最中に「わかった」を
+   * 押された回が、その15秒を待ち切ってからしか降りない — 押したのに何も
+   * 起きない時間ができる。**降りた理由**は下の `exitReason()` が区別する。
+   */
+  const stopSignal = understood === undefined ? signal : AbortSignal.any([signal, understood]);
+
+  /** 待ち合わせが解けたとき、どちらの合図で降りたか。 */
+  const exitReason = (): LessonLoopReason =>
+    understood?.aborted === true ? "understood" : "interrupted";
 
   const turns: LessonTurn[] = [...priorTurns];
   const rejections: BoardStepRejection[] = [];
@@ -349,8 +391,11 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
     rejections,
   });
 
+  /** 回数の上限は既定では無い(ADR 0009)。渡されるのは再入のときだけ。 */
+  const withinPassBudget = (): boolean => maxPasses === undefined || passes < maxPasses;
+
   const canContinue = (): boolean =>
-    passes < maxPasses && remainingSeconds() >= minContinueSeconds && !delivery.isClosed;
+    withinPassBudget() && remainingSeconds() >= minContinueSeconds && !delivery.isClosed;
 
   while (true) {
     passes += 1;
@@ -365,7 +410,8 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
     const passAbort = new AbortController();
     const stopPass = () => passAbort.abort();
     const detachUtterance = utterances.onPush(stopPass);
-    signal.addEventListener("abort", stopPass, { once: true });
+    // 「わかった」でも生成を止める。押したのに先輩が喋り続けるのがいちばん悪い。
+    stopSignal.addEventListener("abort", stopPass, { once: true });
 
     let result: BoardLessonResult;
     try {
@@ -402,7 +448,7 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
           if (!stepAwaitsSolving(step)) return false;
           const shouldSkip =
             !practiceProblemEnabled ||
-            passes >= maxPasses ||
+            !withinPassBudget() ||
             remainingSeconds() < minContinueSeconds ||
             delivery.isClosed;
           if (shouldSkip) skippedSolving = true;
@@ -413,7 +459,7 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
       });
     } finally {
       detachUtterance();
-      signal.removeEventListener("abort", stopPass);
+      stopSignal.removeEventListener("abort", stopPass);
     }
 
     for (const step of result.steps) turns.push({ kind: "step", step });
@@ -423,11 +469,12 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
     stepCount = result.step_count;
     if (result.appended > 0) pendingSolvingReport = undefined;
 
-    if (signal.aborted) return summary("interrupted");
+    // **「わかった」を先に見る。**セッションの終わりと同じ扱いにすると、
+    // 復習問題が作られる道と作られない道が `reason` で区別できなくなる。
+    if (stopSignal.aborted) return summary(exitReason());
 
     const lastTurn = turns.at(-1);
     const lastStep = lessonSteps(turns).at(-1);
-    const lastSpeech = lastStep?.speech ?? "";
     const awaitsStudent = lastStep !== undefined && stepAwaitsStudent(lastStep, locale);
 
     // 第一声と problem_resolved を session_id で突き合わせるための観測口。
@@ -468,7 +515,10 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
         practice_problem_enabled: practiceProblemEnabled,
         remaining_seconds: remainingSeconds(),
       });
-      return summary("budget");
+      // **時間で落としたのか、そもそも出せない授業だったのかを分ける。**
+      // 復習(`practiceProblemEnabled: false`)で類題を落とした回まで `time_up` に
+      // すると、まだ10分残っているのに先輩が「今日はここまで」と言って部屋が閉じる。
+      return summary(remainingSeconds() < minContinueSeconds ? "time_up" : "budget");
     }
 
     // 類題を解いている沈黙には通常の15秒タイムアウトを使わない。
@@ -477,17 +527,17 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
       const remainingMs = Math.max(0, Math.floor(remainingSeconds() * 1000));
       if (remainingMs === 0) return summary("interrupted");
       const solvingDeadline = AbortSignal.timeout(remainingMs);
-      const solvingSignal = AbortSignal.any([signal, solvingDeadline]);
+      const solvingSignal = AbortSignal.any([stopSignal, solvingDeadline]);
       const report = await utterances.takeUntil(solvingSignal);
 
       if (report === null) {
-        if (!signal.aborted) {
+        if (!stopSignal.aborted) {
           log?.info("lesson_solving_deadline", {
             passes,
             remaining_seconds: remainingSeconds(),
           });
         }
-        return summary("interrupted");
+        return summary(exitReason());
       }
 
       record(report);
@@ -500,8 +550,13 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
       continue;
     }
 
-    // 「自分の言葉で説明してみて」まで来たら授業は完了。教え返しへ渡す。
-    if (asksForTeachBack(lastSpeech, locale)) return summary("handed_over");
+    // ここには「『自分の言葉で説明してみて』まで来たら授業は完了」があった。
+    // **教え返しは ADR 0009 で畳んだ**ので、先輩の言い方では降りない —
+    // 降ろすのは生徒の「わかった」と、残り時間だけ。
+    //
+    // 板書LLMが言い方を外して教え返しを口にしても、ここは反応しない。
+    // 反応させると、**生徒が押していないのに授業が終わる**(いちばん直したかった形が
+    // 別の顔で戻ってくる)。プロンプト側でも受け渡しの節は消してある。
 
     // 問いの内容は機械では判定しない。ただし `awaits_student: true` の授業中の問いは
     // `text` の Q 行を残す規約なので、種類だけを全件記録すれば `none / 全件` の割合を
@@ -523,12 +578,16 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
     // 安全弁。ここで降りるとき、積み残しの発話は**取り出さない** —
     // 記録も返事も、板書の要約を持った会話モード(呼び出し側)が引き取る。
     if (!canContinue()) {
+      const outOfTime = remainingSeconds() < minContinueSeconds;
       log?.info("lesson_loop_budget", {
         passes,
         remaining_seconds: remainingSeconds(),
         board_closed: delivery.isClosed,
+        // 回数で降りたのは再入だけ。授業そのものは残り時間でしか降りない。
+        pass_budget: maxPasses ?? null,
+        out_of_time: outOfTime,
       });
-      return summary("budget");
+      return summary(outOfTime ? "time_up" : "budget");
     }
 
     // 説明の途中で生徒が口を開いた。その発話に、同じ板書の続きで応える。
@@ -563,18 +622,23 @@ export async function runLessonLoop(options: RunLessonLoopOptions): Promise<Less
     }
 
     if (!awaitsStudent) {
-      // 答えを待たずに言い切って終えた(番の渡し忘れ)。呼び出し側の
-      // `teachBackFallback` が定型句で教え返しへ戻す。
-      return summary("completed");
+      // 答えを待たずに言い切って終えた。
+      //
+      // **ここで降りるのは再入のときだけ。**授業そのものは「わかった」まで積むので、
+      // 言い切った回は続きを書かせる(`canContinue()` は上で通っている)。
+      // 以前はここで教え返しへ渡していたが、渡す先が無くなった。
+      if (maxPasses !== undefined) return summary("completed");
+      log?.info("lesson_no_handoff_continued", { pass: passes });
+      continue;
     }
 
     // 問いかけで止まっている。答えを待って、同じ板書に続ける。
-    let answer = await utterances.take(answerTimeoutMs, signal);
-    if (answer === null && !signal.aborted && isStudentSpeaking()) {
+    let answer = await utterances.take(answerTimeoutMs, stopSignal);
+    if (answer === null && !stopSignal.aborted && isStudentSpeaking()) {
       // 締め切りの瞬間、生徒はまだ話している途中。言い終わりを待つ。
-      answer = await utterances.take(answerGraceMs, signal);
+      answer = await utterances.take(answerGraceMs, stopSignal);
     }
-    if (signal.aborted) return summary("interrupted");
+    if (stopSignal.aborted) return summary(exitReason());
 
     if (answer === null) {
       // 生徒の発話ではないので record しない(カルテの材料に混ぜない)。

@@ -6,7 +6,7 @@ import type { JobLogger } from "./log.ts";
  * 効果を、体感ではなくセッションごとの数字で比較するための観測点。
  *
  * TTS の TTFB は #101、EOU 遅延は #102 の効き先として見る。変更ごとに「速くなった
- * 気がする」で終わらせず、発話時間比・遅延・割り込みの内訳を並べて、教え返しが
+ * 気がする」で終わらせず、発話時間比・遅延・割り込みの内訳を並べて、授業が
  * 実際に成立しているかを確かめる。
  *
  * 生徒は未成年で、問題文は他者の著作物なので、既存の `telemetry.ts` と同じ方針で
@@ -196,9 +196,10 @@ export function observeVoiceMetrics(
       return {
         agent_speech_seconds: roundToTwo(agentSpeechSeconds),
         user_speech_seconds: roundToTwo(userSpeechSeconds),
-        // 教え返しでは生徒が長く話せることが成功なので、生徒 ÷ 先輩にする。
+        // 生徒が長く話せている回ほど授業が噛み合っているので、生徒 ÷ 先輩にする。
+        // **1未満でも異常ではない**(授業は先輩が話す時間のほうが長い。ADR 0009)。
         // 分子を逆にすると、値を見るたびにどちらが話した比率かを読み直す必要がある。
-        // 1 未満なら、生徒が説明する教え返しが成立していないと一発で判定できる。
+        // 授業をまたいで下がり続けるなら、先輩が喋りすぎている可能性を疑う材料になる。
         speech_ratio:
           agentSpeechSeconds === 0 ? null : roundToTwo(userSpeechSeconds / agentSpeechSeconds),
         eou_delay_ms_avg: average(eouDelays),

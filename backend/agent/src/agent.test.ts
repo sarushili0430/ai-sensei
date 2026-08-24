@@ -1,26 +1,29 @@
 import type { BoardStep } from "@ai-sensei/contract";
 import { describe, expect, it } from "vitest";
+import { isClosingUtterance } from "./closing.ts";
 import { readSessionContext } from "./context.ts";
 import {
-  practiceTeachBackPrompt,
   reviewOpening,
   senpaiBoardLessonPrompt,
   startsWithBoardLesson,
-  teachBackFallback,
-  teachBackPrompt,
+  timeUpClosing,
   wroteOnBoard,
 } from "./senpai.ts";
 import { problemPhotoBridge, problemPhotoFailedBridge } from "./session-control.ts";
 import { sessionMetadataJson } from "./test-support.ts";
 
 /**
- * 計画書 §2 の下半分「小テストで詰まる → 先輩を呼ぶ → 板書で教え直す →
- * 教え返す」を、agent が実際に判断に使う関数で固定する。
+ * 「小テストで詰まる → 先輩を呼ぶ → 板書で教え直す」を、agent が実際に判断に使う
+ * 関数で固定する。
  *
  * プロンプト本文だけを検査しても、`agent.ts` が `review` を会話分岐へ送ったままなら
- * 板書は1行も開かない。逆に開始分岐だけを検査しても、板書LLMが番を渡し忘れたとき
- * 「教えて終わり」に戻れる。入口と出口を同じ復習文脈で見るのは、その2つを
- * 別々の緑色のテストにして間の配線を見失わないため。
+ * 板書は1行も開かない。入口(どこから板書を開くか)と出口(どう降りるか)を
+ * 同じ復習文脈で見るのは、その2つを別々の緑色のテストにして
+ * 間の配線を見失わないため。
+ *
+ * **教え返しの受け渡し(`teachBackFallback`)のテストはここにあった。**
+ * ADR 0009 で教え返しごと畳んだので、出口の検査は「時間切れの締めの一言」に
+ * 置き換えてある。降ろすのは先輩の言い方ではなく、生徒の「わかった」と残り時間だけ。
  */
 
 const reviewContext = readSessionContext(
@@ -93,85 +96,26 @@ describe("復習から板書授業への接続", () => {
     expect(prompt).toContain("(問題の写真なし)");
   });
 
-  it("教えた手順が番を渡し忘れても、必ず教え返しへ戻す", () => {
-    const fallback = teachBackFallback(reviewContext, [step("この形にすると頂点が見えるよ。")]);
-    expect(fallback).toBe(teachBackPrompt("ja"));
-    expect(fallback).toContain("自分の言葉で説明してみて");
-  });
-
-  it("板書がすでに教え返しへ渡していれば、同じ問いを二重に足さない", () => {
-    expect(
-      teachBackFallback(reviewContext, [step("じゃあ今の、自分の言葉で説明してみて。")]),
-    ).toBeNull();
+  /**
+   * **時間切れが事故に見えないための唯一の手当て。**
+   *
+   * 回数の上限(6周)を外したので、天井は残り時間だけになった。ここで一言
+   * 言わずに降りると、`waitForEnd` の `timeout` が会話の途中で部屋を閉じ、
+   * 生徒には**説明の途中で先輩が消えた**ようにしか見える。
+   */
+  it("残り時間で降りるときの締めを日英で持つ", () => {
+    expect(timeUpClosing("ja")).toContain("今日はここまで");
+    expect(timeUpClosing("en")).toContain("stop here for today");
   });
 
   /**
-   * **報告された壊れ方(2026-08-12)。**
-   *
-   *   先輩「問題、読んでもらってもいい?」
-   *   先輩「じゃあ今の、自分の言葉で説明してみて。」  ← これが無条件で足されていた
-   *
-   * 問題文が写真から読めなかった授業は、板書プロンプトの指示どおり読み上げを頼む。
-   * それを「番を渡していない」と読んだうえに、板書に1行も書いていないことも
-   * 見ていなかったので、**まだ何も教わっていない生徒に説明を求めていた。**
-   * しかも会話プロンプトは「いまやっていること — 教え返し」で固定なので、
-   * そのまま同じやりとりが繰り返される。
+   * 締めの文言は `closing.ts` の検出パターンと**同じ形**にしてある。
+   * 会話LLMが自分で締めた縮退経路と、コードが直接TTSへ渡すこの一言とで、
+   * 生徒に届く言葉を1つに保つため。
    */
-  it("問題文の読み上げを頼んだだけの回に、教え返しを足さない", () => {
-    const asked: BoardStep = { index: 0, speech: "問題、読んでもらってもいい?", board: null };
-    expect(teachBackFallback(reviewContext, [asked])).toBeNull();
-  });
-
-  it("板書に1行も書いていない回には足さない(「今の」が存在しない)", () => {
-    const spoken: BoardStep = { index: 0, speech: "じゃあ、そこから見ていくね。", board: null };
-    expect(teachBackFallback(reviewContext, [spoken])).toBeNull();
-  });
-
-  it("1行でも書いていれば、これまでどおり教え返しへ戻す", () => {
-    expect(
-      teachBackFallback(reviewContext, [
-        { index: 0, speech: "まず、そこは置いといて。", board: null },
-        step("この形にすると頂点が見えるよ。"),
-      ]),
-    ).toBe(teachBackPrompt("ja"));
-  });
-
-  it("類題まで出したあとに受け渡しを忘れたら、その類題の理由説明へ戻す", () => {
-    const solving: BoardStep = {
-      index: 1,
-      speech: "じゃあ、この類題はどうなる?",
-      board: { kind: "latex", tex: "x^2 - 5x + 6 = 0" },
-      awaits_solving: true,
-    };
-    const answered: BoardStep = {
-      index: 2,
-      speech: "正答はこう。",
-      board: { kind: "text", body: "異なる2つの実数解" },
-    };
-
-    expect(teachBackFallback(reviewContext, [solving, answered])).toBe(
-      practiceTeachBackPrompt("ja"),
-    );
-  });
-
-  it("できなかった後の教え直しを、類題の正答を書けた分岐とは扱わない", () => {
-    const solving: BoardStep = {
-      index: 1,
-      speech: "じゃあ、この類題はどうなる?",
-      board: { kind: "latex", tex: "x^2 - 5x + 6 = 0" },
-      awaits_solving: true,
-    };
-    const askedWhere: BoardStep = {
-      index: 2,
-      speech: "そっか。どこで止まった?",
-      board: null,
-      awaits_student: true,
-    };
-    const retaught = step("まずDに数字を入れるところを一緒にやろう。");
-
-    expect(teachBackFallback(reviewContext, [solving, askedWhere, retaught])).toBe(
-      teachBackPrompt("ja"),
-    );
+  it("締めの一言は、会話LLMの締め検出と同じ形をしている", () => {
+    expect(isClosingUtterance(timeUpClosing("ja"))).toBe(true);
+    expect(isClosingUtterance(timeUpClosing("en"))).toBe(true);
   });
 });
 

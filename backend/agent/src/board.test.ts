@@ -675,7 +675,7 @@ describe("板書の配送(割り込み)", () => {
 /**
  * **ここが継ぎ目のテスト。**
  *
- * 教え方は1往復で終わらない(切り分ける → 教える → 教え返させる)。
+ * 教え方は1往復で終わらない(切り分ける → 教える → 「わかった」まで積む)。
  * LLM呼び出しごとに板書を開き直すと、契約上 `board_open` が板書を消すので、
  * **会話が1往復するたびに生徒が読んでいた式が消える**。
  * §3-2 の「前の行は消さない。消えるのは別の問題に移るときだけ」が毎ターン破れる。
@@ -695,7 +695,7 @@ describe("板書の寿命", () => {
 
     await board.append({ chunks: stream([lessonOf(2)]) }); // 切り分け
     await board.append({ chunks: stream([lessonOf(3, 10)]) }); // 教える
-    await board.append({ chunks: stream([lessonOf(1, 20)]) }); // 教え返しへ渡す
+    await board.append({ chunks: stream([lessonOf(1, 20)]) }); // 締めまで積む
     await board.close("completed");
 
     expect(typesOf(sink.sent).filter((type) => type === "board_open")).toHaveLength(1);

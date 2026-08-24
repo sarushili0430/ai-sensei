@@ -7,7 +7,7 @@ import type {
   BoardHeadRejection,
   BoardStepRejection,
 } from "./board.ts";
-import { extractJson } from "./karte.ts";
+import { extractJson } from "./complete.ts";
 import type { JobLogger } from "./log.ts";
 import { stepAwaitsInput, stepAwaitsSolving } from "./senpai.ts";
 
@@ -573,6 +573,10 @@ export function boardCloseReasonFor(
   reason: CompleteSessionRequest["ended_reason"],
 ): BoardCloseReason {
   switch (reason) {
+    // **「わかった」は `completed`。**押した瞬間に板書が `error` で閉じると、
+    // 生徒の画面には「とちゅうで壊れた板書」として残る — いま理解したものが、
+    // 事故の記録に見える(#174 の確かめること)。
+    case "understood":
     case "completed":
     case "timeout":
       return "completed";

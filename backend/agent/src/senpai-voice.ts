@@ -49,7 +49,7 @@ export const geminiTtsModels = [
  * 別の声を持っていた)。同じ先輩が言語で別人にならない([ADR 0008](../../../docs/adr.md#adr-0008))。
  *
  * `Leda`(youthful)は「少し年上の同級生」に一番近い。落ち着いた大人の声だと
- * 先生になってしまい、教え返しを頼む相手として遠くなる。
+ * 先生になってしまい、「わからない」と言える相手として遠くなる。
  */
 export const defaultGeminiTtsVoice = "Leda";
 

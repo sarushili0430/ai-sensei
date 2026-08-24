@@ -1,18 +1,23 @@
 # @ai-sensei/agent
 
-先輩AIのセッション(授業 → 教え返し)。LiveKit Agents(Node)に乗せる。
+先輩AIのセッション(授業 → 復習問題)。LiveKit Agents(Node)に乗せる。
 
 ```
-フェーズ1「授業」   板書LLM(Claude) → 手順単位で LiveKit Text Streams → 直後にTTS
-フェーズ2「教え返し」 VAD(Silero) → STT(Deepgram nova-3) → Claude(先輩ペルソナ)
-                     → TTS(Gemini TTS)。割り込みと相づちはフレームワーク側。
+授業        板書LLM(Claude) → 手順単位で LiveKit Text Streams → 直後にTTS。
+            生徒の答えは VAD(Silero) → STT(Deepgram nova-3)で受け、
+            **画面下の「わかった」が押されるまで**同じ板書に積み続ける
+終わりに    板書を材料に復習問題を1問だけ作り、`/complete` へ送る
 ```
+
+**教え返しフェーズは畳んだ**([ADR 0009](../../docs/adr.md#adr-0009))。
+会話LLM(`senpai_conversation`)が働くのは、板書が出せなかった縮退経路と、
+授業のあとに残った発話を引き取るときだけになった。
 
 **WebRTCは書かない。** ここで書くのは3つだけ:
 
 1. 写真文脈の受け渡し(LiveKitトークンのmetadata → プロンプト)
 2. 上限時間での打ち切り(サーバが決めた `max_seconds`)
-3. セッション終了時のカルテ生成と `/complete` へのPOST
+3. 「わかった」で降りた回の**復習問題の生成**と `/complete` へのPOST
 
 言語をTypeScriptにした理由は [ADR 0002](../docs/adr.md#adr-0002)。
 
@@ -56,7 +61,7 @@ curl -i http://localhost:8081/                    # 200 なら LiveKit に登録
 
 **LiveKit Cloud のエージェントホスティングは `LIVEKIT_AGENT_NAME` を自動で入れる。**
 そこへ載せたのにAPI側が空のままだと、部屋は作られるのに先輩が来ず、
-アプリは「聞いています」のまま止まる(会話もカルテも起きない)。
+アプリは「聞いています」のまま止まる(会話も復習問題も起きない)。
 `job_started` ログが出ていなければ、まずここを疑う。
 
 ## 会話文脈はトークン経由で来る
@@ -71,30 +76,38 @@ curl -i http://localhost:8081/                    # 200 なら LiveKit に登録
 **metadataが読めなければ会話を始めずに切断する。** 文脈なしで先輩を喋らせると、
 写真と関係ない一般論を聞き始めてしまうので、それくらいなら黙って終える。
 
-## カルテ生成
+## 復習問題の生成(ADR 0009)
 
-`buildKarte()` は LiveKit に依存しないので単体でテストできる。
+`buildPracticeProblem()` は LiveKit に依存しないので単体でテストできる。
 
-1. transcript全体 + 写真の要約 + 許可トピックで `karte_generation` プロンプトを組む
-2. LLMの出力を `karteDraftSchema`(zod)で検証
-3. 穴のtopic_idを許可リストで照合(サーバ側でも同じ照合をするが、送る前に落とす)
+1. 板書の手順(`renderLessonRecap`)+ 問題文 + 許可トピックで `practice_problem` プロンプトを組む
+2. LLMの出力を `practiceProblemDraftSchema`(zod)で検証。**`answer` が無いものは落ちる**
+3. topic_idを許可リストで照合(サーバ側でも同じ照合をするが、送る前に落とす)
 4. `/v1/sessions/{id}/complete` へ内部トークン付きでPOST
 
-**ユーザーが一度も喋っていない会話では、カルテを作らない**(空のカルテを送る)。
-LLMに無理やり穴を作らせない。空のカルテは失敗ではない。
+**作るのは「わかった」が押された回だけ。** 時間切れ・離脱では作らない —
+押されなかった = 到達していないので、そこで作った問題は
+「教わっていないことを問う」ことになる。
+
+**材料が反転している。**旧カルテの `quiz` は transcript の `ユーザー:` の行だけから
+作っていた(AIの誤読を間隔反復で3回強化しないため)。教え返しを畳んだ結果、
+本人が説明した内容そのものが手に入らなくなったので、板書を材料にした。
+誤読の危険は `board_id` による追跡・採点の `unclear`・許可集合の照合で受ける。
 
 ## 会話の終わり方
 
-3通りある。どれで終わったかは `ended_reason` としてカルテ側の重み付けに使う。
+4通りある。どれで終わったかは `ended_reason` として `/complete` に載る。
 
-| ended_reason | きっかけ |
-| --- | --- |
-| `completed` | 締めの言葉を言った(`closing.ts` が検出。読み上げの余白だけ待って閉じる) |
-| `timeout` | サーバが決めた `max_seconds` に達した |
-| `user_left` / `error` | 離脱・エラー |
+| ended_reason | きっかけ | 復習問題 |
+| --- | --- | --- |
+| `understood` | 生徒が画面下の「わかった」を押した | **作る** |
+| `timeout` | 残り時間が締めの枠(120秒)を切った。先輩が締めの一言を言って降りる | 作らない |
+| `user_left` / `error` | 離脱・エラー | 作らない |
+| `completed` | 会話LLMが自分で締めた(板書が出せなかった縮退経路) | 作らない |
 
-**会話が終わったら、カルテ生成を待たずに先に部屋を閉じる。** 開けたままだと、
-生成中(数秒)も話し続けられて上限時間を超えてしまう。`duration_seconds` も
+**会話が終わったら、生成を待たずに先に部屋を閉じる。** 開けたままだと、
+生成中(数秒〜十数秒)も話し続けられて上限時間を超えてしまう。アプリも待っていない
+(祝福画面は「いま作ってるところ。待たなくて大丈夫。」と言う)。`duration_seconds` も
 部屋を閉じた時刻で測る(生成のレイテンシを混ぜると5分のセッションが6分になる)。
 
 ## ロケール
@@ -115,9 +128,9 @@ few-shot も、その言語で書かれたものをそのまま渡す。
 | --- | --- |
 | STT | `deepgram.STT` の `language` |
 | TTS | 読み方の指示と文分割器だけ。**声は日英で同じ1つ**([ADR 0008](../../docs/adr.md#adr-0008)) |
-| プロンプト | `conversationSystemPrompt(vars, locale)` / `boardLessonSystemPrompt(vars, locale)` / `karteSystemPrompt(vars, locale)` |
+| プロンプト | `conversationSystemPrompt(vars, locale)` / `boardLessonSystemPrompt(vars, locale)` / `practiceProblemSystemPrompt(vars, locale)` |
 | transcriptの整形 | ロール名(`先輩:` / `Senpai:`) |
-| 定型の一言 | `senpai.ts`(教え返しへの受け渡し・復習の入り)。冒頭の無音埋めだけはモバイルの同梱アセット |
+| 定型の一言 | `senpai.ts`(時間切れの締め・板書失敗の立て直し・復習の入り)。冒頭の無音埋めだけはモバイルの同梱アセット |
 | ガードレール | 答えの漏れの検出と数式音声の正規化(`normalizeMathSpeech(text, locale)`) |
 
 許可トピックは `locale` を見ずに済む。topic_id の接頭辞がロケールごとに
@@ -242,8 +255,9 @@ WSの寿命は**先輩の1発話ぶん**(数秒)。SDKの `ttsNode` が発話ご
 ## ログと監視
 
 **ここはいちばん静かに壊れる場所。** ワーカーが動いていない・ディスパッチが
-来ない・カルテのLLMが落ちた、のどれが起きてもアプリからは
-「先輩が来ない / 板書が出ない / カルテが出ない」としか見えない。ジョブの節目を1行1JSONで出す。
+来ない・生成のLLMが落ちた、のどれが起きてもアプリからは
+「先輩が来ない / 板書が出ない / 3日後に何も来ない」としか見えない。
+**最後のひとつは、その3日後まで誰も気づけない。**ジョブの節目を1行1JSONで出す。
 
 | event | いつ | 見かた |
 | --- | --- | --- |
@@ -255,11 +269,13 @@ WSの寿命は**先輩の1発話ぶん**(数秒)。SDKの `ttsNode` が発話ご
 | `board_figure_delivered` | 図を端末へ配送した | items/SVG本文は残さず、viewBox・最小距離/角・衝突・はみ出し・自動修正だけを見る |
 | `voice_metrics` | STT/LLM/TTS/EOTの1リクエストごと | レイテンシ(`ttft_ms` / `ttfb_ms` / `eou_delay_ms`)と原価(`prompt_tokens` / `cached_tokens`) |
 | `conversation_ended` | `completed` / `timeout` / `user_left` / `error` | 終わり方と発話数。`voice_metrics` のセッション集計もここに乗る |
-| `karte_built` / `karte_failed` | カルテ生成 | 穴の数と所要時間 |
-| `complete_posted` / `complete_failed` | APIへの送信 | **失敗するとカルテは表に出ない** |
+| `lesson_understood` / `lesson_time_up` | 授業の降り方 | どちらで降りたか。`understood` だけが問題を作る |
+| `practice_problem_built` / `practice_problem_declined` | 復習問題の生成 | `declined` は「板書に材料が無い」とモデルが判断した回 |
+| `practice_problem_out_of_scope` / `practice_problem_invalid` | 生成の落ち方 | 続くならプロンプトを疑う |
+| `complete_posted` / `complete_failed` | APIへの送信 | **失敗すると通知が予約されない** |
 
 `session_id` が全行に入るので、`backend/api` 側のログ(`session_created` /
-`karte_stored`)と突き合わせられる。
+`session_completed`)と突き合わせられる。
 
 `SENTRY_DSN` を設定すると、エラーはSentryにも飛ぶ(未設定なら何も送らない)。
 会話の中身と写真の要約は送らない。
@@ -280,7 +296,7 @@ WSの寿命は**先輩の1発話ぶん**(数秒)。SDKの `ttsNode` が発話ご
 | `llm_cached_tokens` | そのうちキャッシュから読めたぶん(単価は通常入力の 0.1 倍) |
 | `llm_cache_hit_ratio` | **効いていれば 0.8 前後**。0 のまま動かないときは下を疑う |
 | `tts_ttfb_ms_avg` | 最初の音までの待ち。`preemptiveTts` の効きはここに出る |
-| `speech_ratio` | 生徒 ÷ 先輩。1未満なら教え返しが成立していない |
+| `speech_ratio` | 生徒 ÷ 先輩。**授業は先輩が話す時間のほうが長いのが正常**なので、この値そのものより、パスをまたいで下がり続けていないかを見る |
 
 `llm_cache_hit_ratio` が 0 のままなら、原因は2つのどちらか。
 
