@@ -72,10 +72,41 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   /// 復習のリハーサルで採点まで通ったか。
   bool _answered = false;
 
+  /// 関門つきの物理。**インスタンスは1つだけ作って使い回す。**
+  ///
+  /// `Scrollable` は物理を**型でしか比べない**(`_shouldUpdatePosition`)ので、
+  /// 毎ビルド新しいインスタンスを渡しても、`ScrollPosition` が握っているのは
+  /// 最初の1個のまま。関門の開閉を引数で渡すと**永遠に反映されない**ので、
+  /// 状態は関数越しに読ませる。
+  late final _GateScrollPhysics _physics = _GateScrollPhysics(
+    lockedPage: () => _canAdvance ? null : _page,
+  );
+
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  /// 落ちどめ。**物理で止まっているはずのものを、位置でもう一度確かめる。**
+  ///
+  /// 読み上げの「次へスクロール」など、指以外の経路でページが動く道は
+  /// 増えうる。関門の内側に居ることは画面の不変条件なので、
+  /// 破れていたら止められた最初の枚へ戻す。
+  void _onPageChanged(int page) {
+    setState(() => _page = page);
+    if (_canReach(page)) return;
+
+    // 通知はスクロールの最中に来る。その場で位置を動かすと同じフレームで
+    // 自分をやり直すことになるので、次のフレームに送る。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _canReach(_page)) return;
+      int blocked = _page;
+      while (blocked > 0 && !_canReach(blocked)) {
+        blocked--;
+      }
+      _controller.jumpToPage(blocked);
+    });
   }
 
   /// 学年を聞くのは日本語だけ。海外課程は段階で分かれていないので、
@@ -118,21 +149,26 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   bool get _isLast => _page == _pageCount - 1;
 
-  /// 操作待ちの枚だけ、先へ進むボタンが止まる。
+  /// [page] まで行ってよいか —— **手前の関門がぜんぶ開いているか。**
+  ///
+  /// **ボタンではなく位置で持つ。**「つぎへ」を無効にするだけでは、横に
+  /// スワイプして関門を素通りできてしまう(`PageView` はボタンと関係なく
+  /// 指で動く)。学年を選ばずに抜けられると、中学生が黙って高校の単元を
+  /// 候補にされたまま本編に入る — 既定が高校生なので、**素通りがいちばん悪い**。
+  /// だから通れる場所そのものをここで定義して、ボタンと指の両方に同じ判定を配る。
   ///
   /// **どれも行き止まりにはしない。**学年はどちらを選んでも同じ1タップで通り、
   /// リハーサルは一手押すだけ、復習は書く→こたえるの2タップ。
   /// やってみる枚からは、上の「とばす」でいつでも降りられる。
-  ///
-  /// 学年だけ「とばす」を出さずに止めているのは、**既定(高校生)のまま
-  /// 素通りされるのがいちばん悪い**から — 中学生が黙って高校の単元を
-  /// 候補にされる。選択肢は2つで、どちらにも正解/不正解が無い。
-  bool get _canAdvance {
-    if (_asksStage && _page == _stagePage) return _stage != null;
-    if (_page == _lessonPage) return _understood;
-    if (_page == _practicePage) return _answered;
+  /// 手前の枚へ**戻る**のはいつでも自由(関門は進む向きにしか無い)。
+  bool _canReach(int page) {
+    if (_asksStage && page > _stagePage && _stage == null) return false;
+    if (page > _lessonPage && !_understood) return false;
+    if (page > _practicePage && !_answered) return false;
     return true;
   }
+
+  bool get _canAdvance => _canReach(_page + 1);
 
   bool get _canSkip => _page >= _lessonPage;
 
@@ -202,7 +238,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               child: PageView.builder(
                 controller: _controller,
                 itemCount: pages.length,
-                onPageChanged: (int page) => setState(() => _page = page),
+                // 指でも関門を越えられないようにする([_GateScrollPhysics])。
+                physics: _physics,
+                onPageChanged: _onPageChanged,
                 itemBuilder: (BuildContext context, int index) =>
                     _PageTransition(controller: _controller, index: index, child: pages[index]),
               ),
@@ -223,6 +261,39 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         ),
       ),
     );
+  }
+}
+
+/// 関門より先へは指を通さないスクロール物理。
+///
+/// **前へだけ止める。**戻るのはいつでも自由なので、下限側は親に任せて、
+/// 上限側だけを「いまの枚の先頭」で頭打ちにする。指は動くが越えられない —
+/// 完全に固めてしまう(`NeverScrollableScrollPhysics`)と、**戻る手段が
+/// 画面から消える**(この画面に戻るボタンは無く、スワイプだけが道)。
+///
+/// 関門の開閉は [lockedPage] を**毎回呼んで**読む。コンストラクタ引数で
+/// 渡すと、`ScrollPosition` が最初のインスタンスを握り続けるせいで
+/// 開いたことが伝わらない([_OnboardingScreenState._physics] の説明)。
+class _GateScrollPhysics extends ScrollPhysics {
+  const _GateScrollPhysics({required this.lockedPage, super.parent});
+
+  /// これ以上進めない枚(0始まり)。関門が開いていれば null。
+  final ValueGetter<int?> lockedPage;
+
+  @override
+  _GateScrollPhysics applyTo(ScrollPhysics? ancestor) =>
+      _GateScrollPhysics(lockedPage: lockedPage, parent: buildParent(ancestor));
+
+  @override
+  double applyBoundaryConditions(ScrollMetrics position, double value) {
+    final int? locked = lockedPage();
+    if (locked != null) {
+      // `viewportFraction` は既定の1なので、枚の先頭 = 番号 × 画面幅。
+      final double limit = locked * position.viewportDimension;
+      // 越えたぶんを「はみ出し」として返すと、そこで頭打ちになる。
+      if (value > limit && position.pixels <= limit) return value - limit;
+    }
+    return super.applyBoundaryConditions(position, value);
   }
 }
 

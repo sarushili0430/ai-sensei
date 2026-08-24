@@ -331,6 +331,64 @@ void main() {
     });
   }
 
+  // **関門は指にも効く。**「つぎへ」を無効にするだけでは、横にスワイプして
+  // 素通りできた。学年を選ばずに抜けられると、中学生が黙って高校の単元を
+  // 候補にされたまま本編に入る(既定が高校生なので、素通りがいちばん悪い)。
+  group('スワイプでも関門を越えられない', () {
+    /// 次の枚へ送るだけの幅で横に払う。
+    Future<void> swipeForward(WidgetTester tester) async {
+      await tester.drag(find.byType(PageView), const Offset(-500, 0));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('学年を選ぶまで、その枚から動かない', (WidgetTester tester) async {
+      await pumpOnboarding(tester);
+      await tapNext(tester, ja);
+
+      await swipeForward(tester);
+      expect(find.text(ja.onboardingStageTitle), findsOneWidget);
+
+      await chooseStage(tester, SchoolStage.juniorHigh);
+      await swipeForward(tester);
+      expect(find.text(ja.onboardingHowTitle), findsOneWidget);
+    });
+
+    testWidgets('「わかった」を押すまで、授業のリハーサルから動かない', (WidgetTester tester) async {
+      await pumpOnboarding(tester);
+      await goToLesson(tester);
+
+      await swipeForward(tester);
+      expect(find.text(ja.onboardingTryTeachLine), findsOneWidget);
+
+      await pressUnderstood(tester);
+      await swipeForward(tester);
+      expect(find.byKey(onboardingPushKey), findsOneWidget);
+    });
+
+    testWidgets('採点まで通るまで、復習のリハーサルから動かない', (WidgetTester tester) async {
+      await pumpOnboarding(tester);
+      await goToPractice(tester);
+
+      await swipeForward(tester);
+      expect(find.byKey(onboardingPushKey), findsOneWidget);
+
+      await answerPractice(tester);
+      await swipeForward(tester);
+      expect(find.text(ja.onboardingReadyTitle), findsOneWidget);
+    });
+
+    // **戻る向きは塞がない。**この画面に戻るボタンは無く、
+    // スワイプだけが手前の枚へ帰る道。
+    testWidgets('関門の枚からでも、手前へは戻れる', (WidgetTester tester) async {
+      await pumpOnboarding(tester);
+      await goToLesson(tester);
+
+      await tester.drag(find.byType(PageView), const Offset(500, 0));
+      await tester.pumpAndSettle();
+      expect(find.text(ja.onboardingHowTitle), findsOneWidget);
+    });
+  });
+
   // 出口を作るのは、やってみる枚から。約束とやることは飛ばさせない。
   testWidgets('「とばす」はリハーサルから出る', (WidgetTester tester) async {
     await pumpOnboarding(tester);
