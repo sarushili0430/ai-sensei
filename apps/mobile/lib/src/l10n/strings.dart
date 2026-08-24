@@ -45,28 +45,70 @@ class AppStrings {
   String _pick(String ja, String en) => _ja ? ja : en;
 
   // --- オンボーディング ---
+  //
+  // **ADR 0009 でコアループが入れ替わった。**教え返しとカルテは畳まれ、1周は
+  // 「撮る → 板書つきで教わる →『わかった』→ その板書から復習問題が1問 →
+  // 3日後・7日後に通知 → 書いて答える → AIが採点」になった。
+  // 旧文言(「教え返してもらう」「カルテ」「あした」)をここへ戻すと、
+  // **オンボーディングだけが、存在しないアプリの説明を始める。**
+  //
+  // 枚数は5枚(日本語は学年を聞くぶん6枚)。読み物ではなく、
+  // コアループを**前半と後半とも1周やってみる**構成にしてある(ADR 0004)。
 
-  /// 1枚目 — 約束(ピボット計画 §0 の憲法改正後の一言)。
+  /// 1枚目 — 約束。**機能ではなく約束から始める**(ADR 0004)。
   ///
-  /// 改行位置は成り行きに任せず、**2拍の切れ目で必ず折る**。
-  /// 「教える」だけを読むと手元の無料AIと同じものに見えるので、
-  /// 前半と後半が同じ重みで目に入る必要がある。
+  /// READMEの見出しをそのまま持ってきてある。改行位置は成り行きに任せず、
+  /// **2拍の切れ目で必ず折る**。前半(教える)だけを読むと手元の無料AIと
+  /// 同じものに見えるので、後半(3日後に確かめる)が同じ重みで目に入る必要がある。
+  ///
+  /// **日本語は語の途中でも折り返す。**28pt で 327pt 幅に入るのは12字ほどで、
+  /// 任せておくと「ほんとうにそう / か聞く。」で割れた(実測)。
+  /// だから後半にもう1つ改行を入れて、**4行とも語のかたまりで終わる**ようにしてある。
+  /// 英語は空白で折れるので、文の切れ目だけでよい。
   String get onboardingTitle => _pick(
-        '答えを教える。\nそのあと、あなたに教え返してもらう。',
-        'The AI tutor that teaches you —\nthen asks you to teach it back.',
+        '「わかった」と言えるまで教える。\n3日後に、\nほんとうにそうか聞く。',
+        'We teach until you can say "I get it".\nThen, three days later, we check.',
       );
   String get onboardingBody => _pick(
-        '問題を撮ると、先輩が板書つきで教えます。\nそのあと「いまの、説明してみて」。\n詰まったところが、あなたの穴です。',
+        '問題を撮ると、先輩が板書つきで教えてくれます。\n授業を終わらせるのは、きみの「わかった」。',
         'Photograph the problem and your senpai teaches you on the board.\n'
-            'Then: "Now explain that back to me."\n'
-            'Wherever you stall is your gap.',
+            'The lesson ends when you say you have it — not before.',
       );
-  String get onboardingCta => _pick('はじめる', 'Get started');
-  String get onboardingNext => _pick('つぎへ', 'Next');
 
-  /// 2枚目。何をする時間なのかを、先に絵で見せる。
-  /// 4行はピボット計画 §2 のコアループそのもの(撮る → 教わる → 教え返す → 穴が残る)。
+  /// 学年の枚(日本語のみ)。**Mobbin の学習アプリが最初に置く「あなたのこと」の枚。**
+  ///
+  /// **英語では出さない。**海外課程は Algebra 1 〜 Statistics の一続きで段階に
+  /// 分かれておらず、`tracksForStage` が `locale == "en"` をどちらの段階でも
+  /// 同じ1本に落とす。答えが何も変えない質問は、聞いてもらえた感ではなく
+  /// **聞かれ損**になる。
+  String get onboardingStageTitle =>
+      _pick('まず、きみのことを教えて。', 'First, tell me about you.');
+
+  /// 先輩のふきだし。**理由を先に言う。**何のために聞かれているのか分からない
+  /// 質問は、初回の離脱をそのまま作る。
+  String get onboardingStageQuestion => _pick(
+        '教える範囲を、きみに合わせておきたいんだ。',
+        'I want to match what I teach to where you are.',
+      );
+
+  /// 選択肢の下の一行。段階は**学習の制限ではなく、写真から単元を探す範囲**
+  /// (`school_stage_controller.dart`)なので、そう読める言い方にする。
+  String get onboardingStageJuniorHighNote =>
+      _pick('中学の数学と英語から探します', 'We look in junior-high math and English');
+  String get onboardingStageHighSchoolNote =>
+      _pick('数学I〜C と 高校英語から探します', 'We look in Math I–C and high-school English');
+
+  /// **選び直せることを、選ばせる前に言う。**
+  String get onboardingStageChangeLater =>
+      _pick('あとから設定でも変えられます', 'You can change this later in Settings');
+
+  /// コアループ(ADR 0009)の全体像。何をする時間なのか分からないまま
+  /// カメラを開かせない。
+  ///
+  /// **4行目が要。**復習問題の出どころは**その日の板書**で、ここが
+  /// 「質問した内容をメモ」に化けると、3/7日の再訪の根拠ごと崩れる。
   String get onboardingHowTitle => _pick('やることは、これだけ。', 'This is all you do.');
+
   /// **ノートを条件にしない。** 「問題とノートを撮る」と書くと、解けなくて
   /// ノートが無い生徒は初回の説明の時点で「自分向けではない」と読む
   /// (手も付けられないは家庭教師の中心的な用件。`api.ts` の `sessionPhotoParts`)。
@@ -75,29 +117,31 @@ class AppStrings {
       "Photograph the problem you are stuck on (with your notes, if you have them)");
   String get onboardingStepTaught => _pick(
       '先輩が板書つきで教えてくれる', 'Your senpai teaches you, working it out on the board');
-  String get onboardingStepExplain =>
-      _pick('「いまの、説明してみて」に答える', 'Answer: "Now explain that back to me"');
-  String get onboardingStepKarte => _pick('詰まったところが、穴としてカルテに残る',
-      'Wherever you stalled becomes a gap in your karte');
 
-  /// 権限は使う直前に聞く。ここでは予告だけして、初回離脱を作らない。
-  String get onboardingPermissionNote => _pick(
-        'カメラ・マイク・通知の許可は、使う直前にお願いします',
-        'We ask for camera, microphone and notification access only when they are needed',
-      );
+  /// 3行目。**授業を終わらせるのは生徒**(ADR 0009 で回数上限を撤廃した)。
+  /// 「わかるまで聞ける」ではなく「わかったと言えたら終わる」。
+  String get onboardingStepUnderstood =>
+      _pick('わかったら、下の「わかった」を押す', 'When you have it, you press "Got it"');
 
-  /// 3枚目 — リハーサル。読むだけの説明を、**一度やってみる**に変える。
+  /// 4行目。**穴ではなく問題**。ADR 0009 で単位が替わったことが、ここで見える。
+  String get onboardingStepPractice => _pick('その板書から復習問題が1問。3日後と7日後に届く',
+      'One question is made from that board — it arrives in 3 days, then 7');
+
+  /// 授業のリハーサル。読んで分かった気になる説明を、**一度やってみる**に置き換える枚。
   ///
-  /// 板書も質問も固定の台本。写真も撮らないし声も録らない
-  /// (だから権限もまだ要らない)。
-  String get onboardingTryTitle => _pick('ためしに、1問だけ。', 'Try it once.');
+  /// 台本は固定で、写真も声も使わない。だから**ここではまだ何の権限も要らない**。
+  String get onboardingTryTitle => _pick('ためしに、1問だけ。', 'Try one, right here.');
   String get onboardingTryNotebookLabel =>
       _pick('撮った問題', 'The problem you photographed');
   String get onboardingTryNotebook => _pick('x² − 4x + k = 0 が異なる2つの実数解をもつ',
       'x² − 4x + k = 0 has two distinct real roots');
 
-  /// 板書の見出し。ここから下は、先輩が書いたもの。
+  /// 板書の見出し。**ここから下は先輩が書いたもの**、という札。
+  /// 素材(紙 = 問題 / 黒板 = 板書)の分けを、初回だけは言葉でも添える。
   String get onboardingTryBoardLabel => _pick('先輩の板書', "Your senpai's board");
+
+  /// 板の中の見出し。本番の `BoardView` と同じ位置(板のいちばん上の行)に出る。
+  String get onboardingTryBoardTitle => _pick('解の個数の調べ方', 'How to count the roots');
 
   /// 板書の1手順目。**日本語なので `text` 要素として置く**
   /// (LaTeXの中に日本語を入れると文字化けする・計画書§3-6d)。
@@ -105,52 +149,108 @@ class AppStrings {
   String get onboardingTryBoardText =>
       _pick('解が2つ ⇔ D > 0', 'Two roots ⇔ D > 0');
 
-  /// 教え返してもらう番。**答えはもう上の板書に出ている。**
-  /// それでも説明できるとは限らない、というのがこの1枚の主張。
-  String get onboardingTryQuestion => _pick('じゃあ、いまの説明してみて。なんで D を見るんだっけ?',
-      'Now explain it back — why do we look at D?');
+  /// 先輩のせりふ。**教え返しは求めない**(ADR 0009 で畳んだ)。
+  /// 教えて、押す番をこちらに渡すところまでがこの枚。
+  String get onboardingTryTeachLine => _pick('D がプラスなら、解は2つ。ここだけ持って帰ってくれればいい。',
+      'If D is positive, there are two roots. That is the one thing to take home.');
 
-  /// 長押しの案内。読み上げを使っている人にはタップに切り替える。
-  String get onboardingTryHold => _pick('長押しして教え返す', 'Hold to teach it back');
-  String get onboardingTryTap => _pick('タップして教え返す', 'Tap to teach it back');
-  String get onboardingTryHolding => _pick('聞いています', 'Listening');
-  String get onboardingTryHint => _pick('押したままにしてください', 'Keep holding');
-
-  /// 本番と取り違えられると信頼を落とす。まだ録っていないことを先に言う。
+  /// 本番と取り違えられると信頼を落とす。まだ何も使っていないことを先に言う。
   String get onboardingTryNotRecording =>
-      _pick('ここではまだ録音しません', 'Nothing is recorded here yet');
+      _pick('ここではまだ、写真も声も使いません', 'No camera, no microphone — not yet');
 
-  /// 反応は先輩の口調(ため口)。UIの案内文だけは敬体のまま分けてある。
-  String get onboardingTrySaidReaction =>
-      _pick('いいね。それが言えれば大丈夫。', 'Nice — if you can say that, you have it.');
-  String get onboardingTrySaid => _pick(
-        '判別式を見る理由を、自分の言葉で説明できた',
-        'You explained why we look at the discriminant, in your own words',
-      );
+  /// 「わかった」を押したあと。**褒めない・採点しない**(ADR 0009。到達の宣言は
+  /// 生徒のものなので、押したことを先輩が評価し直さない)。起きた事実だけを言う。
+  String get onboardingTryUnderstoodReaction =>
+      _pick('じゃあ、いまの板書から1問つくるね。', "Then I'll make one question from that board.");
 
-  /// パスは失敗ではない(§0 の約束3。ここは改正されていない)。
-  /// 教える側に配役が変わっても、責めないことは変えない。
-  String get onboardingTryHoleReaction =>
-      _pick('大丈夫。ここが最初の穴だね。', "That's fine — this is your first gap.");
-  String get onboardingTryHole => _pick('判別式を「なぜ」見るのかで、説明が止まった',
-      'You stalled on why we look at the discriminant');
+  /// できた復習問題の見出し。**本人が説明した内容ではなく、板書が材料**(ADR 0009)。
+  String get onboardingTryProblemLabel => _pick('できた復習問題', 'The question we made');
+
+  /// **生成を待たせない**(ADR 0009)。押した瞬間に授業は終わり、最初の接触は通知。
+  String get onboardingTryNotWaiting =>
+      _pick('待たなくて大丈夫。次に会うのは通知の中。', "No need to wait — we meet again in a notification.");
+
   String get onboardingTryAgain => _pick('もう一度ためす', 'Try that again');
 
-  /// 4枚目 — リハーサルの結果が、そのままカルテの見本になる。
-  String get onboardingKarteTitle => _pick('これが、カルテです。', 'This is your karte.');
-  String get onboardingKarteBody => _pick(
-        '教え返せたところは黄色、詰まったところはピンク。点数はつきません。',
-        'What you taught back is yellow. Where you stalled is pink. There is no score.',
-      );
+  /// 復習のリハーサル。**約束の後半を、ここで一度やってみる。**
+  ///
+  /// 通知 → 解答 → 採点までを1枚で通す。ここを読み物にすると、
+  /// 「3日後に聞く」が**言っただけの約束**になる。
+  ///
+  /// **短く保つ。**この枚だけは中身(通知・問題・解答欄)が縦に長いので、
+  /// 見出しが3行になると解答欄が折り返しの下へ落ちる(375×667の英語で実測)。
   String get onboardingReviewTitle =>
-      _pick('穴は、埋まるまでたずねます', 'We keep asking until the gap is filled');
-  String get onboardingReviewTomorrow => _pick('あした', 'Tomorrow');
-  String get onboardingReviewDay3 => _pick('3日後', 'In 3 days');
-  String get onboardingReviewDay7 => _pick('7日後', 'In 7 days');
+      _pick('3日後、こうやって聞きにいきます。', 'Three days later, it comes back.');
 
-  /// 約束(1枚目)とやること(2枚目)は飛ばさせない。
-  /// 出すのは、あとから足した2枚だけ。
+  /// 通知の見本。**見本だけ気の利いた文にしない** — 実物と同じ調子で書く。
+  /// **実物の通知と同じ長さにする。**ロック画面は2行までしか出さないので、
+  /// ここで長い文を見せると、届く物と見本が食い違う。
+  String get onboardingPushTitle => _pick('この前の1問、いける?', 'Ready for that one?');
+  String get onboardingPushBody => _pick('30秒で終わるよ。', 'It takes 30 seconds.');
+
+  /// 通知が届いた時刻の見本。**相対で書く**(絶対時刻にすると、
+  /// 端末の時計とずれた瞬間に嘘になる)。
+  String get onboardingPushWhen => _pick('いま', 'now');
+
+  /// 復習問題の本文。板書(判別式)から作られた1問。
+  String get onboardingPracticeQuestion =>
+      _pick('x² − 6x + 5 = 0 の解の個数は?', 'How many roots does x² − 6x + 5 = 0 have?');
+
+  /// 解答欄をタップすると、これが書かれる。**キーボードは出さない** —
+  /// ここで打たせると、まだ何も起きていないうちに入力の手間だけが先に来る。
+  String get onboardingPracticeTapToWrite => _pick('タップして書く', 'Tap to write');
+
+  /// 通知を開く。**通知そのものを押せる**ようにもしてあるが、
+  /// 押せると分かるのは押した人だけなので、下にも同じ口を置く。
+  String get onboardingPracticeOpen => _pick('開いてみる', 'Open it');
+  String get onboardingPracticeAnswer => _pick(
+        'D = 36 − 20 = 16 でプラスだから、2個',
+        'D = 36 − 20 = 16, which is positive, so two',
+      );
+
+  /// 採点のあと。**正解でも点数は出さない**(§0 の約束2)。
+  String get onboardingPracticeReaction => _pick(
+        '3日おいても言えたなら、もう身についてる。',
+        'If you can still say it after three days, it has stuck.',
+      );
+
+  /// 最後の枚 — これから起きること。**間隔反復そのものが製品機能**
+  /// (デッキ §9 の OneSignal 賞の根拠)なので、文字で説明せず、
+  /// 線と点で「また来る」ことを見せる。
+  String get onboardingReadyTitle =>
+      _pick('ここから先は、きみの番。', 'From here, it is your turn.');
+
+  String get onboardingTimelineToday => _pick('今日', 'Today');
+  String get onboardingTimelineTodayNote =>
+      _pick('撮って、教わって、「わかった」', 'Photograph it, get taught, say you have it');
+  String get onboardingReviewDay3 => _pick('3日後', 'In 3 days');
+  String get onboardingTimelineDay3Note =>
+      _pick('1問だけ届く。書いて答える', 'One question arrives. You write your answer');
+  String get onboardingReviewDay7 => _pick('7日後', 'In 7 days');
+  String get onboardingTimelineDay7Note =>
+      _pick('もう一度。ここまで来たら忘れにくい', 'Once more — by here, it tends to stay');
+
+  /// **まちがえた問題だけ、翌日からもう一度**(ADR 0009 の段)。
+  /// 罰ではないことを、同じ行で言い切る。
+  String get onboardingTimelineWrongNote => _pick('まちがえた問題は翌日からもう一度たずねます。減点はしません。',
+      'A question you miss comes back from the next day. Nothing is deducted.');
+
+  /// 権限は使う直前に聞く。ここでは予告だけして、初回離脱を作らない。
+  String get onboardingPermissionNote => _pick(
+        'カメラ・マイク・通知の許可は、使う直前にお願いします',
+        'We ask for camera, microphone and notification access only when they are needed',
+      );
+
+  String get onboardingCta => _pick('はじめる', 'Get started');
+  String get onboardingNext => _pick('つぎへ', 'Next');
+
+  /// 約束(1枚目)は飛ばさせない。デッキが期待値の設計をあの1枚に置いているので、
+  /// 出口を作るのは**やってみる枚から**。
   String get onboardingSkip => _pick('とばす', 'Skip');
+
+  /// 進み具合の読み上げ。棒そのものは装飾なので、名前はここで渡す。
+  String onboardingProgress(int current, int total) =>
+      _pick('$total枚中 $current枚目', 'Step $current of $total');
 
   // --- ホーム ---
   //

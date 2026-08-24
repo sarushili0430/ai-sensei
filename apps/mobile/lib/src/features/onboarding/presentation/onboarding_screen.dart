@@ -3,36 +3,54 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../api/device_id.dart';
-import '../../../common_widgets/centered_scroll.dart';
 import '../../../common_widgets/chunky_button.dart';
-import '../../../common_widgets/entrance.dart';
-import '../../../common_widgets/senpai_face.dart';
 import '../../../l10n/strings.dart';
 import '../../../routing/routes.dart';
 import '../../../theme/motion.dart';
 import '../../../theme/tokens.dart';
-import 'onboarding_karte_preview.dart';
+import '../../settings/application/school_stage_controller.dart';
+import 'onboarding_loop.dart';
+import 'onboarding_motion.dart';
+import 'onboarding_practice.dart';
+import 'onboarding_promise.dart';
+import 'onboarding_ready.dart';
 import 'onboarding_rehearsal.dart';
+import 'onboarding_stage.dart';
 
-/// オンボーディング(初回のみ・4ページ)。
+/// オンボーディング(初回のみ)。
 ///
-/// 1枚目は機能ではなく**約束**。ピボット計画 §0 の憲法改正で、この約束は
-/// 「答えを教えない」から**「教える。そのあと教え返してもらう」**に変わった。
-/// 機能ではなく約束を先に言い切る、という設計意図はそのまま引き継いでいる
-/// (「教える」だけなら手元の無料AIと同じに見えるので、後半まで含めて1つの約束)。
-/// 2枚目でコアループ(§2)の全体像を見せる。何をする時間なのか分からないまま
-/// カメラを開かせない。
+/// ## 何を見せる枚なのか
 ///
-/// 3枚目と4枚目は**やってみる枚**。
-/// 約束は、読むだけでは腑に落ちない(inception-deck §7-7 が
-/// 「答えを教えない」について指摘していた問題。改正後も構造は同じで、
-/// **言葉を足すほど遠くなる**)。だから説明を増やすのではなく、
-/// 教わって・教え返して(または言えなくて)・カルテに残る、までを1往復させる。
-/// 台本は固定で、写真も声も使わないので、ここではまだ何の権限も要らない。
+/// **ADR 0009 でコアループが入れ替わったので、この画面も作り直してある。**
+/// 教え返しとカルテは畳まれ、いまの1周は
+/// 「撮る → 板書つきで教わる →『わかった』→ その板書から復習問題が1問 →
+/// 3日後・7日後に届く → 書いて答える → AIが採点」。
+/// 旧オンボーディングは前半しか見せておらず、**手元の無料AIとの差**である
+/// 後半(3日後に聞きにいく)は文字の説明だけで終わっていた。
+///
+/// 枚の並び:
+///
+///   1. **約束** — 機能ではなく約束から([ADR 0004])。飛ばさせない
+///   2. **学年**(日本語のみ)— 唯一「聞く」枚。答えが探す範囲を半分にする
+///   3. **やること** — 1周を4手順の年表で
+///   4. **授業のリハーサル** — 板書で教わって、「わかった」を押す
+///   5. **復習のリハーサル** — 3日後の通知が届いて、書いて答えて、採点される
+///   6. **これから** — 今日 / 3日後 / 7日後の年表と、権限の予告
+///
+/// 4・5枚目は**やってみる枚**。約束は読むだけでは腑に落ちない
+/// (inception-deck §7-7 が指摘していた問題。**言葉を足すほど遠くなる**)。
+/// だから説明を増やすのではなく、1周を通す。台本は固定で、写真も声も
+/// 使わないので、ここではまだ何の権限も要らない。
 ///
 /// **権限はここで求めない。** カメラは撮る直前、マイクは会話の直前、
-/// 通知は初回カルテで穴が見えた直後に、それぞれ文脈の中で聞く。
+/// 通知は初回の復習問題ができた直後に、それぞれ文脈の中で聞く。
 /// 初回離脱の最大要因を、まとめて先頭に置かないため。
+///
+/// ## 進み具合は棒で出す
+///
+/// 点(旧 `_Dots`)から棒([OnboardingProgressBar])に替えた。枚数が増えたぶん
+/// 「あとどれだけか」が見えないと最後まで連れていけない。Mobbin の学習アプリ
+/// (Brilliant / Duolingo / Uxcel)が揃って上に置いているのもこの形。
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
 
@@ -43,12 +61,16 @@ class OnboardingScreen extends ConsumerStatefulWidget {
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   final PageController _controller = PageController();
   int _page = 0;
-  RehearsalOutcome? _outcome;
 
-  static const int _pageCount = 4;
+  /// 学年。**まだ選んでいない**のと「既定が入っている」を分けて持つ
+  /// ([OnboardingStagePage] の説明)。
+  SchoolStage? _stage;
 
-  /// リハーサルの枚。ここだけ、先に進むボタンが操作待ちになる。
-  static const int _rehearsalPage = 2;
+  /// 授業のリハーサルで「わかった」を押したか。
+  bool _understood = false;
+
+  /// 復習のリハーサルで採点まで通ったか。
+  bool _answered = false;
 
   @override
   void dispose() {
@@ -56,12 +78,63 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     super.dispose();
   }
 
+  /// 学年を聞くのは日本語だけ。海外課程は段階で分かれていないので、
+  /// 英語では**答えが何も変えない質問**になる([OnboardingStagePage])。
+  bool get _asksStage => AppStrings.of(context).locale.languageCode == 'ja';
+
+  /// 枚の中身。**並びと枚数はここだけが決める**(進み具合の棒も、
+  /// 「とばす」を出し始める位置も、この並びから計算する)。
+  List<Widget> _pages() {
+    return <Widget>[
+      const OnboardingPromisePage(),
+      if (_asksStage)
+        OnboardingStagePage(
+          chosen: _stage,
+          onSelected: (SchoolStage stage) => setState(() => _stage = stage),
+        ),
+      const OnboardingLoopPage(),
+      OnboardingRehearsalPage(
+        understood: _understood,
+        onUnderstood: () => setState(() => _understood = true),
+        onReset: () => setState(() => _understood = false),
+      ),
+      OnboardingPracticePage(
+        answered: _answered,
+        onAnswered: () => setState(() => _answered = true),
+      ),
+      const OnboardingReadyPage(),
+    ];
+  }
+
+  int get _pageCount => _pages().length;
+
+  /// やってみる枚(授業 → 復習)の位置。**ここから「とばす」を出す。**
+  ///
+  /// 約束(1枚目)とやること・学年は飛ばさせない。デッキが期待値の設計を
+  /// 前半に置いているので、出口を作るのは操作待ちが始まってから。
+  int get _stagePage => 1;
+  int get _lessonPage => _asksStage ? 3 : 2;
+  int get _practicePage => _lessonPage + 1;
+
   bool get _isLast => _page == _pageCount - 1;
 
-  /// リハーサルは「説明する」か「うまく言えない」のどちらかを通ってほしい。
-  /// どちらでも先へ進めるので行き止まりにはならないし、
-  /// 上の「とばす」でいつでも降りられる。
-  bool get _canAdvance => _page != _rehearsalPage || _outcome != null;
+  /// 操作待ちの枚だけ、先へ進むボタンが止まる。
+  ///
+  /// **どれも行き止まりにはしない。**学年はどちらを選んでも同じ1タップで通り、
+  /// リハーサルは一手押すだけ、復習は書く→こたえるの2タップ。
+  /// やってみる枚からは、上の「とばす」でいつでも降りられる。
+  ///
+  /// 学年だけ「とばす」を出さずに止めているのは、**既定(高校生)のまま
+  /// 素通りされるのがいちばん悪い**から — 中学生が黙って高校の単元を
+  /// 候補にされる。選択肢は2つで、どちらにも正解/不正解が無い。
+  bool get _canAdvance {
+    if (_asksStage && _page == _stagePage) return _stage != null;
+    if (_page == _lessonPage) return _understood;
+    if (_page == _practicePage) return _answered;
+    return true;
+  }
+
+  bool get _canSkip => _page >= _lessonPage;
 
   Future<void> _next() async {
     if (_isLast) {
@@ -87,37 +160,42 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
-
-    final List<Widget> pages = <Widget>[
-      const _PromisePage(),
-      const _HowItWorksPage(),
-      OnboardingRehearsalPage(
-        outcome: _outcome,
-        onOutcome: (RehearsalOutcome? outcome) => setState(() => _outcome = outcome),
-      ),
-      OnboardingKartePreviewPage(outcome: _outcome),
-    ];
+    final List<Widget> pages = _pages();
 
     return Scaffold(
       body: SafeArea(
         child: Column(
           children: <Widget>[
-            SizedBox(
-              height: 40,
-              child: Align(
-                alignment: Alignment.centerRight,
-                // 約束(1枚目)とやること(2枚目)は飛ばさせない。
-                // デッキが期待値の設計をこの2枚に置いているので、
-                // 出口を作るのはあとから足した2枚から。
-                child: AnimatedOpacity(
-                  opacity: _page >= _rehearsalPage ? 1 : 0,
-                  duration: AppMotion.decorative(context, AppDurations.reaction),
-                  child: TextButton(
-                    onPressed: _page >= _rehearsalPage ? _finish : null,
-                    style: TextButton.styleFrom(foregroundColor: AppColors.inkMuted),
-                    child: Text(strings.onboardingSkip),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                AppSpacing.sm,
+                AppSpacing.lg,
+                0,
+              ),
+              child: Row(
+                children: <Widget>[
+                  Expanded(
+                    child: OnboardingProgressBar(
+                      value: (_page + 1) / pages.length,
+                      label: strings.onboardingProgress(_page + 1, pages.length),
+                    ),
                   ),
-                ),
+                  // 出口は棒の右。**幅は常に取っておく** —— 出た瞬間に
+                  // 棒が縮むと、進んだのか戻ったのか分からなくなる。
+                  SizedBox(
+                    width: 72,
+                    child: AnimatedOpacity(
+                      opacity: _canSkip ? 1 : 0,
+                      duration: AppMotion.decorative(context, AppDurations.reaction),
+                      child: TextButton(
+                        onPressed: _canSkip ? _finish : null,
+                        style: TextButton.styleFrom(foregroundColor: AppColors.inkMuted),
+                        child: Text(strings.onboardingSkip),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
             Expanded(
@@ -129,7 +207,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                     _PageTransition(controller: _controller, index: index, child: pages[index]),
               ),
             ),
-            _Dots(count: _pageCount, current: _page),
             Padding(
               padding: const EdgeInsets.fromLTRB(
                 AppSpacing.lg,
@@ -149,10 +226,14 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 }
 
-/// めくっている最中だけ、隣のページを少し縮めて薄くする。
+/// めくっている最中だけ、隣のページを縮めて薄くし、中身を少し遅れて動かす。
 ///
 /// 横に動いていることが指の下で分かるようにするための演出で、
 /// 止まっている状態(= golden で撮る状態)には何の影響もない。
+///
+/// 中身をページ自身より**ゆっくり**動かす(視差)ことで、
+/// 紙が重なって滑っているように見える。同じ速さで動くと、
+/// ただ横に切り替わっただけの絵になる。
 class _PageTransition extends StatelessWidget {
   const _PageTransition({required this.controller, required this.index, required this.child});
 
@@ -171,183 +252,19 @@ class _PageTransition extends StatelessWidget {
         final double page = controller.hasClients && controller.position.haveDimensions
             ? (controller.page ?? index.toDouble())
             : index.toDouble();
-        final double distance = (page - index).abs().clamp(0.0, 1.0);
+        final double delta = (page - index).clamp(-1.0, 1.0);
+        final double distance = delta.abs();
 
         return Opacity(
-          opacity: 1 - 0.5 * distance,
-          child: Transform.scale(scale: 1 - 0.05 * distance, child: child),
+          opacity: 1 - 0.6 * distance,
+          child: Transform.translate(
+            // 幅の 12% ぶんだけ置いていかれる。めくり終われば 0 に戻る。
+            offset: Offset(delta * MediaQuery.sizeOf(context).width * 0.12, 0),
+            child: Transform.scale(scale: 1 - 0.06 * distance, child: child),
+          ),
         );
       },
       child: child,
-    );
-  }
-}
-
-/// 1枚目 — 約束。
-///
-/// **`Spacer` で中央に置いた `Column` から [CenteredScroll] に替えてある。**
-/// 改正後の約束は前後2拍あるぶん長く、英語(`The AI tutor that teaches you —
-/// then asks you to teach it back.`)を 375pt 幅の端末に流すと、
-/// 見出しだけで画面を食い切って**下がはみ出す**(実測で確認)。
-/// はみ出した `Column` は中身を切り落とすので、
-/// 3・4枚目と同じ「収まれば中央・収まらなければスクロール」に揃える。
-class _PromisePage extends StatelessWidget {
-  const _PromisePage();
-
-  @override
-  Widget build(BuildContext context) {
-    final AppStrings strings = AppStrings.of(context);
-    return CenteredScroll(
-      children: <Widget>[
-        // 困り顔(`puzzled`)は「教わる側」の表情だった。配役が先輩に変わって
-        // ここは教える側の顔になるので、待っている顔で置く。
-        // 顔ウィジェットそのものの刷新は横断的なので別タスク。
-        const FadeSlideIn(
-          child: Center(child: SenpaiFace(mood: SenpaiMood.neutral, size: 140)),
-        ),
-        const SizedBox(height: AppSpacing.xl),
-        FadeSlideIn.staggered(
-          index: 1,
-          child: Text(
-            strings.onboardingTitle,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.displaySmall,
-          ),
-        ),
-        const SizedBox(height: AppSpacing.md),
-        FadeSlideIn.staggered(
-          index: 2,
-          child: Text(
-            strings.onboardingBody,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyLarge,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// 2枚目 — コアループ(計画書§2)の全体像と、権限の予告。
-///
-/// 4行は「撮る → 先輩が板書つきで教える → 教え返す → 詰まったところが穴として残る」。
-/// **穴の出どころが4行目にある**のが要で、ここが「質問した内容をメモ」に
-/// 化けると、1/3/7日の再訪の根拠(§1-3)ごと崩れる。
-class _HowItWorksPage extends StatelessWidget {
-  const _HowItWorksPage();
-
-  @override
-  Widget build(BuildContext context) {
-    final AppStrings strings = AppStrings.of(context);
-    // 1枚目と同じ理由で [CenteredScroll]。手順の文が長くなったぶん、
-    // 小さい端末の英語では4行目(穴の出どころ)から先が切れていた。
-    // **切れてはいけないのが最後の1行**なので、スクロールできる形にする。
-    return CenteredScroll(
-      children: <Widget>[
-        FadeSlideIn(
-          child: Text(
-            strings.onboardingHowTitle,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-        ),
-        const SizedBox(height: AppSpacing.xl),
-        _Step(index: 1, icon: Icons.photo_camera_outlined, label: strings.onboardingStepCapture),
-        // 2番目は「書きながら教える」。ペン先のアイコンにしてあるのは、
-        // 板書が飾りではなくこのループの一手だと1行目で分かるようにするため。
-        _Step(index: 2, icon: Icons.draw_outlined, label: strings.onboardingStepTaught),
-        _Step(index: 3, icon: Icons.mic_none_outlined, label: strings.onboardingStepExplain),
-        _Step(index: 4, icon: Icons.description_outlined, label: strings.onboardingStepKarte),
-        // `Spacer` で画面下へ押し付けるのはやめた(スクロールの中では使えない)。
-        // 権限の予告は手順のすぐ下、同じかたまりの一部として置く。
-        const SizedBox(height: AppSpacing.lg),
-        Text(
-          strings.onboardingPermissionNote,
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-      ],
-    );
-  }
-}
-
-class _Step extends StatelessWidget {
-  const _Step({required this.index, required this.icon, required this.label});
-
-  final int index;
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    // 4番目だけ色を変える。ここが持ち帰るもの(カルテ)だと分かるように。
-    final bool isLast = index == 4;
-    final Color tint = isLast ? AppColors.hole : AppColors.blue;
-
-    return FadeSlideIn.staggered(
-      index: index,
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Column(
-              children: <Widget>[
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: tint.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(AppRadius.button),
-                  ),
-                  child: Icon(icon, size: 20, color: tint),
-                ),
-                // 次の手順へ続く線。1周であることが縦に見える。
-                if (!isLast) Expanded(child: Container(width: 2, color: AppColors.border)),
-              ],
-            ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(top: AppSpacing.sm, bottom: AppSpacing.md),
-                child: Text(label, style: Theme.of(context).textTheme.bodyLarge),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _Dots extends StatelessWidget {
-  const _Dots({required this.count, required this.current});
-
-  final int count;
-  final int current;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: <Widget>[
-        for (int i = 0; i < count; i++)
-          AnimatedContainer(
-            duration: AppMotion.decorative(context, AppDurations.reaction),
-            curve: AppCurves.enter,
-            margin: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
-            width: i == current ? 20 : 8,
-            height: 8,
-            decoration: BoxDecoration(
-              // 通ってきた枚は薄く残す。あと何枚あるかが見えるように。
-              color: switch (i) {
-                _ when i == current => AppColors.blue,
-                _ when i < current => AppColors.blue.withValues(alpha: 0.35),
-                _ => AppColors.border,
-              },
-              borderRadius: BorderRadius.circular(AppRadius.chip),
-            ),
-          ),
-      ],
     );
   }
 }
