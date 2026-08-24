@@ -28,6 +28,7 @@
  * | `agent_false_interruption`   | 誤割り込みを自動再開できたか |
  * | `overlapping_speech`         | 発話の重なりを検出した(生音声と確率列は出さない) |
  * | `conversation_ended`         | 終わり方(completed / timeout / user_left / error) |
+ * | `room_disconnect_failed`     | 部屋を出られなかった。アプリは残り時間まで降りられない |
  * | `karte_built`                | カルテができた(穴の数と所要時間) |
  * | `karte_failed`               | LLMかスキーマで落ちた。空のカルテを送る |
  * | `complete_posted`            | `/complete` に通った |
