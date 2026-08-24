@@ -604,6 +604,58 @@ describe("POST /v1/me/practice/{problemId}", () => {
     );
   });
 
+  /**
+   * POST がタイムアウトしてもアプリは下書きを消さないので、押し直すと
+   * 一字一句同じ本文が届く。素通しすると履歴が二重に積まれ、段がもう一組
+   * 予約されて**同じ通知が2回届く**。
+   */
+  it("同じこたえの送り直しは、採点も予約もやり直さない", async () => {
+    const problem = await seedPracticeProblem();
+    services.grader.set({ verdict: "incorrect", comment: "おしい", gradedBy: "stub" });
+
+    const first = (await (
+      await answerPractice(problem.id, { response: "2個だと思う" })
+    ).json()) as PracticeAnswerResponse;
+
+    const retry = await answerPractice(problem.id, { response: "2個だと思う" });
+    expect(retry.status).toBe(200);
+    const second = (await retry.json()) as PracticeAnswerResponse;
+
+    expect(second.attempt.id).toBe(first.attempt.id);
+    // 「次はいつ来るか」は1回目と同じものを出す。応答だけ落ちた場合、生徒が
+    // 見るのはこの画面だけなので、空を返すとどこにも出なくなる。
+    expect(second.next_schedule).toEqual(first.next_schedule);
+    expect(services.repository.practiceAttempts).toHaveLength(1);
+    expect(services.repository.practiceSchedules).toHaveLength(3);
+    expect(services.scheduler.scheduledPractice).toHaveLength(3);
+    // 2度目は採点器も叩かない(LLMの費用と、判定が揺れる余地の両方を断つ)。
+    expect(services.grader.graded).toHaveLength(1);
+  });
+
+  /**
+   * 不正解・判定できずの問題はキューに残り続ける。後日もう一度同じ答えを書くのは
+   * **本物の再挑戦**なので、そちらは段を積むのが正しい。
+   */
+  it("窓を過ぎた同じこたえは、本物の再挑戦として段を積む", async () => {
+    const problem = await seedPracticeProblem();
+    await seedPracticeAttempt(problem.id, {
+      id: "att_old",
+      // 既定の `now` は 2026-08-03T13:24:07Z。前日の解答は窓の外。
+      answered_at: "2026-08-02T11:00:00.000Z",
+      response: "2個だと思う",
+      verdict: "incorrect",
+    });
+    services.grader.set({ verdict: "incorrect", comment: "おしい", gradedBy: "stub" });
+
+    const response = await answerPractice(problem.id, { response: "2個だと思う" });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as PracticeAnswerResponse;
+
+    expect(body.attempt.id).not.toBe("att_old");
+    expect(body.next_schedule.map((entry) => entry.days)).toEqual([1, 3, 7]);
+    expect(services.repository.practiceAttempts).toHaveLength(2);
+  });
+
   it("他人の問題には触れず404を返す", async () => {
     const problem = await seedPracticeProblem();
     const response = await answerPractice(

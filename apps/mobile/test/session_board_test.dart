@@ -228,6 +228,7 @@ void main() {
       Size size = phoneSurface,
       SessionProblem? problem,
       ProblemPhotoPicker? problemPhotoPicker,
+      bool controlFails = false,
     }) async {
       final SessionState initial = problem == null
           ? state
@@ -242,7 +243,7 @@ void main() {
             () => FakeCaptureController(problem),
           ),
           sessionControllerProvider.overrideWith(
-            () => FakeSessionController(initial),
+            () => FakeSessionController(initial, controlFails: controlFails),
           ),
           problemPhotoPickerProvider.overrideWithValue(
             problemPhotoPicker ?? FakeProblemPhotoPicker(),
@@ -338,6 +339,48 @@ void main() {
       final BoxDecoration decoration = face.decoration! as BoxDecoration;
       expect(decoration.color, AppColors.border);
       expect(decoration.boxShadow, isEmpty);
+    });
+
+    /// 送れていないので先輩はまだ喋っている。掛け金を立てたままにすると
+    /// 「わかった」も × も無効のまま「声を止めたよ」だけが出て、**時間切れまで
+    /// 何も押せない画面**になる。回線が一瞬切れただけでそこへ落ちる。
+    testWidgets('制御RPCが届かなかったら「わかった」と × を押せるまま戻す', (
+      WidgetTester tester,
+    ) async {
+      final FakeSessionController controller = await pumpSession(
+        tester,
+        teaching(<String>['D = 9 - 8 = 1']),
+        controlFails: true,
+      );
+
+      final Finder understood = find.widgetWithText(
+        ChunkyButton,
+        ja.sessionUnderstood,
+      );
+      await tester.tap(understood);
+      await tester.pump();
+
+      expect(controller.controlCalls, hasLength(1));
+      expect(controller.snapshot.isUnderstood, isFalse);
+      // 「声を止めたよ」は出さない。止まっていないので。
+      expect(find.text(ja.sessionVoiceStopped), findsNothing);
+      // もう一度押せる = 出口が残っている。
+      expect(
+        tester.widget<ChunkyButton>(understood).onPressed,
+        isNotNull,
+      );
+      expect(
+        tester
+            .widget<Semantics>(
+              find.ancestor(
+                of: find.byKey(const Key('session-close')),
+                matching: find.byType(Semantics),
+              ).first,
+            )
+            .properties
+            .enabled,
+        isTrue,
+      );
     });
 
     testWidgets('「わかった」のあとも最後の板書を消さない', (WidgetTester tester) async {
@@ -953,9 +996,12 @@ class FakeCaptureController extends CaptureController {
 
 /// 状態を外から差し替えられる差し替え。LiveKitにはつなぎに行かせない。
 class FakeSessionController extends SessionController {
-  FakeSessionController(this._initial);
+  FakeSessionController(this._initial, {this.controlFails = false});
 
   final SessionState _initial;
+
+  /// 制御RPCを落とす。回線が切れているあいだの「わかった」を再現する。
+  final bool controlFails;
   final List<String> solvingReports = <String>[];
   final List<File> addedProblemPhotos = <File>[];
   final List<PerformRpcParams> controlCalls = <PerformRpcParams>[];
@@ -980,6 +1026,7 @@ class FakeSessionController extends SessionController {
   SessionControlClient get sessionControlClient =>
       SessionControlClient((PerformRpcParams params) async {
         controlCalls.add(params);
+        if (controlFails) throw StateError('制御RPCが届きませんでした');
         return '{"v":1,"accepted":true}';
       });
 

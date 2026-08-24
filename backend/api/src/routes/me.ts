@@ -46,6 +46,14 @@ import { toPracticeProblem, topicLabelOf } from "./complete.ts";
 
 export const meRoute = new Hono<AppEnv>();
 
+/**
+ * 同じこたえの送り直しを「1回目の続き」として扱う幅。
+ *
+ * 通信の失敗と押し直しに要る時間だけを見込む。長くすると、**本物の再挑戦**
+ * (不正解の問題に後からもう一度同じ答えを書く)まで飲み込んで段が積まれなくなる。
+ */
+const practiceResendWindowMs = 5 * 60 * 1000;
+
 /** GET /v1/me/progress — ホーム画面のカウンター。 */
 meRoute.get("/progress", async (c) => {
   const { repository, now } = c.get("services");
@@ -211,6 +219,56 @@ meRoute.post("/practice/:problemId", async (c) => {
   const problem = await repository.getPracticeProblem(c.req.param("problemId"));
   // 存在の有無と所有者の違いを同じ404にして、他人の問題を触らせず、存在も漏らさない。
   if (!problem || problem.device_id !== deviceId) throw apiError("practice_not_found");
+
+  /**
+   * **同じこたえの送り直しを、2度目の採点にしない。**
+   *
+   * この POST がタイムアウトしても、アプリは下書きを消さない
+   * (`PracticeAnswerController.submit` の catch)。生徒がもう一度押すと
+   * **一字一句同じ本文**が届く。素通しすると採点履歴が二重に積まれ、
+   * 1・3・7日(正解なら3・7日)の段がもう一組予約されて、**同じ問題の通知が
+   * 2回届く**。`idx_practice_problems_session` と同じ天秤で、取りこぼしより
+   * 二重通知のほうが痛い。
+   *
+   * **窓で切る。**同じ答えを後日もう一度書くのは本物の再挑戦
+   * (不正解・判定できずの問題はキューに残り続ける)で、そちらは段を積むのが正しい。
+   * 通信の送り直しは数秒〜数十秒で起きるので、その幅だけを拾う。
+   */
+  const known = await repository.listPracticeAttempts(deviceId);
+  const previous = known.filter((entry) => entry.problem_id === problem.id).at(-1);
+  if (
+    previous &&
+    previous.response === parsed.data.response &&
+    at.getTime() - Date.parse(previous.answered_at) < practiceResendWindowMs
+  ) {
+    log?.info("practice_answer_resent", {
+      problem_id: problem.id,
+      attempt_id: previous.id,
+      verdict: previous.verdict,
+    });
+    const [sessionDates, problems] = await Promise.all([
+      repository.sessionDates(deviceId),
+      repository.listPracticeProblems(deviceId),
+    ]);
+    const replayed: PracticeAnswerResponse = {
+      attempt: previous,
+      // **1回目に予約した段をそのまま組み直す。**新しく予約はしない。
+      // 応答だけ落ちた場合、生徒が見るのはこの2回目の画面だけなので、
+      // 空を返すと「次はいつ来るか」がどこにも出なくなる。
+      next_schedule: schedulePractice(
+        [problem.id],
+        new Date(previous.answered_at),
+        practiceStepsByVerdict[previous.verdict],
+      ),
+      progress: computeProgress({
+        sessionDates,
+        problems,
+        attempts: known,
+        today: toLocalDate(at),
+      }),
+    };
+    return c.json(replayed);
+  }
 
   const locale = localeOfTopicId(problem.topic_id);
   const grading = await grader.grade({

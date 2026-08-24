@@ -746,9 +746,20 @@ class SessionController extends _$SessionController {
         sessionId: sessionId,
       );
     } catch (error) {
-      // 到達宣言を送れなくても、板書と会話はその場に残す。失敗画面へ落とすと、
-      // 通信の不首尾を生徒の操作で直させる行き止まりになる。
-      // ただし黙って落とすと、押したのに声が止まらない原因を追えない。
+      // **掛け金を戻す。** 送れていないので、先輩はまだ喋り続けている。
+      // 立てたままにすると「わかった」も × も無効のまま「声を止めたよ」だけが出て、
+      // 生徒は**時間切れまで何も押せない画面に閉じ込められる**(× の無効化は
+      // `session_screen.dart` の `wrappingUp || state.isUnderstood`、
+      // OSの戻るも `_confirmExit` の同じ条件で塞がる)。
+      //
+      // 応答だけ落ちて agent には届いていた場合、押し直すと到達宣言が2度飛ぶが、
+      // agent 側は `AbortController` を倒すだけなので2度目は何も起きない。
+      // **押せないことのほうが痛い。**
+      //
+      // 板書と会話はその場に残す。失敗画面へ落とすと、通信の不首尾を生徒の操作で
+      // 直させる行き止まりになる。ただし黙って戻すと、押したのに声が止まらない
+      // 原因を追えない。
+      state = state.copyWith(isUnderstood: false);
       Telemetry.report(
         DegradationEvent.understoodNotSent(
           sessionId: sessionId,

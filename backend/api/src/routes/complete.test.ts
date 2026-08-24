@@ -306,6 +306,50 @@ describe("再送(冪等性)", () => {
     expect(services.repository.practiceProblems.size).toBe(0);
     expect(services.scheduler.scheduledPractice).toEqual([]);
   });
+
+  /**
+   * 保存と予約は別の文で、D1 は文をまたいだトランザクションを張らない。
+   * あいだで worker が落ちると「問題はあるのに段が1つも無い」行が残り、
+   * **約束した3日後・7日後が永久に来ない**。生徒からは「わかったを押したのに
+   * 何も届かない」としか見えないので、再送で拾い直す。
+   */
+  it("段だけ落とした回の再送は、3日後・7日後を予約し直す", async () => {
+    const sessionId = await startSession();
+    const first = (await (await complete(sessionId)).json()) as CompleteSessionResponse;
+    const problemId = first.practice_problem?.id;
+    expect(problemId).toBeDefined();
+
+    // 予約の直前で落ちた状態を作る。問題だけが残り、段は1本も無い。
+    services.repository.practiceSchedules.length = 0;
+    services.scheduler.scheduledPractice.length = 0;
+
+    const retry = await complete(sessionId);
+    expect(retry.status).toBe(200);
+    const second = (await retry.json()) as CompleteSessionResponse;
+
+    expect(second.practice_problem?.id).toBe(problemId);
+    expect(second.practice_schedule.map((entry) => entry.days)).toEqual([3, 7]);
+    expect(services.repository.practiceSchedules).toHaveLength(2);
+    expect(services.scheduler.scheduledPractice).toHaveLength(2);
+    // 問題そのものは増やさない。
+    expect(services.repository.practiceProblems.size).toBe(1);
+  });
+
+  /**
+   * 外部IDが null の行は「予約を試みて失敗した記録」で、これは既知の縮退。
+   * ここでやり直すと、成功していた分まで二重に届く。
+   */
+  it("段が1本でも残っていれば、予約はやり直さない", async () => {
+    const sessionId = await startSession();
+    await complete(sessionId);
+    services.repository.practiceSchedules.length = 1;
+    services.scheduler.scheduledPractice.length = 0;
+
+    const retry = await complete(sessionId);
+    expect(retry.status).toBe(200);
+    expect(((await retry.json()) as CompleteSessionResponse).practice_schedule).toEqual([]);
+    expect(services.scheduler.scheduledPractice).toEqual([]);
+  });
 });
 
 describe("GET /v1/sessions/{id}/result", () => {

@@ -24,6 +24,8 @@ import {
   shouldShowPaywall,
 } from "../lib/entitlement.ts";
 import { apiError } from "../lib/errors.ts";
+import type { NotificationScheduler } from "../lib/notifications.ts";
+import type { RequestLogger } from "../lib/observability.ts";
 import type {
   DailySessionUsage,
   PracticeProblemRecord,
@@ -91,6 +93,39 @@ completeRoute.post("/:sessionId/complete", async (c) => {
    */
   const alreadyStored = await repository.getPracticeProblemBySession(session.id);
   if (session.status === "completed" && (alreadyStored !== null || !body.practice_problem)) {
+    /**
+     * **段だけ取りこぼした回を、ここで拾い直す。**
+     *
+     * 保存(`insertPracticeProblem`)と予約(`insertPracticeSchedules`)は別の文で、
+     * D1 は文をまたいだトランザクションを張らない。あいだで worker が落ちると
+     * 「問題はあるのに段が1つも無い」行が残り、**約束した3日後・7日後が永久に来ない**。
+     * 生徒からは「わかったを押したのに何も届かない」としか見えない。
+     *
+     * 段が0本のときだけやり直す。1本でもあれば予約は済んでいる
+     * (外部IDが null の行は「予約を試みて失敗した記録」で、これは既知の縮退。
+     *  ここでやり直すと、成功していた分まで二重に届く)。
+     */
+    let resumed: PracticeScheduleEntry[] = [];
+    if (alreadyStored !== null) {
+      const existing = await repository.listPracticeSchedules(alreadyStored.id);
+      if (existing.length === 0) {
+        resumed = schedulePractice([alreadyStored.id], at, practiceStepsOnCreate);
+        await persistPracticeSchedules({
+          repository,
+          scheduler,
+          newId,
+          log,
+          deviceId: session.device_id,
+          problem: alreadyStored,
+          entries: resumed,
+        });
+        log?.warn("practice_schedule_resumed", {
+          session_id: session.id,
+          problem_id: alreadyStored.id,
+        });
+      }
+    }
+
     log?.info("complete_replayed", {
       session_id: session.id,
       practice_problem: alreadyStored !== null,
@@ -101,6 +136,7 @@ completeRoute.post("/:sessionId/complete", async (c) => {
         at,
         session,
         problem: alreadyStored,
+        schedule: resumed,
         limits: readLimits(c.env),
       }),
       200,
@@ -116,7 +152,6 @@ completeRoute.post("/:sessionId/complete", async (c) => {
 
   const draft = body.practice_problem ?? null;
   let stored: PracticeProblemRecord | null = null;
-  const persisted: PracticeScheduleRecord[] = [];
   let scheduleEntries: PracticeScheduleEntry[] = [];
 
   if (draft !== null) {
@@ -154,36 +189,15 @@ completeRoute.post("/:sessionId/complete", async (c) => {
       stored = record;
 
       scheduleEntries = schedulePractice([record.id], at, practiceStepsOnCreate);
-      for (const entry of scheduleEntries) {
-        let externalId: string | null = null;
-        try {
-          const scheduled = await scheduler.schedulePractice({
-            deviceId: session.device_id,
-            problemId: record.id,
-            step: entry.step as 1 | 2 | 3,
-            sendAt: entry.scheduled_at,
-            topicLabel: topicLabelOf(record.topic_id),
-            daysSince: entry.days,
-            // 通知の言語は問題の topic_id から引く。端末の設定ではなくこちらが正。
-            locale: localeOfTopicId(record.topic_id),
-          });
-          externalId = scheduled.externalId;
-        } catch (error) {
-          // 通知の予約に失敗しても、完了応答は返す。プッシュのために体験を止めない。
-          log?.error("practice_schedule_failed", error, {
-            session_id: session.id,
-            problem_id: record.id,
-          });
-        }
-        persisted.push({
-          id: newId("psc"),
-          problem_id: record.id,
-          step: entry.step as 1 | 2 | 3,
-          scheduled_at: entry.scheduled_at,
-          external_id: externalId,
-        });
-      }
-      await repository.insertPracticeSchedules(persisted);
+      await persistPracticeSchedules({
+        repository,
+        scheduler,
+        newId,
+        log,
+        deviceId: session.device_id,
+        problem: record,
+        entries: scheduleEntries,
+      });
     }
   }
 
@@ -221,7 +235,7 @@ completeRoute.post("/:sessionId/complete", async (c) => {
     duration_seconds: durationSeconds,
     transcript_turns: body.transcript.length,
     practice_problem: stored !== null,
-    scheduled: persisted.length,
+    scheduled: scheduleEntries.length,
   });
 
   return c.json(response, 201);
@@ -260,14 +274,69 @@ export function topicLabelOf(topicId: string): string {
  * 同じ理由で、既に予約したものをもう一度「いま予約した」として返さない
  * (祝福画面が「3日後に送るね」を二度言うことになる)。
  */
+/**
+ * 段を予約して、予約した事実を行として残す。
+ *
+ * **外部の予約に失敗しても行は残す。** 外部IDが null の行は「予約を試みて失敗した」
+ * 記録で、これを残さないと再送のたびに全段を予約し直して二重に届く
+ * (`idx_practice_problems_session` のコメントと同じ天秤 —
+ *  取りこぼしより二重通知のほうが痛い)。
+ */
+async function persistPracticeSchedules(input: {
+  repository: Repository;
+  scheduler: NotificationScheduler;
+  newId: (prefix: string) => string;
+  log: RequestLogger | undefined;
+  deviceId: string;
+  problem: PracticeProblemRecord;
+  entries: PracticeScheduleEntry[];
+}): Promise<void> {
+  const { repository, scheduler, newId, log, deviceId, problem, entries } = input;
+  const persisted: PracticeScheduleRecord[] = [];
+
+  for (const entry of entries) {
+    let externalId: string | null = null;
+    try {
+      const scheduled = await scheduler.schedulePractice({
+        deviceId,
+        problemId: problem.id,
+        step: entry.step as 1 | 2 | 3,
+        sendAt: entry.scheduled_at,
+        topicLabel: topicLabelOf(problem.topic_id),
+        daysSince: entry.days,
+        // 通知の言語は問題の topic_id から引く。端末の設定ではなくこちらが正。
+        locale: localeOfTopicId(problem.topic_id),
+      });
+      externalId = scheduled.externalId;
+    } catch (error) {
+      // 通知の予約に失敗しても、完了応答は返す。プッシュのために体験を止めない。
+      log?.error("practice_schedule_failed", error, {
+        session_id: problem.session_id,
+        problem_id: problem.id,
+      });
+    }
+    persisted.push({
+      id: newId("psc"),
+      problem_id: problem.id,
+      step: entry.step as 1 | 2 | 3,
+      scheduled_at: entry.scheduled_at,
+      external_id: externalId,
+    });
+  }
+
+  await repository.insertPracticeSchedules(persisted);
+}
+
 export async function buildResponse(input: {
   repository: Repository;
   at: Date;
   session: SessionRecord;
   problem: PracticeProblemRecord | null;
+  /** 今回この応答で予約した段。再送で拾い直したときだけ中身が入る。 */
+  schedule?: PracticeScheduleEntry[];
   limits: Limits;
 }): Promise<CompleteSessionResponse> {
-  const { repository, at, session, problem, limits } = input;
+  const { repository, at, session, problem, schedule = [], limits } = input;
 
   const localDate = toLocalDate(at);
   const [sessionDates, problems, attempts, user, usage] = await Promise.all([
@@ -280,7 +349,7 @@ export async function buildResponse(input: {
 
   return {
     practice_problem: problem === null ? null : toPracticeProblem(problem),
-    practice_schedule: [],
+    practice_schedule: schedule,
     progress: computeProgress({ sessionDates, problems, attempts, today: localDate }),
     limits: sessionLimitsPayload({ user, usage, at, limits }),
     show_paywall: shouldShowPaywall({
