@@ -5,6 +5,8 @@ import 'package:ai_sensei/src/api/device_id.dart';
 import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
 import 'package:ai_sensei/src/features/karte/domain/karte.dart';
 import 'package:ai_sensei/src/features/onboarding/presentation/onboarding_screen.dart';
+import 'package:ai_sensei/src/features/onboarding/presentation/onboarding_stage.dart';
+import 'package:ai_sensei/src/features/settings/application/school_stage_controller.dart';
 import 'package:ai_sensei/src/features/session/presentation/celebration_screen.dart';
 import 'package:ai_sensei/src/l10n/strings.dart';
 import 'package:ai_sensei/src/routing/app_router.dart';
@@ -95,35 +97,97 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<void> tapKey(WidgetTester tester, Key key) async {
+    await tester.tap(find.byKey(key));
+    await tester.pumpAndSettle();
+  }
+
+  /// オンボーディングを開く。
+  ///
+  /// **端末に保存する設定を必ず入れる。**学年の枚がそれを書くので、
+  /// `preferencesProvider` を渡さないと選んだ瞬間に落ちる
+  /// (`main()` で override する前提のプロバイダ・harness.dart)。
+  Future<void> openOnboarding(WidgetTester tester) async {
+    await setSurface(tester);
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    await tester.pumpWidget(
+      wrapApp(
+        const OnboardingScreen(),
+        overrides: <Object?>[preferencesProvider.overrideWithValue(preferences)],
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('01 オンボーディング(約束)', (WidgetTester tester) async {
     await expectGolden(tester, const OnboardingScreen(), 'onboarding');
   });
 
-  // リハーサル。ここで見たいのは、**答えが1文字も出ていない**こと。
-  // 出ているのは質問と、説明する/言えない の2つの道だけ。
-  testWidgets('01b オンボーディング(リハーサル)', (WidgetTester tester) async {
-    await setSurface(tester);
-    await tester.pumpWidget(wrapApp(const OnboardingScreen()));
-    await tester.pumpAndSettle();
+  // 学年。**触っていない選択肢に印が付いていない**こと(既定を先回りしない)。
+  testWidgets('01b オンボーディング(学年)', (WidgetTester tester) async {
+    await openOnboarding(tester);
+    await tapNext(tester);
+    await capture(tester, 'onboarding_stage');
+  });
 
+  // やること。**説明しているループが、いま実装されているループか**(ADR 0009)。
+  // ここが古い絵のまま腐ると、オンボーディングだけが存在しない機能を約束する。
+  testWidgets('01b2 オンボーディング(やること)', (WidgetTester tester) async {
+    await openOnboarding(tester);
+    await tapNext(tester);
+    await tapKey(tester, onboardingStageKey(SchoolStage.highSchool));
+    await tapNext(tester);
+    await capture(tester, 'onboarding_loop');
+  });
+
+  // 授業のリハーサル。ここで見たいのは、板書が**本番と同じ黒板**で出ていることと、
+  // 下に置いてある一手が「わかった」ひとつだけであること(ADR 0009)。
+  testWidgets('01c オンボーディング(授業のリハーサル)', (WidgetTester tester) async {
+    await openOnboarding(tester);
+    await tapNext(tester);
+    await tapKey(tester, onboardingStageKey(SchoolStage.highSchool));
     await tapNext(tester);
     await tapNext(tester);
     await capture(tester, 'onboarding_rehearsal');
   });
 
-  // パスしたあとのカルテ見本。穴がピンクで残り、責める言葉が無く、
-  // 「また来る」ことが線で見えているか。
-  testWidgets('01c オンボーディング(カルテの見本)', (WidgetTester tester) async {
-    await setSurface(tester);
-    await tester.pumpWidget(wrapApp(const OnboardingScreen()));
-    await tester.pumpAndSettle();
+  /// 復習のリハーサルまで進める(通知が届いた状態で止める)。
+  Future<void> gotoPractice(WidgetTester tester) async {
+    await openOnboarding(tester);
+    await tapNext(tester);
+    await tapKey(tester, onboardingStageKey(SchoolStage.highSchool));
+    await tapNext(tester);
+    await tapNext(tester);
+    await tapKey(tester, const Key('onboarding-understood'));
+    await tapNext(tester);
+  }
 
+  // 3日後の通知。**この枚が、手元の無料AIとの差そのもの。**
+  // 見本が実物と食い違わないよう(2行で収まる長さか)ここで見る。
+  testWidgets('01d オンボーディング(3日後の通知)', (WidgetTester tester) async {
+    await gotoPractice(tester);
+    await capture(tester, 'onboarding_push');
+  });
+
+  // 復習のリハーサル(採点のあと)。**点数が出ていない**こと、
+  // 判定が黄マーカーで、次の段(7日後)が残っていること。
+  testWidgets('01e オンボーディング(復習のリハーサル)', (WidgetTester tester) async {
+    await gotoPractice(tester);
+    await tapKey(tester, const Key('onboarding-practice-open'));
+    await tapKey(tester, const Key('onboarding-practice-write'));
+    await tapKey(tester, const Key('onboarding-practice-submit'));
+    await capture(tester, 'onboarding_practice');
+  });
+
+  // これから。1/3/7日ではなく **3日後・7日後**(ADR 0009)が線で見えているか。
+  testWidgets('01f オンボーディング(これから)', (WidgetTester tester) async {
+    await gotoPractice(tester);
+    await tapKey(tester, const Key('onboarding-practice-open'));
+    await tapKey(tester, const Key('onboarding-practice-write'));
+    await tapKey(tester, const Key('onboarding-practice-submit'));
     await tapNext(tester);
-    await tapNext(tester);
-    await tester.tap(find.text(ja.sessionPass));
-    await tester.pumpAndSettle();
-    await tapNext(tester);
-    await capture(tester, 'onboarding_karte');
+    await capture(tester, 'onboarding_ready');
   });
 
   testWidgets('02 ホーム', (WidgetTester tester) async {

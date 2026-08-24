@@ -6,7 +6,9 @@ import 'package:ai_sensei/src/features/karte/presentation/review_screen.dart';
 import 'package:ai_sensei/src/features/monetization/presentation/paywall_screen.dart';
 import 'package:ai_sensei/src/features/monetization/presentation/thanks_screen.dart';
 import 'package:ai_sensei/src/features/onboarding/presentation/onboarding_screen.dart';
+import 'package:ai_sensei/src/features/onboarding/presentation/onboarding_stage.dart';
 import 'package:ai_sensei/src/features/session/presentation/celebration_screen.dart';
+import 'package:ai_sensei/src/features/settings/application/school_stage_controller.dart';
 import 'package:ai_sensei/src/features/settings/presentation/settings_screen.dart';
 import 'package:ai_sensei/src/l10n/strings.dart';
 import 'package:flutter/material.dart';
@@ -63,28 +65,50 @@ void main() {
   ]) {
     final String lang = locale.languageCode;
 
-    testWidgets('オンボーディング4枚 ($lang)', (WidgetTester tester) async {
+    // 枚数はロケールで変わる(日本語だけ学年を聞く・ADR 0007)。
+    // **通し方も枚ごとに違う**ので、順に踏んでいく。
+    testWidgets('オンボーディングを最後まで ($lang)', (WidgetTester tester) async {
       final AppStrings strings = AppStrings(locale);
+      final bool asksStage = lang == 'ja';
+
+      Future<void> next(String page) async {
+        await tester.tap(find.text(strings.onboardingNext));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull, reason: page);
+      }
+
+      Future<void> tapKey(Key key) async {
+        await tester.tap(find.byKey(key));
+        await tester.pumpAndSettle();
+      }
+
       await pumpApp(
         tester,
         const OnboardingScreen(),
         locale: locale,
         size: smallPhoneSurface,
       );
-      expect(tester.takeException(), isNull, reason: '1枚目');
+      expect(tester.takeException(), isNull, reason: '約束');
 
-      for (final String page in <String>['2枚目', '3枚目']) {
-        await tester.tap(find.text(strings.onboardingNext));
-        await tester.pumpAndSettle();
-        expect(tester.takeException(), isNull, reason: page);
+      if (asksStage) {
+        await next('学年');
+        await tapKey(onboardingStageKey(SchoolStage.juniorHigh));
       }
+      await next('やること');
+      await next('授業のリハーサル');
 
-      // 4枚目は3枚目を通らないと出ない。パスでも通れる(約束3)。
-      await tester.tap(find.text(strings.sessionPass));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text(strings.onboardingNext));
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull, reason: '4枚目');
+      // 「わかった」を押すまで先へ進めない。押すと1問できて縦に伸びる。
+      await tapKey(const Key('onboarding-understood'));
+      expect(tester.takeException(), isNull, reason: '授業のリハーサル(押したあと)');
+
+      await next('復習のリハーサル');
+      await tapKey(const Key('onboarding-practice-open'));
+      expect(tester.takeException(), isNull, reason: '復習のリハーサル(開いたあと)');
+      await tapKey(const Key('onboarding-practice-write'));
+      await tapKey(const Key('onboarding-practice-submit'));
+      expect(tester.takeException(), isNull, reason: '復習のリハーサル(採点のあと)');
+
+      await next('これから');
     });
 
     testWidgets('ホーム ($lang)', (WidgetTester tester) async {

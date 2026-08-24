@@ -5,14 +5,13 @@ import '../../../common_widgets/centered_scroll.dart';
 import '../../../common_widgets/chunky_button.dart';
 import '../../../common_widgets/entrance.dart';
 import '../../../common_widgets/senpai_face.dart';
-import '../../../common_widgets/marker_text.dart';
-import '../../../common_widgets/speaking_wave.dart';
 import '../../../common_widgets/typing_text.dart';
 import '../../../l10n/strings.dart';
 import '../../../theme/motion.dart';
 import '../../../theme/tokens.dart';
 import '../../session/domain/board.dart';
 import '../../session/presentation/board/board_view.dart';
+import 'onboarding_motion.dart';
 
 /// 板書が下に続いていることを示す帯([_BottomFade])の目印。
 ///
@@ -21,84 +20,74 @@ import '../../session/presentation/board/board_view.dart';
 /// 見た目ではなくこの目印でテストできるようにしてある。
 const Key onboardingBoardMoreBelowKey = Key('onboarding_board_more_below');
 
-/// リハーサルの結果。
-enum RehearsalOutcome {
-  /// 教え返せた → 黄マーカー。
-  explained,
+/// できあがった復習問題のカードの目印。
+const Key onboardingMadeProblemKey = Key('onboarding_made_problem');
 
-  /// うまく言えなかった → ピンクのマーカー(= 穴)。**失敗ではない。**
-  passed,
-}
-
-/// オンボーディング3枚目 — リハーサル。
+/// 授業のリハーサル — **コアループの前半を、一度やってみる枚**。
 ///
-/// 読んで分かった気になる説明を、**一度やってみる**に置き換える枚。
-/// ここを通ると、初回の撮影ボタンを押す前に、
-/// 「先輩が板書で教えてくれる」と「教え返せなかったことが残る」の両方を体験している。
+/// 読んで分かった気になる説明を、**やってみる**に置き換える。ここを通ると、
+/// 初回の撮影ボタンを押す前に「先輩が板書で教えてくれる」と
+/// 「わかったと言うと1問できる」の両方を体験している。
 ///
-/// **この1枚の主張は「答えが目の前にあっても、説明できるとは限らない」。**
-/// 板書には結論(`解が2つ ⇔ D > 0`)まで書いてあり、隠していない。
-/// それでも「なんで D を見るんだっけ?」には詰まる — そこが穴で、
-/// 教えて終わりにしない理由そのもの(ピボット計画 §1-1「誤読の保険」と同じ構造)。
-/// 改正前の「答えを出さない」を守るために質問だけを見せていたのを、
-/// **答えを見せたうえで聞く**に作り替えてある。
+/// **ADR 0009 でこの枚の中身が入れ替わった。**教え返し(長押しして説明する →
+/// 言えた / 言えない)は畳まれ、いま置いてあるのは**授業を終わらせる操作**
+/// ひとつだけ。降りる口は生徒側に2つ(「わかった」と ×)で、確認を挟むのは
+/// × だけ —「わかった」は素通し。だからここでも確認は出さない。
 ///
 /// 3つ守る:
-///   - **繋がない。** 板書も質問も固定の台本で、LiveKitにもAPIにも触らない。
-///   - **権限を要求しない。** マイクもカメラも使わない。録らないことは画面に書く。
-///   - **正解にしない。** 教え返しても、パスしても、先へ進める。
-///     どちらを選んだかで責めない(§0 の約束3。ここは改正されていない)。
+///   - **繋がない。** 板書も台本も固定で、LiveKitにもAPIにも触らない。
+///   - **権限を要求しない。** カメラもマイクも使わない。使わないことは画面に書く。
+///   - **待たせない。** 押した瞬間に問題ができる(ADR 0009「生成の完了を待たせない」)。
+///     本番では生成は `/complete` の裏に回るが、**待たされないという体験**は同じ。
 ///
 /// ## 画面を「読む側」と「やる側」に割ってある
 ///
 /// 板書を積んだぶん縦に伸び、375×667(SE級)では操作が折り返しの下に落ちた。
 /// **操作が初期表示に無いことは、板書が全部見えないことより重い** —
 /// 板書は切れていても「下に続く」と分かれば体験は壊れないが、操作が見えなければ
-/// **やることがある枚だと気づかれないままスワイプされる**。この1枚は
-/// 「読ませる枚」ではなく「やらせる枚」なので、そこで離脱されると存在理由が消える。
+/// **やることがある枚だと気づかれないままスワイプされる**。
 ///
-/// そこで上下に割った:
-///   - **上(スクロールする)**: 見出し・撮った問題・板書。収まらなければここだけが動く
-///   - **下(固定)**: 先輩の顔とふきだし・操作・録音しない注記
-///
-/// 顔とふきだしを固定側に入れているのは、**押しているあいだの手ごたえが顔だから**。
-/// 長押し中は表情が `listening` に変わるので、顔が流れて見えなくなると
-/// 「聞いてもらえている」という唯一のフィードバックが消える。
-/// ふきだしの問いかけも、操作の意味そのものなので離さない。
+///   - **上(スクロールする)**: 見出し・撮った問題・板書
+///   - **下(固定)**: 先輩の顔とふきだし・操作・使わないものの注記
 class OnboardingRehearsalPage extends StatefulWidget {
-  const OnboardingRehearsalPage({required this.outcome, required this.onOutcome, super.key});
+  const OnboardingRehearsalPage({
+    required this.understood,
+    required this.onUnderstood,
+    required this.onReset,
+    super.key,
+  });
 
-  final RehearsalOutcome? outcome;
+  /// 「わかった」を押したか。押すまで先へは進めない(親が「つぎへ」を止める)。
+  final bool understood;
 
-  /// 結果が決まった(または「もう一度ためす」で消えた)ときに親へ返す。
-  /// 4枚目のカルテ見本が、この結果をそのまま使う。
-  final ValueChanged<RehearsalOutcome?> onOutcome;
+  final VoidCallback onUnderstood;
+
+  /// 「もう一度ためす」。責めずに、押す前へ戻す。
+  final VoidCallback onReset;
 
   @override
   State<OnboardingRehearsalPage> createState() => _OnboardingRehearsalPageState();
 }
 
 class _OnboardingRehearsalPageState extends State<OnboardingRehearsalPage> {
-  /// 質問を打ち終わるまで、操作は出さない。まだ聞かれていないので。
-  bool _asked = false;
-  bool _holding = false;
+  /// 先輩が言い終わるまで、操作は出さない。まだ教わっていないので。
+  bool _taught = false;
 
-  /// **うまく言えなかったときに顔を曇らせない。**
-  ///
-  /// 後輩版はここで困り顔([SenpaiMood.puzzled])にしていた。後輩にとっては
-  /// 「聞いても分からなかった」という事実の表示で、責める意味を持たなかったからだ。
-  /// 先輩がここで困ると意味が変わる — **教えたのに伝わらなかった、という落胆**に
-  /// 読める。詰まることは織り込み済み(それを見つけに来ている)なので、
-  /// 顔は受け取ったまま動かさず、応えるのは言葉とマーカーだけにする(§0 の約束3)。
-  SenpaiMood get _mood => switch (widget.outcome) {
-    RehearsalOutcome.explained => SenpaiMood.delighted,
-    RehearsalOutcome.passed => SenpaiMood.neutral,
-    null => _holding ? SenpaiMood.listening : SenpaiMood.neutral,
-  };
+  /// **押したあとも顔を曇らせない。**「わかった」は到達の宣言(ADR 0009)で、
+  /// 先輩が採点し直すものではない。応えるのは言葉と、できた1問だけ。
+  SenpaiMood get _mood => widget.understood ? SenpaiMood.delighted : SenpaiMood.neutral;
+
+  void _understood() {
+    HapticFeedback.mediumImpact();
+    widget.onUnderstood();
+  }
 
   @override
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
+    final String line = widget.understood
+        ? strings.onboardingTryUnderstoodReaction
+        : strings.onboardingTryTeachLine;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -140,12 +129,17 @@ class _OnboardingRehearsalPageState extends State<OnboardingRehearsalPage> {
                     SenpaiFace(mood: _mood, size: 76),
                     const SizedBox(width: AppSpacing.sm),
                     Expanded(
-                      child: _SpeechBubble(
+                      child: SenpaiBubble(
                         child: TypingText(
-                          strings.onboardingTryQuestion,
+                          // **せりふが替わったら、打ち直させる。**[TypingText] は
+                          // 最初の文字列でコントローラを組むので、同じ場所で文だけ
+                          // 差し替えると State が使い回されて**前のせりふのまま**
+                          // 止まる。鍵を文そのものにして作り直させる。
+                          key: ValueKey<String>(line),
+                          line,
                           style: Theme.of(context).textTheme.bodyLarge,
                           onDone: () {
-                            if (mounted && !_asked) setState(() => _asked = true);
+                            if (mounted && !_taught) setState(() => _taught = true);
                           },
                         ),
                       ),
@@ -155,10 +149,8 @@ class _OnboardingRehearsalPageState extends State<OnboardingRehearsalPage> {
               ),
               const SizedBox(height: AppSpacing.md),
               _resize(
-                child: _asked ? _buildAnswer(strings) : const SizedBox(width: double.infinity),
+                child: _taught ? _buildAnswer(strings) : const SizedBox(width: double.infinity),
               ),
-              // 注記を操作と「つぎへ」のあいだに挟む。
-              // 同じ幅のボタンが2つ続けて並ぶと、どちらが今の一手か分かりにくい。
               const SizedBox(height: AppSpacing.sm),
               Text(
                 strings.onboardingTryNotRecording,
@@ -173,7 +165,7 @@ class _OnboardingRehearsalPageState extends State<OnboardingRehearsalPage> {
     );
   }
 
-  /// 質問 → 操作 → 結果 で高さが変わる。急に伸び縮みしないよう繋ぐ。
+  /// 教わる → 押す → 1問できた、で高さが変わる。急に伸び縮みしないよう繋ぐ。
   ///
   /// [AnimatedSize] は長さ0を渡せない(レイアウト中に自分をやり直して落ちる)ので、
   /// 動かさない設定のときは包まずにそのまま返す。
@@ -189,47 +181,37 @@ class _OnboardingRehearsalPageState extends State<OnboardingRehearsalPage> {
   }
 
   Widget _buildAnswer(AppStrings strings) {
-    final RehearsalOutcome? outcome = widget.outcome;
-    if (outcome == null) {
+    if (!widget.understood) {
       return Column(
         key: const ValueKey<String>('ask'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          _HoldToExplainButton(
-            onHoldChanged: (bool value) => setState(() => _holding = value),
-            onExplained: () => widget.onOutcome(RehearsalOutcome.explained),
-          ),
-          // パスは恥ではない。同じ大きさで並べないが、隠しもしない。
-          GhostButton(
-            label: strings.sessionPass,
-            onPressed: () => widget.onOutcome(RehearsalOutcome.passed),
+          // **本番と同じ言葉・同じ位置**(`sessionUnderstood`)。
+          // ここだけ別の名前にすると、この枚が授業モードの下見として働かない。
+          ChunkyButton(
+            key: const Key('onboarding-understood'),
+            label: strings.sessionUnderstood,
+            color: AppColors.streak,
+            onPressed: _understood,
           ),
         ],
       );
     }
 
-    final bool explained = outcome == RehearsalOutcome.explained;
     return Column(
-      key: ValueKey<RehearsalOutcome>(outcome),
+      key: const ValueKey<String>('understood'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
+        // 押した瞬間に、できた1問が出る。**跳ねて出す**のは、
+        // これが持ち帰るものだから(にぎやかな画面だけが `pop` を使える)。
+        PopIn(child: _MadeProblemCard(label: strings.onboardingTryProblemLabel)),
+        const SizedBox(height: AppSpacing.sm),
         Text(
-          explained ? strings.onboardingTrySaidReaction : strings.onboardingTryHoleReaction,
+          strings.onboardingTryNotWaiting,
           textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.titleMedium,
+          style: Theme.of(context).textTheme.bodySmall,
         ),
-        const SizedBox(height: AppSpacing.md),
-        _KarteLine(
-          title: explained ? strings.karteSaidWell : strings.karteHoles(1),
-          text: explained ? strings.onboardingTrySaid : strings.onboardingTryHole,
-          marker: explained ? MarkerColor.said : MarkerColor.hole,
-        ),
-        GhostButton(
-          label: strings.onboardingTryAgain,
-          onPressed: () {
-            setState(() => _holding = false);
-            widget.onOutcome(null);
-          },
-        ),
+        GhostButton(label: strings.onboardingTryAgain, onPressed: widget.onReset),
       ],
     );
   }
@@ -263,6 +245,48 @@ class _NotebookCard extends StatelessWidget {
             Text(strings.onboardingTryNotebook, style: Theme.of(context).textTheme.titleMedium),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 「わかった」で生まれた復習問題。**紙のカード**(板書は黒板)。
+///
+/// 素材の分けは `board_style.dart` と同じ — 復習画面の `_ProblemCard` も紙なので、
+/// 3日後に届く問題と同じ見た目のものが、ここで生まれたことになる。
+class _MadeProblemCard extends StatelessWidget {
+  const _MadeProblemCard({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppStrings strings = AppStrings.of(context);
+
+    return Container(
+      key: onboardingMadeProblemKey,
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: AppColors.hole.withValues(alpha: 0.5), width: 2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              const Icon(Icons.auto_awesome, size: 16, color: AppColors.hole),
+              const SizedBox(width: AppSpacing.xs),
+              Text(label, style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            strings.onboardingPracticeQuestion,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+        ],
       ),
     );
   }
@@ -372,13 +396,8 @@ class _BottomFade extends StatelessWidget {
 /// ここだけ別の見た目を作らないのは、リハーサルで見た板書と授業モードで出る板書が
 /// 食い違うと、この枚が下見として機能しなくなるため。LiveKit も
 /// `BoardChannelReceiver` も通らない — 届くはずの手順が最初から手元にあるので、
-/// 通す相手がいない。
-///
-/// **白いカードには乗せない。** `LatexElementView` の右端フェードは、板書が
-/// 画面の地(`AppColors.background`)に直接乗っている前提の色で描かれる
-/// (同ファイルの `_EdgeFade` のコメントに既知の前提として書いてある)。
-/// 別の地の上に置くと、長い式が来たときにフェードだけ色が合わない。
-/// ここは地の上に直接置き、見出しだけで区切る。
+/// 通す相手がいない。行が1行ずつ書かれる動きは [BoardView] 側の `BoardReveal` が
+/// そのまま持っている(**書かれるところを見せる**のがこの枚の主役)。
 class _SenpaiBoard extends StatelessWidget {
   const _SenpaiBoard();
 
@@ -399,242 +418,23 @@ class _SenpaiBoard extends StatelessWidget {
       children: <Widget>[
         Text(strings.onboardingTryBoardLabel, style: Theme.of(context).textTheme.bodySmall),
         const SizedBox(height: AppSpacing.xs),
-        BoardView(
-          // `speech` を空にしてあるのは手抜きではない。この枚は音を出さないし、
-          // そもそも「書いている間は喋らない」が板書レイヤーの原則(§3-1)なので、
-          // 板書だけが残る形は本番の1手順としても正しい。
-          steps: <BoardStep>[
-            BoardStep(
-              index: 0,
-              speech: '',
-              board: BoardElement.text(body: strings.onboardingTryBoardText),
-            ),
-            const BoardStep(index: 1, speech: '', board: BoardElement.latex(tex: _tex)),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-/// 先輩のふきだし。しっぽを左に向けて、話しているのが顔の側だと分かるようにする。
-class _SpeechBubble extends StatelessWidget {
-  const _SpeechBubble({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: <Widget>[
-        const CustomPaint(size: Size(8, 14), painter: _TailPainter()),
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            decoration: BoxDecoration(
-              color: AppColors.blue.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(AppRadius.card),
-            ),
-            child: child,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _TailPainter extends CustomPainter {
-  const _TailPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final Path path = Path()
-      ..moveTo(size.width, 0)
-      ..lineTo(0, size.height / 2)
-      ..lineTo(size.width, size.height)
-      ..close();
-    canvas.drawPath(path, Paint()..color = AppColors.blue.withValues(alpha: 0.08));
-  }
-
-  @override
-  bool shouldRepaint(_TailPainter oldDelegate) => false;
-}
-
-/// カルテに1行だけ書かれた状態。本物のカルテと同じ見出しとマーカーを使う。
-class _KarteLine extends StatelessWidget {
-  const _KarteLine({required this.title, required this.text, required this.marker});
-
-  final String title;
-  final String text;
-  final MarkerColor marker;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(title, style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: AppSpacing.sm),
-          // 少し待ってから引く。反応の言葉を読む時間をつくる。
-          MarkerText(text, marker: marker, delay: AppDurations.reaction),
-        ],
-      ),
-    );
-  }
-}
-
-/// 長押ししているあいだだけ、先輩が聞いている。
-///
-/// 本番のセッションは「話し続ける」ので、ここでも押し続ける操作にしてある。
-/// 押している時間そのものが説明の比喩なので、この長さは
-/// アニメーションを減らす設定でも縮めない([AppDurations.hold])。
-/// 押し続けられない人のために、読み上げ利用時はタップで済むようにする。
-class _HoldToExplainButton extends StatefulWidget {
-  const _HoldToExplainButton({required this.onHoldChanged, required this.onExplained});
-
-  final ValueChanged<bool> onHoldChanged;
-  final VoidCallback onExplained;
-
-  @override
-  State<_HoldToExplainButton> createState() => _HoldToExplainButtonState();
-}
-
-class _HoldToExplainButtonState extends State<_HoldToExplainButton>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _progress = AnimationController(
-    vsync: this,
-    duration: AppDurations.hold,
-  );
-  bool _holding = false;
-  bool _showHint = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _progress.addStatusListener((AnimationStatus status) {
-      if (status != AnimationStatus.completed) return;
-      HapticFeedback.mediumImpact();
-      widget.onExplained();
-    });
-  }
-
-  @override
-  void dispose() {
-    _progress.dispose();
-    super.dispose();
-  }
-
-  void _setHolding(bool value) {
-    if (_holding == value) return;
-    setState(() => _holding = value);
-    widget.onHoldChanged(value);
-  }
-
-  void _start() {
-    HapticFeedback.selectionClick();
-    _setHolding(true);
-    setState(() => _showHint = false);
-    _progress.forward();
-  }
-
-  void _stop() {
-    if (_progress.isCompleted) return;
-    _setHolding(false);
-    // 途中で離した。責めずに、押し方だけ伝える。
-    if (_progress.value > 0.05) setState(() => _showHint = true);
-    _progress.reverse();
-  }
-
-  /// 押し続けずに離したとき。読み上げ中は、これが正規の操作になる。
-  void _tapped() {
-    if (!AppMotion.prefersTapOverHold(context)) return;
-    _progress.value = 1;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final AppStrings strings = AppStrings.of(context);
-    final bool tapInstead = AppMotion.prefersTapOverHold(context);
-    final String label = tapInstead ? strings.onboardingTryTap : strings.onboardingTryHold;
-
-    return Column(
-      children: <Widget>[
-        Semantics(
-          button: true,
-          label: label,
-          child: GestureDetector(
-            onTapDown: (TapDownDetails _) => _start(),
-            onTapUp: (TapUpDetails _) => _stop(),
-            onTapCancel: _stop,
-            onTap: _tapped,
-            child: AnimatedBuilder(
-              animation: _progress,
-              builder: (BuildContext context, Widget? child) => ClipRRect(
-                borderRadius: BorderRadius.circular(AppRadius.button),
-                child: Container(
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: AppColors.blue.withValues(alpha: 0.10),
-                    border: Border.all(color: AppColors.blue, width: 2),
-                    borderRadius: BorderRadius.circular(AppRadius.button),
-                  ),
-                  child: Stack(
-                    children: <Widget>[
-                      // 押しているあいだ、左から満ちていく。
-                      // 進み具合が見えないと、いつまで押すのか分からない。
-                      FractionallySizedBox(
-                        widthFactor: _progress.value,
-                        alignment: Alignment.centerLeft,
-                        child: ColoredBox(
-                          color: AppColors.blue.withValues(alpha: 0.28),
-                          child: const SizedBox.expand(),
-                        ),
-                      ),
-                      Center(
-                        child: _holding
-                            ? Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: <Widget>[
-                                  const SpeakingWave(active: true, height: 22),
-                                  const SizedBox(width: AppSpacing.sm),
-                                  Text(
-                                    strings.onboardingTryHolding,
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.titleMedium?.copyWith(color: AppColors.blue),
-                                  ),
-                                ],
-                              )
-                            : Text(
-                                label,
-                                style: Theme.of(
-                                  context,
-                                ).textTheme.titleMedium?.copyWith(color: AppColors.blue),
-                              ),
-                      ),
-                    ],
-                  ),
-                ),
+        // **板は角の丸いカード**(ADR 0009 / `board_style.dart`)。高さを知って
+        // いる側が角を丸める決まりなので、ここで包む。
+        ClipRRect(
+          borderRadius: BorderRadius.circular(AppRadius.card),
+          child: BoardView(
+            title: strings.onboardingTryBoardTitle,
+            // `speech` を空にしてあるのは手抜きではない。この枚は音を出さないし、
+            // そもそも「書いている間は喋らない」が板書レイヤーの原則(§3-1)なので、
+            // 板書だけが残る形は本番の1手順としても正しい。
+            steps: <BoardStep>[
+              BoardStep(
+                index: 0,
+                speech: '',
+                board: BoardElement.text(body: strings.onboardingTryBoardText),
               ),
-            ),
-          ),
-        ),
-        SizedBox(
-          height: 28,
-          child: Center(
-            child: AnimatedOpacity(
-              opacity: _showHint ? 1 : 0,
-              duration: AppMotion.decorative(context, AppDurations.reaction),
-              child: Text(strings.onboardingTryHint, style: Theme.of(context).textTheme.bodySmall),
-            ),
+              const BoardStep(index: 1, speech: '', board: BoardElement.latex(tex: _tex)),
+            ],
           ),
         ),
       ],
