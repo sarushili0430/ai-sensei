@@ -51,19 +51,10 @@ async function startConversation(meta: Record<string, unknown> = {}): Promise<st
   return sessionId;
 }
 
-const karteDraft = {
-  said_well: ["中心と直線の距離で判定する方針を、理由つきで説明できた"],
-  holes: [
-    {
-      topic_id: "M1-NIJI-HANBETSU",
-      desc: "判別式を「なぜ」使うのか、で説明が止まった",
-      severity: "medium" as const,
-      evidence: "そこは……なんとなくです",
-      quiz: "判別式を使うと解の個数がわかる理由を説明できる?",
-    },
-  ],
-  term_notes: ["「解の公式」と「判別式」が混ざっていた"],
-  followup_question: "判別式が0のとき、グラフはどうなってるんでしたっけ?",
+const practiceProblemDraft = {
+  topic_id: "M1-NIJI-HANBETSU",
+  question: "判別式を使うと実数解の個数がわかるのはなぜ?",
+  answer: "判別式の符号が二次方程式の実数解の個数に対応するから",
 };
 
 function complete(
@@ -81,9 +72,10 @@ function complete(
           { role: "assistant", text: "なんで距離で比べたんですか?", at_ms: 1000 },
           { role: "user", text: "半径と比べたかったからです", at_ms: 8000 },
         ],
-        karte: karteDraft,
+        practice_problem: practiceProblemDraft,
+        board_id: "brd_board_1",
         duration_seconds: 268,
-        ended_reason: "completed",
+        ended_reason: "understood",
         ...body,
       }),
     },
@@ -91,28 +83,8 @@ function complete(
   );
 }
 
-async function startReviewSession(): Promise<string> {
-  // 1日目: 穴ができる
-  const first = await startSession();
-  const firstBody = (await (await complete(first)).json()) as CompleteSessionResponse;
-  const holeId = firstBody.karte.holes[0]?.id;
-  expect(holeId).toBeDefined();
-
-  // 小テストは無料だが、音声で先輩を呼び直す復習セッションはPremium機能
-  await services.repository.setPremium({
-    deviceId: testDeviceId,
-    isPremium: true,
-    expiresAt: null,
-    rcAppUserId: null,
-  });
-
-  // 2日目: 復習セッション(写真なしでも kind=review で入る)
-  services.now = () => new Date("2026-08-04T13:00:00.000Z");
-  return startSession({ kind: "review", hole_id: holeId });
-}
-
 describe("POST /v1/sessions/{id}/complete", () => {
-  it("カルテを保存し、契約どおりのレスポンスを返す", async () => {
+  it("復習問題を保存し、正解を伏せた契約どおりのレスポンスを返す", async () => {
     const sessionId = await startSession();
     const response = await complete(sessionId);
     expect(response.status).toBe(201);
@@ -120,9 +92,16 @@ describe("POST /v1/sessions/{id}/complete", () => {
     const body = (await response.json()) as CompleteSessionResponse;
     const parsed = completeSessionResponseSchema.safeParse(body);
     expect(parsed.success ? null : parsed.error.issues).toBeNull();
-    expect(body.karte.holes).toHaveLength(1);
-    expect(body.karte.holes[0]?.status).toBe("open");
-    expect(body.karte.holes[0]?.quiz).toBe("判別式を使うと解の個数がわかる理由を説明できる?");
+    expect(body.practice_problem).toMatchObject({
+      session_id: sessionId,
+      board_id: "brd_board_1",
+      topic_id: practiceProblemDraft.topic_id,
+      question: practiceProblemDraft.question,
+    });
+    // 正解を生徒へ返すと、解き直さず写して終われてしまい、採点つき復習が成立しない。
+    expect(body.practice_problem).not.toHaveProperty("answer");
+    expect(body).not.toHaveProperty("karte");
+    expect(body).not.toHaveProperty("review_schedule");
   });
 
   it("完了実績で仮押さえを精算し、返った未使用時間を limits に載せる", async () => {
@@ -147,67 +126,79 @@ describe("POST /v1/sessions/{id}/complete", () => {
     expect(response.status).toBe(404);
   });
 
-  it("翌日・3日後・7日後の3件を予約する", async () => {
+  it("「わかった」の直後は翌日を避け、3日後・7日後だけ予約する", async () => {
     const sessionId = await startSession();
     const body = (await (await complete(sessionId)).json()) as CompleteSessionResponse;
 
-    expect(body.review_schedule.map((entry) => entry.step)).toEqual([1, 2, 3]);
-    expect(services.scheduler.scheduled).toHaveLength(3);
-    expect(services.scheduler.scheduled[0]?.sendAt).toBe("2026-08-04T11:00:00.000Z");
+    expect(body.practice_schedule.map((entry) => entry.step)).toEqual([2, 3]);
+    expect(body.practice_schedule.map((entry) => entry.days)).toEqual([3, 7]);
+    expect(body.practice_schedule.map((entry) => entry.scheduled_at)).toEqual([
+      "2026-08-06T11:00:00.000Z",
+      "2026-08-10T11:00:00.000Z",
+    ]);
+    expect(services.scheduler.scheduledPractice.map((entry) => entry.step)).toEqual([2, 3]);
+    expect(services.scheduler.scheduledPractice).toHaveLength(2);
   });
 
-  it("通知文は後輩からのお願いの形にする", async () => {
+  it("通知には問題の単元名を渡す", async () => {
     const sessionId = await startSession();
     await complete(sessionId);
-    // buildReviewPromptがスケジューラ側で使われる。descがそのまま渡ること。
-    expect(services.scheduler.scheduled[0]?.desc).toContain("判別式");
+    // 問題文をそのまま通知へ出すと正解の手掛かりになりうるので、見出しは単元名に閉じる。
+    expect(services.scheduler.scheduledPractice[0]?.topicLabel).toContain("判別式");
   });
 
-  // 会話中に許可範囲を越えたタグが付くと復習の通知まで的外れになるので直す。
-  // ただし**穴そのものは捨てない** — 外れているのはLLMが付けたIDであって、
-  // 本人が説明に詰まった事実ではない。捨てるとカルテが空になり、画面には
-  // 「今日は、止まらずに説明できました」と出てしまう。
-  it("許可リスト外のtopic_idは、穴を捨てずにこのセッションの単元へ付け替える", async () => {
+  /**
+   * 範囲外の問題は、topic_idだけを主単元へ付け替えると中身との対応が嘘になる。
+   * 穴の頃と違って「本人が詰まった事実」は無いので、問題ごと落とさないと
+   * 教えていない内容が3日後に届く。
+   */
+  it("許可リスト外のtopic_idを持つ問題は、付け替えず保存しない", async () => {
     const sessionId = await startSession();
     const body = (await (
       await complete(sessionId, {
-        karte: {
-          ...karteDraft,
-          holes: [
-            ...karteDraft.holes,
-            { topic_id: "MB-SURETSU-SIGMA", desc: "Σで止まった", severity: "low" as const },
-          ],
+        practice_problem: {
+          topic_id: "MB-SURETSU-SIGMA",
+          question: "Σの意味は?",
+          answer: "総和を表す記号",
         },
       })
     ).json()) as CompleteSessionResponse;
 
-    expect(body.karte.holes.map((hole) => hole.desc)).toEqual([
-      "判別式を「なぜ」使うのか、で説明が止まった",
-      "Σで止まった",
-    ]);
-    // 付け替え先はこのセッションで検出した単元。復習の通知は的外れにならない。
-    expect(body.karte.holes[1]?.topic_id).not.toBe("MB-SURETSU-SIGMA");
-    expect(body.karte.topic_ids).toContain(body.karte.holes[1]?.topic_id);
+    expect(body.practice_problem).toBeNull();
+    expect(body.practice_schedule).toEqual([]);
+    expect(services.repository.practiceProblems.size).toBe(0);
+    expect(services.repository.practiceSchedules).toEqual([]);
+    expect(services.scheduler.scheduledPractice).toEqual([]);
   });
 
-  it("穴が0件の会話でもカルテは作る(空のカルテは失敗ではない)", async () => {
+  /**
+   * 「わかった」以外は到達の宣言ではない。そこで問題を作ると、時間切れで
+   * 教わりきれなかった内容まで復習として届き、離脱したことが罰になる。
+   */
+  it("時間切れで降り、問題の欄がない回には何も作らない", async () => {
     const sessionId = await startSession();
     const body = (await (
-      await complete(sessionId, { karte: { ...karteDraft, holes: [] } })
+      await complete(sessionId, {
+        ended_reason: "timeout",
+        practice_problem: undefined,
+        board_id: undefined,
+      })
     ).json()) as CompleteSessionResponse;
 
-    expect(body.karte.holes).toEqual([]);
-    expect(body.review_schedule).toEqual([]);
-    expect(services.scheduler.scheduled).toHaveLength(0);
+    expect(body.practice_problem).toBeNull();
+    expect(body.practice_schedule).toEqual([]);
+    expect(body.show_paywall).toBe(false);
+    expect(services.repository.practiceProblems.size).toBe(0);
+    expect(services.scheduler.scheduledPractice).toEqual([]);
   });
 
-  it("あと追い質問は無料ユーザーには保存しない(Premium機能)", async () => {
+  it("無料ユーザーにも復習問題を返す(問題を解くこと自体は無料)", async () => {
     const sessionId = await startSession();
     const body = (await (await complete(sessionId)).json()) as CompleteSessionResponse;
-    expect(body.karte.followup_question).toBeNull();
+    expect(body.practice_problem?.question).toBe(practiceProblemDraft.question);
   });
 
-  it("Premiumならあと追い質問を返す", async () => {
+  it("Premiumでも正解は応答へ出さず、ペイウォールも出さない", async () => {
     await services.repository.ensureUser(testDeviceId, new Date());
     await services.repository.setPremium({
       deviceId: testDeviceId,
@@ -217,97 +208,57 @@ describe("POST /v1/sessions/{id}/complete", () => {
     });
     const sessionId = await startSession();
     const body = (await (await complete(sessionId)).json()) as CompleteSessionResponse;
-    expect(body.karte.followup_question).toContain("判別式");
+
+    expect(body.practice_problem).not.toHaveProperty("answer");
+    expect(body.show_paywall).toBe(false);
   });
 
-  it("初回カルテで穴が見えたときだけペイウォールを出す", async () => {
+  it("初回の復習問題ができたときだけペイウォールを出す", async () => {
     const first = await startSession();
     const firstBody = (await (await complete(first)).json()) as CompleteSessionResponse;
     expect(firstBody.show_paywall).toBe(true);
   });
 
-  it("穴が見つからなかった初回ではペイウォールを出さない", async () => {
+  it("問題を作れなかった初回ではペイウォールを出さない", async () => {
     const sessionId = await startSession();
     const body = (await (
-      await complete(sessionId, { karte: { ...karteDraft, holes: [] } })
+      await complete(sessionId, {
+        ended_reason: "timeout",
+        practice_problem: null,
+        board_id: undefined,
+      })
     ).json()) as CompleteSessionResponse;
     expect(body.show_paywall).toBe(false);
   });
 
-  it("進捗は連続日数と埋めた穴だけを返す", async () => {
+  it("進捗は連続日数と未解答の復習問題を返す", async () => {
     const sessionId = await startSession();
     const body = (await (await complete(sessionId)).json()) as CompleteSessionResponse;
     expect(body.progress).toEqual({
       streak_days: 1,
       filled_holes: 0,
-      open_holes: 1,
+      open_holes: 0,
+      solved_problems: 0,
+      open_problems: 1,
       last_session_date: "2026-08-03",
     });
   });
 
-  it("接続しただけで戻った復習セッションでは穴が埋まらない", async () => {
-    const review = await startReviewSession();
-    const reviewBody = (await (
-      await complete(review, {
-        transcript: [],
-        karte: { ...karteDraft, holes: [] },
-        duration_seconds: 0,
-        ended_reason: "user_left",
-      })
-    ).json()) as CompleteSessionResponse;
-
-    expect(reviewBody.progress.filled_holes).toBe(0);
-    expect(reviewBody.progress.open_holes).toBe(1);
-  });
-
-  it("本人が「言えた」と申告したときだけ穴が埋まる", async () => {
-    const review = await startReviewSession();
-    const reviewBody = (await (
-      await complete(review, {
-        karte: { ...karteDraft, holes: [] },
-        review_outcome: "said_it",
-      })
-    ).json()) as CompleteSessionResponse;
-
-    expect(reviewBody.progress.filled_holes).toBe(1);
-    expect(reviewBody.progress.open_holes).toBe(0);
-    expect(reviewBody.progress.streak_days).toBe(2);
-  });
-
-  it('"not_yet" の申告では穴が埋まらない', async () => {
-    const review = await startReviewSession();
-    const reviewBody = (await (
-      await complete(review, {
-        karte: { ...karteDraft, holes: [] },
-        review_outcome: "not_yet",
-      })
-    ).json()) as CompleteSessionResponse;
-
-    expect(reviewBody.progress.filled_holes).toBe(0);
-    expect(reviewBody.progress.open_holes).toBe(1);
-  });
-
-  it('"said_it" の申告では残りの復習通知を取り消す', async () => {
-    const review = await startReviewSession();
-    await complete(review, {
-      karte: { ...karteDraft, holes: [] },
-      review_outcome: "said_it",
-    });
-
-    // 埋まった穴について通知が届くのがいちばん白ける
-    expect(services.scheduler.cancelled).toEqual(["os_1", "os_2", "os_3"]);
-  });
-
-  it("通知の予約に失敗してもカルテは返す", async () => {
+  it("通知の予約に失敗しても問題を保存し、201を返す", async () => {
     const sessionId = await startSession();
-    services.scheduler.schedule = async () => {
+    services.scheduler.schedulePractice = async () => {
       throw new Error("OneSignal down");
     };
+
     const response = await complete(sessionId);
     expect(response.status).toBe(201);
     const body = (await response.json()) as CompleteSessionResponse;
-    expect(body.karte.holes).toHaveLength(1);
-    expect(body.review_schedule).toHaveLength(3);
+    expect(body.practice_problem).not.toBeNull();
+    expect(body.practice_schedule.map((entry) => entry.step)).toEqual([2, 3]);
+    expect(services.repository.practiceSchedules).toHaveLength(2);
+    expect(services.repository.practiceSchedules.every((entry) => entry.external_id === null)).toBe(
+      true,
+    );
   });
 
   it("スキーマに合わない本文は400", async () => {
@@ -317,9 +268,9 @@ describe("POST /v1/sessions/{id}/complete", () => {
   });
 });
 
-// レビュー指摘: agentのタイムアウト再送で、カルテも穴も通知も二重にできていた
+// agentのタイムアウト再送を素通しすると、問題も通知も二重にできてしまう。
 describe("再送(冪等性)", () => {
-  it("同じセッションを2度completeしても、カルテは1つだけ", async () => {
+  it("同じセッションを2度completeしても、問題も通知も増えない", async () => {
     const sessionId = await startSession();
     const first = (await (await complete(sessionId)).json()) as CompleteSessionResponse;
 
@@ -327,16 +278,38 @@ describe("再送(冪等性)", () => {
     expect(retry.status).toBe(200);
     const second = (await retry.json()) as CompleteSessionResponse;
 
-    expect(second.karte.id).toBe(first.karte.id);
-    expect(services.repository.kartes.size).toBe(1);
-    expect(services.repository.holes.size).toBe(1);
-    // 通知も増えない
-    expect(services.scheduler.scheduled).toHaveLength(3);
+    expect(second.practice_problem?.id).toBe(first.practice_problem?.id);
+    expect(second.practice_schedule).toEqual([]);
+    expect(services.repository.practiceProblems.size).toBe(1);
+    expect(services.repository.practiceSchedules).toHaveLength(2);
+    expect(services.scheduler.scheduledPractice).toHaveLength(2);
+  });
+
+  /**
+   * 保存物の有無を再送判定にすると、問題を作らなかった回だけ二度目が通る。
+   * セッションの完了状態を正本にしておかないと、同じ時間切れが毎回201として走る。
+   */
+  it("問題のない完了も同じ本文で再送すれば、何も増やさない", async () => {
+    const sessionId = await startSession();
+    const timeoutBody = {
+      ended_reason: "timeout",
+      practice_problem: null,
+      board_id: undefined,
+    };
+    const first = await complete(sessionId, timeoutBody);
+    expect(first.status).toBe(201);
+
+    const retry = await complete(sessionId, timeoutBody);
+    expect(retry.status).toBe(200);
+    const body = (await retry.json()) as CompleteSessionResponse;
+    expect(body.practice_problem).toBeNull();
+    expect(services.repository.practiceProblems.size).toBe(0);
+    expect(services.scheduler.scheduledPractice).toEqual([]);
   });
 });
 
 describe("GET /v1/sessions/{id}/result", () => {
-  it("カルテができる前は202を返す(アプリは待って聞き直す)", async () => {
+  it("復習問題ができる前は202を返す(後から確かめる呼び出しは待てる)", async () => {
     const sessionId = await startSession();
     const response = await app.request(
       `/v1/sessions/${sessionId}/result`,
@@ -346,7 +319,7 @@ describe("GET /v1/sessions/{id}/result", () => {
     expect(response.status).toBe(202);
   });
 
-  it("できていればカルテと進捗を返す", async () => {
+  it("完了済みなら復習問題と進捗を返す", async () => {
     const sessionId = await startSession();
     await complete(sessionId);
 
@@ -357,16 +330,17 @@ describe("GET /v1/sessions/{id}/result", () => {
     );
     expect(response.status).toBe(200);
     const body = (await response.json()) as CompleteSessionResponse;
-    expect(body.karte.holes).toHaveLength(1);
+    expect(body.practice_problem?.question).toBe(practiceProblemDraft.question);
+    expect(body.practice_schedule).toEqual([]);
     expect(body.progress.streak_days).toBe(1);
   });
 
-  it("穴のquizを保存し、結果取得でもそのまま返す", async () => {
+  it("採点用の正解は保存するが、結果取得でも生徒へ返さない", async () => {
     const sessionId = await startSession();
     await complete(sessionId);
 
-    const stored = await services.repository.getKarteBySession(sessionId);
-    expect(stored?.holes[0]?.quiz).toBe("判別式を使うと解の個数がわかる理由を説明できる?");
+    const stored = await services.repository.getPracticeProblemBySession(sessionId);
+    expect(stored?.answer).toBe(practiceProblemDraft.answer);
 
     const response = await app.request(
       `/v1/sessions/${sessionId}/result`,
@@ -374,7 +348,8 @@ describe("GET /v1/sessions/{id}/result", () => {
       bindings,
     );
     const body = (await response.json()) as CompleteSessionResponse;
-    expect(body.karte.holes[0]?.quiz).toBe("判別式を使うと解の個数がわかる理由を説明できる?");
+    expect(body.practice_problem?.question).toBe(practiceProblemDraft.question);
+    expect(body.practice_problem).not.toHaveProperty("answer");
   });
 
   it("他人のセッションは見せない", async () => {
@@ -391,41 +366,34 @@ describe("GET /v1/sessions/{id}/result", () => {
 });
 
 /**
- * 通知の言語は端末の設定ではなく、**穴のtopic_idが属する課程**で決まる。
- * カルテの文言はその課程の言語で書かれているので、ここを取り違えると
- * 「きのうの『why the discriminant is used』」という通知が届く。
+ * 通知の言語は端末の設定ではなく、問題のtopic_idが属する課程で決まる。
+ * 問題の文言もその課程の言語なので、ここを取り違えると英語の問題に日本語の
+ * 通知が届く。
  */
 describe("通知の言語", () => {
-  it("英語の課程の穴は、英語で予約する", async () => {
+  it("英語の課程の問題は、英語で予約する", async () => {
     const sessionId = await startSession({ locale: "en" });
     const response = await complete(sessionId, {
-      karte: {
-        said_well: ["Explained why the distance is compared with the radius"],
-        holes: [
-          {
-            topic_id: "A1-QUAD-SOLVE",
-            desc: "the explanation stopped at why the discriminant is used",
-            severity: "medium" as const,
-          },
-        ],
-        term_notes: [],
-        followup_question: null,
+      practice_problem: {
+        topic_id: "A1-QUAD-SOLVE",
+        question: "Why does the discriminant tell us the number of real roots?",
+        answer: "Its sign determines how many real roots the quadratic has.",
       },
     });
     expect(response.status).toBe(201);
 
-    expect(services.scheduler.scheduled.length).toBe(3);
-    for (const entry of services.scheduler.scheduled) {
+    expect(services.scheduler.scheduledPractice).toHaveLength(2);
+    for (const entry of services.scheduler.scheduledPractice) {
       expect(entry.locale).toBe("en");
     }
   });
 
-  it("日本の課程の穴は、日本語のまま", async () => {
+  it("日本の課程の問題は、日本語のまま", async () => {
     const sessionId = await startSession();
     await complete(sessionId);
 
-    expect(services.scheduler.scheduled.length).toBe(3);
-    for (const entry of services.scheduler.scheduled) {
+    expect(services.scheduler.scheduledPractice).toHaveLength(2);
+    for (const entry of services.scheduler.scheduledPractice) {
       expect(entry.locale).toBe("ja");
     }
   });

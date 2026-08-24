@@ -1,5 +1,5 @@
 import type { CurriculumLocale } from "@ai-sensei/curriculum";
-import { buildReviewPrompt } from "@ai-sensei/guardrail";
+import { buildPracticeNotification, buildReviewPrompt } from "@ai-sensei/guardrail";
 
 /**
  * 復習プッシュの予約。
@@ -14,6 +14,7 @@ export type ScheduledNotification = {
 };
 
 export type NotificationScheduler = {
+  /** @deprecated 穴ベースの通知。移行が終わるまで残す(ADR 0009)。 */
   schedule(input: {
     deviceId: string;
     holeId: string;
@@ -22,6 +23,25 @@ export type NotificationScheduler = {
     desc: string;
     daysSince: number;
     /** 穴の文言の言語。呼び出し側が topic_id から引く。 */
+    locale?: CurriculumLocale;
+  }): Promise<ScheduledNotification>;
+  /**
+   * 復習問題の通知。
+   *
+   * **`schedule` と分けたのは、ディープリンクの宛先が違うから。**
+   * 穴は `hole_id`、復習問題は `problem_id` を `data` に載せる。同じメソッドで
+   * どちらかを渡す形にすると、アプリ側が「どちらが入っているか」を毎回見ることになり、
+   * 移行が終わったあとも分岐が残る。
+   */
+  schedulePractice(input: {
+    deviceId: string;
+    problemId: string;
+    step: 1 | 2 | 3;
+    sendAt: string;
+    /** 単元名。通知のタイトルで名指しする(「この前の判別式、おぼえてる?」)。 */
+    topicLabel: string;
+    daysSince: number;
+    /** 問題の言語。呼び出し側が topic_id から引く。 */
     locale?: CurriculumLocale;
   }): Promise<ScheduledNotification>;
   cancel(externalId: string): Promise<void>;
@@ -45,6 +65,9 @@ const headings: Record<CurriculumLocale, string> = {
 /** 通知が設定されていない環境(ローカル開発)では何もしない。 */
 export const noopScheduler: NotificationScheduler = {
   async schedule() {
+    return { externalId: null };
+  },
+  async schedulePractice() {
     return { externalId: null };
   },
   async cancel() {
@@ -86,6 +109,44 @@ export function createOneSignalScheduler(options: OneSignalOptions): Notificatio
           contents: { ja: message, en: message },
           send_after: sendAt,
           data: { hole_id: holeId, step },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`OneSignalの予約に失敗しました: ${response.status}`);
+      }
+      const payload = (await response.json()) as { id?: string };
+      return { externalId: payload.id ?? null };
+    },
+
+    async schedulePractice({
+      deviceId,
+      problemId,
+      step,
+      sendAt,
+      topicLabel,
+      daysSince,
+      locale = "ja",
+    }) {
+      const { heading, body } = buildPracticeNotification({ topicLabel, daysSince, locale });
+      // 穴の通知と同じ理由で、**どちらのキーにも同じ(= 問題と同じ言語の)文面**を入れる。
+      // 端末の言語設定で選び分けると、日本語で教わった単元が英語で届く。
+      const response = await doFetch(`${baseUrl}/notifications`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Key ${options.restApiKey}`,
+        },
+        body: JSON.stringify({
+          app_id: options.appId,
+          include_aliases: { external_id: [deviceId] },
+          target_channel: "push",
+          headings: { ja: heading, en: heading },
+          contents: { ja: body, en: body },
+          send_after: sendAt,
+          // **ディープリンクの宛先。**旧通知は `hole_id` を載せていたので、
+          // 移行期は両方が飛ぶ。アプリ側はどちらのキーが来ても壊れないこと(#180)。
+          data: { problem_id: problemId, step },
         }),
       });
 

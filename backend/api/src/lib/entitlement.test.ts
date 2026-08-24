@@ -250,28 +250,44 @@ describe("secondsUntilLocalMidnight", () => {
 });
 
 describe("shouldShowPaywall", () => {
-  // 初回カルテで穴が見えた直後 = 価値実感の瞬間、の1回だけ
-  it("初回カルテで穴があれば出す", () => {
-    expect(shouldShowPaywall({ isPremium: false, completedSessionCount: 1, holesFound: 1 })).toBe(
-      true,
-    );
+  // 初回の復習問題ができた直後 = 価値実感の瞬間、の1回だけ。
+  it("初回の復習問題ができたら出す", () => {
+    expect(
+      shouldShowPaywall({
+        isPremium: false,
+        completedSessionCount: 1,
+        practiceProblemCreated: true,
+      }),
+    ).toBe(true);
   });
 
   it("2回目以降は出さない(煽らない)", () => {
-    expect(shouldShowPaywall({ isPremium: false, completedSessionCount: 2, holesFound: 3 })).toBe(
-      false,
-    );
+    expect(
+      shouldShowPaywall({
+        isPremium: false,
+        completedSessionCount: 2,
+        practiceProblemCreated: true,
+      }),
+    ).toBe(false);
   });
 
-  it("穴が見つからなければ出さない(価値を実感していない)", () => {
-    expect(shouldShowPaywall({ isPremium: false, completedSessionCount: 1, holesFound: 0 })).toBe(
-      false,
-    );
+  it("問題を作れなければ出さない(見せる成果物がない)", () => {
+    expect(
+      shouldShowPaywall({
+        isPremium: false,
+        completedSessionCount: 1,
+        practiceProblemCreated: false,
+      }),
+    ).toBe(false);
   });
 
   it("Premiumには出さない", () => {
-    expect(shouldShowPaywall({ isPremium: true, completedSessionCount: 1, holesFound: 2 })).toBe(
-      false,
-    );
+    expect(
+      shouldShowPaywall({
+        isPremium: true,
+        completedSessionCount: 1,
+        practiceProblemCreated: true,
+      }),
+    ).toBe(false);
   });
 });

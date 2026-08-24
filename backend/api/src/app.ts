@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import type { AppEnv, Bindings, Services } from "./env.ts";
 import { apiError } from "./lib/errors.ts";
+import { createAnthropicGrader } from "./lib/grading.ts";
 import { isValidDeviceId, newId } from "./lib/ids.ts";
 import { createOneSignalScheduler, noopScheduler } from "./lib/notifications.ts";
 import {
@@ -135,6 +136,10 @@ function defaultServices(env: Bindings): Services {
     analyzer: createAnthropicAnalyzer({
       apiKey: env.ANTHROPIC_API_KEY ?? "",
       model: env.LLM_MODEL_VISION ?? "claude-sonnet-5",
+    }),
+    grader: createAnthropicGrader({
+      apiKey: env.ANTHROPIC_API_KEY ?? "",
+      model: env.LLM_MODEL_GRADING ?? "claude-sonnet-5",
     }),
     scheduler:
       env.ONESIGNAL_APP_ID && env.ONESIGNAL_REST_API_KEY

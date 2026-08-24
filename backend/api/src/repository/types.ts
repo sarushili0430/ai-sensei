@@ -1,6 +1,7 @@
 import type {
   HoleSeverity,
   Locale,
+  PracticeVerdict,
   ProblemOutcome,
   SessionProblem,
   StudyPlan,
@@ -85,7 +86,10 @@ export type SessionRecord = {
   local_date: string;
   photo_key: string | null;
   topic_ids: string[];
+  /** @deprecated 穴起点の復習。移行が終わるまで残す(ADR 0009)。 */
   hole_id: string | null;
+  /** 復習で教え直す復習問題。新規授業では null。 */
+  practice_problem_id: string | null;
   duration_seconds: number | null;
   /** 解析前・復習セッションでは null。 */
   context: SessionContext | null;
@@ -182,6 +186,49 @@ export type KarteRecord = {
 export type ReviewScheduleRecord = {
   id: string;
   hole_id: string;
+  step: 1 | 2 | 3;
+  scheduled_at: string;
+  external_id: string | null;
+};
+
+/**
+ * 復習問題(ADR 0009)。**穴とは別の行として持つ。**
+ *
+ * `answer` はここにしか無く、アプリへは返らない。採点(`POST /v1/me/practice/{id}`)が
+ * 突き合わせるためだけの欄で、結果画面に出すと「先輩に聞く」の導線が死ぬ。
+ */
+export type PracticeProblemRecord = {
+  id: string;
+  device_id: string;
+  session_id: string;
+  /** 材料になった板書。誤った問題の原因を追う唯一の手段。 */
+  board_id: string;
+  topic_id: string;
+  question: string;
+  answer: string;
+  created_at: string;
+};
+
+/** 1回ぶんの解答と採点。**合否に関わらず積む**(消えるのは通知の段だけ)。 */
+export type PracticeAttemptRecord = {
+  id: string;
+  problem_id: string;
+  answered_at: string;
+  response: string;
+  verdict: PracticeVerdict;
+  graded_by: string;
+  comment: string | null;
+};
+
+/**
+ * 復習問題の通知予約。
+ *
+ * `ReviewScheduleRecord` と別なのは、あちらの `hole_id` が NOT NULL + 外部キーで、
+ * SQLite では制約を緩めるのにテーブルの作り直しが要るため(migration 0011)。
+ */
+export type PracticeScheduleRecord = {
+  id: string;
+  problem_id: string;
   step: 1 | 2 | 3;
   scheduled_at: string;
   external_id: string | null;
@@ -335,6 +382,39 @@ export type Repository = {
 
   insertReviewSchedules(entries: ReviewScheduleRecord[]): Promise<void>;
   cancelReviewSchedules(holeId: string): Promise<ReviewScheduleRecord[]>;
+
+  /**
+   * 復習問題を保存する。**1セッションにつき1問**(ADR 0009)。
+   *
+   * 通知が問題ごとに飛ぶので、1セッションで6通になりうる形にはしない。
+   * 増やすのは実際に届く数を見てから。
+   */
+  insertPracticeProblem(problem: PracticeProblemRecord): Promise<void>;
+  getPracticeProblem(problemId: string): Promise<PracticeProblemRecord | null>;
+  /**
+   * そのセッションで作った問題。**`/complete` の再送判定がこれを見る。**
+   *
+   * agent はタイムアウトで再送してくるので、素通しすると問題も通知も二重にできる
+   * (旧経路では `getKarteBySession` が同じ役目を持っていた)。
+   */
+  getPracticeProblemBySession(sessionId: string): Promise<PracticeProblemRecord | null>;
+  /** 古い順。復習リストの並びは「放置されたものから声をかける」。 */
+  listPracticeProblems(deviceId: string): Promise<PracticeProblemRecord[]>;
+  /**
+   * そのデバイスの解答履歴(古い順)。問題を跨いで読むので、進捗の集計と
+   * 「その問題の直近の判定」の両方がこれ1本で足りる。
+   */
+  listPracticeAttempts(deviceId: string): Promise<PracticeAttemptRecord[]>;
+  insertPracticeAttempt(attempt: PracticeAttemptRecord): Promise<void>;
+  /**
+   * 通知の予約を足す。**取り消す口は作らない。**
+   *
+   * 作成時に決めた段は取り消さない(ADR 0009)。取り消せる形にすると、
+   * 「正解したから残りを消す」が書けてしまい「1回言えたら終わり」に戻る。
+   */
+  insertPracticeSchedules(entries: PracticeScheduleRecord[]): Promise<void>;
+  /** その問題に予約済みの通知。二重予約の検知と、画面に出す次回日の元になる。 */
+  listPracticeSchedules(problemId: string): Promise<PracticeScheduleRecord[]>;
 
   /** 計画セッションには日次の授業枠を使わない。Premium判定はルート側で行う。 */
   createPlanSession(session: PlanSessionRecord): Promise<void>;

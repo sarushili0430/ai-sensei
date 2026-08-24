@@ -1,5 +1,8 @@
 import type {
   ParentReportResponse,
+  PracticeAnswerResponse,
+  PracticeQueueItem,
+  PracticeQueueResponse,
   ProgressResponse,
   ReviewAnswerResponse,
   ReviewQueueResponse,
@@ -7,13 +10,22 @@ import type {
 import {
   parentReportQuoteMaxCount,
   parentReportResponseSchema,
+  practiceAnswerResponseSchema,
+  practiceQueueItemSchema,
+  practiceQueueResponseSchema,
   progressResponseSchema,
   reviewAnswerResponseSchema,
   reviewQueueResponseSchema,
 } from "@ai-sensei/contract";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../app.ts";
-import type { HoleRecord, KarteRecord, SessionRecord } from "../repository/types.ts";
+import type {
+  HoleRecord,
+  KarteRecord,
+  PracticeAttemptRecord,
+  PracticeProblemRecord,
+  SessionRecord,
+} from "../repository/types.ts";
 import { type TestServices, testBindings, testDeviceId, testServices } from "../test-support.ts";
 
 let services: TestServices;
@@ -40,6 +52,18 @@ function answerReview(holeId: string, body: unknown, deviceId = testDeviceId) {
   );
 }
 
+function answerPractice(problemId: string, body: unknown, deviceId = testDeviceId) {
+  return app.request(
+    `/v1/me/practice/${problemId}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-device-id": deviceId },
+      body: JSON.stringify(body),
+    },
+    bindings,
+  );
+}
+
 function sessionRow(id: string, overrides: Partial<SessionRecord> = {}): SessionRecord {
   return {
     id,
@@ -52,6 +76,7 @@ function sessionRow(id: string, overrides: Partial<SessionRecord> = {}): Session
     photo_key: null,
     topic_ids: [],
     hole_id: null,
+    practice_problem_id: null,
     duration_seconds: null,
     context: null,
     started_at: null,
@@ -99,6 +124,42 @@ async function seedHole(overrides: Partial<HoleRecord> = {}): Promise<HoleRecord
   return hole;
 }
 
+async function seedPracticeProblem(
+  overrides: Partial<PracticeProblemRecord> = {},
+): Promise<PracticeProblemRecord> {
+  const problem: PracticeProblemRecord = {
+    id: "prb_seed",
+    device_id: testDeviceId,
+    session_id: "ses_prb_seed",
+    board_id: "brd_seed",
+    topic_id: "M1-NIJI-HANBETSU",
+    question: "判別式の符号から何がわかる?",
+    answer: "二次方程式の実数解の個数",
+    created_at: "2026-07-31T11:00:00.000Z",
+    ...overrides,
+  };
+  await services.repository.insertPracticeProblem(problem);
+  return problem;
+}
+
+async function seedPracticeAttempt(
+  problemId: string,
+  overrides: Partial<PracticeAttemptRecord> = {},
+): Promise<PracticeAttemptRecord> {
+  const attempt: PracticeAttemptRecord = {
+    id: `att_${problemId}`,
+    problem_id: problemId,
+    answered_at: "2026-08-02T11:00:00.000Z",
+    response: "判別式の符号で実数解の個数がわかる",
+    verdict: "correct",
+    graded_by: "stub",
+    comment: "いいね",
+    ...overrides,
+  };
+  await services.repository.insertPracticeAttempt(attempt);
+  return attempt;
+}
+
 async function makePremium(): Promise<void> {
   await services.repository.ensureUser(testDeviceId, new Date());
   await services.repository.setPremium({
@@ -120,10 +181,32 @@ describe("GET /v1/me/progress", () => {
       streak_days: 0,
       filled_holes: 0,
       open_holes: 0,
+      solved_problems: 0,
+      open_problems: 0,
       last_session_date: null,
     });
     expect(body.limits.lesson_allowed_today).toBe(true);
     expect(body.limits.remaining_seconds_today).toBe(1200);
+  });
+
+  /**
+   * 移行期は同じ端末に穴と復習問題が並存する。ひとつの成果数へ足すと、
+   * 移行前後の同じ学習を二度数えてホームの数字が急に増える。
+   */
+  it("穴と復習問題を別の数字で返し、二重計上しない", async () => {
+    await seedHole({ status: "filled", filled_at: "2026-08-02T11:00:00.000Z" });
+    const problem = await seedPracticeProblem();
+    await seedPracticeAttempt(problem.id);
+
+    const body = (await (await get("/v1/me/progress")).json()) as ProgressResponse;
+    expect(body.progress).toEqual({
+      streak_days: 0,
+      filled_holes: 1,
+      open_holes: 0,
+      solved_problems: 1,
+      open_problems: 0,
+      last_session_date: null,
+    });
   });
 
   it("無料ユーザーが今日の1200秒を仮押さえしたあとは授業不可を返す", async () => {
@@ -289,6 +372,257 @@ describe("クローズドβの開放中", () => {
 
     const body = (await response.json()) as ProgressResponse;
     expect(body.is_premium).toBe(false);
+  });
+});
+
+describe("GET /v1/me/practice", () => {
+  /**
+   * 放置された問題から声をかけないと、新しい問題に押し流されて永遠に解かれない。
+   * 一度でも正解した問題は努力の積み上げなので、後で間違えても solved から戻さない。
+   */
+  it("未解決を古い順に返し、一度正解した問題をitemsから外してsolvedへ回す", async () => {
+    const old = await seedPracticeProblem({
+      id: "prb_old",
+      session_id: "ses_old",
+      created_at: "2026-07-30T11:00:00.000Z",
+      question: "古い問題",
+    });
+    const solved = await seedPracticeProblem({
+      id: "prb_solved",
+      session_id: "ses_solved",
+      created_at: "2026-07-31T11:00:00.000Z",
+      question: "解けた問題",
+    });
+    const recent = await seedPracticeProblem({
+      id: "prb_recent",
+      session_id: "ses_recent",
+      created_at: "2026-08-02T11:00:00.000Z",
+      question: "新しい問題",
+    });
+    await seedPracticeAttempt(old.id, {
+      id: "att_old",
+      verdict: "incorrect",
+      answered_at: "2026-08-01T11:00:00.000Z",
+    });
+    await seedPracticeAttempt(solved.id, {
+      id: "att_solved",
+      verdict: "correct",
+      answered_at: "2026-08-02T11:00:00.000Z",
+    });
+    await seedPracticeAttempt(recent.id, {
+      id: "att_recent",
+      verdict: "unclear",
+      answered_at: "2026-08-03T11:00:00.000Z",
+    });
+
+    const response = await get("/v1/me/practice");
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as PracticeQueueResponse;
+    expect(practiceQueueResponseSchema.safeParse(body).success).toBe(true);
+    expect(body.items.map((entry) => entry.problem.id)).toEqual(["prb_old", "prb_recent"]);
+    expect(body.items.map((entry) => entry.last_verdict)).toEqual(["incorrect", "unclear"]);
+    expect(body.solved.map((entry) => entry.problem.id)).toEqual(["prb_solved"]);
+    expect(body.items[0]?.problem).not.toHaveProperty("answer");
+    expect(body.solved[0]?.problem).not.toHaveProperty("answer");
+    expect(body).not.toHaveProperty("lesson_requires_premium");
+  });
+});
+
+describe("GET /v1/me/practice/{problemId}", () => {
+  /**
+   * **通知の宛先はここで解決する。**
+   *
+   * 正解した問題にも7日後の通知は届く(作成時に決めた段は取り消さない)。
+   * その通知をタップした先はリストの `items` に無い(解けた問題は `solved` へ回る)し、
+   * `solved` にも直近30件しか載らない。リストから探させると、
+   * **よく解く生徒ほど自分の通知を開けなくなる。**
+   */
+  it("解けた問題でも1問だけ引ける(通知はリストに無い問題にも届く)", async () => {
+    const problem = await seedPracticeProblem();
+    await seedPracticeAttempt(problem.id, {
+      id: "att_correct",
+      verdict: "correct",
+      answered_at: "2026-08-02T11:00:00.000Z",
+    });
+
+    const queue = (await (await get("/v1/me/practice")).json()) as PracticeQueueResponse;
+    expect(queue.items).toEqual([]);
+
+    const response = await get(`/v1/me/practice/${problem.id}`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as PracticeQueueItem;
+    expect(practiceQueueItemSchema.safeParse(body).success).toBe(true);
+    expect(body.problem.id).toBe(problem.id);
+    expect(body.last_verdict).toBe("correct");
+    expect(body.topic_label).not.toHaveLength(0);
+    // 採点用の正解は、単問取得でも生徒へ返さない。
+    expect(body.problem).not.toHaveProperty("answer");
+    expect(JSON.stringify(body)).not.toContain(problem.answer);
+  });
+
+  it("他人の問題には触れず404を返す", async () => {
+    const problem = await seedPracticeProblem({ device_id: "someone-else" });
+    expect((await get(`/v1/me/practice/${problem.id}`)).status).toBe(404);
+    expect((await get("/v1/me/practice/prb_missing")).status).toBe(404);
+  });
+});
+
+describe("POST /v1/me/practice/{problemId}", () => {
+  it("正解は作成時の段を残し、翌日を避けた3日後・7日後を追加する", async () => {
+    const problem = await seedPracticeProblem();
+    await services.repository.insertPracticeSchedules([
+      {
+        id: "psc_create_2",
+        problem_id: problem.id,
+        step: 2,
+        scheduled_at: "2026-08-03T11:00:00.000Z",
+        external_id: "os_create_2",
+      },
+      {
+        id: "psc_create_3",
+        problem_id: problem.id,
+        step: 3,
+        scheduled_at: "2026-08-07T11:00:00.000Z",
+        external_id: "os_create_3",
+      },
+    ]);
+    services.grader.set({ verdict: "correct", comment: "言えてる", gradedBy: "stub-correct" });
+
+    const response = await answerPractice(problem.id, { response: "符号で個数が決まるから" });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as PracticeAnswerResponse;
+    expect(practiceAnswerResponseSchema.safeParse(body).success).toBe(true);
+    expect(body.attempt.verdict).toBe("correct");
+    expect(body.next_schedule.map((entry) => entry.step)).toEqual([2, 3]);
+    expect(body.next_schedule.map((entry) => entry.days)).toEqual([3, 7]);
+    expect(body.next_schedule.map((entry) => entry.scheduled_at)).toEqual([
+      "2026-08-06T11:00:00.000Z",
+      "2026-08-10T11:00:00.000Z",
+    ]);
+    expect(services.scheduler.scheduledPractice.map((entry) => entry.step)).toEqual([2, 3]);
+    expect(services.scheduler.cancelled).toEqual([]);
+    const schedules = await services.repository.listPracticeSchedules(problem.id);
+    expect(schedules).toHaveLength(4);
+    expect(schedules.map((entry) => entry.id)).toEqual(
+      expect.arrayContaining(["psc_create_2", "psc_create_3"]),
+    );
+    expect(services.repository.practiceAttempts).toHaveLength(1);
+    expect(body.progress).toMatchObject({ solved_problems: 1, open_problems: 0 });
+    // 正解は採点器だけが読み、生徒向けの採点応答へ混ぜない。
+    expect(services.grader.graded).toEqual([
+      {
+        question: problem.question,
+        answer: problem.answer,
+        response: "符号で個数が決まるから",
+        locale: "ja",
+      },
+    ]);
+    expect(JSON.stringify(body)).not.toContain(problem.answer);
+  });
+
+  it("不正解は翌日・3日後・7日後の3本を予約する", async () => {
+    const problem = await seedPracticeProblem();
+    services.grader.set({
+      verdict: "incorrect",
+      comment: "符号と個数をもう一度つなごう",
+      gradedBy: "stub-incorrect",
+    });
+
+    const body = (await (
+      await answerPractice(problem.id, { response: "解の公式そのもの" })
+    ).json()) as PracticeAnswerResponse;
+
+    expect(body.attempt.verdict).toBe("incorrect");
+    expect(body.next_schedule.map((entry) => entry.step)).toEqual([1, 2, 3]);
+    expect(body.next_schedule.map((entry) => entry.days)).toEqual([1, 3, 7]);
+    expect(services.scheduler.scheduledPractice.map((entry) => entry.sendAt)).toEqual([
+      "2026-08-04T11:00:00.000Z",
+      "2026-08-06T11:00:00.000Z",
+      "2026-08-10T11:00:00.000Z",
+    ]);
+    expect(body.progress).toMatchObject({ solved_problems: 0, open_problems: 1 });
+  });
+
+  /**
+   * `unclear` は採点側が読めなかっただけで、生徒の誤りではない。翌日の段へ
+   * 倒すとモデルの迷いが生徒への通知になり、既存の3日・7日予約まで動かしてしまう。
+   */
+  it("判定できずでは1本も足さず、作成時の段をそのまま残す", async () => {
+    const problem = await seedPracticeProblem();
+    await services.repository.insertPracticeSchedules([
+      {
+        id: "psc_create_2",
+        problem_id: problem.id,
+        step: 2,
+        scheduled_at: "2026-08-06T11:00:00.000Z",
+        external_id: "os_create_2",
+      },
+      {
+        id: "psc_create_3",
+        problem_id: problem.id,
+        step: 3,
+        scheduled_at: "2026-08-10T11:00:00.000Z",
+        external_id: "os_create_3",
+      },
+    ]);
+    services.grader.set({
+      verdict: "unclear",
+      comment: "もう少しだけ書いてみて",
+      gradedBy: "stub-unclear",
+    });
+
+    const response = await answerPractice(problem.id, { response: "途中の式だけ" });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as PracticeAnswerResponse;
+    expect(body.attempt.verdict).toBe("unclear");
+    expect(body.next_schedule).toEqual([]);
+    expect(services.scheduler.scheduledPractice).toEqual([]);
+    expect(services.scheduler.cancelled).toEqual([]);
+    expect(services.repository.practiceAttempts).toHaveLength(1);
+    expect(
+      (await services.repository.listPracticeSchedules(problem.id)).map((entry) => entry.id),
+    ).toEqual(["psc_create_2", "psc_create_3"]);
+    expect(body.progress).toMatchObject({ solved_problems: 0, open_problems: 1 });
+  });
+
+  it("通知の予約に失敗しても採点履歴を保存し、200を返す", async () => {
+    const problem = await seedPracticeProblem();
+    services.grader.set({ verdict: "correct", comment: "言えてる", gradedBy: "stub-correct" });
+    services.scheduler.schedulePractice = async () => {
+      throw new Error("OneSignal down");
+    };
+
+    const response = await answerPractice(problem.id, { response: "符号で個数が決まる" });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as PracticeAnswerResponse;
+    expect(body.attempt.verdict).toBe("correct");
+    expect(body.next_schedule.map((entry) => entry.step)).toEqual([2, 3]);
+    expect(services.repository.practiceAttempts).toHaveLength(1);
+    expect(services.repository.practiceSchedules).toHaveLength(2);
+    expect(services.repository.practiceSchedules.every((entry) => entry.external_id === null)).toBe(
+      true,
+    );
+  });
+
+  it("他人の問題には触れず404を返す", async () => {
+    const problem = await seedPracticeProblem();
+    const response = await answerPractice(
+      problem.id,
+      { response: "答え" },
+      "11111111-2222-3333-4444-555555555555",
+    );
+
+    expect(response.status).toBe(404);
+    expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+      "practice_not_found",
+    );
+    expect(services.repository.practiceAttempts).toEqual([]);
+    expect(services.grader.graded).toEqual([]);
+  });
+
+  it("スキーマに合わない本文は400", async () => {
+    const problem = await seedPracticeProblem();
+    expect((await answerPractice(problem.id, { response: "" })).status).toBe(400);
   });
 });
 
@@ -545,13 +879,17 @@ describe("復習キューの言語", () => {
   });
 });
 
-async function seedReportKarte(input: {
+async function seedReportProblem(input: {
   id: string;
   localDate: string;
   createdAt: string;
-  topicIds: string[];
-  saidWell: string[];
-  holes?: HoleRecord[];
+  topicId: string;
+  attempts?: {
+    id: string;
+    answeredAt: string;
+    response: string;
+    verdict: PracticeAttemptRecord["verdict"];
+  }[];
 }): Promise<void> {
   const sessionId = `ses_${input.id}`;
   const created = await services.repository.createSession({
@@ -560,7 +898,8 @@ async function seedReportKarte(input: {
       created_at: input.createdAt,
       completed_at: input.createdAt,
       local_date: input.localDate,
-      topic_ids: input.topicIds,
+      topic_ids: [input.topicId],
+      practice_problem_id: input.id,
       duration_seconds: 900,
       started_at: input.createdAt,
     }),
@@ -569,19 +908,27 @@ async function seedReportKarte(input: {
   });
   if (!created) throw new Error("親レポート用セッションを作れませんでした");
 
-  await services.repository.insertKarte(
-    {
-      id: input.id,
-      session_id: sessionId,
-      device_id: testDeviceId,
-      created_at: input.createdAt,
-      topic_ids: input.topicIds,
-      said_well: input.saidWell,
-      term_notes: [],
-      followup_question: null,
-    },
-    input.holes ?? [],
-  );
+  await services.repository.insertPracticeProblem({
+    id: input.id,
+    session_id: sessionId,
+    device_id: testDeviceId,
+    board_id: `brd_${input.id}`,
+    created_at: input.createdAt,
+    topic_id: input.topicId,
+    question: `親レポートには混ぜない問題文_${input.id}`,
+    answer: `生徒へ返さない正解_${input.id}`,
+  });
+  for (const attempt of input.attempts ?? []) {
+    await services.repository.insertPracticeAttempt({
+      id: attempt.id,
+      problem_id: input.id,
+      answered_at: attempt.answeredAt,
+      response: attempt.response,
+      verdict: attempt.verdict,
+      graded_by: "stub",
+      comment: "いいね",
+    });
+  }
 }
 
 describe("GET /v1/me/parent-report", () => {
@@ -597,64 +944,86 @@ describe("GET /v1/me/parent-report", () => {
   it("Premiumには今月の実績と本人の言葉だけを返す", async () => {
     await makePremium();
 
-    await seedReportKarte({
-      id: "kar_july",
+    await seedReportProblem({
+      id: "prb_july",
       localDate: "2026-07-31",
       createdAt: "2026-07-31T11:00:00.000Z",
-      topicIds: ["M1-NIJI-GURAFU"],
-      saidWell: ["先月の説明は今月へ混ぜない"],
-      holes: [
+      topicId: "M1-NIJI-GURAFU",
+      attempts: [
         {
-          id: "hol_july",
-          device_id: testDeviceId,
-          karte_id: "kar_july",
-          topic_id: "M1-NIJI-GURAFU",
-          desc: "平方完成の理由で説明が止まった",
-          severity: "medium",
-          evidence: null,
-          quiz: null,
-          status: "filled",
-          created_at: "2026-07-31T11:00:00.000Z",
-          filled_at: "2026-07-31T12:00:00.000Z",
+          id: "att_july",
+          answeredAt: "2026-07-31T12:00:00.000Z",
+          response: "先月の説明は今月へ混ぜない",
+          verdict: "correct",
         },
       ],
     });
-    await seedReportKarte({
-      id: "kar_august_1",
+    await seedReportProblem({
+      id: "prb_august_1",
       localDate: "2026-08-01",
       createdAt: "2026-08-01T11:00:00.000Z",
-      topicIds: ["M1-NIJI-HANBETSU"],
-      saidWell: [],
-    });
-    await seedReportKarte({
-      id: "kar_august_2",
-      localDate: "2026-08-02",
-      createdAt: "2026-08-02T11:00:00.000Z",
-      topicIds: ["M2-ZUKEI-ENCHOKU"],
-      saidWell: ["同じ説明", "距離と半径を比べれば交点の個数がわかります", "古い4件目"],
-      holes: [
+      topicId: "M1-NIJI-GURAFU",
+      attempts: [
         {
-          id: "hol_august",
-          device_id: testDeviceId,
-          karte_id: "kar_august_2",
-          topic_id: "M1-NIJI-HANBETSU",
-          desc: "判別式の意味で説明が止まった",
-          severity: "medium",
-          evidence: null,
-          // 小テストの出題は本人の引用ではないので、親レポートへ混ぜない。
-          quiz: "判別式から実数解の個数を説明できる?",
-          status: "filled",
-          created_at: "2026-08-01T11:00:00.000Z",
-          filled_at: "2026-08-02T12:00:00.000Z",
+          id: "att_august_1",
+          answeredAt: "2026-08-01T12:00:00.000Z",
+          response: "不正解の説明は親へ見せない",
+          verdict: "incorrect",
         },
       ],
     });
-    await seedReportKarte({
-      id: "kar_august_3",
+    await seedReportProblem({
+      id: "prb_august_2",
+      localDate: "2026-08-02",
+      createdAt: "2026-08-02T11:00:00.000Z",
+      topicId: "M2-ZUKEI-ENCHOKU",
+      attempts: [
+        {
+          id: "att_august_2_old",
+          answeredAt: "2026-08-02T11:30:00.000Z",
+          response: "古い4件目",
+          verdict: "correct",
+        },
+        {
+          id: "att_august_2",
+          answeredAt: "2026-08-02T12:00:00.000Z",
+          response: "距離と半径を比べれば交点の個数がわかります",
+          verdict: "correct",
+        },
+      ],
+    });
+    await seedReportProblem({
+      id: "prb_august_3",
       localDate: "2026-08-03",
       createdAt: "2026-08-03T11:00:00.000Z",
-      topicIds: ["M1-NIJI-HANBETSU"],
-      saidWell: ["判別式は実数解の個数を調べるものです", "同じ説明"],
+      topicId: "M1-NIJI-HANBETSU",
+      attempts: [
+        {
+          id: "att_august_3_same",
+          answeredAt: "2026-08-03T12:59:00.000Z",
+          response: "同じ説明",
+          verdict: "correct",
+        },
+        {
+          id: "att_august_3",
+          answeredAt: "2026-08-03T13:00:00.000Z",
+          response: "判別式は実数解の個数を調べるものです",
+          verdict: "correct",
+        },
+        {
+          id: "att_august_3_incorrect",
+          answeredAt: "2026-08-03T13:01:00.000Z",
+          response: "直近でも不正解の説明は親へ見せない",
+          verdict: "incorrect",
+        },
+      ],
+    });
+    // 移行前の穴が残っていても、解けた問題数へ足すと同じ成果を二重に数える。
+    await seedHole({
+      id: "hol_august",
+      topic_id: "M1-NIJI-HANBETSU",
+      status: "filled",
+      filled_at: "2026-08-02T12:00:00.000Z",
     });
 
     const response = await get("/v1/me/parent-report");
@@ -664,7 +1033,7 @@ describe("GET /v1/me/parent-report", () => {
     if (body.requires_premium) throw new Error("Premiumの親レポートがロックされています");
 
     expect(body.report.period).toEqual({ start_date: "2026-08-01", end_date: "2026-08-03" });
-    expect(body.report.filled_holes).toBe(1);
+    expect(body.report.filled_holes).toBe(2);
     expect(body.report.streak_days).toBe(4);
     expect(body.report.explained_topics).toEqual([
       { topic_id: "M1-NIJI-HANBETSU", name: "二次方程式の判別式と実数解の個数" },
@@ -677,8 +1046,35 @@ describe("GET /v1/me/parent-report", () => {
     ]);
     expect(body.report.quotes).toHaveLength(parentReportQuoteMaxCount);
     expect(body.report.quotes).not.toContain("先月の説明は今月へ混ぜない");
-    expect(JSON.stringify(body.report)).not.toContain("判別式から実数解の個数を説明できる?");
+    expect(body.report.quotes).not.toContain("直近でも不正解の説明は親へ見せない");
+    expect(JSON.stringify(body.report)).not.toContain("親レポートには混ぜない問題文");
+    expect(JSON.stringify(body.report)).not.toContain("生徒へ返さない正解");
     expect(Object.keys(body.report)).not.toContain("accuracy");
+  });
+
+  /** 正解がまだ無い月でもレポートを開けないと、親には課金画面の故障に見える。 */
+  it("正解した解答が0件でもquotesを空配列で返す", async () => {
+    await makePremium();
+    await seedReportProblem({
+      id: "prb_unclear",
+      localDate: "2026-08-03",
+      createdAt: "2026-08-03T11:00:00.000Z",
+      topicId: "M1-NIJI-HANBETSU",
+      attempts: [
+        {
+          id: "att_unclear",
+          answeredAt: "2026-08-03T12:00:00.000Z",
+          response: "判定できなかった答え",
+          verdict: "unclear",
+        },
+      ],
+    });
+
+    const body = (await (await get("/v1/me/parent-report")).json()) as ParentReportResponse;
+    expect(parentReportResponseSchema.safeParse(body).success).toBe(true);
+    expect(body.requires_premium).toBe(false);
+    if (body.requires_premium) throw new Error("Premiumの親レポートがロックされています");
+    expect(body.report.quotes).toEqual([]);
   });
 
   it("デバイスIDがなければ401", async () => {

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { MemoryRepository } from "./memory.ts";
-import type { KarteRecord, SessionRecord } from "./types.ts";
+import type {
+  KarteRecord,
+  PracticeAttemptRecord,
+  PracticeProblemRecord,
+  SessionRecord,
+} from "./types.ts";
 
 function session(id: string, overrides: Partial<SessionRecord> = {}): SessionRecord {
   return {
@@ -14,12 +19,47 @@ function session(id: string, overrides: Partial<SessionRecord> = {}): SessionRec
     photo_key: null,
     topic_ids: [],
     hole_id: null,
+    practice_problem_id: null,
     duration_seconds: null,
     context: null,
     started_at: null,
     max_seconds: null,
     quota_settled_at: null,
     analysis_count: 1,
+    ...overrides,
+  };
+}
+
+function practiceProblem(
+  id: string,
+  overrides: Partial<PracticeProblemRecord> = {},
+): PracticeProblemRecord {
+  return {
+    id,
+    device_id: "device_a",
+    session_id: `session_${id}`,
+    board_id: `board_${id}`,
+    topic_id: "M1-NIJI-HANBETSU",
+    question: "判別式の符号から何がわかる?",
+    answer: "実数解の個数",
+    created_at: "2026-08-03T13:24:07.000Z",
+    ...overrides,
+  };
+}
+
+function practiceAttempt(
+  id: string,
+  problemId: string,
+  overrides: Partial<PracticeAttemptRecord> = {},
+): PracticeAttemptRecord {
+  return {
+    id,
+    problem_id: problemId,
+    answered_at: "2026-08-03T13:24:07.000Z",
+    response: "判別式の符号で実数解の個数がわかる",
+    verdict: "correct",
+    graded_by: "stub",
+    comment: "いいね",
     ...overrides,
   };
 }
@@ -328,6 +368,92 @@ describe("MemoryRepository.startSession", () => {
       started: true,
       maxSeconds: 900,
     });
+  });
+});
+
+describe("MemoryRepositoryの復習問題", () => {
+  it("所有者の問題だけを古い順に返し、セッションからも同じ1問を引ける", async () => {
+    const repository = new MemoryRepository();
+    await repository.insertPracticeProblem(
+      practiceProblem("prb_new", { created_at: "2026-08-03T11:00:00.000Z" }),
+    );
+    await repository.insertPracticeProblem(
+      practiceProblem("prb_old", { created_at: "2026-08-01T11:00:00.000Z" }),
+    );
+    await repository.insertPracticeProblem(
+      practiceProblem("prb_other", {
+        device_id: "device_b",
+        created_at: "2026-07-31T11:00:00.000Z",
+      }),
+    );
+
+    expect((await repository.listPracticeProblems("device_a")).map((entry) => entry.id)).toEqual([
+      "prb_old",
+      "prb_new",
+    ]);
+    expect(await repository.getPracticeProblemBySession("session_prb_old")).toEqual(
+      practiceProblem("prb_old", { created_at: "2026-08-01T11:00:00.000Z" }),
+    );
+  });
+
+  /**
+   * 解答は問題の所有者を通して絞らないと、別端末の本文が親レポートの引用へ
+   * 混ざる。直近判定も時系列を前提にするので、保存順ではなく回答時刻で並べる。
+   */
+  it("解答履歴を所有者で分け、古い順に返す", async () => {
+    const repository = new MemoryRepository();
+    await repository.insertPracticeProblem(practiceProblem("prb_owned"));
+    await repository.insertPracticeProblem(practiceProblem("prb_other", { device_id: "device_b" }));
+    await repository.insertPracticeAttempt(
+      practiceAttempt("att_new", "prb_owned", {
+        answered_at: "2026-08-03T12:00:00.000Z",
+      }),
+    );
+    await repository.insertPracticeAttempt(
+      practiceAttempt("att_other", "prb_other", {
+        answered_at: "2026-08-01T12:00:00.000Z",
+      }),
+    );
+    await repository.insertPracticeAttempt(
+      practiceAttempt("att_old", "prb_owned", {
+        answered_at: "2026-08-02T12:00:00.000Z",
+        verdict: "incorrect",
+      }),
+    );
+
+    expect((await repository.listPracticeAttempts("device_a")).map((entry) => entry.id)).toEqual([
+      "att_old",
+      "att_new",
+    ]);
+  });
+
+  /** 正解後も作成時の予約を取り消さないので、保存操作は常に足すだけにする。 */
+  it("通知予約を取り消さず追加し、予定時刻の古い順に返す", async () => {
+    const repository = new MemoryRepository();
+    await repository.insertPracticeSchedules([
+      {
+        id: "psc_7d",
+        problem_id: "prb_1",
+        step: 3,
+        scheduled_at: "2026-08-10T11:00:00.000Z",
+        external_id: "os_7d",
+      },
+    ]);
+    await repository.insertPracticeSchedules([
+      {
+        id: "psc_3d",
+        problem_id: "prb_1",
+        step: 2,
+        scheduled_at: "2026-08-06T11:00:00.000Z",
+        external_id: "os_3d",
+      },
+    ]);
+
+    expect((await repository.listPracticeSchedules("prb_1")).map((entry) => entry.id)).toEqual([
+      "psc_3d",
+      "psc_7d",
+    ]);
+    expect(repository.practiceSchedules).toHaveLength(2);
   });
 });
 

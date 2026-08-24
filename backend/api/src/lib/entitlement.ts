@@ -221,8 +221,16 @@ export function secondsUntilLocalMidnight(now: Date, timezoneOffsetMinutes: numb
 export function shouldShowPaywall(input: {
   isPremium: boolean;
   completedSessionCount: number;
-  holesFound: number;
+  /**
+   * この回で復習問題ができたか。
+   *
+   * **旧 `holesFound`(穴の件数)から差し替えた**(ADR 0009)。ペイウォールを出す
+   * 条件が「初回に成果物ができた日」であることは変えていない — 成果物の名前が
+   * 穴から復習問題へ移っただけ。作れなかった回に出さないのは、
+   * **見せるものが無いのに課金を頼むことになる**から。
+   */
+  practiceProblemCreated: boolean;
 }): boolean {
   if (input.isPremium) return false;
-  return input.completedSessionCount === 1 && input.holesFound > 0;
+  return input.completedSessionCount === 1 && input.practiceProblemCreated;
 }
