@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>新コアループの画面遷移(ADR 0009)</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap">
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0; padding: 40px 24px 80px;
+    font-family: "Zen Maru Gothic", "Hiragino Maru Gothic ProN", "Hiragino Sans", system-ui, sans-serif;
+    background: #F3F1EC; color: #33323D;
+  }
+  header { max-width: 900px; margin: 0 auto 48px; }
+  h1 { font-size: 28px; margin: 0 0 16px; }
+  header p { line-height: 1.8; margin: 0 0 8px; }
+  header a { color: #0EA5E9; }
+  section { max-width: 1800px; margin: 0 auto 56px; }
+  h2 { font-size: 18px; margin: 0 0 20px; color: #7A7887; letter-spacing: .06em; }
+  .row { display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start; }
+  figure { margin: 0; width: 393px; }
+  figcaption { font-size: 14px; font-weight: 700; margin-bottom: 10px; }
+  .frame {
+    width: 393px; height: 852px; overflow: hidden;
+    border-radius: 28px; box-shadow: 0 18px 44px rgba(20,20,19,.14), 0 3px 10px rgba(20,20,19,.06);
+  }
+  .note {
+    margin: 14px 2px 0; font-size: 12px; line-height: 1.8; color: #7A7887;
+    white-space: normal;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>新コアループの画面遷移</h1>
+  <p><strong>これが UI の正です。</strong>色・字送り・当たり判定まで <code>tokens.dart</code> /
+     <code>board_style.dart</code> / <code>app_theme.dart</code> の実値から起こしてあります。
+     実装で迷ったらこの図を見てください。</p>
+  <p>決定そのものは <a href="adr.md#adr-0009">ADR 0009</a>。
+     旧ループ(教え返し → カルテ)の画面は <a href="wireframe_v1.html">wireframe_v1.html</a> に残っています。</p>
+  <p>#172 の新コアループ。上段がセッションの中、その下が途中でやめる道、中段が3日後の通知から解答まで、下段が採点結果の3分岐。<br>授業からの出口は2つ — 「わかった」で ④ へ、やめる／時間切れなら ④&#x27; へ。復習問題が生まれるのは ④ の道だけ。<br>デザインは実装のトークンそのまま(Zen Maru Gothic / 板書は黒板 #2F3A35 にチョーク / 厚みボタンの沈み込み4px)。</p>
+  <p>verdict は3つ。合否に関わらず履歴には残り、変わるのは次の通知の段だけ — 不正解=1/3/7日、正解=3/7日、判定できず=予約しない。</p>
+</header>
+<section><h2>① セッションの中</h2><div class="row"><figure class="board"><figcaption>① ホーム</figcaption><div class="frame"><div style="width: 393px; height: 852px; box-sizing: border-box; background: #FBFAF7; color: #33323D; padding: 44px 24px 24px; display: flex; flex-direction: column; gap: 16px;">
+
+  <div style="display: flex; justify-content: space-between; align-items: center;">
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <path d="M10 2.5c2.2 2.6 3.3 4.6 3.3 6.1a3.3 3.3 0 0 1-6.6 0c0-.8.3-1.6.8-2.5C6.2 7.5 5 9.4 5 11.4a5 5 0 0 0 10 0c0-3-1.7-6-5-8.9Z" fill="#FF9F1C"/>
+      </svg>
+      <span style="font-size: 20px; font-weight: 700;">3</span>
+      <span style="font-size: 12px; color: #7A7887;">日つづけて</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="font-size: 20px; font-weight: 700; color: #0EA5E9;">12</span>
+      <span style="font-size: 12px; color: #7A7887;">問 解けた</span>
+    </div>
+  </div>
+
+  <div style="text-align: right; font-size: 12px; color: #7A7887;">今日はあと 20分</div>
+
+  <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px;">
+    <svg width="140" height="140" viewBox="0 0 140 140" aria-hidden="true">
+      <circle cx="70" cy="70" r="70" fill="#0EA5E9" fill-opacity="0.12"/>
+      <circle cx="43.4" cy="58.8" r="6.3" fill="#33323D"/>
+      <circle cx="96.6" cy="58.8" r="6.3" fill="#33323D"/>
+      <path d="M51.8 88.2 Q70 100.8 88.2 88.2" stroke="#33323D" stroke-width="6.3" fill="none" stroke-linecap="round"/>
+    </svg>
+    <div style="font-size: 20px; font-weight: 700; text-align: center; text-wrap: balance;">どこでつまずいた?</div>
+  </div>
+
+  <div style="background: #FFFFFF; border: 1px solid #E6E3DC; border-radius: 20px; padding: 16px; display: flex; align-items: center; gap: 12px;">
+    <div style="width: 40px; height: 40px; border-radius: 999px; background: #FFD93B; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <path d="M4 5.5h12M4 10h12M4 14.5h7" stroke="#33323D" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div style="flex-grow: 1; min-width: 0;">
+      <div style="font-size: 16px; font-weight: 700;">解きにいく問題が 2問</div>
+      <div style="font-size: 12px; color: #7A7887;">3日前の「判別式」から</div>
+    </div>
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="m7.5 4.5 6 5.5-6 5.5" stroke="#7A7887" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </div>
+
+  <div style="border-radius: 16px; background: #0EA5E9; box-shadow: 0 4px 0 #0A7AAC; padding: 16px 24px; text-align: center; color: #FFFFFF; font-size: 16px; font-weight: 700;">先輩に教わる</div>
+
+</div></div></figure><figure class="board"><figcaption>② 授業中</figcaption><div class="frame"><div style="width: 393px; height: 852px; box-sizing: border-box; background: #FBFAF7; color: #33323D; padding: 44px 24px 24px; display: flex; flex-direction: column; gap: 16px;">
+
+  <div style="display: flex; align-items: center;">
+    <div style="width: 44px; height: 44px; margin-left: -10px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M6.5 6.5 17.5 17.5M17.5 6.5 6.5 17.5" stroke="#7A7887" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </div>
+  </div>
+
+  <div style="background: #FFFFFF; border: 1px solid #E6E3DC; border-radius: 20px; padding: 12px 16px;">
+    <div style="font-size: 12px; color: #7A7887; margin-bottom: 4px;">問題</div>
+    <div style="font-size: 14px; line-height: 1.6;">x² − 4x + 1 = 0 の解の個数を求めよ。</div>
+  </div>
+
+  <div style="flex-grow: 1; background: #2F3A35; border-radius: 20px; padding: 20px 18px; display: flex; flex-direction: column; gap: 18px; min-height: 0; overflow: hidden;">
+    <div style="font-size: 12px; color: #9FA8A2; letter-spacing: .08em;">解の個数の調べ方</div>
+
+    <div style="font-size: 16px; line-height: 1.6; color: #EDEAE0;">解の個数は、グラフが x軸と何回交わるかで決まる</div>
+
+    <div style="font-size: 24px; color: #EDEAE0; letter-spacing: .02em;">D = b² − 4ac</div>
+
+    <div style="font-size: 16px; line-height: 1.6; color: #EDEAE0;">
+      いまの式だと <span style="color: #F2D675;">a = 1, b = −4, c = 1</span>
+    </div>
+
+    <div style="font-size: 24px; color: #EDEAE0;">
+      <span style="border-bottom: 2px solid #F2D675; padding-bottom: 3px;">D = 16 − 4 = 12</span>
+    </div>
+
+    <div style="font-size: 16px; line-height: 1.6; color: #EDEAE0;">D &gt; 0 だから、交わるのは……何回だと思う?</div>
+  </div>
+
+  <div style="display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 12px; color: #7A7887;">
+    <span style="width: 8px; height: 8px; border-radius: 999px; background: #0EA5E9;"></span>
+    先輩が説明中
+  </div>
+
+  <div style="border-radius: 16px; background: #0EA5E9; box-shadow: 0 4px 0 #0A7AAC; padding: 16px 24px; text-align: center; color: #FFFFFF; font-size: 16px; font-weight: 700;">わかった</div>
+
+</div></div><p class="note">撮る → 授業<br><br>回数の上限なし。<br>押されるまで<br>同じ板書に積む</p></figure><figure class="board"><figcaption>③ わかった押下直後</figcaption><div class="frame"><div style="width: 393px; height: 852px; box-sizing: border-box; background: #FBFAF7; color: #33323D; padding: 44px 24px 24px; display: flex; flex-direction: column; gap: 16px;">
+
+  <div style="display: flex; align-items: center;">
+    <div style="width: 44px; height: 44px; margin-left: -10px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M6.5 6.5 17.5 17.5M17.5 6.5 6.5 17.5" stroke="#7A7887" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </div>
+  </div>
+
+  <div style="background: #FFFFFF; border: 1px solid #E6E3DC; border-radius: 20px; padding: 12px 16px;">
+    <div style="font-size: 12px; color: #7A7887; margin-bottom: 4px;">問題</div>
+    <div style="font-size: 14px; line-height: 1.6;">x² − 4x + 1 = 0 の解の個数を求めよ。</div>
+  </div>
+
+  <div style="flex-grow: 1; background: #2F3A35; border-radius: 20px; padding: 20px 18px; display: flex; flex-direction: column; gap: 18px; min-height: 0; overflow: hidden;">
+    <div style="font-size: 12px; color: #9FA8A2; letter-spacing: .08em;">解の個数の調べ方</div>
+
+    <div style="font-size: 16px; line-height: 1.6; color: #EDEAE0;">解の個数は、グラフが x軸と何回交わるかで決まる</div>
+
+    <div style="font-size: 24px; color: #EDEAE0; letter-spacing: .02em;">D = b² − 4ac</div>
+
+    <div style="font-size: 16px; line-height: 1.6; color: #EDEAE0;">
+      いまの式だと <span style="color: #F2D675;">a = 1, b = −4, c = 1</span>
+    </div>
+
+    <div style="font-size: 24px; color: #EDEAE0;">
+      <span style="border-bottom: 2px solid #F2D675; padding-bottom: 3px;">D = 16 − 4 = 12</span>
+    </div>
+
+    <div style="font-size: 16px; line-height: 1.6; color: #EDEAE0;">D &gt; 0 だから、交わるのは……何回だと思う?</div>
+  </div>
+
+  <div style="display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 12px; color: #7A7887;">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path d="M2.5 7.5 5.5 10.5 11.5 4" stroke="#7A7887" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    声を止めたよ
+  </div>
+
+  <div style="padding-top: 4px;">
+    <div style="border-radius: 16px; background: #E6E3DC; padding: 16px 24px; text-align: center; color: #7A7887; font-size: 16px; font-weight: 700;">わかった</div>
+  </div>
+
+</div></div><p class="note">「わかった」<br><br>読み上げを<br>その場で止める。<br>板書は残す</p></figure><figure class="board"><figcaption>④ 祝福</figcaption><div class="frame"><div style="width: 393px; height: 852px; box-sizing: border-box; background: #FBF3E5; color: #33323D; padding: 44px 24px 24px; display: flex; flex-direction: column; gap: 16px;">
+
+  <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;">
+    <svg width="160" height="160" viewBox="0 0 160 160" aria-hidden="true">
+      <circle cx="80" cy="80" r="80" fill="#FFD93B" fill-opacity="0.25"/>
+      <path d="M38.08 74.4 49.6 60 61.12 74.4" stroke="#33323D" stroke-width="7.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M98.88 74.4 110.4 60 121.92 74.4" stroke="#33323D" stroke-width="7.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M59.2 100.8 Q80 117 100.8 100.8" stroke="#33323D" stroke-width="7.2" fill="none" stroke-linecap="round"/>
+      <path d="M26 34c1.6 4.4 2.6 5.4 7 7-4.4 1.6-5.4 2.6-7 7-1.6-4.4-2.6-5.4-7-7 4.4-1.6 5.4-2.6 7-7Z" fill="#FF9F1C"/>
+      <path d="M136 44c1.2 3.3 2 4.1 5.3 5.3-3.3 1.2-4.1 2-5.3 5.3-1.2-3.3-2-4.1-5.3-5.3 3.3-1.2 4.1-2 5.3-5.3Z" fill="#FF9F1C"/>
+    </svg>
+
+    <div style="font-size: 28px; font-weight: 700; text-align: center; text-wrap: balance;">お疲れ様</div>
+    <div style="font-size: 20px; font-weight: 700; color: #FF9F1C;">4日つづいてるよ</div>
+  </div>
+
+  <div style="background: #FFFFFF; border: 1px solid #E6E3DC; border-radius: 20px; padding: 16px; display: flex; align-items: flex-start; gap: 12px;">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style="flex-shrink: 0; margin-top: 2px;" aria-hidden="true">
+      <path d="M12 3.5a5.5 5.5 0 0 0-5.5 5.5c0 4-1.5 5.5-1.5 5.5h14s-1.5-1.5-1.5-5.5A5.5 5.5 0 0 0 12 3.5Z" stroke="#0EA5E9" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="M10 17.5a2 2 0 0 0 4 0" stroke="#0EA5E9" stroke-width="1.8" stroke-linecap="round"/>
+    </svg>
+    <div style="min-width: 0;">
+      <div style="font-size: 16px; font-weight: 700;">今日の問題は、3日後に送るね</div>
+      <div style="font-size: 12px; color: #7A7887; line-height: 1.5;">いま作ってるところ。待たなくて大丈夫。</div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 8px;">
+    <div style="border-radius: 16px; background: #0EA5E9; box-shadow: 0 4px 0 #0A7AAC; padding: 16px 24px; text-align: center; color: #FFFFFF; font-size: 16px; font-weight: 700;">もう1問 教わる</div>
+    <div style="min-height: 48px; display: flex; align-items: center; justify-content: center; color: #7A7887; font-size: 14px;">今日はここまで</div>
+  </div>
+
+</div></div><p class="note">部屋を閉じる<br><br>問題の生成は<br>/complete の裏。<br>待たせない</p></figure></div></section><section><h2>①&#x27; 途中でやめる道</h2><div class="row"><figure class="board"><figcaption>②&#x27; やめる確認</figcaption><div class="frame"><div style="width: 393px; height: 852px; box-sizing: border-box; background: #FBFAF7; color: #33323D; position: relative; overflow: hidden;">
+
+  <div style="position: absolute; inset: 0; padding: 44px 24px 24px; display: flex; flex-direction: column; gap: 16px; box-sizing: border-box;">
+    <div style="display: flex; align-items: center;">
+      <div style="width: 44px; height: 44px; margin-left: -10px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M6.5 6.5 17.5 17.5M17.5 6.5 6.5 17.5" stroke="#7A7887" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
+    </div>
+
+    <div style="background: #FFFFFF; border: 1px solid #E6E3DC; border-radius: 20px; padding: 12px 16px;">
+      <div style="font-size: 12px; color: #7A7887; margin-bottom: 4px;">問題</div>
+      <div style="font-size: 14px; line-height: 1.6;">x² − 4x + 1 = 0 の解の個数を求めよ。</div>
+    </div>
+
+    <div style="flex-grow: 1; background: #2F3A35; border-radius: 20px; padding: 20px 18px; display: flex; flex-direction: column; gap: 18px; min-height: 0; overflow: hidden;">
+      <div style="font-size: 12px; color: #9FA8A2; letter-spacing: .08em;">解の個数の調べ方</div>
+      <div style="font-size: 16px; line-height: 1.6; color: #EDEAE0;">解の個数は、グラフが x軸と何回交わるかで決まる</div>
+      <div style="font-size: 24px; color: #EDEAE0; letter-spacing: .02em;">D = b² − 4ac</div>
+      <div style="font-size: 16px; line-height: 1.6; color: #EDEAE0;">いまの式だと <span style="color: #F2D675;">a = 1, b = −4, c = 1</span></div>
+      <div style="font-size: 24px; color: #EDEAE0;"><span style="border-bottom: 2px solid #F2D675; padding-bottom: 3px;">D = 16 − 4 = 12</span></div>
+    </div>
+
+    <div style="border-radius: 16px; background: #0EA5E9; box-shadow: 0 4px 0 #0A7AAC; padding: 16px 24px; text-align: center; color: #FFFFFF; font-size: 16px; font-weight: 700;">わかった</div>
+  </div>
+
+  <div style="position: absolute; inset: 0; background: rgba(51, 50, 61, 0.55);"></div>
+
+  <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box;">
+    <div style="width: 100%; max-width: 305px; background: #FFFFFF; border-radius: 20px; padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px;">
+      <div style="font-size: 20px; font-weight: 700; line-height: 1.5; text-wrap: balance;">授業をやめる?</div>
+      <div style="font-size: 14px; line-height: 1.7; color: #7A7887;">ここでやめると、今日の復習問題は作らないよ。つづきは、また今度でも大丈夫。</div>
+      <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 4px;">
+        <div style="border-radius: 16px; background: #0EA5E9; box-shadow: 0 4px 0 #0A7AAC; padding: 16px 24px; text-align: center; color: #FFFFFF; font-size: 16px; font-weight: 700;">つづける</div>
+        <div style="min-height: 48px; display: flex; align-items: center; justify-content: center; color: #7A7887; font-size: 14px;">やめる</div>
+      </div>
+    </div>
+  </div>
+
+</div></div><p class="note">② の左上の × から<br><br>離脱は下の操作にしない。「わかった」を下に1つだけ置く決まり(ADR 0006)を守るため、やめる口はヘッダの × に置く。<br><br>確認を挟むのはこちらだけ。「わかった」は素通しでいい(押し間違えても次のセッションで撮り直せる)が、× は復習問題ごと失う道なので一度止める。<br><br>「つづける」で ② へ戻る。板書も残り時間もそのまま。</p></figure><figure class="board"><figcaption>④&#x27; 途中で降りたとき</figcaption><div class="frame"><div style="width: 393px; height: 852px; box-sizing: border-box; background: #FBFAF7; color: #33323D; padding: 44px 24px 24px; display: flex; flex-direction: column; gap: 16px;">
+
+  <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;">
+    <svg width="160" height="160" viewBox="0 0 160 160" aria-hidden="true">
+      <circle cx="80" cy="80" r="80" fill="#0EA5E9" fill-opacity="0.12"/>
+      <circle cx="49.6" cy="67.2" r="7.2" fill="#33323D"/>
+      <circle cx="110.4" cy="67.2" r="7.2" fill="#33323D"/>
+      <path d="M59.2 100.8 Q80 111 100.8 100.8" stroke="#33323D" stroke-width="7.2" fill="none" stroke-linecap="round"/>
+    </svg>
+
+    <div style="font-size: 28px; font-weight: 700; text-align: center; text-wrap: balance;">今日はここまでに<br>しよっか</div>
+    <div style="font-size: 16px; line-height: 1.6; color: #7A7887; text-align: center; max-width: 280px;">つづきは、また今度いっしょにやろう。</div>
+  </div>
+
+  <div style="background: #FFFFFF; border: 1px solid #E6E3DC; border-radius: 20px; padding: 16px; display: flex; align-items: flex-start; gap: 12px;">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style="flex-shrink: 0; margin-top: 2px;" aria-hidden="true">
+      <circle cx="12" cy="12" r="8.6" stroke="#7A7887" stroke-width="1.8"/>
+      <path d="M12 11v5.2M12 7.9h.01" stroke="#7A7887" stroke-width="1.8" stroke-linecap="round"/>
+    </svg>
+    <div style="min-width: 0;">
+      <div style="font-size: 16px; font-weight: 700;">今日は問題を出さないでおくね</div>
+      <div style="font-size: 12px; color: #7A7887; line-height: 1.5;">まだ途中だから、あとで聞かれても答えにくいと思う。</div>
+    </div>
+  </div>
+
+  <div style="border-radius: 16px; background: #0EA5E9; box-shadow: 0 4px 0 #0A7AAC; padding: 16px 24px; text-align: center; color: #FFFFFF; font-size: 16px; font-weight: 700;">ホームへ戻る</div>
+
+</div></div><p class="note">「やめる」→ ④&#x27; へ<br><br>同じ ④&#x27; に着く道が3つある: この確認から「やめる」/ 残り時間が尽きた / アプリごと閉じた。<br>先輩が締めの一言を言うのは残り時間が理由のときだけ(minContinueSeconds を切ったら新しいパスを始めない)。アプリを閉じた場合はこの画面が出ないまま、サーバ側で同じ扱いになる。<br><br>どの理由でも復習問題は作らない(決定8)。だから ⑤ へは繋がらず、① ホームへ戻るだけ。</p></figure></div></section><section><h2>② 3日後 — 通知から解答まで</h2><div class="row"><figure class="board"><figcaption>⑤ 通知(3日後)</figcaption><div class="frame"><div style="width: 393px; height: 852px; box-sizing: border-box; background: #33323D; color: #33323D; padding: 44px 16px 24px; display: flex; flex-direction: column; gap: 16px;">
+
+  <div style="text-align: center; color: #9FA8A2; font-size: 12px; letter-spacing: .08em;">アプリの外 — 授業から3日後の夜</div>
+
+  <div style="background: #FBFAF7; border-radius: 20px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px;">
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <div style="width: 20px; height: 20px; border-radius: 6px; background: #0EA5E9; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+          <path d="M2 8.5 4.5 3.5 7 8.5M2.9 7h3.2M9.4 3.5v5" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <span style="font-size: 12px; color: #7A7887; flex-grow: 1;">ai-sensei</span>
+      <span style="font-size: 12px; color: #7A7887;">now</span>
+    </div>
+    <div style="font-size: 16px; font-weight: 700;">この前の判別式、おぼえてる?</div>
+    <div style="font-size: 14px; line-height: 1.6;">1問だけ置いておくね。30秒で終わるやつ。</div>
+  </div>
+
+  <div style="flex-grow: 1;"></div>
+
+  <div style="background: rgba(251,250,247,0.08); border-radius: 20px; padding: 14px 16px; color: #EDEAE0; font-size: 12px; line-height: 1.7;">
+    <div style="font-weight: 700; margin-bottom: 6px;">通知が飛ぶ日</div>
+    <div style="color: #9FA8A2;">不正解だった問題 … 1日後 / 3日後 / 7日後</div>
+    <div style="color: #9FA8A2;">正解した問題 … 3日後 / 7日後</div>
+    <div style="color: #9FA8A2;">判定できなかった問題 … 予約しない</div>
+  </div>
+
+</div></div><p class="note">3日後の夜 20:00 — OneSignal が届く(既存の scheduleReviews をそのまま流用)</p></figure><figure class="board"><figcaption>⑥ 解答</figcaption><div class="frame"><div style="width: 393px; height: 852px; box-sizing: border-box; background: #FBFAF7; color: #33323D; padding: 44px 24px 24px; display: flex; flex-direction: column; gap: 16px;">
+
+  <div style="display: flex; align-items: center; gap: 12px;">
+    <div style="width: 44px; height: 44px; margin-left: -10px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M14.5 5.5 8 12l6.5 6.5" stroke="#7A7887" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div style="flex-grow: 1;">
+      <div style="font-size: 16px; font-weight: 700;">3日前の復習</div>
+      <div style="font-size: 12px; color: #7A7887;">判別式と解の個数</div>
+    </div>
+    <div style="border-radius: 999px; background: #FFD93B; padding: 4px 12px; font-size: 12px; font-weight: 700;">1 / 1</div>
+  </div>
+
+  <div style="background: #FFFFFF; border: 1px solid #E6E3DC; border-radius: 20px; padding: 20px 18px;">
+    <div style="font-size: 12px; color: #7A7887; margin-bottom: 8px;">問題</div>
+    <div style="font-size: 20px; font-weight: 700; line-height: 1.6; text-wrap: pretty;">x² − 6x + 5 = 0 の解の個数は?</div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 8px; flex-grow: 1; min-height: 0;">
+    <div style="font-size: 12px; color: #7A7887;">こたえ</div>
+    <div style="flex-grow: 1; background: #FFFFFF; border: 2px solid #0EA5E9; border-radius: 20px; padding: 16px; font-size: 16px; line-height: 1.6; color: #33323D;">
+      D = 36 − 20 = 16 で D &gt; 0 だから 2個<span style="display: inline-block; width: 2px; height: 20px; background: #0EA5E9; vertical-align: -4px; margin-left: 2px;"></span>
+    </div>
+    <div style="font-size: 12px; color: #7A7887; line-height: 1.5;">とちゅうの式だけでも、言葉だけでも大丈夫。</div>
+  </div>
+
+  <div style="border-radius: 16px; background: #0EA5E9; box-shadow: 0 4px 0 #0A7AAC; padding: 16px 24px; text-align: center; color: #FFFFFF; font-size: 16px; font-weight: 700;">こたえる</div>
+
+</div></div><p class="note">通知をタップ<br><br>テキストで解く。<br>声を出せない<br>場所でも終わる</p></figure><figure class="board"><figcaption>⑦ 採点待ち</figcaption><div class="frame"><div style="width: 393px; height: 852px; box-sizing: border-box; background: #FBFAF7; color: #33323D; padding: 44px 24px 24px; display: flex; flex-direction: column; gap: 16px;">
+
+  <div style="display: flex; align-items: center; gap: 12px;">
+    <div style="flex-grow: 1;">
+      <div style="font-size: 16px; font-weight: 700;">3日前の復習</div>
+      <div style="font-size: 12px; color: #7A7887;">判別式と解の個数</div>
+    </div>
+  </div>
+
+  <div style="background: #FFFFFF; border: 1px solid #E6E3DC; border-radius: 20px; padding: 16px 18px;">
+    <div style="font-size: 12px; color: #7A7887; margin-bottom: 6px;">問題</div>
+    <div style="font-size: 16px; font-weight: 700; line-height: 1.6;">x² − 6x + 5 = 0 の解の個数は?</div>
+    <div style="height: 1px; background: #E6E3DC; margin: 14px 0;"></div>
+    <div style="font-size: 12px; color: #7A7887; margin-bottom: 6px;">きみのこたえ</div>
+    <div style="font-size: 16px; line-height: 1.6;">D = 36 − 20 = 16 で D &gt; 0 だから 2個</div>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;">
+    <svg width="120" height="120" viewBox="0 0 120 120" aria-hidden="true">
+      <circle cx="60" cy="60" r="60" fill="#0EA5E9" fill-opacity="0.12"/>
+      <circle cx="37.2" cy="50.4" r="6.21" fill="#33323D"/>
+      <circle cx="82.8" cy="50.4" r="6.21" fill="#33323D"/>
+      <path d="M44.4 75.6 Q60 86 75.6 75.6" stroke="#33323D" stroke-width="5.4" fill="none" stroke-linecap="round"/>
+    </svg>
+
+    <div style="font-size: 20px; font-weight: 700;">読んでるところ</div>
+
+    <div style="display: flex; gap: 8px;">
+      <span style="width: 10px; height: 10px; border-radius: 999px; background: #0EA5E9;"></span>
+      <span style="width: 10px; height: 10px; border-radius: 999px; background: #0EA5E9; opacity: .45;"></span>
+      <span style="width: 10px; height: 10px; border-radius: 999px; background: #0EA5E9; opacity: .2;"></span>
+    </div>
+  </div>
+
+  <div style="min-height: 48px; display: flex; align-items: center; justify-content: center; color: #7A7887; font-size: 14px;">閉じても、あとで結果を見られるよ</div>
+
+</div></div><p class="note">「こたえる」<br><br>AIが採点。<br>数秒かかるので<br>状態を出す</p></figure></div></section><section><h2>③ 採点の3分岐</h2><div class="row"><figure class="board"><figcaption>⑧ 正解</figcaption><div class="frame"><div style="width: 393px; height: 852px; box-sizing: border-box; background: #FBFAF7; color: #33323D; padding: 44px 24px 24px; display: flex; flex-direction: column; gap: 16px;">
+
+  <div style="font-size: 12px; color: #7A7887;">3日前の復習 — 判別式と解の個数</div>
+
+  <div style="display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 8px 0;">
+    <svg width="120" height="120" viewBox="0 0 120 120" aria-hidden="true">
+      <circle cx="60" cy="60" r="60" fill="#FFD93B" fill-opacity="0.25"/>
+      <path d="M28.56 55.8 37.2 45 45.84 55.8" stroke="#33323D" stroke-width="5.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M74.16 55.8 82.8 45 91.44 55.8" stroke="#33323D" stroke-width="5.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M44.4 75.6 Q60 87.8 75.6 75.6" stroke="#33323D" stroke-width="5.4" fill="none" stroke-linecap="round"/>
+    </svg>
+    <div style="font-size: 28px; font-weight: 700; text-align: center;">
+      <span style="background: linear-gradient(transparent 62%, #FFD93B 62%); padding: 0 4px;">言えてる</span>
+    </div>
+  </div>
+
+  <div style="background: #FFFFFF; border: 1px solid #E6E3DC; border-radius: 20px; padding: 16px 18px;">
+    <div style="font-size: 12px; color: #7A7887; margin-bottom: 6px;">きみのこたえ</div>
+    <div style="font-size: 16px; line-height: 1.6;">D = 36 − 20 = 16 で D &gt; 0 だから 2個</div>
+    <div style="height: 1px; background: #E6E3DC; margin: 14px 0;"></div>
+    <div style="font-size: 14px; line-height: 1.7; color: #7A7887;">D を出してから符号で判断する、っていう順番がそのまま書けてる。そこがいちばん大事なところ。</div>
+  </div>
+
+  <div style="flex-grow: 1;"></div>
+
+  <div style="display: flex; align-items: center; gap: 10px; background: #FFFFFF; border: 1px solid #E6E3DC; border-radius: 20px; padding: 14px 16px;">
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style="flex-shrink: 0;" aria-hidden="true">
+      <circle cx="10" cy="10" r="7.2" stroke="#7A7887" stroke-width="1.8"/>
+      <path d="M10 6v4.2l2.8 1.8" stroke="#7A7887" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div style="font-size: 14px; color: #7A7887;">つぎは 7日後にもう一度きくね</div>
+  </div>
+
+  <div style="border-radius: 16px; background: #0EA5E9; box-shadow: 0 4px 0 #0A7AAC; padding: 16px 24px; text-align: center; color: #FFFFFF; font-size: 16px; font-weight: 700;">ホームへ戻る</div>
+
+</div></div></figure><figure class="board"><figcaption>⑨ 不正解</figcaption><div class="frame"><div style="width: 393px; height: 852px; box-sizing: border-box; background: #FBFAF7; color: #33323D; padding: 44px 24px 24px; display: flex; flex-direction: column; gap: 16px;">
+
+  <div style="font-size: 12px; color: #7A7887;">3日前の復習 — 判別式と解の個数</div>
+
+  <div style="display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 8px 0;">
+    <svg width="120" height="120" viewBox="0 0 120 120" aria-hidden="true">
+      <circle cx="60" cy="60" r="60" fill="#0EA5E9" fill-opacity="0.12"/>
+      <circle cx="37.2" cy="50.4" r="5.4" fill="#33323D"/>
+      <circle cx="82.8" cy="50.4" r="5.4" fill="#33323D"/>
+      <path d="M44.4 75.6 Q60 84 75.6 75.6" stroke="#33323D" stroke-width="5.4" fill="none" stroke-linecap="round"/>
+    </svg>
+    <div style="font-size: 28px; font-weight: 700; text-align: center;">
+      <span style="background: linear-gradient(transparent 62%, #FF7AA8 62%); padding: 0 4px;">ここ、まだだね</span>
+    </div>
+  </div>
+
+  <div style="background: #FFFFFF; border: 1px solid #E6E3DC; border-radius: 20px; padding: 16px 18px;">
+    <div style="font-size: 12px; color: #7A7887; margin-bottom: 6px;">きみのこたえ</div>
+    <div style="font-size: 16px; line-height: 1.6;">D = 36 − 20 = 16 だから 1個</div>
+    <div style="height: 1px; background: #E6E3DC; margin: 14px 0;"></div>
+    <div style="font-size: 14px; line-height: 1.7; color: #7A7887;">D を出すところまでは合ってる。D が 0 より大きいときに何個になるか、そこを一緒に見直そっか。</div>
+  </div>
+
+  <div style="flex-grow: 1;"></div>
+
+  <div style="display: flex; align-items: center; gap: 10px; background: #FFFFFF; border: 1px solid #E6E3DC; border-radius: 20px; padding: 14px 16px;">
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style="flex-shrink: 0;" aria-hidden="true">
+      <circle cx="10" cy="10" r="7.2" stroke="#7A7887" stroke-width="1.8"/>
+      <path d="M10 6v4.2l2.8 1.8" stroke="#7A7887" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div style="font-size: 14px; color: #7A7887;">つぎは 明日・3日後・7日後にきくね</div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 8px;">
+    <div style="border-radius: 16px; background: #0EA5E9; box-shadow: 0 4px 0 #0A7AAC; padding: 16px 24px; text-align: center; color: #FFFFFF; font-size: 16px; font-weight: 700;">先輩に聞く</div>
+    <div style="min-height: 48px; display: flex; align-items: center; justify-content: center; color: #7A7887; font-size: 14px;">あとにする</div>
+  </div>
+
+</div></div></figure><figure class="board"><figcaption>⑩ 判定できず</figcaption><div class="frame"><div style="width: 393px; height: 852px; box-sizing: border-box; background: #FBFAF7; color: #33323D; padding: 44px 24px 24px; display: flex; flex-direction: column; gap: 16px;">
+
+  <div style="font-size: 12px; color: #7A7887;">3日前の復習 — 判別式と解の個数</div>
+
+  <div style="display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 8px 0;">
+    <svg width="120" height="120" viewBox="0 0 120 120" aria-hidden="true">
+      <circle cx="60" cy="60" r="60" fill="#0EA5E9" fill-opacity="0.12"/>
+      <circle cx="37.2" cy="50.4" r="5.4" fill="#33323D"/>
+      <circle cx="82.8" cy="50.4" r="5.4" fill="#33323D"/>
+      <path d="M46.8 78 Q60 71.4 73.2 78" stroke="#33323D" stroke-width="5.4" fill="none" stroke-linecap="round"/>
+      <path d="M97 27c3.4 4.6 5 7.3 5 9.2a5 5 0 0 1-10 0c0-1.9 1.6-4.6 5-9.2Z" fill="#0EA5E9" fill-opacity="0.55"/>
+    </svg>
+    <div style="font-size: 28px; font-weight: 700; text-align: center; text-wrap: balance;">うまく読めなかった</div>
+  </div>
+
+  <div style="background: #FFFFFF; border: 1px solid #E6E3DC; border-radius: 20px; padding: 16px 18px;">
+    <div style="font-size: 12px; color: #7A7887; margin-bottom: 6px;">きみのこたえ</div>
+    <div style="font-size: 16px; line-height: 1.6;">2こ？いや、ちがうかも</div>
+    <div style="height: 1px; background: #E6E3DC; margin: 14px 0;"></div>
+    <div style="font-size: 14px; line-height: 1.7; color: #7A7887;">ごめん、こっちが読み取れなかった。もう一度、別の言い方で聞かせてもらえる?</div>
+  </div>
+
+  <div style="flex-grow: 1;"></div>
+
+  <div style="display: flex; align-items: center; gap: 10px; background: #FFFFFF; border: 1px solid #E6E3DC; border-radius: 20px; padding: 14px 16px;">
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style="flex-shrink: 0;" aria-hidden="true">
+      <circle cx="10" cy="10" r="7.2" stroke="#7A7887" stroke-width="1.8"/>
+      <path d="M10 9.2v4.4M10 6.6h.01" stroke="#7A7887" stroke-width="1.8" stroke-linecap="round"/>
+    </svg>
+    <div style="font-size: 14px; color: #7A7887; line-height: 1.6;">まちがい扱いにはしない。通知も進めない。</div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 8px;">
+    <div style="border-radius: 16px; background: #0EA5E9; box-shadow: 0 4px 0 #0A7AAC; padding: 16px 24px; text-align: center; color: #FFFFFF; font-size: 16px; font-weight: 700;">もう一度こたえる</div>
+    <div style="min-height: 48px; display: flex; align-items: center; justify-content: center; color: #7A7887; font-size: 14px;">先輩に聞く</div>
+  </div>
+
+</div></div></figure></div></section>
+</body>
+</html>
