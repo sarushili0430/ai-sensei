@@ -1,0 +1,33 @@
+{
+  "attempt": {
+    "id": "att_01J8Z9K2QF7X3M4N5P6R7S8T9V",
+    "problem_id": "prb_01J8Z9K2QF7X3M4N5P6R7S8T9V",
+    "answered_at": "2026-08-06T11:03:27.000Z",
+    "response": "D = 36 − 20 = 16 で D > 0 だから 2個",
+    "verdict": "correct",
+    "graded_by": "claude-sonnet-5",
+    "comment": "D を出してから符号で判断する、っていう順番がそのまま書けてる。そこがいちばん大事なところ。"
+  },
+  "next_schedule": [
+    {
+      "problem_id": "prb_01J8Z9K2QF7X3M4N5P6R7S8T9V",
+      "step": 2,
+      "days": 3,
+      "scheduled_at": "2026-08-09T11:00:00.000Z"
+    },
+    {
+      "problem_id": "prb_01J8Z9K2QF7X3M4N5P6R7S8T9V",
+      "step": 3,
+      "days": 7,
+      "scheduled_at": "2026-08-13T11:00:00.000Z"
+    }
+  ],
+  "progress": {
+    "streak_days": 3,
+    "filled_holes": 4,
+    "open_holes": 1,
+    "solved_problems": 12,
+    "open_problems": 2,
+    "last_session_date": "2026-08-03"
+  }
+}

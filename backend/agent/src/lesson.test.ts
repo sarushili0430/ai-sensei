@@ -596,6 +596,18 @@ describe("boardCloseReasonFor", () => {
     expect(boardCloseReasonFor("completed")).toBe("completed");
   });
 
+  /**
+   * **「わかった」で閉じた板書を、事故に見せない。**
+   *
+   * ここが `error` に落ちると、押した瞬間に画面へ残るのは
+   * 「とちゅうで壊れた板書」になる — いま理解したものが、事故の記録に見える。
+   * 新しい `ended_reason` を足したときに `default: "error"` へ落ちる形なので、
+   * 値ごとに固定しておく(#174 の確かめること)。
+   */
+  it("understood も completed 扱いにする", () => {
+    expect(boardCloseReasonFor("understood")).toBe("completed");
+  });
+
   it("離脱は interrupted、エラーは error", () => {
     expect(boardCloseReasonFor("user_left")).toBe("interrupted");
     expect(boardCloseReasonFor("error")).toBe("error");

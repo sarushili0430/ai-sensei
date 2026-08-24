@@ -16,10 +16,16 @@ void main() {
   const ValueKey<String> lessonKey = ValueKey<String>('home-primary-lesson');
   const ValueKey<String> reviewKey = ValueKey<String>('home-primary-review');
 
-  /// 締めたうえで、埋める穴も残っていない日。
-  /// `exhaustedSummary` は穴が2つあるので、この経路はこちらでしか通せない。
-  const ProgressSummary exhaustedWithoutHoles = ProgressSummary(
-    progress: Progress(streakDays: 3, filledHoles: 4, openHoles: 0),
+  /// 締めたうえで、復習問題も残っていない日。
+  /// `exhaustedSummary` は問題が3つあるので、この経路はこちらでしか通せない。
+  const ProgressSummary exhaustedWithoutProblems = ProgressSummary(
+    progress: Progress(
+      streakDays: 3,
+      filledHoles: 4,
+      openHoles: 7,
+      solvedProblems: 12,
+      openProblems: 0,
+    ),
     isPremium: false,
     limits: SessionLimits(
       maxSeconds: 1200,
@@ -33,14 +39,18 @@ void main() {
     ProgressSummary summary, {
     Locale locale = const Locale('ja'),
   }) => pumpApp(
-        tester,
-        const HomeScreen(),
-        locale: locale,
-        overrides: <Object?>[
-          progressControllerProvider.overrideWith(() => FakeProgressController(summary)),
-          reviewControllerProvider.overrideWith(() => FakeReviewController(sampleReviewQueue)),
-        ],
-      );
+    tester,
+    const HomeScreen(),
+    locale: locale,
+    overrides: <Object?>[
+      progressControllerProvider.overrideWith(
+        () => FakeProgressController(summary),
+      ),
+      reviewControllerProvider.overrideWith(
+        () => FakeReviewController(samplePracticeQueue),
+      ),
+    ],
+  );
 
   testWidgets('授業ができる日は「先輩に教わる」1本だけ', (WidgetTester tester) async {
     await pumpHome(tester, sampleSummary);
@@ -73,6 +83,25 @@ void main() {
     expect(find.text(ja.homeRemainingMinutes(9)), findsOneWidget);
   });
 
+  for (final int seconds in <int>[59, 1]) {
+    testWidgets('残り$seconds秒は0分ではなく「1分未満」と出す', (WidgetTester tester) async {
+      final ProgressSummary partial = ProgressSummary(
+        progress: sampleProgress,
+        isPremium: false,
+        limits: SessionLimits(
+          maxSeconds: 600,
+          remainingSecondsToday: seconds,
+          lessonAllowedToday: true,
+        ),
+      );
+
+      await pumpHome(tester, partial);
+
+      expect(find.text(ja.homeRemainingLessThanMinute), findsOneWidget);
+      expect(find.text(ja.homeRemainingMinutes(0)), findsNothing);
+    });
+  }
+
   testWidgets('先輩が締めた日は、押せる先が復習に入れ替わる', (WidgetTester tester) async {
     await pumpHome(tester, exhaustedSummary);
 
@@ -80,14 +109,16 @@ void main() {
     // 押せないボタンを並べて残さない。同じ場所の中身が入れ替わる。
     expect(find.byKey(lessonKey), findsNothing);
     expect(find.text(ja.lessonEnoughForToday), findsOneWidget);
+    // 使い切った0秒を「1分未満」に含めると、まだ残っている表示と説明が並んでしまう。
+    expect(find.text(ja.homeRemainingMinutes(0)), findsOneWidget);
+    expect(find.text(ja.homeRemainingLessThanMinute), findsNothing);
     // 撮らせない画面で「どこでつまずいた?」と聞かない。
     expect(find.text(ja.homeGreetingDone), findsOneWidget);
     expect(find.text(ja.homeGreeting), findsNothing);
   });
 
-  testWidgets('締めていて穴も無ければ、そこで初めて押せないボタンになる',
-      (WidgetTester tester) async {
-    await pumpHome(tester, exhaustedWithoutHoles);
+  testWidgets('締めていて復習問題も無ければ、そこで初めて押せないボタンになる', (WidgetTester tester) async {
+    await pumpHome(tester, exhaustedWithoutProblems);
 
     expect(find.byKey(lessonKey), findsOneWidget);
     expect(find.byKey(reviewKey), findsNothing);
@@ -103,21 +134,20 @@ void main() {
   // golden も最初からその絵で焼かれていたため検知できなかった。
   // 見えている数の**回数**をここで固定する。
   group('カウンターの数字', () {
-    testWidgets('数字は各カウンターに1回だけ出て、読み上げは自然文のまま',
-        (WidgetTester tester) async {
+    testWidgets('数字は各カウンターに1回だけ出て、読み上げは自然文のまま', (WidgetTester tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
       await pumpHome(tester, sampleSummary);
 
       expect(find.text('3'), findsOneWidget);
-      expect(find.text('4'), findsOneWidget);
+      expect(find.text('12'), findsOneWidget);
       // ラベル側は数字を持たない。空白の有無も文字列が持つ。
       expect(find.text(ja.streakDaysSuffix), findsOneWidget);
-      expect(find.text(ja.filledHolesPrefix), findsOneWidget);
+      expect(find.text(ja.solvedProblemsSuffix), findsOneWidget);
       // 数字入りの全文は、画面ではなく読み上げにだけ出す。
       expect(find.text(ja.streakDays(3)), findsNothing);
-      expect(find.text(ja.filledHoles(4)), findsNothing);
+      expect(find.text(ja.solvedProblems(12)), findsNothing);
       expect(find.bySemanticsLabel(ja.streakDays(3)), findsOneWidget);
-      expect(find.bySemanticsLabel(ja.filledHoles(4)), findsOneWidget);
+      expect(find.bySemanticsLabel(ja.solvedProblems(12)), findsOneWidget);
       handle.dispose();
     });
 
@@ -127,7 +157,7 @@ void main() {
 
       expect(find.text('0'), findsNWidgets(2));
       expect(find.text(ja.streakDays(0)), findsNothing);
-      expect(find.text(ja.filledHoles(0)), findsNothing);
+      expect(find.text(ja.solvedProblems(0)), findsNothing);
     });
 
     // 英語は数字が前(「4 gaps filled」)。前後どちらに置いても1回になる。
@@ -136,10 +166,10 @@ void main() {
       await pumpHome(tester, sampleSummary, locale: const Locale('en'));
 
       expect(find.text('3'), findsOneWidget);
-      expect(find.text('4'), findsOneWidget);
+      expect(find.text('12'), findsOneWidget);
       expect(find.text(en.streakDaysSuffix), findsOneWidget);
-      expect(find.text(en.filledHolesSuffix), findsOneWidget);
-      expect(find.text(en.filledHoles(4)), findsNothing);
+      expect(find.text(en.solvedProblemsSuffix), findsOneWidget);
+      expect(find.text(en.solvedProblems(12)), findsNothing);
     });
   });
 

@@ -52,13 +52,27 @@ export type ParentReportTopic = z.infer<typeof parentReportTopicSchema>;
 export const parentReportSchema = z
   .object({
     period: parentReportPeriodSchema,
-    /** この期間に埋まった穴。通算ではなく、今月増えたものだけ。 */
+    /**
+     * この期間に**解けた復習問題**の数。通算ではなく、今月増えたものだけ。
+     *
+     * 名前が `filled_holes` のままなのは、**移行期に親レポートのレイアウトを
+     * 触らないため**(ADR 0009)。数えている中身は「埋まった穴」から
+     * 「正解した復習問題」へ移っている。旧データの穴と足し合わせない
+     * (二重計上になる)。
+     */
     filled_holes: z.number().int().min(0),
     /** 作成日時点の連続日数。既存の進捗と同じ数え方を使う。 */
     streak_days: z.number().int().min(0),
-    /** `said_well` または今月埋まった穴を根拠にした単元名。 */
+    /** 今月解けた復習問題(と、移行期は今月埋まった穴)を根拠にした単元名。 */
     explained_topics: z.array(parentReportTopicSchema).max(parentReportTopicMaxCount),
-    /** 本人が実際に口にした説明。出どころはカルテの `said_well` だけ。 */
+    /**
+     * 本人が実際に書いた説明。
+     *
+     * 出どころは**復習問題への解答のうち `correct` のものだけ**(ADR 0009)。
+     * 旧 `kartes.said_well`(口頭の教え返しをLLMが要約したもの)から替えた。
+     * テキスト入力なので**本人の言葉がそのまま残り**、採点済みなので
+     * 「言えたことにされた」ものが混ざらない。
+     */
     quotes: z
       .array(z.string().min(1).max(parentReportQuoteMaxLength))
       .max(parentReportQuoteMaxCount),

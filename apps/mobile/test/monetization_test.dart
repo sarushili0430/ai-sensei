@@ -20,7 +20,11 @@ import 'support/harness.dart';
 /// 取り違えていないか**。取り違えると「課金したのに使えない」という、
 /// もっとも気づきにくい壊れ方をする。
 
-const PresentedOfferingContext _context = PresentedOfferingContext('default', null, null);
+const PresentedOfferingContext _context = PresentedOfferingContext(
+  'default',
+  null,
+  null,
+);
 
 StoreProduct _product(
   String id, {
@@ -36,7 +40,9 @@ StoreProduct _product(
   'JPY',
   introductoryPrice: intro,
   pricePerMonth: pricePerMonth,
-  pricePerMonthString: pricePerMonth == null ? null : '¥${pricePerMonth.toStringAsFixed(0)}',
+  pricePerMonthString: pricePerMonth == null
+      ? null
+      : '¥${pricePerMonth.toStringAsFixed(0)}',
 );
 
 Package _package(String id, PackageType type, StoreProduct product) =>
@@ -87,8 +93,9 @@ void main() {
     /// いまは使っていないが、**1行足しただけで未成年の端末から流れ出す**のは重すぎる。
     test('広告識別子の自動収集は、明示的に切ってある', () {
       expect(
-        PurchasesRepository.configurationFor('device-1')
-            .automaticDeviceIdentifierCollectionEnabled,
+        PurchasesRepository.configurationFor(
+          'device-1',
+        ).automaticDeviceIdentifierCollectionEnabled,
         isFalse,
       );
     });
@@ -96,11 +103,17 @@ void main() {
     /// 既定でも false。**既定で安全なものも明示する** —— 既定に頼ると、
     /// SDKの更新で既定が変わったときに誰も気づけない。
     test('診断情報の送信も、明示的に切ってある', () {
-      expect(PurchasesRepository.configurationFor('device-1').diagnosticsEnabled, isFalse);
+      expect(
+        PurchasesRepository.configurationFor('device-1').diagnosticsEnabled,
+        isFalse,
+      );
     });
 
     test('匿名のデバイスIDがそのまま appUserID になる(アカウントを作らせない)', () {
-      expect(PurchasesRepository.configurationFor('device-1').appUserID, 'device-1');
+      expect(
+        PurchasesRepository.configurationFor('device-1').appUserID,
+        'device-1',
+      );
     });
   });
 
@@ -133,7 +146,9 @@ void main() {
     test('identifier がずれていれば Premium にならない', () {
       final Entitlement entitlement = Entitlement.from(
         info: _customerInfo(
-          active: <String, EntitlementInfo>{'かたるて Pro': _entitlementInfo(identifier: 'かたるて Pro')},
+          active: <String, EntitlementInfo>{
+            'かたるて Pro': _entitlementInfo(identifier: 'かたるて Pro'),
+          },
         ),
         entitlementId: 'premium',
       );
@@ -144,7 +159,9 @@ void main() {
     test('解約予約済みでも期限までは Premium のまま', () {
       final Entitlement entitlement = Entitlement.from(
         info: _customerInfo(
-          active: <String, EntitlementInfo>{'premium': _entitlementInfo(willRenew: false)},
+          active: <String, EntitlementInfo>{
+            'premium': _entitlementInfo(willRenew: false),
+          },
         ),
         entitlementId: 'premium',
       );
@@ -156,7 +173,9 @@ void main() {
 
     test('契約が無くても管理URLがあれば契約の管理を出す(過去に契約していた人)', () {
       final Entitlement entitlement = Entitlement.from(
-        info: _customerInfo(managementUrl: 'https://apps.apple.com/account/subscriptions'),
+        info: _customerInfo(
+          managementUrl: 'https://apps.apple.com/account/subscriptions',
+        ),
         entitlementId: 'premium',
       );
 
@@ -165,8 +184,10 @@ void main() {
     });
 
     test('何も無ければ無料', () {
-      final Entitlement entitlement =
-          Entitlement.from(info: _customerInfo(), entitlementId: 'premium');
+      final Entitlement entitlement = Entitlement.from(
+        info: _customerInfo(),
+        entitlementId: 'premium',
+      );
 
       expect(entitlement.isPremium, isFalse);
       expect(entitlement.canManageSubscription, isFalse);
@@ -220,7 +241,9 @@ void main() {
     test('端数は切り上げる', () {
       expect(until(now.add(const Duration(days: 7))).daysLeft(now), 7);
       expect(
-        until(now.add(const Duration(days: 7) - const Duration(minutes: 5))).daysLeft(now),
+        until(
+          now.add(const Duration(days: 7) - const Duration(minutes: 5)),
+        ).daysLeft(now),
         7,
       );
       expect(until(now.add(const Duration(hours: 1))).daysLeft(now), 1);
@@ -237,50 +260,74 @@ void main() {
   });
 
   group('plansOf', () {
-    final Package weekly =
-        _package('\$rc_weekly', PackageType.weekly, _product('w', price: 280, pricePerMonth: 1213));
-    final Package monthly =
-        _package('\$rc_monthly', PackageType.monthly, _product('m', price: 580, pricePerMonth: 580));
-    final Package yearly =
-        _package('\$rc_annual', PackageType.annual, _product('y', price: 5800, pricePerMonth: 483));
+    final Package weekly = _package(
+      '\$rc_weekly',
+      PackageType.weekly,
+      _product('w', price: 280, pricePerMonth: 1213),
+    );
+    final Package monthly = _package(
+      '\$rc_monthly',
+      PackageType.monthly,
+      _product('m', price: 580, pricePerMonth: 580),
+    );
+    final Package yearly = _package(
+      '\$rc_annual',
+      PackageType.annual,
+      _product('y', price: 5800, pricePerMonth: 483),
+    );
 
     Offering offering(List<Package> packages) =>
         Offering('default', '', const <String, Object>{}, packages);
 
     test('ダッシュボードの並びによらず 週 → 月 → 年 の順で出す', () {
       // わざと逆順(高い順)で渡す。年額へ誘導する並びにしないため。
-      final List<SubscriptionPlan> plans =
-          plansOf(offering(<Package>[yearly, monthly, weekly]));
-
-      expect(
-        plans.map((SubscriptionPlan it) => it.period),
-        <PlanPeriod>[PlanPeriod.weekly, PlanPeriod.monthly, PlanPeriod.yearly],
+      final List<SubscriptionPlan> plans = plansOf(
+        offering(<Package>[yearly, monthly, weekly]),
       );
+
+      expect(plans.map((SubscriptionPlan it) => it.period), <PlanPeriod>[
+        PlanPeriod.weekly,
+        PlanPeriod.monthly,
+        PlanPeriod.yearly,
+      ]);
     });
 
     test('扱わないパッケージ(lifetimeなど)は黙って落とす', () {
-      final Package lifetime =
-          _package('\$rc_lifetime', PackageType.lifetime, _product('l', price: 20000));
-      final List<SubscriptionPlan> plans = plansOf(offering(<Package>[monthly, lifetime]));
+      final Package lifetime = _package(
+        '\$rc_lifetime',
+        PackageType.lifetime,
+        _product('l', price: 20000),
+      );
+      final List<SubscriptionPlan> plans = plansOf(
+        offering(<Package>[monthly, lifetime]),
+      );
 
       expect(plans, hasLength(1));
       expect(plans.single.period, PlanPeriod.monthly);
     });
 
     test('月あたりが最も安いプランにだけ「いちばん安い」が立つ', () {
-      final List<SubscriptionPlan> plans =
-          plansOf(offering(<Package>[weekly, monthly, yearly]));
+      final List<SubscriptionPlan> plans = plansOf(
+        offering(<Package>[weekly, monthly, yearly]),
+      );
 
       expect(
-        plans.where((SubscriptionPlan it) => it.isBestValue).map((SubscriptionPlan it) => it.period),
+        plans
+            .where((SubscriptionPlan it) => it.isBestValue)
+            .map((SubscriptionPlan it) => it.period),
         <PlanPeriod>[PlanPeriod.yearly],
       );
     });
 
     test('月あたり単価が取れないストアでは、いちばん安いを出さない', () {
-      final Package noPerMonth =
-          _package('\$rc_annual', PackageType.annual, _product('y', price: 5800));
-      final List<SubscriptionPlan> plans = plansOf(offering(<Package>[monthly, noPerMonth]));
+      final Package noPerMonth = _package(
+        '\$rc_annual',
+        PackageType.annual,
+        _product('y', price: 5800),
+      );
+      final List<SubscriptionPlan> plans = plansOf(
+        offering(<Package>[monthly, noPerMonth]),
+      );
 
       expect(plans.any((SubscriptionPlan it) => it.isBestValue), isFalse);
     });
@@ -302,15 +349,18 @@ void main() {
 
     test('0円の導入価格を無料トライアルとして数える', () {
       expect(
-        plan(const IntroductoryPrice(0, '¥0', 'P1W', 1, PeriodUnit.week, 1)).freeTrialDays,
+        plan(
+          const IntroductoryPrice(0, '¥0', 'P1W', 1, PeriodUnit.week, 1),
+        ).freeTrialDays,
         7,
       );
     });
 
     // 「初月100円」を「無料」と書かないための分岐。
     test('有料の導入価格は無料トライアルにしない', () {
-      final SubscriptionPlan discounted =
-          plan(const IntroductoryPrice(100, '¥100', 'P1M', 1, PeriodUnit.month, 1));
+      final SubscriptionPlan discounted = plan(
+        const IntroductoryPrice(100, '¥100', 'P1M', 1, PeriodUnit.month, 1),
+      );
 
       expect(discounted.freeTrialDays, 0);
       expect(discounted.hasFreeTrial, isFalse);
@@ -322,28 +372,33 @@ void main() {
   });
 
   group('購入の結果', () {
-    PlatformException error(PurchasesErrorCode code) =>
-        PlatformException(code: PurchasesErrorCode.values.indexOf(code).toString());
+    PlatformException error(PurchasesErrorCode code) => PlatformException(
+      code: PurchasesErrorCode.values.indexOf(code).toString(),
+    );
 
     // これを失敗として扱うと、閉じただけの人にエラーを見せてしまう。
     test('キャンセルは失敗ではない', () {
       expect(
-        PurchaseOutcome.fromException(error(PurchasesErrorCode.purchaseCancelledError)),
+        PurchaseOutcome.fromException(
+          error(PurchasesErrorCode.purchaseCancelledError),
+        ),
         isA<PurchaseCancelled>(),
       );
     });
 
     test('通信の失敗は「時間をおけば直る」側に分類する', () {
-      final PurchaseOutcome outcome =
-          PurchaseOutcome.fromException(error(PurchasesErrorCode.networkError));
+      final PurchaseOutcome outcome = PurchaseOutcome.fromException(
+        error(PurchasesErrorCode.networkError),
+      );
 
       expect(outcome, isA<PurchaseFailed>());
       expect((outcome as PurchaseFailed).failure, PurchaseFailure.network);
     });
 
     test('購入済みは復元へ誘導する分類にする', () {
-      final PurchaseOutcome outcome =
-          PurchaseOutcome.fromException(error(PurchasesErrorCode.productAlreadyPurchasedError));
+      final PurchaseOutcome outcome = PurchaseOutcome.fromException(
+        error(PurchasesErrorCode.productAlreadyPurchasedError),
+      );
 
       expect((outcome as PurchaseFailed).failure, PurchaseFailure.alreadyOwned);
     });
@@ -356,7 +411,8 @@ void main() {
         PurchasesErrorCode.productNotAvailableForPurchaseError,
       ]) {
         expect(
-          (PurchaseOutcome.fromException(error(code)) as PurchaseFailed).failure,
+          (PurchaseOutcome.fromException(error(code)) as PurchaseFailed)
+              .failure,
           PurchaseFailure.configuration,
           reason: '$code',
         );
@@ -365,15 +421,17 @@ void main() {
 
     test('知らないコードは unknown に落ちる(画面は汎用文言で出す)', () {
       expect(
-        (PurchaseOutcome.fromException(error(PurchasesErrorCode.unknownError)) as PurchaseFailed)
+        (PurchaseOutcome.fromException(error(PurchasesErrorCode.unknownError))
+                as PurchaseFailed)
             .failure,
         PurchaseFailure.unknown,
       );
     });
 
     test('復元の失敗も同じ分類を使う', () {
-      final RestoreOutcome outcome =
-          RestoreOutcome.fromException(error(PurchasesErrorCode.networkError));
+      final RestoreOutcome outcome = RestoreOutcome.fromException(
+        error(PurchasesErrorCode.networkError),
+      );
 
       expect((outcome as RestoreFailed).failure, PurchaseFailure.network);
     });
@@ -393,23 +451,21 @@ void main() {
       ],
     );
 
-    Offering offeringWith(IntroductoryPrice? intro) => Offering(
-      'default',
-      '',
-      const <String, Object>{},
-      <Package>[
-        _package(
-          '\$rc_monthly',
-          PackageType.monthly,
-          _product('m', price: 580, intro: intro),
-        ),
-      ],
-    );
+    Offering offeringWith(IntroductoryPrice? intro) =>
+        Offering('default', '', const <String, Object>{}, <Package>[
+          _package(
+            '\$rc_monthly',
+            PackageType.monthly,
+            _product('m', price: 580, intro: intro),
+          ),
+        ]);
 
     testWidgets('無料トライアルがある商品なら日数を出す', (WidgetTester tester) async {
       await pumpPaywall(
         tester,
-        offeringWith(const IntroductoryPrice(0, '¥0', 'P1W', 1, PeriodUnit.week, 1)),
+        offeringWith(
+          const IntroductoryPrice(0, '¥0', 'P1W', 1, PeriodUnit.week, 1),
+        ),
       );
 
       expect(find.text('はじめの7日間は無料'), findsWidgets);
@@ -427,7 +483,9 @@ void main() {
     testWidgets('割引価格の商品にも「無料」と書かない', (WidgetTester tester) async {
       await pumpPaywall(
         tester,
-        offeringWith(const IntroductoryPrice(100, '¥100', 'P1M', 1, PeriodUnit.month, 1)),
+        offeringWith(
+          const IntroductoryPrice(100, '¥100', 'P1M', 1, PeriodUnit.month, 1),
+        ),
       );
 
       expect(find.text('このプランではじめる'), findsOneWidget);
@@ -439,18 +497,14 @@ void main() {
   group('祝福画面の Premium の一行', () {
     const AppStrings ja = AppStrings(Locale('ja'));
 
-    Offering offeringWith(IntroductoryPrice? intro) => Offering(
-      'default',
-      '',
-      const <String, Object>{},
-      <Package>[
-        _package(
-          '\$rc_monthly',
-          PackageType.monthly,
-          _product('m', price: 580, intro: intro),
-        ),
-      ],
-    );
+    Offering offeringWith(IntroductoryPrice? intro) =>
+        Offering('default', '', const <String, Object>{}, <Package>[
+          _package(
+            '\$rc_monthly',
+            PackageType.monthly,
+            _product('m', price: 580, intro: intro),
+          ),
+        ]);
 
     Future<void> pumpCelebration(
       WidgetTester tester,
@@ -460,9 +514,10 @@ void main() {
       const CelebrationScreen(),
       overrides: <Object?>[
         progressControllerProvider.overrideWith(FakeProgressController.new),
-        latestKarteControllerProvider.overrideWith(FakeLatestKarteController.new),
         sessionOutcomeControllerProvider.overrideWith(
-          () => FakeSessionOutcomeController(const SessionOutcome(showPaywall: true)),
+          () => FakeSessionOutcomeController(
+            const SessionOutcome(showPaywall: true),
+          ),
         ),
         entitlementControllerProvider.overrideWith(
           () => FakeEntitlementController(entitlement),
@@ -470,21 +525,18 @@ void main() {
       ],
     );
 
-    Future<void> pumpPaywall(
-      WidgetTester tester,
-      Entitlement entitlement,
-    ) => pumpApp(
-      tester,
-      const PaywallScreen(),
-      overrides: <Object?>[
-        entitlementControllerProvider.overrideWith(
-          () => FakeEntitlementController(entitlement),
-        ),
-      ],
-    );
+    Future<void> pumpPaywall(WidgetTester tester, Entitlement entitlement) =>
+        pumpApp(
+          tester,
+          const PaywallScreen(),
+          overrides: <Object?>[
+            entitlementControllerProvider.overrideWith(
+              () => FakeEntitlementController(entitlement),
+            ),
+          ],
+        );
 
-    testWidgets('Offering が取れていれば、その価格とトライアルを出す',
-        (WidgetTester tester) async {
+    testWidgets('Offering が取れていれば、その価格とトライアルを出す', (WidgetTester tester) async {
       await pumpCelebration(
         tester,
         Entitlement(
@@ -499,8 +551,7 @@ void main() {
       expect(find.text('はじめの7日間は無料'), findsOneWidget);
     });
 
-    testWidgets('Offering が取れていなければ、価格を約束しない',
-        (WidgetTester tester) async {
+    testWidgets('Offering が取れていなければ、価格を約束しない', (WidgetTester tester) async {
       await pumpCelebration(tester, const Entitlement(isPremium: false));
 
       expect(find.textContaining('¥'), findsNothing);
@@ -518,8 +569,9 @@ void main() {
       expect(find.text('Premium 1か月 ¥580'), findsOneWidget);
     });
 
-    testWidgets('ペイウォールも Offering が空なら据え置きの価格を出さない',
-        (WidgetTester tester) async {
+    testWidgets('ペイウォールも Offering が空なら据え置きの価格を出さない', (
+      WidgetTester tester,
+    ) async {
       await pumpPaywall(tester, const Entitlement(isPremium: false));
 
       expect(find.textContaining('¥580'), findsNothing);
@@ -599,7 +651,7 @@ void main() {
   });
 
   // 契約している印。**ランクや称号に見えたら失敗**(数えるのは連続日数と
-  // 埋めた穴だけ)。ここでは出る/出ないだけを見る。
+  // 解けた問題だけ)。ここでは出る/出ないだけを見る。
   group('Premium の印', () {
     const AppStrings ja = AppStrings(Locale('ja'));
 
@@ -611,14 +663,19 @@ void main() {
           progressControllerProvider.overrideWith(
             () => FakeProgressController(premiumExhaustedSummary),
           ),
-          reviewControllerProvider.overrideWith(() => FakeReviewController(sampleReviewQueue)),
+          reviewControllerProvider.overrideWith(
+            () => FakeReviewController(samplePracticeQueue),
+          ),
           ...premiumOverrides(),
         ],
       );
 
       expect(find.text(ja.premiumBadge), findsOneWidget);
-      expect(find.text(sampleKarte.holes.first.description), findsOneWidget);
-      expect(find.textContaining('残っている穴'), findsNothing);
+      expect(
+        find.text(ja.homeOpenProblems(sampleProgress.openProblems)),
+        findsOneWidget,
+      );
+      expect(find.textContaining('残っている問題'), findsNothing);
       expect(find.text(ja.lessonEnoughForToday), findsOneWidget);
       expect(find.text(ja.homeUnlock), findsNothing);
     });
@@ -629,7 +686,9 @@ void main() {
         const HomeScreen(),
         overrides: <Object?>[
           progressControllerProvider.overrideWith(FakeProgressController.new),
-          reviewControllerProvider.overrideWith(() => FakeReviewController(sampleReviewQueue)),
+          reviewControllerProvider.overrideWith(
+            () => FakeReviewController(samplePracticeQueue),
+          ),
         ],
       );
 
@@ -638,11 +697,12 @@ void main() {
 
     // 設定の契約カード。画面ごと組まないのは、鍵の無いビルドでは
     // 「契約」セクションごと出さないため(押しても何も起きない行を置かない)。
-    Future<void> pumpCard(WidgetTester tester, Entitlement entitlement) => pumpApp(
-      tester,
-      const Scaffold(body: SubscriptionStatusCard()),
-      overrides: premiumOverrides(entitlement),
-    );
+    Future<void> pumpCard(WidgetTester tester, Entitlement entitlement) =>
+        pumpApp(
+          tester,
+          const Scaffold(body: SubscriptionStatusCard()),
+          overrides: premiumOverrides(entitlement),
+        );
 
     testWidgets('設定のカードに状態と次の更新日を出す', (WidgetTester tester) async {
       await pumpCard(tester, premiumEntitlement);

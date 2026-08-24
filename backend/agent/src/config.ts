@@ -58,7 +58,15 @@ const configSchema = z
 
     ANTHROPIC_API_KEY: z.string().min(1),
     LLM_MODEL_CONVERSATION: withDefault("claude-haiku-4-5-20251001"),
-    LLM_MODEL_KARTE: withDefault("claude-sonnet-5"),
+
+    /**
+     * 板書から復習問題を1問作るモデル(ADR 0009。旧 `LLM_MODEL_KARTE`)。
+     *
+     * **セッションの外で回る。**部屋はもう閉じていて、アプリはこの生成を待っていない
+     * (最初の接触は3日後の通知)ので、レイテンシは体験に出ない。
+     * 出るのは**中身の質**だけ — ここで作った1問が1週間で2回届く。
+     */
+    LLM_MODEL_PRACTICE: withDefault("claude-sonnet-5"),
 
     /**
      * 板書を書くモデル(授業モード)。**会話より上のモデルを充てる。**

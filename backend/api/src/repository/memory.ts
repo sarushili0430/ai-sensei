@@ -4,6 +4,9 @@ import type {
   HoleRecord,
   KarteRecord,
   PlanSessionRecord,
+  PracticeAttemptRecord,
+  PracticeProblemRecord,
+  PracticeScheduleRecord,
   Repository,
   ReviewScheduleRecord,
   SessionContext,
@@ -23,6 +26,9 @@ export class MemoryRepository implements Repository {
   readonly kartes = new Map<string, KarteRecord>();
   readonly holes = new Map<string, HoleRecord>();
   readonly schedules: ReviewScheduleRecord[] = [];
+  readonly practiceProblems = new Map<string, PracticeProblemRecord>();
+  readonly practiceAttempts: PracticeAttemptRecord[] = [];
+  readonly practiceSchedules: PracticeScheduleRecord[] = [];
   readonly planSessions = new Map<string, PlanSessionRecord>();
   readonly plans = new Map<string, StudyPlan>();
 
@@ -364,6 +370,60 @@ export class MemoryRepository implements Repository {
       this.schedules.splice(this.schedules.indexOf(entry), 1);
     }
     return cancelled;
+  }
+
+  async insertPracticeProblem(problem: PracticeProblemRecord): Promise<void> {
+    // D1 の `idx_practice_problems_session`(UNIQUE)と同じ形で落とす。
+    // ここが素通しだと、**同時に2本 /complete が来たときの二重通知**が
+    // メモリ実装のテストでだけ再現しなくなる。
+    const duplicate = [...this.practiceProblems.values()].some(
+      (entry) => entry.session_id === problem.session_id,
+    );
+    if (duplicate) {
+      throw new Error(`このセッションには既に復習問題があります: ${problem.session_id}`);
+    }
+    this.practiceProblems.set(problem.id, problem);
+  }
+
+  async getPracticeProblem(problemId: string): Promise<PracticeProblemRecord | null> {
+    return this.practiceProblems.get(problemId) ?? null;
+  }
+
+  async getPracticeProblemBySession(sessionId: string): Promise<PracticeProblemRecord | null> {
+    return (
+      [...this.practiceProblems.values()].find((entry) => entry.session_id === sessionId) ?? null
+    );
+  }
+
+  async listPracticeProblems(deviceId: string): Promise<PracticeProblemRecord[]> {
+    return [...this.practiceProblems.values()]
+      .filter((problem) => problem.device_id === deviceId)
+      .sort((a, b) => a.created_at.localeCompare(b.created_at));
+  }
+
+  async listPracticeAttempts(deviceId: string): Promise<PracticeAttemptRecord[]> {
+    const owned = new Set(
+      [...this.practiceProblems.values()]
+        .filter((problem) => problem.device_id === deviceId)
+        .map((problem) => problem.id),
+    );
+    return this.practiceAttempts
+      .filter((attempt) => owned.has(attempt.problem_id))
+      .sort((a, b) => a.answered_at.localeCompare(b.answered_at));
+  }
+
+  async insertPracticeAttempt(attempt: PracticeAttemptRecord): Promise<void> {
+    this.practiceAttempts.push(attempt);
+  }
+
+  async insertPracticeSchedules(entries: PracticeScheduleRecord[]): Promise<void> {
+    this.practiceSchedules.push(...entries);
+  }
+
+  async listPracticeSchedules(problemId: string): Promise<PracticeScheduleRecord[]> {
+    return this.practiceSchedules
+      .filter((entry) => entry.problem_id === problemId)
+      .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
   }
 
   async createPlanSession(session: PlanSessionRecord): Promise<void> {

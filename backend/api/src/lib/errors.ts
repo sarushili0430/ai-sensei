@@ -25,9 +25,13 @@ const messages: Record<ApiErrorCode, { ja: string; en: string; status: number }>
   premium_required: {
     // 計画モードと声で聞き直す授業は、同じ `premium_required` を返す。
     // 有料側の機能名を固定すると別の導線で誤案内になるため汎用にしつつ、
-    // 無料で残る小テストとカルテは明示して、すべて閉じたようには見せない。
-    ja: "この機能はPremiumで利用できます。無料のままでも、小テストと今日のカルテは使えます。",
-    en: "This feature is available with Premium. Quick quizzes and today's karte stay free.",
+    // 無料で残るものは明示して、すべて閉じたようには見せない。
+    //
+    // **「今日のカルテ」はここから外した**(ADR 0009)。カルテ画面は畳んだので、
+    // 画面が無いのに課金の説明にだけ残るのがいちばん悪い。無料で残るのは
+    // 復習問題(通知 → 解く → 採点)のほう。
+    ja: "この機能はPremiumで利用できます。無料のままでも、復習問題は解けます。",
+    en: "This feature is available with Premium. Your review questions stay free.",
     status: 402,
   },
   photo_unreadable: {
@@ -72,6 +76,11 @@ const messages: Record<ApiErrorCode, { ja: string; en: string; status: number }>
   hole_not_found: {
     ja: "この穴は見つかりませんでした。復習画面を開き直してみてください。",
     en: "We couldn't find this gap. Please reopen the review screen.",
+    status: 404,
+  },
+  practice_not_found: {
+    ja: "この問題は見つかりませんでした。復習の一覧を開き直してみてください。",
+    en: "We couldn't find that question. Please reopen your review list.",
     status: 404,
   },
   rate_limited: {

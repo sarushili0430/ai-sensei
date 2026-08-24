@@ -56,7 +56,9 @@ void main() {
     // 幅がぴったりで降りてくる並びの中でも、顔は size の正方形のまま。
     // ここが崩れると、目と口は幅の割合で置いているので画面の両端まで飛び、
     // iPad の会話画面で顔が横一杯の落書きになった。
-    testWidgets('広い画面の stretch な列でも、size より大きくならない', (WidgetTester tester) async {
+    testWidgets('広い画面の stretch な列でも、size より大きくならない', (
+      WidgetTester tester,
+    ) async {
       await pumpApp(
         tester,
         const Scaffold(
@@ -70,7 +72,10 @@ void main() {
 
       // 絵を描くのはこの箱。ここの寸法がそのまま目と口の位置になる。
       final Size painted = tester.getSize(
-        find.descendant(of: find.byType(SenpaiFace), matching: find.byType(CustomPaint)),
+        find.descendant(
+          of: find.byType(SenpaiFace),
+          matching: find.byType(CustomPaint),
+        ),
       );
       expect(painted, const Size(160, 160));
     });
@@ -94,12 +99,12 @@ void main() {
   });
 
   group('セッションの結果', () {
-    // レビュー指摘: 会話画面はAutoDisposeなので、祝福・カルテに着いた時点で
-    // 破棄されている。ペイウォールの判断(サーバ由来)はここに持ち回る。
+    // 会話画面はAutoDisposeなので、祝福に着いた時点で破棄されている。
+    // ペイウォールの判断と降り方は、画面の寿命を越えるこの値に持ち回る。
     test('既定ではペイウォールを出さない', () {
       const SessionOutcome outcome = SessionOutcome();
       expect(outcome.showPaywall, isFalse);
-      expect(outcome.resultMissing, isFalse);
+      expect(outcome.ending, SessionEnding.understood);
     });
 
     test('サーバがtrueを返したときだけ出す', () {

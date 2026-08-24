@@ -1,14 +1,16 @@
 import {
   type CompleteSessionResponse,
-  type Hole,
+  type PracticeProblem,
+  type PracticeScheduleEntry,
   completeSessionRequestSchema,
 } from "@ai-sensei/contract";
-import { localeOfTopicId } from "@ai-sensei/curriculum";
+import { findTopic, localeOfTopicId } from "@ai-sensei/curriculum";
 import {
   buildAllowedTopics,
   computeProgress,
   filterHoleTopicIds,
-  scheduleReviews,
+  practiceStepsOnCreate,
+  schedulePractice,
   toLocalDate,
 } from "@ai-sensei/guardrail";
 import { Hono } from "hono";
@@ -22,12 +24,13 @@ import {
   shouldShowPaywall,
 } from "../lib/entitlement.ts";
 import { apiError } from "../lib/errors.ts";
+import type { NotificationScheduler } from "../lib/notifications.ts";
+import type { RequestLogger } from "../lib/observability.ts";
 import type {
   DailySessionUsage,
-  HoleRecord,
-  KarteRecord,
+  PracticeProblemRecord,
+  PracticeScheduleRecord,
   Repository,
-  ReviewScheduleRecord,
   SessionRecord,
   UserRecord,
 } from "../repository/types.ts";
@@ -37,12 +40,17 @@ export const completeRoute = new Hono<AppEnv>();
 /**
  * POST /v1/sessions/{id}/complete — agentが呼ぶ内部エンドポイント。
  *
- * transcriptとカルテ下書きを受け取り、
- *   1. 穴のtopic_idをこのセッションの許可リストで照合(ガードレール2枚目)
- *   2. カルテと穴をD1に保存
- *   3. 翌日/3日後/7日後の復習プッシュをOneSignalに予約
- *   4. 復習セッションで本人が「言えた」と申告した場合は、対象の穴を「埋まった」にする
+ * transcriptと、**「わかった」で降りた回だけ**入っている復習問題を受け取り、
+ *   1. 問題のtopic_idをこのセッションの許可リストで照合(ガードレール2枚目)
+ *   2. 復習問題をD1に保存
+ *   3. 3日後・7日後の通知をOneSignalに予約
  * を行う。
+ *
+ * **翌日(step 1)は予約しない。**「わかった」は到達の宣言なので、
+ * 押した翌日に「まちがえた問題」と同じ間隔で届くと、押したことが罰になる
+ * (`practiceStepsOnCreate`)。
+ *
+ * カルテと穴の保存はここにあった。ADR 0009 で畳んである。
  */
 completeRoute.post("/:sessionId/complete", async (c) => {
   const { repository, scheduler, now, newId } = c.get("services");
@@ -51,8 +59,8 @@ completeRoute.post("/:sessionId/complete", async (c) => {
 
   const authorized = c.req.header("authorization") === `Bearer ${c.env.INTERNAL_API_TOKEN}`;
   if (!authorized) {
-    // agent と API で内部トークンがずれていると、会話は成立するのにカルテだけ
-    // 落ちる。アプリからは「カルテが出ない」としか見えないので、ここに残す。
+    // agent と API で内部トークンがずれていると、会話は成立するのに復習問題だけ
+    // 落ちる。生徒からは「3日後に何も来ない」としか見えないので、ここに残す。
     log?.warn("complete_unauthorized", { session_id: c.req.param("sessionId") });
     throw apiError("unauthorized");
   }
@@ -60,24 +68,80 @@ completeRoute.post("/:sessionId/complete", async (c) => {
   const session = await repository.getSession(c.req.param("sessionId"));
   if (!session) throw apiError("session_not_found");
 
-  // agentがタイムアウトで再送してくることがある。素通しすると、カルテも穴も
-  // 通知予約も二重に作られて進捗が壊れるので、既にあるものをそのまま返す。
-  const existing = await repository.getKarteBySession(session.id);
-  if (existing) {
-    log?.info("complete_replayed", { session_id: session.id });
-    return c.json(
-      await buildResponse({ repository, at, session, stored: existing, limits: readLimits(c.env) }),
-      200,
-    );
-  }
-
   const parsed = completeSessionRequestSchema.safeParse(await c.req.json());
   if (!parsed.success) {
-    // カルテの契約が壊れている。agent側のLLM出力かスキーマのずれ。
+    // 契約が壊れている。agent側のLLM出力かスキーマのずれ。
     log?.error("complete_invalid_payload", parsed.error, { session_id: session.id });
     return c.json({ error: { code: "internal_error", message: parsed.error.message } }, 400);
   }
   const body = parsed.data;
+
+  /**
+   * agentがタイムアウトで再送してくることがある。素通しすると、問題も通知予約も
+   * 二重に作られる。
+   *
+   * **判定はセッションの `status`。**旧経路は `getKarteBySession` を鍵にしていたが、
+   * カルテを畳んだので、そのままでは「問題を作らなかった回」(時間切れ・離脱)の
+   * 再送を弾けなくなる — あの回は保存物が1つも無いので、保存物の有無では判定できない。
+   * `completeSession` が `status` を `completed` にするので、そこを見る。
+   *
+   * **`status` だけでは足りない場合がひとつある。**`completeSession` は問題の保存より
+   * 先に走るので、その間で落ちると「完了しているのに問題が無い」行が残る。
+   * 送られてきた本文に問題が入っているなら、それは取りこぼしなので保存へ進む。
+   * (同時に2本投げられた場合は `idx_practice_problems_session` の UNIQUE が2本目を落とし、
+   *  その回の再送がここで replay になる。)
+   */
+  const alreadyStored = await repository.getPracticeProblemBySession(session.id);
+  if (session.status === "completed" && (alreadyStored !== null || !body.practice_problem)) {
+    /**
+     * **段だけ取りこぼした回を、ここで拾い直す。**
+     *
+     * 保存(`insertPracticeProblem`)と予約(`insertPracticeSchedules`)は別の文で、
+     * D1 は文をまたいだトランザクションを張らない。あいだで worker が落ちると
+     * 「問題はあるのに段が1つも無い」行が残り、**約束した3日後・7日後が永久に来ない**。
+     * 生徒からは「わかったを押したのに何も届かない」としか見えない。
+     *
+     * 段が0本のときだけやり直す。1本でもあれば予約は済んでいる
+     * (外部IDが null の行は「予約を試みて失敗した記録」で、これは既知の縮退。
+     *  ここでやり直すと、成功していた分まで二重に届く)。
+     */
+    let resumed: PracticeScheduleEntry[] = [];
+    if (alreadyStored !== null) {
+      const existing = await repository.listPracticeSchedules(alreadyStored.id);
+      if (existing.length === 0) {
+        resumed = schedulePractice([alreadyStored.id], at, practiceStepsOnCreate);
+        await persistPracticeSchedules({
+          repository,
+          scheduler,
+          newId,
+          log,
+          deviceId: session.device_id,
+          problem: alreadyStored,
+          entries: resumed,
+        });
+        log?.warn("practice_schedule_resumed", {
+          session_id: session.id,
+          problem_id: alreadyStored.id,
+        });
+      }
+    }
+
+    log?.info("complete_replayed", {
+      session_id: session.id,
+      practice_problem: alreadyStored !== null,
+    });
+    return c.json(
+      await buildResponse({
+        repository,
+        at,
+        session,
+        problem: alreadyStored,
+        schedule: resumed,
+        limits: readLimits(c.env),
+      }),
+      200,
+    );
+  }
 
   const durationSeconds = Math.min(body.duration_seconds, 60 * 60);
   await repository.completeSession({
@@ -86,220 +150,212 @@ completeRoute.post("/:sessionId/complete", async (c) => {
     durationSeconds,
   });
 
-  // 会話中に許可範囲を越えたタグが付いていたら、ここで直す。
-  // 的外れなタグを残すと復習の通知まで的外れになるが、**穴そのものは捨てない** —
-  // 外れているのはLLMが付けたIDであって、本人が説明に詰まった事実ではない。
-  // 捨てるとカルテが空になり、画面には「止まらずに説明できました」と出てしまう。
-  const allowed = buildAllowedTopics(session.topic_ids);
-  const { rejected } = filterHoleTopicIds(body.karte.holes, allowed);
-  const misTagged = new Set(rejected.map((entry) => entry.hole));
-  const fallbackTopicId = session.topic_ids[0];
-  if (rejected.length > 0) {
-    log?.warn("guardrail_retagged_holes", {
-      session_id: session.id,
-      retagged_to: fallbackTopicId ?? null,
-      dropped: rejected.map((entry) => ({
-        topic_id: entry.hole.topic_id,
-        reason: entry.reason,
-      })),
-    });
-  }
-  const acceptedHoles = body.karte.holes.flatMap((hole) => {
-    if (!misTagged.has(hole)) return [hole];
-    // 付け替える先が無いセッションだけは落とす。
-    return fallbackTopicId === undefined ? [] : [{ ...hole, topic_id: fallbackTopicId }];
-  });
+  const draft = body.practice_problem ?? null;
+  let stored: PracticeProblemRecord | null = null;
+  let scheduleEntries: PracticeScheduleEntry[] = [];
 
-  const karteId = newId("kar");
-  const holeRecords: HoleRecord[] = acceptedHoles.map((hole) => ({
-    id: newId("hol"),
-    device_id: session.device_id,
-    karte_id: karteId,
-    topic_id: hole.topic_id,
-    desc: hole.desc,
-    severity: hole.severity,
-    evidence: hole.evidence ?? null,
-    quiz: hole.quiz ?? null,
-    status: "open",
-    created_at: at.toISOString(),
-    filled_at: null,
-  }));
+  if (draft !== null) {
+    /**
+     * ガードレール2枚目。範囲外の単元を問う問題を通知に載せない。
+     *
+     * **付け替えずに落とす。**穴は「本人が詰まった事実」だったので主単元へ
+     * 付け替えて残していたが、復習問題にはその事実が無い。範囲外のIDが付いた問題は
+     * 中身も範囲外である可能性が高く、付け替えると
+     * **中身は範囲外のまま、タグだけ正しい問題**が3日後に届く。
+     */
+    const allowed = buildAllowedTopics(session.topic_ids);
+    const { rejected } = filterHoleTopicIds([draft], allowed);
+    const outOfScope = rejected[0];
+    if (outOfScope) {
+      log?.warn("practice_problem_rejected", {
+        session_id: session.id,
+        topic_id: draft.topic_id,
+        reason: outOfScope.reason,
+      });
+    } else {
+      const record: PracticeProblemRecord = {
+        id: newId("prb"),
+        device_id: session.device_id,
+        session_id: session.id,
+        // agent は問題を作ったときだけ `board_id` を添える。欠けているのは
+        // 契約違反ではなく古いagentなので、追跡を諦めて保存は通す。
+        board_id: body.board_id ?? "",
+        topic_id: draft.topic_id,
+        question: draft.question,
+        answer: draft.answer,
+        created_at: at.toISOString(),
+      };
+      await repository.insertPracticeProblem(record);
+      stored = record;
+
+      scheduleEntries = schedulePractice([record.id], at, practiceStepsOnCreate);
+      await persistPracticeSchedules({
+        repository,
+        scheduler,
+        newId,
+        log,
+        deviceId: session.device_id,
+        problem: record,
+        entries: scheduleEntries,
+      });
+    }
+  }
 
   const user = await repository.getUser(session.device_id);
   const currentLimits = readLimits(c.env);
   const premium = hasPremiumAccess({ user, now: at, limits: currentLimits });
 
-  const karteRecord: KarteRecord = {
-    id: karteId,
-    session_id: session.id,
-    device_id: session.device_id,
-    created_at: at.toISOString(),
-    topic_ids: session.topic_ids,
-    said_well: body.karte.said_well,
-    term_notes: body.karte.term_notes,
-    // あと追い質問はPremium機能。無料ユーザーには保存もしない。
-    followup_question: premium ? (body.karte.followup_question ?? null) : null,
-  };
-  await repository.insertKarte(karteRecord, holeRecords);
-
-  // 復習の穴は、AIの採点ではなく本人が「言えた」と申告したときだけ埋める。
-  // 接続しただけのセッションで自動的に埋めると、説明できたかを本人が決められなくなる。
-  let filledThisSession = 0;
-  if (session.kind === "review" && session.hole_id && body.review_outcome === "said_it") {
-    const target = await repository.getHole(session.hole_id);
-    // 他人の穴を埋めてしまわないよう、セッションの持ち主と突き合わせる
-    if (target && target.device_id === session.device_id && target.status === "open") {
-      await repository.markHoleFilled(target.id, at.toISOString());
-      filledThisSession += 1;
-      const cancelled = await repository.cancelReviewSchedules(target.id);
-      for (const entry of cancelled) {
-        if (entry.external_id) await scheduler.cancel(entry.external_id);
-      }
-    }
-  }
-
-  const scheduleEntries = scheduleReviews(
-    holeRecords.map((hole) => hole.id),
-    at,
-  );
-  const persisted: ReviewScheduleRecord[] = [];
-  for (const entry of scheduleEntries) {
-    const hole = holeRecords.find((candidate) => candidate.id === entry.hole_id);
-    if (!hole) continue;
-    let externalId: string | null = null;
-    try {
-      const scheduled = await scheduler.schedule({
-        deviceId: session.device_id,
-        holeId: hole.id,
-        step: entry.step,
-        sendAt: entry.scheduled_at,
-        desc: hole.desc,
-        daysSince: entry.step === 1 ? 1 : entry.step === 2 ? 3 : 7,
-        // 通知の言語は穴のtopic_idから引く。カルテの文言はその課程の言語で
-        // 書かれているので、端末の設定ではなくこちらが正。
-        locale: localeOfTopicId(hole.topic_id),
-      });
-      externalId = scheduled.externalId;
-    } catch (error) {
-      // 通知の予約に失敗しても、カルテは返す。プッシュのために体験を止めない。
-      log?.error("review_schedule_failed", error, { session_id: session.id, hole_id: hole.id });
-    }
-    persisted.push({
-      id: newId("rev"),
-      hole_id: hole.id,
-      step: entry.step,
-      scheduled_at: entry.scheduled_at,
-      external_id: externalId,
-    });
-  }
-  await repository.insertReviewSchedules(persisted);
-
-  const sessionDates = await repository.sessionDates(session.device_id);
-  const allHoles = await repository.listHoles(session.device_id);
-  const progress = computeProgress(sessionDates, allHoles, toLocalDate(at));
-  const usage = await repository.getDailySessionUsage(session.device_id, toLocalDate(at));
+  const localDate = toLocalDate(at);
+  const [sessionDates, problems, attempts, usage] = await Promise.all([
+    repository.sessionDates(session.device_id),
+    repository.listPracticeProblems(session.device_id),
+    repository.listPracticeAttempts(session.device_id),
+    repository.getDailySessionUsage(session.device_id, localDate),
+  ]);
 
   const response: CompleteSessionResponse = {
-    karte: {
-      id: karteRecord.id,
-      session_id: karteRecord.session_id,
-      created_at: karteRecord.created_at,
-      topic_ids: karteRecord.topic_ids,
-      said_well: karteRecord.said_well,
-      holes: holeRecords.map(toHolePayload),
-      term_notes: karteRecord.term_notes,
-      followup_question: karteRecord.followup_question,
-    },
-    review_schedule: persisted.map((entry) => ({
-      hole_id: entry.hole_id,
-      step: entry.step,
-      scheduled_at: entry.scheduled_at,
-    })),
-    progress,
+    practice_problem: stored === null ? null : toPracticeProblem(stored),
+    practice_schedule: scheduleEntries,
+    progress: computeProgress({ sessionDates, problems, attempts, today: localDate }),
     limits: sessionLimitsPayload({ user, usage, at, limits: currentLimits }),
     show_paywall: shouldShowPaywall({
       isPremium: premium,
-      // セッション回数ではなく「カルテができた日数」で数えるので、
+      // セッション回数ではなく「完了した日数」で数えるので、
       // 同じ日に何度やってもペイウォールは初回の1回だけになる。
       completedSessionCount: sessionDates.length,
-      holesFound: holeRecords.length,
+      practiceProblemCreated: stored !== null,
     }),
   };
 
-  // 会話が成立したかどうかは、この1行で分かる(穴0件は失敗ではない)。
-  log?.info("karte_stored", {
+  // 会話が成立したかどうかと、復習問題ができたかが、この1行で分かる。
+  log?.info("session_completed", {
     session_id: session.id,
     kind: session.kind,
     ended_reason: body.ended_reason,
-    review_outcome: body.review_outcome ?? null,
     duration_seconds: durationSeconds,
     transcript_turns: body.transcript.length,
-    holes: holeRecords.length,
-    dropped_holes: rejected.length,
-    filled_holes: filledThisSession,
+    practice_problem: stored !== null,
+    scheduled: scheduleEntries.length,
   });
 
   return c.json(response, 201);
 });
 
-function toHolePayload(hole: HoleRecord): Hole {
+/** D1の行 → 契約の PracticeProblem。**`answer` は落とす**(生徒には返さない)。 */
+export function toPracticeProblem(problem: PracticeProblemRecord): PracticeProblem {
   return {
-    id: hole.id,
-    topic_id: hole.topic_id,
-    desc: hole.desc,
-    severity: hole.severity,
-    ...(hole.evidence ? { evidence: hole.evidence } : {}),
-    ...(hole.quiz ? { quiz: hole.quiz } : {}),
-    status: hole.status,
-    created_at: hole.created_at,
-    filled_at: hole.filled_at,
+    id: problem.id,
+    session_id: problem.session_id,
+    board_id: problem.board_id,
+    topic_id: problem.topic_id,
+    question: problem.question,
+    created_at: problem.created_at,
   };
 }
 
 /**
- * 保存済みのカルテからレスポンスを組み立て直す。
+ * 画面のヘッダに出す単元名。
  *
- * - agentからの再送(/complete が二度呼ばれた場合)
- * - アプリからの結果取得(GET /v1/sessions/{id}/result)
- *
- * の両方で使う。会話が終わってからカルテができるまでには数秒かかるので、
- * アプリは完了後にこのエンドポイントを見に来る。
+ * カリキュラムに無いIDは、そのままIDを出す。空文字にすると
+ * `topic_label` の `.min(1)` で応答ごと落ち、**問題は保存できているのに
+ * 復習リストが開かない**という壊れ方になる。
  */
+export function topicLabelOf(topicId: string): string {
+  return findTopic(topicId)?.topic ?? topicId;
+}
+
+/**
+ * 保存済みの状態からレスポンスを組み立て直す。
+ *
+ * - agentからの再送(`/complete` が二度呼ばれた場合)
+ * - アプリからの結果取得(`GET /v1/sessions/{id}/result`)
+ *
+ * の両方で使う。**`practice_schedule` は空で返す。**再送で予約を作り直さないのと
+ * 同じ理由で、既に予約したものをもう一度「いま予約した」として返さない
+ * (祝福画面が「3日後に送るね」を二度言うことになる)。
+ */
+/**
+ * 段を予約して、予約した事実を行として残す。
+ *
+ * **外部の予約に失敗しても行は残す。** 外部IDが null の行は「予約を試みて失敗した」
+ * 記録で、これを残さないと再送のたびに全段を予約し直して二重に届く
+ * (`idx_practice_problems_session` のコメントと同じ天秤 —
+ *  取りこぼしより二重通知のほうが痛い)。
+ */
+async function persistPracticeSchedules(input: {
+  repository: Repository;
+  scheduler: NotificationScheduler;
+  newId: (prefix: string) => string;
+  log: RequestLogger | undefined;
+  deviceId: string;
+  problem: PracticeProblemRecord;
+  entries: PracticeScheduleEntry[];
+}): Promise<void> {
+  const { repository, scheduler, newId, log, deviceId, problem, entries } = input;
+  const persisted: PracticeScheduleRecord[] = [];
+
+  for (const entry of entries) {
+    let externalId: string | null = null;
+    try {
+      const scheduled = await scheduler.schedulePractice({
+        deviceId,
+        problemId: problem.id,
+        step: entry.step as 1 | 2 | 3,
+        sendAt: entry.scheduled_at,
+        topicLabel: topicLabelOf(problem.topic_id),
+        daysSince: entry.days,
+        // 通知の言語は問題の topic_id から引く。端末の設定ではなくこちらが正。
+        locale: localeOfTopicId(problem.topic_id),
+      });
+      externalId = scheduled.externalId;
+    } catch (error) {
+      // 通知の予約に失敗しても、完了応答は返す。プッシュのために体験を止めない。
+      log?.error("practice_schedule_failed", error, {
+        session_id: problem.session_id,
+        problem_id: problem.id,
+      });
+    }
+    persisted.push({
+      id: newId("psc"),
+      problem_id: problem.id,
+      step: entry.step as 1 | 2 | 3,
+      scheduled_at: entry.scheduled_at,
+      external_id: externalId,
+    });
+  }
+
+  await repository.insertPracticeSchedules(persisted);
+}
+
 export async function buildResponse(input: {
   repository: Repository;
   at: Date;
   session: SessionRecord;
-  stored: { karte: KarteRecord; holes: HoleRecord[] };
+  problem: PracticeProblemRecord | null;
+  /** 今回この応答で予約した段。再送で拾い直したときだけ中身が入る。 */
+  schedule?: PracticeScheduleEntry[];
   limits: Limits;
 }): Promise<CompleteSessionResponse> {
-  const { repository, at, session, stored, limits } = input;
+  const { repository, at, session, problem, schedule = [], limits } = input;
 
   const localDate = toLocalDate(at);
-  const [sessionDates, allHoles, user, usage] = await Promise.all([
+  const [sessionDates, problems, attempts, user, usage] = await Promise.all([
     repository.sessionDates(session.device_id),
-    repository.listHoles(session.device_id),
+    repository.listPracticeProblems(session.device_id),
+    repository.listPracticeAttempts(session.device_id),
     repository.getUser(session.device_id),
     repository.getDailySessionUsage(session.device_id, localDate),
   ]);
 
   return {
-    karte: {
-      id: stored.karte.id,
-      session_id: stored.karte.session_id,
-      created_at: stored.karte.created_at,
-      topic_ids: stored.karte.topic_ids,
-      said_well: stored.karte.said_well,
-      holes: stored.holes.map(toHolePayload),
-      term_notes: stored.karte.term_notes,
-      followup_question: stored.karte.followup_question,
-    },
-    review_schedule: [],
-    progress: computeProgress(sessionDates, allHoles, localDate),
+    practice_problem: problem === null ? null : toPracticeProblem(problem),
+    practice_schedule: schedule,
+    progress: computeProgress({ sessionDates, problems, attempts, today: localDate }),
     limits: sessionLimitsPayload({ user, usage, at, limits }),
     show_paywall: shouldShowPaywall({
       isPremium: hasPremiumAccess({ user, now: at, limits }),
       completedSessionCount: sessionDates.length,
-      holesFound: stored.holes.length,
+      practiceProblemCreated: problem !== null,
     }),
   };
 }
@@ -332,7 +388,10 @@ function sessionLimitsPayload(input: {
 
 /**
  * GET /v1/sessions/{id}/result — アプリが会話後に結果を取りに来る。
- * まだカルテができていなければ 202 を返し、アプリはしばらく待って再度たずねる。
+ *
+ * **アプリはもうこれを待っていない**(祝福画面は生成を待たない。ADR 0009 の決定14)。
+ * 残しているのは、残り時間の反映と「今日の問題ができたか」を後から確かめる口として。
+ * まだ `/complete` が届いていなければ 202 を返す。
  */
 completeRoute.get("/:sessionId/result", async (c) => {
   const { repository, now } = c.get("services");
@@ -342,14 +401,14 @@ completeRoute.get("/:sessionId/result", async (c) => {
   const session = await repository.getSession(c.req.param("sessionId"));
   if (!session || session.device_id !== deviceId) throw apiError("session_not_found");
 
-  const stored = await repository.getKarteBySession(session.id);
-  if (!stored) {
-    // カルテ生成中。アプリはこの状態を「まだ」として扱い、少し待って聞き直す。
+  if (session.status !== "completed") {
+    // agent がまだ `/complete` を投げていない。アプリはこの状態を「まだ」として扱う。
     return c.json({ status: "pending" }, 202);
   }
 
+  const problem = await repository.getPracticeProblemBySession(session.id);
   return c.json(
-    await buildResponse({ repository, at, session, stored, limits: readLimits(c.env) }),
+    await buildResponse({ repository, at, session, problem, limits: readLimits(c.env) }),
     200,
   );
 });

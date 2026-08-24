@@ -85,13 +85,15 @@ class PushRepository {
 
   /// 通知タップの着地先を受け取る。
   ///
-  /// サーバは `data: { hole_id, step }` を積んでいる。いまは穴の指定までは見ず、
-  /// 復習画面まで運ぶ(そこに同じ穴がカードで出ている)。
-  void onOpened(void Function(String? holeId) handler) {
+  /// サーバが積むのは `data: { problem_id, step }`(ADR 0009)。
+  /// **`hole_id` の旧通知も飛んでいる**ので、そちらは `null` として受ける —
+  /// 旧通知は穴を指しており、その穴に対応する復習問題は存在しない。
+  /// 名指しに失敗した通知は、復習の先頭の問題へ落とす(踏んで壊れないこと。#180)。
+  void onOpened(void Function(String? problemId) handler) {
     if (!PushConfig.isConfigured) return;
     OneSignal.Notifications.addClickListener((OSNotificationClickEvent event) {
       final Map<String, dynamic>? data = event.notification.additionalData;
-      handler(data?['hole_id'] as String?);
+      handler(data?['problem_id'] as String?);
     });
   }
 }

@@ -148,6 +148,7 @@ function session(id: string, overrides: Partial<SessionRecord> = {}): SessionRec
     photo_key: null,
     topic_ids: [],
     hole_id: null,
+    practice_problem_id: null,
     duration_seconds: null,
     context: null,
     started_at: null,

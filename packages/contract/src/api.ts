@@ -8,6 +8,12 @@ import {
   topicIdSchema,
 } from "./karte.ts";
 import { planDateSchema, planSourceSchema, studyPlanDraftSchema, studyPlanSchema } from "./plan.ts";
+import {
+  practiceAttemptSchema,
+  practiceProblemDraftSchema,
+  practiceProblemSchema,
+  practiceVerdictSchema,
+} from "./practice.ts";
 
 /**
  * backend/api ↔ apps/mobile ↔ agent の契約。
@@ -24,8 +30,21 @@ export const apiPaths = {
   startSession: (sessionId: string) => `/v1/sessions/${sessionId}/start`,
   completeSession: (sessionId: string) => `/v1/sessions/${sessionId}/complete`,
   progress: "/v1/me/progress",
+  /** @deprecated 穴ベースの復習。復習問題へ移るまでの移行期だけ残す(ADR 0009)。 */
   reviewQueue: "/v1/me/reviews",
+  /** @deprecated 穴ベースの自己申告。採点は `answerPractice` が持つ(ADR 0009)。 */
   answerReview: (holeId: string) => `/v1/me/reviews/${holeId}`,
+  /** 復習問題のリスト。ホームの第2操作の中身。 */
+  practiceQueue: "/v1/me/practice",
+  /**
+   * 1問だけを引く。**通知の着地点はこちら。**
+   *
+   * リストから探させない理由は `backend/api/src/routes/me.ts` に書いてある —
+   * 正解した問題にも通知は届くが、それは `items` にはもう無い。
+   */
+  practiceProblem: (problemId: string) => `/v1/me/practice/${problemId}`,
+  /** テキストの解答を送って採点を受け取る。 */
+  answerPractice: (problemId: string) => `/v1/me/practice/${problemId}`,
   revenueCatWebhook: "/v1/webhooks/revenuecat",
   parentReport: "/v1/me/parent-report",
   createPlanSession: "/v1/plans",
@@ -231,16 +250,35 @@ export const createSessionRequestSchema = z
     kind: sessionKindSchema.default("new"),
     locale: localeSchema.default("ja"),
     school_stage: schoolStageSchema.default("high_school"),
-    /** kind="review" のとき、埋めにいく穴。復習は穴が起点なので必須。 */
+    /**
+     * kind="review" のとき、教え直す穴。
+     *
+     * @deprecated ADR 0009。復習の起点は `problem_id`(間違えた復習問題)へ移った。
+     * 移行前に溜まった穴から「先輩に聞く」を選ぶ経路のために残す。
+     */
     hole_id: z.string().min(1).optional(),
+    /**
+     * kind="review" のとき、教え直す**復習問題**。
+     *
+     * **穴より根拠として強い。**穴は「説明が止まった箇所」という観測だったが、
+     * こちらは「この問題を、こう間違えた」という事実そのもの。板書を組む材料として
+     * 具体的で、先輩が何を教え直せばいいかが決まる(#178)。
+     */
+    problem_id: z.string().min(1).optional(),
     /** ユーザーがチップUIで単元を直した場合の指定。空なら写真解析に任せる。 */
     topic_ids: z.array(topicIdSchema).max(5).optional(),
   })
   .strict()
-  .refine((request) => request.kind !== "review" || request.hole_id !== undefined, {
-    message: "kind=review には hole_id が必要です",
-    path: ["hole_id"],
-  });
+  .refine(
+    (request) =>
+      request.kind !== "review" ||
+      request.problem_id !== undefined ||
+      request.hole_id !== undefined,
+    {
+      message: "kind=review には problem_id(移行期は hole_id でも可)が必要です",
+      path: ["problem_id"],
+    },
+  );
 
 /**
  * パース**後**の型。`kind`/`locale` は default が効くので必ず入っている。
@@ -529,7 +567,33 @@ export const sessionMetadataSchema = z
     context_revision: z.number().int().positive().optional(),
     is_premium: z.boolean(),
     /**
+     * 復習で**今回教え直す復習問題**。間違えた問題と、そのときの本人の答え。
+     *
+     * **`review_hole` より根拠が強い**(ADR 0009)。穴は「説明が止まった」という観測で、
+     * 先輩は何を教え直せばいいかを推測するしかなかった。こちらは
+     * 「この問いに、こう答えて、こう判定された」まで揃っているので、
+     * **どこで筋が逸れたか**を板書の起点にできる。
+     *
+     * 正解(`answer`)は載せない。板書LLMに正解を渡すと、教え直しではなく
+     * 答え合わせが始まる — 生徒はもう一度その問題を解くわけではない。
+     *
+     * 新規授業と、移行期の穴起点の復習では `null`。
+     */
+    review_problem: z
+      .object({
+        topic_id: topicIdSchema,
+        question: z.string().min(1).max(200),
+        /** 生徒が書いた答え。**そのまま渡す。**要約すると、どう間違えたかが消える。 */
+        response: z.string().min(1).max(500),
+        verdict: practiceVerdictSchema,
+      })
+      .strict()
+      .nullable()
+      .optional(),
+    /**
      * 復習で**今回教え直す穴だけ**。新しいAPIは復習で1件、新規授業で `null` を送る。
+     *
+     * @deprecated ADR 0009。`review_problem` へ移った。移行前に溜まった穴のために残す。
      *
      * `problem_text` に穴の説明を詰める案は採らない。復習には問題の写真が無く、
      * 問題文を装うと `senpai_board.*.md` の「写っていない問題を作らない」という
@@ -559,6 +623,10 @@ export const sessionMetadataSchema = z
   .refine((metadata) => metadata.kind === "review" || metadata.review_hole == null, {
     message: "review でないときは review_hole を入れないでください",
     path: ["review_hole"],
+  })
+  .refine((metadata) => metadata.kind === "review" || metadata.review_problem == null, {
+    message: "review でないときは review_problem を入れないでください",
+    path: ["review_problem"],
   });
 export type SessionMetadata = z.infer<typeof sessionMetadataSchema>;
 
@@ -597,6 +665,19 @@ export const sessionControlRequestSchema = z.discriminatedUnion("type", [
     })
     .strict(),
   sessionControlBaseSchema.extend({ type: z.literal("problem_photo_failed") }).strict(),
+  /**
+   * 画面下の「わかった」。**授業ループを降りる合図で、本人の発話ではない。**
+   *
+   * `lk.chat` へ「わかった」と流す案は採らない。あれは本人の発話の入口なので、
+   * transcript に混ざって板書LLMの次のパスの材料になる — 押した瞬間に
+   * 降りるはずの操作が、もう1往復を生む。
+   *
+   * 追加の欄は持たない。**押したという事実がすべて**で、
+   * どこまで理解したかを申告させる操作ではない(押しにくくしないため)。
+   */
+  sessionControlBaseSchema
+    .extend({ type: z.literal("understood") })
+    .strict(),
 ]);
 export type SessionControlRequest = z.infer<typeof sessionControlRequestSchema>;
 
@@ -628,10 +709,39 @@ export type TranscriptMessage = z.infer<typeof transcriptMessageSchema>;
 export const completeSessionRequestSchema = z
   .object({
     transcript: z.array(transcriptMessageSchema),
-    karte: karteDraftSchema,
+    /**
+     * @deprecated カルテは ADR 0009 で畳んだ。**新しい agent は送らない。**
+     *
+     * 欄だけ残してあるのはローリングデプロイのため。このスキーマは `.strict()` なので、
+     * API が先に出た窓で旧 agent が `karte` を送ると 400 になり、
+     * **会話は成立するのに完了だけが落ちる**(アプリからは「終わらない」に見える)。
+     * 受け取っても**保存はしない。**旧 agent がすべて入れ替わったら消す。
+     */
+    karte: karteDraftSchema.optional(),
+    /**
+     * 板書から作った復習問題。**「わかった」で降りたときだけ入る。**
+     *
+     * 時間切れ・離脱では作らない(#172 の決定13)。押されなかった = 到達していない
+     * ので、そこで作った問題は「教わっていないことを問う」ことになる。
+     * 生成に失敗しても `/complete` は通す — 通知が予約されないだけで、
+     * セッションは完了扱い。
+     */
+    practice_problem: practiceProblemDraftSchema.nullable().optional(),
+    /** 復習問題の材料になった板書。`practice_problem` があるときは必ず入る。 */
+    board_id: z.string().min(1).optional(),
     duration_seconds: z.number().int().min(0),
-    /** 会話が最後まで行かずに切れた場合。カルテは作るが穴の重み付けを控えめにする。 */
-    ended_reason: z.enum(["completed", "timeout", "user_left", "error"]),
+    /**
+     * どうやって授業を降りたか。
+     *
+     * | 値 | 降り方 | 復習問題 |
+     * | --- | --- | --- |
+     * | `understood` | 生徒が「わかった」を押した | **作る** |
+     * | `timeout` | 残り時間が尽きて先輩が締めた | 作らない |
+     * | `user_left` | × から「やめる」/ アプリごと閉じた | 作らない |
+     * | `error` | 事故 | 作らない |
+     * | `completed` | @deprecated 旧ループ(6周で降りた)。旧 agent 対策で残す | 作らない |
+     */
+    ended_reason: z.enum(["understood", "completed", "timeout", "user_left", "error"]),
     /**
      * `kind: "review"` のセッションでのみ意味を持つ、本人の申告。
      * 省略が既定で、その場合は「埋めない」。穴が埋まるのは `"said_it"` が明示されたときだけ。
@@ -643,7 +753,11 @@ export const completeSessionRequestSchema = z
   .strict();
 export type CompleteSessionRequest = z.infer<typeof completeSessionRequestSchema>;
 
-/** 復習プッシュの予約。間隔反復は 翌日 → 3日後 → 7日後 の3段階。 */
+/**
+ * 復習プッシュの予約。間隔反復は 翌日 → 3日後 → 7日後 の3段階。
+ *
+ * @deprecated 穴ベースの予約。復習問題は {@link practiceScheduleEntrySchema} を使う。
+ */
 export const reviewScheduleEntrySchema = z
   .object({
     hole_id: z.string().min(1),
@@ -654,14 +768,43 @@ export const reviewScheduleEntrySchema = z
   .strict();
 export type ReviewScheduleEntry = z.infer<typeof reviewScheduleEntrySchema>;
 
+/**
+ * 復習問題の通知予約。
+ *
+ * **段(`step`)と日数(`days`)を両方載せる。** `step` は
+ * `reviewStepDays = [1, 3, 7]` の添字で、`nextReviewStep` の意味と対で動く。
+ * `days` は画面が「つぎは 明日・3日後・7日後にきくね」を組むための値で、
+ * **予約した段の一部を落とすことがある**(正解なら step 1 を予約しない)ため、
+ * 段の番号から日数を引き直せない。
+ */
+export const practiceScheduleEntrySchema = z
+  .object({
+    problem_id: z.string().min(1),
+    /** 1=翌日 / 2=3日後 / 3=7日後。`reviewStepDays` の添字と同じ。 */
+    step: z.number().int().min(1).max(3),
+    /** 予約の起点(セッション完了 or 解答)から何日後か。 */
+    days: z.number().int().min(1),
+    scheduled_at: z.string().datetime(),
+  })
+  .strict();
+export type PracticeScheduleEntry = z.infer<typeof practiceScheduleEntrySchema>;
+
 export const completeSessionResponseSchema = z
   .object({
-    karte: karteSchema,
-    review_schedule: z.array(reviewScheduleEntrySchema),
+    /**
+     * 板書から作った復習問題。**「わかった」で降りなかった回は `null`。**
+     *
+     * 生成の完了を待たせない(#172 の決定14)ので、`/complete` の直後に
+     * アプリがこれを読みに来ても `null` のことがある。**祝福画面は待たない** —
+     * 「いま作ってるところ。待たなくて大丈夫。」が、その事実を出した文言。
+     */
+    practice_problem: practiceProblemSchema.nullable(),
+    /** 上の問題に予約した通知。作成時は 3日後・7日後(「わかった」= 到達の宣言なので翌日は置かない)。 */
+    practice_schedule: z.array(practiceScheduleEntrySchema),
     progress: progressSchema,
     /** 実績秒数で精算した直後の、ホーム用の日次残高。 */
     limits: sessionLimitsSchema,
-    /** 初回カルテ直後にペイウォールを出すかどうか(出す位置はサーバが決める)。 */
+    /** 初回の復習問題ができた直後にペイウォールを出すかどうか(出す位置はサーバが決める)。 */
     show_paywall: z.boolean(),
   })
   .strict();
@@ -715,15 +858,112 @@ export const reviewQueueResponseSchema = z
   .strict();
 export type ReviewQueueResponse = z.infer<typeof reviewQueueResponseSchema>;
 
-/** 小テストの自己申告。サーバは正誤を採点せず、本人の二択だけを受け取る。 */
+/**
+ * 小テストの自己申告。サーバは正誤を採点せず、本人の二択だけを受け取る。
+ *
+ * @deprecated ADR 0009。採点は {@link practiceAnswerRequestSchema} が持つ。
+ */
 export const reviewAnswerRequestSchema = z.object({ outcome: reviewOutcomeSchema }).strict();
 export type ReviewAnswerRequest = z.infer<typeof reviewAnswerRequestSchema>;
 
-/** 自己申告の直後に、穴とホームのカウンターを更新するための応答。 */
+/**
+ * 自己申告の直後に、穴とホームのカウンターを更新するための応答。
+ *
+ * @deprecated ADR 0009。
+ */
 export const reviewAnswerResponseSchema = z
   .object({ hole: holeSchema, progress: progressSchema })
   .strict();
 export type ReviewAnswerResponse = z.infer<typeof reviewAnswerResponseSchema>;
+
+/* -------------------------------------------------------------------------- */
+/* 復習問題(ADR 0009)                                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * 解きにいく1問。`GET /v1/me/practice` が並べる単位。
+ *
+ * 並び順の思想は穴のキューから引き継ぐ — **古い順。放置されたものから声をかける。**
+ * 穴の `severity` に相当する軸は復習問題には無いので、二番目の鍵は持たない。
+ */
+export const practiceQueueItemSchema = z
+  .object({
+    problem: practiceProblemSchema,
+    /** 「3日前の復習」の表示に使う。問題ができた日からの日数。 */
+    days_since: z.number().int().min(0),
+    /**
+     * 画面のヘッダに出す単元名(「判別式と解の個数」)。
+     *
+     * **サーバが `topic_id` から引いて渡す。**端末に対応表を持たせると、
+     * カリキュラムを更新するたびにアプリの再配布が要る
+     * (`detectedTopicSchema.label` と同じ分担)。
+     */
+    topic_label: z.string().min(1).max(60),
+    /**
+     * 直近の採点結果。**一度も解いていなければ `null`。**
+     *
+     * `unclear` のまま残っている問題を「まだ解いていない問題」と
+     * 同じ顔で並べないために要る(⑩ の「もう一度こたえる」の受け皿)。
+     */
+    last_verdict: practiceVerdictSchema.nullable(),
+  })
+  .strict();
+export type PracticeQueueItem = z.infer<typeof practiceQueueItemSchema>;
+
+/** 正解した問題。復習画面の下半分に積み上げる(埋めた穴の置き換え)。 */
+export const solvedPracticeSchema = z
+  .object({
+    problem: practiceProblemSchema,
+    topic_label: z.string().min(1).max(60),
+    /** 最後に正解した日からの日数。 */
+    days_since_solved: z.number().int().min(0),
+  })
+  .strict();
+export type SolvedPractice = z.infer<typeof solvedPracticeSchema>;
+
+/** 復習画面が一度に受け取る、正解した問題の最大件数。 */
+export const solvedPracticeLimit = 30;
+
+export const practiceQueueResponseSchema = z
+  .object({
+    items: z.array(practiceQueueItemSchema),
+    /**
+     * 正解した問題(新しい順)。通算の件数は `progress.solved_problems` のほうが正で、
+     * ここは直近 {@link solvedPracticeLimit} 件までしか載らない。
+     */
+    solved: z.array(solvedPracticeSchema).max(solvedPracticeLimit),
+  })
+  .strict();
+export type PracticeQueueResponse = z.infer<typeof practiceQueueResponseSchema>;
+
+/**
+ * `POST /v1/me/practice/{problemId}` — テキストの解答。
+ *
+ * **音声にしない。**通知から開いた場所が声を出せる場所とは限らないので、
+ * マイク権限を再度踏ませない(#180)。
+ */
+export const practiceAnswerRequestSchema = z
+  .object({
+    /** 生徒が書いた答え。とちゅうの式だけ・言葉だけでも通す。 */
+    response: z.string().min(1).max(500),
+  })
+  .strict();
+export type PracticeAnswerRequest = z.infer<typeof practiceAnswerRequestSchema>;
+
+export const practiceAnswerResponseSchema = z
+  .object({
+    attempt: practiceAttemptSchema,
+    /**
+     * この解答で新しく予約した通知。**`unclear` では空**(段を進めない)。
+     *
+     * 作成時に決めた段は取り消さないので、ここに載るのは**足したぶんだけ**。
+     * 「3日目に正解したから7日目を消す」はやらない(#172 の決定12)。
+     */
+    next_schedule: z.array(practiceScheduleEntrySchema),
+    progress: progressSchema,
+  })
+  .strict();
+export type PracticeAnswerResponse = z.infer<typeof practiceAnswerResponseSchema>;
 
 export const progressResponseSchema = z
   .object({
@@ -751,7 +991,9 @@ export const apiErrorCodes = [
   "problem_unreadable",
   "out_of_scope",
   "session_not_found",
+  /** @deprecated 穴ベースの復習。移行が終わるまで残す(ADR 0009)。 */
   "hole_not_found",
+  "practice_not_found",
   "rate_limited",
   "internal_error",
 ] as const;

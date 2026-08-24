@@ -61,7 +61,14 @@ import {
   resolveSessionProblem,
   toDetectedTopicPayload,
 } from "../lib/photo-analysis.ts";
-import type { HoleRecord, SessionContext, SessionMaterialContext } from "../repository/types.ts";
+import type {
+  HoleRecord,
+  PracticeAttemptRecord,
+  PracticeProblemRecord,
+  Repository,
+  SessionContext,
+  SessionMaterialContext,
+} from "../repository/types.ts";
 
 export const sessionsRoute = new Hono<AppEnv>();
 
@@ -118,13 +125,23 @@ sessionsRoute.post("/", async (c) => {
     throw apiError("premium_required", { locale });
   }
 
-  // 復習セッションは写真を使わず、対象の穴から単元を引く。
-  // 他人の穴IDを渡されても動かないよう、所有者をここで確かめる。
+  /**
+   * 復習セッションは写真を使わず、**間違えた復習問題**から単元を引く(ADR 0009)。
+   *
+   * 移行期は穴起点も受ける。どちらでも来なかった復習は成立しないので、
+   * 他人のIDを渡されたときと同じ 404 にする(存在も漏らさない)。
+   */
+  let reviewProblem: ReviewProblem | null = null;
   let reviewHole: HoleRecord | null = null;
   if (meta.kind === "review") {
-    reviewHole = meta.hole_id ? await repository.getHole(meta.hole_id) : null;
-    if (!reviewHole || reviewHole.device_id !== deviceId) {
-      throw apiError("session_not_found", { locale });
+    reviewProblem = meta.problem_id
+      ? await resolveReviewProblem(repository, meta.problem_id, deviceId)
+      : null;
+    if (!reviewProblem) {
+      reviewHole = meta.hole_id ? await repository.getHole(meta.hole_id) : null;
+      if (!reviewHole || reviewHole.device_id !== deviceId) {
+        throw apiError("session_not_found", { locale });
+      }
     }
   }
 
@@ -195,6 +212,7 @@ sessionsRoute.post("/", async (c) => {
       photo_key: null,
       topic_ids: [],
       hole_id: reviewHole?.id ?? null,
+      practice_problem_id: reviewProblem?.problem.id ?? null,
       duration_seconds: null,
       context: null,
       // 会話はまだ始まっていない。ここが null のあいだ、この行は時間集計に入れない。
@@ -224,13 +242,26 @@ sessionsRoute.post("/", async (c) => {
    * 端末を英語に変えただけで、日本語で残した穴に英語で聞きに来ても、
    * 穴の説明文も単元名も日本語のままなので会話が噛み合わない。
    */
-  const conversationLocale = reviewHole ? (localeOfTopicId(reviewHole.topic_id) ?? locale) : locale;
+  const reviewTopicId = reviewProblem?.problem.topic_id ?? reviewHole?.topic_id ?? null;
+  const conversationLocale = reviewTopicId ? (localeOfTopicId(reviewTopicId) ?? locale) : locale;
 
-  let topicIds: string[] = reviewHole ? [reviewHole.topic_id] : [];
+  let topicIds: string[] = reviewTopicId ? [reviewTopicId] : [];
   let photoKey: string | null = null;
-  let summary = reviewHole ? reviewSummary(conversationLocale, reviewHole.desc) : "";
+  let summary = reviewProblem
+    ? practiceSummary(
+        conversationLocale,
+        reviewProblem.problem.question,
+        reviewProblem.attempt.verdict,
+      )
+    : reviewHole
+      ? reviewSummary(conversationLocale, reviewHole.desc)
+      : "";
   let visibleWork: string[] = [];
-  let questionSeeds: string[] = reviewHole ? [reviewHole.desc] : [];
+  let questionSeeds: string[] = reviewProblem
+    ? [reviewProblem.problem.question]
+    : reviewHole
+      ? [reviewHole.desc]
+      : [];
   let analysis: PhotoAnalysis | null = null;
   let problem: SessionProblem | null = null;
   /** 写真を読んでいないセッション(復習)では `null` のまま。 */
@@ -626,6 +657,10 @@ sessionsRoute.get("/:sessionId/context", async (c) => {
     session.kind === "review" && session.hole_id !== null
       ? await repository.getHole(session.hole_id)
       : null;
+  const reviewProblem =
+    session.kind === "review" && session.practice_problem_id !== null
+      ? await resolveReviewProblem(repository, session.practice_problem_id, session.device_id)
+      : null;
   const sessionMetadata = buildSessionMetadata({
     sessionId: session.id,
     locale: allowedTopicsLocale(allowed),
@@ -637,6 +672,7 @@ sessionsRoute.get("/:sessionId/context", async (c) => {
     isPremium: user.is_premium,
     hasNotesPhoto: context.has_notes_photo ?? session.photo_key !== null,
     reviewHole,
+    reviewProblem,
   });
   log?.info("session_context_read", {
     session_id: session.id,
@@ -726,11 +762,19 @@ sessionsRoute.post("/:sessionId/start", async (c) => {
    * `context.summary` から復元する案は採らない。そこは表示用に整形済みで、
    * 何より本人の発話 `evidence` が戻らない(PATCH /topics と同じ理由)。
    */
+  const reviewProblem =
+    session.kind === "review" && session.practice_problem_id !== null
+      ? await resolveReviewProblem(repository, session.practice_problem_id, deviceId)
+      : null;
   const reviewHole =
     session.kind === "review" && session.hole_id !== null
       ? await repository.getHole(session.hole_id)
       : null;
-  if (session.kind === "review" && (!reviewHole || reviewHole.device_id !== deviceId)) {
+  if (
+    session.kind === "review" &&
+    !reviewProblem &&
+    (!reviewHole || reviewHole.device_id !== deviceId)
+  ) {
     throw apiError("session_not_found", { locale });
   }
 
@@ -779,6 +823,7 @@ sessionsRoute.post("/:sessionId/start", async (c) => {
     // 写真は解析し直さないので、保存済みのキーの有無がそのまま「ノートがあったか」。
     hasNotesPhoto: context.has_notes_photo ?? session.photo_key !== null,
     reviewHole,
+    reviewProblem,
   });
   const metadata = JSON.stringify(sessionMetadata);
 
@@ -1042,6 +1087,36 @@ function reviewSummary(locale: "ja" | "en", desc: string): string {
 }
 
 /**
+ * 復習問題起点の「今日のノート」。
+ *
+ * `reviewSummary` をそのまま使うと「前回、x² − 6x + 5 = 0 の解の個数は?」という、
+ * **起きたことではなく問いだけ**の一行になる。ここに要るのは何が起きたかなので、
+ * 判定まで書く。プロンプトに貼る文字列なので、会話の言語で書く。
+ */
+function practiceSummary(
+  locale: "ja" | "en",
+  question: string,
+  verdict: "correct" | "incorrect" | "unclear",
+): string {
+  if (locale === "en") {
+    const what =
+      verdict === "unclear"
+        ? "we could not read their answer to"
+        : verdict === "correct"
+          ? "they answered, and want another look at"
+          : "they got it wrong:";
+    return `On the review question, ${what} "${question}"`;
+  }
+  const what =
+    verdict === "unclear"
+      ? "こちらが答えを読み取れなかった"
+      : verdict === "correct"
+        ? "答えられたが、もう一度見たいと言っている"
+        : "間違えた";
+  return `復習問題「${question}」を、${what}`;
+}
+
+/**
  * ノートに書いてあることとしてプロンプトへ渡す値。
  *
  * **文言そのものは持たない。**`@ai-sensei/prompts` の {@link formatVisibleWork} が
@@ -1087,8 +1162,10 @@ function buildSessionMetadata(input: {
   isPremium: boolean;
   /** ノートの写真がR2にあるか(= 送られてきたか)。`student_work` の文言が変わる。 */
   hasNotesPhoto: boolean;
-  /** 復習で教え直す1つの穴。新規授業では `null`。 */
+  /** @deprecated 穴起点の復習。移行が終わるまで残す(ADR 0009)。 */
   reviewHole: HoleRecord | null;
+  /** 復習で教え直す復習問題と、そのときの本人の答え。新規授業では `null`。 */
+  reviewProblem: ReviewProblem | null;
 }): SessionMetadata {
   const metadata = sessionMetadataSchema.parse({
     session_id: input.sessionId,
@@ -1123,6 +1200,20 @@ function buildSessionMetadata(input: {
             topic_id: input.reviewHole.topic_id,
             desc: input.reviewHole.desc,
             evidence: input.reviewHole.evidence,
+          },
+    /**
+     * **正解は載せない。**板書LLMに正解を渡すと、教え直しではなく答え合わせが始まる
+     * (生徒はこの問題をもう一度解くわけではない)。渡すのは
+     * 「何を問われて、どう答えて、どう判定されたか」まで。
+     */
+    review_problem:
+      input.reviewProblem === null
+        ? null
+        : {
+            topic_id: input.reviewProblem.problem.topic_id,
+            question: input.reviewProblem.problem.question,
+            response: input.reviewProblem.attempt.response,
+            verdict: input.reviewProblem.attempt.verdict,
           },
   } satisfies SessionMetadata);
   return metadata;
@@ -1200,4 +1291,31 @@ function parseMeta(value: File | string | null): CreateSessionRequest {
   const parsed = createSessionRequestSchema.safeParse(raw);
   if (!parsed.success) throw apiError("photo_unreadable");
   return parsed.data;
+}
+
+/**
+ * 復習で教え直す材料。**問題だけでは足りない**ので、直近の解答と対にして持つ。
+ *
+ * 「この問いに、こう答えて、こう判定された」まで揃って初めて、先輩は
+ * どこで筋が逸れたかを板書の起点にできる。解答が1件も無い問題
+ * (通知が来る前に一覧から開いた)は、教え直す材料が無いので `null` を返す —
+ * その場合は復習セッションとして成立しない(404)。
+ */
+export type ReviewProblem = {
+  problem: PracticeProblemRecord;
+  attempt: PracticeAttemptRecord;
+};
+
+async function resolveReviewProblem(
+  repository: Repository,
+  problemId: string,
+  deviceId: string,
+): Promise<ReviewProblem | null> {
+  const problem = await repository.getPracticeProblem(problemId);
+  // 他人の問題を教え直させない。存在の有無と所有者の違いは呼び出し側で同じ404になる。
+  if (!problem || problem.device_id !== deviceId) return null;
+  const attempts = await repository.listPracticeAttempts(deviceId);
+  // **直近の1件。**同じ問題を何度も解いていることがあるので、いちばん新しい詰まり方を渡す。
+  const attempt = attempts.filter((entry) => entry.problem_id === problem.id).at(-1);
+  return attempt ? { problem, attempt } : null;
 }

@@ -1,4 +1,5 @@
 import type { D1Database, KVNamespace, R2Bucket } from "./cloudflare.ts";
+import type { PracticeGrader } from "./lib/grading.ts";
 import type { NotificationScheduler } from "./lib/notifications.ts";
 import type { RequestLogger } from "./lib/observability.ts";
 import type { PhotoAnalyzer } from "./lib/photo-analysis.ts";
@@ -29,6 +30,8 @@ export type Bindings = {
   ANTHROPIC_API_KEY?: string;
   OPENROUTER_API_KEY?: string;
   LLM_MODEL_VISION?: string;
+  /** 復習問題を採点するモデル。読み間違いが通知の段に直結するので、視覚と同格に置く。 */
+  LLM_MODEL_GRADING?: string;
 
   ONESIGNAL_APP_ID?: string;
   ONESIGNAL_REST_API_KEY?: string;
@@ -72,6 +75,8 @@ export type Bindings = {
 export type Services = {
   repository: Repository;
   analyzer: PhotoAnalyzer;
+  /** 復習問題の採点(ADR 0009)。落ちたら `unclear` に倒れる。 */
+  grader: PracticeGrader;
   scheduler: NotificationScheduler;
   /** ID生成と現在時刻。テストで固定するために注入する。 */
   now: () => Date;

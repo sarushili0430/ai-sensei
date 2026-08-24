@@ -6,13 +6,11 @@ import {
   type LessonTurn,
   asksForBoard,
   asksForProblemReadout,
-  asksForTeachBack,
   classifySolvingReport,
   handsTurnToStudent,
   lessonContinuationInstruction,
   lessonFailedPrompt,
   lessonRecapMaxLength,
-  practiceTeachBackPrompt,
   problemTextIsMissing,
   rememberSpokenProblemText,
   renderLessonRecap,
@@ -24,18 +22,18 @@ import {
   stepAwaitsSolving,
   stepAwaitsStudent,
   studentSilenceMarker,
-  teachBackPrompt,
+  timeUpClosing,
 } from "./senpai.ts";
 import { sessionMetadataJson } from "./test-support.ts";
 
 /**
- * 教え返しフェーズのうち、**agent 側にしか置けないもの**のテスト。
+ * 授業のうち、**agent 側にしか置けないもの**のテスト。
  *
  * 人格と約束の検査は `packages/prompts` 側(正本がそこにあるため)。
  * ここで見るのは2つ:
  *
  *   1. 定型の一言が、言語ごとに・約束を破らない形で出ること
- *   2. 板書の要約が `lesson_recap` に入り、§2 の断り書きと一緒に出ること
+ *   2. 板書の要約が `lesson_recap` に入り、断り書きと一緒に出ること
  */
 
 const context = readSessionContext(
@@ -75,8 +73,7 @@ const said = (text: string): LessonTurn => ({ kind: "student", text });
 
 describe("定型の一言", () => {
   it("言語ごとに別の文言を返す", () => {
-    expect(teachBackPrompt("ja")).not.toBe(teachBackPrompt("en"));
-    expect(practiceTeachBackPrompt("ja")).not.toBe(practiceTeachBackPrompt("en"));
+    expect(timeUpClosing("ja")).not.toBe(timeUpClosing("en"));
     expect(lessonFailedPrompt("ja")).not.toBe(lessonFailedPrompt("en"));
     expect(reviewOpening("ja")).not.toBe(reviewOpening("en"));
     expect(lessonFailedPrompt("ja", "review")).not.toBe(lessonFailedPrompt("en", "review"));
@@ -97,8 +94,7 @@ describe("定型の一言", () => {
    */
   it("こちらから言う一言が、申告させる聞き方や催促になっていない", () => {
     const lines = [
-      teachBackPrompt("ja"),
-      practiceTeachBackPrompt("ja"),
+      timeUpClosing("ja"),
       lessonFailedPrompt("ja"),
       reviewOpening("ja"),
       lessonFailedPrompt("ja", "review"),
@@ -356,34 +352,29 @@ describe("asksForBoard", () => {
   });
 });
 
-describe("asksForTeachBack", () => {
-  // 授業の往復を終える唯一の合図。板書プロンプトが最後の手順に固定している文言の族。
-  it("教え返しへの受け渡しだけを true にする", () => {
-    expect(asksForTeachBack("じゃあ今の、自分の言葉で説明してみて。", "ja")).toBe(true);
-    expect(asksForTeachBack(teachBackPrompt("ja"), "ja")).toBe(true);
-    expect(asksForTeachBack(teachBackPrompt("en"), "en")).toBe(true);
-    expect(asksForTeachBack(practiceTeachBackPrompt("ja"), "ja")).toBe(true);
-    expect(asksForTeachBack(practiceTeachBackPrompt("en"), "en")).toBe(true);
-    expect(asksForTeachBack("Now explain that back to me in your own words.", "en")).toBe(true);
-  });
-
-  /**
-   * 途中の問いかけは番を渡すが(`handsTurnToStudent` は true)、授業は終わらない。
-   * ここを取り違えると、質問を1つしただけで板書の続きが書けなくなる —
-   * 「先輩がすぐ説明を投げてくる」というドッグフーディングの報告の形そのもの。
-   */
-  it("途中の問いかけでは終わらない", () => {
+/**
+ * **`asksForTeachBack` はここにあった。ADR 0009 で消した。**
+ *
+ * 「じゃあ今の、自分の言葉で説明してみて。」を授業の終わりの合図にしていたが、
+ * 降ろすのが生徒の「わかった」だけになった以上、**先輩の言い回しで授業が終わる道は
+ * 残っていてはいけない** — 残すと、生成が1回ぶれてその形を口にした瞬間に、
+ * 押していない生徒の授業が終わる。
+ *
+ * 消したことを固定するテストは `lesson-loop.test.ts` の
+ * 「『説明してみて』と言われただけでは降りない」に置いてある(**振る舞いの側**で
+ * 縛るほうが、関数が復活したときにも気づける)。
+ */
+describe("番の受け渡し", () => {
+  it("途中の問いかけも「番を渡した」として拾う", () => {
     for (const speech of [
       "最小公倍数、何になると思う?",
       "この式の a と b と c、どれ?",
       "最初の一手、言ってみて。",
       "これ、まず何する?",
     ]) {
-      expect(asksForTeachBack(speech, "ja"), speech).toBe(false);
       expect(handsTurnToStudent(speech, "ja"), speech).toBe(true);
     }
-    expect(asksForTeachBack("What do you think the LCM is?", "en")).toBe(false);
-    expect(asksForTeachBack("", "ja")).toBe(false);
+    expect(handsTurnToStudent("", "ja")).toBe(false);
   });
 });
 

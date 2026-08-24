@@ -9,12 +9,12 @@ import {
 import { type SessionContext, subjectOf } from "./context.ts";
 
 /**
- * 板書授業とフェーズ2「教え返し」をつなぐ、agent 側にしか置けないもの。
+ * 板書授業と、板書が使えないときの会話をつなぐ、agent 側にしか置けないもの。
  *
  * **人格と約束はここには無い。**正本は `prompts/senpai_conversation.{ja,en}.md` で、
  * このファイルが持つのは3つだけ:
  *
- *   1. **定型の一言**(教え返しへの受け渡し・立て直し)。
+ *   1. **定型の一言**(時間切れの締め・板書失敗の立て直し・復習の入り)。
  *      会話LLMを通さずにTTSへ直接渡す文なので、プロンプトには置けない。
  *   2. **板書の要約**(`lesson_recap` に入れる値)。板書は配送層の事実
  *      (`BoardStep`)なので、プロンプト側からは見えない。
@@ -25,7 +25,7 @@ import { type SessionContext, subjectOf } from "./context.ts";
  * 【板書の内容は instructions にだけ入れる。transcript には入れない】
  * ─────────────────────────────────────────────────────────────────────────
  *
- * 先輩が何を教えたかを知らないと、教え返しを聞いても「言えた / 詰まった」の
+ * 先輩が何を教えたかを知らないと、生徒の説明を聞いても「言えた / 詰まった」の
  * 判定ができない。だが計画書 §2 の設計制約は
  * **「出題元はユーザーが説明した内容。AIが教えた内容から作らない」**で、
  * カルテと小テストの材料は transcript だけ。
@@ -37,27 +37,28 @@ import { type SessionContext, subjectOf } from "./context.ts";
  */
 
 /**
- * 類題を出せない残り時間では、従来の教え返しへ縮退する。
+ * 残り時間が尽きたときの、先輩の締めの一言。
  *
- * この文は消さない。類題を解く時間が足りないときにも、ユーザー本人の説明を
- * transcript に残してカルテの材料にするための最後の保険。
+ * **この一言だけが、時間切れを事故に見せないための手当て。**回数の上限を外した
+ * (ADR 0009)結果、天井は「残り時間」だけになった。`waitForEnd` の `timeout` は
+ * 会話の途中で切るので、これを言わずに降りると生徒には**説明の途中で
+ * 先輩が消えた**ようにしか見えない。
+ *
+ * `closing.ts` の締め検出と**同じ文言**にしてある。あちらは会話LLMの締めを拾う口で、
+ * こちらはコードが直接TTSへ渡す文だが、生徒に届く言葉は1つにしておく。
+ *
+ * **責めない。**「時間切れです」とも「もっと早く言ってくれれば」とも言わない。
  */
-const TEACH_BACK_PROMPT: Record<CurriculumLocale, string> = {
-  ja: "じゃあ今の、自分の言葉で説明してみて。",
-  en: "Alright — now explain that back to me in your own words.",
-};
-
-/** 類題を「できた」と申告したあと、解き方の理由を教え返してもらう定型句。 */
-const PRACTICE_TEACH_BACK_PROMPT: Record<CurriculumLocale, string> = {
-  ja: "じゃあ、どうしてそうなるか、自分の言葉で説明してみて。",
-  en: "Now explain in your own words why it works out that way.",
+const TIME_UP_CLOSING: Record<CurriculumLocale, string> = {
+  ja: "今日はここまでにしよっか。また来たとき、この続きやろう。",
+  en: "Let's stop here for today. Next time you're here, let's pick this up.",
 };
 
 /**
  * 授業の1コマ。板書に積んだ手順と、その合間の生徒の発話を、起きた順に並べたもの。
  *
  * 授業は1回のLLM呼び出しでは終わらない(`board.ts` の寿命の説明)。問いかけで止まり、
- * 生徒の答えを聞いて、同じ板書に続きを積む。その往復を教え返しのプロンプトと
+ * 生徒の答えを聞いて、同じ板書に続きを積む。その往復を会話のプロンプトと
  * 継続指示の両方が読めるよう、手順と発話を1本の列で持つ。
  */
 export type LessonTurn = { kind: "step"; step: BoardStep } | { kind: "student"; text: string };
@@ -132,9 +133,8 @@ const NO_LESSON_RECAP: Record<CurriculumLocale, string> = {
 /**
  * 最後の手順が、もう生徒に番を渡しているか。
  *
- * 渡しているのに {@link teachBackPrompt} を続けると、先輩が同じことを2回言う。
- * 板書プロンプト(`senpai_board.*.md`)は「教えたら必ず『じゃあ今の、自分の言葉で
- * 説明してみて』に渡す」と指示しているので、**普通に成功した授業では毎回起きる**。
+ * 答えを待っているのか、言い切ったのかで**次のパスの書き出しが変わる**
+ * (待っているなら答えを聞いてから続ける)。
  *
  * **文言の一致ではなく「番を渡したか」で見る。**切り分けの質問
  * (「最初の一手、言ってみて」)で終わった授業も、答えを待っている状態なので同じ扱い。
@@ -148,10 +148,12 @@ const HANDOFF_PATTERNS: Record<CurriculumLocale, RegExp[]> = {
  * 疑問符。**「〜してみて」型だけを番の受け渡しと見なしていたのが、実際の壊れ方だった。**
  *
  * 問題の写真が読めなかった授業は、板書プロンプトの指示どおり
- * 「問題、読んでもらってもいい?」から始まる。これは上のどのパターンにも当たらないので
- * `teachBackFallback` が**無条件で**「じゃあ今の、自分の言葉で説明してみて。」を続けていた
- * (2026-08-12 の報告そのもの)。生徒から見ると、読み上げを頼まれた次の瞬間に
- * **まだ何も教わっていない内容の説明を求められる**。
+ * 「問題、読んでもらってもいい?」から始まる。これは上のどのパターンにも当たらないので、
+ * かつての `teachBackFallback` が**無条件で**「じゃあ今の、自分の言葉で説明してみて。」を
+ * 続けていた(2026-08-12 の報告そのもの)。生徒から見ると、読み上げを頼まれた次の瞬間に
+ * **まだ何も教わっていない内容の説明を求められる**。あの保険は ADR 0009 で消えたが、
+ * **「問いかけで終えた回を、言い切りと読み違える」誤りはここに残っている** —
+ * いまは誤読すると、答えを待たずに続きを書き足す形で出る。
  *
  * 先輩が問いかけで終えたなら、形がどうであれ**番はもう生徒にある**。
  *
@@ -164,12 +166,8 @@ const HANDOFF_PATTERNS: Record<CurriculumLocale, RegExp[]> = {
  */
 const QUESTION_MARK = /[?？]\s*$/;
 
-export function teachBackPrompt(locale: CurriculumLocale): string {
-  return TEACH_BACK_PROMPT[locale];
-}
-
-export function practiceTeachBackPrompt(locale: CurriculumLocale): string {
-  return PRACTICE_TEACH_BACK_PROMPT[locale];
+export function timeUpClosing(locale: CurriculumLocale): string {
+  return TIME_UP_CLOSING[locale];
 }
 
 export function lessonFailedPrompt(
@@ -200,15 +198,17 @@ export function handsTurnToStudent(speech: string, locale: CurriculumLocale): bo
  *   末尾 `?` と言い回しの列挙では、板書プロンプトの見本どおりの
  *   「まず何する? **一言でいいよ。**」すら取りこぼす(`?` が文中に沈む)。
  *   取りこぼした瞬間、授業ループは「番を渡さず言い切った」= 渡し忘れと誤読して
- *   **1パス目で授業を終え、教え返しへ落とす**。以降のセッションは音声だけになり、
+ *   **1パス目で授業を終え、教え返しへ落としていた**。以降のセッションは音声だけになり、
  *   板書は最初の数行のまま二度と増えない —
- *   「板書がイニシャルのステートで止まっている」報告の正体。
+ *   「板書がイニシャルのステートで止まっている」報告の正体
+ *   (教え返しは ADR 0009 で畳んだので、いまの誤読は1パスぶんの空回りで止まる)。
  *
  * 逆向きの誤りも同じ欄で直る: 修辞疑問(「まず(1)からやろっか?」)は末尾が `?` でも
  * `awaits_student: false` と申告されるので、1手順目で止まらない(#105 の症状A)。
  *
- * 申告が誤っていたときの倒れ方は従来と同じ側に寄せる — 欄の値を優先し、
- * 渡し忘れは `teachBackFallback` の定型句が受け止める(保険は変えない)。
+ * 申告が誤っていたときの倒れ方は従来と同じ側に寄せる — 欄の値を優先する。
+ * 渡し忘れた回はもう授業を終わらせない(`lesson-loop.ts` が続きを書かせる)ので、
+ * 誤読の代償は「答えを待たずに先へ進む」1パスぶんで止まる。
  */
 export function stepAwaitsStudent(
   step: Pick<BoardStep, "speech" | "awaits_student">,
@@ -341,7 +341,7 @@ export type SpokenProblemMemoryResult =
  * ここは採用条件と差し替えだけを持つ。
  *
  * **APIへは書き戻さない。** 今回は同じオブジェクトを差し替えることで、次パス、
- * 教え返し、カルテ生成まで同じ問題文を使う。永続化は #130/#150 の統一文脈で、
+ * 復習問題の生成まで同じ問題文を使う。永続化は #130/#150 の統一文脈で、
  * この関数の採用結果を `PATCH /problem` へつなげればよい。
  */
 export function rememberSpokenProblemText(
@@ -381,7 +381,7 @@ export function rememberSpokenProblemText(
 }
 
 /**
- * 教え返しの最中に、生徒が**板書に書くこと**を求めているか。
+ * 授業の外で、生徒が**板書に書くこと**を求めているか。
  *
  * 授業ループを抜けたあとの会話LLMは板書に書く手段を持たない。以前はそこで
  * 「板書して」と頼まれると、**書けない事実を取り繕う返事**(「最初にしたから、
@@ -391,7 +391,7 @@ export function rememberSpokenProblemText(
  * この判定に引っかかった発話は会話LLMに渡さず、授業ループへ**再入**して
  * 同じ板書の続きで応える(`agent.ts` の `serveBoardRequests`)。
  *
- * **語彙は狭く保つ。**「書いて」だけで拾うと、教え返しの説明そのもの
+ * **語彙は狭く保つ。**「書いて」だけで拾うと、生徒の説明そのもの
  * (「ここで式を書いて解く」)が誤って授業へ吸い込まれる。板書・黒板と
  * 名指しされたときだけ拾う(取りこぼした言い回しは従来どおり会話が受ける)。
  */
@@ -404,29 +404,12 @@ export function asksForBoard(text: string, locale: CurriculumLocale): boolean {
   return BOARD_REQUEST_PATTERNS[locale].test(text);
 }
 
-/**
- * 「じゃあ今の、自分の言葉で説明してみて」の形か。**授業の往復を終える唯一の合図。**
- *
- * {@link handsTurnToStudent} は「番を渡したか」を見る広い判定で、切り分けの質問も
- * 途中の問いかけ(「最小公倍数、何になると思う?」)も true になる。そこで往復を
- * 終えると、質問を1つしただけで板書の続きが書けなくなる — まさに
- * 「先輩がすぐ説明を投げてくる」というドッグフーディングの報告の形。
- *
- * だから途中の問いかけは**答えを聞いて同じ板書に続け**、教え返しへ渡す言い方
- * (板書プロンプトが最後の手順に固定している文言の族)だけで授業を終える。
- * 文言を変えるときはプロンプト(`senpai_board.*.md` の受け渡しの節)と一緒に変えること
- * (`prompts/README.md` の二重書きの表)。
- */
-const TEACH_BACK_HANDOFF_PATTERNS: Record<CurriculumLocale, RegExp[]> = {
-  ja: [/自分の言葉で説明/, /説明してみて/, /どうしてそうなるか.*説明/],
-  en: [/your own words/i, /explain (?:that|it|this) back/i, /explain.*why it works/i],
-};
-
-export function asksForTeachBack(speech: string, locale: CurriculumLocale): boolean {
-  const normalized = speech.trim();
-  if (normalized.length === 0) return false;
-  return TEACH_BACK_HANDOFF_PATTERNS[locale].some((pattern) => pattern.test(normalized));
-}
+// ここには `asksForTeachBack`(「じゃあ今の、自分の言葉で説明してみて」の検出)があった。
+//
+// **ADR 0009 で消した。**あれは「先輩の言い方で授業を終える」ための判定で、
+// 教え返しへ渡す合図だった。降ろすのが生徒の「わかった」だけになった以上、
+// 先輩の言い回しで授業が終わる道は**残っていてはいけない** — 残すと、
+// 生成が1回ぶれて「説明してみて」と言った瞬間に、押していない生徒の授業が終わる。
 
 /**
  * セッション開始時に板書授業へ入るか。
@@ -439,21 +422,27 @@ export function asksForTeachBack(speech: string, locale: CurriculumLocale): bool
  * 根拠なしで板書を作らず、従来の聞き直し会話へ縮退する。
  */
 export function startsWithBoardLesson(
-  context: Pick<SessionContext, "kind" | "review_hole">,
+  context: Pick<SessionContext, "kind" | "review_hole" | "review_problem">,
 ): boolean {
-  return context.kind === "new" || context.review_hole != null;
+  return context.kind === "new" || context.review_problem != null || context.review_hole != null;
 }
 
 /**
- * 復習の穴を板書プロンプトへ貼るJSON。
+ * 復習の根拠を板書プロンプトへ貼るJSON。
  *
- * `problem_text` へ穴を詰めない。問題写真の事実と前回の観測を混ぜると、
+ * **復習問題があればそちらを渡す**(ADR 0009)。「この問いに、こう答えて、
+ * こう判定された」は、穴の「説明が止まった」より具体的で、先輩が何を教え直せば
+ * いいかが決まる。移行前に溜まった穴から入った復習だけが `review_hole` を使う。
+ *
+ * `problem_text` へ詰めない。問題写真の事実と前回の観測を混ぜると、
  * 「問題写真なしなら推測しない」という新規授業の保険が効かなくなる。
- * JSONにするのは `desc` / `evidence` の改行や引用符まで**データの境界内**に置き、
- * 見出しに化けさせないため。新規授業では文字列 `null` を渡し、ロケール固有の
- * ダミー文言を増やさない。
+ * JSONにするのは改行や引用符まで**データの境界内**に置き、見出しに化けさせないため。
+ * 新規授業では文字列 `null` を渡し、ロケール固有のダミー文言を増やさない。
  */
 export function renderReviewBoardContext(context: SessionContext): string {
+  if (context.review_problem != null) {
+    return JSON.stringify(context.review_problem, null, 2);
+  }
   return context.review_hole == null ? "null" : JSON.stringify(context.review_hole, null, 2);
 }
 
@@ -519,40 +508,11 @@ export function wroteOnBoard(steps: readonly BoardStep[]): boolean {
   return steps.some((step) => step.board !== null);
 }
 
-/**
- * 板書LLMが最後の一言で番を渡し忘れたときの、コード側の保険。
- *
- * プロンプトだけに任せると、生成が1回ぶれただけで「教えて終わり」になる。
- * 一方、すでに番を渡しているのに毎回定型句を足すと同じ質問を二度聞く。
- * 実際に配送できた最後の手順を見て、不足したときだけ教え返しへ戻す。
- *
- * **板書に1行も書いていない回では足さない。**「じゃあ今の」の「今の」が
- * 存在しないので、教わっていないことの説明を求めることになる(§2 の逆)。
- * 実際に起きていたのは次の並びで、しかも会話プロンプトは
- * 「いまやっていること — 教え返し」で固定なので、**そのまま堂々巡りになる**:
- *
- *   先輩「問題、読んでもらってもいい?」  ← 写真から問題文が取れなかった授業の第一声
- *   先輩「じゃあ今の、自分の言葉で説明してみて。」  ← ここ(無条件で足していた)
- *
- * 立て直しは呼び出し側の責務(`agent.ts` が `lessonFailedPrompt` を出す)。
- * ここは「**足さない**」だけを決める。
- */
-export function teachBackFallback(
-  context: Pick<SessionContext, "locale">,
-  steps: readonly BoardStep[],
-): string | null {
-  const last = steps.at(-1);
-  if (last === undefined || stepAwaitsInput(last, context.locale)) return null;
-  if (!wroteOnBoard(steps)) return null;
-  const solvingIndex = steps.findLastIndex(stepAwaitsSolving);
-  const firstAfterSolving = steps[solvingIndex + 1];
-  // 「できた」分岐は正答の板書から始まる。「どこで止まった?」(board:null)を
-  // 挟んだ教え直しを、正答を書けた分岐と取り違えない。
-  if (solvingIndex >= 0 && firstAfterSolving !== undefined && firstAfterSolving.board !== null) {
-    return practiceTeachBackPrompt(context.locale);
-  }
-  return teachBackPrompt(context.locale);
-}
+// ここには `teachBackFallback` があった。**ADR 0009 で消した。**
+//
+// 「板書LLMが最後の一言で番を渡し忘れたら、定型句で教え返しへ戻す」保険で、
+// 戻す先(教え返し)が無くなった時点で役目が終わっている。渡し忘れた回は
+// 授業ループが続きを書かせる(`lesson-loop.ts` の `lesson_no_handoff_continued`)。
 
 /**
  * 板書の要約の上限(文字)。
@@ -598,7 +558,7 @@ function describeBoard(board: BoardStep["board"], locale: CurriculumLocale): str
         return names.length === 0 ? "" : ` [${names.join(" ")}]`;
       })()}`;
     // 英語の板書。**例文と、そこで見せた焦点まで**を残す。
-    // 「例文を出した」だけだと、教え返しで何を聞き返せばいいか決められない。
+    // 「例文を出した」だけだと、あとで何を聞き返せばいいか決められない。
     case "sentence":
       return [
         `${label}: ${board.text}`,
@@ -619,7 +579,7 @@ function describeBoard(board: BoardStep["board"], locale: CurriculumLocale): str
 /**
  * 授業の列を1行ずつ書き下す。手順は `index + 1` の番号、発話はロール名で始める。
  *
- * `keep` は溢れたときにどちらを残すか。教え返しの要約は**先頭**を残す
+ * `keep` は溢れたときにどちらを残すか。会話へ渡す要約は**先頭**を残す
  * (授業は上から積み上がる構造なので、途中で切れても「ここまでは教えた」が読める)。
  * 続きを書かせる指示は**末尾**を残す — 直前の問いかけと生徒の答えが読めないと、
  * 続きがその答えと噛み合わない。
@@ -678,7 +638,7 @@ function renderTurnLine(turn: LessonTurn, locale: CurriculumLocale, studentLabel
  *
  * ロール名は transcript の整形(`formatTranscript`)と同じ語彙にそろえる。
  * 生徒の行が入るのは、往復した授業の答え(「12だと思う」)を会話側が知らないと、
- * **同じ質問をもう一度聞く**ところから教え返しが始まってしまうため。
+ * **同じ質問をもう一度聞く**ところから会話が始まってしまうため。
  */
 export function renderLessonRecap(
   turns: readonly LessonTurn[],
@@ -723,7 +683,7 @@ export function renderLessonRecap(
 }
 
 /**
- * 続きの往復の上限(文字)。教え返しの要約より広く取る。
+ * 続きの往復の上限(文字)。会話へ渡す要約より広く取る。
  *
  * こちらは**会話のたび**ではなく授業の往復1回につき1度しか送らないので、
  * 入力トークンの重みが違う。それでも上限は要る — 板書1枚は最大40手順で、
@@ -856,7 +816,7 @@ export type SenpaiConversationInput = {
 };
 
 /**
- * 教え返しを聞く先輩のシステムプロンプト。
+ * 板書が使えないときに口だけで続ける先輩のシステムプロンプト(縮退専用)。
  *
  * `SessionContext` と板書の手順を、プロンプトの変数に写すだけの層。
  * **人格・約束・聞き方は `prompts/senpai_conversation.<locale>.md` にある。**

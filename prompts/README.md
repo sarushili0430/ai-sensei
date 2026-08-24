@@ -8,11 +8,12 @@
 | id | 使う場所 | 役割 |
 | --- | --- | --- |
 | `photo_analysis` | backend/api(Vision LLM) | ノート写真 → 単元検出・質問の種 |
-| `senpai_conversation` | agent(会話LLM) | 先輩ペルソナ + 教え返しのガードレール([ピボット計画 v1](../docs/pivot_plan_v1.md) §2) |
-| `question_types_few_shot` | agent | 教え返しを聞くときの聞き方4型をそろえるfew-shot |
-| `karte_generation` | agent(セッション終了時) | transcript → カルテJSON |
+| `senpai_conversation` | agent(会話LLM。**板書が使えないときの縮退専用**) | 先輩ペルソナ + 口だけで教えるときのガードレール([ADR 0009](../docs/adr.md#adr-0009)) |
+| `question_types_few_shot` | agent | 説明を聞くときの聞き方4型をそろえるfew-shot |
+| `practice_problem` | agent(セッション終了時) | 板書 → 復習問題1問(問い + 正解)のJSON |
+| `practice_grading` | backend/api(採点) | 解答 → `verdict` と先輩の一言のJSON |
 | `math_speech_hints` | 両方 | 数式音声の補正ヒント(§4(d)) |
-| `senpai_board` | agent(新規 / 復習の板書LLM) | 写真または対象穴を起点に、解説・新規授業だけの同じ解法の類題1問・教え返しへの受け渡しを含む板書JSON生成([ピボット計画 v1](../docs/pivot_plan_v1.md) §2・§3) |
+| `senpai_board` | agent(新規 / 復習の板書LLM) | 写真または対象穴を起点に、解説と新規授業だけの同じ解法の類題1問を含む板書JSON生成。**降りるのは生徒の「わかった」だけ**([ADR 0009](../docs/adr.md#adr-0009)) |
 | `study_plan` | agent(計画モード) | 先輩が**口で聞いて**学習計画を組む / 組み直す(同 §4-3) |
 
 現在のロケールは `ja` と `en` の2つ。**id の数 × 2ロケール**が揃って
@@ -88,7 +89,7 @@ variables: [photo_summary, visible_work, allowed_topics, question_seeds, lesson_
 
 | # | 約束 | |
 | --- | --- | --- |
-| 1 | ~~答え・解き方・正解を言わない~~ → **教える。そのあと教え返させる** | **2026-08-09 改正** |
+| 1 | ~~答え・解き方・正解を言わない~~ → ~~**教える。そのあと教え返させる**~~ → **教える。降りるのは生徒** | 2026-08-09 改正 / **2026-08-24 再改正([ADR 0009](../docs/adr.md#adr-0009))** |
 | 2 | 写真に写っていない話題に触れない(topic_idは許可リストから選ぶ) | 維持 |
 | 3 | 点数・評価語を使わない | 維持 |
 | 4 | パス(説明できない)を責めない | 維持 |
@@ -105,10 +106,10 @@ variables: [photo_summary, visible_work, allowed_topics, question_seeds, lesson_
 
 | id | 1番目の扱い |
 | --- | --- |
-| `senpai_board` | **改正後。** 写真の問題も復習の穴も教える。ただし教えっぱなしにせず、必ず説明してもらうところまで行く |
+| `senpai_board` | **改正後。** 写真の問題も復習の穴も教える。ただし言いっぱなしにせず、節目ごとに問いかけて付いてきているかを確かめる |
 | `senpai_conversation` `question_types_few_shot` | **改正後。** 説明が詰まったら教える。ただし**先に答えを埋めない** — まず言わせてから(言ってしまうと、そこが穴だったのかが永久に分からなくなる) |
 | `photo_analysis` | **改正前のまま。** 解析器の出力は「何を教えるか」を決めるための材料で、ここに解答が入ると誤読が下流に固定される |
-| `karte_generation` | 対象外(採点しない ≒ 約束3の側の話) |
+| `practice_problem` `practice_grading` | 対象外。**出題と採点は「教える / 教えない」の軸に無い。**効くのは約束3(点数をつけない)と約束4(責めない)のほうで、採点の一言は「合っているところから書き始める」形に縛ってある |
 | `study_plan` | 対象外(計画は教える場ではない)。効くのは約束3「点数をつけない」のほう |
 
 `@ai-sensei/guardrail` の `containsAnswerLeak()` は**改正前の約束1を見るための関数**で、
@@ -126,9 +127,9 @@ variables: [photo_summary, visible_work, allowed_topics, question_seeds, lesson_
 | 許可リストは主題 + 前提チェーン全体。答えられなければ1段ずつ、3問程度と残り時間を上限に切り分ける | `guardrail` の `conversationPrerequisiteDepth` / `buildAllowedTopics()`(全チェーン)と板書見出しの許可集合照合。**実際に戻る深さの判定はプロンプト側** |
 | 答えを待つ問いかけには `awaits_student: true` を付け、`steps` をそこで終える(授業は往復する) | `contract` の `boardStepSchema.awaits_student` + `senpai.ts` の `stepAwaitsStudent`(欄が無い手順だけ `handsTurnToStudent` の言い回し推測に落ちる)。`backend/agent/src/lesson.ts` の `stopAfter` がそこで止め、答えを受けた続きは `lesson-loop.ts` が同じ板書に積む |
 | 切り分け・節目の問いは板書の場所か記号を名指しし、`text` の短い `Q:` 行にも残す | 対象の名指しは機械判定しない。`lesson-loop.ts` が `awaits_student: true` の `board_kind` だけを記録し、`none` の割合を観測する |
-| 教え返しへの受け渡しは「じゃあ今の、**自分の言葉で説明してみて**」の形で言い、**途中の問いかけには「説明して」を使わない** | `senpai.ts` の `asksForTeachBack`。**授業の往復を終える唯一の合図**なので、文言の族を変えるときは判定とテストも一緒に変える |
-| `new` の類題1問には `awaits_solving: true` を付け、「できた / できなかった」まで再促しせず待つ(`review` は従来の教え返しへ直接渡す) | `contract` の `boardStepSchema.awaits_solving`、`lesson-loop.ts` の解答待ち分岐(15秒の `defaultAnswerTimeoutMs` は使わず、セッション残り時間だけで中断)、モバイルの `BoardStep.awaitsSolving` と二択UI。ボタンは既存の `lk.chat` へ発話と同じテキストを送り、新しい制御チャネルは作らない |
-| 類題の正答を板書したあと「**どうしてそうなるか、自分の言葉で説明してみて**」へ渡す。残り120秒未満だけ従来の「じゃあ今の、自分の言葉で説明してみて」へ縮退する | `senpai.ts` の `asksForTeachBack` が両方を認識し、`lesson-loop.ts` が残り時間不足なら類題手順を配送前に止める。文言の族や120秒を変えるときは判定とテストも一緒に変える |
+| **授業を終えるのは先輩ではない。**「じゃあ今の、自分の言葉で説明してみて」と言わない | コード側の相手は**「無くなったこと」**。`senpai.ts` の `asksForTeachBack` を [ADR 0009](../docs/adr.md#adr-0009) で消してある。振る舞いの側は `lesson-loop.test.ts` の「『説明してみて』と言われただけでは降りない」が縛る |
+| `new` の類題1問には `awaits_solving: true` を付け、「できた / できなかった」まで再促しせず待つ(`review` は類題を出さない) | `contract` の `boardStepSchema.awaits_solving`、`lesson-loop.ts` の解答待ち分岐(15秒の `defaultAnswerTimeoutMs` は使わず、セッション残り時間だけで中断)、モバイルの `BoardStep.awaitsSolving` と二択UI。ボタンは既存の `lk.chat` へ発話と同じテキストを送り、新しい制御チャネルは作らない |
+| 残り120秒未満では類題を出さず、要点の行まで書いて閉じる | `lesson-loop.ts` の `defaultMinContinueSeconds`。**その枠は「締めに残す枠」**で、切ったら `time_up` として降り、`senpai.ts` の `timeUpClosing` をコードが直接TTSへ渡す。120秒を変えるときは両方 |
 
 学習計画(`study_plan`)の二重書きの相手は、さらに別です:
 
@@ -141,7 +142,7 @@ variables: [photo_summary, visible_work, allowed_topics, question_seeds, lesson_
 | `topic_ids` は許可リストから選ぶ | `guardrail` の `filterHoleTopicIds()` と同じ照合(**計画向けはまだ無い** — 下記) |
 | 組み直しで `intake` を聞き直さない | **コード側の相手がいない。**ここはプロンプトだけが守っている |
 
-教え返し(`senpai_conversation`)にも、締めの検出という二重書きの相手があります。
+縮退経路の会話(`senpai_conversation`)にも、締めの検出という二重書きの相手があります。
 
 | プロンプトに書くこと | コード側の相手 |
 | --- | --- |

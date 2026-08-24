@@ -17,6 +17,18 @@ class SessionControlClient {
 
   final PerformSessionRpc _performRpc;
 
+  Future<void> understood({
+    required String destinationIdentity,
+    required String sessionId,
+  }) => _send(
+    destinationIdentity: destinationIdentity,
+    body: <String, dynamic>{
+      'v': sessionControlProtocolVersion,
+      'type': 'understood',
+      'session_id': sessionId,
+    },
+  );
+
   Future<void> problemPhotoAnalyzing({
     required String destinationIdentity,
     required String sessionId,

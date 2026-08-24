@@ -51,6 +51,8 @@ class _FakeServer {
           'streak_days': 3,
           'filled_holes': 4,
           'open_holes': 1,
+          'solved_problems': 12,
+          'open_problems': 2,
           'last_session_date': '2026-08-03',
         },
         'is_premium': _premium,
@@ -89,7 +91,9 @@ class _FakeServer {
   http.Response _json(Map<String, dynamic> body) => http.Response(
     jsonEncode(body),
     200,
-    headers: <String, String>{'content-type': 'application/json; charset=utf-8'},
+    headers: <String, String>{
+      'content-type': 'application/json; charset=utf-8',
+    },
   );
 }
 
@@ -113,7 +117,11 @@ ProviderContainer _container(_FakeServer server) {
     overrides: <Object?>[
       deviceIdProvider.overrideWithValue(_deviceId),
       apiClientProvider.overrideWithValue(
-        ApiClient(baseUrl: 'http://localhost:8787', deviceId: _deviceId, client: server.client),
+        ApiClient(
+          baseUrl: 'http://localhost:8787',
+          deviceId: _deviceId,
+          client: server.client,
+        ),
       ),
       entitlementControllerProvider.overrideWith(FakeEntitlementController.new),
     ].cast(),
@@ -130,7 +138,8 @@ Future<void> _boot(ProviderContainer container) async {
 }
 
 FakeEntitlementController _entitlement(ProviderContainer container) =>
-    container.read(entitlementControllerProvider.notifier) as FakeEntitlementController;
+    container.read(entitlementControllerProvider.notifier)
+        as FakeEntitlementController;
 
 /// listener が動き出してから、同期が終わるまで待つ。
 Future<void> _settle(ProviderContainer container) async {
@@ -145,14 +154,20 @@ void main() {
       final ProviderContainer container = _container(server);
 
       // 起動時の1回目。webhookはまだ書いていない。
-      expect((await container.read(progressControllerProvider.future)).isPremium, isFalse);
+      expect(
+        (await container.read(progressControllerProvider.future)).isPremium,
+        isFalse,
+      );
 
       await container
           .read(premiumSyncProvider.notifier)
           .sync(expectPremium: true, backoff: _noWait);
 
       // ここが false のままなのが、報告されたバグそのもの。
-      expect(container.read(progressControllerProvider).value?.isPremium, isTrue);
+      expect(
+        container.read(progressControllerProvider).value?.isPremium,
+        isTrue,
+      );
     });
 
     test('サーバ側がPremiumへ追いついたら、親レポートのロック応答も捨てる', () async {
@@ -162,14 +177,16 @@ void main() {
 
       // ペイウォールが上に載っても画面は破棄されないので、ロック済みproviderを
       // listenしたままにして実際のスタックと同じ寿命を作る。
-      final ProviderSubscription<AsyncValue<ParentReportResponse>> subscription =
-          container.listen<AsyncValue<ParentReportResponse>>(
+      final ProviderSubscription<AsyncValue<ParentReportResponse>>
+      subscription = container.listen<AsyncValue<ParentReportResponse>>(
         parentReportControllerProvider,
         (_, _) {},
       );
       addTearDown(subscription.close);
       expect(
-        (await container.read(parentReportControllerProvider.future)).requiresPremium,
+        (await container.read(
+          parentReportControllerProvider.future,
+        )).requiresPremium,
         isTrue,
       );
 
@@ -197,7 +214,10 @@ void main() {
           .read(premiumSyncProvider.notifier)
           .sync(expectPremium: true, backoff: _noWait);
 
-      expect(container.read(progressControllerProvider).value?.isPremium, isTrue);
+      expect(
+        container.read(progressControllerProvider).value?.isPremium,
+        isTrue,
+      );
       expect(server.progressCalls - before, 3, reason: '1回で諦めている');
     });
 
@@ -212,13 +232,16 @@ void main() {
           .read(premiumSyncProvider.notifier)
           .sync(expectPremium: true, backoff: _noWait);
 
-      expect(container.read(progressControllerProvider).value?.isPremium, isFalse);
+      expect(
+        container.read(progressControllerProvider).value?.isPremium,
+        isFalse,
+      );
       // 試行は使い切るが、無限には読まない
       expect(server.progressCalls - before, _noWait.length + 1);
     });
 
     // 課金直後は webhook が届くまで数回続けて読む。そのあいだ読み込み中の値が
-    // 空に落ちると、ホームの連続日数と埋めた穴が点滅して見える
+    // 空に落ちると、ホームの連続日数と解けた問題が点滅して見える
     // (ホームは `summary.value ?? empty` で描いている)。
     // いまの `refresh()` は直前の値を保つので落ちない。retry を足すこの変更で
     // 「何度も読む」ようになったぶん、保たなくなったら目に見えて壊れる。
@@ -228,13 +251,13 @@ void main() {
       await container.read(progressControllerProvider.future);
 
       final List<int> seen = <int>[];
-      container.listen<AsyncValue<ProgressSummary>>(progressControllerProvider, (
-        AsyncValue<ProgressSummary>? _,
-        AsyncValue<ProgressSummary> next,
-      ) {
-        // ホームと同じ読み方。0 に落ちると連続日数と埋めた穴が点滅して見える。
-        seen.add((next.value ?? ProgressSummary.empty).progress.streakDays);
-      });
+      container.listen<AsyncValue<ProgressSummary>>(
+        progressControllerProvider,
+        (AsyncValue<ProgressSummary>? _, AsyncValue<ProgressSummary> next) {
+          // ホームと同じ読み方。0 に落ちると連続日数と解けた問題が点滅して見える。
+          seen.add((next.value ?? ProgressSummary.empty).progress.streakDays);
+        },
+      );
 
       await container
           .read(premiumSyncProvider.notifier)
@@ -248,20 +271,27 @@ void main() {
   // 呼び忘れで壊れないように、購入の各入口ではなく entitlement の変化で拾う。
   // ペイウォールの中で完結した購入・Customer Center・SDKのpushも同じ経路。
   group('entitlement の変化を拾う配線', () {
-    test('SDKがPremiumをpushしたら、こちらから呼ばなくても同期が走る', () async {
-      final _FakeServer server = _FakeServer();
-      final ProviderContainer container = _container(server);
-      await _boot(container);
-      final int before = server.progressCalls;
+    test(
+      'SDKがPremiumをpushしたら、こちらから呼ばなくても同期が走る',
+      () async {
+        final _FakeServer server = _FakeServer();
+        final ProviderContainer container = _container(server);
+        await _boot(container);
+        final int before = server.progressCalls;
 
-      _entitlement(container)
-        ..emitLoading()
-        ..emit(isPremium: true);
-      await _settle(container);
+        _entitlement(container)
+          ..emitLoading()
+          ..emit(isPremium: true);
+        await _settle(container);
 
-      expect(server.progressCalls, greaterThan(before));
-      expect(container.read(progressControllerProvider).value?.isPremium, isTrue);
-    }, timeout: const Timeout(Duration(seconds: 10)));
+        expect(server.progressCalls, greaterThan(before));
+        expect(
+          container.read(progressControllerProvider).value?.isPremium,
+          isTrue,
+        );
+      },
+      timeout: const Timeout(Duration(seconds: 10)),
+    );
 
     // 起動直後に entitlement が確定するだけでは走らせない。
     // 各 Controller の build() がこれから読むので、二重に取りに行くだけになる。
@@ -287,7 +317,10 @@ void main() {
 
       _entitlement(container).emit(isPremium: true);
       await _settle(container);
-      expect(container.read(progressControllerProvider).value?.isPremium, isTrue);
+      expect(
+        container.read(progressControllerProvider).value?.isPremium,
+        isTrue,
+      );
 
       // サーバ側も失効した状態にする(EXPIRATION webhookが書いたあと)
       server.freeResponses = 9999;
@@ -297,7 +330,10 @@ void main() {
       await _settle(container);
 
       expect(server.progressCalls, greaterThan(before));
-      expect(container.read(progressControllerProvider).value?.isPremium, isFalse);
+      expect(
+        container.read(progressControllerProvider).value?.isPremium,
+        isFalse,
+      );
     }, timeout: const Timeout(Duration(seconds: 10)));
   });
 }

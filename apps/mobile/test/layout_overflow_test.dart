@@ -2,7 +2,6 @@ import 'package:ai_sensei/src/api/device_id.dart';
 import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
 import 'package:ai_sensei/src/features/karte/domain/karte.dart';
 import 'package:ai_sensei/src/features/karte/presentation/home_screen.dart';
-import 'package:ai_sensei/src/features/karte/presentation/karte_screen.dart';
 import 'package:ai_sensei/src/features/karte/presentation/review_screen.dart';
 import 'package:ai_sensei/src/features/monetization/presentation/paywall_screen.dart';
 import 'package:ai_sensei/src/features/monetization/presentation/thanks_screen.dart';
@@ -50,14 +49,18 @@ void main() {
     expect(
       tester.takeException(),
       isNull,
-      reason: '${screen.runtimeType} が ${locale.languageCode} で '
+      reason:
+          '${screen.runtimeType} が ${locale.languageCode} で '
           '${smallPhoneSurface.width.toInt()}x${smallPhoneSurface.height.toInt()} から溢れています',
     );
   }
 
   // 英語は日本語の1.5〜2倍の長さになる。日本語で組んだ余白は英語で必ず破れるので、
   // 両方通す(審査員が見るのは英語版)。
-  for (final Locale locale in <Locale>[const Locale('ja'), const Locale('en')]) {
+  for (final Locale locale in <Locale>[
+    const Locale('ja'),
+    const Locale('en'),
+  ]) {
     final String lang = locale.languageCode;
 
     testWidgets('オンボーディング4枚 ($lang)', (WidgetTester tester) async {
@@ -91,7 +94,9 @@ void main() {
         locale: locale,
         overrides: <Object?>[
           progressControllerProvider.overrideWith(FakeProgressController.new),
-          reviewControllerProvider.overrideWith(() => FakeReviewController(sampleReviewQueue)),
+          reviewControllerProvider.overrideWith(
+            () => FakeReviewController(samplePracticeQueue),
+          ),
         ],
       );
     });
@@ -106,7 +111,9 @@ void main() {
           progressControllerProvider.overrideWith(
             () => FakeProgressController(exhaustedSummary),
           ),
-          reviewControllerProvider.overrideWith(() => FakeReviewController(sampleReviewQueue)),
+          reviewControllerProvider.overrideWith(
+            () => FakeReviewController(samplePracticeQueue),
+          ),
         ],
       );
     });
@@ -118,7 +125,6 @@ void main() {
         locale: locale,
         overrides: <Object?>[
           progressControllerProvider.overrideWith(FakeProgressController.new),
-          latestKarteControllerProvider.overrideWith(FakeLatestKarteController.new),
           sessionOutcomeControllerProvider.overrideWith(
             () => FakeSessionOutcomeController(const SessionOutcome()),
           ),
@@ -126,15 +132,19 @@ void main() {
       );
     });
 
-    testWidgets('カルテ ($lang)', (WidgetTester tester) async {
+    // 時間切れは祝福と本文が別になる。長い英語でこの分岐だけ溢れても、
+    // 通常の「わかった」画面では検知できない。
+    testWidgets('祝福(時間切れ) ($lang)', (WidgetTester tester) async {
       await expectNoOverflow(
         tester,
-        const KarteScreen(),
+        const CelebrationScreen(),
         locale: locale,
         overrides: <Object?>[
-          latestKarteControllerProvider.overrideWith(FakeLatestKarteController.new),
+          progressControllerProvider.overrideWith(FakeProgressController.new),
           sessionOutcomeControllerProvider.overrideWith(
-            () => FakeSessionOutcomeController(const SessionOutcome(showPaywall: true)),
+            () => FakeSessionOutcomeController(
+              const SessionOutcome(ending: SessionEnding.timeLimit),
+            ),
           ),
         ],
       );
@@ -148,16 +158,9 @@ void main() {
         overrides: <Object?>[
           reviewControllerProvider.overrideWith(
             () => FakeReviewController(
-              ReviewQueue(
-                items: <ReviewQueueItem>[
-                  ReviewQueueItem(
-                    hole: sampleKarte.holes.first,
-                    daysSince: 3,
-                    prompt: '3日前の「判別式のなぜ」、いまなら説明できますか?',
-                    quiz: '判別式を使うと解の個数がわかる理由を説明できる?',
-                  ),
-                ],
-                filled: <FilledHole>[sampleFilledHole],
+              PracticeQueue(
+                items: <PracticeQueueItem>[samplePracticeQueue.items.first],
+                solved: <SolvedPractice>[sampleSolvedPractice],
               ),
             ),
           ),
@@ -184,7 +187,9 @@ void main() {
         const SettingsScreen(),
         locale: locale,
         overrides: <Object?>[
-          deviceIdProvider.overrideWithValue('11111111-2222-3333-4444-555555555555'),
+          deviceIdProvider.overrideWithValue(
+            '11111111-2222-3333-4444-555555555555',
+          ),
         ],
       );
     });

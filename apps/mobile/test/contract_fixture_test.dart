@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:ai_sensei/src/features/karte/domain/karte.dart';
 import 'package:ai_sensei/src/features/parent_report/domain/parent_report.dart';
 import 'package:ai_sensei/src/features/plan/domain/study_plan.dart';
+import 'package:ai_sensei/src/features/session/application/session_control.dart';
 import 'package:ai_sensei/src/features/session/domain/board.dart';
 import 'package:ai_sensei/src/features/session/domain/session.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -42,7 +43,10 @@ void main() {
     test('karte.en.json をパースできる', () {
       final Karte karte = Karte.fromJson(loadFixture('karte.en'));
 
-      expect(karte.topicIds, containsAll(<String>['A2-COORD-CIRCLE', 'A1-QUAD-SOLVE']));
+      expect(
+        karte.topicIds,
+        containsAll(<String>['A2-COORD-CIRCLE', 'A1-QUAD-SOLVE']),
+      );
       expect(karte.holes.first.topicId, 'A1-QUAD-SOLVE');
       expect(
         karte.holes.first.description,
@@ -64,7 +68,9 @@ void main() {
     // **解析の応答に部屋の鍵は入らない。**入れると「鍵を持っている = いつでも
     // 始められる」になり、持ち時間を会話の開始で押さえる意味が消える。
     test('start-session-response.json をパースできる(部屋の鍵はこちらだけ)', () {
-      final SessionStart session = SessionStart.fromJson(loadFixture('start-session-response'));
+      final SessionStart session = SessionStart.fromJson(
+        loadFixture('start-session-response'),
+      );
 
       expect(session.sessionId, isNotEmpty);
       expect(session.livekit.room, session.sessionId);
@@ -115,7 +121,10 @@ void main() {
         ..['problem'] = null
         ..['problem_outcome'] = 'too_long';
 
-      expect(SessionAnalysis.fromJson(json).problemOutcome, ProblemOutcome.tooLong);
+      expect(
+        SessionAnalysis.fromJson(json).problemOutcome,
+        ProblemOutcome.tooLong,
+      );
     });
 
     /// サーバが落ち方を増やしたときに、**古いアプリが確認画面ごと落ちない**。
@@ -129,9 +138,15 @@ void main() {
     /// 生徒が打ち直した問題文。**写真の2枠と同じ軸に並ぶ**(`api.ts` の `problemSources`)。
     test('打ち直した問題文は、出どころが manual になる', () {
       final Map<String, dynamic> json = loadFixture('create-session-response')
-        ..['problem'] = <String, dynamic>{'text': '共有点の個数を求めよ。', 'source': 'manual'};
+        ..['problem'] = <String, dynamic>{
+          'text': '共有点の個数を求めよ。',
+          'source': 'manual',
+        };
 
-      expect(SessionAnalysis.fromJson(json).problem!.source, ProblemSource.manual);
+      expect(
+        SessionAnalysis.fromJson(json).problem!.source,
+        ProblemSource.manual,
+      );
     });
 
     test('1枚に両方写っていた場合は、出どころがノートの写真になる', () {
@@ -170,11 +185,35 @@ void main() {
         loadFixture('complete-session-response'),
       );
 
-      expect(result.karte.holes, hasLength(1));
+      expect(result.practiceProblem?.question, contains('解の個数'));
+      // 元の授業と板書を失うと、復習から「どこで教わった問題か」を辿れない。
+      expect(result.practiceProblem?.sessionId, startsWith('ses_'));
+      expect(result.practiceProblem?.boardId, startsWith('brd_'));
+      expect(
+        result.practiceSchedule.map(
+          (PracticeScheduleEntry entry) => entry.days,
+        ),
+        <int>[3, 7],
+      );
       expect(result.progress.streakDays, 3);
-      expect(result.progress.filledHoles, 4);
+      expect(result.progress.solvedProblems, 12);
+      expect(result.progress.openProblems, 2);
       expect(result.limits.remainingSecondsToday, 932);
       expect(result.showPaywall, isTrue);
+    });
+
+    // 「わかった」以外で問題を作ると、教わりきっていない内容が通知される。
+    // 生成トリガーのRPCは本文を足さず、共有fixtureの形をそのまま使う。
+    test('session-control-request.understood.json をパースできる', () {
+      final Map<String, dynamic> request = loadFixture(
+        'session-control-request.understood',
+      );
+
+      expect(request, <String, dynamic>{
+        'v': sessionControlProtocolVersion,
+        'type': 'understood',
+        'session_id': isA<String>(),
+      });
     });
   });
 
@@ -187,17 +226,39 @@ void main() {
 
       expect(progress.streakDays, 3);
       expect(progress.openHoles, 1);
+      expect(progress.solvedProblems, 12);
+      expect(progress.openProblems, 2);
       expect(progress.lastSessionDate, '2026-08-03');
       expect(summary.limits.remainingSecondsToday, 900);
     });
 
-    test('review-queue-response.json をパースできる', () {
-      final ReviewQueue queue = ReviewQueue.fromJson(loadFixture('review-queue-response'));
+    test('practice-queue-response.json をパースできる', () {
+      final PracticeQueue queue = PracticeQueue.fromJson(
+        loadFixture('practice-queue-response'),
+      );
 
       expect(queue.items, hasLength(2));
       expect(queue.items.first.daysSince, 3);
-      expect(queue.items.first.prompt, contains('いまなら説明できますか'));
-      expect(queue.items.first.quiz, contains('平方完成をする理由'));
+      expect(queue.items.first.problem.question, contains('解の個数'));
+      // 通知まで持ち回ったあとも板書との対応が残らないと、復習履歴が別の授業へ混ざる。
+      expect(queue.items.first.problem.sessionId, startsWith('ses_'));
+      expect(queue.items.first.problem.boardId, startsWith('brd_'));
+      expect(queue.items.last.lastVerdict, PracticeVerdict.unclear);
+      expect(queue.solved.single.problem.question, contains('頂点'));
+    });
+
+    test('practice-answer-response.json をパースできる', () {
+      final PracticeAnswer answer = PracticeAnswer.fromJson(
+        loadFixture('practice-answer-response'),
+      );
+
+      expect(answer.attempt.response, contains('D > 0'));
+      expect(answer.attempt.verdict, PracticeVerdict.correct);
+      expect(
+        answer.nextSchedule.map((PracticeScheduleEntry entry) => entry.days),
+        <int>[3, 7],
+      );
+      expect(answer.progress.solvedProblems, 12);
     });
   });
 
@@ -211,7 +272,10 @@ void main() {
       expect(response.report, isNotNull);
       expect(response.report!.filledHoles, 2);
       expect(response.report!.streakDays, 4);
-      expect(response.report!.explainedTopics.first.topicId, 'M1-NIJI-HANBETSU');
+      expect(
+        response.report!.explainedTopics.first.topicId,
+        'M1-NIJI-HANBETSU',
+      );
       expect(response.report!.quotes.first, contains('判別式'));
     });
 
@@ -221,7 +285,10 @@ void main() {
       );
 
       expect(response.report!.explainedTopics.first.topicId, 'A1-QUAD-SOLVE');
-      expect(response.report!.explainedTopics.first.name, contains('discriminant'));
+      expect(
+        response.report!.explainedTopics.first.name,
+        contains('discriminant'),
+      );
       expect(response.report!.quotes.first, contains('real solutions'));
     });
   });
@@ -274,29 +341,48 @@ void main() {
     test('カルテのfixtureに点数・正答率のキーがない', () {
       final Map<String, dynamic> karte = loadFixture('karte');
 
-      for (final String forbidden in <String>['score', 'accuracy', 'rate', 'points', 'level']) {
-        expect(karte.containsKey(forbidden), isFalse, reason: '$forbidden は持たない');
+      for (final String forbidden in <String>[
+        'score',
+        'accuracy',
+        'rate',
+        'points',
+        'level',
+      ]) {
+        expect(
+          karte.containsKey(forbidden),
+          isFalse,
+          reason: '$forbidden は持たない',
+        );
       }
     });
 
-    test('進捗が数えるのは連続日数と穴だけ', () {
+    test('進捗の成果は連続日数と解けた問題で、旧穴の値も移行用に別で残す', () {
       final Map<String, dynamic> progress =
           loadFixture('progress-response')['progress'] as Map<String, dynamic>;
 
-      expect(
-        progress.keys.toSet(),
-        <String>{'streak_days', 'filled_holes', 'open_holes', 'last_session_date'},
-      );
+      expect(progress.keys.toSet(), <String>{
+        'streak_days',
+        'filled_holes',
+        'open_holes',
+        'solved_problems',
+        'open_problems',
+        'last_session_date',
+      });
+      // 値を一致させると、画面が旧穴を足しても契約テストからは見抜けない。
+      expect(progress['solved_problems'], isNot(progress['filled_holes']));
     });
 
     test('親レポートが持つ数値は埋めた穴と連続日数だけ', () {
       final Map<String, dynamic> report =
           loadFixture('parent-report')['report'] as Map<String, dynamic>;
 
-      expect(
-        report.keys.toSet(),
-        <String>{'period', 'filled_holes', 'streak_days', 'explained_topics', 'quotes'},
-      );
+      expect(report.keys.toSet(), <String>{
+        'period',
+        'filled_holes',
+        'streak_days',
+        'explained_topics',
+        'quotes',
+      });
       for (final String forbidden in <String>[
         'score',
         'accuracy',
@@ -305,7 +391,11 @@ void main() {
         'study_time_rank',
         'percentile',
       ]) {
-        expect(report.containsKey(forbidden), isFalse, reason: '$forbidden は親へ渡さない');
+        expect(
+          report.containsKey(forbidden),
+          isFalse,
+          reason: '$forbidden は親へ渡さない',
+        );
       }
     });
 
@@ -333,7 +423,9 @@ void main() {
 
   group('板書のfixture(LLMが出す形)', () {
     test('board-lesson.json をパースできる', () {
-      final BoardLesson lesson = BoardLesson.fromJson(loadFixture('board-lesson'));
+      final BoardLesson lesson = BoardLesson.fromJson(
+        loadFixture('board-lesson'),
+      );
 
       expect(lesson.title, '判別式で解の個数を見る');
       expect(lesson.topicIds, <String>['M1-NIJI-HANBETSU']);
@@ -346,7 +438,10 @@ void main() {
       expect(lesson.steps[0].board, isA<LatexElement>());
       expect((lesson.steps[0].board! as LatexElement).tex, 'x^2 - 3x + 2 = 0');
       expect(lesson.steps[1].board, isA<TextElement>());
-      expect((lesson.steps[1].board! as TextElement).body, 'a = 1, b = -3, c = 2');
+      expect(
+        (lesson.steps[1].board! as TextElement).body,
+        'a = 1, b = -3, c = 2',
+      );
 
       // 類題の手順だけが、通常の会話待ちとは別の解答待ちを申告する。
       expect(lesson.steps.last.awaitsSolving, isTrue);
@@ -362,14 +457,20 @@ void main() {
     // 英語の課程の板書。数学とは使える要素が重ならない(sentence / compare)ので、
     // ここが無いと新要素の形を Dart 側で誰も検査しない。
     test('board-lesson.english.json をパースできる(sentence / compare)', () {
-      final BoardLesson lesson = BoardLesson.fromJson(loadFixture('board-lesson.english'));
-      final List<BoardElement> elements =
-          lesson.steps.map((BoardStep s) => s.board).whereType<BoardElement>().toList();
+      final BoardLesson lesson = BoardLesson.fromJson(
+        loadFixture('board-lesson.english'),
+      );
+      final List<BoardElement> elements = lesson.steps
+          .map((BoardStep s) => s.board)
+          .whereType<BoardElement>()
+          .toList();
       expect(elements.whereType<SentenceElement>(), isNotEmpty);
       expect(elements.whereType<CompareElement>(), isNotEmpty);
       expect(lesson.steps.last.awaitsSolving, isTrue);
 
-      final SentenceElement sentence = elements.whereType<SentenceElement>().first;
+      final SentenceElement sentence = elements
+          .whereType<SentenceElement>()
+          .first;
       // focus は text の一部(README「JSON Schema に現れない不変条件」)。
       expect(sentence.focus, isNotNull);
       expect(sentence.text.contains(sentence.focus!), isTrue);
@@ -382,7 +483,9 @@ void main() {
     });
 
     test('board-lesson.en.json をパースできる(海外向けの課程・plotを含む)', () {
-      final BoardLesson lesson = BoardLesson.fromJson(loadFixture('board-lesson.en'));
+      final BoardLesson lesson = BoardLesson.fromJson(
+        loadFixture('board-lesson.en'),
+      );
 
       expect(lesson.topicIds, <String>['A2-INEQ-QUADRATIC', 'A1-QUAD-SOLVE']);
 
@@ -401,14 +504,17 @@ void main() {
     });
 
     test('circle要素をパースできる(board-channel-log.jsonから。円のlabelsは2つ)', () {
-      final BoardChannelLog log = BoardChannelLog.fromJson(loadFixture('board-channel-log'));
+      final BoardChannelLog log = BoardChannelLog.fromJson(
+        loadFixture('board-channel-log'),
+      );
       final BoardStepMessage circleStepMessage =
           log.messages.firstWhere(
                 (BoardChannelMessage m) =>
                     m is BoardStepMessage && m.step.board is CircleElement,
               )
               as BoardStepMessage;
-      final CircleElement circle = circleStepMessage.step.board! as CircleElement;
+      final CircleElement circle =
+          circleStepMessage.step.board! as CircleElement;
 
       expect(circle.center.x, 0);
       expect(circle.center.y, 0);
@@ -417,7 +523,9 @@ void main() {
 
       final BoardStepMessage solvingStep = log.messages
           .whereType<BoardStepMessage>()
-          .singleWhere((BoardStepMessage message) => message.step.awaitsSolving == true);
+          .singleWhere(
+            (BoardStepMessage message) => message.step.awaitsSolving == true,
+          );
       expect(solvingStep.step.awaitsSolving, isTrue);
       expect(circleStepMessage.step.awaitsSolving, isNull);
     });
@@ -425,7 +533,9 @@ void main() {
 
   group('板書のfixture(data channelを流れる形)', () {
     test('board-channel-log.json をパースできる(2枚の板書・open→step*→close)', () {
-      final BoardChannelLog log = BoardChannelLog.fromJson(loadFixture('board-channel-log'));
+      final BoardChannelLog log = BoardChannelLog.fromJson(
+        loadFixture('board-channel-log'),
+      );
 
       expect(log.messages, hasLength(9));
       expect(log.messages.first, isA<BoardOpenMessage>());
@@ -437,13 +547,16 @@ void main() {
       expect(firstClose.reason, BoardCloseReason.completed);
 
       // 2枚目の板書は2手順→close(step_count=2・interrupted。割り込みで途中終了)。
-      final BoardCloseMessage secondClose = log.messages.last as BoardCloseMessage;
+      final BoardCloseMessage secondClose =
+          log.messages.last as BoardCloseMessage;
       expect(secondClose.stepCount, 2);
       expect(secondClose.reason, BoardCloseReason.interrupted);
     });
 
     test('board-channel-log.json は BoardChannelReceiver をそのまま最後まで通せる', () {
-      final BoardChannelLog log = BoardChannelLog.fromJson(loadFixture('board-channel-log'));
+      final BoardChannelLog log = BoardChannelLog.fromJson(
+        loadFixture('board-channel-log'),
+      );
       final BoardChannelReceiver receiver = BoardChannelReceiver(
         sessionId: log.messages.first.sessionId,
       );
@@ -506,7 +619,10 @@ void main() {
 
     test('labelsが2つしか無いのも壊れている(3つ揃わない三角形)', () {
       expect(
-        () => ensureValidTriangle(const <BoardPoint>[p, p, p], const <String>['A', 'B']),
+        () => ensureValidTriangle(
+          const <BoardPoint>[p, p, p],
+          const <String>['A', 'B'],
+        ),
         throwsA(isA<BoardContractViolation>()),
       );
     });
@@ -564,13 +680,14 @@ void main() {
       topicIds: <String>['M1-NIJI-HANBETSU'],
     );
 
-    BoardChannelMessage step(int seq, int index) => BoardChannelMessage.boardStep(
-      v: 1,
-      sessionId: 'ses_1',
-      boardId: 'brd_1',
-      seq: seq,
-      step: BoardStep(index: index, speech: 'てすと', board: null),
-    );
+    BoardChannelMessage step(int seq, int index) =>
+        BoardChannelMessage.boardStep(
+          v: 1,
+          sessionId: 'ses_1',
+          boardId: 'brd_1',
+          seq: seq,
+          step: BoardStep(index: index, speech: 'てすと', board: null),
+        );
 
     BoardChannelMessage stepWithBoard(int seq, int index, BoardElement board) =>
         BoardChannelMessage.boardStep(
@@ -581,17 +698,20 @@ void main() {
           step: BoardStep(index: index, speech: 'てすと', board: board),
         );
 
-    BoardChannelMessage close(int seq, int stepCount) => BoardChannelMessage.boardClose(
-      v: 1,
-      sessionId: 'ses_1',
-      boardId: 'brd_1',
-      seq: seq,
-      stepCount: stepCount,
-      reason: BoardCloseReason.completed,
-    );
+    BoardChannelMessage close(int seq, int stepCount) =>
+        BoardChannelMessage.boardClose(
+          v: 1,
+          sessionId: 'ses_1',
+          boardId: 'brd_1',
+          seq: seq,
+          stepCount: stepCount,
+          reason: BoardCloseReason.completed,
+        );
 
     test('正常な列(open→step→step→close)は最後まで通り、盤面に手順が積まれる', () {
-      final BoardChannelReceiver receiver = BoardChannelReceiver(sessionId: 'ses_1');
+      final BoardChannelReceiver receiver = BoardChannelReceiver(
+        sessionId: 'ses_1',
+      );
 
       receiver.accept(open);
       expect(receiver.isOpen, isTrue);
@@ -604,7 +724,9 @@ void main() {
     });
 
     test('seqが飛ぶと検知できる(1個欠落)', () {
-      final BoardChannelReceiver receiver = BoardChannelReceiver(sessionId: 'ses_1');
+      final BoardChannelReceiver receiver = BoardChannelReceiver(
+        sessionId: 'ses_1',
+      );
       receiver.accept(open); // seq=0
       expect(
         () => receiver.accept(step(2, 0)), // seq=1 が欠落。いきなり2が来た
@@ -613,7 +735,9 @@ void main() {
     });
 
     test('seqが重複しても検知できる', () {
-      final BoardChannelReceiver receiver = BoardChannelReceiver(sessionId: 'ses_1');
+      final BoardChannelReceiver receiver = BoardChannelReceiver(
+        sessionId: 'ses_1',
+      );
       receiver.accept(open); // seq=0
       receiver.accept(step(1, 0)); // seq=1
       expect(
@@ -623,7 +747,9 @@ void main() {
     });
 
     test('手順のindexが飛ぶと検知できる(板書内の欠落)', () {
-      final BoardChannelReceiver receiver = BoardChannelReceiver(sessionId: 'ses_1');
+      final BoardChannelReceiver receiver = BoardChannelReceiver(
+        sessionId: 'ses_1',
+      );
       receiver.accept(open); // seq=0
       expect(
         () => receiver.accept(step(1, 1)), // index=0を期待しているのにindex=1が来た
@@ -632,7 +758,9 @@ void main() {
     });
 
     test('末尾の手順が欠落すると step_count の不一致で検知できる', () {
-      final BoardChannelReceiver receiver = BoardChannelReceiver(sessionId: 'ses_1');
+      final BoardChannelReceiver receiver = BoardChannelReceiver(
+        sessionId: 'ses_1',
+      );
       receiver.accept(open); // seq=0
       receiver.accept(step(1, 0)); // seq=1, index=0(本来は2手順あるうちの1つ目)
       // 2つ目のstep(index=1)が丸ごと欠落したまま close が来た場合。
@@ -644,20 +772,28 @@ void main() {
     });
 
     test('別セッション宛てのメッセージは拒否される(部屋の取り違え。README表には無いが追加した検査)', () {
-      final BoardChannelReceiver receiver = BoardChannelReceiver(sessionId: 'ses_1');
-      const BoardChannelMessage otherSessionOpen = BoardChannelMessage.boardOpen(
-        v: 1,
-        sessionId: 'ses_other', // 期待しているセッションと違う
-        boardId: 'brd_1',
-        seq: 0,
-        title: '判別式で解の個数を見る',
-        topicIds: <String>['M1-NIJI-HANBETSU'],
+      final BoardChannelReceiver receiver = BoardChannelReceiver(
+        sessionId: 'ses_1',
       );
-      expect(() => receiver.accept(otherSessionOpen), throwsA(isA<BoardContractViolation>()));
+      const BoardChannelMessage otherSessionOpen =
+          BoardChannelMessage.boardOpen(
+            v: 1,
+            sessionId: 'ses_other', // 期待しているセッションと違う
+            boardId: 'brd_1',
+            seq: 0,
+            title: '判別式で解の個数を見る',
+            topicIds: <String>['M1-NIJI-HANBETSU'],
+          );
+      expect(
+        () => receiver.accept(otherSessionOpen),
+        throwsA(isA<BoardContractViolation>()),
+      );
     });
 
     test('board_openされていないboard_idのstepは拒否される(取り違え配送)', () {
-      final BoardChannelReceiver receiver = BoardChannelReceiver(sessionId: 'ses_1');
+      final BoardChannelReceiver receiver = BoardChannelReceiver(
+        sessionId: 'ses_1',
+      );
       receiver.accept(open); // board_id: brd_1
       const BoardChannelMessage wrongBoardStep = BoardChannelMessage.boardStep(
         v: 1,
@@ -666,11 +802,16 @@ void main() {
         seq: 1,
         step: BoardStep(index: 0, speech: 'てすと', board: null),
       );
-      expect(() => receiver.accept(wrongBoardStep), throwsA(isA<BoardContractViolation>()));
+      expect(
+        () => receiver.accept(wrongBoardStep),
+        throwsA(isA<BoardContractViolation>()),
+      );
     });
 
     test('board_closeされる前に次のboard_openが来ると検知できる', () {
-      final BoardChannelReceiver receiver = BoardChannelReceiver(sessionId: 'ses_1');
+      final BoardChannelReceiver receiver = BoardChannelReceiver(
+        sessionId: 'ses_1',
+      );
       receiver.accept(open); // brd_1 を開いたまま
       const BoardChannelMessage secondOpen = BoardChannelMessage.boardOpen(
         v: 1,
@@ -680,11 +821,16 @@ void main() {
         title: '別の問題',
         topicIds: <String>['M2-ZUKEI-ENCHOKU'],
       );
-      expect(() => receiver.accept(secondOpen), throwsA(isA<BoardContractViolation>()));
+      expect(
+        () => receiver.accept(secondOpen),
+        throwsA(isA<BoardContractViolation>()),
+      );
     });
 
     test('board_open は前の板書の手順を消す(それ以外では消えない)', () {
-      final BoardChannelReceiver receiver = BoardChannelReceiver(sessionId: 'ses_1');
+      final BoardChannelReceiver receiver = BoardChannelReceiver(
+        sessionId: 'ses_1',
+      );
       receiver.accept(open); // brd_1
       receiver.accept(step(1, 0));
       receiver.accept(step(2, 1));
@@ -722,7 +868,9 @@ void main() {
     // ---------------------------------------------------------------------
 
     test('accept() は domain が min>=max の plot要素を弾く(検査関数を直接呼ばない)', () {
-      final BoardChannelReceiver receiver = BoardChannelReceiver(sessionId: 'ses_1');
+      final BoardChannelReceiver receiver = BoardChannelReceiver(
+        sessionId: 'ses_1',
+      );
       receiver.accept(open);
 
       const BoardElement brokenPlot = BoardElement.plot(
@@ -736,11 +884,15 @@ void main() {
     });
 
     test('accept() は頂点が2点しか無い triangle要素を弾く(検査関数を直接呼ばない)', () {
-      final BoardChannelReceiver receiver = BoardChannelReceiver(sessionId: 'ses_1');
+      final BoardChannelReceiver receiver = BoardChannelReceiver(
+        sessionId: 'ses_1',
+      );
       receiver.accept(open);
 
       const BoardPoint p = BoardPoint(x: 0, y: 0);
-      const BoardElement brokenTriangle = BoardElement.triangle(vertices: <BoardPoint>[p, p]);
+      const BoardElement brokenTriangle = BoardElement.triangle(
+        vertices: <BoardPoint>[p, p],
+      );
       expect(
         () => receiver.accept(stepWithBoard(1, 0, brokenTriangle)),
         throwsA(isA<BoardContractViolation>()),
@@ -755,7 +907,10 @@ void main() {
         () => ensureValidSentence('I have lived here.', '現在完了'),
         throwsA(isA<BoardContractViolation>()),
       );
-      expect(() => ensureValidSentence('I have lived here.', 'have lived'), returnsNormally);
+      expect(
+        () => ensureValidSentence('I have lived here.', 'have lived'),
+        returnsNormally,
+      );
     });
 
     test('accept() は列が3つある compare要素を弾く', () {
@@ -771,14 +926,19 @@ void main() {
     });
 
     test('accept() は正常な plot要素(min<max)は素通しする', () {
-      final BoardChannelReceiver receiver = BoardChannelReceiver(sessionId: 'ses_1');
+      final BoardChannelReceiver receiver = BoardChannelReceiver(
+        sessionId: 'ses_1',
+      );
       receiver.accept(open);
 
       const BoardElement validPlot = BoardElement.plot(
         fn: 'x^2',
         domain: BoardDomain(min: -1, max: 1),
       );
-      expect(() => receiver.accept(stepWithBoard(1, 0, validPlot)), returnsNormally);
+      expect(
+        () => receiver.accept(stepWithBoard(1, 0, validPlot)),
+        returnsNormally,
+      );
       expect(receiver.currentSteps, hasLength(1));
     });
   });

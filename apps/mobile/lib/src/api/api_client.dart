@@ -63,7 +63,8 @@ class ApiClient {
     /// 学校段階。単元を探す範囲を絞るために送る(`packages/contract` の
     /// `schoolStages`)。省略するとサーバ側の既定「高校生」になる。
     String schoolStage = 'high_school',
-    String? holeId,
+    String? problemId,
+    @Deprecated('復習セッションの起点は problemId を使う') String? holeId,
     List<String>? topicIds,
   }) async {
     final http.MultipartRequest request =
@@ -74,6 +75,8 @@ class ApiClient {
             'locale': locale,
             'school_stage': schoolStage,
             // 値が null なら要素ごと落ちる(Dart 3.12 の null-aware element)
+            'problem_id': ?problemId,
+            // 移行前に作られた呼び出しだけを受ける。新しい復習導線は problem_id 固定。
             'hole_id': ?holeId,
             if (topicIds != null && topicIds.isNotEmpty) 'topic_ids': topicIds,
           });
@@ -267,11 +270,23 @@ class ApiClient {
     return ProgressSummary.fromJson(_decode(response));
   }
 
-  Future<ReviewQueue> fetchReviews() async {
+  Future<PracticeQueue> fetchPractice() async {
     final http.Response response = await _client
-        .get(Uri.parse('$baseUrl/v1/me/reviews'), headers: _headers)
+        .get(Uri.parse('$baseUrl/v1/me/practice'), headers: _headers)
         .timeout(_timeout);
-    return ReviewQueue.fromJson(_decode(response));
+    return PracticeQueue.fromJson(_decode(response));
+  }
+
+  /// 1問だけを引く。**通知の着地点はこちら。**
+  ///
+  /// リスト(`fetchPractice`)から探させない。正解した問題にも7日後の通知は届くが、
+  /// それは `items` にはもう無い(解けた問題は `solved` へ回る)し、`solved` にも
+  /// 直近ぶんしか載らない。**よく解く生徒ほど自分の通知を開けなくなる。**
+  Future<PracticeQueueItem> fetchPracticeProblem(String problemId) async {
+    final http.Response response = await _client
+        .get(Uri.parse('$baseUrl/v1/me/practice/$problemId'), headers: _headers)
+        .timeout(_timeout);
+    return PracticeQueueItem.fromJson(_decode(response));
   }
 
   Future<ParentReportResponse> fetchParentReport() async {
@@ -281,27 +296,22 @@ class ApiClient {
     return ParentReportResponse.fromJson(_decode(response));
   }
 
-  /// 小テストの自己申告。**声も接続も使わない**(原価ゼロ)。
-  Future<ReviewAnswer> answerReview(
-    String holeId,
-    ReviewOutcome outcome,
+  /// 復習問題のテキスト解答。正解は端末へ渡さず、サーバ側で採点する。
+  Future<PracticeAnswer> answerPractice(
+    String problemId,
+    String responseText,
   ) async {
     final http.Response response = await _client
         .post(
-          Uri.parse('$baseUrl/v1/me/reviews/$holeId'),
+          Uri.parse('$baseUrl/v1/me/practice/$problemId'),
           headers: <String, String>{
             ..._headers,
             'content-type': 'application/json; charset=utf-8',
           },
-          body: jsonEncode(<String, dynamic>{
-            'outcome': switch (outcome) {
-              ReviewOutcome.saidIt => 'said_it',
-              ReviewOutcome.notYet => 'not_yet',
-            },
-          }),
+          body: jsonEncode(<String, dynamic>{'response': responseText}),
         )
         .timeout(_timeout);
-    return ReviewAnswer.fromJson(_decode(response));
+    return PracticeAnswer.fromJson(_decode(response));
   }
 
   /// 計画を作る音声ルームを開く。授業セッションとは別なので写真もkindも送らない。

@@ -13,8 +13,9 @@ import {
   formatTranscript,
   formatVisibleWork,
   getPrompt,
-  karteSystemPrompt,
   parsePrompt,
+  practiceGradingSystemPrompt,
+  practiceProblemSystemPrompt,
   promptCatalog,
   promptIds,
   promptLocales,
@@ -113,19 +114,28 @@ describe("教科ごとの音声補正ヒント", () => {
     expect(math).not.toContain("冠詞");
   });
 
-  it("カルテ生成でも教科で切り替わる", () => {
-    const karte = karteSystemPrompt(
-      {
-        problem_text: "Read the following passage and answer the question.",
-        photo_summary: "現在完了の練習問題",
-        allowed_topics: "- JE-JISEI-KANRYO",
-        transcript: "先輩: なんでですか?",
-        is_premium: "false",
-      },
-      { subject: "english" },
-    );
-    expect(karte).toContain("冠詞");
-    expect(karte).not.toContain("さんぶんのに");
+  /**
+   * 復習問題の生成と採点には、音声補正ヒントを**同梱しない**(ADR 0009)。
+   *
+   * 生成の入力は板書(こちらが書いた文字)、採点の入力はテキスト入力の解答で、
+   * どちらもSTTを通っていない。「さんぶんのに = 2/3」の補正を持ち込むと、
+   * 生徒が実際に打った文字を別の式として読み直すことになる。
+   */
+  it("復習問題の生成と採点には音声補正ヒントが入らない", () => {
+    const built = practiceProblemSystemPrompt({
+      problem_text: "Read the following passage and answer the question.",
+      board_recap: '1. "Here is the shape."',
+      allowed_topics: "- JE-JISEI-KANRYO",
+    });
+    const graded = practiceGradingSystemPrompt({
+      question: "x² − 6x + 5 = 0 の解の個数は?",
+      answer: "2個",
+      response: "2こ",
+    });
+    for (const prompt of [built, graded]) {
+      expect(prompt).not.toContain("さんぶんのに");
+      expect(prompt).not.toContain("冠詞");
+    }
   });
 });
 
@@ -308,21 +318,17 @@ describe("組み立て済みプロンプト", () => {
     expect(conversation).toContain("ユーザーが説明できた内容ではありません");
   });
 
-  it("カルテ生成プロンプトも組み立てられる", () => {
-    const karte = karteSystemPrompt(
-      {
-        problem_text: "円 x^2 + y^2 = 5 と直線の共有点を求めよ。",
-        photo_summary: "円と直線",
-        allowed_topics: "- M2-ZUKEI-ENCHOKU",
-        transcript: "先輩: なんでですか?",
-        is_premium: "false",
-      },
-      { subject: "math" },
-    );
-    expect(karte).toContain("said_well");
-    expect(karte).toContain("円 x^2 + y^2 = 5");
-    expect(karte).toContain("問題文を読み上げただけ");
-    expect(karte).toContain("先輩: なんでですか?");
+  it("復習問題の生成プロンプトも組み立てられる", () => {
+    const practice = practiceProblemSystemPrompt({
+      problem_text: "円 x^2 + y^2 = 5 と直線の共有点を求めよ。",
+      board_recap: "1. 「まず距離を出すね。」 / 板書: d = |c| / \\sqrt{2}",
+      allowed_topics: "- M2-ZUKEI-ENCHOKU",
+    });
+    expect(practice).toContain("円 x^2 + y^2 = 5");
+    expect(practice).toContain("まず距離を出すね。");
+    expect(practice).toContain("M2-ZUKEI-ENCHOKU");
+    // 材料は板書。**transcript ではない**(ADR 0009 で反転した)。
+    expect(practice).toContain("板書に出した手順");
   });
 
   // 英語ロケールでは、日本語の本文に「英語で答えて」を足すのではなく、
@@ -347,22 +353,18 @@ describe("組み立て済みプロンプト", () => {
     expect(english).not.toMatch(/[ぁ-んァ-ン一-龯]/);
   });
 
-  it("英語のカルテ生成プロンプトも組み立てられる", () => {
-    const karte = karteSystemPrompt(
+  it("英語の復習問題プロンプトも組み立てられる", () => {
+    const practice = practiceProblemSystemPrompt(
       {
         problem_text: "Find the intersections of the circle and line.",
-        photo_summary: "A line-and-circle problem",
+        board_recap: '1. "First, the distance from the centre."',
         allowed_topics: "- A2-COORD-CIRCLE",
-        transcript: "Senpai: Why is that?",
-        is_premium: "false",
       },
-      { locale: "en", subject: "math" },
+      { locale: "en" },
     );
-    expect(karte).toContain("said_well");
-    expect(karte).toContain("Find the intersections");
-    expect(karte).toContain("Merely reading the question");
-    expect(karte).toContain("Senpai: Why is that?");
-    expect(karte).not.toMatch(/[ぁ-んァ-ン一-龯]/);
+    expect(practice).toContain("Find the intersections");
+    expect(practice).toContain("First, the distance from the centre.");
+    expect(practice).not.toMatch(/[ぁ-んァ-ン一-龯]/);
   });
 });
 
@@ -390,13 +392,17 @@ describe("設計上の約束がプロンプトに書かれている", () => {
   });
 
   /**
-   * 改正後の約束1。**教えっぱなしで終わらせない**ところまでが1つの約束で、
+   * 改正後の約束1。**言いっぱなしにしない**ところまでが1つの約束で、
    * 前半だけ残ると「答えを教えるアプリ」になる(ピボットで却下された案そのもの)。
+   *
+   * ADR 0009 で「そのあと教え返してもらう」は畳んだが、**前半だけを残していない**
+   * ことをここで縛る。教え返しの代わりに置いたのは、節目ごとの問いかけと
+   * 「先に答えを埋めない」。
    */
-  it("教える → 教え返させる、が両方の会話プロンプトに書かれている", () => {
-    expect(getPrompt("senpai_board", "ja").body).toContain("教えっぱなしで終わらせない");
+  it("教える → 言いっぱなしにしない、が両方の会話プロンプトに書かれている", () => {
+    expect(getPrompt("senpai_board", "ja").body).toContain("言いっぱなしにしない");
     expect(getPrompt("senpai_conversation", "ja").body).toContain("先に答えを埋めない");
-    expect(getPrompt("senpai_board", "en").body).toContain("never teach and leave it there");
+    expect(getPrompt("senpai_board", "en").body).toContain("do not leave it hanging");
     expect(getPrompt("senpai_conversation", "en").body).toContain(
       "do not fill in the answer first",
     );
@@ -504,42 +510,39 @@ describe("設計上の約束がプロンプトに書かれている", () => {
   });
 
   /**
-   * 「わからない」と言われた箇所は必ず穴にする、も言語ごとに二重で書く。
+   * **ADR 0009 で反転した約束を、反転したまま二重に書いておく。**
    *
-   * これは develop で入った約束(実機で「わからないと何度も言ったのに穴なし」に
-   * なった報告への対応)。日本語側にだけ足すと、英語のセッションでだけ
-   * 「今日は、止まらずに説明できました」が返り続ける。
+   * 旧カルテの出題は「出題元は `ユーザー:` の行だけ。`先輩:` の行から作らない」だった。
+   * いまは板書が材料で、正解を持ち、AIが採点する。日本語側にだけ足すと、
+   * 英語のセッションでだけ古い約束が生き残る。
    */
-  it("「わからない」を必ず穴にする、が両方の言語に書かれている", () => {
-    const ja = getPrompt("karte_generation", "ja").body;
-    const en = getPrompt("karte_generation", "en").body;
+  it("復習問題は板書から作り、板書の数値を使い回さない、が両方の言語に書かれている", () => {
+    const ja = getPrompt("practice_problem", "ja").body;
+    const en = getPrompt("practice_problem", "en").body;
 
-    expect(ja).toContain("必ず `holes` に入れてください");
-    expect(ja).toContain("間違ったカルテ");
-    expect(ja).toContain("「できなかった」「解けなかった」");
-    expect(ja).toContain("その申告をそのまま短く");
-    expect(ja).toContain("「できた」は解き終わりの合図");
-    expect(en).toContain("put it in `holes`");
-    expect(en).toContain("wrong karte");
-    expect(en).toContain('"I couldn\'t do it", "I couldn\'t solve it"');
-    expect(en).toContain("quote the report itself");
-    expect(en).toContain('"I did it" on the analogous problem only reports');
+    expect(ja).toContain("板書に出た数値をそのまま使わないでください");
+    expect(ja).toContain("正解が1つに定まる形");
+    expect(ja).toContain('{"topic_id": null}');
+    expect(en).toContain("Do not reuse the numbers from the board");
+    expect(en).toContain("single definite thing");
+    expect(en).toContain('{"topic_id": null}');
   });
 
   /**
-   * transcriptには先輩の問いかけや相づちも入る。単に「transcriptから作る」では、
-   * 先輩が教えた内容を本人の穴として1/3/7日後に繰り返すので、ロール名まで固定する。
+   * 採点の約束。**`unclear` を `incorrect` へ倒さない**のがいちばん大事な1行で、
+   * ここが緩むとモデルの迷いが「1日後・3日後・7日後にもう一度」として
+   * 生徒の記録に残る(#173 の決定)。
    */
-  it("小テストの出題元を本人の発話だけに限定する、が両方の言語に書かれている", () => {
-    const ja = getPrompt("karte_generation", "ja").body;
-    const en = getPrompt("karte_generation", "en").body;
+  it("採点は迷ったら unclear、正解は書かない、が両方の言語に書かれている", () => {
+    const ja = getPrompt("practice_grading", "ja").body;
+    const en = getPrompt("practice_grading", "en").body;
 
-    expect(ja).toContain("出題元は `<transcript>` の `ユーザー:` の行だけです");
-    expect(ja).toContain("`先輩:` の行から作らないでください");
-    expect(en).toContain(
-      "Use only the `Student:` lines inside `<transcript>` as the source of the question",
-    );
-    expect(en).toContain("Do not derive it from `Senpai:` lines");
+    expect(ja).toContain("迷ったら `incorrect` ではなく `unclear`");
+    expect(ja).toContain("正解を書かないでください");
+    expect(ja).toContain("合っているところから書き始めてください");
+    expect(en).toContain("pick `unclear`, not\n`incorrect`");
+    expect(en).toContain("Never write the answer");
+    expect(en).toContain("start from what was right");
   });
 
   /**
@@ -700,24 +703,17 @@ describe("設計上の約束がプロンプトに書かれている", () => {
     expect(en).toContain("fewer than 120 seconds remain");
     expect(en).toContain("In `review`, pose no analogous problem");
 
-    // 新しい受け渡しと、時間不足時だけ使う従来の受け渡しを両方残す。
-    // 途中の問いかけに同じ言い方を許すと、授業の途中で教え返しへ切り替わる。
-    expect(ja).toContain("どうしてそうなるか、自分の言葉で説明してみて");
-    expect(ja).toContain("じゃあ今の、自分の言葉で説明してみて");
-    expect(ja).toContain("途中の問いかけには「説明して」を使わない");
-    expect(en).toContain("Now explain in your own words why it works out that way");
-    expect(en).toContain("Alright — now explain that back to me in your own words");
-    expect(en).toContain("for a mid-lesson checkpoint");
+    // **降ろすのは生徒だけ**(ADR 0009)。先輩の言い方で終わる道は残さない。
+    expect(ja).toContain("授業を終えるのは、あなたではありません");
+    expect(ja).toContain("「じゃあ今の、自分の言葉で説明してみて」と言わないでください");
+    expect(ja).toContain("「わかった」を押すまで教え続けます");
+    expect(en).toContain("You are not the one who ends the lesson");
+    expect(en).toContain('Never say "now explain that back to me in your own words"');
+    expect(en).toContain('keep teaching until the student presses "Got it"');
 
-    // 教え返し側は類題1問に対象を絞り、「できた」自体を理解の証拠にしない。
-    expect(getPrompt("senpai_conversation", "ja").body).toContain("その類題1問の理由");
-    expect(getPrompt("senpai_conversation", "ja").body).toContain(
-      "「できた」だけを「言えたこと」にせず",
-    );
-    expect(getPrompt("senpai_conversation", "en").body).toContain("why that one problem works");
-    expect(getPrompt("senpai_conversation", "en").body).toContain(
-      '"I did it" alone is not evidence',
-    );
+    // 「できた」自体を理解の証拠にしないのは変わらない(本人申告であって採点ではない)。
+    expect(ja).toContain("「できた」だけを理解の証拠にせず");
+    expect(en).toContain('Never count "I did it" alone');
   });
 
   it("英語科の日本語板書も、類題を待って理由の説明へ渡す", () => {
@@ -726,8 +722,8 @@ describe("設計上の約束がプロンプトに書かれている", () => {
     expect(englishLesson).toContain("数値や主語だけを替えた類題を1問だけ自作します");
     expect(englishLesson).toContain("awaits_solving: true");
     expect(englishLesson).toContain("15秒の無回答判定や再促しは使わず");
-    expect(englishLesson).toContain("類題と正答の両方");
-    expect(englishLesson).toContain("どうしてそうなるか、自分の言葉で説明してみて");
+    expect(englishLesson).toContain("授業を終えるのは、あなたではありません");
+    expect(englishLesson).toContain("「わかった」を\n  押すまで教え続けます");
     expect(englishLesson).toContain("残り120秒未満なら類題を出しません");
     expect(englishLesson).toContain("`review` では類題を出さず");
   });
@@ -865,7 +861,7 @@ describe("設計上の約束がプロンプトに書かれている", () => {
     expect(ja).toContain("平方完成が頂点を表す理由で説明が止まった");
     expect(ja).toContain("冒頭で同じことを聞き直さず");
     expect(ja).toContain("すぐ板書で教え直してください");
-    expect(ja).toContain("教えっぱなしで終わらせない");
+    expect(ja).toContain("言いっぱなしにしない");
 
     const en = boardLessonSystemPrompt(
       {
@@ -885,7 +881,7 @@ describe("設計上の約束がプロンプトに書かれている", () => {
     expect(en).toContain("why completing the square reveals the vertex");
     expect(en).toContain("Do not test the same thing again");
     expect(en).toContain("start reteaching");
-    expect(en).toContain("never teach and leave it there");
+    expect(en).toContain("do not leave it hanging");
     expect(en).not.toMatch(/[ぁ-んァ-ン一-龯]/);
   });
 

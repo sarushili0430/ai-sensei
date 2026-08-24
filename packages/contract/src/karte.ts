@@ -133,10 +133,30 @@ export const progressSchema = z
   .object({
     /** 連続日数。 */
     streak_days: z.number().int().min(0),
-    /** 埋めた穴の累計。このアプリ固有のスコアで、共有スクショに出す想定。 */
+    /**
+     * 埋めた穴の累計。
+     *
+     * @deprecated ADR 0009。ホームが数えるのは `solved_problems` へ移った。
+     * **`solved_problems` と足し合わせないこと。**穴と復習問題は別の出来事で、
+     * 混ぜると「解けた問題数」が移行の前後で二重計上になる。
+     * 旧データを持つ端末のために計算だけ残してある。
+     */
     filled_holes: z.number().int().min(0),
-    /** まだ埋まっていない穴の数。 */
+    /**
+     * まだ埋まっていない穴の数。
+     *
+     * @deprecated ADR 0009。`open_problems` を使う。
+     */
     open_holes: z.number().int().min(0),
+    /**
+     * 正解した復習問題の数。**ホームの2つ目のカウンター。**
+     *
+     * 「同じ問題に3回正解した」を3とは数えない — 数えるのは**問題**であって
+     * 解答回数ではない。回数にすると、同じ1問を何度も解くほど数字が伸びる。
+     */
+    solved_problems: z.number().int().min(0),
+    /** 未解答・不正解のまま残っている復習問題の数。ホームの「解きにいく問題が ◯問」。 */
+    open_problems: z.number().int().min(0),
     /** 最後にセッションを完了した日(ローカル日付 YYYY-MM-DD)。 */
     last_session_date: z
       .string()

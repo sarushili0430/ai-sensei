@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:ai_sensei/src/api/api_client.dart';
 import 'package:ai_sensei/src/api/device_id.dart';
 import 'package:ai_sensei/src/common_widgets/chunky_button.dart';
@@ -19,15 +21,17 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
 
-/// 1/3/7日後の小テスト。
+/// 通知から開く復習問題。
 ///
-/// 採点画面ではなく本人の二択で、無料のテキストから原価のある音声へ渡す境界だけを見る。
+/// テキスト解答は無料、AI採点の結果が不正解か判定不能のときだけ、
+/// 原価のある音声授業へ渡す境界を見る。
 void main() {
   const AppStrings ja = AppStrings(Locale('ja'));
 
   Future<ProviderContainer> pumpReview(
-    WidgetTester tester,
-    FakeReviewController review, {
+    WidgetTester tester, {
+    PracticeQueue? queue,
+    _RecordingPracticeAnswerController? answers,
     _RecordingCaptureController? capture,
     ProgressSummary progress = sampleSummary,
   }) async {
@@ -39,7 +43,12 @@ void main() {
         progressControllerProvider.overrideWith(
           () => FakeProgressController(progress),
         ),
-        reviewControllerProvider.overrideWith(() => review),
+        reviewControllerProvider.overrideWith(
+          () => FakeReviewController(queue ?? samplePracticeQueue),
+        ),
+        practiceAnswerControllerProvider.overrideWith(
+          () => answers ?? _RecordingPracticeAnswerController(),
+        ),
         if (capture != null)
           captureControllerProvider.overrideWith(() => capture),
         sessionControllerProvider.overrideWith(_FakeSessionController.new),
@@ -54,123 +63,154 @@ void main() {
     return container;
   }
 
-  testWidgets('無料ユーザーでも問題文と二択が出て、まだペイウォールには着かない', (WidgetTester tester) async {
-    final FakeReviewController review = FakeReviewController(sampleReviewQueue);
-    await pumpReview(tester, review);
+  Future<void> answer(WidgetTester tester, String response) async {
+    await tester.enterText(
+      find.byKey(const Key('practice-response')),
+      response,
+    );
+    // 入力欄のlistenerが送信ボタンを有効にした次のフレームで押す。
+    // 同じフレームのまま押すと、無効だったボタンを叩いて何も起きない。
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('practice-submit')));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('無料ユーザーでも先頭の1問とテキスト入力を出し、自己申告の二択は出さない', (
+    WidgetTester tester,
+  ) async {
+    await pumpReview(tester);
 
     expect(find.byType(ReviewScreen), findsOneWidget);
-    expect(find.text(sampleReviewQueue.items.first.quiz), findsOneWidget);
+    expect(find.text(samplePracticeProblem.question), findsOneWidget);
+    expect(find.text(sampleSecondPracticeProblem.question), findsNothing);
+    expect(find.byKey(const Key('practice-response')), findsOneWidget);
+    expect(find.byKey(const Key('practice-submit')), findsOneWidget);
     expect(
-      find.text(sampleReviewQueue.items.last.quiz),
-      findsNothing,
-      reason: '1回1問だけ出す',
+      tester
+          .widget<ChunkyButton>(find.byKey(const Key('practice-submit')))
+          .onPressed,
+      isNull,
     );
-    expect(find.widgetWithText(ChunkyButton, ja.reviewSaidIt), findsOneWidget);
-    expect(find.widgetWithText(GhostButton, ja.reviewNotYet), findsOneWidget);
+    expect(find.text(ja.reviewSaidIt), findsNothing);
+    expect(find.text(ja.reviewNotYet), findsNothing);
     expect(find.byType(PaywallScreen), findsNothing);
   });
 
-  testWidgets('「言えた」は said_it を送り、次の1問へ進む', (WidgetTester tester) async {
-    final ReviewQueue next = sampleReviewQueue.copyWith(
-      items: <ReviewQueueItem>[sampleReviewQueue.items.last],
-    );
-    final FakeReviewController review = FakeReviewController(
-      sampleReviewQueue,
-      queueAfterAnswer: next,
-    );
-    await pumpReview(tester, review);
+  testWidgets('解答を送ると採点中を明示し、正解なら本人の文と3・7日後の予定を残す', (
+    WidgetTester tester,
+  ) async {
+    final Completer<void> release = Completer<void>();
+    final _RecordingPracticeAnswerController answers =
+        _RecordingPracticeAnswerController(release: release);
+    await pumpReview(tester, answers: answers);
 
-    await tester.tap(find.text(ja.reviewSaidIt));
+    await tester.enterText(
+      find.byKey(const Key('practice-response')),
+      'D = 16 で D > 0 だから2個',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('practice-submit')));
+    await tester.pump();
+
+    expect(answers.submitCalls, <String>[samplePracticeProblem.id]);
+    expect(find.text(ja.practiceGrading), findsOneWidget);
+    expect(find.text(ja.practiceGradingCanClose), findsOneWidget);
+    expect(find.text('D = 16 で D > 0 だから2個'), findsOneWidget);
+
+    release.complete();
     await tester.pumpAndSettle();
 
-    expect(review.answerCalls, <(String, ReviewOutcome)>[
-      (sampleReviewQueue.items.first.hole.id, ReviewOutcome.saidIt),
-    ]);
-    expect(find.text(next.items.single.quiz), findsOneWidget);
-    expect(find.text(sampleReviewQueue.items.first.quiz), findsNothing);
+    expect(find.text(ja.practiceCorrect), findsOneWidget);
+    expect(find.text('D = 16 で D > 0 だから2個'), findsOneWidget);
+    expect(find.text(ja.practiceNextSchedule(<int>[3, 7])), findsOneWidget);
+    expect(find.byKey(const Key('practice-home')), findsOneWidget);
   });
 
-  testWidgets('「まだ言えない」だけではサーバへ送らず、咎める文言も出さない', (WidgetTester tester) async {
-    // 通知文に「もう一度」が入っていても、「まだ」のあとは引き取る文だけに切り替える。
-    final ReviewQueue queue = sampleReviewQueue.copyWith(
-      items: <ReviewQueueItem>[sampleReviewQueue.items.last],
-    );
-    final FakeReviewController review = FakeReviewController(queue);
-    await pumpReview(tester, review);
+  testWidgets('不正解は本人を咎めず、1・3・7日後の予定と聞き直す道を出す', (WidgetTester tester) async {
+    final _RecordingPracticeAnswerController answers =
+        _RecordingPracticeAnswerController(verdict: PracticeVerdict.incorrect);
+    await pumpReview(tester, answers: answers);
+    await answer(tester, 'D = 16 だから1個');
 
-    await tester.tap(find.text(ja.reviewNotYet));
-    await tester.pumpAndSettle();
-
-    expect(review.answerCalls, isEmpty, reason: 'not_yet は記録しない');
-    expect(find.text(ja.reviewNotYetLead), findsOneWidget);
-    expect(find.text(ja.reviewVoicePremium), findsOneWidget);
-    expect(find.text(ja.reviewAskSenpai), findsNothing);
-    expect(find.text(ja.homeUnlock), findsOneWidget);
-    expect(find.widgetWithText(GhostButton, ja.reviewLater), findsOneWidget);
-    for (final String blaming in <String>['間違い', '不正解', '残念', 'もう一度']) {
-      expect(find.textContaining(blaming), findsNothing, reason: '「まだ」を咎めない');
+    expect(find.text(ja.practiceIncorrect), findsOneWidget);
+    expect(find.text(ja.practiceNextSchedule(<int>[1, 3, 7])), findsOneWidget);
+    expect(find.text(ja.reviewAskSenpai), findsOneWidget);
+    expect(find.text(ja.reviewLater), findsOneWidget);
+    for (final String blaming in <String>['残念', '失敗', 'あなたのせい']) {
+      expect(
+        find.textContaining(blaming),
+        findsNothing,
+        reason: '採点結果で本人を咎めない',
+      );
     }
 
-    await tester.tap(find.text(ja.reviewLater));
-    await tester.pumpAndSettle();
-    expect(find.text(ja.reviewNotYet), findsOneWidget);
-    expect(review.answerCalls, isEmpty);
-  });
-
-  testWidgets('Premiumで枠が残っていれば復習セッションを作る', (WidgetTester tester) async {
-    final FakeReviewController review = FakeReviewController(sampleReviewQueue);
-    final _RecordingCaptureController capture = _RecordingCaptureController();
-    await pumpReview(
-      tester,
-      review,
-      capture: capture,
-      progress: premiumSummary,
-    );
-
-    await tester.tap(find.text(ja.reviewNotYet));
-    await tester.pumpAndSettle();
     await tester.tap(find.text(ja.reviewAskSenpai));
     await tester.pumpAndSettle();
-
-    expect(capture.startReviewCalls, <(String, String)>[
-      (sampleReviewQueue.items.first.hole.id, 'ja'),
-    ]);
-    expect(find.byType(SessionScreen), findsOneWidget);
-  });
-
-  testWidgets('無料ユーザーには授業枠の有無にかかわらずPremium境界を出す', (WidgetTester tester) async {
-    final FakeReviewController review = FakeReviewController(sampleReviewQueue);
-    final _RecordingCaptureController capture = _RecordingCaptureController();
-    await pumpReview(
-      tester,
-      review,
-      capture: capture,
-      progress: exhaustedSummary,
-    );
-
-    await tester.tap(find.text(ja.reviewNotYet));
-    await tester.pumpAndSettle();
-
     expect(find.text(ja.reviewVoicePremium), findsOneWidget);
-    expect(find.text(ja.reviewAskSenpai), findsNothing);
     expect(find.text(ja.homeUnlock), findsOneWidget);
-    expect(find.byType(PaywallScreen), findsNothing);
-    expect(capture.startReviewCalls, isEmpty, reason: '枠がないのにサーバへ押し込まない');
 
     await tester.tap(find.text(ja.homeUnlock));
     await tester.pumpAndSettle();
     expect(find.byType(PaywallScreen), findsOneWidget);
   });
 
-  testWidgets('Premiumのフェアユース上限では、締めの文言だけを出す', (WidgetTester tester) async {
-    final FakeReviewController review = FakeReviewController(sampleReviewQueue);
-    await pumpReview(tester, review, progress: premiumExhaustedSummary);
+  testWidgets('判定不能は不正解に倒さず、通知を進めず同じ解答を直せる', (WidgetTester tester) async {
+    final _RecordingPracticeAnswerController answers =
+        _RecordingPracticeAnswerController(verdict: PracticeVerdict.unclear);
+    await pumpReview(tester, answers: answers);
+    await answer(tester, 'Dはたぶん16');
 
-    await tester.tap(find.text(ja.reviewNotYet));
+    expect(find.text(ja.practiceUnclear), findsOneWidget);
+    expect(find.text(ja.practiceScheduleUnclear), findsOneWidget);
+    expect(find.text(ja.practiceIncorrect), findsNothing);
+    expect(find.text(ja.practiceRetry), findsOneWidget);
+
+    await tester.tap(find.text(ja.practiceRetry));
+    await tester.pumpAndSettle();
+
+    final TextField field = tester.widget(
+      find.byKey(const Key('practice-response')),
+    );
+    expect(field.controller?.text, 'Dはたぶん16');
+  });
+
+  testWidgets('Premiumで枠が残っていれば、問題IDから復習セッションを作る', (WidgetTester tester) async {
+    final _RecordingCaptureController capture = _RecordingCaptureController();
+    await pumpReview(
+      tester,
+      answers: _RecordingPracticeAnswerController(
+        verdict: PracticeVerdict.incorrect,
+      ),
+      capture: capture,
+      progress: premiumSummary,
+    );
+    await answer(tester, 'D = 16 だから1個');
+
+    await tester.tap(find.text(ja.reviewAskSenpai));
+    await tester.pumpAndSettle();
+
+    expect(capture.startReviewCalls, <(String, String)>[
+      (samplePracticeProblem.id, 'ja'),
+    ]);
+    expect(find.byType(SessionScreen), findsOneWidget);
+  });
+
+  testWidgets('Premiumのフェアユース上限では、課金導線を重ねず締めの文言だけを出す', (
+    WidgetTester tester,
+  ) async {
+    await pumpReview(
+      tester,
+      answers: _RecordingPracticeAnswerController(
+        verdict: PracticeVerdict.incorrect,
+      ),
+      progress: premiumExhaustedSummary,
+    );
+    await answer(tester, 'D = 16 だから1個');
+
+    await tester.tap(find.text(ja.reviewAskSenpai));
     await tester.pumpAndSettle();
 
     expect(find.text(ja.lessonEnoughForToday), findsOneWidget);
-    expect(find.text(ja.reviewAskSenpai), findsNothing);
     expect(find.text(ja.homeUnlock), findsNothing);
     expect(find.byType(PaywallScreen), findsNothing);
   });
@@ -179,59 +219,108 @@ void main() {
     WidgetTester tester,
   ) async {
     const String serverMessage = 'この機能はPremiumです。';
-    const ApiException failure = ApiException(
-      code: 'premium_required',
-      message: serverMessage,
-    );
-    final FakeReviewController review = FakeReviewController(sampleReviewQueue);
     final _RecordingCaptureController capture = _RecordingCaptureController(
-      failure: failure,
+      failure: const ApiException(
+        code: 'premium_required',
+        message: serverMessage,
+      ),
     );
     await pumpReview(
       tester,
-      review,
+      answers: _RecordingPracticeAnswerController(
+        verdict: PracticeVerdict.incorrect,
+      ),
       capture: capture,
       progress: premiumSummary,
     );
+    await answer(tester, 'D = 16 だから1個');
 
-    await tester.tap(find.text(ja.reviewNotYet));
-    await tester.pumpAndSettle();
     await tester.tap(find.text(ja.reviewAskSenpai));
     await tester.pumpAndSettle();
 
     expect(find.text(ja.reviewVoicePremium), findsOneWidget);
     expect(find.text(serverMessage), findsNothing);
     expect(find.text(ja.homeUnlock), findsOneWidget);
-    expect(find.byType(PaywallScreen), findsNothing);
     expect(find.byType(ReviewScreen), findsOneWidget);
   });
 
-  testWidgets('開始直前にPremium上限に当たっても課金導線を出さない', (WidgetTester tester) async {
-    const ApiException failure = ApiException(
-      code: 'fair_use_limit_reached',
-      message: '今日の持ち時間は使い切りました。',
-    );
-    final FakeReviewController review = FakeReviewController(sampleReviewQueue);
-    final _RecordingCaptureController capture = _RecordingCaptureController(
-      failure: failure,
-    );
+  testWidgets('解く問題が無くても、正解した履歴とホームへの出口を残す', (WidgetTester tester) async {
     await pumpReview(
       tester,
-      review,
-      capture: capture,
-      progress: premiumSummary,
+      queue: PracticeQueue(
+        items: const <PracticeQueueItem>[],
+        solved: <SolvedPractice>[sampleSolvedPractice],
+      ),
     );
 
-    await tester.tap(find.text(ja.reviewNotYet));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text(ja.reviewAskSenpai));
-    await tester.pumpAndSettle();
-
-    expect(find.text(ja.lessonEnoughForToday), findsOneWidget);
-    expect(find.text(failure.message), findsNothing);
-    expect(find.text(ja.homeUnlock), findsNothing);
-    expect(find.byType(PaywallScreen), findsNothing);
+    expect(find.text(ja.reviewEmpty), findsOneWidget);
+    expect(find.text(ja.practiceSolvedTitle(1)), findsOneWidget);
+    expect(find.text(sampleSolvedPractice.problem.question), findsOneWidget);
+    expect(find.text(ja.reviewBackHome), findsOneWidget);
   });
+}
+
+/// 採点の3分岐を画面へ返し、外部の採点サービスには接続しない。
+class _RecordingPracticeAnswerController extends PracticeAnswerController {
+  _RecordingPracticeAnswerController({
+    this.verdict = PracticeVerdict.correct,
+    this.release,
+  });
+
+  final PracticeVerdict verdict;
+  final Completer<void>? release;
+  final List<String> submitCalls = <String>[];
+
+  @override
+  PracticeAnswersState build() => const PracticeAnswersState();
+
+  @override
+  Future<bool> submit(String problemId) async {
+    final String response = state.draftFor(problemId).trim();
+    if (response.isEmpty || state.isGrading(problemId)) return false;
+    submitCalls.add(problemId);
+    state = PracticeAnswersState(
+      drafts: state.drafts,
+      grading: <String>{problemId},
+    );
+
+    final Completer<void>? pending = release;
+    if (pending != null) await pending.future;
+
+    final List<int> days = switch (verdict) {
+      PracticeVerdict.correct => <int>[3, 7],
+      PracticeVerdict.incorrect => <int>[1, 3, 7],
+      PracticeVerdict.unclear => <int>[],
+    };
+    final PracticeAnswer answer = PracticeAnswer(
+      attempt: PracticeAttempt(
+        id: 'att_$problemId',
+        problemId: problemId,
+        answeredAt: DateTime.utc(2026, 8, 6, 11, 3, 27),
+        response: response,
+        verdict: verdict,
+        gradedBy: 'test-grader',
+        comment: verdict == PracticeVerdict.incorrect
+            ? '判別式の符号と解の個数を、もう一度いっしょに見よう。'
+            : null,
+      ),
+      nextSchedule: <PracticeScheduleEntry>[
+        for (final (int index, int day) in days.indexed)
+          PracticeScheduleEntry(
+            problemId: problemId,
+            step: index + 1,
+            days: day,
+            scheduledAt: DateTime.utc(2026, 8, 6 + day, 11),
+          ),
+      ],
+      progress: sampleProgress,
+    );
+    state = PracticeAnswersState(
+      drafts: <String, String>{...state.drafts, problemId: response},
+      answers: <String, PracticeAnswer>{problemId: answer},
+    );
+    return true;
+  }
 }
 
 /// 復習セッション作成だけを記録し、LiveKitには接続しない。
@@ -246,10 +335,10 @@ class _RecordingCaptureController extends CaptureController {
 
   @override
   Future<SessionStart?> startReview(
-    String holeId, {
+    String problemId, {
     String locale = 'ja',
   }) async {
-    startReviewCalls.add((holeId, locale));
+    startReviewCalls.add((problemId, locale));
     final ApiException? error = failure;
     if (error != null) {
       state = CaptureState(error: error);

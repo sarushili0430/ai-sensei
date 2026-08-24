@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,253 +7,810 @@ import 'package:go_router/go_router.dart';
 import '../../../api/api_client.dart';
 import '../../../common_widgets/chunky_button.dart';
 import '../../../common_widgets/marker_text.dart';
+import '../../../common_widgets/senpai_face.dart';
 import '../../../l10n/strings.dart';
 import '../../../routing/routes.dart';
+import '../../../theme/motion.dart';
 import '../../../theme/tokens.dart';
 import '../../capture/application/capture_controller.dart';
 import '../../session/domain/session.dart';
 import '../application/karte_controllers.dart';
 import '../domain/karte.dart';
 
-/// 復習画面(ホームのカード、またはプッシュ通知が起点)。
+/// 通知とホームのカードが着地する、復習問題の1画面。
 ///
-/// 出すものは2つ。**埋めにいく穴**(これからやること)と
-/// **埋めた穴**(やってきたこと)。後者がペイウォールの謳う「履歴」で、
-/// 別画面は作らない。
+/// 旧画面も先頭の1問だけを大きく出していたため、一覧を別画面に分けず、
+/// 解答・採点待ち・結果をここへ一本化する。通知から余分な1タップを増やすと、
+/// 30秒で終わるはずの復習が「一覧を開いてから問題を選ぶ」体験になるため。
 ///
-/// どの状態でも必ず出口を持たせる。ここは通知から直接着地しうる画面なので、
-/// 「読み込み中のまま」「文言だけ」で行き止まりにすると本当に戻れなくなる。
-class ReviewScreen extends ConsumerStatefulWidget {
-  const ReviewScreen({super.key});
+/// 穴の自己申告は畳んだ。正誤は採点が決め、`unclear` もこの画面で同じ解答を
+/// 書き直せるので、本人にもう一度「言えたか」を決めさせる受け皿は残さない。
+class ReviewScreen extends ConsumerWidget {
+  const ReviewScreen({this.problemId, super.key});
+
+  /// 通知の `problem_id`。旧 `hole_id` 通知では null のまま先頭問題へ安全に落ちる。
+  final String? problemId;
 
   @override
-  ConsumerState<ReviewScreen> createState() => _ReviewScreenState();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AppStrings strings = AppStrings.of(context);
+    final AsyncValue<PracticeQueue> queue = ref.watch(reviewControllerProvider);
+
+    return queue.when(
+      loading: () => _MessageScaffold(
+        title: strings.reviewTitle,
+        child: const Center(child: CircularProgressIndicator()),
+      ),
+      error: (Object error, StackTrace stack) => _MessageScaffold(
+        title: strings.reviewTitle,
+        child: _Message(
+          text: strings.errorGeneric,
+          primaryLabel: strings.errorRetry,
+          onPrimary: () => ref.read(reviewControllerProvider.notifier).refresh(),
+        ),
+      ),
+      data: (PracticeQueue data) {
+        final int index = _indexOf(data.items, problemId);
+        if (index >= 0) {
+          final PracticeQueueItem item = data.items[index];
+          return _PracticeFlow(
+            key: ValueKey<String>(item.problem.id),
+            item: item,
+            position: index + 1,
+            total: data.items.length,
+          );
+        }
+        // **名指しされた問題がリストに無い。**正解した問題にも7日後の通知は
+        // 届く(段を取り消さない。ADR 0009)ので、`items` から外れた問題を
+        // 開こうとしている。1問ぶんのAPIで引き直す。
+        final String? requested = problemId;
+        if (requested != null) {
+          return _SingleProblem(problemId: requested);
+        }
+        return _MessageScaffold(
+          title: strings.reviewTitle,
+          child: _EmptyPractice(queue: data),
+        );
+      },
+    );
+  }
+
+  int _indexOf(List<PracticeQueueItem> items, String? requestedId) {
+    if (items.isEmpty) return -1;
+    if (requestedId == null) return 0;
+    for (int index = 0; index < items.length; index += 1) {
+      if (items[index].problem.id == requestedId) return index;
+    }
+    return -1;
+  }
 }
 
-class _ReviewScreenState extends ConsumerState<ReviewScreen> {
-  /// 「まだ」を選んだ穴。キューが次へ進めばIDが変わるので、自動で質問状態に戻る。
-  String? _notYetHoleId;
-  bool _isAnswering = false;
-  bool _answerFailed = false;
-  bool _showLessonError = false;
+/// 通知が名指しした1問を、リストを介さずに開く。
+///
+/// **旧 `hole_id` の通知でここへ来ることはない**(あちらは `problemId` を
+/// 持たないので、上の分岐で先頭の問題に落ちる)。ここに来るのは
+/// `problem_id` を持つ通知だけで、その問題が見つからなければ 404 になる —
+/// そのときは「もう残っていない」として空の画面へ落とす(#180 の確かめること)。
+class _SingleProblem extends ConsumerWidget {
+  const _SingleProblem({required this.problemId});
 
-  Future<void> _answer(ReviewQueueItem item) async {
-    setState(() {
-      _isAnswering = true;
-      _answerFailed = false;
-    });
+  final String problemId;
 
-    final bool succeeded = await ref
-        .read(reviewControllerProvider.notifier)
-        .answer(item.hole.id, ReviewOutcome.saidIt);
-    if (!mounted) return;
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AppStrings strings = AppStrings.of(context);
+    return ref.watch(practiceProblemProvider(problemId)).when(
+          loading: () => _MessageScaffold(
+            title: strings.reviewTitle,
+            child: const Center(child: CircularProgressIndicator()),
+          ),
+          error: (Object error, StackTrace stack) => _MessageScaffold(
+            title: strings.reviewTitle,
+            child: _Message(
+              text: strings.errorGeneric,
+              primaryLabel: strings.reviewBackHome,
+              onPrimary: () => context.go(AppRoute.home.path),
+            ),
+          ),
+          data: (PracticeQueueItem item) => _PracticeFlow(
+            key: ValueKey<String>(item.problem.id),
+            item: item,
+            position: 1,
+            total: 1,
+          ),
+        );
+  }
+}
 
-    setState(() {
-      _isAnswering = false;
-      _answerFailed = !succeeded;
-      if (succeeded) _notYetHoleId = null;
-    });
+class _PracticeFlow extends ConsumerStatefulWidget {
+  const _PracticeFlow({
+    required this.item,
+    required this.position,
+    required this.total,
+    super.key,
+  });
+
+  final PracticeQueueItem item;
+
+  /// ヘッダのチップ(`2 / 3`)。**いま何問目か**が分かると、
+  /// 「あと何回これが来るのか」が読めて、途中でやめにくくなる。
+  final int position;
+  final int total;
+
+  @override
+  ConsumerState<_PracticeFlow> createState() => _PracticeFlowState();
+}
+
+class _PracticeFlowState extends ConsumerState<_PracticeFlow> {
+  late final TextEditingController _responseController;
+  bool _showLessonGate = false;
+
+  String get _problemId => widget.item.problem.id;
+
+  @override
+  void initState() {
+    super.initState();
+    _responseController = TextEditingController(
+      text: ref.read(practiceAnswerControllerProvider).draftFor(_problemId),
+    );
   }
 
-  void _chooseNotYet(ReviewQueueItem item) {
-    // 「まだ」だけではサーバへ送らない。穴はopenのまま、次の行き先を本人が選べる。
-    setState(() {
-      _notYetHoleId = item.hole.id;
-      _answerFailed = false;
-      _showLessonError = false;
-    });
+  @override
+  void dispose() {
+    _responseController.dispose();
+    super.dispose();
   }
 
-  void _later() {
-    setState(() {
-      _notYetHoleId = null;
-      _showLessonError = false;
-    });
+  void _updateDraft(String value) {
+    ref.read(practiceAnswerControllerProvider.notifier).updateDraft(
+          _problemId,
+          value,
+        );
+  }
+
+  void _submit() {
+    FocusScope.of(context).unfocus();
+    unawaited(
+      ref.read(practiceAnswerControllerProvider.notifier).submit(_problemId),
+    );
+  }
+
+  void _retry() {
+    ref.read(practiceAnswerControllerProvider.notifier).retry(_problemId);
+    setState(() => _showLessonGate = false);
+  }
+
+  void _finish() {
+    ref.read(practiceAnswerControllerProvider.notifier).clear(_problemId);
+    // 解いた直後の問題をキューへ残すと、ホームから同じ問題をもう一度出してしまう。
+    // 結果を読む時間は守り、出口を選んだところで初めて次回用に取り直す。
+    ref.invalidate(reviewControllerProvider);
+    context.go(AppRoute.home.path);
   }
 
   void _openPaywall() {
-    setState(() => _showLessonError = false);
+    setState(() => _showLessonGate = false);
     context.push(AppRoute.paywall.path);
   }
 
-  Future<void> _startLesson(ReviewQueueItem item) async {
-    setState(() => _showLessonError = false);
+  Future<void> _askSenpai() async {
+    final ProgressSummary progress =
+        ref.read(progressControllerProvider).value ?? ProgressSummary.empty;
+    final CaptureState capture = ref.read(captureControllerProvider);
+    final _LessonAvailability availability = _lessonAvailability(
+      progress: progress,
+      error: capture.error,
+    );
+    if (!availability.allowed) {
+      setState(() => _showLessonGate = true);
+      return;
+    }
 
-    // 復習授業は写真を使わず、この穴を起点にサーバ側でセッションを作る。
     final SessionStart? session = await ref
         .read(captureControllerProvider.notifier)
         .startReview(
-          item.hole.id,
+          _problemId,
           locale: Localizations.localeOf(context).languageCode,
         );
     if (!mounted) return;
-
-    // 会話は一方通行。戻る先を持たせない。
     if (session != null) {
       context.go(AppRoute.session.path);
     } else {
-      // startReview は失敗理由を CaptureState に残す。黙って元の画面に留めない。
-      setState(() => _showLessonError = true);
+      // 押した直前に契約や日次枠が変わることがある。サーバの判定を同じ場所に出し、
+      // 何も起きなかったように元の結果だけを残さない。
+      setState(() => _showLessonGate = true);
     }
-  }
-
-  Widget _content({
-    required AppStrings strings,
-    required ReviewQueue data,
-    required ProgressSummary progress,
-    required CaptureState capture,
-  }) {
-    // §2「1回1問」。残りをリストにせず、先頭の1件だけを大きく出す。
-    final ReviewQueueItem? item = data.items.isEmpty ? null : data.items.first;
-    final bool notYet = item != null && _notYetHoleId == item.hole.id;
-    final ApiException? lessonError = notYet && _showLessonError
-        ? capture.error
-        : null;
-    final bool premiumRequired =
-        !progress.isPremium || lessonError?.isPremiumRequired == true;
-    final bool lessonLimitReached =
-        lessonError != null &&
-        (lessonError.isFreeLimitReached || lessonError.isFairUseLimitReached);
-    final bool lessonAllowedToday =
-        !premiumRequired &&
-        progress.limits.lessonAllowedToday &&
-        !lessonLimitReached;
-    // エラーの code が返った競合時は、直前の進捗よりサーバの判定を優先する。
-    final bool showUpgrade = lessonError?.isFairUseLimitReached == true
-        ? false
-        : premiumRequired || lessonError?.isFreeLimitReached == true;
-
-    String? errorMessage;
-    if (!notYet && _answerFailed) {
-      errorMessage = strings.errorGeneric;
-    } else if (notYet &&
-        _showLessonError &&
-        !lessonLimitReached &&
-        !premiumRequired) {
-      // 日次上限以外は、撮影画面と同じくサーバの理由をそのまま出す。
-      final String message = lessonError?.message ?? strings.errorGeneric;
-      errorMessage = message.isEmpty ? strings.errorGeneric : message;
-    }
-
-    return ListView(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      children: <Widget>[
-        if (item != null) ...<Widget>[
-          _ReviewCard(
-            item: item,
-            notYet: notYet,
-            isBusy: _isAnswering || (notYet && capture.isSubmitting),
-            lessonAllowedToday: lessonAllowedToday,
-            showUpgrade: showUpgrade,
-            errorMessage: errorMessage,
-            onSaidIt: () => _answer(item),
-            onNotYet: () => _chooseNotYet(item),
-            // 声を使う復習授業はPremium。契約と日次枠の両方が通るときだけ呼ぶ。
-            onAskSenpai: () => _startLesson(item),
-            onUpgrade: _openPaywall,
-            onLater: _later,
-          ),
-          const SizedBox(height: AppSpacing.md),
-        ],
-        if (item == null)
-          Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.md),
-            child: Text(
-              strings.reviewEmpty,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          ),
-        const SizedBox(height: AppSpacing.lg),
-        _FilledSection(filled: data.filled),
-      ],
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final AppStrings strings = AppStrings.of(context);
-    final AsyncValue<ReviewQueue> queue = ref.watch(reviewControllerProvider);
-    final AsyncValue<ProgressSummary> progress = ref.watch(
-      progressControllerProvider,
+    final PracticeAnswersState state = ref.watch(
+      practiceAnswerControllerProvider,
     );
-    final CaptureState capture = ref.watch(captureControllerProvider);
+    final PracticeAnswer? answer = state.answerFor(_problemId);
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(strings.reviewTitle),
-        // 通知から直接来たときは戻る先が積まれていない。ホームへ逃がす。
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: context.closeOrGoHome,
-        ),
-      ),
       body: SafeArea(
-        child: queue.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (Object error, StackTrace stack) => _Message(
-            text: strings.errorGeneric,
-            primaryLabel: strings.errorRetry,
-            onPrimary: () =>
-                ref.read(reviewControllerProvider.notifier).refresh(),
+        child: Padding(
+          // キャンバスの `padding: 44px 24px 24px`。上は SafeArea が持つので、
+          // ここが持つのは左右24と下24、そしてヘッダとの間の少しだけ。
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg,
+            AppSpacing.sm,
+            AppSpacing.lg,
+            AppSpacing.lg,
           ),
-          data: (ReviewQueue data) {
-            if (data.isEmpty) {
-              return _Message(text: strings.reviewEmpty);
-            }
-            // **進捗の取得で小テストを人質に取らない。**
-            //
-            // 小テストは「1問・テキストで10秒」が売りで、答えるのに要るのは
-            // キューだけ。進捗を使うのは「先輩に聞く」のPremium判定と
-            // `lessonAllowedToday`だけなので、そちらが取れなくても
-            // 言えた / まだ言えない は答えられなければならない。
-            //
-            // 取れていないあいだは「枠が無い」側に倒す。授業へ進ませてから
-            // サーバに断られるより、いま答えられることを優先する
-            // (押せたのに断られるのが、いちばん信用を落とす)。
-            return _content(
-              strings: strings,
-              data: data,
-              progress: progress.value ?? ProgressSummary.empty,
-              capture: capture,
-            );
-          },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              _PracticeHeader(
+                item: widget.item,
+                position: widget.position,
+                total: widget.total,
+                variant: answer != null
+                    ? _HeaderVariant.result
+                    : state.isGrading(_problemId)
+                        ? _HeaderVariant.grading
+                        : _HeaderVariant.answering,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              if (answer != null)
+                Expanded(
+                  child: _ResultView(
+                    answer: answer,
+                    showLessonGate: _showLessonGate,
+                    onAskSenpai: _askSenpai,
+                    onLater: _finish,
+                    onRetry: _retry,
+                    onHome: _finish,
+                    onUpgrade: _openPaywall,
+                  ),
+                )
+              else if (state.isGrading(_problemId))
+                Expanded(
+                  child: _GradingView(
+                    problem: widget.item.problem,
+                    response: state.draftFor(_problemId),
+                  ),
+                )
+              else
+                Expanded(
+                  child: _AnswerView(
+                    problem: widget.item.problem,
+                    controller: _responseController,
+                    hasError: state.errorFor(_problemId) != null,
+                    onChanged: _updateDraft,
+                    onSubmit: _submit,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _ReviewCard extends StatelessWidget {
-  const _ReviewCard({
+/// ヘッダの出し分け。**画面の状態ごとに、要るものだけ置く。**
+///
+/// 解答中は戻れる必要があるが、採点待ちに戻る操作を置くと「送ったのに抜けられる」
+/// になり、結果画面では下の操作(ホームへ戻る / 先輩に聞く)が出口を持っている。
+/// 出口が2つある画面を作らないための出し分け(`docs/core_loop_screens.html`)。
+enum _HeaderVariant { answering, grading, result }
+
+class _PracticeHeader extends StatelessWidget {
+  const _PracticeHeader({
     required this.item,
-    required this.notYet,
-    required this.isBusy,
-    required this.lessonAllowedToday,
-    required this.showUpgrade,
-    required this.onSaidIt,
-    required this.onNotYet,
-    required this.onAskSenpai,
-    required this.onUpgrade,
-    required this.onLater,
-    this.errorMessage,
+    required this.position,
+    required this.total,
+    required this.variant,
   });
 
-  final ReviewQueueItem item;
-  final bool notYet;
-  final bool isBusy;
-  final bool lessonAllowedToday;
-  final bool showUpgrade;
-  final VoidCallback onSaidIt;
-  final VoidCallback onNotYet;
-  final VoidCallback onAskSenpai;
-  final VoidCallback onUpgrade;
-  final VoidCallback onLater;
-  final String? errorMessage;
+  final PracticeQueueItem item;
+  final int position;
+  final int total;
+  final _HeaderVariant variant;
 
   @override
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
+
+    // 結果は1行に畳む。顔と見出しが主役なので、上に箱を積まない。
+    if (variant == _HeaderVariant.result) {
+      return Text(
+        '${strings.practiceHeader(item.daysSince)} — ${item.topicLabel}',
+        key: const Key('practice-result-header'),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.bodySmall,
+      );
+    }
+
+    return SizedBox(
+      height: 52,
+      child: Row(
+        children: <Widget>[
+          if (variant == _HeaderVariant.answering)
+            Semantics(
+              button: true,
+              label: MaterialLocalizations.of(context).backButtonTooltip,
+              child: SizedBox.square(
+                key: const Key('practice-back'),
+                dimension: 44,
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(AppRadius.button),
+                    onTap: context.closeOrGoHome,
+                    child: const Icon(Icons.arrow_back, color: AppColors.ink),
+                  ),
+                ),
+              ),
+            ),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Text(
+                  strings.practiceHeader(item.daysSince),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                Text(
+                  item.topicLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          // 採点待ちに「1 / 3」を残すと、**まだ送った1問の結果も見ていないのに
+          // 残りの数が目に入る**。急かす数字はこの画面から外す(約束4)。
+          if (variant == _HeaderVariant.answering)
+            Container(
+              key: const Key('practice-position'),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.sm,
+                vertical: AppSpacing.xs,
+              ),
+              decoration: BoxDecoration(
+                color: AppColors.said,
+                borderRadius: BorderRadius.circular(AppRadius.chip),
+              ),
+              child: Text(
+                '$position / $total',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AnswerView extends StatefulWidget {
+  const _AnswerView({
+    required this.problem,
+    required this.controller,
+    required this.hasError,
+    required this.onChanged,
+    required this.onSubmit,
+  });
+
+  final PracticeProblem problem;
+  final TextEditingController controller;
+  final bool hasError;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onSubmit;
+
+  @override
+  State<_AnswerView> createState() => _AnswerViewState();
+}
+
+class _AnswerViewState extends State<_AnswerView> {
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_refreshButton);
+  }
+
+  @override
+  void didUpdateWidget(_AnswerView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller == widget.controller) return;
+    oldWidget.controller.removeListener(_refreshButton);
+    widget.controller.addListener(_refreshButton);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_refreshButton);
+    super.dispose();
+  }
+
+  void _refreshButton() => setState(() {});
+
+  @override
+  Widget build(BuildContext context) {
+    final AppStrings strings = AppStrings.of(context);
+    final bool canSubmit = widget.controller.text.trim().isNotEmpty;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        _ProblemCard(problem: widget.problem),
+        const SizedBox(height: AppSpacing.md),
+        // **ラベルは枠の外に置く。**`hintText` にすると打ち始めた瞬間に消えて、
+        // 書いている途中の画面から「これは何の欄か」が無くなる。
+        Text(
+          strings.practiceAnswerHint,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Expanded(
+          child: TextField(
+            key: const Key('practice-response'),
+            controller: widget.controller,
+            onChanged: widget.onChanged,
+            expands: true,
+            minLines: null,
+            maxLines: null,
+            maxLength: 500,
+            textAlignVertical: TextAlignVertical.top,
+            style: Theme.of(context).textTheme.bodyLarge,
+            decoration: InputDecoration(
+              counterText: '',
+              filled: true,
+              fillColor: AppColors.surface,
+              contentPadding: const EdgeInsets.all(AppSpacing.md),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppRadius.card),
+                borderSide: const BorderSide(color: AppColors.blue, width: 2),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppRadius.card),
+                borderSide: const BorderSide(color: AppColors.blue, width: 2),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Text(
+          strings.practiceAnswerHelper,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        if (widget.hasError)
+          Padding(
+            padding: const EdgeInsets.only(top: AppSpacing.xs),
+            child: Text(
+              strings.errorGeneric,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        const SizedBox(height: AppSpacing.md),
+        ChunkyButton(
+          key: const Key('practice-submit'),
+          label: strings.practiceSubmit,
+          onPressed: canSubmit ? widget.onSubmit : null,
+        ),
+      ],
+    );
+  }
+}
+
+class _GradingView extends StatelessWidget {
+  const _GradingView({required this.problem, required this.response});
+
+  final PracticeProblem problem;
+  final String response;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppStrings strings = AppStrings.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        // **問題と自分の答えを上に残したまま待つ。**送ったものが画面から消えると、
+        // 何を採点されているのか分からないまま数秒を過ごすことになる。
+        // 1枚のカードに区切り線で並べるのは、両方が同じ1回の解答だから。
+        _PaperCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(
+                strings.sessionProblemTitle,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Text(problem.question, style: Theme.of(context).textTheme.titleMedium),
+              const _PaperDivider(),
+              Text(
+                strings.practiceYourAnswer,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Text(response, style: Theme.of(context).textTheme.bodyLarge),
+            ],
+          ),
+        ),
+        Expanded(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              const SenpaiFace(
+                key: Key('practice-face-listening'),
+                mood: SenpaiMood.listening,
+                size: 120,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              // **待っている間に何が起きているか**を出す。ここを空にすると、
+              // 数秒の沈黙が「送れていない」に見える(#175 が実例)。
+              Text(
+                strings.practiceGrading,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              const _GradingDots(),
+            ],
+          ),
+        ),
+        // 画面のいちばん下。**閉じてよいこと**を、下の操作と同じ位置で言う。
+        SizedBox(
+          height: 48,
+          child: Center(
+            child: Text(
+              strings.practiceGradingCanClose,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 紙のカード。**問題も答えも紙**(板書は黒板)。素材の分けは `board_style.dart`。
+class _PaperCard extends StatelessWidget {
+  const _PaperCard({required this.child, this.cardKey});
+
+  final Widget child;
+  final Key? cardKey;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
+      key: cardKey,
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: child,
+    );
+  }
+}
+
+/// カードの中の区切り線。**別のカードに割らない** — 同じ1回の解答だから。
+class _PaperDivider extends StatelessWidget {
+  const _PaperDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 14),
+      child: ColoredBox(
+        color: AppColors.border,
+        child: SizedBox(height: 1, width: double.infinity),
+      ),
+    );
+  }
+}
+
+class _GradingDots extends StatefulWidget {
+  const _GradingDots();
+
+  @override
+  State<_GradingDots> createState() => _GradingDotsState();
+}
+
+class _GradingDotsState extends State<_GradingDots>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!AppMotion.isReduced(context) && !_controller.isAnimating) {
+      _controller.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: AppStrings.of(context).practiceGradingProgress,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (BuildContext context, Widget? child) {
+          final int active = (_controller.value * 3).floor().clamp(0, 2);
+          return Row(
+            key: const Key('practice-grading-dots'),
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              for (int index = 0; index < 3; index++)
+                Container(
+                  width: 8,
+                  height: 8,
+                  margin: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+                  decoration: BoxDecoration(
+                    color: index == active ? AppColors.blue : AppColors.border,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ResultView extends ConsumerWidget {
+  const _ResultView({
+    required this.answer,
+    required this.showLessonGate,
+    required this.onAskSenpai,
+    required this.onLater,
+    required this.onRetry,
+    required this.onHome,
+    required this.onUpgrade,
+  });
+
+  final PracticeAnswer answer;
+  final bool showLessonGate;
+  final Future<void> Function() onAskSenpai;
+  final VoidCallback onLater;
+  final VoidCallback onRetry;
+  final VoidCallback onHome;
+  final VoidCallback onUpgrade;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AppStrings strings = AppStrings.of(context);
+    final PracticeVerdict verdict = answer.attempt.verdict;
+    final SenpaiMood mood = switch (verdict) {
+      PracticeVerdict.correct => SenpaiMood.delighted,
+      PracticeVerdict.incorrect => SenpaiMood.neutral,
+      PracticeVerdict.unclear => SenpaiMood.puzzled,
+    };
+    final String heading = switch (verdict) {
+      PracticeVerdict.correct => strings.practiceCorrect,
+      PracticeVerdict.incorrect => strings.practiceIncorrect,
+      PracticeVerdict.unclear => strings.practiceUnclear,
+    };
+    final MarkerColor? marker = switch (verdict) {
+      PracticeVerdict.correct => MarkerColor.said,
+      PracticeVerdict.incorrect => MarkerColor.hole,
+      PracticeVerdict.unclear => null,
+    };
+    final ProgressSummary progress =
+        ref.watch(progressControllerProvider).value ?? ProgressSummary.empty;
+    final CaptureState capture = ref.watch(captureControllerProvider);
+    final _LessonAvailability availability = _lessonAvailability(
+      progress: progress,
+      error: capture.error,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.only(bottom: AppSpacing.md),
+            children: <Widget>[
+              SenpaiFace(
+                key: Key('practice-face-${mood.name}'),
+                mood: mood,
+                size: 120,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Center(
+                child: marker == null
+                    ? Text(
+                        heading,
+                        key: const Key('practice-result-heading'),
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.displaySmall,
+                      )
+                    : MarkerText(
+                        heading,
+                        key: const Key('practice-result-heading'),
+                        marker: marker,
+                        style: Theme.of(context).textTheme.displaySmall,
+                      ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              _ResultAnswerCard(attempt: answer.attempt),
+              const SizedBox(height: AppSpacing.md),
+              _ScheduleBand(answer: answer),
+            ],
+          ),
+        ),
+        if (showLessonGate && verdict != PracticeVerdict.correct) ...<Widget>[
+          _LessonGate(availability: availability, onUpgrade: onUpgrade),
+          const SizedBox(height: AppSpacing.sm),
+        ],
+        switch (verdict) {
+          PracticeVerdict.correct => ChunkyButton(
+              key: const Key('practice-home'),
+              label: strings.reviewBackHome,
+              onPressed: onHome,
+            ),
+          PracticeVerdict.incorrect => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                ChunkyButton(
+                  key: const Key('practice-ask-senpai'),
+                  label: strings.reviewAskSenpai,
+                  onPressed: capture.isSubmitting
+                      ? null
+                      : () => unawaited(onAskSenpai()),
+                ),
+                GhostButton(
+                  key: const Key('practice-later'),
+                  label: strings.reviewLater,
+                  onPressed: capture.isSubmitting ? null : onLater,
+                ),
+              ],
+            ),
+          PracticeVerdict.unclear => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                ChunkyButton(
+                  key: const Key('practice-retry'),
+                  label: strings.practiceRetry,
+                  onPressed: capture.isSubmitting ? null : onRetry,
+                ),
+                GhostButton(
+                  key: const Key('practice-ask-senpai'),
+                  label: strings.reviewAskSenpai,
+                  onPressed: capture.isSubmitting
+                      ? null
+                      : () => unawaited(onAskSenpai()),
+                ),
+              ],
+            ),
+        },
+      ],
+    );
+  }
+}
+
+class _ProblemCard extends StatelessWidget {
+  const _ProblemCard({required this.problem});
+
+  final PracticeProblem problem;
+
+  @override
+  Widget build(BuildContext context) {
+    // 板書は黒板、問題は紙。授業画面の board_style.dart と同じ材質の境界を守る。
+    return Container(
+      key: const Key('practice-problem-card'),
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: AppColors.surface,
@@ -260,79 +819,48 @@ class _ReviewCard extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          if (notYet) ...<Widget>[
-            // 「まだ」を咎めず、ここから先は先輩が引き取る。
-            Text(
-              strings.reviewNotYetLead,
-              style: Theme.of(context).textTheme.bodyLarge,
-            ),
-            const SizedBox(height: AppSpacing.md),
-            if (lessonAllowedToday) ...<Widget>[
-              if (errorMessage != null) ...<Widget>[
-                Text(
-                  errorMessage!,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: AppSpacing.md),
-              ],
-              ChunkyButton(
-                label: strings.reviewAskSenpai,
-                onPressed: isBusy ? null : onAskSenpai,
-              ),
-            ] else ...<Widget>[
-              if (showUpgrade) ...<Widget>[
-                // 小テストは閉じない。従量原価が始まる音声授業だけが境界だと伝える。
-                Text(
-                  strings.reviewVoicePremium,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                TextButton(
-                  onPressed: onUpgrade,
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppColors.blue,
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.sm,
-                    ),
-                  ),
-                  child: Text(
-                    strings.homeUnlock,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ),
-              ] else
-                // Premiumのフェアユース上限は、先輩が今日の学習を締める判断として伝える。
-                Text(
-                  strings.lessonEnoughForToday,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-            ],
-            const SizedBox(height: AppSpacing.sm),
-            GhostButton(
-              label: strings.reviewLater,
-              onPressed: isBusy ? null : onLater,
-            ),
-          ] else ...<Widget>[
-            // 先輩の声のひとこと。通知文と同じものを見せて、続きだと分かるようにする。
-            Text(item.prompt, style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: AppSpacing.md),
-            Text(item.quiz, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: AppSpacing.lg),
-            if (errorMessage != null) ...<Widget>[
-              Text(errorMessage!, style: Theme.of(context).textTheme.bodySmall),
-              const SizedBox(height: AppSpacing.md),
-            ],
-            ChunkyButton(
-              label: strings.reviewSaidIt,
-              onPressed: isBusy ? null : onSaidIt,
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            // 「まだ」は選んでも損しない選択肢。約束3を GhostButton の形にする。
-            GhostButton(
-              label: strings.reviewNotYet,
-              onPressed: isBusy ? null : onNotYet,
-            ),
+          // 授業画面の紙カードと同じ形。何の枠かをラベルで言い切る。
+          Text(
+            AppStrings.of(context).sessionProblemTitle,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            problem.question,
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ResultAnswerCard extends StatelessWidget {
+  const _ResultAnswerCard({required this.attempt});
+
+  final PracticeAttempt attempt;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppStrings strings = AppStrings.of(context);
+    final String? comment = attempt.comment;
+
+    return _PaperCard(
+      cardKey: const Key('practice-result-answer'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(strings.practiceYourAnswer, style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: AppSpacing.xs),
+          Text(attempt.response, style: Theme.of(context).textTheme.bodyLarge),
+          // 先輩の一言。**正解は書かない**(採点プロンプトが縛っている)ので、
+          // ここに出るのは「どこまで合っていたか」と次の一手だけ。
+          if (comment != null) ...<Widget>[
+            const _PaperDivider(),
+            Text(comment, style: Theme.of(context).textTheme.bodyMedium),
           ],
         ],
       ),
@@ -340,58 +868,197 @@ class _ReviewCard extends StatelessWidget {
   }
 }
 
-/// 埋めた穴。ペイウォールが謳う Premium の「履歴」はここ。
-///
-/// 静かに置く。祝福画面のにぎやかさは持ち込まない。
-class _FilledSection extends StatelessWidget {
-  const _FilledSection({required this.filled});
+class _ScheduleBand extends StatelessWidget {
+  const _ScheduleBand({required this.answer});
 
-  final List<FilledHole> filled;
+  final PracticeAnswer answer;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppStrings strings = AppStrings.of(context);
+    final List<int> days = answer.nextSchedule
+        .map((PracticeScheduleEntry entry) => entry.days)
+        .toList(growable: false);
+    final bool unclear = answer.attempt.verdict == PracticeVerdict.unclear;
+    final String text =
+        unclear ? strings.practiceScheduleUnclear : strings.practiceNextSchedule(days);
+
+    return Container(
+      key: const Key('practice-schedule'),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          // 時計は「次にいつ」、丸い i は「今回は何も動かない」。
+          // 同じ形の帯に**別の意味**を載せるので、印だけは分ける。
+          Icon(
+            unclear ? Icons.info_outline : Icons.schedule,
+            size: 20,
+            color: AppColors.inkMuted,
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(text, style: Theme.of(context).textTheme.bodySmall),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LessonGate extends StatelessWidget {
+  const _LessonGate({required this.availability, required this.onUpgrade});
+
+  final _LessonAvailability availability;
+  final VoidCallback onUpgrade;
 
   @override
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(
-          strings.reviewFilledTitle(filled.length),
-          style: Theme.of(context).textTheme.titleMedium,
+          availability.showUpgrade
+              ? strings.reviewVoicePremium
+              : availability.message ?? strings.lessonEnoughForToday,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodySmall,
         ),
-        const SizedBox(height: AppSpacing.sm),
-        if (filled.isEmpty)
-          Text(
-            strings.reviewFilledEmpty,
-            style: Theme.of(context).textTheme.bodySmall,
-          )
-        else
-          // 埋めた穴は、ピンクではなく黄で引き直される。
-          // 上から順に引くことで、積み上がってきたものとして見える。
-          for (int i = 0; i < filled.length; i++)
-            Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.md),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  MarkerText(
-                    filled[i].hole.description,
-                    marker: MarkerColor.said,
-                    delay: AppDurations.draw * i,
-                  ),
-                  Text(
-                    strings.reviewFilledDays(filled[i].daysSinceFilled),
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
+        if (availability.showUpgrade)
+          TextButton(
+            onPressed: onUpgrade,
+            style: TextButton.styleFrom(foregroundColor: AppColors.blue),
+            child: Text(strings.homeUnlock),
+          ),
       ],
     );
   }
 }
 
-/// 中身が出せないときの画面。**必ずホームに戻れる**ようにする。
+@immutable
+class _LessonAvailability {
+  const _LessonAvailability({
+    required this.allowed,
+    required this.showUpgrade,
+    this.message,
+  });
+
+  final bool allowed;
+  final bool showUpgrade;
+  final String? message;
+}
+
+_LessonAvailability _lessonAvailability({
+  required ProgressSummary progress,
+  required ApiException? error,
+}) {
+  final bool premiumRequired =
+      !progress.isPremium || error?.isPremiumRequired == true;
+  final bool limitReached =
+      error?.isFreeLimitReached == true || error?.isFairUseLimitReached == true;
+  final bool allowed =
+      !premiumRequired && progress.limits.lessonAllowedToday && !limitReached;
+  final bool showUpgrade = error?.isFairUseLimitReached == true
+      ? false
+      : premiumRequired || error?.isFreeLimitReached == true;
+  final String? message = !showUpgrade && error != null && !limitReached
+      ? (error.message.isEmpty ? null : error.message)
+      : null;
+  return _LessonAvailability(
+    allowed: allowed,
+    showUpgrade: showUpgrade,
+    message: message,
+  );
+}
+
+class _MessageScaffold extends StatelessWidget {
+  const _MessageScaffold({required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(title),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: context.closeOrGoHome,
+        ),
+      ),
+      body: SafeArea(child: child),
+    );
+  }
+}
+
+class _EmptyPractice extends StatelessWidget {
+  const _EmptyPractice({required this.queue});
+
+  final PracticeQueue queue;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppStrings strings = AppStrings.of(context);
+    return ListView(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      children: <Widget>[
+        Text(
+          strings.reviewEmpty,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodyLarge,
+        ),
+        const SizedBox(height: AppSpacing.xl),
+        Text(
+          strings.practiceSolvedTitle(queue.solved.length),
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        for (final SolvedPractice solved in queue.solved)
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+            child: Container(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(AppRadius.card),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    solved.problem.question,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    strings.practiceSolvedMeta(
+                      solved.topicLabel,
+                      solved.daysSinceSolved,
+                    ),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        const SizedBox(height: AppSpacing.lg),
+        GhostButton(
+          label: strings.reviewBackHome,
+          onPressed: context.closeOrGoHome,
+        ),
+      ],
+    );
+  }
+}
+
 class _Message extends StatelessWidget {
   const _Message({required this.text, this.primaryLabel, this.onPrimary});
 
@@ -402,8 +1069,6 @@ class _Message extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
-    final String? label = primaryLabel;
-
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.lg),
       child: Column(
@@ -415,8 +1080,8 @@ class _Message extends StatelessWidget {
             style: Theme.of(context).textTheme.bodyLarge,
           ),
           const SizedBox(height: AppSpacing.lg),
-          if (label != null && onPrimary != null)
-            ChunkyButton(label: label, onPressed: onPrimary),
+          if (primaryLabel != null && onPrimary != null)
+            ChunkyButton(label: primaryLabel!, onPressed: onPrimary),
           GhostButton(
             label: strings.reviewBackHome,
             onPressed: context.closeOrGoHome,

@@ -3,16 +3,16 @@ import { describe, expect, it } from "vitest";
 import { BoardChannel, type BoardSink } from "./board.ts";
 import { StudentUtterances, runLessonLoop } from "./lesson-loop.ts";
 import type { LessonLlm } from "./lesson.ts";
-import { lessonSteps, studentSilenceMarker, teachBackFallback, teachBackPrompt } from "./senpai.ts";
+import { lessonSteps, studentSilenceMarker } from "./senpai.ts";
 
 /**
- * 授業の**往復**のテスト。見たいのは4つ:
+ * 授業の**往復**のテスト。見たいのは5つ:
  *
  *   1. 問いかけで止まり、答えを受けて**同じ板書**に続きが積まれること
  *      (`board_open` は1回だけ・`index` は通しで増える)
- *   2. 「自分の言葉で説明してみて」で往復が終わること(途中の質問では終わらない)
+ *   2. **「わかった」で往復が終わること**(先輩の言い方では終わらない。ADR 0009)
  *   3. 説明の途中の発話がパスを中止し、**会話へ落とさず**続きのパスで応えること
- *   4. 安全弁(回数・セッション終了)で降りるとき、積み残しの発話を
+ *   4. 安全弁(残り時間・セッション終了)で降りるとき、積み残しの発話を
  *      取り出さないこと(記録も返事も会話モードが引き取る)
  *   5. 答え待ちの問いが板書に残ったかを、本文なしの種別ログで観測できること
  */
@@ -106,23 +106,41 @@ const never = new AbortController();
 
 type LoopOverrides = Partial<Parameters<typeof runLessonLoop>[0]>;
 
+/**
+ * 台本の最後の一言を聞いた時点で、生徒が「わかった」を押す。
+ *
+ * **回数の上限を撤廃した(ADR 0009)ので、降ろすのは生徒だけになった。**
+ * スタブは最後の出力を繰り返すだけなので、押さないとテストは永久に回る。
+ * 押す合図を「説明してみて」に置いてあるのは、板書プロンプトが授業の最後に
+ * 置いていた一言で、**台本上いちばん「教え切った」に近い場所**だから
+ * (先輩の言い方そのものはもう降ろす力を持たない — それを確かめるのが
+ * 「先輩の言い方では降りない」のテスト)。
+ */
+const UNDERSTOOD_CUE = /説明してみて/;
+
 function loopWith(
   llm: LessonLlm,
   board: ReturnType<typeof boardWith>,
   overrides: LoopOverrides = {},
 ) {
+  const understood = new AbortController();
+  const speak = overrides.speak ?? (async () => undefined);
   return runLessonLoop({
     llm,
     system: () => "先輩の板書プロンプト",
     locale: "ja",
     delivery: board,
-    speak: async () => undefined,
     signal: never.signal,
     utterances: new StudentUtterances(),
     record: () => undefined,
     practiceProblemEnabled: true,
     remainingSeconds: () => 600,
     ...overrides,
+    understood: overrides.understood ?? understood.signal,
+    speak: async (step) => {
+      await speak(step);
+      if (UNDERSTOOD_CUE.test(step.speech)) understood.abort();
+    },
   });
 }
 
@@ -220,7 +238,7 @@ describe("runLessonLoop", () => {
       },
     });
 
-    expect(result.reason).toBe("handed_over");
+    expect(result.reason).toBe("understood");
     expect(result.passes).toBe(2);
     expect(recorded).toEqual(["できた"]);
     expect(events).not.toContain("lesson_answer_timeout");
@@ -296,7 +314,7 @@ describe("runLessonLoop", () => {
       },
     });
 
-    expect(result.reason).toBe("handed_over");
+    expect(result.reason).toBe("understood");
     expect(result.passes).toBe(4);
     expect(recorded).toEqual(["できなかった", "Dに数字を入れるところ", "できた"]);
     expect(llm.asked[1]).toContain("どこで止まった");
@@ -339,7 +357,7 @@ describe("runLessonLoop", () => {
 
     const result = await running;
 
-    expect(result.reason).toBe("handed_over");
+    expect(result.reason).toBe("understood");
     expect(result.passes).toBe(2);
     // 問いかけの先の手順は配送されない(答えを聞く前に自分で埋めない)
     expect(result.step_count).toBe(4);
@@ -425,7 +443,7 @@ describe("runLessonLoop", () => {
         })(),
     });
 
-    expect(result.reason).toBe("handed_over");
+    expect(result.reason).toBe("understood");
     expect(seen.join("")).toContain("まず整理するね。");
   });
 
@@ -459,7 +477,7 @@ describe("runLessonLoop", () => {
       },
     });
 
-    expect(result.reason).toBe("handed_over");
+    expect(result.reason).toBe("understood");
     expect(remembered).toBe(spoken);
     expect(llm.systems[0]).toContain("(問題の写真なし)");
     expect(llm.systems[1]).toContain(spoken);
@@ -604,7 +622,7 @@ describe("runLessonLoop", () => {
       },
     });
 
-    expect(result.reason).toBe("handed_over");
+    expect(result.reason).toBe("understood");
     expect(result.passes).toBe(2);
     expect(recorded).toEqual(["ちょっと待って、全然わかんない"]);
     expect(llm.asked[1]).toContain("ちょっと待って、全然わかんない");
@@ -629,7 +647,7 @@ describe("runLessonLoop", () => {
       answerTimeoutMs: 5,
     });
 
-    expect(result.reason).toBe("handed_over");
+    expect(result.reason).toBe("understood");
     expect(recorded).toEqual([]);
     expect(
       result.turns.some(
@@ -651,18 +669,70 @@ describe("runLessonLoop", () => {
 
     const result = await loopWith(llm, board);
 
-    expect(result.reason).toBe("handed_over");
+    expect(result.reason).toBe("understood");
     expect(result.passes).toBe(1);
   });
 
-  it("問いかけず言い切って終えたら completed(呼び出し側が定型句で戻す)", async () => {
+  /**
+   * **番の渡し忘れでは、もう授業を終わらせない(ADR 0009)。**
+   *
+   * 以前はここで `completed` を返し、呼び出し側が定型句で教え返しへ戻していた。
+   * 渡す先(教え返し)が無くなったので、言い切った回は続きを書かせる —
+   * 降ろすのは生徒の「わかった」と残り時間だけ。
+   */
+  it("問いかけず言い切っても授業は終わらず、続きのパスに入る", async () => {
     const board = boardWith(recordingSink());
-    const llm = stubLlm(lessonJson([step(0, "この形にすると頂点が見えるよ。", "y = (x-1)^2")]));
+    const llm = stubLlm(
+      lessonJson([step(0, "この形にすると頂点が見えるよ。", "y = (x-1)^2")]),
+      lessonJson([step(1, "じゃあ今の、自分の言葉で説明してみて。")]),
+    );
 
     const result = await loopWith(llm, board);
 
+    expect(result.passes).toBe(2);
+    // 2パス目の一言を聞いて生徒が押した。**先輩の言い方では降りていない。**
+    expect(result.reason).toBe("understood");
+  });
+
+  /**
+   * 教え返し中の「板書して」への再入(`agent.ts` の `serveBoardRequests`)だけは、
+   * 往復の上限を持つ。あれは頼まれごとへの応答の長さであって、授業の上限ではない。
+   */
+  it("再入(maxPasses つき)では、言い切った時点で降りる", async () => {
+    const board = boardWith(recordingSink());
+    const llm = stubLlm(lessonJson([step(0, "この形にすると頂点が見えるよ。", "y = (x-1)^2")]));
+
+    const result = await loopWith(llm, board, { maxPasses: 2 });
+
     expect(result.reason).toBe("completed");
     expect(result.passes).toBe(1);
+  });
+
+  /**
+   * **先輩の言い方では降りない。**「じゃあ今の、自分の言葉で説明してみて。」は
+   * かつて授業を終える唯一の合図だった(`asksForTeachBack`)。生成が1回ぶれて
+   * この形を口にしただけで、押していない生徒の授業が終わるのを避けるため、
+   * ADR 0009 で判定ごと消してある。
+   */
+  it("「説明してみて」と言われただけでは降りない(押されるまで積む)", async () => {
+    const board = boardWith(recordingSink());
+    const llm = stubLlm(
+      lessonJson([step(0, "じゃあ今の、自分の言葉で説明してみて。", "y = (x-1)^2")]),
+      lessonJson([step(1, "つづきを書くね。", "y = x^2 - 2x + 1")]),
+    );
+
+    // 「わかった」は押されない。降りるのは残り時間の安全弁だけ。
+    let remaining = 600;
+    const result = await loopWith(llm, board, {
+      understood: new AbortController().signal,
+      remainingSeconds: () => {
+        remaining -= 500;
+        return Math.max(0, remaining);
+      },
+    });
+
+    expect(result.reason).toBe("time_up");
+    expect(result.passes).toBeGreaterThanOrEqual(1);
   });
 
   /**
@@ -698,7 +768,7 @@ describe("runLessonLoop", () => {
       },
     });
 
-    expect(result.reason).toBe("handed_over");
+    expect(result.reason).toBe("understood");
     expect(result.passes).toBe(2);
     // 同じ板書に積まれ続けている(completed で途切れていない)
     expect(sink.sent.filter((message) => message.type === "board_open")).toHaveLength(1);
@@ -731,7 +801,7 @@ describe("runLessonLoop", () => {
       },
     });
 
-    expect(result.reason).toBe("handed_over");
+    expect(result.reason).toBe("understood");
     expect(observations).toEqual([
       { pass: 1, board_kind: "text", board_missing: false },
       { pass: 2, board_kind: "none", board_missing: true },
@@ -786,7 +856,7 @@ describe("runLessonLoop", () => {
     const result = await loopWith(llm, board);
 
     // 1手順目で止まらず、1パスで教え返しまで届いている
-    expect(result.reason).toBe("handed_over");
+    expect(result.reason).toBe("understood");
     expect(result.passes).toBe(1);
     expect(result.step_count).toBe(3);
   });
@@ -813,7 +883,7 @@ describe("runLessonLoop", () => {
 
     const result = await loopWith(llm, board);
 
-    expect(result.reason).toBe("handed_over");
+    expect(result.reason).toBe("understood");
     expect(result.passes).toBe(2);
     // 1パス目の1手順 + 2パス目の2手順が同じ板書に載っている
     expect(sink.sent.filter((message) => message.type === "board_open")).toHaveLength(1);
@@ -843,7 +913,7 @@ describe("runLessonLoop", () => {
       ],
     });
 
-    expect(result.reason).toBe("handed_over");
+    expect(result.reason).toBe("understood");
     // 初回の定型指示ではなく、これまでのやりとり入りの継続指示で呼ばれている
     expect(llm.asked[0]).toContain("板書して!");
     expect(llm.asked[0]).toContain("続きだけを書きます");
@@ -892,7 +962,8 @@ describe("runLessonLoop", () => {
       remainingSeconds: () => 30,
     });
 
-    expect(result.reason).toBe("budget");
+    // 締めの枠(120秒)を切っているので、呼び出し側が締めの一言を言って降りる。
+    expect(result.reason).toBe("time_up");
     expect(result.passes).toBe(1);
     expect(
       sink.sent.some(
@@ -904,9 +975,6 @@ describe("runLessonLoop", () => {
     ).toBe(false);
     expect(lessonSteps(result.turns).some((delivered) => delivered.awaits_solving === true)).toBe(
       false,
-    );
-    expect(teachBackFallback({ locale: "ja" }, lessonSteps(result.turns))).toBe(
-      teachBackPrompt("ja"),
     );
   });
 
@@ -922,6 +990,8 @@ describe("runLessonLoop", () => {
 
     const result = await loopWith(llm, board, { practiceProblemEnabled: false });
 
+    // **時間はまだ残っている。**出せない類題を落としただけなので、
+    // ここで `time_up` にすると先輩が10分残して「今日はここまで」と言う。
     expect(result.reason).toBe("budget");
     expect(lessonSteps(result.turns).some((delivered) => delivered.awaits_solving === true)).toBe(
       false,
@@ -934,9 +1004,6 @@ describe("runLessonLoop", () => {
           message.step.board.tex.includes("x^2 + 4x"),
       ),
     ).toBe(false);
-    expect(teachBackFallback({ locale: "ja" }, lessonSteps(result.turns))).toBe(
-      teachBackPrompt("ja"),
-    );
   });
 
   it("類題の待機はセッション残り時間だけを安全弁にする", async () => {

@@ -17,7 +17,7 @@ describe("loadConfig", () => {
   it("モデル名には既定値がある", () => {
     const config = loadConfig(complete);
     expect(config.LLM_MODEL_CONVERSATION).toBe("claude-haiku-4-5-20251001");
-    expect(config.LLM_MODEL_KARTE).toBe("claude-sonnet-5");
+    expect(config.LLM_MODEL_PRACTICE).toBe("claude-sonnet-5");
     expect(config.LLM_MODEL_BOARD).toBe("claude-sonnet-5");
   });
 
@@ -54,12 +54,12 @@ describe("loadConfig", () => {
       ...complete,
       GEMINI_TTS_MODEL: "",
       GEMINI_TTS_VOICE: "   ",
-      LLM_MODEL_KARTE: "",
+      LLM_MODEL_PRACTICE: "",
     });
 
     expect(config.GEMINI_TTS_MODEL).toBe("gemini-2.5-flash-preview-tts");
     expect(config.GEMINI_TTS_VOICE).toBe("Leda");
-    expect(config.LLM_MODEL_KARTE).toBe("claude-sonnet-5");
+    expect(config.LLM_MODEL_PRACTICE).toBe("claude-sonnet-5");
   });
 
   // 会話の途中で鍵が無いことに気づくのが最悪なので、起動時に落とす

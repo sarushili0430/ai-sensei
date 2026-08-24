@@ -2,6 +2,7 @@ import { sessionPhotoParts } from "@ai-sensei/contract";
 import type { CurriculumLocale } from "@ai-sensei/curriculum";
 import type { D1Database, KVNamespace, R2Bucket } from "./cloudflare.ts";
 import type { Bindings, Services } from "./env.ts";
+import type { PracticeGrader, PracticeGrading } from "./lib/grading.ts";
 import type { NotificationScheduler } from "./lib/notifications.ts";
 import type { PhotoAnalysis, PhotoAnalyzer, PhotoAnalyzerInput } from "./lib/photo-analysis.ts";
 import { MemoryRepository } from "./repository/memory.ts";
@@ -102,6 +103,29 @@ export class RecordingScheduler implements NotificationScheduler {
     return { externalId: `os_${this.scheduled.length}` };
   }
 
+  readonly scheduledPractice: {
+    deviceId: string;
+    problemId: string;
+    step: number;
+    sendAt: string;
+    topicLabel: string;
+    daysSince: number;
+    locale?: CurriculumLocale;
+  }[] = [];
+
+  async schedulePractice(input: {
+    deviceId: string;
+    problemId: string;
+    step: 1 | 2 | 3;
+    sendAt: string;
+    topicLabel: string;
+    daysSince: number;
+    locale?: CurriculumLocale;
+  }): Promise<{ externalId: string | null }> {
+    this.scheduledPractice.push(input);
+    return { externalId: `os_p${this.scheduledPractice.length}` };
+  }
+
   async cancel(externalId: string): Promise<void> {
     this.cancelled.push(externalId);
   }
@@ -170,9 +194,38 @@ export function testBindings(overrides: Partial<Bindings> = {}): Bindings {
   };
 }
 
+/**
+ * 採点を固定するテスト用の採点器。
+ *
+ * **既定は `correct`。**「不正解なら1日後にも通知する」が新しい分岐なので、
+ * 既定を `incorrect` にすると、段の検査が既定値のせいで通ってしまう。
+ * 段を見るテストは必ず `verdict` を明示すること。
+ */
+export class StubGrader implements PracticeGrader {
+  readonly graded: { question: string; answer: string; response: string }[] = [];
+
+  constructor(
+    private result: PracticeGrading = { verdict: "correct", comment: "いいね", gradedBy: "stub" },
+  ) {}
+
+  set(result: PracticeGrading): void {
+    this.result = result;
+  }
+
+  async grade(input: {
+    question: string;
+    answer: string;
+    response: string;
+  }): Promise<PracticeGrading> {
+    this.graded.push(input);
+    return this.result;
+  }
+}
+
 export type TestServices = Services & {
   repository: MemoryRepository;
   scheduler: RecordingScheduler;
+  grader: StubGrader;
 };
 
 export function testServices(options: { now?: Date; analysis?: PhotoAnalysis } = {}): TestServices {
@@ -180,6 +233,7 @@ export function testServices(options: { now?: Date; analysis?: PhotoAnalysis } =
   return {
     repository: new MemoryRepository(),
     analyzer: new RecordingAnalyzer(options.analysis),
+    grader: new StubGrader(),
     scheduler: new RecordingScheduler(),
     now: () => options.now ?? new Date("2026-08-03T13:24:07.000Z"),
     // テストで安定したIDにする(ses_1, kar_2, ...)

@@ -118,6 +118,42 @@
           ],
           "additionalProperties": false
         },
+        "practice_problem": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "topic_id": {
+                  "type": "string",
+                  "pattern": "^(M1|MA|M2|MB|M3|MC|A1|GE|A2|PC|CL|ST|J1|J2|J3|JE|E1|E2|L1)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+                },
+                "question": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "answer": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              },
+              "required": [
+                "topic_id",
+                "question",
+                "answer"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "board_id": {
+          "type": "string",
+          "minLength": 1
+        },
         "duration_seconds": {
           "type": "integer",
           "minimum": 0
@@ -125,6 +161,7 @@
         "ended_reason": {
           "type": "string",
           "enum": [
+            "understood",
             "completed",
             "timeout",
             "user_left",
@@ -141,7 +178,6 @@
       },
       "required": [
         "transcript",
-        "karte",
         "duration_seconds",
         "ended_reason"
       ],

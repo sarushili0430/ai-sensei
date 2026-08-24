@@ -3,7 +3,10 @@ import {
   activeStepDays,
   buildReviewPrompt,
   nextReviewStep,
+  practiceStepsByVerdict,
+  practiceStepsOnCreate,
   reviewTimeAfterDays,
+  schedulePractice,
   scheduleReviews,
 } from "./spaced-repetition.ts";
 
@@ -44,6 +47,53 @@ describe("scheduleReviews", () => {
       hourLocal: 9,
     });
     expect(utcEvening.toISOString()).toBe("2026-08-04T09:00:00.000Z");
+  });
+});
+
+describe("schedulePractice", () => {
+  /**
+   * 「わかった」は到達の宣言なので、翌日に不正解と同じ通知を置くと
+   * 押したことが罰になる。段番号は詰めず、3日後=step 2の対応も守る。
+   */
+  it("作成時は翌日を置かず、3日後・7日後だけ予約する", () => {
+    expect(practiceStepsOnCreate).toEqual([2, 3]);
+
+    const entries = schedulePractice(["prb_1"], completedAt, practiceStepsOnCreate);
+    expect(entries.map((entry) => entry.step)).toEqual([2, 3]);
+    expect(entries.map((entry) => entry.days)).toEqual([3, 7]);
+    expect(entries.map((entry) => entry.scheduled_at)).toEqual([
+      "2026-08-06T11:00:00.000Z",
+      "2026-08-10T11:00:00.000Z",
+    ]);
+  });
+
+  it("不正解は翌日・3日後・7日後の3段を予約する", () => {
+    const entries = schedulePractice(["prb_1"], completedAt, practiceStepsByVerdict.incorrect);
+
+    expect(entries.map((entry) => entry.step)).toEqual([1, 2, 3]);
+    expect(entries.map((entry) => entry.days)).toEqual([1, 3, 7]);
+    expect(entries.map((entry) => entry.scheduled_at)).toEqual([
+      "2026-08-04T11:00:00.000Z",
+      "2026-08-06T11:00:00.000Z",
+      "2026-08-10T11:00:00.000Z",
+    ]);
+  });
+
+  /** 採点側が読めなかっただけの回を、生徒の不正解として段へ載せない。 */
+  it("判定できずでは1本も予約せず、段を進めない", () => {
+    expect(practiceStepsByVerdict.unclear).toEqual([]);
+    expect(schedulePractice(["prb_1"], completedAt, practiceStepsByVerdict.unclear)).toEqual([]);
+  });
+
+  it("複数の問題を渡しても、指定した段だけを問題ごとに作る", () => {
+    const entries = schedulePractice(
+      ["prb_1", "prb_2"],
+      completedAt,
+      practiceStepsByVerdict.correct,
+    );
+    expect(entries).toHaveLength(4);
+    expect(new Set(entries.map((entry) => entry.problem_id))).toEqual(new Set(["prb_1", "prb_2"]));
+    expect(new Set(entries.map((entry) => entry.step))).toEqual(new Set([2, 3]));
   });
 });
 

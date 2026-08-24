@@ -1,6 +1,6 @@
 # @ai-sensei/api
 
-Cloudflare Workers + Hono。セッション作成・カルテ保存・課金webhookを担当する。
+Cloudflare Workers + Hono。セッション作成・復習問題の保存と採点・課金webhookを担当する。
 
 ## エンドポイント
 
@@ -9,11 +9,13 @@ Cloudflare Workers + Hono。セッション作成・カルテ保存・課金webh
 | POST | `/v1/sessions` | `X-Device-Id` | 写真解析 → 単元判定(**この時点では数えない**) |
 | PATCH | `/v1/sessions/{id}/topics` | `X-Device-Id` | チップUIで外した単元を反映する(解析し直さない) |
 | POST | `/v1/sessions/{id}/start` | `X-Device-Id` | **会話の開始。日次の持ち時間を仮押さえし**、LiveKitルームとトークンを返す |
-| POST | `/v1/sessions/{id}/complete` | `Bearer INTERNAL_API_TOKEN` | agentが呼ぶ。カルテ保存 + 復習プッシュ予約 |
-| GET | `/v1/sessions/{id}/result` | `X-Device-Id` | アプリが会話後に結果を取りに来る(生成中は202) |
-| GET | `/v1/me/progress` | `X-Device-Id` | 連続日数と埋めた穴 |
-| GET | `/v1/me/reviews` | `X-Device-Id` | 無料の小テスト + 音声授業のPremium要否 |
-| POST | `/v1/me/reviews/{holeId}` | `X-Device-Id` | 小テストの自己申告(言えた / まだ言えない) |
+| POST | `/v1/sessions/{id}/complete` | `Bearer INTERNAL_API_TOKEN` | agentが呼ぶ。復習問題の保存 + 3日後/7日後のプッシュ予約 |
+| GET | `/v1/sessions/{id}/result` | `X-Device-Id` | アプリが会話後に残高と結果を取りに来る(`/complete` 前は202) |
+| GET | `/v1/me/progress` | `X-Device-Id` | 連続日数と解けた問題の数 |
+| GET | `/v1/me/practice` | `X-Device-Id` | 復習問題のリスト(解きにいく問題 / 解けた問題) |
+| POST | `/v1/me/practice/{problemId}` | `X-Device-Id` | テキストの解答を採点し、verdict で通知の段を決める |
+| GET | `/v1/me/reviews` | `X-Device-Id` | **@deprecated** 穴ベースの小テスト(ADR 0009。移行期のみ) |
+| POST | `/v1/me/reviews/{holeId}` | `X-Device-Id` | **@deprecated** 小テストの自己申告(同上) |
 | POST | `/v1/webhooks/revenuecat` | 共有シークレット | entitlement同期 |
 | GET | `/health` | なし | 死活確認。どの環境かを名乗る(`{"ok":true,"environment":"production"}`) |
 
@@ -75,7 +77,7 @@ pnpm run tail:develop                     # ログを流し見る
 **LiveKit Cloud のエージェントホスティングは `LIVEKIT_AGENT_NAME` を自動で入れる**
 ので、そこに載せたら名前つきになる。名前つきワーカーは自動ディスパッチの
 対象外なので、APIが `roomConfig` で呼ばないと**部屋は開くのに誰も来ない**
-(アプリは「聞いています」のまま止まり、会話もカルテも起きない)。
+(アプリは「聞いています」のまま止まり、会話も復習問題も起きない)。
 
 どちらで動いているかは `session_created` ログの `agent_dispatch`
 (`explicit` / `automatic`)で分かる。
@@ -96,7 +98,9 @@ pnpm run tail:develop
 | `session_created` | セッションを作った | `session_id` `topic_ids` `agent_dispatch` |
 | `session_rejected` | 写真が読めない等(想定内) | `session_id` `status` |
 | `photo_analysis_failed` | Vision APIが落ちた(想定外) | `session_id` `error_message` |
-| `karte_stored` | カルテを保存した | `session_id` `ended_reason` `holes` `transcript_turns` |
+| `session_completed` | セッションを完了した | `session_id` `ended_reason` `practice_problem` `scheduled` |
+| `practice_graded` | 復習問題を採点した | `problem_id` `verdict` `graded_by` `scheduled` |
+| `practice_problem_rejected` | 許可集合の外の単元だったので保存しなかった | `session_id` `topic_id` `reason` |
 | `complete_unauthorized` | agentの内部トークンがずれている | `session_id` |
 | `unhandled_error` | 想定外。アプリには internal_error | `route` `error_stack` |
 
@@ -104,7 +108,7 @@ pnpm run tail:develop
 この値だけなので、問い合わせ対応ではまずこれを聞く。
 
 `SENTRY_DSN` を登録すると、`unhandled_error` と各 `*_failed` がSentryにも飛ぶ
-(未設定なら何も送らず、構造化ログだけ)。写真・カルテ・デバイスIDは送らない。
+(未設定なら何も送らず、構造化ログだけ)。写真・問題文・解答・デバイスIDは送らない。
 リクエストの1行が邪魔なときは `LOG_LEVEL=error` で失敗だけに絞れる。
 
 ## テスト
@@ -158,17 +162,21 @@ true を返す(持ち時間だけ `BETA_SECONDS_PER_DAY`、既定12000秒)。こ
 通常の撮り直しでは当たらない高さで、当たったときの文言は日次上限と同じ。
 加えて、今日の授業を使い切っている人は**写真を読む前に**断る(`/v1/sessions` の事前判定)。
 
-**ガードレールは2枚目もここで効かせる。** `/complete` で受け取ったカルテの穴は、
-そのセッションの許可トピックで照合し、外れたタグは落とす(`filterHoleTopicIds`)。
-的外れなタグを残すと、復習の通知まで的外れになるため。
+**ガードレールは2枚目もここで効かせる。** `/complete` で受け取った復習問題は、
+そのセッションの許可トピックで照合する(`filterHoleTopicIds`)。
+**外れたら付け替えずに落とす** — 穴は「本人が詰まった事実」だったので主単元へ
+付け替えて残していたが、問題にはその事実が無い。付け替えると
+「中身は範囲外のまま、タグだけ正しい問題」が3日後に届く。
 
-**小テストは無料、音声で先輩を呼び直す授業モードはPremium。** `/v1/me/reviews` は
-全ユーザーにキューを返すが、`kind=review` の `/v1/sessions` はサーバ側でもPremiumを
-要求する。レスポンスのフラグだけに任せると、初回カルテで配った `hole_id` を使って
-直接呼べてしまうため。穴の所有者(device_id)もセッション作成時と完了時の両方で確かめる。
+**復習問題を解くのは無料、音声で先輩を呼び直す授業モードはPremium。**
+`/v1/me/practice` は全ユーザーにリストを返すが、`kind=review` の `/v1/sessions` は
+サーバ側でもPremiumを要求する。レスポンスのフラグだけに任せると、配った
+`problem_id` を使って直接呼べてしまうため。問題の所有者(device_id)も
+セッション作成時とトークン発行時の両方で確かめる。
 
-**`/complete` は冪等。** agentがタイムアウトで再送すると、素通しではカルテも穴も
-通知予約も二重にできる。すでにカルテがあるセッションには、保存済みのものを返す。
+**`/complete` は冪等。** agentがタイムアウトで再送すると、素通しでは問題も
+通知予約も二重にできる。判定は `sessions.status === "completed"` —
+**保存物の有無では判定できない**(時間切れ・離脱で降りた回は保存物が1つも無い)。
 
 **上限の判定と書き込みは同じ1文にする。** 判定と書き込みが離れていると、同時に2本
 投げられたときに両方が同じ残高を見て通る。持ち時間は `started_at` と `max_seconds` を書く
@@ -176,9 +184,11 @@ UPDATE の `WHERE` に使用量の集計を入れ、解析枠は条件付きINSE
 (SQLiteは1文が原子的なので、同時実行が同じ古い残高を使って両方通れない)。
 解析に失敗したら行を消すので、読み取れなかった写真で解析の枠を失うこともない。
 
-**通知の失敗で体験を止めない。** OneSignalの予約に失敗しても、カルテは返す。
-穴が埋まったときは、残っている予約を取り消す(埋めた穴について通知が来るのが
-いちばん白けるので)。
+**通知の失敗で体験を止めない。** OneSignalの予約に失敗しても、完了応答と採点結果は返す。
+
+**予約を取り消す経路は作らない。** 作成時に決めた段は取り消さない(ADR 0009)。
+「3日目に正解したから7日目を消す」をやると「1回言えたら終わり」に戻り、
+間隔反復の効き目が消える。旧・穴の予約だけは、埋まったときに取り消す経路が残っている。
 
 **解約予約ではPremiumを剥がさない。** RevenueCatの `CANCELLATION` は解約予約であり、
 期限まではPremiumのまま。払ったぶんは最後まで使える、が誠実さ(HAMM)の最低線。

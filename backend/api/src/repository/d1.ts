@@ -5,6 +5,9 @@ import type {
   HoleRecord,
   KarteRecord,
   PlanSessionRecord,
+  PracticeAttemptRecord,
+  PracticeProblemRecord,
+  PracticeScheduleRecord,
   Repository,
   ReviewScheduleRecord,
   SessionContext,
@@ -145,9 +148,9 @@ export class D1Repository implements Repository {
       .prepare(
         `INSERT INTO sessions
            (id, device_id, kind, status, created_at, completed_at, local_date,
-            photo_key, topic_ids, hole_id, duration_seconds, context, started_at,
-            max_seconds, quota_settled_at)
-         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            photo_key, topic_ids, hole_id, practice_problem_id, duration_seconds, context,
+            started_at, max_seconds, quota_settled_at)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
           WHERE (SELECT COALESCE(SUM(analysis_count), 0) FROM sessions
                   WHERE device_id = ? AND local_date = ?) < ?`,
       )
@@ -162,6 +165,7 @@ export class D1Repository implements Repository {
         session.photo_key,
         JSON.stringify(session.topic_ids),
         session.hole_id,
+        session.practice_problem_id,
         session.duration_seconds,
         session.context ? JSON.stringify(session.context) : null,
         session.started_at,
@@ -583,6 +587,108 @@ export class D1Repository implements Repository {
       .bind(holeId)
       .all<ReviewScheduleRecord>();
     await this.db.prepare("DELETE FROM review_schedules WHERE hole_id = ?").bind(holeId).run();
+    return result.results;
+  }
+
+  async insertPracticeProblem(problem: PracticeProblemRecord): Promise<void> {
+    await this.db
+      .prepare(
+        `INSERT INTO practice_problems
+           (id, device_id, session_id, board_id, topic_id, question, answer, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        problem.id,
+        problem.device_id,
+        problem.session_id,
+        problem.board_id,
+        problem.topic_id,
+        problem.question,
+        problem.answer,
+        problem.created_at,
+      )
+      .run();
+  }
+
+  async getPracticeProblem(problemId: string): Promise<PracticeProblemRecord | null> {
+    return (
+      (await this.db
+        .prepare("SELECT * FROM practice_problems WHERE id = ?")
+        .bind(problemId)
+        .first<PracticeProblemRecord>()) ?? null
+    );
+  }
+
+  async getPracticeProblemBySession(sessionId: string): Promise<PracticeProblemRecord | null> {
+    return (
+      (await this.db
+        .prepare("SELECT * FROM practice_problems WHERE session_id = ? ORDER BY created_at LIMIT 1")
+        .bind(sessionId)
+        .first<PracticeProblemRecord>()) ?? null
+    );
+  }
+
+  async listPracticeProblems(deviceId: string): Promise<PracticeProblemRecord[]> {
+    const result = await this.db
+      .prepare("SELECT * FROM practice_problems WHERE device_id = ? ORDER BY created_at")
+      .bind(deviceId)
+      .all<PracticeProblemRecord>();
+    return result.results;
+  }
+
+  async listPracticeAttempts(deviceId: string): Promise<PracticeAttemptRecord[]> {
+    // 解答は問題にしか紐づいていない(device_id を持たせると、問題と食い違う道ができる)。
+    // 所有者はいつも問題の側から引く。
+    const result = await this.db
+      .prepare(
+        `SELECT practice_attempts.* FROM practice_attempts
+           INNER JOIN practice_problems ON practice_problems.id = practice_attempts.problem_id
+          WHERE practice_problems.device_id = ?
+          ORDER BY practice_attempts.answered_at`,
+      )
+      .bind(deviceId)
+      .all<PracticeAttemptRecord>();
+    return result.results;
+  }
+
+  async insertPracticeAttempt(attempt: PracticeAttemptRecord): Promise<void> {
+    await this.db
+      .prepare(
+        `INSERT INTO practice_attempts
+           (id, problem_id, answered_at, response, verdict, graded_by, comment)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        attempt.id,
+        attempt.problem_id,
+        attempt.answered_at,
+        attempt.response,
+        attempt.verdict,
+        attempt.graded_by,
+        attempt.comment,
+      )
+      .run();
+  }
+
+  async insertPracticeSchedules(entries: PracticeScheduleRecord[]): Promise<void> {
+    if (entries.length === 0) return;
+    await this.db.batch(
+      entries.map((entry) =>
+        this.db
+          .prepare(
+            `INSERT INTO practice_schedules (id, problem_id, step, scheduled_at, external_id)
+             VALUES (?, ?, ?, ?, ?)`,
+          )
+          .bind(entry.id, entry.problem_id, entry.step, entry.scheduled_at, entry.external_id),
+      ),
+    );
+  }
+
+  async listPracticeSchedules(problemId: string): Promise<PracticeScheduleRecord[]> {
+    const result = await this.db
+      .prepare("SELECT * FROM practice_schedules WHERE problem_id = ? ORDER BY scheduled_at")
+      .bind(problemId)
+      .all<PracticeScheduleRecord>();
     return result.results;
   }
 

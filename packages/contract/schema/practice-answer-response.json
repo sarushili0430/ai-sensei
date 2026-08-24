@@ -1,0 +1,151 @@
+{
+  "$ref": "#/definitions/practice-answer-response",
+  "definitions": {
+    "practice-answer-response": {
+      "type": "object",
+      "properties": {
+        "attempt": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "problem_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "answered_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "response": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "verdict": {
+              "type": "string",
+              "enum": [
+                "correct",
+                "incorrect",
+                "unclear"
+              ]
+            },
+            "graded_by": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "comment": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "problem_id",
+            "answered_at",
+            "response",
+            "verdict",
+            "graded_by",
+            "comment"
+          ],
+          "additionalProperties": false
+        },
+        "next_schedule": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "problem_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "step": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 3
+              },
+              "days": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "scheduled_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "problem_id",
+              "step",
+              "days",
+              "scheduled_at"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "progress": {
+          "type": "object",
+          "properties": {
+            "streak_days": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "filled_holes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "open_holes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "solved_problems": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "open_problems": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "last_session_date": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "streak_days",
+            "filled_holes",
+            "open_holes",
+            "solved_problems",
+            "open_problems",
+            "last_session_date"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "attempt",
+        "next_schedule",
+        "progress"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

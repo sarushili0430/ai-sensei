@@ -1,5 +1,12 @@
 import { findTopic } from "@ai-sensei/curriculum";
-import { type HoleLike, type LocalDate, computeProgress, toLocalDate } from "./progress.ts";
+import {
+  type HoleLike,
+  type LocalDate,
+  type PracticeAttemptLike,
+  type PracticeProblemLike,
+  computeProgress,
+  toLocalDate,
+} from "./progress.ts";
 
 export type ParentReportPeriod = {
   start_date: LocalDate;
@@ -11,10 +18,21 @@ export type ParentReportHoleLike = HoleLike & {
   filled_at: string | null;
 };
 
+/**
+ * @deprecated カルテは ADR 0009 で畳んだ。移行期の読み出し経路のためだけに残す。
+ */
 export type ParentReportKarteLike = {
   created_at: string;
   topic_ids: readonly string[];
   said_well: readonly string[];
+};
+
+export type ParentReportProblemLike = PracticeProblemLike & { topic_id: string };
+
+export type ParentReportAttemptLike = PracticeAttemptLike & {
+  answered_at: string;
+  /** 本人が書いた答え。親レポートの引用はここから引く(ADR 0009)。 */
+  response: string;
 };
 
 export type ParentReportLimits = {
@@ -51,16 +69,25 @@ export function currentMonthPeriod(today: LocalDate): ParentReportPeriod {
 export function computeParentReport(input: {
   today: LocalDate;
   sessionDates: readonly LocalDate[];
-  holes: readonly ParentReportHoleLike[];
-  kartes: readonly ParentReportKarteLike[];
+  /** @deprecated 旧データの穴。移行期だけ、単元名の根拠として混ぜる。 */
+  holes?: readonly ParentReportHoleLike[];
+  problems: readonly ParentReportProblemLike[];
+  attempts: readonly ParentReportAttemptLike[];
   limits: ParentReportLimits;
   timezoneOffsetMinutes?: number;
 }): ParentReportSummary {
+  const holes = input.holes ?? [];
   const period = currentMonthPeriod(input.today);
-  const progress = computeProgress(input.sessionDates, input.holes, input.today);
+  const progress = computeProgress({
+    sessionDates: input.sessionDates,
+    holes,
+    problems: input.problems,
+    attempts: input.attempts,
+    today: input.today,
+  });
   const timezoneOffsetMinutes = input.timezoneOffsetMinutes;
 
-  const filledThisMonth = input.holes
+  const filledThisMonth = holes
     .filter((hole) => hole.status === "filled" && hole.filled_at !== null)
     .filter((hole) => {
       const filledDate = localDateOf(hole.filled_at, timezoneOffsetMinutes);
@@ -68,24 +95,38 @@ export function computeParentReport(input: {
     })
     .sort((a, b) => (b.filled_at ?? "").localeCompare(a.filled_at ?? ""));
 
-  const kartesThisMonth = input.kartes
-    .filter((karte) => {
-      const createdDate = localDateOf(karte.created_at, timezoneOffsetMinutes);
-      return createdDate !== null && isInPeriod(createdDate, period);
+  /**
+   * 今月**正解した**解答(新しい順)。
+   *
+   * 同じ問題に何度も正解していても、数えるのは問題のほう(`solvedThisMonth`)。
+   * 引用は解答ごとに拾うが、重複は下の `seenQuotes` が落とす。
+   */
+  const correctThisMonth = input.attempts
+    .filter((attempt) => attempt.verdict === "correct")
+    .filter((attempt) => {
+      const answeredDate = localDateOf(attempt.answered_at, timezoneOffsetMinutes);
+      return answeredDate !== null && isInPeriod(answeredDate, period);
     })
-    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+    .sort((a, b) => b.answered_at.localeCompare(a.answered_at));
+
+  const problemById = new Map(input.problems.map((problem) => [problem.id, problem]));
+  const solvedThisMonth = new Set(
+    correctThisMonth
+      .map((attempt) => attempt.problem_id)
+      .filter((problemId) => problemById.has(problemId)),
+  );
 
   /**
    * 「説明できるようになった」の根拠は2本だけに限定する。
-   *   - 穴が今月 `filled` になった(前は止まり、今は説明できた)
-   *   - `said_well` があるカルテで扱った単元(本人の説明が実際に残った)
+   *   - 今月、復習問題に**正解した**(3日後・7日後に聞いても答えられた)
+   *   - (移行期のみ)穴が今月 `filled` になった
    *
-   * セッションに触れただけの単元は後者から外す。話題に出たことを
+   * セッションに触れただけの単元は入れない。話題に出たことを
    * 「できるようになった」に昇格させないため。
    */
   const topicIds = [
+    ...[...solvedThisMonth].map((problemId) => problemById.get(problemId)?.topic_id ?? ""),
     ...filledThisMonth.map((hole) => hole.topic_id),
-    ...kartesThisMonth.flatMap((karte) => (karte.said_well.length > 0 ? [...karte.topic_ids] : [])),
   ];
   const explainedTopics: ParentReportSummary["explained_topics"] = [];
   const seenTopics = new Set<string>();
@@ -100,27 +141,32 @@ export function computeParentReport(input: {
     if (explainedTopics.length >= normalizedLimit(input.limits.topicCount)) break;
   }
 
+  /**
+   * 引用は**本人が書いた答えのうち、正解したものだけ**(ADR 0009)。
+   *
+   * 旧 `kartes.said_well` はLLMが口頭の説明を要約したもので、**本人の言葉ではなかった**。
+   * こちらはテキスト入力そのままなので、親が読むのは本人が打った文字になる。
+   */
   const quotes: string[] = [];
   const seenQuotes = new Set<string>();
-  for (const karte of kartesThisMonth) {
-    for (const rawQuote of karte.said_well) {
-      const quote = rawQuote.trim();
-      if (quote.length === 0 || seenQuotes.has(quote)) continue;
-      /**
-       * 長すぎる古い行を途中で切らない。省略位置で意味が反転しうる文章を
-       * 「本人の引用」と呼ぶほうが危険なので、契約外の行は載せない。
-       */
-      if (quote.length > normalizedLimit(input.limits.quoteLength)) continue;
-      seenQuotes.add(quote);
-      quotes.push(quote);
-      if (quotes.length >= normalizedLimit(input.limits.quoteCount)) break;
-    }
+  for (const attempt of correctThisMonth) {
+    const quote = attempt.response.trim();
+    if (quote.length === 0 || seenQuotes.has(quote)) continue;
+    /**
+     * 長すぎる解答を途中で切らない。省略位置で意味が反転しうる文章を
+     * 「本人の引用」と呼ぶほうが危険なので、上限を超えたものは載せない。
+     */
+    if (quote.length > normalizedLimit(input.limits.quoteLength)) continue;
+    seenQuotes.add(quote);
+    quotes.push(quote);
     if (quotes.length >= normalizedLimit(input.limits.quoteCount)) break;
   }
 
   return {
     period,
-    filled_holes: filledThisMonth.length,
+    // **足し合わせない。**移行期は穴と復習問題が両方あるが、混ぜると
+    // 「今月できるようになったこと」が二重に数えられる(ADR 0009)。
+    filled_holes: solvedThisMonth.size > 0 ? solvedThisMonth.size : filledThisMonth.length,
     streak_days: progress.streak_days,
     explained_topics: explainedTopics,
     quotes,

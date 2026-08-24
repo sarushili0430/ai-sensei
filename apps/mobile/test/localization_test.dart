@@ -1,7 +1,7 @@
 import 'package:ai_sensei/src/common_widgets/senpai_face.dart';
 import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
 import 'package:ai_sensei/src/features/karte/domain/karte.dart';
-import 'package:ai_sensei/src/features/karte/presentation/karte_screen.dart';
+import 'package:ai_sensei/src/features/karte/presentation/review_screen.dart';
 import 'package:ai_sensei/src/l10n/strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,9 +20,18 @@ void main() {
     // Flutter の既定は「一致しなければ supportedLocales の先頭」。
     // 何もしないとスペイン語の端末に日本語が出る。
     test('日本語を望んだ端末にだけ日本語を出す', () {
-      expect(AppStrings.resolve(<Locale>[const Locale('ja', 'JP')]), const Locale('ja'));
-      expect(AppStrings.resolve(<Locale>[const Locale('en', 'US')]), const Locale('en'));
-      expect(AppStrings.resolve(<Locale>[const Locale('es', 'ES')]), const Locale('en'));
+      expect(
+        AppStrings.resolve(<Locale>[const Locale('ja', 'JP')]),
+        const Locale('ja'),
+      );
+      expect(
+        AppStrings.resolve(<Locale>[const Locale('en', 'US')]),
+        const Locale('en'),
+      );
+      expect(
+        AppStrings.resolve(<Locale>[const Locale('es', 'ES')]),
+        const Locale('en'),
+      );
       expect(
         AppStrings.resolve(<Locale>[const Locale('fr'), const Locale('ja')]),
         const Locale('ja'),
@@ -56,55 +65,61 @@ void main() {
     });
   });
 
-  group('カルテ画面(英語)', () {
+  group('授業の降り方', () {
+    test('到達と離脱の文言を日英それぞれで持つ', () {
+      expect(ja.sessionUnderstood, 'わかった');
+      expect(en.sessionUnderstood, 'Got it');
+      expect(ja.sessionQuitTitle, '授業をやめる?');
+      expect(en.sessionQuitTitle, 'Leave this lesson?');
+      expect(en.sessionQuitBody, isNot(contains('復習問題')));
+      expect(en.sessionContinue, 'Keep going');
+      expect(en.sessionQuit, 'Leave');
+    });
+  });
+
+  group('復習問題画面(英語)', () {
     // 単元名はサーバのカリキュラムが持っている。海外の課程で始めた
     // セッションなら "Algebra 1 / ..." が返り、アプリはそれをそのまま出す。
-    final Karte englishKarte = Karte(
-      id: 'kar_en',
-      sessionId: 'ses_en',
-      createdAt: DateTime.utc(2026, 8, 3, 13, 24, 7),
-      topicIds: const <String>['A2-COORD-CIRCLE', 'A1-QUAD-SOLVE'],
-      saidWell: const <String>[
-        'Explained the plan of comparing the distance d with the radius r, with a reason',
-      ],
-      holes: <Hole>[
-        Hole(
-          id: 'hol_en',
-          topicId: 'A1-QUAD-SOLVE',
-          description: 'the explanation stopped at why the discriminant is used',
-          severity: HoleSeverity.medium,
-          status: HoleStatus.open,
-          createdAt: DateTime.utc(2026, 8, 3, 13, 24, 7),
+    final PracticeQueue englishQueue = PracticeQueue(
+      items: <PracticeQueueItem>[
+        PracticeQueueItem(
+          problem: PracticeProblem(
+            id: 'prb_en',
+            sessionId: 'ses_en',
+            boardId: 'brd_en',
+            topicId: 'A1-QUAD-SOLVE',
+            question: 'How many real solutions does x² − 6x + 5 = 0 have?',
+            createdAt: DateTime.utc(2026, 8, 3, 13, 24, 7),
+          ),
+          daysSince: 3,
+          topicLabel: 'Algebra 1 / Discriminant',
+          lastVerdict: null,
         ),
       ],
-      termNotes: const <String>['"quadratic formula" and "discriminant" were mixed up'],
     );
 
-    testWidgets('英語のカルテを、日本語を混ぜずに組める', (WidgetTester tester) async {
+    testWidgets('英語の復習問題を、日本語を混ぜずに組める', (WidgetTester tester) async {
       await tester.pumpWidget(
         wrapApp(
-          const KarteScreen(),
+          const ReviewScreen(),
           locale: const Locale('en'),
           overrides: <Object?>[
-            latestKarteControllerProvider.overrideWith(
-              () => FakeLatestKarteController(englishKarte),
-            ),
-            sessionOutcomeControllerProvider.overrideWith(
-              () => FakeSessionOutcomeController(const SessionOutcome()),
+            reviewControllerProvider.overrideWith(
+              () => FakeReviewController(englishQueue),
             ),
           ],
         ),
       );
       await tester.pumpAndSettle();
 
-      expect(find.text(en.karteTitle), findsOneWidget);
-      expect(find.text(en.karteSaidWell), findsOneWidget);
-      expect(find.text(en.karteHoles(1)), findsOneWidget);
+      expect(find.text(en.practiceHeader(3)), findsOneWidget);
+      expect(find.text('Algebra 1 / Discriminant'), findsOneWidget);
       expect(
-        find.text('the explanation stopped at why the discriminant is used'),
+        find.text('How many real solutions does x² − 6x + 5 = 0 have?'),
         findsOneWidget,
       );
-      expect(find.text(ja.karteTitle), findsNothing);
+      expect(find.text(en.practiceSubmit), findsOneWidget);
+      expect(find.text(ja.practiceHeader(3)), findsNothing);
     });
   });
 }

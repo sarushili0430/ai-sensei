@@ -1,11 +1,9 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../common_widgets/centered_scroll.dart';
 import '../../../common_widgets/chunky_button.dart';
-import '../../../common_widgets/confetti.dart';
 import '../../../common_widgets/entrance.dart';
 import '../../../common_widgets/senpai_face.dart';
 import '../../../l10n/strings.dart';
@@ -16,199 +14,223 @@ import '../../karte/domain/karte.dart';
 import '../../monetization/application/entitlement_controller.dart';
 import '../../monetization/presentation/purchase_messages.dart';
 
-/// 祝福画面(説明中とカルテの間)。
+/// 授業の降り方を受け取る画面。
 ///
-/// **にぎやかな画面**。ただし数えるのは連続日数と「埋めた穴」だけで、
-/// 点数・正誤・XPは出さない。
-///
-/// にぎやかさの出しかたは、紙吹雪と先輩のはずみだけ。
-/// 数字を大きく動かして盛り上げると、点数を出していないのに
-/// 点数の画面に見えてしまう。
-class CelebrationScreen extends ConsumerStatefulWidget {
+/// 「わかった」だけを祝福し、残り時間による終了は通常の地とふつうの顔にする。
+/// 文字を読まなくても両者を取り違えないことが、途中終了を成果判定に見せない境界。
+class CelebrationScreen extends ConsumerWidget {
   const CelebrationScreen({super.key});
 
   @override
-  ConsumerState<CelebrationScreen> createState() => _CelebrationScreenState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final SessionOutcome outcome = ref.watch(sessionOutcomeControllerProvider);
+    final bool understood = outcome.ending == SessionEnding.understood;
+    final Progress progress =
+        (ref.watch(progressControllerProvider).value ?? ProgressSummary.empty)
+            .progress;
+    final AppStrings strings = AppStrings.of(context);
 
-class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
-  /// 祝福を見ているあいだ、カルテを受け取りに行く間隔と回数。
-  ///
-  /// 会話画面では待たない(待つと、終わってから画面が変わるまで固まる)。
-  /// 代わりに**紙吹雪を見ているあいだ**に届く。押させないのは、
-  /// 押すのがユーザーの仕事ではないから。
-  ///
-  /// カルテは会話が終わってからLLMが書くので、長い会話ほど遅い。40秒で
-  /// 諦めていたころは、**書き上がる直前で待つのをやめて**「取りに行って
-  /// います…」のまま止まったように見えていた。生成が普通に終わるより長く待つ。
-  static const Duration _pollInterval = Duration(seconds: 2);
-  static const int _pollAttempts = 45;
-
-  Timer? _poll;
-  int _attempts = 0;
-  bool _retrieving = false;
-
-  @override
-  void initState() {
-    super.initState();
-    if (ref.read(sessionOutcomeControllerProvider).resultMissing) {
-      _poll = Timer.periodic(_pollInterval, (_) => unawaited(_tick()));
-    }
-  }
-
-  @override
-  void dispose() {
-    _poll?.cancel();
-    super.dispose();
-  }
-
-  void _stopPolling() {
-    _poll?.cancel();
-    _poll = null;
-  }
-
-  /// 自動で取りに行く1回ぶん。届けば build がボタンを差し替える。
-  /// **ここでは画面を動かさない** — 紙吹雪の途中でカルテへ飛ばさない。
-  Future<void> _tick() async {
-    if (_retrieving) return;
-    if (_attempts >= _pollAttempts) {
-      setState(_stopPolling);
-      return;
-    }
-    _attempts += 1;
-
-    _retrieving = true;
-    final bool found = await _fetchQuietly();
-    if (!mounted) return;
-    _retrieving = false;
-    if (found) setState(_stopPolling);
-  }
-
-  /// 取りに行く。生成中(202)も通信の失敗も、ここでは同じ「まだ」に畳む。
-  /// 自動で回している最中にエラーを出すと、押していないのに叱られる。
-  Future<bool> _fetchQuietly() async {
-    try {
-      return await ref.read(sessionOutcomeControllerProvider.notifier).retrieveKarte();
-    } on Object catch (error) {
-      debugPrint('カルテを受け取れませんでした(待ち続けます): $error');
-      return false;
-    }
-  }
-
-  /// 自動で届かなかったぶんを、手で取りに行く。
-  Future<void> _retrieveKarte() async {
-    setState(() => _retrieving = true);
-    final bool found = await _fetchQuietly();
-    if (!mounted) return;
-    setState(() => _retrieving = false);
-    if (found) {
-      context.go(AppRoute.karte.path);
-      return;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(AppStrings.of(context).karteStillCooking)),
+    return Scaffold(
+      key: const Key('session-ending-screen'),
+      backgroundColor:
+          understood ? AppColors.celebration : AppColors.background,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Expanded(
+                child: CenteredScroll(
+                  padding: EdgeInsets.zero,
+                  children: <Widget>[
+                    PopIn(
+                      child: understood
+                          ? const _CelebrationFace()
+                          : const SenpaiFace(
+                              key: Key('ending-face-neutral'),
+                              mood: SenpaiMood.neutral,
+                              size: 160,
+                            ),
+                    ),
+                    const SizedBox(height: AppSpacing.xl),
+                    FadeSlideIn.staggered(
+                      index: 2,
+                      child: Text(
+                        understood
+                            ? strings.celebrationTitle
+                            : strings.timeLimitTitle,
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.displaySmall,
+                      ),
+                    ),
+                    if (!understood) ...<Widget>[
+                      const SizedBox(height: AppSpacing.sm),
+                      FadeSlideIn.staggered(
+                        index: 3,
+                        child: Text(
+                          strings.timeLimitBody,
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ),
+                    ],
+                    if (understood) ...<Widget>[
+                      const SizedBox(height: AppSpacing.md),
+                      FadeSlideIn.staggered(
+                        index: 4,
+                        child: Text(
+                          strings.streakDays(progress.streakDays),
+                          key: const Key('celebration-streak'),
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleLarge
+                              ?.copyWith(color: AppColors.streak),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              // **カードは中央に浮かせず、操作のすぐ上に置く**(キャンバスの
+              // ④/④'。顔と見出しだけが余白を取り合う側)。中に混ぜていたころは、
+              // 顔から続けて読み下せる位置に無く、「次に何が起きるか」の一行が
+              // 祝福の余韻の中に埋もれていた。
+              const SizedBox(height: AppSpacing.lg),
+              FadeSlideIn.staggered(
+                index: 5,
+                child: _EndingCard(understood: understood),
+              ),
+              // 初回の復習問題ができた直後だけ、サーバが「ここで出す」と
+              // 判断する(`show_paywall`)。**画面遷移キャンバスには無い**が、
+              // あれは2回目以降の普通の祝福で、この行はその1回のためにある。
+              // 生成を待たない(ADR 0009)ので、`/complete` が届いた時点で
+              // 立って、この画面のまま差し替わる。
+              if (outcome.showPaywall) ...<Widget>[
+                const SizedBox(height: AppSpacing.md),
+                const _PremiumLine(),
+              ],
+              const SizedBox(height: AppSpacing.lg),
+              if (understood) ...<Widget>[
+                ChunkyButton(
+                  key: const Key('celebration-another-lesson'),
+                  label: strings.celebrationAnotherLesson,
+                  onPressed: () => context.go(AppRoute.capture.path),
+                ),
+                GhostButton(
+                  key: const Key('celebration-done'),
+                  label: strings.celebrationDone,
+                  onPressed: () => context.go(AppRoute.home.path),
+                ),
+              ] else
+                ChunkyButton(
+                  key: const Key('time-limit-home'),
+                  label: strings.reviewBackHome,
+                  onPressed: () => context.go(AppRoute.home.path),
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
+}
+
+/// 顔の中の装飾とは別に、連続日数と同じ橙のキラキラを2つだけ置く。
+class _CelebrationFace extends StatelessWidget {
+  const _CelebrationFace();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      width: 210,
+      height: 170,
+      child: Stack(
+        alignment: Alignment.center,
+        children: <Widget>[
+          SenpaiFace(
+            key: Key('ending-face-delighted'),
+            mood: SenpaiMood.delighted,
+            size: 160,
+          ),
+          Positioned(
+            left: 4,
+            top: 22,
+            child: Icon(
+              Icons.auto_awesome,
+              key: Key('celebration-sparkle-left'),
+              color: AppColors.streak,
+              size: 26,
+            ),
+          ),
+          Positioned(
+            right: 4,
+            bottom: 18,
+            child: Icon(
+              Icons.auto_awesome,
+              key: Key('celebration-sparkle-right'),
+              color: AppColors.streak,
+              size: 22,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EndingCard extends StatelessWidget {
+  const _EndingCard({required this.understood});
+
+  final bool understood;
 
   @override
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
-    final Progress progress =
-        (ref.watch(progressControllerProvider).value ?? ProgressSummary.empty).progress;
-    final Karte? karte = ref.watch(latestKarteControllerProvider);
-    final SessionOutcome outcome = ref.watch(sessionOutcomeControllerProvider);
-    // ペイウォールを出す位置はサーバが決める(初回カルテで穴が見えた直後の1回だけ)
-    final bool showPaywall = outcome.showPaywall;
-    final int filledThisSession = karte == null
-        ? 0
-        : karte.holes.where((Hole it) => it.status == HoleStatus.filled).length;
-
-    // まだカルテが手元に無い。自分で取りに行っている最中は押させない。
-    final bool waiting = karte == null && outcome.resultMissing;
-    final bool fetching = _retrieving || _poll != null;
-
-    return Scaffold(
-      backgroundColor: AppColors.celebration,
-      body: Stack(
+    return Container(
+      key: Key(understood ? 'celebration-practice-card' : 'time-limit-card'),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          // 紙吹雪は本文の下に敷く。読むものの前に紙を落とさない。
-          //
-          // カルテを待たせているあいだは降り続ける。一度きりだと2秒で止まり、
-          // そのあと**画面から動きが消える**。待っているだけなのに、
-          // 止まってしまったように見えてしまう。
-          Positioned.fill(child: ConfettiBurst(looping: fetching)),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.lg),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: <Widget>[
-                  const PopIn(child: SenpaiFace(mood: SenpaiMood.delighted, size: 160)),
-                  const SizedBox(height: AppSpacing.xl),
-                  FadeSlideIn.staggered(
-                    index: 2,
-                    child: Text(
-                      filledThisSession > 0
-                          ? strings.celebrationFilled(filledThisSession)
-                          : strings.celebrationThanks,
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.displaySmall,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  FadeSlideIn.staggered(
-                    index: 4,
-                    child: Text(
-                      strings.streakDays(progress.streakDays),
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodyLarge
-                          ?.copyWith(color: AppColors.streak),
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.xl),
-                  // カルテがまだ来ていないときに「今日のカルテ」を押させると、
-                  // 出すものが無くてホームへ弾かれる。取りに行くボタンに変える。
-                  FadeSlideIn.staggered(
-                    index: 6,
-                    child: waiting
-                        ? Column(
-                            children: <Widget>[
-                              // 押せないボタンだけを置かない。文言の変わらない
-                              // 無効なボタンが出ていると、待っているのか
-                              // 壊れたのかが読めない。何を待っているのかを言う。
-                              Text(
-                                fetching ? strings.karteWriting : strings.karteTakingLong,
-                                textAlign: TextAlign.center,
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                              const SizedBox(height: AppSpacing.sm),
-                              ChunkyButton(
-                                label: fetching ? strings.karteRetrieving : strings.karteRetrieve,
-                                onPressed: fetching ? null : _retrieveKarte,
-                              ),
-                            ],
-                          )
-                        : ChunkyButton(
-                            label: strings.karteTitle,
-                            onPressed: () => context.go(AppRoute.karte.path),
-                          ),
-                  ),
-                  if (showPaywall)
-                    const Padding(
-                      padding: EdgeInsets.only(top: AppSpacing.sm),
-                      child: _PremiumLine(),
-                    ),
-                  // カルテを待っているあいだの逃げ道。この画面は戻る先を持たない
-                  // ので、待つ以外にできることが無いと行き止まりになる。
-                  if (waiting)
-                    GhostButton(
-                      label: strings.sessionBackHome,
-                      onPressed: () => context.go(AppRoute.home.path),
-                    ),
-                ],
-              ),
+          // 印で2枚を撃ち分ける。**同じ白いカードが2つの意味を持つ**ので、
+          // 文を読み終える前に「問題が来る日」なのか「今日は来ない」なのかが
+          // 分かるようにする(キャンバスの鈴と丸い i)。
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Icon(
+              understood
+                  ? Icons.notifications_none_rounded
+                  : Icons.info_outline_rounded,
+              size: 24,
+              color: understood ? AppColors.blue : AppColors.inkMuted,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  understood
+                      ? strings.celebrationPracticeTitle
+                      : strings.timeLimitCardTitle,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  understood
+                      ? strings.celebrationPracticeBody
+                      : strings.timeLimitCardBody,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
             ),
           ),
         ],

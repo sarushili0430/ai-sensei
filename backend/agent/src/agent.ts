@@ -8,6 +8,7 @@ import {
   createTextStreamBoardSink,
 } from "./board.ts";
 import { isClosingUtterance } from "./closing.ts";
+import { createAnthropicClient, postComplete } from "./complete.ts";
 import { type AgentConfig, loadConfig } from "./config.ts";
 import {
   type AgentContext,
@@ -17,16 +18,15 @@ import {
   resolveAgentContext,
 } from "./context.ts";
 import {
-  buildKarte,
-  createAnthropicClient,
-  emptyKarte,
-  postComplete,
-  withUncertaintyHole,
-} from "./karte.ts";
-import { type LessonLoopResult, StudentUtterances, runLessonLoop } from "./lesson-loop.ts";
+  type LessonLoopReason,
+  type LessonLoopResult,
+  StudentUtterances,
+  runLessonLoop,
+} from "./lesson-loop.ts";
 import { boardCloseReasonFor, createAnthropicLessonClient } from "./lesson.ts";
 import { JobLogger } from "./log.ts";
 import { runPlanSession } from "./plan-session.ts";
+import { buildPracticeProblem } from "./practice.ts";
 import {
   type LessonTurn,
   asksForBoard,
@@ -40,7 +40,7 @@ import {
   senpaiConversationPrompt,
   startsWithBoardLesson,
   stepAwaitsInput,
-  teachBackFallback,
+  timeUpClosing,
 } from "./senpai.ts";
 import {
   type RpcRegistrar,
@@ -57,15 +57,16 @@ import { createSpeechSynthesizer, createVoiceSession } from "./voice-session.ts"
 /**
  * 先輩AIのセッション。計画書 §2 のコアループの前半2つを回す。
  *
- *   フェーズ1「授業」  板書LLM → 手順単位で Text Streams → 直後にTTS(§3-2)。
- *                     問いかけで止まり、生徒の答えを聞いて同じ板書に続きを積む
- *                     **往復**で解法を教え切り、類題は完了申告まで沈黙を守る
- *                     (`lesson-loop.ts`)
- *   フェーズ2「教え返し」 STT → 会話LLM(先輩) → TTS ← 既存のパイプライン
- *   終了時            transcript → カルテ → /complete ← 既存のまま
+ *   授業      板書LLM → 手順単位で Text Streams → 直後にTTS(§3-2)。
+ *             問いかけで止まり、生徒の答えを聞いて同じ板書に続きを積む
+ *             **往復**を、生徒が「わかった」を押すまで続ける(`lesson-loop.ts`)
+ *   終了時    「わかった」で降りた回だけ、板書 → 復習問題1問 → /complete
+ *
+ * **教え返し(フェーズ2)は ADR 0009 で畳んだ。**会話LLMが働くのは、板書が
+ * 出せなかった縮退経路と、授業のあとに残った発話を引き取るときだけになった。
  *
  * WebRTCは書かない(LiveKit Agentsに乗る)。ここで書くのは、
- * 文脈の受け渡し・**授業と会話の切り替え**・上限時間の打ち切り・カルテ生成。
+ * 文脈の受け渡し・**授業と会話の切り替え**・上限時間の打ち切り・復習問題の生成。
  *
  * ─────────────────────────────────────────────────────────────────────────
  * 【板書の寿命】1つの問題 = 板書1枚。1セッションには複数枚ありうる
@@ -73,8 +74,9 @@ import { createSpeechSynthesizer, createVoiceSession } from "./voice-session.ts"
  *
  * `board_open` は各問題の最初の手順が確定したときに1度だけ、`board_close` は
  * **次の問題へ移る直前か、会話がぜんぶ終わったとき**に送る(`board.ts` の約束)。
- * 授業から教え返しへ移るときには閉じない — 生徒は板書を見ながら説明するので、
- * ここで閉じ直すと、いちばん要る瞬間に画面が白紙になる。
+ * **「わかった」で降りるときも、板書は最後の状態のまま残す** — 押した瞬間に
+ * 画面が白紙になると、いま理解したものが手元から消える(`board.close("completed")`
+ * は締めであって消去ではない)。
  *
  * ─────────────────────────────────────────────────────────────────────────
  * 【transcript に入れるもの / 入れないもの】計画書 §2 の設計制約
@@ -129,7 +131,7 @@ export default defineAgent({
     }
 
     if (context.kind === "plan") {
-      // 計画は同じ声・同じLiveKitを使うが授業ではない。板書・カルテ・教え返しへ
+      // 計画は同じ声・同じLiveKitを使うが授業ではない。板書・復習問題の生成へ
       // 入る前に分岐し、計画を授業回数や穴へ混ぜない。
       log = log.child({ plan_session_id: context.plan_session_id });
       await runPlanSession({ ctx, config, context, startedAt, log });
@@ -158,9 +160,15 @@ export default defineAgent({
     // 最初の発話から遅延と割り込みを測る。start後では最初のターンを取りこぼす。
     const voiceMetrics = observeVoiceMetrics(session, log);
 
-    // 会話が自然に終わったことを、締めの発話で見る。
-    // これがないと、うまく終わった会話も上限時間まで部屋が空回りする。
-    let onClosing: (() => void) | undefined;
+    /**
+     * 会話が自然に終わったことを、締めの発話で見る。
+     * これがないと、うまく終わった会話も上限時間まで部屋が空回りする。
+     *
+     * 中身を後から差し替える形にしてあるのは、**購読を `session.start()` より前に
+     * 張る必要がある**のに、終わり方を決める `waitForEnd` はそのあとで作るから
+     * (先に張らないと最初のターンを取りこぼす)。
+     */
+    const closing: { notify: () => void } = { notify: () => undefined };
 
     session.on(voice.AgentSessionEventTypes.ConversationItemAdded, (event) => {
       const item = event.item;
@@ -168,7 +176,7 @@ export default defineAgent({
       const role = item.role === "assistant" ? "assistant" : "user";
       const text = textOf(item);
       collector.add({ role, text, at: new Date() });
-      if (role === "assistant" && isClosingUtterance(text)) onClosing?.();
+      if (role === "assistant" && isClosingUtterance(text)) closing.notify();
     });
 
     // セッションの終わり(上限時間・離脱・締め)の合図。授業ループはこれで即座に降りる。
@@ -221,11 +229,27 @@ export default defineAgent({
     // その間の離脱(`Close`)とエラーを取りこぼす。イベントは1度きりなので、
     // 取りこぼすと上限時間が来るまで**誰もいない部屋が回り続ける**
     // (無料5分ならまだしも、Premium15分だとその全部を待つ)。
-    const ended = waitForEnd(session, currentContext, startedAt, (handler) => {
-      onClosing = handler;
-    });
+    const { ended, finish: finishSession } = waitForEnd(session, currentContext, startedAt);
+    // 会話LLMが自分で締めたとき(縮退経路)。授業の締めは下の `timeUpClosing` が
+    // `addToChatCtx: false` で喋るので、この検出には掛からない — **掛けない**のが正で、
+    // 掛かると降り方(timeout / understood)がここで `completed` に潰れる。
+    closing.notify = () => finishSession("completed");
     // 終わったのに板書を作り続けない。生徒が抜けたあとのLLM出力は誰も見ない。
     void ended.then(() => interrupt.abort());
+
+    /**
+     * 画面下の「わかった」。**復習問題が作られる唯一の道。**
+     *
+     * セッションの終わり(`interrupt`)と分けているのは、降り方が違うから。
+     * こちらは板書を締めて問題を作る道で、あちらは作らない道。
+     */
+    const understood = new AbortController();
+    // **どの経路で押されても、セッションはここで終わる。**授業ループが回っていない
+    // 縮退経路(板書が出せなかった・会話へ落ちた)でも「わかった」は押せるので、
+    // ループの戻り値ではなく合図そのものに紐づける。
+    understood.signal.addEventListener("abort", () => finishSession("understood"), {
+      once: true,
+    });
 
     const localParticipant = ctx.room.localParticipant as
       | (TextStreamPublisher & RpcRegistrar)
@@ -247,7 +271,10 @@ export default defineAgent({
 
     const controlInbox = new SessionControlInbox();
     let unregisterControl: () => void = () => undefined;
-    if (currentContext.kind === "new" && localParticipant) {
+    // **`kind` で絞らない。**以前は追加写真のためだけの口だったので `new` 限定だったが、
+    // 「わかった」は復習セッションでも押せる(復習も板書授業から始まる)。
+    // 写真まわりの通知はアプリが `new` でしか送らないので、絞りを外しても増えない。
+    if (localParticipant) {
       unregisterControl = registerSessionControl({
         registrar: localParticipant,
         studentIdentity: participant.identity,
@@ -260,6 +287,13 @@ export default defineAgent({
             current: currentContext,
           }),
         inbox: controlInbox,
+        onUnderstood: () => {
+          if (understood.signal.aborted) return;
+          understood.abort();
+          // **押した瞬間に声を止める。**「わかった」を押したのに先輩が
+          // 喋り続けるのが、この変更でいちばん避けたい壊れ方(#179)。
+          void session.interrupt({ force: true }).await.catch(() => undefined);
+        },
         log,
       });
     }
@@ -294,12 +328,26 @@ export default defineAgent({
             agent,
             startedAt,
             signal: problemInterrupt.signal,
+            understood: understood.signal,
             utterances,
             record: (text) => collector.add({ role: "user", text }),
             log,
           });
           board = taught.board;
           boardContinuationAvailable = !problemInterrupt.signal.aborted;
+
+          // 残り時間が締めの枠を切って降りた。**締めの一言はもう言ってある**
+          // (`teachWithBoard`)ので、ここで部屋を閉じる。
+          //
+          // 閉じずに `waitForEnd` のタイマーに任せると、締めを言ったあと
+          // **`minContinueSeconds`(120秒)ぶんの無音**が残る。生徒からは
+          // 「さよならを言われたのに画面が終わらない」に見える。
+          if (taught.reason === "time_up") {
+            detachControl();
+            interrupt.signal.removeEventListener("abort", stopProblem);
+            finishSession("timeout");
+            break;
+          }
         }
 
         if (
@@ -441,46 +489,42 @@ export default defineAgent({
       ...voiceMetrics.summary(endedAt),
     });
 
-    const karteStartedAt = Date.now();
-    const drafted = collector.hasUserSpeech
-      ? await buildKarte({
-          context: currentContext,
-          transcript,
-          llm: createAnthropicClient({
-            apiKey: config.ANTHROPIC_API_KEY,
-            model: config.LLM_MODEL_KARTE,
-          }),
-        })
-          .then((draft) => {
-            log.info("karte_built", {
-              holes: draft.holes.length,
-              said_well: draft.said_well.length,
-              took_ms: Date.now() - karteStartedAt,
+    /**
+     * 復習問題を作るかどうかは、**「わかった」が押されたかどうかだけ**で決める
+     * (#172 の決定13)。`taught.reason` を見ないのは、押されたのが授業ループの中とは
+     * 限らないため(縮退して会話へ落ちたあとでも押せる)。合図そのものが唯一の正。
+     *
+     * **部屋はもう閉じている。**アプリは祝福画面へ進んでいて、この生成を待っていない
+     * (#172 の決定14)。ここで数十秒かかっても、生徒の画面は止まらない。
+     * 最初の接触は3日後の通知。
+     */
+    const practiceStartedAt = Date.now();
+    const practiceProblem =
+      understood.signal.aborted && taught !== undefined && taught.turns.length > 0
+        ? await buildPracticeProblem({
+            context: currentContext,
+            turns: taught.turns,
+            llm: createAnthropicClient({
+              apiKey: config.ANTHROPIC_API_KEY,
+              model: config.LLM_MODEL_PRACTICE,
+            }),
+            log,
+          }).catch((error) => {
+            // ここで投げると `/complete` ごと落ち、会話は成立したのに
+            // セッションが完了扱いにならない。**通知が予約されないだけ**で済ませる。
+            log.error("practice_problem_failed", error, {
+              took_ms: Date.now() - practiceStartedAt,
             });
-            return draft;
+            return null;
           })
-          .catch((error) => {
-            // 空のカルテでも会話は完了扱いにする。ここで投げると、
-            // 進捗も復習予約も残らない。
-            log.error("karte_failed", error, { took_ms: Date.now() - karteStartedAt });
-            return emptyKarte();
-          })
-      : emptyKarte();
+        : null;
 
-    // 「わからない」と言ったのに穴ゼロ、を出さない。
-    // LLMが書けなかったときも(上の catch を通ったときも)ここを通る。
-    const karte = withUncertaintyHole(drafted, currentContext, transcript);
-    if (karte.holes.length > drafted.holes.length) {
-      log.info("karte_uncertainty_hole_added", { session_id: currentContext.session_id });
-    }
-
-    // review_outcome はここでは立てない。言えたかどうかを決めるのは本人で、
-    // 会話から推測すると §2 が却下した「AIによる採点」になる。
-    // 申告はアプリの二択から届く。
     const body: CompleteSessionRequest = {
       transcript,
-      karte,
-      // 会話が終わった時刻で測る。カルテ生成のレイテンシを混ぜると、
+      practice_problem: practiceProblem,
+      // 材料の追跡。誤った問題が出たときに、どの板書から作ったかを引く唯一の手段。
+      ...(practiceProblem !== null && taught !== undefined ? { board_id: taught.board.id } : {}),
+      // 会話が終わった時刻で測る。生成のレイテンシを混ぜると、
       // 上限5分のセッションが6分と記録されてしまう。
       duration_seconds: Math.floor((endedAt.getTime() - startedAt.getTime()) / 1000),
       ended_reason: endedReason,
@@ -493,10 +537,14 @@ export default defineAgent({
         sessionId: currentContext.session_id,
         body,
       });
-      log.info("complete_posted", { holes: karte.holes.length });
+      log.info("complete_posted", {
+        ended_reason: endedReason,
+        practice_problem: practiceProblem !== null,
+        took_ms: Date.now() - practiceStartedAt,
+      });
     } catch (error) {
-      // ここで落ちると、会話は成立したのにカルテが存在しないことになる。
-      // アプリからは「カルテが出ない」としか見えないので、必ず表に出す。
+      // ここで落ちると、会話は成立したのに復習問題も通知も存在しないことになる。
+      // 生徒から見ると「3日後に何も来ない」— その日まで誰も気づけないので、必ず表に出す。
       log.error("complete_failed", error, { ended_reason: endedReason });
     }
   },
@@ -590,6 +638,8 @@ type TeachOptions = {
   startedAt: Date;
   /** セッションの終わり(上限時間・離脱)。生徒の発話ではもう発火しない。 */
   signal: AbortSignal;
+  /** 画面下の「わかった」。押された瞬間に授業ループを降ろす。 */
+  understood: AbortSignal;
   /** 授業モード中の生徒の発話。`LessonAwareAgent` が積み、授業ループが読む。 */
   utterances: StudentUtterances;
   /** 消費した発話をtranscriptへ写す口。 */
@@ -603,6 +653,11 @@ type TaughtLesson = {
   board: BoardDelivery;
   /** 授業で起きたこと(配送済みの手順と合間の発話)。再入の文脈になる。 */
   turns: LessonTurn[];
+  /**
+   * どうやって授業が終わったか。**復習問題を作るかどうかがこれで決まる。**
+   * `"understood"` だけが作る道(#172 の決定13)。
+   */
+  reason: LessonLoopReason;
   /**
    * 同じ配線(LLM・読み上げ・残り時間)で追加の往復を回す。
    * 教え返し中の「板書して」(`serveBoardRequests`)がこれを呼ぶ。
@@ -618,7 +673,8 @@ type TaughtLesson = {
  * (別々に組むと、読み上げの同期や残り時間の織り込みが片方だけ古いまま残る)。
  */
 function lessonRunner(options: TeachOptions, board: BoardDelivery) {
-  const { config, context, session, startedAt, signal, utterances, record, log } = options;
+  const { config, context, session, startedAt, signal, understood, utterances, record, log } =
+    options;
 
   const llm = createAnthropicLessonClient({
     apiKey: config.ANTHROPIC_API_KEY,
@@ -671,6 +727,7 @@ function lessonRunner(options: TeachOptions, board: BoardDelivery) {
         locale: context.locale,
         delivery: board,
         signal,
+        understood,
         utterances,
         record,
         problemReadoutMemory: {
@@ -718,11 +775,11 @@ function lessonRunner(options: TeachOptions, board: BoardDelivery) {
  * 板書が出ないのは大きな劣化だが、黙って部屋を閉じるよりはるかにまし。
  */
 async function teachWithBoard(options: TeachOptions): Promise<TaughtLesson> {
-  const { channel, context, session, agent, startedAt, signal, utterances, log } = options;
+  const { channel, context, session, agent, startedAt, signal, utterances, record, log } = options;
 
   const board = channel.startBoard();
   const runLesson = lessonRunner(options, board);
-  const taught: TaughtLesson = { board, turns: [], runLesson };
+  const taught: TaughtLesson = { board, turns: [], reason: "interrupted", runLesson };
 
   // 冒頭の一言はモバイルが同梱アセットから鳴らす(§3-2)。ここでも同じ文を
   // `session.say()` すると、固定文に毎回 TTS の従量原価が戻るだけでなく、
@@ -731,6 +788,7 @@ async function teachWithBoard(options: TeachOptions): Promise<TaughtLesson> {
 
   const lesson = await runLesson({});
   taught.turns = lesson.turns;
+  taught.reason = lesson.reason;
 
   const steps = lessonSteps(lesson.turns);
   // **手順数ではなく「板書に何行載ったか」を見る。**手順数だけを記録していたので、
@@ -770,8 +828,45 @@ async function teachWithBoard(options: TeachOptions): Promise<TaughtLesson> {
       log.error("instructions_update_failed", error);
     });
 
+  if (lesson.reason === "understood") {
+    // 生徒が「わかった」を押した。**もう何も言わない。**
+    // 読み上げは `onUnderstood` が止めてある(押した瞬間に切る)ので、
+    // ここで一言足すと、止めたはずの声がもう一度立ち上がる。
+    // 板書はこのあと `board.close("completed")` で締まり、最後の状態のまま残る。
+    log.info("lesson_understood", { board_id: lesson.board_id, steps: lesson.step_count });
+    return taught;
+  }
+
   if (signal.aborted) {
     // セッションはもう終わっている。ここで何か言っても誰も聞かない。
+    return taught;
+  }
+
+  /**
+   * 残り時間が締めの枠(`defaultMinContinueSeconds`)を切って降りた。
+   *
+   * **ここで一言言うのが、時間切れを事故に見せないための唯一の手当て。**
+   * 回数の上限を外した(ADR 0009)ので、天井は残り時間だけになった。
+   * 黙って降りると、`waitForEnd` の `timeout` が会話の途中で部屋を閉じ、
+   * 生徒には**説明の途中で先輩が消えた**ようにしか見えない。
+   *
+   * **他のどの分岐より先に見る。**下には立て直しの一言(`lessonFailedPrompt`)や
+   * 残った発話への返事(`generateReply`)があるが、**どちらも時間が残っている前提**の
+   * 手当てで、言い終わる前に部屋が閉じる。時間切れのときに届けたい言葉は1つだけ。
+   *
+   * `addToChatCtx: false` で喋る。transcript に入れないのは板書の読み上げと同じ理由で、
+   * **`isClosingUtterance` に拾わせない**ためでもある — 拾われると
+   * `ended_reason` が `completed` に潰れ、「時間切れで降りた」が記録から消える。
+   */
+  if (lesson.reason === "time_up") {
+    log.info("lesson_time_up", {
+      board_id: lesson.board_id,
+      steps: lesson.step_count,
+      // 締めに被った発話は返事をせずに落とす。記録だけは残す。
+      leftover: leftover !== null,
+    });
+    if (leftover !== null) record(leftover);
+    await sayAndWait(session, timeUpClosing(context.locale), log, { addToChatCtx: false });
     return taught;
   }
 
@@ -818,11 +913,6 @@ async function teachWithBoard(options: TeachOptions): Promise<TaughtLesson> {
     session.say(lessonFailedPrompt(context.locale, context.kind));
     return taught;
   }
-
-  // プロンプトが番を渡し忘れても「教えて終わり」にしない。一方、もう渡して
-  // いるときは同じ問いを二度重ねない。実際に配送できた手順だけで決める。
-  const fallback = teachBackFallback(context, steps);
-  if (fallback !== null) session.say(fallback);
 
   return taught;
 }
@@ -1025,18 +1115,24 @@ async function sayAndWait(
 type EndedReason = CompleteSessionRequest["ended_reason"];
 
 /**
- * 上限時間・ユーザーの離脱・エラーのいずれかで終わるまで待つ。
- * どれで終わったかは ended_reason としてカルテ側の重み付けに使う。
+ * 上限時間・ユーザーの離脱・エラー・**「わかった」**のいずれかで終わるまで待つ。
+ *
+ * どれで終わったかは `ended_reason` として `/complete` に載り、
+ * **復習問題を作るかどうかの記録**になる(作るのは `understood` の道だけ)。
+ *
+ * `finish` を返すのは、終わりを**外から宣言できる**必要があるため。
+ * 「わかった」と、締めの一言を言い終えた時間切れは、どちらもセッションの
+ * イベントとしては何も起きない — 待っているだけでは部屋が閉じない。
  */
 function waitForEnd(
   session: voice.AgentSession,
   context: SessionContext,
   startedAt: Date,
-  registerClosing: (handler: () => void) => void,
-): Promise<EndedReason> {
-  return new Promise<EndedReason>((resolve) => {
+): { ended: Promise<EndedReason>; finish: (reason: EndedReason) => void } {
+  let finish: (reason: EndedReason) => void = () => undefined;
+  const ended = new Promise<EndedReason>((resolve) => {
     let settled = false;
-    const finish = (reason: EndedReason) => {
+    finish = (reason: EndedReason) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
@@ -1048,17 +1144,10 @@ function waitForEnd(
       remainingSeconds(context, startedAt, new Date()) * 1000,
     );
 
-    // SDK 1.6.1 の `voice/agent_activity.js` で確認: `forwardSegment` の約2180・2191行は
-    // `audioOutput.waitForPlayout()` を await してから返り、約2350行でその後に
-    // `_conversationItemAdded(assistantMessage)` を呼ぶ。固定時間で待つと長い締めを推測で
-    // 切ることになるため、検出した時点で完了にする。
-    registerClosing(() => {
-      finish("completed");
-    });
-
     session.on(voice.AgentSessionEventTypes.Close, () => finish("user_left"));
     session.on(voice.AgentSessionEventTypes.Error, () => finish("error"));
   });
+  return { ended, finish };
 }
 
 function textOf(item: { content?: unknown; textContent?: unknown }): string {

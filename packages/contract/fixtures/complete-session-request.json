@@ -2,55 +2,44 @@
   "transcript": [
     {
       "role": "assistant",
-      "text": "この問題、円と直線が2点で交わるかどうかを聞かれてるやつですよね。最初の一歩、なんでそれにしたんですか?",
+      "text": "この問題、解の個数を聞かれてるやつだね。まず、解の個数はグラフが x軸と何回交わるかで決まる。ここまでは大丈夫?",
       "at_ms": 1200,
-      "topic_id": "M2-ZUKEI-ENCHOKU"
-    },
-    {
-      "role": "user",
-      "text": "えっと、円の中心から直線までの距離を出して、半径と比べました。距離のほうが小さければ2点で交わるので。",
-      "at_ms": 9800
-    },
-    {
-      "role": "assistant",
-      "text": "距離と半径を比べるんですね。でも(2)ではいきなり判別式を使ってましたよね。なんで途中で方法を変えたんですか?",
-      "at_ms": 15400,
       "topic_id": "M1-NIJI-HANBETSU"
     },
     {
       "role": "user",
-      "text": "あー、そこは……なんとなくです。連立したら二次式になったので、たぶん判別式かなと。",
-      "at_ms": 24100
+      "text": "はい、だいじょうぶです。",
+      "at_ms": 8600
     },
     {
       "role": "assistant",
-      "text": "なるほど。じゃあ判別式って、そもそも何がわかるものなんですか?",
-      "at_ms": 29000,
+      "text": "じゃあ判別式を書くね。D は b の2乗 引く 4ac。いまの式だと a が 1、b が マイナス4、c が 1 だから……D はいくつになると思う?",
+      "at_ms": 14200,
       "topic_id": "M1-NIJI-HANBETSU"
     },
     {
       "role": "user",
-      "text": "解の公式の……ルートの中の部分で、それが正なら解が2つ、みたいな。すみません、うまく言えないです。",
-      "at_ms": 41500
+      "text": "16 引く 4 で、12 ですか?",
+      "at_ms": 27300
+    },
+    {
+      "role": "assistant",
+      "text": "そう、12。D が 0 より大きいから、x軸と交わるのは……何回だと思う?",
+      "at_ms": 31000,
+      "topic_id": "M1-NIJI-HANBETSU"
+    },
+    {
+      "role": "user",
+      "text": "2回。だから解は2個。",
+      "at_ms": 39400
     }
   ],
-  "karte": {
-    "said_well": [
-      "中心と直線の距離dと半径rを比べて位置関係を判定する方針を、理由つきで説明できた",
-      "d < r なら2点で交わる、と対応づけて言えた"
-    ],
-    "holes": [
-      {
-        "topic_id": "M1-NIJI-HANBETSU",
-        "desc": "判別式を「なぜ」使うのか、で説明が止まった",
-        "severity": "medium",
-        "evidence": "そこは……なんとなくです",
-        "quiz": "判別式を使うと解の個数がわかる理由を説明できる?"
-      }
-    ],
-    "term_notes": ["「解の公式」と「判別式」が混ざっていた"],
-    "followup_question": null
+  "practice_problem": {
+    "topic_id": "M1-NIJI-HANBETSU",
+    "question": "x² − 6x + 5 = 0 の解の個数は?",
+    "answer": "D = 36 − 20 = 16 で D > 0 なので 2個"
   },
+  "board_id": "brd_01J8Z9K2QF7X3M4N5P6R7S8T9V",
   "duration_seconds": 268,
-  "ended_reason": "completed"
+  "ended_reason": "understood"
 }

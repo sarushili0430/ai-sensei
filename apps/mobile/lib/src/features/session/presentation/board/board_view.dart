@@ -18,36 +18,64 @@ import 'board_style.dart';
 /// **板そのものを持つのはここ**(`board_style.dart` の「板は黒板」)。
 ///
 /// 面を呼び出し側ではなくこのウィジェットに置いてあるのは、板書を出す画面が
-/// 3つある(授業・カルテ・オンボーディングのリハーサル)から。呼び出し側に
+/// 複数ある(授業・オンボーディングのリハーサル)から。呼び出し側に
 /// 面を描かせると、**チョークの色だけ来て板が来ない画面**(白地に白い文字)が
 /// 作れてしまう。
 ///
 /// **左右の余白はここが持つ。** だから呼び出し側は板書に横の余白を付けない
-/// (付けると二重になり、実効幅が340ptを割って式が横スクロールに落ちる)。
+/// (付けると二重になり、実効幅が `BoardStyle.horizontalPadding` の前提とずれる)。
+///
+/// **角丸は呼び出し側が付ける。** 板の高さは画面によって違い
+/// (授業は残りの高さ全部、リハーサルは中身の高さ)、どこで角を丸めるかは
+/// その高さを知っている側にしか決められない(`session_screen.dart` の `_BoardStage`)。
 class BoardView extends StatelessWidget {
-  const BoardView({required this.steps, super.key});
+  const BoardView({required this.steps, this.title, super.key});
 
-  /// 板の内側の余白。**呼び出し側の余白と同じ値**にしてあるので、
-  /// 画面いっぱいに敷いても実効幅は今までと1ptも変わらない。
-  static const double padding = AppSpacing.lg;
+  /// 板の内側の余白(左右)。キャンバスの `padding: 20px 18px` の横。
+  static const double padding = BoardStyle.innerPadding;
 
   final List<BoardStep> steps;
+
+  /// 板の見出し(「解の個数の調べ方」)。**板の中に置く。**
+  ///
+  /// 画面のヘッダに出していたころは、板と見出しのあいだに問題の紙カードが挟まって
+  /// 「何の板書か」が板から離れていた。キャンバスでは板のいちばん上の行で、
+  /// チョークの控えめな色。無ければ何も出さない。
+  final String? title;
 
   @override
   Widget build(BuildContext context) {
     final List<BoardStep> withBoard = steps.where((BoardStep s) => s.board != null).toList();
+    final String? heading = title;
 
-    if (withBoard.isEmpty) {
+    if (withBoard.isEmpty && heading == null) {
       return const SizedBox.shrink();
     }
 
     return ColoredBox(
       color: BoardStyle.surface,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: padding, vertical: AppSpacing.md),
+        padding: const EdgeInsets.symmetric(
+          horizontal: padding,
+          vertical: BoardStyle.innerPaddingVertical,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
+            if (heading != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                child: Text(
+                  heading,
+                  key: const Key('board-title'),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: BoardStyle.chalkMuted,
+                        letterSpacing: BoardStyle.titleLetterSpacing,
+                      ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             for (final BoardStep step in withBoard)
               Padding(
                 // indexをkeyにする: 同じ手順が再ビルドで新しいウィジェットに

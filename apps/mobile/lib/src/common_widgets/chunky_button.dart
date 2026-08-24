@@ -14,6 +14,7 @@ class ChunkyButton extends StatefulWidget {
     this.color = AppColors.blue,
     this.foregroundColor = Colors.white,
     this.expanded = true,
+    this.sunkWhenDisabled = false,
     super.key,
   });
 
@@ -22,6 +23,7 @@ class ChunkyButton extends StatefulWidget {
   final Color color;
   final Color foregroundColor;
   final bool expanded;
+  final bool sunkWhenDisabled;
 
   @override
   State<ChunkyButton> createState() => _ChunkyButtonState();
@@ -39,7 +41,10 @@ class _ChunkyButtonState extends State<ChunkyButton> {
 
   @override
   Widget build(BuildContext context) {
-    final double depth = _pressed ? 0 : AppElevation.chunkyDepth;
+    // 到達宣言のように「もう受け取った」無効状態だけは、押し込まれた位置へ
+    // 残す。待機中など別理由の無効ボタンまで動かすと、既存画面の高さが変わる。
+    final bool sunk = _pressed || (!_enabled && widget.sunkWhenDisabled);
+    final double depth = sunk ? 0 : AppElevation.chunkyDepth;
 
     return Semantics(
       button: true,

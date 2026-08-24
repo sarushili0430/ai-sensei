@@ -74,7 +74,10 @@ Widget reduceMotion(BuildContext context, Widget? child) {
 ///
 /// [locale] を受けるのは、ストア掲載スクショ(`tool/generate_store_screenshots.dart`)が
 /// 日英の同じ画面を**下部タブごと**撮るため。テストは既定の日本語のままでよい。
-Widget wrapRouter(ProviderContainer container, {Locale locale = const Locale('ja')}) {
+Widget wrapRouter(
+  ProviderContainer container, {
+  Locale locale = const Locale('ja'),
+}) {
   return UncontrolledProviderScope(
     container: container,
     child: MaterialApp.router(
@@ -132,7 +135,10 @@ Future<void> pumpApp(
     wrapApp(
       child,
       // 呼び出し側の override を後ろに置く(同じプロバイダなら後勝ち)。
-      overrides: <Object?>[preferencesProvider.overrideWithValue(preferences), ...overrides],
+      overrides: <Object?>[
+        preferencesProvider.overrideWithValue(preferences),
+        ...overrides,
+      ],
       locale: locale,
     ),
   );
@@ -190,7 +196,9 @@ Future<void> loadAppFonts() async {
 
     final FontLoader loader = FontLoader(name);
     for (final dynamic font in family['fonts'] as List<dynamic>) {
-      loader.addFont(rootBundle.load((font as Map<String, dynamic>)['asset'] as String));
+      loader.addFont(
+        rootBundle.load((font as Map<String, dynamic>)['asset'] as String),
+      );
     }
     await loader.load();
   }
@@ -240,7 +248,9 @@ Future<void> pumpUntil(
     await tester.pump(step);
     if (finder.evaluate().isNotEmpty) return;
   }
-  fail('${finder.describeMatch(Plurality.one)} が ${step * maxSteps} 待っても現れませんでした');
+  fail(
+    '${finder.describeMatch(Plurality.one)} が ${step * maxSteps} 待っても現れませんでした',
+  );
 }
 
 /// `permission_handler` のチャンネルを差し替える。
@@ -252,7 +262,9 @@ Future<void> pumpUntil(
 /// [status] は `PermissionStatus` の並び順(0=denied / 1=granted / 2=restricted /
 /// 3=limited / 4=permanentlyDenied)。既定は granted。
 void mockPermissionHandler({int status = permissionGranted}) {
-  const MethodChannel channel = MethodChannel('flutter.baseflow.com/permissions/methods');
+  const MethodChannel channel = MethodChannel(
+    'flutter.baseflow.com/permissions/methods',
+  );
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       .setMockMethodCallHandler(channel, (MethodCall call) async => status);
   addTearDown(
@@ -295,6 +307,9 @@ const Progress sampleProgress = Progress(
   streakDays: 3,
   filledHoles: 4,
   openHoles: 2,
+  // 旧カルテの穴と同じ値にすると、画面が誤って足し算しても検知できない。
+  solvedProblems: 12,
+  openProblems: 3,
   lastSessionDate: '2026-08-03',
 );
 
@@ -407,42 +422,54 @@ Entitlement trialEntitlement({int days = 7}) => Entitlement(
   expiresAt: DateTime.now().add(Duration(days: days)),
 );
 
-final FilledHole sampleFilledHole = FilledHole(
-  hole: Hole(
-    id: 'hol_filled',
-    topicId: 'M2-ZUKEI-ENCHOKU',
-    description: '中心と直線の距離で判定する理由で説明が止まった',
-    severity: HoleSeverity.medium,
-    status: HoleStatus.filled,
-    createdAt: DateTime.utc(2026, 7, 29, 12, 10),
-    filledAt: DateTime.utc(2026, 8, 2, 13, 24, 7),
-  ),
-  daysSinceFilled: 1,
+final PracticeProblem samplePracticeProblem = PracticeProblem(
+  id: 'prb_discriminant',
+  sessionId: 'ses_1',
+  boardId: 'brd_1',
+  topicId: 'M1-NIJI-HANBETSU',
+  question: 'x² − 6x + 5 = 0 の解の個数は?',
+  createdAt: DateTime.utc(2026, 8, 3, 13, 24, 7),
 );
 
-/// ホームに出す復習候補。古い穴も混ぜ、カードが件数ではなく直近の内容を選ぶ状態にする。
-final ReviewQueue sampleReviewQueue = ReviewQueue(
-  items: <ReviewQueueItem>[
-    ReviewQueueItem(
-      hole: Hole(
-        id: 'hol_old',
-        topicId: 'M1-NIJI-GURAFU',
-        description: '平方完成を「なぜ」するのか、で説明が止まった',
-        severity: HoleSeverity.high,
-        status: HoleStatus.open,
-        createdAt: DateTime.utc(2026, 8, 1, 12, 10),
-      ),
+final PracticeProblem sampleSecondPracticeProblem = PracticeProblem(
+  id: 'prb_circle_line',
+  sessionId: 'ses_2',
+  boardId: 'brd_2',
+  topicId: 'M2-ZUKEI-ENCHOKU',
+  question: '中心が原点で半径3の円と、直線 y = x + 1 は何点で交わる?',
+  createdAt: DateTime.utc(2026, 8, 1, 12, 2, 44),
+);
+
+final SolvedPractice sampleSolvedPractice = SolvedPractice(
+  problem: PracticeProblem(
+    id: 'prb_vertex',
+    sessionId: 'ses_solved',
+    boardId: 'brd_solved',
+    topicId: 'M1-NIJI-GURAFU',
+    question: 'y = x² + 4x + 1 の頂点の座標は?',
+    createdAt: DateTime.utc(2026, 7, 29, 11, 15, 3),
+  ),
+  topicLabel: '2次関数のグラフ',
+  daysSinceSolved: 1,
+);
+
+/// ホームに出す復習候補。複数問を混ぜ、画面が件数ではなく先頭の問題を選ぶ状態にする。
+final PracticeQueue samplePracticeQueue = PracticeQueue(
+  items: <PracticeQueueItem>[
+    PracticeQueueItem(
+      problem: samplePracticeProblem,
       daysSince: 3,
-      prompt: '3日前の「平方完成のなぜ」、いまなら説明できますか?',
-      quiz: '平方完成をする理由を説明できる?',
+      topicLabel: '判別式と解の個数',
+      lastVerdict: null,
     ),
-    ReviewQueueItem(
-      hole: sampleKarte.holes.first,
-      daysSince: 1,
-      prompt: 'きのうの「判別式の意味」、もう一度きいてもいいですか?',
-      quiz: '判別式を使うと解の個数がわかる理由を説明できる?',
+    PracticeQueueItem(
+      problem: sampleSecondPracticeProblem,
+      daysSince: 5,
+      topicLabel: '円と直線の位置関係',
+      lastVerdict: PracticeVerdict.unclear,
     ),
   ],
+  solved: <SolvedPractice>[sampleSolvedPractice],
 );
 
 // --- プロバイダの差し替え ---
@@ -454,70 +481,39 @@ class FakeProgressController extends ProgressController {
 
   @override
   Future<ProgressSummary> build() async => _summary;
-}
 
-class FakeLatestKarteController extends LatestKarteController {
-  FakeLatestKarteController([this._karte]);
-
-  final Karte? _karte;
-
+  /// 画面単体のテストを本物のAPIへ落とさない。再取得を見るテストでは専用の
+  /// 差し替えを使い、呼び出し回数と更新後の値を検証する。
   @override
-  Karte? build() => _karte ?? sampleKarte;
-}
-
-/// カルテがまだ手元に無い状態。会話直後(生成待ち)の祝福画面で使う。
-class EmptyLatestKarteController extends LatestKarteController {
-  @override
-  Karte? build() => null;
+  Future<void> reloadQuietly() async {}
 }
 
 class FakeSessionOutcomeController extends SessionOutcomeController {
-  FakeSessionOutcomeController(this._outcome, {this.karteArrives = false});
+  FakeSessionOutcomeController(this._outcome);
 
   final SessionOutcome _outcome;
 
-  /// 取りに行ったらカルテがあるか。
-  final bool karteArrives;
-
   @override
   SessionOutcome build() => _outcome;
-
-  /// 取りに行くのをここで止める。テストからネットワークへ出さないため。
-  @override
-  Future<bool> retrieveKarte() async => karteArrives;
 }
 
 class FakeReviewController extends ReviewController {
-  FakeReviewController(
-    this._queue, {
-    this.queueAfterAnswer,
-    this.answerSucceeds = true,
-  });
+  FakeReviewController(this._queue);
 
-  ReviewQueue _queue;
-
-  /// 回答後に画面へ返すキュー。テストごとに「次の1問」や空の状態を差し替える。
-  ReviewQueue? queueAfterAnswer;
-  bool answerSucceeds;
-
-  /// 画面が送った自己申告。`notYet` を送っていないこともここで確認できる。
-  final List<(String, ReviewOutcome)> answerCalls = <(String, ReviewOutcome)>[];
+  PracticeQueue _queue;
 
   @override
-  Future<ReviewQueue> build() async => _queue;
+  Future<PracticeQueue> build() async => _queue;
 
-  /// 本物のAPIへ落とさず、呼び出し内容と回答後のキューだけを再現する。
+  /// 画面単体の再読込を本物のAPIへ落とさず、明示したキューだけで描き直す。
   @override
-  Future<bool> answer(String holeId, ReviewOutcome outcome) async {
-    answerCalls.add((holeId, outcome));
-    if (!answerSucceeds) return false;
+  Future<void> refresh() async {
+    state = AsyncValue<PracticeQueue>.data(_queue);
+  }
 
-    final ReviewQueue? next = queueAfterAnswer;
-    if (next != null) {
-      _queue = next;
-      state = AsyncValue<ReviewQueue>.data(next);
-    }
-    return true;
+  void replaceWith(PracticeQueue queue) {
+    _queue = queue;
+    state = AsyncValue<PracticeQueue>.data(queue);
   }
 }
 

@@ -14,8 +14,15 @@ import 'package:flutter/material.dart';
 /// **どこからどこまでが板書なのか境目が無かった**。問題文・式・図が同じ紙の上に
 /// 平らに並ぶので、主役が板書だと見た目から分からない。
 ///
-/// 素材を2つに分ける: **問題 = 紙(白いカード)/ 板書 = 黒板(面)**。
+/// 素材を2つに分ける: **問題 = 紙(白いカード)/ 板書 = 黒板**。
 /// ラベルを読まなくても役割が分かるのは、文字ではなく素材が違うから。
+///
+/// **板は角の丸いカードとして置く**(`docs/core_loop_screens.html` / ADR 0009)。
+/// 以前は「板は面であってカードではない」として画面の左右いっぱいに敷いていたが、
+/// 画面遷移キャンバスは半径 `AppRadius.card` の角丸で、左右に地(`background`)を
+/// 残している。**紙のカードと黒板が同じ形で並ぶ**ことで、素材の違い(白い紙 /
+/// 黒い板)だけが役割の差として残る — 片方だけ全幅だと、形の差が素材の差を上書きする。
+/// 代償は実効幅で、下の [horizontalPadding] にそのまま書いてある。
 ///
 /// **色は作図(`@ai-sensei/figure` の `render.js`)が既に使っている値と同じにする。**
 /// 図のSVGは背景 `#2f3a35`・線 `#edeae0` で描かれてくるので、板をこの色にすると
@@ -82,8 +89,26 @@ abstract final class BoardStyle {
   /// (`Degradation.boardTooNarrow`。計画書 §10-7)。
   static const double measuredWidthAssumption = 340;
 
-  /// 板書の左右の余白の合計。どの画面も `AppSpacing.lg` × 2 で揃えてある。
-  static const double horizontalPadding = 48;
+  /// 板書の左右の余白の合計。
+  ///
+  /// **カードになったぶん増えた。**内訳は「画面の余白 `AppSpacing.lg`(24)+
+  /// 板の内側 [innerPadding](18)」の左右2つぶんで 84pt。
+  /// 全幅だったころは板の内側24ptだけの 48pt だった。
+  ///
+  /// iPhone 15(393pt)での実効幅は **309pt** で、[measuredWidthAssumption] の
+  /// 340pt を下回る。これは**版組が食った事故ではなく、いまの設計値**なので、
+  /// [expectedWidth] は端末幅から実際に取れる幅を返す(そうしないと
+  /// `Degradation.boardTooNarrow` が全端末で毎回鳴り、本当の狭さが埋もれる)。
+  static const double horizontalPadding = 48 + innerPadding * 2;
+
+  /// 板の内側の余白(左右)。キャンバスの `padding: 20px 18px` の横。
+  static const double innerPadding = 18;
+
+  /// 板の内側の余白(上下)。同じくキャンバスの縦。
+  static const double innerPaddingVertical = 20;
+
+  /// 板の見出し(「解の個数の調べ方」)の字送り。キャンバスの `.08em` を 12pt で。
+  static const double titleLetterSpacing = 0.96;
 
   /// この端末で板書が使えるはずの幅。
   ///

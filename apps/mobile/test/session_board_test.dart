@@ -1,10 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:ai_sensei/src/common_widgets/chunky_button.dart';
 import 'package:ai_sensei/src/common_widgets/senpai_face.dart';
 import 'package:ai_sensei/src/features/capture/application/capture_controller.dart';
+import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
 import 'package:ai_sensei/src/features/session/application/board_inbox.dart';
 import 'package:ai_sensei/src/features/session/application/problem_photo_picker.dart';
+import 'package:ai_sensei/src/features/session/application/session_control.dart';
 import 'package:ai_sensei/src/features/session/application/session_controller.dart';
 import 'package:ai_sensei/src/features/session/domain/board.dart';
 import 'package:ai_sensei/src/features/session/domain/session.dart';
@@ -13,9 +16,11 @@ import 'package:ai_sensei/src/features/session/presentation/board/board_style.da
 import 'package:ai_sensei/src/features/session/presentation/board/board_view.dart';
 import 'package:ai_sensei/src/features/session/presentation/session_screen.dart';
 import 'package:ai_sensei/src/l10n/strings.dart';
+import 'package:ai_sensei/src/theme/tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:livekit_client/livekit_client.dart';
 
 import 'support/harness.dart';
 
@@ -31,15 +36,18 @@ void main() {
   const AppStrings ja = AppStrings(Locale('ja'));
   const String sessionId = 'ses_1';
 
-  BoardChannelMessage open(int seq, {String boardId = 'brd_1', String title = '判別式'}) =>
-      BoardChannelMessage.boardOpen(
-        v: 1,
-        sessionId: sessionId,
-        boardId: boardId,
-        seq: seq,
-        title: title,
-        topicIds: const <String>['jp.math1.quadratic.discriminant'],
-      );
+  BoardChannelMessage open(
+    int seq, {
+    String boardId = 'brd_1',
+    String title = '判別式',
+  }) => BoardChannelMessage.boardOpen(
+    v: 1,
+    sessionId: sessionId,
+    boardId: boardId,
+    seq: seq,
+    title: title,
+    topicIds: const <String>['jp.math1.quadratic.discriminant'],
+  );
 
   BoardChannelMessage step(
     int seq,
@@ -60,15 +68,18 @@ void main() {
     ),
   );
 
-  BoardChannelMessage close(int seq, int stepCount, {String boardId = 'brd_1'}) =>
-      BoardChannelMessage.boardClose(
-        v: 1,
-        sessionId: sessionId,
-        boardId: boardId,
-        seq: seq,
-        stepCount: stepCount,
-        reason: BoardCloseReason.completed,
-      );
+  BoardChannelMessage close(
+    int seq,
+    int stepCount, {
+    String boardId = 'brd_1',
+  }) => BoardChannelMessage.boardClose(
+    v: 1,
+    sessionId: sessionId,
+    boardId: boardId,
+    seq: seq,
+    stepCount: stepCount,
+    reason: BoardCloseReason.completed,
+  );
 
   group('板書の受信(BoardInbox)', () {
     test('手順は1行ずつ積まれ、前の行は消えない', () {
@@ -83,7 +94,10 @@ void main() {
       inbox.accept(step(1, 0, body: 'x^2 の係数'));
       inbox.accept(step(2, 1, body: 'D = 9 - 8'));
       expect(inbox.snapshot.steps.length, 2);
-      expect((inbox.snapshot.steps.first.board! as TextElement).body, 'x^2 の係数');
+      expect(
+        (inbox.snapshot.steps.first.board! as TextElement).body,
+        'x^2 の係数',
+      );
     });
 
     /// 板書の寿命は「1回の説明」ではなく **「1つの問題」**(契約 `board.ts`)。
@@ -214,6 +228,7 @@ void main() {
       Size size = phoneSurface,
       SessionProblem? problem,
       ProblemPhotoPicker? problemPhotoPicker,
+      bool controlFails = false,
     }) async {
       final SessionState initial = problem == null
           ? state
@@ -228,7 +243,7 @@ void main() {
             () => FakeCaptureController(problem),
           ),
           sessionControllerProvider.overrideWith(
-            () => FakeSessionController(initial),
+            () => FakeSessionController(initial, controlFails: controlFails),
           ),
           problemPhotoPickerProvider.overrideWithValue(
             problemPhotoPicker ?? FakeProblemPhotoPicker(),
@@ -243,26 +258,222 @@ void main() {
           as FakeSessionController;
     }
 
-    SessionState teaching(List<String> lines, {String? gapReason}) => SessionState(
-      phase: SessionPhase.senpaiTeaching,
-      remainingSeconds: 1200,
-      board: BoardSnapshot(
-        title: '判別式',
-        gapReason: gapReason,
-        steps: <BoardStep>[
-          for (int i = 0; i < lines.length; i++)
-            BoardStep(index: i, speech: 'ここ、見て', board: BoardElement.text(body: lines[i])),
-        ],
-      ),
-    );
+    SessionState teaching(List<String> lines, {String? gapReason}) =>
+        SessionState(
+          phase: SessionPhase.senpaiTeaching,
+          remainingSeconds: 1200,
+          board: BoardSnapshot(
+            title: '判別式',
+            gapReason: gapReason,
+            steps: <BoardStep>[
+              for (int i = 0; i < lines.length; i++)
+                BoardStep(
+                  index: i,
+                  speech: 'ここ、見て',
+                  board: BoardElement.text(body: lines[i]),
+                ),
+            ],
+          ),
+        );
 
     testWidgets('届いた手順ぶん、板書が積まれる', (WidgetTester tester) async {
-      await pumpSession(tester, teaching(<String>['x^2 - 3x + 2 = 0', 'a = 1, b = -3, c = 2']));
+      await pumpSession(
+        tester,
+        teaching(<String>['x^2 - 3x + 2 = 0', 'a = 1, b = -3, c = 2']),
+      );
 
       expect(find.byType(BoardElementView), findsNWidgets(2));
       expect(find.text('x^2 - 3x + 2 = 0'), findsOneWidget);
       // 見出し(何の問題か)も出る。
       expect(find.text('判別式'), findsOneWidget);
+    });
+
+    testWidgets('「わかった」を連打しても制御RPCは1回だけ送り、すぐ無効にする', (
+      WidgetTester tester,
+    ) async {
+      final FakeSessionController controller = await pumpSession(
+        tester,
+        teaching(<String>['D = 9 - 8 = 1']),
+      );
+
+      final Finder understood = find.widgetWithText(
+        ChunkyButton,
+        ja.sessionUnderstood,
+      );
+      expect(understood, findsOneWidget);
+
+      // 再buildを待たず同じフレームで二度押しても、controller側の門で1通にする。
+      await tester.tap(understood);
+      await tester.tap(understood);
+      await tester.pump();
+
+      expect(controller.controlCalls, hasLength(1));
+      final Map<String, dynamic> payload =
+          jsonDecode(controller.controlCalls.single.payload)
+              as Map<String, dynamic>;
+      expect(payload, <String, dynamic>{
+        'v': 1,
+        'type': 'understood',
+        'session_id': 'ses_1',
+      });
+      final ChunkyButton disabled = tester.widget(understood);
+      expect(disabled.onPressed, isNull);
+      expect(find.text(ja.sessionVoiceStopped), findsOneWidget);
+
+      final Finder disabledBody = find.descendant(
+        of: understood,
+        matching: find.byType(AnimatedContainer),
+      );
+      final AnimatedContainer settled = tester.widget(disabledBody);
+      expect(settled.padding, const EdgeInsets.only(top: 4));
+      final Container face = tester
+          .widgetList<Container>(
+            find.descendant(of: understood, matching: find.byType(Container)),
+          )
+          .firstWhere(
+            (Container candidate) =>
+                candidate.decoration is BoxDecoration &&
+                (candidate.decoration! as BoxDecoration).color ==
+                    AppColors.border,
+          );
+      final BoxDecoration decoration = face.decoration! as BoxDecoration;
+      expect(decoration.color, AppColors.border);
+      expect(decoration.boxShadow, isEmpty);
+    });
+
+    /// 送れていないので先輩はまだ喋っている。掛け金を立てたままにすると
+    /// 「わかった」も × も無効のまま「声を止めたよ」だけが出て、**時間切れまで
+    /// 何も押せない画面**になる。回線が一瞬切れただけでそこへ落ちる。
+    testWidgets('制御RPCが届かなかったら「わかった」と × を押せるまま戻す', (
+      WidgetTester tester,
+    ) async {
+      final FakeSessionController controller = await pumpSession(
+        tester,
+        teaching(<String>['D = 9 - 8 = 1']),
+        controlFails: true,
+      );
+
+      final Finder understood = find.widgetWithText(
+        ChunkyButton,
+        ja.sessionUnderstood,
+      );
+      await tester.tap(understood);
+      await tester.pump();
+
+      expect(controller.controlCalls, hasLength(1));
+      expect(controller.snapshot.isUnderstood, isFalse);
+      // 「声を止めたよ」は出さない。止まっていないので。
+      expect(find.text(ja.sessionVoiceStopped), findsNothing);
+      // もう一度押せる = 出口が残っている。
+      expect(
+        tester.widget<ChunkyButton>(understood).onPressed,
+        isNotNull,
+      );
+      expect(
+        tester
+            .widget<Semantics>(
+              find.ancestor(
+                of: find.byKey(const Key('session-close')),
+                matching: find.byType(Semantics),
+              ).first,
+            )
+            .properties
+            .enabled,
+        isTrue,
+      );
+    });
+
+    testWidgets('「わかった」のあとも最後の板書を消さない', (WidgetTester tester) async {
+      final FakeSessionController controller = await pumpSession(
+        tester,
+        teaching(<String>['1行目', 'D = 9 - 8 = 1']),
+      );
+      final BoardSnapshot before = controller.snapshot.board;
+
+      await tester.tap(find.text(ja.sessionUnderstood));
+      await tester.pump();
+
+      expect(find.byType(BoardElementView), findsNWidgets(2));
+      expect(find.text('1行目'), findsOneWidget);
+      expect(find.text('D = 9 - 8 = 1'), findsOneWidget);
+      expect(identical(controller.snapshot.board, before), isTrue);
+    });
+
+    testWidgets('×から「つづける」を選ぶと、板書・残り時間・類題待ちを変えない', (WidgetTester tester) async {
+      final SessionState initial = teaching(<String>[
+        'D = 9 - 8 = 1',
+      ]).copyWith(awaitingSolving: true);
+      final FakeSessionController controller = await pumpSession(
+        tester,
+        initial,
+      );
+
+      expect(
+        tester.getSize(find.byKey(const Key('session-close'))),
+        const Size.square(44),
+      );
+      await tester.tap(find.byKey(const Key('session-close')));
+      await tester.pumpAndSettle();
+
+      expect(find.text(ja.sessionQuitTitle), findsOneWidget);
+      expect(find.text(ja.sessionQuitBody), findsOneWidget);
+      final Iterable<ModalBarrier> barriers = tester.widgetList<ModalBarrier>(
+        find.byType(ModalBarrier),
+      );
+      expect(
+        barriers.any(
+          (ModalBarrier barrier) =>
+              barrier.color == AppColors.ink.withValues(alpha: 0.55),
+        ),
+        isTrue,
+      );
+      expect(
+        tester.getSize(find.byKey(const Key('session-exit-dialog-card'))).width,
+        lessThanOrEqualTo(305),
+      );
+      final DecoratedBox card = tester.widget(
+        find.byKey(const Key('session-exit-dialog-card')),
+      );
+      final BoxDecoration cardDecoration = card.decoration as BoxDecoration;
+      expect(cardDecoration.color, AppColors.surface);
+      expect(
+        cardDecoration.borderRadius,
+        BorderRadius.circular(AppRadius.card),
+      );
+      final Padding cardPadding = tester.widget(
+        find
+            .descendant(
+              of: find.byKey(const Key('session-exit-dialog-card')),
+              matching: find.byType(Padding),
+            )
+            .first,
+      );
+      expect(cardPadding.padding, const EdgeInsets.all(AppSpacing.lg));
+
+      await tester.tap(find.widgetWithText(ChunkyButton, ja.sessionContinue));
+      await tester.pumpAndSettle();
+
+      expect(find.text(ja.sessionQuitTitle), findsNothing);
+      expect(identical(controller.snapshot, initial), isTrue);
+      expect(find.text('D = 9 - 8 = 1'), findsOneWidget);
+      // 残り時間は画面から畳んだが、確認を閉じただけで内部の残高まで
+      // 進めると日次枠の精算がずれるので、状態の値はそのまま守る。
+      expect(controller.snapshot.remainingSeconds, 1200);
+      expect(find.text(ja.sessionSolved), findsOneWidget);
+      expect(find.text(ja.sessionStuck), findsOneWidget);
+      expect(controller.finishCalls, 0);
+    });
+
+    testWidgets('OSの戻る操作も、授業を捨てる前に同じ確認を出す', (WidgetTester tester) async {
+      await pumpSession(tester, teaching(<String>['D = 9 - 8 = 1']));
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.text(ja.sessionQuitTitle), findsOneWidget);
+      await tester.tap(find.widgetWithText(ChunkyButton, ja.sessionContinue));
+      await tester.pumpAndSettle();
+      expect(find.byType(SessionScreen), findsOneWidget);
     });
 
     /// **前の行は消さない**(計画書§3-2)。板書の価値そのもの。
@@ -281,8 +492,8 @@ void main() {
       expect(find.text('3行目'), findsOneWidget);
     });
 
-    /// 教え返し(コアループ §2)。**板書を残したまま**マイクに向かわせる。
-    testWidgets('教え返し中も板書は残り、「説明してみて」が出る', (WidgetTester tester) async {
+    /// 問いかけを待つ間も、到達の宣言を取り上げない。
+    testWidgets('問いかけ待ちでも板書を残し、「わかった」を押せる', (WidgetTester tester) async {
       final SessionState taught = teaching(<String>['D = 9 - 8 = 1 > 0']);
       await pumpSession(
         tester,
@@ -294,10 +505,8 @@ void main() {
       );
 
       expect(find.byType(BoardElementView), findsOneWidget);
-      expect(find.text(ja.sessionExplainBack), findsOneWidget);
-      // 聞いている顔で待つ(試験官にはしない)。
-      final SenpaiFace face = tester.widget(find.byType(SenpaiFace));
-      expect(face.mood, SenpaiMood.listening);
+      expect(find.text(ja.sessionTeachingStatus), findsOneWidget);
+      expect(find.text(ja.sessionUnderstood), findsOneWidget);
     });
 
     testWidgets('類題を解いている間だけ「できた / できなかった」を出し、押したら消す', (
@@ -328,6 +537,7 @@ void main() {
       expect(find.text(ja.sessionSolved), findsOneWidget);
       expect(find.text(ja.sessionStuck), findsOneWidget);
       expect(find.text(ja.sessionPass), findsNothing);
+      expect(find.text(ja.sessionUnderstood), findsNothing);
 
       await tester.tap(find.text(ja.sessionSolved));
       await tester.pump();
@@ -335,12 +545,10 @@ void main() {
       expect(controller.solvingReports, <String>[ja.sessionSolvedMessage]);
       expect(find.text(ja.sessionSolved), findsNothing);
       expect(find.text(ja.sessionStuck), findsNothing);
-      expect(find.text(ja.sessionPass), findsOneWidget);
+      expect(find.text(ja.sessionUnderstood), findsOneWidget);
     });
 
-    testWidgets('ボタンを押さず声で答えた場合も、類題の二択を消す', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('ボタンを押さず声で答えた場合も、類題の二択を消す', (WidgetTester tester) async {
       final FakeSessionController controller = await pumpSession(
         tester,
         const SessionState(
@@ -367,6 +575,7 @@ void main() {
 
       expect(find.text(ja.sessionSolved), findsNothing);
       expect(find.text(ja.sessionStuck), findsNothing);
+      expect(find.text(ja.sessionUnderstood), findsOneWidget);
       expect(controller.solvingReports, isEmpty);
     });
 
@@ -389,7 +598,10 @@ void main() {
       expect(find.text(ja.sessionProblemTitle), findsOneWidget);
       expect(find.textContaining('異なる2つの実数解'), findsOneWidget);
       // 板書はそのまま主役。問題文を足したぶんで実効幅を削らない。
-      expect(tester.getSize(find.byType(BoardView)).width, greaterThanOrEqualTo(340));
+      expect(
+        tester.getSize(find.byType(BoardView)).width,
+        greaterThanOrEqualTo(340),
+      );
     });
 
     /// **読めなかったことを画面で騒がない。**「問題が読み取れませんでした」と出すと、
@@ -455,8 +667,8 @@ void main() {
 
       expect(find.text(ja.sessionAddingProblem), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
-      expect(find.text(ja.sessionPass), findsOneWidget);
-      expect(find.text(ja.sessionEnd), findsOneWidget);
+      expect(find.text(ja.sessionUnderstood), findsOneWidget);
+      expect(find.byKey(const Key('session-close')), findsOneWidget);
     });
 
     testWidgets('解析上限でも行き止まりにせず、今の問題を続けられる', (WidgetTester tester) async {
@@ -474,8 +686,8 @@ void main() {
         find.widgetWithText(OutlinedButton, ja.sessionAddProblem),
       );
       expect(add.onPressed, isNull);
-      expect(find.text(ja.sessionPass), findsOneWidget);
-      expect(find.text(ja.sessionEnd), findsOneWidget);
+      expect(find.text(ja.sessionUnderstood), findsOneWidget);
+      expect(find.byKey(const Key('session-close')), findsOneWidget);
     });
 
     testWidgets('解析済みなら、写真を再送せずagent通知だけを再試行できる', (WidgetTester tester) async {
@@ -518,7 +730,10 @@ void main() {
       await setSurface(tester);
       await pumpSession(tester, teaching(<String>['x^2 - 3x + 2 = 0']));
 
-      expect(tester.getSize(find.byType(BoardView)).width, greaterThanOrEqualTo(340));
+      expect(
+        tester.getSize(find.byType(BoardView)).width,
+        greaterThanOrEqualTo(340),
+      );
     });
 
     /// **板書が読み上げから欠けていないこと。**
@@ -565,24 +780,24 @@ void main() {
 
     /// **狭い端末では「幅が足りない」を送らない。**
     ///
-    /// 実測の前提 340pt は iPhone 15(393pt)基準の値。iPhone SE(375pt)は
-    /// どう組んでも 375 − 48 = **327pt** にしかならないので、340 をそのまま
-    /// 閾値にすると**SEの利用者ぶんが毎回飛ぶ**。端末が狭いのは版組の落ち度では
+    /// 黒板を角丸カードにした設計では、外24ptと内18ptの余白が左右に入る。
+    /// iPhone 15(393pt)でも309pt、iPhone SE(375pt)では291ptしか取れないので、
+    /// 旧340ptを閾値にすると**全利用者ぶんが毎回飛ぶ**。設計上の余白は版組の落ち度では
     /// ないし、それを送ると本当に見たい「こちらが幅を食った」が件数に埋もれる。
     group('板書の幅の見張り', () {
-      test('iPhone 15 では実測の前提(340pt)がそのまま閾値', () {
-        expect(BoardStyle.expectedWidth(393), 340);
+      test('iPhone 15 では、カードの外側と内側の余白を引いた309ptが閾値', () {
+        expect(BoardStyle.expectedWidth(393), 309);
       });
 
-      test('iPhone SE では、その端末で取れる幅(327pt)が閾値', () {
-        expect(BoardStyle.expectedWidth(375), 327);
+      test('iPhone SE では、その端末で取れる幅291ptが閾値', () {
+        expect(BoardStyle.expectedWidth(375), 291);
       });
 
-      // 授業の外で板書をカードに入れていたときの実測値。**これは版組が食った幅**
-      // なので、どの端末でも閾値を下回る = 送られる。
+      // さらに16ptずつ別の枠へ入った実測相当。**これは版組が余計に食った幅**
+      // なので、どの端末でも設計値を下回る = 送られる。
       test('版組が食った幅は、狭い端末でも閾値を下回る', () {
-        expect(311, lessThan(BoardStyle.expectedWidth(375)));
-        expect(311, lessThan(BoardStyle.expectedWidth(393)));
+        expect(275, lessThan(BoardStyle.expectedWidth(375)));
+        expect(275, lessThan(BoardStyle.expectedWidth(393)));
       });
     });
 
@@ -596,39 +811,52 @@ void main() {
     ///   - とぎれた一行が、そこにさらに乗る
     ///
     /// ここに残っていれば、それが出るのは 8/16 のゲートの最中になる。
-    for (final Locale locale in <Locale>[const Locale('ja'), const Locale('en')]) {
+    for (final Locale locale in <Locale>[
+      const Locale('ja'),
+      const Locale('en'),
+    ]) {
       final String lang = locale.languageCode;
 
       /// 手順を積めるだけ積んだ授業。実際の板書は12手順まで(`board.ts`)。
-      SessionState packed({SessionPhase phase = SessionPhase.senpaiTeaching, String? gapReason}) =>
-          SessionState(
-            phase: phase,
-            remainingSeconds: 1200,
-            board: BoardSnapshot(
-              title: '判別式で解の個数を見る',
-              gapReason: gapReason,
-              steps: <BoardStep>[
-                for (int i = 0; i < 12; i++)
-                  BoardStep(
-                    index: i,
-                    speech: 'ここ、見て',
-                    board: BoardElement.latex(tex: 'D_{$i} = (-4)^2 - 4k > 0'),
-                  ),
-              ],
-            ),
-          );
+      SessionState packed({
+        SessionPhase phase = SessionPhase.senpaiTeaching,
+        String? gapReason,
+      }) => SessionState(
+        phase: phase,
+        remainingSeconds: 1200,
+        board: BoardSnapshot(
+          title: '判別式で解の個数を見る',
+          gapReason: gapReason,
+          steps: <BoardStep>[
+            for (int i = 0; i < 12; i++)
+              BoardStep(
+                index: i,
+                speech: 'ここ、見て',
+                board: BoardElement.latex(tex: 'D_{$i} = (-4)^2 - 4k > 0'),
+              ),
+          ],
+        ),
+      );
 
       void expectNoOverflow(WidgetTester tester, String what) {
         expect(
           tester.takeException(),
           isNull,
-          reason: '$what が $lang で '
+          reason:
+              '$what が $lang で '
               '${smallPhoneSurface.width.toInt()}x${smallPhoneSurface.height.toInt()} から溢れています',
         );
       }
 
-      testWidgets('狭い端末: 授業中に板書が積まれても溢れない ($lang)', (WidgetTester tester) async {
-        await pumpSession(tester, packed(), locale: locale, size: smallPhoneSurface);
+      testWidgets('狭い端末: 授業中に板書が積まれても溢れない ($lang)', (
+        WidgetTester tester,
+      ) async {
+        await pumpSession(
+          tester,
+          packed(),
+          locale: locale,
+          size: smallPhoneSurface,
+        );
         // **空振りで緑にならないこと。** 板書が1行も描かれていなければ、
         // 溢れないのは当たり前で、この検査は何も見ていない。
         expect(find.byType(BoardElementView), findsNWidgets(12));
@@ -646,9 +874,7 @@ void main() {
         expectNoOverflow(tester, '教え返し中');
       });
 
-      testWidgets('狭い端末: 類題の二択が出ても溢れない ($lang)', (
-        WidgetTester tester,
-      ) async {
+      testWidgets('狭い端末: 類題の二択が出ても溢れない ($lang)', (WidgetTester tester) async {
         final SessionState state = packed(phase: SessionPhase.explainBack);
         await pumpSession(
           tester,
@@ -678,7 +904,9 @@ void main() {
       /// 板書が無い会話では顔と字幕を `Spacer` で挟んでいた。授業中の `speech` は
       /// 契約で120字までだが、**教え返しに入ると相手は会話LLMで上限が無い**。
       /// 長い返事がそのまま固定の高さになり、下の操作を画面の外へ押し出していた。
-      testWidgets('狭い端末: 板書が無いまま長く喋られても溢れない ($lang)', (WidgetTester tester) async {
+      testWidgets('狭い端末: 板書が無いまま長く喋られても溢れない ($lang)', (
+        WidgetTester tester,
+      ) async {
         await pumpSession(
           tester,
           SessionState(
@@ -695,7 +923,9 @@ void main() {
       });
 
       /// 板書があるときも、下の帯が伸びて板書を押し出さないこと。
-      testWidgets('狭い端末: 板書つきで長く喋られても溢れない ($lang)', (WidgetTester tester) async {
+      testWidgets('狭い端末: 板書つきで長く喋られても溢れない ($lang)', (
+        WidgetTester tester,
+      ) async {
         final SessionState state = packed(phase: SessionPhase.explainBack);
         await pumpSession(
           tester,
@@ -718,7 +948,10 @@ void main() {
     testWidgets('板書が無ければ、画面はこれまでのまま', (WidgetTester tester) async {
       await pumpSession(
         tester,
-        const SessionState(phase: SessionPhase.listening, remainingSeconds: 1200),
+        const SessionState(
+          phase: SessionPhase.listening,
+          remainingSeconds: 1200,
+        ),
       );
 
       expect(find.byType(BoardElementView), findsNothing);
@@ -747,7 +980,11 @@ class FakeCaptureController extends CaptureController {
     session: const SessionStart(
       sessionId: 'ses_1',
       kind: 'new',
-      livekit: LiveKitConnection(url: 'wss://example', token: 't', room: 'ses_1'),
+      livekit: LiveKitConnection(
+        url: 'wss://example',
+        token: 't',
+        room: 'ses_1',
+      ),
       limits: SessionLimits(
         maxSeconds: 1200,
         remainingSecondsToday: 1200,
@@ -759,18 +996,39 @@ class FakeCaptureController extends CaptureController {
 
 /// 状態を外から差し替えられる差し替え。LiveKitにはつなぎに行かせない。
 class FakeSessionController extends SessionController {
-  FakeSessionController(this._initial);
+  FakeSessionController(this._initial, {this.controlFails = false});
 
   final SessionState _initial;
+
+  /// 制御RPCを落とす。回線が切れているあいだの「わかった」を再現する。
+  final bool controlFails;
   final List<String> solvingReports = <String>[];
   final List<File> addedProblemPhotos = <File>[];
+  final List<PerformRpcParams> controlCalls = <PerformRpcParams>[];
   int notificationRetries = 0;
+  int finishCalls = 0;
+
+  SessionState get snapshot => state;
 
   @override
   SessionState build() => _initial;
 
   @override
   Future<void> connect(SessionStart session, {required String locale}) async {}
+
+  @override
+  String? get activeSessionId => 'ses_1';
+
+  @override
+  String get activeSenpaiIdentity => 'agent_1';
+
+  @override
+  SessionControlClient get sessionControlClient =>
+      SessionControlClient((PerformRpcParams params) async {
+        controlCalls.add(params);
+        if (controlFails) throw StateError('制御RPCが届きませんでした');
+        return '{"v":1,"accepted":true}';
+      });
 
   @override
   Future<void> reportSolving(String message) async {
@@ -793,6 +1051,11 @@ class FakeSessionController extends SessionController {
   @override
   Future<void> retryProblemContextNotification() async {
     notificationRetries += 1;
+  }
+
+  @override
+  Future<void> finish({SessionEnding? ending}) async {
+    finishCalls += 1;
   }
 
   /// 板書が1行増えた、を再現する。
