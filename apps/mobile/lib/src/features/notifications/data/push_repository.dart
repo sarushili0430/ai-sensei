@@ -42,6 +42,13 @@ class PushRepository {
     //
     // ユーザーは未成年で、通知に要るのは「いつ送るか」だけ。
     // `requestPermission()` は**呼ばない**(呼ぶと位置情報の許可を聞きにいく)。
+    //
+    // ここは二段目。**一段目はビルド時**で、codemagic.yaml の
+    // `ONESIGNAL_DISABLE_LOCATION` が OneSignalLocation をリンクから外している
+    // (実行時にオフにするだけでは CoreLocation を参照するコードがバイナリに
+    //  残り、App Store Connect から ITMS-90683 が返るため)。
+    // モジュールが無いビルドではこの呼び出しは素通りする。残してあるのは、
+    // 一段目が外れたときにも既定に戻らないようにするため。
     await OneSignal.Location.setShared(false);
 
     await OneSignal.login(deviceId);

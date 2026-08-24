@@ -327,6 +327,103 @@ Codemagic は macOS インスタンスなので、そのまま走らせるとフ
 Codemagic 側は `flutter test --exclude-tags golden` で外している。
 golden の正となる実行は GitHub Actions(ubuntu-latest)。
 
+## 8. 位置情報を持ち込まない
+
+### 何が起きたか
+
+TestFlight へのアップロード後、App Store Connect からメールで返ってきた:
+
+```
+ITMS-90683: Missing purpose string in Info.plist — Your app's code references
+one or more APIs that access sensitive user data. The Info.plist file for the
+"Runner.app" bundle should contain a NSLocationWhenInUseUsageDescription key
+with a user-facing purpose string ...
+```
+
+**ビルドは緑のまま**で、TestFlight にも並ぶ。届くのはアップロードの数十分後なので、
+配ったつもりでいるあいだに見落とせる。いまは審査前の警告だが、
+放っておくと審査で弾かれる。
+
+### 原因
+
+`onesignal_flutter` が、既定で **OneSignalLocation** をリンクする
+(`Package.swift` / `podspec` / `build.gradle` に分岐がある)。
+このモジュールが `CoreLocation` を参照するので、
+アプリが位置情報を一切使っていなくても Apple の走査には引っかかる。
+
+このアプリで `CoreLocation` を参照しうるものは、確認した範囲でここだけ。
+`permission_handler_apple` にも位置情報の実装はあるが、
+9.5.0 の `Package.swift` は **Info.plist にキーがあるときだけ**
+`PERMISSION_LOCATION` を 1 にするので、いまはコンパイルから外れている。
+
+### どう直したか
+
+用途文言(`NSLocationWhenInUseUsageDescription`)を足すほうは取っていない。
+
+- このアプリは地理での出し分けを一切していないので、**書ける本当のことが無い**
+- **App のプライバシー申告で位置情報は「収集しない」**にしてある
+  ([`store-setup.md` の 1-7](./store-setup.md))。ここだけ足すと食い違う
+- 足すと `permission_handler_apple` 側の位置情報のコードまで復活するので、
+  **参照は減るどころか増える**
+
+そこで、モジュールごと外す。両方の workflow の `environment.vars` に
+
+```yaml
+ONESIGNAL_DISABLE_LOCATION: "true"
+```
+
+を置いてある。`onesignal_flutter` が公式に用意している環境変数で、
+`true` か `1` のときだけ効く(大文字小文字は問わない)。
+
+- **iOS** — SwiftPM が `OneSignalLocation` を依存から落とす
+- **Android** — `com.onesignal:OneSignal` ではなく
+  `core` / `notifications` / `in-app-messages` だけを入れる。
+  結果として `ACCESS_COARSE_LOCATION` / `ACCESS_FINE_LOCATION` が
+  最終マニフェストから消える(データセーフティ申告と揃う)
+
+アプリ側の `OneSignal.Location.setShared(false)`
+(`push_repository.dart`)はそのまま残してある。モジュールが無いビルドでは
+素通りするだけで、一段目が外れたときの保険になる。
+
+### 効いたかどうかは毎ビルド検める
+
+`ONESIGNAL_DISABLE_LOCATION` が読まれるのは**依存を解決するとき**で、
+解決結果はキャッシュされる。変数が消えたり、キャッシュを持ち回ったりすると
+黙って復活する —— そして気づくのは、また数十分後のメールになる。
+
+なので IPA を作ったあとに
+**`位置情報のAPIを持ち込んでいないか (ITMS-90683)`** ステップを置いてある。
+`.app` の中の Mach-O を全部 `otool -L` にかけ、Apple と同じ規則で判定する:
+
+> `CoreLocation` を参照している **かつ**
+> `Info.plist` に `NSLocationWhenInUseUsageDescription` が無い → 落とす
+
+将来ほんとうに位置情報を使うことになったら、用途文言を足せばここは通る。
+
+### 手元で iOS をビルドするとき
+
+同じ変数を**シェルから**渡すこと。Xcode を Dock から起動すると、
+シェルの設定は引き継がれない(ターミナルから `open` すること)。
+
+```sh
+cd apps/mobile
+ONESIGNAL_DISABLE_LOCATION=true flutter build ios
+```
+
+すでに一度ビルドしてしまったあとは、解決結果が残っているので効かない。
+キャッシュを消してからやり直す:
+
+```sh
+cd apps/mobile
+flutter clean
+rm -rf ios/.build
+rm -rf ~/Library/Caches/org.swift.swiftpm ~/Library/Developer/Xcode/DerivedData/*
+ONESIGNAL_DISABLE_LOCATION=true flutter build ios
+```
+
+Xcode を使うなら **File > Packages > Reset Package Caches** でもよい
+(変数を渡した状態で起動していること)。
+
 ## つまずきやすいところ
 
 - **`codemagic.yaml` が無視される** → 手順0のYAML切り替えをしていない。
