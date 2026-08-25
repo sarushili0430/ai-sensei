@@ -27,6 +27,7 @@ Widget wrapApp(
   Widget child, {
   List<Object?> overrides = const <Object?>[],
   Locale locale = const Locale('ja'),
+  bool motion = false,
 }) {
   return ProviderScope(
     overrides: overrides.cast(),
@@ -41,7 +42,7 @@ Widget wrapApp(
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      builder: reduceMotion,
+      builder: motion ? null : reduceMotion,
       home: child,
     ),
   );
@@ -56,6 +57,16 @@ Widget wrapApp(
 ///
 /// 逆に言うと、ここを通していないアニメーションを足すと
 /// `pumpAndSettle` が返らずにテストが落ちる。それが検知そのものになる。
+///
+/// ## 動かしたままでしか出ない壊れ方がある
+///
+/// **ここを通すと、途中の絵が一切テストに映らない。**入場アニメーションが
+/// 終わった状態しか描かれないので、「引き始めの一瞬だけレイアウトが壊れる」
+/// たぐいの不具合はどのテストにも当たらない。実際、年表([RevealTrail])の
+/// 線が**まだ引かれていない一瞬**に行の高さが無限になっていて、release の
+/// 実機でだけ文字が重なって出ていた。動きそのものを見るテストは
+/// `wrapApp(motion: true)` で組み立てて、`pumpAndSettle` ではなく
+/// 決まったフレーム数だけ進める(呼吸のようなループがあるので返ってこない)。
 Widget reduceMotion(BuildContext context, Widget? child) {
   return MediaQuery(
     data: MediaQuery.of(context).copyWith(disableAnimations: true),

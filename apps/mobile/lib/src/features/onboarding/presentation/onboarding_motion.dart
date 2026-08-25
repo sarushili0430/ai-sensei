@@ -316,6 +316,9 @@ class _RevealTrailState extends State<RevealTrail> with SingleTickerProviderStat
 
   static const double _badge = 40;
 
+  /// 印から印へ続く線の太さ。
+  static const double _lineWidth = 2;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -391,15 +394,21 @@ class _RevealTrailState extends State<RevealTrail> with SingleTickerProviderStat
                 ),
               ),
               // 次の印へ続く線。1本道であることが縦に見える。
+              //
+              // **伸ばすのは塗りで、高さではない。** 高さを割合で決めると
+              // ([FractionallySizedBox])、上の [IntrinsicHeight] が固有高さを
+              // 聞きにきたときに「子の固有高さ ÷ 割合」を返す実装に当たる。
+              // 引き始めの割合は 0 なので 0÷0 になり、**行の高さが無限**になる。
+              // debug なら「BoxConstraints forces an infinite height」で落ちるが、
+              // **release は落ちずにそのまま描く** —— 見出しと年表が同じ場所に
+              // 重なって出る一瞬(実機で確認)は、これが正体だった。
               if (!isLast)
                 Expanded(
-                  child: Align(
-                    alignment: Alignment.topCenter,
-                    child: FractionallySizedBox(
-                      heightFactor: progress,
-                      alignment: Alignment.topCenter,
-                      child: Container(width: 2, color: AppColors.border),
-                    ),
+                  child: CustomPaint(
+                    painter: _TrailLine(progress: progress),
+                    // 幅だけ持つ。高さは [Expanded] が決めるので、
+                    // 固有高さは 0 のままでいい。
+                    child: const SizedBox(width: _lineWidth),
                   ),
                 ),
             ],
@@ -424,6 +433,32 @@ class _RevealTrailState extends State<RevealTrail> with SingleTickerProviderStat
       ),
     );
   }
+}
+
+/// 印から印へ続く線。**引かれたぶんだけ**上から塗る。
+///
+/// 塗る量で伸ばすので、行の高さは引き始めから引き終わりまで動かない
+/// ([_RevealTrailState._buildRow] の説明)。1フレームごとの再レイアウトも
+/// 消えて、[IntrinsicHeight] を毎フレーム測り直さずに済む。
+class _TrailLine extends CustomPainter {
+  const _TrailLine({required this.progress});
+
+  /// 0 = まだ引いていない、1 = 次の印まで届いた。
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double drawn = size.height * progress.clamp(0.0, 1.0);
+    if (drawn <= 0) return;
+
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, size.width, drawn),
+      Paint()..color = AppColors.border,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_TrailLine oldDelegate) => oldDelegate.progress != progress;
 }
 
 /// 採点しているあいだの3つの点。
