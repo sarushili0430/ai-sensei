@@ -66,8 +66,9 @@ export const defaultGeminiTtsVoice = "Leda";
  *
  * **速さも指示する。**ドッグフーディングで出た「文と文の間が短くて置いていかれる」は、
  * ここが `calmly and clearly` としか言っていなかったことがそのまま出た形
- * ({@link sentencePacingInstruction})。手順と手順のあいだの間は
- * `agent.ts` が実時間で空けるが、**1つの手順の中の文と文**はここでしか効かない。
+ * ({@link sentencePacingInstruction})。ただし**間の長さはここで頼まない** —
+ * 頼むと経路ごとに継ぎ目の長さが揃わなくなる(理由はその定数のコメント)。
+ * 手順と手順のあいだの間は `speech-pace.ts` が実時間で持つ。
  */
 export function ttsInstructionsForLocale(locale: Locale): string {
   const language = locale === "en" ? "English" : "Japanese";
@@ -83,16 +84,28 @@ export function ttsInstructionsForLocale(locale: Locale): string {
 /**
  * 読む速さの指示。**TTSモデル向けと Live 向けで同じ一文を使う。**
  *
- * 教わる側は聞きながら板書を目で追っている。文が途切れずに次へ進むと、
- * 前の文を飲み込む前に次が始まって置いていかれる —— 8/25 のドッグフーディングで
- * 出た「ちょっと早く喋りすぎ。文章と文章の間が早すぎる」はこれ。
+ * 教わる側は聞きながら板書を目で追っている。まくし立てられると、前の文を
+ * 飲み込む前に次が始まって置いていかれる —— 8/25 のドッグフーディングで出た
+ * 「ちょっと早く喋りすぎ。文章と文章の間が早すぎる」はこれ。
  *
- * **速さを落とすのではなく、間を空けさせる。**全体を遅くすると眠い先輩になるので、
- * 文中の速さは保ったまま、文の切れ目だけをはっきり空けてもらう。
+ * **頼むのは「急かさない」までで、「間を空けろ」とは言わない。**
+ * 最初は `leave a clear pause between sentences, long enough for a student to
+ * take in what was just said` と書いていて、次のドッグフーディングで
+ * 「間隔を開けすぎて、文章が途切れになってしまう」が返ってきた。理由は2つ:
+ *
+ *   1. **渡している単位が1文とはかぎらない。**通常経路(`StreamAdapter`)は
+ *      1文=1リクエストなので、モデルから見て「文と文のあいだ」は存在しない。
+ *      できることは前後に無音を足すことだけで、それが文ごとの継ぎ目になる
+ *   2. 先読み経路(`speech-prefetch.ts`)は手順ぜんぶを1リクエストで渡すので、
+ *      こちらでは指示どおり**長い無音**が入る。同じ授業の中で継ぎ目の長さが
+ *      揃わず、途切れて聞こえる
+ *
+ * 手順と手順のあいだの実時間の間は `speech-pace.ts` が持つ。ここが受け持つのは
+ * **急かさないこと**だけで、間の長さはモデルの気分に任せない。
  */
 export const sentencePacingInstruction =
-  "Speak at an unhurried, natural pace and leave a clear pause between sentences, " +
-  "long enough for a student to take in what was just said.";
+  "Speak at an unhurried, natural pace, with the pauses of ordinary conversation " +
+  "at sentence breaks — never rushed, never dragged out.";
 
 /**
  * Live API のモデルID(2026-08 時点、公式ドキュメントで確認したものだけ)。

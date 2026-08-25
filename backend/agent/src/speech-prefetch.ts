@@ -98,6 +98,8 @@ export class SpeechPrefetcher {
   #queued: string[] = [];
   /** 合成中か、完成して取り出されるのを待っているもの。到着順に並ぶ。 */
   #entries: Entry[] = [];
+  /** このパスで {@link take} を呼ばれた回数。最初の1回だけ扱いが違う。 */
+  #taken = 0;
 
   constructor(options: SpeechPrefetcherOptions) {
     this.#synthesize = options.synthesize;
@@ -120,6 +122,7 @@ export class SpeechPrefetcher {
    */
   observe(chunks: AsyncIterable<string>): AsyncIterable<string> {
     this.cancelAll();
+    this.#taken = 0;
 
     const parser = new BoardLessonStreamParser();
     const buffered: string[] = [];
@@ -210,6 +213,16 @@ export class SpeechPrefetcher {
    * 走らせたままにすると同じ音声に二重で払う。
    */
   take(text: string): ReadableStream<AudioFrame> | null {
+    const firstOfPass = this.#taken === 0;
+    this.#taken += 1;
+
+    // **パスの最初の手順は、そもそも先読みしていない**(冒頭の設計判断)。
+    // ここで手を出さないのは、下の `findIndex` が**後ろに並んだ同じ文**を掴みうるから。
+    // 「うん、そうそう。」のような短い相づちは1つの板書に二度出る。掴むと、
+    // 手前に並んでいた本命の先読みが道連れで捨てられて(下の `splice`)、
+    // **そのパスの残りが全部先読みなしになる** = 手順ごとにTTFBの沈黙が戻る。
+    if (firstOfPass) return null;
+
     const index = this.#entries.findIndex((entry) => entry.text === text);
     if (index === -1) return null;
 
@@ -228,6 +241,14 @@ export class SpeechPrefetcher {
 
     if (!entry.settled || entry.frames === null) {
       entry.pending.cancel();
+      return null;
+    }
+    // **フレーム0本を「完成した音声」として渡さない。**空を `say(text, { audio })` へ
+    // 渡すとSDKは再生し終えたと見なして即座に返るので、**その手順だけ声が出ないまま
+    // 板書が次へ進む**(`voice-session.ts` に同じ門がある。ここは合成の実装を
+    // 差し替えても抜けないようにする2枚目)。
+    if (entry.frames.length === 0) {
+      this.#log?.warn("board_speech_prefetch_empty", { length: text.length });
       return null;
     }
     return streamOfFrames(entry.frames);
