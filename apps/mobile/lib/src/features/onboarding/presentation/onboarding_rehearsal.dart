@@ -202,8 +202,12 @@ class _OnboardingRehearsalPageState extends State<OnboardingRehearsalPage> {
 
 /// 撮った問題の代わり。本物の写真は使わない(まだカメラを開かせない)。
 ///
-/// わずかに傾けてあるのは、机の上に置いた紙に見せるため。
-/// まっすぐ置くと、アプリが用意した問題集に見える。
+/// **傾けない。** かつては机の上に置いた紙に見せるため少しだけ傾けてあったが、
+/// 紙の質感も影も無いただのカードでは「紙っぽさ」までは届かず、
+/// **問題文だけが斜めに組まれた不具合**に見えていた。すぐ下の板書も、
+/// できた復習問題のカードもまっすぐなので、この1枚だけが浮く。
+/// 撮ったものだと分かるのはラベル(`onboardingTryNotebookLabel`)の仕事で、
+/// 傾きに担わせるものではない。
 class _NotebookCard extends StatelessWidget {
   const _NotebookCard();
 
@@ -211,23 +215,20 @@ class _NotebookCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppStrings strings = AppStrings.of(context);
 
-    return Transform.rotate(
-      angle: -0.012,
-      child: Container(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(AppRadius.card),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(strings.onboardingTryNotebookLabel, style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: AppSpacing.xs),
-            Text(strings.onboardingTryNotebook, style: Theme.of(context).textTheme.titleMedium),
-          ],
-        ),
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(strings.onboardingTryNotebookLabel, style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: AppSpacing.xs),
+          Text(strings.onboardingTryNotebook, style: Theme.of(context).textTheme.titleMedium),
+        ],
       ),
     );
   }
