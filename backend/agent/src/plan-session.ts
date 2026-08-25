@@ -14,6 +14,7 @@ import type { AgentConfig } from "./config.ts";
 import { type PlanSessionContext, remainingSeconds } from "./context.ts";
 import type { JobLogger } from "./log.ts";
 import { leaveRoom } from "./room-exit.ts";
+import { watchSessionEnd } from "./session-end.ts";
 import {
   type PlanTurnInspection,
   buildTemplatePlan,
@@ -84,8 +85,10 @@ export async function runPlanSession(input: {
         settle("completed");
       }
     });
-    session.on(voice.AgentSessionEventTypes.Close, () => settle("user_left"));
-    session.on(voice.AgentSessionEventTypes.Error, () => settle("error"));
+    // **エラー1件では降りない。**降りるのはSDKが見限って `Close` を出したときだけ
+    // (理由は `session-end.ts`)。授業と同じ判断にしておかないと、
+    // 「たまに途中で切れる」が計画のほうにだけ残る。
+    watchSessionEnd({ session, finish: settle, log });
   });
 
   await session.start({ agent, room: ctx.room });

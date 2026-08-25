@@ -50,6 +50,7 @@ import {
   problemPhotoFailedBridge,
   registerSessionControl,
 } from "./session-control.ts";
+import { type ClosedReason, watchSessionEnd } from "./session-end.ts";
 import { SpeechPrefetcher } from "./speech-prefetch.ts";
 import { TranscriptCollector } from "./transcript.ts";
 import { observeVoiceMetrics } from "./voice-metrics.ts";
@@ -230,7 +231,7 @@ export default defineAgent({
     // その間の離脱(`Close`)とエラーを取りこぼす。イベントは1度きりなので、
     // 取りこぼすと上限時間が来るまで**誰もいない部屋が回り続ける**
     // (無料5分ならまだしも、Premium15分だとその全部を待つ)。
-    const { ended, finish: finishSession } = waitForEnd(session, currentContext, startedAt);
+    const { ended, finish: finishSession } = waitForEnd(session, currentContext, startedAt, log);
     // 会話LLMが自分で締めたとき(縮退経路)。授業の締めは下の `timeUpClosing` が
     // `addToChatCtx: false` で喋るので、この検出には掛からない — **掛けない**のが正で、
     // 掛かると降り方(timeout / understood)がここで `completed` に潰れる。
@@ -1136,6 +1137,7 @@ function waitForEnd(
   session: voice.AgentSession,
   context: SessionContext,
   startedAt: Date,
+  log: JobLogger,
 ): { ended: Promise<EndedReason>; finish: (reason: EndedReason) => void } {
   let finish: (reason: EndedReason) => void = () => undefined;
   const ended = new Promise<EndedReason>((resolve) => {
@@ -1152,8 +1154,10 @@ function waitForEnd(
       remainingSeconds(context, startedAt, new Date()) * 1000,
     );
 
-    session.on(voice.AgentSessionEventTypes.Close, () => finish("user_left"));
-    session.on(voice.AgentSessionEventTypes.Error, () => finish("error"));
+    // **エラー1件では降りない。**降りるのはSDKが見限って `Close` を出したときだけ
+    // (理由は `session-end.ts`)。ここで `error` に反応していたころは、
+    // 会話LLMの再試行1回で授業が丸ごと終わっていた。
+    watchSessionEnd({ session, finish: (reason: ClosedReason) => finish(reason), log });
   });
   return { ended, finish };
 }

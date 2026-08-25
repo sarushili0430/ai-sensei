@@ -23,6 +23,7 @@
  * | `lesson_empty`               | 板書が1行も出せなかった。**8/16のゲートを見る指標** |
  * | `board_publisher_missing`    | Text Streams の送り口が無い。板書なしで会話だけ続ける |
  * | `say_failed`                 | 読み上げに失敗した(セッションが閉じかけている等) |
+ * | `voice_pipeline_error`       | STT/LLM/TTS が転んだ。`recoverable` で再試行中か立て直せなかったかが分かる |
  * | `voice_metrics`              | SDKが集めた遅延・音声時間・割り込み数。本文は出さない |
  * | `user_turn_transcribed`      | 生徒の1ターンが確定した(interim回数と文字数だけ) |
  * | `agent_false_interruption`   | 誤割り込みを自動再開できたか |
