@@ -597,6 +597,30 @@ describe("板書の配送(番の受け渡し)", () => {
     expect(result.step_count).toBe(2);
     expect(result.reason).toBe("completed");
   });
+
+  /**
+   * **アプリは `awaits_student` だけを見て「いまは生徒の番」を描く。**
+   *
+   * 欄はLLMが書くもので、書き忘れる(`senpai.ts` は言い回しの推測へ落ちる)。
+   * 推測で止まったのに欄が空のまま送ると、先輩は答えを待っているのに
+   * 画面には「先輩が考えています」が回り続ける —— **どちらの番かが消える**。
+   */
+  it("番を渡す手順には、欄が空でも awaits_student を立てて送る", async () => {
+    const sink = recordingSink();
+    const json = lessonJson([step(0, "x^2 - 3x + 2 = 0"), asking(1)]);
+
+    await deliverOnce(channelWith(sink), {
+      chunks: stream(slice(json, 5)),
+      stopAfter: (sent) => sent.speech.includes("言ってみて"),
+    });
+
+    const steps = sink.sent.filter(
+      (message): message is Extract<typeof message, { type: "board_step" }> =>
+        message.type === "board_step",
+    );
+    expect(steps.map((sent) => sent.step.awaits_student)).toEqual([undefined, true]);
+    expect(boardChannelLogSchema.safeParse({ messages: sink.sent }).success).toBe(true);
+  });
 });
 
 describe("板書の配送(割り込み)", () => {

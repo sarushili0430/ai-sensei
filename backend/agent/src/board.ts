@@ -1112,10 +1112,24 @@ export class BoardDelivery {
           // 開くのを1手順ぶん遅らせるコストは見出しの表示が数百ms遅れることだけ。
           await this.openIfNeeded(head);
 
+          // **番を渡す手順かどうかは、送る前に確定させる。**
+          //
+          // アプリは `awaits_student` だけを見て「いまは生徒の番」を描く
+          // (`session_screen.dart` の `_LessonStatus`)。欄が空のまま送ると、
+          // 先輩が答えを待っているあいだじゅう「先輩が考えています」が回り続けて、
+          // **どちらの番なのかが画面から消える**。
+          //
+          // 判定は `stopAfter`(= `senpai.ts` の言い回し推測を含む)と同じものを
+          // 使い、**1手順につき1回だけ呼ぶ**。ここと下で別々に呼ぶと、
+          // 送った印と実際に止まるかが食い違いうる。
+          const handsOver = stopAfter?.(verdict.step) === true;
           await this.send({
             type: "board_step",
             board_id: this.boardId,
-            step: verdict.step,
+            step:
+              handsOver && verdict.step.awaits_student !== true
+                ? { ...verdict.step, awaits_student: true }
+                : verdict.step,
           });
           if (verdict.figureStats !== undefined) {
             const stats = verdict.figureStats;
@@ -1143,9 +1157,10 @@ export class BoardDelivery {
           // 音声が板書を追い越すと「ここ、見て」が空の盤面を指すことになる。
           await onStep?.(verdict.step);
 
-          // 番を渡したら、そこで止める。**読み上げたあとに見る**のは、
-          // 問いかけそのものは生徒に届けきる必要があるから。
-          if (stopAfter?.(verdict.step) === true) {
+          // 番を渡したら、そこで止める。**読み上げ切ってから降りる**のは、
+          // 問いかけそのものは生徒に届けきる必要があるから
+          // (判定自体は送る前に済ませてある)。
+          if (handsOver) {
             this.log?.info("board_turn_handed_over", {
               board_id: this.boardId,
               index: verdict.step.index,

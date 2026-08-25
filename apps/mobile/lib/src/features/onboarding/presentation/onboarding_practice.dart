@@ -20,6 +20,9 @@ const Key onboardingPushKey = Key('onboarding_push');
 /// 採点が終わった状態の目印。
 const Key onboardingVerdictKey = Key('onboarding_verdict');
 
+/// 解答欄の目印。**押す口ではない**(開いた瞬間から勝手に書かれる)。
+const Key onboardingAnswerKey = Key('onboarding_answer');
+
 /// 復習のリハーサル — **コアループの後半を、一度やってみる枚**。
 ///
 /// ここが無かったあいだ、オンボーディングは約束の前半(教える)しか
@@ -32,8 +35,9 @@ const Key onboardingVerdictKey = Key('onboarding_verdict');
 /// 3つ守る:
 ///   - **繋がない。** 採点はしない。台本の1問と、決まった判定だけ。
 ///   - **権限を要求しない。** 通知はこの画面の中の絵で、OSには何も頼まない。
-///   - **キーボードを出さない。** タップすると解答が**書かれる**。ここで打たせると、
-///     まだ何も起きていないうちに入力の手間だけが先に来る。
+///   - **キーボードを出さない。** 開いた瞬間から、解答は**ひとりでに書かれていく**。
+///     ここで打たせると、まだ何も起きていないうちに入力の手間だけが先に来るし、
+///     タップ待ちにすると「書くところ」だと気づかれないまま止まる。
 class OnboardingPracticePage extends StatefulWidget {
   const OnboardingPracticePage({required this.answered, required this.onAnswered, super.key});
 
@@ -62,9 +66,6 @@ class _OnboardingPracticePageState extends State<OnboardingPracticePage>
   /// 積むと、375×667 の英語で解答欄が折り返しの下へ落ちた(実測)。
   /// **やることがある枚は、やる口が必ず初期表示に無いといけない。**
   bool _opened = false;
-
-  /// 解答欄をタップしたか(= 書き始めたか)。
-  bool _writing = false;
 
   /// 書き終わったか。**書き終わるまで「こたえる」は押せない**
   /// (本番も空文字では送れない)。
@@ -243,7 +244,11 @@ class _OnboardingPracticePageState extends State<OnboardingPracticePage>
     );
   }
 
-  /// 解答のところ。タップ待ち → 書いている → 書けた、で入れ替わる。
+  /// 解答のところ。**開いた瞬間から、ひとりでに書かれていく。**
+  ///
+  /// タップして書かせるのはやめた。押されるまで「タップして書く」の薄い文字が
+  /// 座っているだけで、**そこが解答欄だと気づかれないまま**通知の枚が終わる。
+  /// 書かれるところが目に入れば、3日後にやることは説明せずに伝わる。
   ///
   /// **枠の色は本番の `TextField` と同じ青の2px**にしてある。打てないだけで、
   /// 書くところであることは形で分かるように。採点後は枠を外す
@@ -255,38 +260,22 @@ class _OnboardingPracticePageState extends State<OnboardingPracticePage>
       return Text(strings.onboardingPracticeAnswer, style: body);
     }
 
-    return GestureDetector(
-      key: const Key('onboarding-practice-write'),
-      onTap: _writing ? null : () => setState(() => _writing = true),
-      child: Container(
-        width: double.infinity,
-        constraints: const BoxConstraints(minHeight: 52),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: AppColors.background,
-          borderRadius: BorderRadius.circular(AppRadius.button),
-          border: Border.all(color: AppColors.blue, width: 2),
-        ),
-        child: _writing
-            ? TypingText(
-                strings.onboardingPracticeAnswer,
-                style: body,
-                onDone: () {
-                  if (mounted && !_written) setState(() => _written = true);
-                },
-              )
-            : Row(
-                children: <Widget>[
-                  const Icon(Icons.edit_outlined, size: 18, color: AppColors.blue),
-                  const SizedBox(width: AppSpacing.xs),
-                  Expanded(
-                    child: Text(
-                      strings.onboardingPracticeTapToWrite,
-                      style: body?.copyWith(color: AppColors.inkMuted),
-                    ),
-                  ),
-                ],
-              ),
+    return Container(
+      key: onboardingAnswerKey,
+      width: double.infinity,
+      constraints: const BoxConstraints(minHeight: 52),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(AppRadius.button),
+        border: Border.all(color: AppColors.blue, width: 2),
+      ),
+      child: TypingText(
+        strings.onboardingPracticeAnswer,
+        style: body,
+        onDone: () {
+          if (mounted && !_written) setState(() => _written = true);
+        },
       ),
     );
   }

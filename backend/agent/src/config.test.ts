@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "./config.ts";
 import { cartesiaTtsModels, elevenLabsTtsModels, geminiLiveTtsModels } from "./senpai-voice.ts";
+import { defaultStepPauseMs } from "./speech-pace.ts";
 
 const complete = {
   API_BASE_URL: "http://localhost:8787",
@@ -40,6 +41,26 @@ describe("loadConfig", () => {
 
     const next = loadConfig({ ...complete, GEMINI_TTS_MODEL: "gemini-3.1-flash-tts-preview" });
     expect(next.GEMINI_TTS_MODEL).toBe("gemini-3.1-flash-tts-preview");
+  });
+
+  // 手順のあいだの間(`speech-pace.ts`)。数字にできない値なので手元で詰められる。
+  it("手順のあいだの間は既定 700ms で、環境変数で詰められる", () => {
+    expect(loadConfig(complete).LESSON_STEP_PAUSE_MS).toBe(defaultStepPauseMs);
+    expect(loadConfig({ ...complete, LESSON_STEP_PAUSE_MS: "0" }).LESSON_STEP_PAUSE_MS).toBe(0);
+    expect(loadConfig({ ...complete, LESSON_STEP_PAUSE_MS: "" }).LESSON_STEP_PAUSE_MS).toBe(
+      defaultStepPauseMs,
+    );
+  });
+
+  // 秒とミリ秒を取り違えた値(`LESSON_STEP_PAUSE_MS=60000`)で授業が固まらないよう、
+  // 上限で落とす。負の値も同じ。
+  it("間が長すぎる/負の値なら起動時に落とす", () => {
+    expect(() => loadConfig({ ...complete, LESSON_STEP_PAUSE_MS: "60000" })).toThrow(
+      /LESSON_STEP_PAUSE_MS/,
+    );
+    expect(() => loadConfig({ ...complete, LESSON_STEP_PAUSE_MS: "-1" })).toThrow(
+      /LESSON_STEP_PAUSE_MS/,
+    );
   });
 
   it("声は聴き比べのために上書きできる", () => {

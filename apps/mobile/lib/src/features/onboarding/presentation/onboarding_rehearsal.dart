@@ -36,7 +36,7 @@ const Key onboardingMadeProblemKey = Key('onboarding_made_problem');
 ///
 /// 3つ守る:
 ///   - **繋がない。** 板書も台本も固定で、LiveKitにもAPIにも触らない。
-///   - **権限を要求しない。** カメラもマイクも使わない。使わないことは画面に書く。
+///   - **権限を要求しない。** カメラもマイクも使わない。
 ///   - **待たせない。** 押した瞬間に問題ができる(ADR 0009「生成の完了を待たせない」)。
 ///     本番では生成は `/complete` の裏に回るが、**待たされないという体験**は同じ。
 ///
@@ -48,12 +48,11 @@ const Key onboardingMadeProblemKey = Key('onboarding_made_problem');
 /// **やることがある枚だと気づかれないままスワイプされる**。
 ///
 ///   - **上(スクロールする)**: 見出し・撮った問題・板書
-///   - **下(固定)**: 先輩の顔とふきだし・操作・使わないものの注記
+///   - **下(固定)**: 先輩の顔とふきだし・操作
 class OnboardingRehearsalPage extends StatefulWidget {
   const OnboardingRehearsalPage({
     required this.understood,
     required this.onUnderstood,
-    required this.onReset,
     super.key,
   });
 
@@ -61,9 +60,6 @@ class OnboardingRehearsalPage extends StatefulWidget {
   final bool understood;
 
   final VoidCallback onUnderstood;
-
-  /// 「もう一度ためす」。責めずに、押す前へ戻す。
-  final VoidCallback onReset;
 
   @override
   State<OnboardingRehearsalPage> createState() => _OnboardingRehearsalPageState();
@@ -152,12 +148,6 @@ class _OnboardingRehearsalPageState extends State<OnboardingRehearsalPage> {
                 child: _taught ? _buildAnswer(strings) : const SizedBox(width: double.infinity),
               ),
               const SizedBox(height: AppSpacing.sm),
-              Text(
-                strings.onboardingTryNotRecording,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              const SizedBox(height: AppSpacing.sm),
             ],
           ),
         ),
@@ -205,13 +195,6 @@ class _OnboardingRehearsalPageState extends State<OnboardingRehearsalPage> {
         // 押した瞬間に、できた1問が出る。**跳ねて出す**のは、
         // これが持ち帰るものだから(にぎやかな画面だけが `pop` を使える)。
         PopIn(child: _MadeProblemCard(label: strings.onboardingTryProblemLabel)),
-        const SizedBox(height: AppSpacing.sm),
-        Text(
-          strings.onboardingTryNotWaiting,
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        GhostButton(label: strings.onboardingTryAgain, onPressed: widget.onReset),
       ],
     );
   }

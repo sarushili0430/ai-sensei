@@ -48,6 +48,24 @@ enum SessionPhase {
   failed,
 }
 
+/// いまは誰の番か。**画面の一行が出すのはこれ。**
+///
+/// フェーズ([SessionPhase])は「接続がどうなっているか」を持っているが、
+/// 生徒が知りたいのは「**いま自分が喋る番か**」だけ。8/25 のドッグフーディングで
+/// 出た「自分のターンなのかAIのターンなのか分かりにくい」は、フェーズを
+/// そのまま一行に出していたことがそのまま出た形(授業中はどちらの状態でも
+/// 「先輩が説明中」としか書いていなかった)。
+enum SessionTurn {
+  /// 先輩が喋っている。聞く番。
+  senpai,
+
+  /// 先輩が黙って考えている。**待つ番**(こちらから話しかける必要はない)。
+  senpaiThinking,
+
+  /// 生徒の番。声を待っている。
+  student,
+}
+
 /// 会話が始まらなかった理由。
 ///
 /// **失敗を「聞いています」のまま見せない。** どちらの理由かで打つ手が違う
@@ -79,6 +97,7 @@ class SessionState {
     this.lastSenpaiText,
     this.board = BoardSnapshot.empty,
     this.awaitingSolving = false,
+    this.awaitingStudent = false,
     this.isUnderstood = false,
     this.problem,
     this.isAddingProblemPhoto = false,
@@ -103,6 +122,13 @@ class SessionState {
 
   /// 類題を解いている間だけ true。ボタンか声の申告を受けた瞬間に false にする。
   final bool awaitingSolving;
+
+  /// **先輩が番を渡して、答えを待っているか**([BoardSnapshot.awaitsStudent])。
+  ///
+  /// これが「いま誰の番か」の一次情報になる([SessionState.turn])。
+  /// 板書が届くたびに置き直し、こちらが何か言った/押した瞬間に false へ倒す。
+  /// 落とし忘れると、答えたあとも画面が「きみの番」のまま止まって見える。
+  final bool awaitingStudent;
 
   /// 「わかった」を受け取ったか。RPCの完了ではなく、押した瞬間に true にする。
   /// 通信を待っているあいだ再び押せると、同じ到達宣言が複数回届いてしまう。
@@ -129,6 +155,27 @@ class SessionState {
   /// 会話画面のテストから終了の形を確かめるため。
   final bool showPaywall;
 
+  /// **いまは誰の番か。**画面の一行(`session_screen.dart`)はこれだけを見る。
+  ///
+  /// フェーズだけでは足りない。授業中に先輩が黙っている理由は2つあって、
+  /// **答えを待っている**のと**次の手順を考えている**とでは、生徒がすべきことが
+  /// 正反対になる。フェーズはどちらも `explainBack` なので、
+  /// 板書が渡してきた [awaitingStudent] で割る。
+  ///
+  /// 板書の無い会話(旧・復習の会話)には割る材料が無い。あちらは
+  /// 「聞いています」しか状態が無いので、黙っていれば生徒の番でよい。
+  SessionTurn get turn => switch (phase) {
+    // つないでいる最中は、先輩がまだ来ていない。急かす波を出さない。
+    SessionPhase.connecting => SessionTurn.senpaiThinking,
+    SessionPhase.senpaiSpeaking || SessionPhase.senpaiTeaching => SessionTurn.senpai,
+    SessionPhase.listening || SessionPhase.explainBack =>
+      !board.hasBoard || awaitingStudent || awaitingSolving
+          ? SessionTurn.student
+          : SessionTurn.senpaiThinking,
+    // 会話はもう終わっている。番は誰にも無い(画面はカルテの待ちを出す)。
+    SessionPhase.summarizing || SessionPhase.finished || SessionPhase.failed =>
+      SessionTurn.senpaiThinking,
+  };
 
   SessionState copyWith({
     SessionPhase? phase,
@@ -136,6 +183,7 @@ class SessionState {
     String? lastSenpaiText,
     BoardSnapshot? board,
     bool? awaitingSolving,
+    bool? awaitingStudent,
     bool? isUnderstood,
     Object? problem = _notChanged,
     bool? isAddingProblemPhoto,
@@ -153,6 +201,7 @@ class SessionState {
       lastSenpaiText: lastSenpaiText ?? this.lastSenpaiText,
       board: board ?? this.board,
       awaitingSolving: awaitingSolving ?? this.awaitingSolving,
+      awaitingStudent: awaitingStudent ?? this.awaitingStudent,
       isUnderstood: isUnderstood ?? this.isUnderstood,
       problem: identical(problem, _notChanged)
           ? this.problem
@@ -463,13 +512,22 @@ class SessionController extends _$SessionController {
         unawaited(_lessonOpeningAudio?.senpaiStartedSpeaking() ?? Future<void>.value());
         state = state.copyWith(phase: _speakingPhase);
       case AgentState.listening:
-      case AgentState.thinking:
         // 喋り終わったら、こちらの番に戻す。**授業中は「教え返し」になる** —
         // 板書はそのまま残し、下に「説明してみて」を出すのはこの遷移。
+        //
+        // **ここで番までは渡さない。**授業中に先輩が黙る理由は2つあって、
+        // 答えを待っているのか次の手順を考えているのかは板書だけが知っている
+        // ([SessionState.turn])。`listening` はどちらでも来る。
         if (state.phase == SessionPhase.connecting ||
             state.phase == SessionPhase.senpaiSpeaking ||
             state.phase == SessionPhase.senpaiTeaching) {
           state = state.copyWith(phase: _listeningPhase);
+        }
+      case AgentState.thinking:
+        // 先輩が読み込みに入った = **もう待つ番**。板書が番を渡したままでも、
+        // ここで返してもらう(そうしないと、答えたのに「きみの番」が残る)。
+        if (_isTalking(state.phase)) {
+          state = state.copyWith(phase: _listeningPhase, awaitingStudent: false);
         }
       case AgentState.idle:
       case AgentState.initializing:
@@ -554,6 +612,7 @@ class SessionController extends _$SessionController {
     state = state.copyWith(
       board: board,
       awaitingSolving: board.awaitsSolving,
+      awaitingStudent: board.awaitsStudent,
       phase: _isTalking(state.phase) ? SessionPhase.senpaiTeaching : state.phase,
     );
 
@@ -596,13 +655,23 @@ class SessionController extends _$SessionController {
   void onUserTurn() {
     if (!_isTalking(state.phase)) return;
     // 声で「できた」「わかんない」と答えた経路でも、ボタンを二重に残さない。
-    state = state.copyWith(phase: _listeningPhase, awaitingSolving: false);
+    //
+    // **番も返す。**答えたのだから、次に動くのは先輩。ここを落とさないと、
+    // 先輩が次の板書を考えているあいだも画面は「きみの番」のままになる。
+    state = state.copyWith(
+      phase: _listeningPhase,
+      awaitingSolving: false,
+      awaitingStudent: false,
+    );
   }
 
   /// 会話中に次の問題の紙面を追加する。
   ///
   /// 解析開始・完了は本人の発話ではないので `lk.chat` へ流さず、専用RPCを使う。
   /// 完了通知にはrevisionしか載せず、agentは内部APIから問題文と許可集合を読み直す。
+  ///
+  /// **画面からの呼び口は外してある**(2026-08-25。ADR 0009 の追記)。
+  /// 理由と、戻すときに要るものは `problem_photo_picker.dart` の説明にまとめてある。
   Future<void> addProblemPhoto(File photo, {required String locale}) async {
     final String? sessionId = _sessionId;
     if (sessionId == null ||
@@ -747,7 +816,11 @@ class SessionController extends _$SessionController {
     final String phase = state.phase.name;
     // **通信より先に塞ぐ。** RPCの完了を待ってから無効化すると、その待ち時間の
     // 二度押しが別々の到達宣言になり、agentの終了処理が重複する。
-    state = state.copyWith(isUnderstood: true, awaitingSolving: false);
+    state = state.copyWith(
+      isUnderstood: true,
+      awaitingSolving: false,
+      awaitingStudent: false,
+    );
 
     try {
       if (sessionId == null) {

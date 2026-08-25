@@ -50,6 +50,7 @@ import {
   problemPhotoFailedBridge,
   registerSessionControl,
 } from "./session-control.ts";
+import { pauseBetweenSteps } from "./speech-pace.ts";
 import { SpeechPrefetcher } from "./speech-prefetch.ts";
 import { TranscriptCollector } from "./transcript.ts";
 import { observeVoiceMetrics } from "./voice-metrics.ts";
@@ -753,13 +754,19 @@ function lessonRunner(options: TeachOptions, board: BoardDelivery) {
         // 待たないと板書だけが何行も先に進んで、音声が指す行と画面がずれるから。
         // 代償は、作り直し(`defaultMaxRepairAttempts`)の待ちが音声の空白として
         // そのまま出ること。どちらを採るかはW1のドッグフーディングで決める値。
-        speak: (step: BoardStep) =>
-          sayAndWait(session, step.speech, log, {
+        //
+        // **読み終わったら、ひと呼吸置いてから次へ渡す**(`speech-pace.ts`)。
+        // 再生の終わりで手を離すと、次の行が同じ息で始まって置いていかれる。
+        // 降りたい人は足止めしない — 「わかった」もセッションの終わりも間を切る。
+        speak: async (step: BoardStep) => {
+          await sayAndWait(session, step.speech, log, {
             addToChatCtx: false,
             // 先読みが間に合っていれば音声を渡す(TTFBの沈黙が消える)。
             // 間に合っていなければ `null` で、今までどおりここから合成が始まる。
             audio: prefetcher?.take(step.speech) ?? undefined,
-          }),
+          });
+          await pauseBetweenSteps(config.LESSON_STEP_PAUSE_MS, [signal, understood]);
+        },
         priorTurns: extra.priorTurns,
         maxPasses: extra.maxPasses,
       });

@@ -104,7 +104,7 @@ void main() {
       await next('復習のリハーサル');
       await tapKey(const Key('onboarding-practice-open'));
       expect(tester.takeException(), isNull, reason: '復習のリハーサル(開いたあと)');
-      await tapKey(const Key('onboarding-practice-write'));
+      // 解答はタップせずに書かれる(`onboarding_practice.dart` の `_answerSlot`)。
       await tapKey(const Key('onboarding-practice-submit'));
       expect(tester.takeException(), isNull, reason: '復習のリハーサル(採点のあと)');
 

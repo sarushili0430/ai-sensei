@@ -63,6 +63,11 @@ export const defaultGeminiTtsVoice = "Leda";
  * 「省くな・足すな・訳すな・答えるな」を必ず入れる。渡しているのは授業の本文で、
  * 生成モデルに読ませている以上、**問いかけに答えてしまう**余地がある。
  * 板書と声がずれた瞬間に授業は成立しない。
+ *
+ * **速さも指示する。**ドッグフーディングで出た「文と文の間が短くて置いていかれる」は、
+ * ここが `calmly and clearly` としか言っていなかったことがそのまま出た形
+ * ({@link sentencePacingInstruction})。手順と手順のあいだの間は
+ * `agent.ts` が実時間で空けるが、**1つの手順の中の文と文**はここでしか効かない。
  */
 export function ttsInstructionsForLocale(locale: Locale): string {
   const language = locale === "en" ? "English" : "Japanese";
@@ -72,8 +77,22 @@ export function ttsInstructionsForLocale(locale: Locale): string {
     locale === "en"
       ? ""
       : " Pronounce any English words inside the sentence with natural English pronunciation.";
-  return `Read this aloud in ${language}, calmly and clearly, like a friendly senior student tutoring a junior.${mixed} Do not omit, add, translate, or answer anything`;
+  return `Read this aloud in ${language}, calmly and clearly, like a friendly senior student tutoring a junior. ${sentencePacingInstruction}${mixed} Do not omit, add, translate, or answer anything`;
 }
+
+/**
+ * 読む速さの指示。**TTSモデル向けと Live 向けで同じ一文を使う。**
+ *
+ * 教わる側は聞きながら板書を目で追っている。文が途切れずに次へ進むと、
+ * 前の文を飲み込む前に次が始まって置いていかれる —— 8/25 のドッグフーディングで
+ * 出た「ちょっと早く喋りすぎ。文章と文章の間が早すぎる」はこれ。
+ *
+ * **速さを落とすのではなく、間を空けさせる。**全体を遅くすると眠い先輩になるので、
+ * 文中の速さは保ったまま、文の切れ目だけをはっきり空けてもらう。
+ */
+export const sentencePacingInstruction =
+  "Speak at an unhurried, natural pace and leave a clear pause between sentences, " +
+  "long enough for a student to take in what was just said.";
 
 /**
  * Live API のモデルID(2026-08 時点、公式ドキュメントで確認したものだけ)。
@@ -205,6 +224,8 @@ export function liveTtsSystemInstruction(locale: Locale): string {
     "You are a text-to-speech engine, not a conversational partner.",
     `Read every message the user sends aloud in ${language}, verbatim, calmly and clearly,`,
     "like a friendly senior student tutoring a junior.",
+    "",
+    sentencePacingInstruction,
     "",
     "Absolute rules:",
     "- Output ONLY the spoken rendition of the message. Never add words of your own.",

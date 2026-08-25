@@ -6,6 +6,7 @@ import {
   defaultGeminiTtsModel,
   defaultGeminiTtsVoice,
 } from "./senpai-voice.ts";
+import { defaultStepPauseMs } from "./speech-pace.ts";
 
 /**
  * 既定値のある設定。**空文字を「未設定」として扱う。**
@@ -81,6 +82,18 @@ const configSchema = z
      * その版が受け付けるかも一緒に確かめること。
      */
     LLM_MODEL_BOARD: withDefault("claude-sonnet-5"),
+
+    /**
+     * 板書1手順を読み上げ終わってから、次の手順へ移るまでの間(ミリ秒)。
+     *
+     * 既定と理由は `speech-pace.ts`。**0にすると従来どおり切れ目なく続く。**
+     * 数字にできない値なので手元で詰められるようにしてあるだけで、
+     * 恒久的に変えるなら `defaultStepPauseMs` を動かして全環境で一度に変える。
+     */
+    LESSON_STEP_PAUSE_MS: z.preprocess(
+      (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+      z.coerce.number().int().min(0).max(5000).default(defaultStepPauseMs),
+    ) as z.ZodType<number>,
 
     /** 聞く(STT)の鍵。喋る側は Gemini へ移したので、ここは STT 専用になった(ADR 0008)。 */
     DEEPGRAM_API_KEY: z.string().min(1),
