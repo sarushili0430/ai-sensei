@@ -7,6 +7,12 @@ import 'package:image_picker/image_picker.dart';
 ///
 /// 画面からプラグインを直接呼ぶと、カメラを開くテストが端末依存になる。
 /// 取得だけを差し替え可能にし、アップロード以降は [SessionController] が持つ。
+///
+/// **いま画面から呼ぶ場所は無い**(2026-08-25。ADR 0009 の追記)。授業中の
+/// 「問題を追加」を板書の上から外したので、この口を叩く枚が消えた。**消さずに
+/// 残してあるのは、解析とagent通知の経路(`SessionController.addProblemPhoto` /
+/// `session-control.ts` の `context_updated`)がそのまま生きているから** —
+/// 戻すときに要るのは画面の口1つで、ここから下は書き直さなくていい。
 abstract interface class ProblemPhotoPicker {
   Future<File?> takePhoto();
 }

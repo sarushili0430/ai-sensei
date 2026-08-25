@@ -4,13 +4,20 @@ import 'package:ai_sensei/src/features/onboarding/presentation/onboarding_practi
 import 'package:ai_sensei/src/features/onboarding/presentation/onboarding_rehearsal.dart';
 import 'package:ai_sensei/src/features/onboarding/presentation/onboarding_screen.dart';
 import 'package:ai_sensei/src/features/onboarding/presentation/onboarding_stage.dart';
+import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
+import 'package:ai_sensei/src/features/karte/domain/karte.dart';
+import 'package:ai_sensei/src/features/karte/presentation/home_screen.dart';
+import 'package:ai_sensei/src/features/notifications/application/push_controller.dart';
+import 'package:ai_sensei/src/features/notifications/data/push_repository.dart';
 import 'package:ai_sensei/src/features/session/presentation/board/board_view.dart';
 import 'package:ai_sensei/src/features/session/presentation/board/latex_element_view.dart';
 import 'package:ai_sensei/src/features/settings/application/school_stage_controller.dart';
 import 'package:ai_sensei/src/l10n/strings.dart';
+import 'package:ai_sensei/src/routing/app_router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/harness.dart';
@@ -82,11 +89,10 @@ void main() {
     await tapNext(tester, strings);
   }
 
-  /// 通知を開いて、書いて、こたえる。**キーボードは出ない**(タップすると書かれる)。
+  /// 通知を開いて、こたえる。**キーボードは出ないし、書くのに手も要らない**
+  /// (開いた瞬間から解答がひとりでに書かれる)。
   Future<void> answerPractice(WidgetTester tester, {AppStrings strings = ja}) async {
     await tester.tap(find.byKey(const Key('onboarding-practice-open')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('onboarding-practice-write')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('onboarding-practice-submit')));
     await tester.pumpAndSettle();
@@ -170,12 +176,11 @@ void main() {
   });
 
   group('授業のリハーサル', () {
-    testWidgets('まだ写真も声も使わないことを画面に書く', (WidgetTester tester) async {
+    testWidgets('先輩が教えるところから始まる', (WidgetTester tester) async {
       await pumpOnboarding(tester);
       await goToLesson(tester);
 
       expect(find.text(ja.onboardingTryTeachLine), findsOneWidget);
-      expect(find.text(ja.onboardingTryNotRecording), findsOneWidget);
     });
 
     // 約束の前半 —「教える」がリハーサルにも出ていること。
@@ -220,23 +225,6 @@ void main() {
       expect(find.text(ja.onboardingTryUnderstoodReaction), findsOneWidget);
       expect(find.byKey(onboardingMadeProblemKey), findsOneWidget);
       expect(find.text(ja.onboardingPracticeQuestion), findsOneWidget);
-      expect(
-        find.text(ja.onboardingTryNotWaiting),
-        findsOneWidget,
-        reason: '待たされないことを、待っていないその場で言う',
-      );
-    });
-
-    testWidgets('やり直せる。選び直しても責めない', (WidgetTester tester) async {
-      await pumpOnboarding(tester);
-      await goToLesson(tester);
-      await pressUnderstood(tester);
-
-      await tester.tap(find.text(ja.onboardingTryAgain));
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('onboarding-understood')), findsOneWidget);
-      expect(find.byKey(onboardingMadeProblemKey), findsNothing);
     });
 
     // 切れているのに手がかりが無いのが、いちばん悪い状態
@@ -271,8 +259,10 @@ void main() {
       expect(find.text(ja.onboardingPracticeQuestion), findsOneWidget);
       expect(find.byKey(onboardingPushKey), findsNothing);
 
-      await tester.tap(find.byKey(const Key('onboarding-practice-write')));
-      await tester.pumpAndSettle();
+      // 解答欄は**押す口ではない**。開いた時点でもう書かれている。
+      expect(find.byKey(onboardingAnswerKey), findsOneWidget);
+      expect(find.text(ja.onboardingPracticeAnswer), findsOneWidget);
+
       await tester.tap(find.byKey(const Key('onboarding-practice-submit')));
       await tester.pumpAndSettle();
 
@@ -287,18 +277,27 @@ void main() {
       expect(find.text(ja.practiceNextSchedule(const <int>[7])), findsOneWidget);
     });
 
-    testWidgets('採点まで通るまで「つぎへ」は押せない', (WidgetTester tester) async {
+    // **この枚のあいだ「つぎへ」は出さない。**押せないボタンを枚の一手
+    // (開いてみる / こたえる)の真下に置くと、どちらが今の一手か分からない。
+    testWidgets('採点まで通るまで「つぎへ」を出さない', (WidgetTester tester) async {
       await pumpOnboarding(tester);
       await goToPractice(tester);
 
-      await tapNext(tester, ja);
+      expect(find.text(ja.onboardingNext), findsNothing);
+
+      await tester.tap(find.byKey(const Key('onboarding-practice-open')));
+      await tester.pumpAndSettle();
       expect(
-        find.byKey(onboardingPushKey),
-        findsOneWidget,
-        reason: 'まだ答えていないうちは、復習の枚に留まる',
+        find.text(ja.onboardingNext),
+        findsNothing,
+        reason: '書いている途中にも出さない。ここでの一手は「こたえる」',
       );
 
-      await answerPractice(tester);
+      await tester.tap(find.byKey(const Key('onboarding-practice-submit')));
+      await tester.pumpAndSettle();
+
+      // 採点まで通れば枚の仕事は終わり。ここで戻ってくる。
+      expect(find.text(ja.onboardingNext), findsOneWidget);
       await tapNext(tester, ja);
       expect(find.text(ja.onboardingReadyTitle), findsOneWidget);
     });
@@ -407,6 +406,87 @@ void main() {
     expect(enabled.onPressed, isNotNull);
   });
 
+  // **通知の許可はここで1回だけ聞く**(ADR 0004 の追記)。
+  //
+  // このアプリの再訪は全部通知が起点なので、聞かないまま本編に入ると
+  // コアループの後半(3日後・7日後)がそもそも始まらない。iOSはダイアログを
+  // 一度しか出せないぶん、**聞く場所が動いていないこと**を見張る。
+  group('通知の許可', () {
+    Future<GoRouter> pumpRouted(
+      WidgetTester tester, {
+      required PushRepository push,
+    }) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final SharedPreferences preferences = await SharedPreferences.getInstance();
+      final ProviderContainer container = ProviderContainer(
+        overrides: <Object?>[
+          preferencesProvider.overrideWithValue(preferences),
+          onboardedProvider.overrideWithValue(false),
+          deviceIdProvider.overrideWithValue('dev_test'),
+          pushRepositoryProvider.overrideWithValue(push),
+          progressControllerProvider.overrideWith(FakeProgressController.new),
+          reviewControllerProvider.overrideWith(
+            () => FakeReviewController(const PracticeQueue(items: <PracticeQueueItem>[])),
+          ),
+        ].cast(),
+      );
+      addTearDown(container.dispose);
+
+      await setSurface(tester);
+      await tester.pumpWidget(wrapRouter(container));
+      await tester.pumpAndSettle();
+      return container.read(appRouterProvider);
+    }
+
+    testWidgets('最後の「はじめる」で聞く', (WidgetTester tester) async {
+      final FakePushRepository push = FakePushRepository();
+      await pumpRouted(tester, push: push);
+
+      await goToPractice(tester);
+      await answerPractice(tester);
+
+      // 最後の枚に着くまでは聞かない(枚をめくっているあいだは何の権限も要らない)。
+      expect(push.requests, 0);
+
+      await tapNext(tester, ja);
+      expect(find.text(ja.onboardingCta), findsOneWidget);
+      await tester.tap(find.text(ja.onboardingCta));
+      await tester.pumpAndSettle();
+
+      expect(push.requests, 1);
+      expect(find.byType(HomeScreen), findsOneWidget);
+    });
+
+    // 断られても止めない。許可が無くてもアプリは動くし、設定から入れ直せる。
+    testWidgets('断られてもホームへ進む', (WidgetTester tester) async {
+      final FakePushRepository push = FakePushRepository(granted: false);
+      await pumpRouted(tester, push: push);
+
+      await goToPractice(tester);
+      await answerPractice(tester);
+      await tapNext(tester, ja);
+      await tester.tap(find.text(ja.onboardingCta));
+      await tester.pumpAndSettle();
+
+      expect(push.requests, 1);
+      expect(find.byType(HomeScreen), findsOneWidget);
+    });
+
+    // 「とばす」も出口は同じ([_OnboardingScreenState._finish])。
+    // ここで聞かないと、飛ばした人には二度と聞く場所が無い。
+    testWidgets('「とばす」で降りても聞く', (WidgetTester tester) async {
+      final FakePushRepository push = FakePushRepository();
+      await pumpRouted(tester, push: push);
+
+      await goToLesson(tester);
+      await tester.tap(find.text(ja.onboardingSkip));
+      await tester.pumpAndSettle();
+
+      expect(push.requests, 1);
+      expect(find.byType(HomeScreen), findsOneWidget);
+    });
+  });
+
   // 審査員が見るのは英語版。日本語で組んだ余白に長い英文を流し込むとはみ出す。
   testWidgets('英語ロケールでも最後まで通せる', (WidgetTester tester) async {
     await pumpOnboarding(tester, locale: const Locale('en'));
@@ -418,4 +498,18 @@ void main() {
     expect(find.text(en.onboardingReviewDay7), findsOneWidget);
     expect(find.text(en.onboardingCta), findsOneWidget);
   });
+}
+
+/// 許可を聞かれたことだけを数える。OneSignal のSDKには触らない。
+class FakePushRepository extends PushRepository {
+  FakePushRepository({this.granted = true});
+
+  final bool granted;
+  int requests = 0;
+
+  @override
+  Future<bool> requestPermission() async {
+    requests++;
+    return granted;
+  }
 }

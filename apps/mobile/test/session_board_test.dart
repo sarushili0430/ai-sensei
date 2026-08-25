@@ -1,12 +1,11 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:ai_sensei/src/common_widgets/chunky_button.dart';
 import 'package:ai_sensei/src/common_widgets/senpai_face.dart';
+import 'package:ai_sensei/src/common_widgets/speaking_wave.dart';
 import 'package:ai_sensei/src/features/capture/application/capture_controller.dart';
 import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
 import 'package:ai_sensei/src/features/session/application/board_inbox.dart';
-import 'package:ai_sensei/src/features/session/application/problem_photo_picker.dart';
 import 'package:ai_sensei/src/features/session/application/session_control.dart';
 import 'package:ai_sensei/src/features/session/application/session_controller.dart';
 import 'package:ai_sensei/src/features/session/domain/board.dart';
@@ -227,7 +226,6 @@ void main() {
       Locale locale = const Locale('ja'),
       Size size = phoneSurface,
       SessionProblem? problem,
-      ProblemPhotoPicker? problemPhotoPicker,
       bool controlFails = false,
     }) async {
       final SessionState initial = problem == null
@@ -244,9 +242,6 @@ void main() {
           ),
           sessionControllerProvider.overrideWith(
             () => FakeSessionController(initial, controlFails: controlFails),
-          ),
-          problemPhotoPickerProvider.overrideWithValue(
-            problemPhotoPicker ?? FakeProblemPhotoPicker(),
           ),
         ],
       );
@@ -532,7 +527,9 @@ void main() {
       );
 
       expect(find.byType(BoardElementView), findsOneWidget);
-      expect(find.text(ja.sessionTeachingStatus), findsOneWidget);
+      // 番はまだ渡っていない(板書の最後の手順が待っていない)ので、
+      // 黙っているのは**先輩が次を考えているから**([SessionState.turn])。
+      expect(find.text(ja.sessionSenpaiThinking), findsOneWidget);
       expect(find.text(ja.sessionUnderstood), findsOneWidget);
     });
 
@@ -660,78 +657,96 @@ void main() {
       expect(find.byType(BoardElementView), findsOneWidget);
     });
 
-    testWidgets('会話中に問題写真を撮り、解析後の問題へ表示を差し替える', (WidgetTester tester) async {
-      final FakeProblemPhotoPicker picker = FakeProblemPhotoPicker(
-        File('/tmp/session_problem.jpg'),
-      );
-      final FakeSessionController controller = await pumpSession(
-        tester,
-        teaching(<String>['1問目の板書']),
-        problem: const SessionProblem(
-          text: '1問目を解け。',
-          source: ProblemSource.problemPhoto,
-        ),
-        problemPhotoPicker: picker,
-      );
+    /// **いまは誰の番か。**8/25 のドッグフーディングで出た
+    /// 「自分のターンなのかAIのターンなのか分かりにくい」への手当て。
+    ///
+    /// 見ているのは印そのもの(文言は読まないと分からない):
+    ///   - 先輩が喋っている … 波もローダーも出さない
+    ///   - 先輩が考えている … 円のローダー
+    ///   - こちらの番      … 3本の波
+    ///
+    /// **授業中に先輩が黙る理由は2つある。**答えを待っているのか、次の手順を
+    /// 考えているのか。板書の `awaits_student` だけがそれを知っている。
+    group('いまは誰の番か', () {
+      /// 最後の手順で番を渡した板書。
+      SessionState handedOver({SessionPhase phase = SessionPhase.explainBack}) {
+        final SessionState taught = teaching(<String>['D = b^2 - 4ac']);
+        return taught.copyWith(
+          phase: phase,
+          board: BoardSnapshot(
+            title: taught.board.title,
+            steps: <BoardStep>[
+              for (final BoardStep step in taught.board.steps)
+                step.copyWith(awaitsStudent: true),
+            ],
+          ),
+          awaitingStudent: true,
+        );
+      }
 
-      await tester.tap(find.text(ja.sessionAddProblem));
-      await tester.pump();
+      testWidgets('先輩が喋っているあいだは、波もローダーも出さない', (WidgetTester tester) async {
+        await pumpSession(tester, teaching(<String>['D = b^2 - 4ac']));
 
-      expect(picker.calls, 1);
-      expect(controller.addedProblemPhotos, hasLength(1));
-      expect(find.textContaining('2問目'), findsOneWidget);
-    });
+        expect(find.text(ja.sessionTeachingStatus), findsOneWidget);
+        expect(find.byType(SpeakingWave), findsNothing);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+      });
 
-    testWidgets('追加解析中も会話の終了操作を残し、無音の待ち画面にしない', (WidgetTester tester) async {
-      final SessionState initial = teaching(<String>['1問目の板書']);
-      final FakeSessionController controller = await pumpSession(
-        tester,
-        initial,
-      );
-      // 無限に回る進捗表示は pumpApp の初期 settle 後に出す。
-      controller.push(initial.copyWith(isAddingProblemPhoto: true));
-      await tester.pump();
+      testWidgets('番が渡ってきたら、3本の波を出す', (WidgetTester tester) async {
+        await pumpSession(tester, handedOver());
 
-      expect(find.text(ja.sessionAddingProblem), findsOneWidget);
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
-      expect(find.text(ja.sessionUnderstood), findsOneWidget);
-      expect(find.byKey(const Key('session-close')), findsOneWidget);
-    });
+        expect(find.text(ja.sessionYourTurn), findsOneWidget);
+        final SpeakingWave wave = tester.widget<SpeakingWave>(find.byType(SpeakingWave));
+        expect(wave.active, isTrue);
+        expect(wave.bars, 3);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+      });
 
-    testWidgets('解析上限でも行き止まりにせず、今の問題を続けられる', (WidgetTester tester) async {
-      await pumpSession(
-        tester,
-        teaching(<String>['1問目の板書']).copyWith(
-          problemPhotoFailure: ProblemPhotoFailure.analysis,
-          problemPhotoErrorMessage: '追加できる写真は5回までです。今の問題は続けられます。',
-          problemPhotoLimitReached: true,
-        ),
-      );
+      // 類題を解いている間は、番はこちらのまま。文言だけ問題に合わせる。
+      testWidgets('類題を解いている間も、番はこちら', (WidgetTester tester) async {
+        await pumpSession(tester, handedOver().copyWith(awaitingSolving: true));
 
-      expect(find.textContaining('今の問題は続けられます'), findsOneWidget);
-      final OutlinedButton add = tester.widget(
-        find.widgetWithText(OutlinedButton, ja.sessionAddProblem),
-      );
-      expect(add.onPressed, isNull);
-      expect(find.text(ja.sessionUnderstood), findsOneWidget);
-      expect(find.byKey(const Key('session-close')), findsOneWidget);
-    });
+        expect(find.text(ja.sessionSolving), findsOneWidget);
+        expect(find.byType(SpeakingWave), findsOneWidget);
+      });
 
-    testWidgets('解析済みなら、写真を再送せずagent通知だけを再試行できる', (WidgetTester tester) async {
-      final FakeSessionController controller = await pumpSession(
-        tester,
-        teaching(<String>['1問目の板書']).copyWith(
-          problemPhotoFailure: ProblemPhotoFailure.notification,
-          contextNotificationPending: true,
-        ),
-      );
+      // **ここが取り違えの本体。**黙っていても番が渡っていなければ、
+      // 待っているのはこちら(先輩は次の手順を考えている)。
+      testWidgets('番を渡していないのに黙っていたら、考え中のローダーを出す', (
+        WidgetTester tester,
+      ) async {
+        await pumpSession(
+          tester,
+          teaching(<String>['D = b^2 - 4ac']).copyWith(phase: SessionPhase.explainBack),
+        );
 
-      expect(find.text(ja.sessionProblemNotificationFailed), findsOneWidget);
-      await tester.tap(find.text(ja.sessionProblemNotificationRetry));
-      await tester.pump();
+        expect(find.text(ja.sessionSenpaiThinking), findsOneWidget);
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+        expect(find.byType(SpeakingWave), findsNothing);
+      });
 
-      expect(controller.notificationRetries, 1);
-      expect(controller.addedProblemPhotos, isEmpty);
+      // 答えた瞬間に番は返る。ここを落とすと「きみの番」が出たまま止まる。
+      testWidgets('こちらが答えたら、その場で考え中へ戻る', (WidgetTester tester) async {
+        final FakeSessionController controller = await pumpSession(
+          tester,
+          handedOver().copyWith(awaitingSolving: true),
+        );
+
+        await tester.tap(find.text(ja.sessionSolved));
+        await tester.pumpAndSettle();
+
+        expect(controller.snapshot.awaitingStudent, isFalse);
+        expect(find.text(ja.sessionSenpaiThinking), findsOneWidget);
+        expect(find.byType(SpeakingWave), findsNothing);
+      });
+
+      // 「わかった」のあとは番の話ではない。声を止めたことだけを出す。
+      testWidgets('「わかった」のあとは、番の印を出さない', (WidgetTester tester) async {
+        await pumpSession(tester, handedOver().copyWith(isUnderstood: true));
+
+        expect(find.text(ja.sessionVoiceStopped), findsOneWidget);
+        expect(find.byType(SpeakingWave), findsNothing);
+      });
     });
 
     testWidgets('とぎれたら、板書は残したままそのことを出す', (WidgetTester tester) async {
@@ -1030,9 +1045,7 @@ class FakeSessionController extends SessionController {
   /// 制御RPCを落とす。回線が切れているあいだの「わかった」を再現する。
   final bool controlFails;
   final List<String> solvingReports = <String>[];
-  final List<File> addedProblemPhotos = <File>[];
   final List<PerformRpcParams> controlCalls = <PerformRpcParams>[];
-  int notificationRetries = 0;
   int finishCalls = 0;
   SessionEnding? lastEnding;
 
@@ -1065,23 +1078,6 @@ class FakeSessionController extends SessionController {
   }
 
   @override
-  Future<void> addProblemPhoto(File photo, {required String locale}) async {
-    addedProblemPhotos.add(photo);
-    state = state.copyWith(
-      problem: const SessionProblem(
-        text: '2問目を解け。',
-        source: ProblemSource.problemPhoto,
-      ),
-      awaitingSolving: false,
-    );
-  }
-
-  @override
-  Future<void> retryProblemContextNotification() async {
-    notificationRetries += 1;
-  }
-
-  @override
   Future<void> finish({SessionEnding? ending}) async {
     finishCalls += 1;
     lastEnding = ending;
@@ -1091,15 +1087,3 @@ class FakeSessionController extends SessionController {
   void push(SessionState next) => state = next;
 }
 
-class FakeProblemPhotoPicker implements ProblemPhotoPicker {
-  FakeProblemPhotoPicker([this.photo]);
-
-  final File? photo;
-  int calls = 0;
-
-  @override
-  Future<File?> takePhoto() async {
-    calls += 1;
-    return photo;
-  }
-}

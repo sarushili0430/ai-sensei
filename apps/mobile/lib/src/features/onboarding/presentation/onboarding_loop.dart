@@ -68,14 +68,6 @@ class OnboardingLoopPage extends StatelessWidget {
             ),
           ],
         ),
-        // 権限の予告は手順のすぐ下、同じかたまりの一部として置く
-        // (`Spacer` で画面下へ押し付けるのは、スクロールの中では使えない)。
-        const SizedBox(height: AppSpacing.lg),
-        Text(
-          strings.onboardingPermissionNote,
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
       ],
     );
   }

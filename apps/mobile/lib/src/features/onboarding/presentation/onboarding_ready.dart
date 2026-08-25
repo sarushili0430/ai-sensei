@@ -18,7 +18,7 @@ import 'onboarding_motion.dart';
 /// 段は ADR 0009 のとおり:
 ///   - **作った直後は 3・7日**(= 正解と同じ扱い)。「わかった」は到達の宣言なので、
 ///     押した翌日に「まちがえた問題」と同じ間隔で届くと、押したこと自体が罰になる
-///   - **まちがえた問題だけ、翌日からもう一度**。減点はしない
+///   - **まちがえた問題だけ、翌日からもう一度**
 class OnboardingReadyPage extends StatelessWidget {
   const OnboardingReadyPage({super.key});
 
@@ -41,9 +41,8 @@ class OnboardingReadyPage extends StatelessWidget {
         const SizedBox(height: AppSpacing.md),
         // ここまで来た人に向ける顔。**この枚だけ `delighted`** —
         // 1周やってみた直後なので、労うのが自然な位置になる。
-        // 顔は小さめに。**この枚は下に年表と注記が2本ぶら下がる**ので、
-        // 顔を大きくすると 375×667 の英語で「減点はしません」と権限の予告が
-        // 折り返しの下に落ちる(実測)。
+        // 顔は小さめに。**この枚は下に年表と注記がぶら下がる**ので、
+        // 顔を大きくすると 375×667 の英語で最後の注記が折り返しの下に落ちる(実測)。
         const FadeSlideIn(
           child: Center(
             child: AmbientHalo(
@@ -91,14 +90,6 @@ class OnboardingReadyPage extends StatelessWidget {
         const SizedBox(height: AppSpacing.sm),
         Text(
           strings.onboardingTimelineWrongNote,
-          textAlign: TextAlign.center,
-          style: text.bodySmall,
-        ),
-        const SizedBox(height: AppSpacing.md),
-        // 権限の予告。ここが**最後に読まれる**位置なので、
-        // 次の画面でカメラを開く直前の心づもりになる。
-        Text(
-          strings.onboardingPermissionNote,
           textAlign: TextAlign.center,
           style: text.bodySmall,
         ),

@@ -8,6 +8,7 @@ import '../../../l10n/strings.dart';
 import '../../../routing/routes.dart';
 import '../../../theme/motion.dart';
 import '../../../theme/tokens.dart';
+import '../../notifications/application/push_controller.dart';
 import '../../settings/application/school_stage_controller.dart';
 import 'onboarding_loop.dart';
 import 'onboarding_motion.dart';
@@ -35,16 +36,25 @@ import 'onboarding_stage.dart';
 ///   3. **やること** — 1周を4手順の年表で
 ///   4. **授業のリハーサル** — 板書で教わって、「わかった」を押す
 ///   5. **復習のリハーサル** — 3日後の通知が届いて、書いて答えて、採点される
-///   6. **これから** — 今日 / 3日後 / 7日後の年表と、権限の予告
+///   6. **これから** — 今日 / 3日後 / 7日後の年表
 ///
 /// 4・5枚目は**やってみる枚**。約束は読むだけでは腑に落ちない
 /// (inception-deck §7-7 が指摘していた問題。**言葉を足すほど遠くなる**)。
 /// だから説明を増やすのではなく、1周を通す。台本は固定で、写真も声も
-/// 使わないので、ここではまだ何の権限も要らない。
+/// 使わないので、枚をめくっているあいだは何の権限も要らない。
 ///
-/// **権限はここで求めない。** カメラは撮る直前、マイクは会話の直前、
-/// 通知は初回の復習問題ができた直後に、それぞれ文脈の中で聞く。
-/// 初回離脱の最大要因を、まとめて先頭に置かないため。
+/// ## 通知だけは、ここで聞く
+///
+/// カメラは撮る直前、マイクは会話の直前 —— これは変わらない。
+/// **通知だけを [_finish] で聞く**([ADR 0004] の追記)。理由は2つ:
+///
+///   - **このアプリの再訪は、全部通知が起点。**3日後・7日後に届かなければ、
+///     コアループの後半(ADR 0009)はそもそも始まらない
+///   - **文脈がいちばん立っているのがここ。**直前の2枚で通知が届くところを
+///     実際に見て、最後の枚で「3日後 / 7日後」の年表を読んだ直後に聞く。
+///     設定画面のトグルまで自分で辿り着く人を待つより、ここのほうが近い
+///
+/// iOSはシステムダイアログを一度しか出せないので、**聞く場所は1つに絞る**。
 ///
 /// ## 進み具合は棒で出す
 ///
@@ -127,7 +137,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       OnboardingRehearsalPage(
         understood: _understood,
         onUnderstood: () => setState(() => _understood = true),
-        onReset: () => setState(() => _understood = false),
       ),
       OnboardingPracticePage(
         answered: _answered,
@@ -172,6 +181,15 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   bool get _canSkip => _page >= _lessonPage;
 
+  /// 下の「つぎへ」を出すか。
+  ///
+  /// **枚が自分の一手を持っているあいだは出さない。**復習のリハーサルは
+  /// 「開いてみる」→「こたえる」と自前のボタンが下に座るので、その真下に
+  /// 押せない「つぎへ」を並べると、**どちらが今の一手なのか分からなくなる**
+  /// (押せないボタンは、置いてあるだけで「ここが行き止まりか」と読ませる)。
+  /// 採点まで通れば枚の仕事は終わりなので、そこで戻す。
+  bool get _showNext => _page != _practicePage || _answered;
+
   Future<void> _next() async {
     if (_isLast) {
       await _finish();
@@ -188,8 +206,15 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     await _controller.nextPage(duration: duration, curve: AppCurves.enter);
   }
 
+  /// オンボーディングを終える。**出口はここ1つ**(「はじめる」も「とばす」も通る)。
+  ///
+  /// 通知の許可はこの1箇所でだけ聞く(クラスの説明)。**断られても止めない** ——
+  /// 許可が無くてもアプリは動くし、あとから設定で入れ直せる。
+  /// 通知を扱えないビルド(App ID の無いテスト/CI)では
+  /// [PushPermissionController.request] がその場で false を返して何も起きない。
   Future<void> _finish() async {
     await markOnboardingSeen(ref.read(preferencesProvider));
+    await ref.read(pushPermissionControllerProvider.notifier).request();
     if (mounted) context.go(AppRoute.home.path);
   }
 
@@ -245,18 +270,23 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                     _PageTransition(controller: _controller, index: index, child: pages[index]),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.lg,
-                AppSpacing.md,
-                AppSpacing.lg,
-                AppSpacing.lg,
-              ),
-              child: ChunkyButton(
-                label: _isLast ? strings.onboardingCta : strings.onboardingNext,
-                onPressed: _canAdvance ? _next : null,
-              ),
-            ),
+            if (_showNext)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.md,
+                  AppSpacing.lg,
+                  AppSpacing.lg,
+                ),
+                child: ChunkyButton(
+                  label: _isLast ? strings.onboardingCta : strings.onboardingNext,
+                  onPressed: _canAdvance ? _next : null,
+                ),
+              )
+            else
+              // 「つぎへ」を出していないあいだも、枚の一手が画面の縁に
+              // 貼り付かないぶんだけ下を空ける。
+              const SizedBox(height: AppSpacing.lg),
           ],
         ),
       ),

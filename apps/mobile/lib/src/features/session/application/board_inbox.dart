@@ -40,6 +40,14 @@ class BoardSnapshot {
   /// 最後の手順が、類題を解き終わるまで待つ申告か。
   bool get awaitsSolving => steps.isNotEmpty && steps.last.awaitsSolving == true;
 
+  /// 最後の手順で、先輩が**番を生徒に渡した**か。
+  ///
+  /// 立っていれば先輩は答えを待って黙っている。立っていなければ、黙っているのは
+  /// **次の手順を考えているから**。この2つを取り違えると、画面の「いまは誰の番か」が
+  /// 逆になる([BoardStep.awaitsStudent])。
+  bool get awaitsStudent =>
+      steps.isNotEmpty && (steps.last.awaitsStudent == true || steps.last.awaitsSolving == true);
+
   static const BoardSnapshot empty = BoardSnapshot();
 }
 

@@ -154,10 +154,6 @@ class AppStrings {
   String get onboardingTryTeachLine => _pick('D がプラスなら、解は2つ。ここだけ持って帰ってくれればいい。',
       'If D is positive, there are two roots. That is the one thing to take home.');
 
-  /// 本番と取り違えられると信頼を落とす。まだ何も使っていないことを先に言う。
-  String get onboardingTryNotRecording =>
-      _pick('ここではまだ、写真も声も使いません', 'No camera, no microphone — not yet');
-
   /// 「わかった」を押したあと。**褒めない・採点しない**(ADR 0009。到達の宣言は
   /// 生徒のものなので、押したことを先輩が評価し直さない)。起きた事実だけを言う。
   String get onboardingTryUnderstoodReaction =>
@@ -165,12 +161,6 @@ class AppStrings {
 
   /// できた復習問題の見出し。**本人が説明した内容ではなく、板書が材料**(ADR 0009)。
   String get onboardingTryProblemLabel => _pick('できた復習問題', 'The question we made');
-
-  /// **生成を待たせない**(ADR 0009)。押した瞬間に授業は終わり、最初の接触は通知。
-  String get onboardingTryNotWaiting =>
-      _pick('待たなくて大丈夫。次に会うのは通知の中。', "No need to wait — we meet again in a notification.");
-
-  String get onboardingTryAgain => _pick('もう一度ためす', 'Try that again');
 
   /// 復習のリハーサル。**約束の後半を、ここで一度やってみる。**
   ///
@@ -195,10 +185,6 @@ class AppStrings {
   /// 復習問題の本文。板書(判別式)から作られた1問。
   String get onboardingPracticeQuestion =>
       _pick('x² − 6x + 5 = 0 の解の個数は?', 'How many roots does x² − 6x + 5 = 0 have?');
-
-  /// 解答欄をタップすると、これが書かれる。**キーボードは出さない** —
-  /// ここで打たせると、まだ何も起きていないうちに入力の手間だけが先に来る。
-  String get onboardingPracticeTapToWrite => _pick('タップして書く', 'Tap to write');
 
   /// 通知を開く。**通知そのものを押せる**ようにもしてあるが、
   /// 押せると分かるのは押した人だけなので、下にも同じ口を置く。
@@ -231,15 +217,8 @@ class AppStrings {
       _pick('もう一度。ここまで来たら忘れにくい', 'Once more — by here, it tends to stay');
 
   /// **まちがえた問題だけ、翌日からもう一度**(ADR 0009 の段)。
-  /// 罰ではないことを、同じ行で言い切る。
-  String get onboardingTimelineWrongNote => _pick('まちがえた問題は翌日からもう一度たずねます。減点はしません。',
-      'A question you miss comes back from the next day. Nothing is deducted.');
-
-  /// 権限は使う直前に聞く。ここでは予告だけして、初回離脱を作らない。
-  String get onboardingPermissionNote => _pick(
-        'カメラ・マイク・通知の許可は、使う直前にお願いします',
-        'We ask for camera, microphone and notification access only when they are needed',
-      );
+  String get onboardingTimelineWrongNote => _pick('まちがえた問題は翌日からもう一度たずねます。',
+      'A question you miss comes back from the next day.');
 
   String get onboardingCta => _pick('はじめる', 'Get started');
   String get onboardingNext => _pick('つぎへ', 'Next');
@@ -618,9 +597,23 @@ class AppStrings {
   String get sessionSenpaiTeaching =>
       _pick('先輩が説明しています', 'Your senpai is explaining');
 
-  /// 授業画面の状態表示。字幕ではなく、青い点の隣に短く置く。
+  /// 授業画面の状態表示。字幕ではなく、印の隣に短く置く。
   String get sessionTeachingStatus =>
       _pick('先輩が説明中', 'Your senpai is explaining');
+
+  /// 先輩が黙って次の手順を考えているあいだ。**待つ番**だと分かる言い方にする。
+  ///
+  /// 「聞いています」でも「説明中」でもない3つめの状態。ここを出さずに黙ると、
+  /// 生徒は自分の番だと思って喋りはじめ、先輩の説明に自分の声を重ねる。
+  String get sessionSenpaiThinking =>
+      _pick('先輩が考えています…', 'Your senpai is thinking…');
+
+  /// 先輩が番を渡して、答えを待っているあいだ。波(`SpeakingWave`)の隣に置く。
+  ///
+  /// **「聞いています」と書き分ける。**あちらは板書の無い会話の常態で、
+  /// こちらは**授業の途中でこちらに番が回ってきた**一瞬。同じ言葉にすると、
+  /// いちばん知りたい「いま喋っていいのか」が読み取れない。
+  String get sessionYourTurn => _pick('きみの番。話してみて', 'Your turn — go ahead');
 
   /// 到達の宣言。押しやすさを損なうので、確認や評価のニュアンスを足さない。
   String get sessionUnderstood => _pick('わかった', 'Got it');
@@ -653,20 +646,6 @@ class AppStrings {
   String get sessionProblemExpand => _pick('続きを読む', 'Read more');
   String get sessionProblemCollapse => _pick('畳む', 'Show less');
 
-  /// 会話中に、次に扱う問題の紙面を撮る。本人の発話ではなく制御経路で先輩へ伝える。
-  String get sessionAddProblem => _pick('問題を追加', 'Add a problem');
-  String get sessionAddingProblem =>
-      _pick('問題を見ています…', 'Looking at the problem…');
-  String get sessionProblemPhotoFailed => _pick(
-    '問題を読み取れませんでした。今の問題はそのまま続けられます。',
-    "We couldn't read that problem. You can keep working on the current one.",
-  );
-  String get sessionProblemNotificationFailed => _pick(
-    '問題は読み取れましたが、先輩への連絡が届きませんでした。',
-    "We read the problem, but couldn't notify your senpai.",
-  );
-  String get sessionProblemNotificationRetry =>
-      _pick('先輩にもう一度伝える', 'Notify again');
 
   /// 板書がとぎれたとき(封筒の欠落・順序違反を検知した)。
   ///

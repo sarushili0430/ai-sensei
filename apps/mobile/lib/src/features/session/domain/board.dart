@@ -245,6 +245,14 @@ abstract class BoardStep with _$BoardStep {
 
     /// 類題を解き終わるまで待つ手順。true の間だけ自己申告ボタンを表示する。
     @JsonKey(name: 'awaits_solving') bool? awaitsSolving,
+
+    /// **番を生徒に渡した手順。**ここで先輩は答えを待って黙る。
+    ///
+    /// 画面はこの欄だけを見て「いまは生徒の番」を描く(`session_screen.dart` の
+    /// `_LessonStatus`)。欄が無ければ**先輩が考えている**として扱うので、
+    /// agent 側は言い回しの推測で止まった手順にもこれを立てて送る
+    /// (`board.ts` の `handsOver`)。
+    @JsonKey(name: 'awaits_student') bool? awaitsStudent,
   }) = _BoardStep;
 
   factory BoardStep.fromJson(Map<String, dynamic> json) => _$BoardStepFromJson(json);

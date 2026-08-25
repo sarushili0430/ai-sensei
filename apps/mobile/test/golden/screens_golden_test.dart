@@ -170,12 +170,21 @@ void main() {
     await capture(tester, 'onboarding_push');
   });
 
+  // 通知を開いた先。**解答はタップ待ちではなく、ひとりでに書かれる。**
+  // ここで見たいのは、下の一手が「こたえる」ひとつだけであること
+  // (押せない「つぎへ」を並べると、どちらが今の一手か分からなくなる)。
+  testWidgets('01d2 オンボーディング(書いて答える)', (WidgetTester tester) async {
+    await gotoPractice(tester);
+    await tapKey(tester, const Key('onboarding-practice-open'));
+    await capture(tester, 'onboarding_answer');
+  });
+
   // 復習のリハーサル(採点のあと)。**点数が出ていない**こと、
   // 判定が黄マーカーで、次の段(7日後)が残っていること。
   testWidgets('01e オンボーディング(復習のリハーサル)', (WidgetTester tester) async {
     await gotoPractice(tester);
     await tapKey(tester, const Key('onboarding-practice-open'));
-    await tapKey(tester, const Key('onboarding-practice-write'));
+    // 解答はタップせずに書かれる(`onboarding_practice.dart` の `_answerSlot`)。
     await tapKey(tester, const Key('onboarding-practice-submit'));
     await capture(tester, 'onboarding_practice');
   });
@@ -184,7 +193,6 @@ void main() {
   testWidgets('01f オンボーディング(これから)', (WidgetTester tester) async {
     await gotoPractice(tester);
     await tapKey(tester, const Key('onboarding-practice-open'));
-    await tapKey(tester, const Key('onboarding-practice-write'));
     await tapKey(tester, const Key('onboarding-practice-submit'));
     await tapNext(tester);
     await capture(tester, 'onboarding_ready');

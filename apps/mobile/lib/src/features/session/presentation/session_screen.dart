@@ -15,7 +15,6 @@ import '../../../theme/tokens.dart';
 import '../../capture/application/capture_controller.dart';
 import '../../karte/application/karte_controllers.dart';
 import '../application/board_inbox.dart';
-import '../application/problem_photo_picker.dart';
 import '../application/session_controller.dart';
 import '../domain/session.dart';
 import 'board/board_style.dart';
@@ -41,8 +40,6 @@ class SessionScreen extends ConsumerStatefulWidget {
 }
 
 class _SessionScreenState extends ConsumerState<SessionScreen> {
-  bool _isTakingProblemPhoto = false;
-  bool _problemPhotoPickFailed = false;
   bool _exitConfirmationOpen = false;
 
   @override
@@ -59,36 +56,6 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
             locale: Localizations.localeOf(context).languageCode,
           );
     });
-  }
-
-  Future<void> _takeProblemPhoto() async {
-    if (_isTakingProblemPhoto) return;
-    setState(() {
-      _isTakingProblemPhoto = true;
-      _problemPhotoPickFailed = false;
-    });
-
-    try {
-      final photo = await ref.read(problemPhotoPickerProvider).takePhoto();
-      if (!mounted) return;
-      setState(() => _isTakingProblemPhoto = false);
-      // カメラを閉じただけなら失敗扱いにしない。会話へそのまま戻る。
-      if (photo == null) return;
-      await ref
-          .read(sessionControllerProvider.notifier)
-          .addProblemPhoto(
-            photo,
-            locale: Localizations.localeOf(context).languageCode,
-          );
-    } on Object catch (error, stack) {
-      // カメラ権限やプラグインの失敗で会話画面ごと落とさない。
-      debugPrint('会話中の問題写真を取得できませんでした: $error\n$stack');
-      if (!mounted) return;
-      setState(() {
-        _isTakingProblemPhoto = false;
-        _problemPhotoPickFailed = true;
-      });
-    }
   }
 
   Future<void> _confirmExit() async {
@@ -174,7 +141,6 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
     // 生徒が撮り直しに行ってしまう)。
     final SessionProblem? problem = state.problem;
     final SessionStart? session = ref.watch(captureControllerProvider).session;
-    final bool canAddProblem = session?.kind == 'new';
     final bool lessonSession = session?.kind == 'new' || session?.kind == 'review';
 
     final Widget screen = Scaffold(
@@ -204,22 +170,6 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
                 const SizedBox(height: AppSpacing.sm),
                 _Inset(child: _ProblemBlock(text: problem.text)),
               ],
-              if (canAddProblem) ...<Widget>[
-                const SizedBox(height: AppSpacing.sm),
-                _Inset(
-                  child: _ProblemPhotoAction(
-                    state: state,
-                    isTakingPhoto: _isTakingProblemPhoto,
-                    pickFailed: _problemPhotoPickFailed,
-                    disabled:
-                        wrappingUp || state.phase == SessionPhase.connecting,
-                    onAdd: _takeProblemPhoto,
-                    onRetryNotification: () => ref
-                        .read(sessionControllerProvider.notifier)
-                        .retryProblemContextNotification(),
-                  ),
-                ),
-              ],
               if (board.hasBoard) ...<Widget>[
                 const SizedBox(height: AppSpacing.md),
                 // **板書が主役。**残りの高さを全部渡す。
@@ -227,6 +177,7 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
                 const SizedBox(height: AppSpacing.md),
                 _Inset(
                   child: _LessonStatus(
+                    turn: state.turn,
                     wrappingUp: wrappingUp,
                     awaitingSolving: state.awaitingSolving,
                     isUnderstood: state.isUnderstood,
@@ -267,6 +218,7 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
                       const SizedBox(height: AppSpacing.md),
                       if (state.isUnderstood)
                         _LessonStatus(
+                          turn: state.turn,
                           wrappingUp: wrappingUp,
                           awaitingSolving: false,
                           isUnderstood: true,
@@ -365,82 +317,6 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
         if (!didPop) unawaited(_confirmExit());
       },
       child: screen,
-    );
-  }
-}
-
-/// 次の問題を足す操作。失敗しても会話全体の操作は残し、現在の問題を続けられる。
-class _ProblemPhotoAction extends StatelessWidget {
-  const _ProblemPhotoAction({
-    required this.state,
-    required this.isTakingPhoto,
-    required this.pickFailed,
-    required this.disabled,
-    required this.onAdd,
-    required this.onRetryNotification,
-  });
-
-  final SessionState state;
-  final bool isTakingPhoto;
-  final bool pickFailed;
-  final bool disabled;
-  final VoidCallback onAdd;
-  final VoidCallback onRetryNotification;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppStrings strings = AppStrings.of(context);
-    final bool busy = isTakingPhoto || state.isAddingProblemPhoto;
-    final bool notificationPending = state.contextNotificationPending;
-    final String? error = switch (state.problemPhotoFailure) {
-      ProblemPhotoFailure.analysis =>
-        state.problemPhotoErrorMessage ?? strings.sessionProblemPhotoFailed,
-      ProblemPhotoFailure.notification =>
-        strings.sessionProblemNotificationFailed,
-      null when pickFailed => strings.sessionProblemPhotoFailed,
-      null => null,
-    };
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        if (busy)
-          Row(
-            children: <Widget>[
-              const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2.5),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(child: Text(strings.sessionAddingProblem)),
-            ],
-          )
-        else if (notificationPending)
-          OutlinedButton.icon(
-            onPressed: disabled ? null : onRetryNotification,
-            icon: const Icon(Icons.refresh),
-            label: Text(strings.sessionProblemNotificationRetry),
-          )
-        else
-          OutlinedButton.icon(
-            onPressed: disabled || state.problemPhotoLimitReached
-                ? null
-                : onAdd,
-            icon: const Icon(Icons.add_a_photo_outlined),
-            label: Text(strings.sessionAddProblem),
-          ),
-        if (error != null) ...<Widget>[
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            error,
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: AppColors.inkMuted),
-          ),
-        ],
-      ],
     );
   }
 }
@@ -809,16 +685,38 @@ class _BoardGapNotice extends StatelessWidget {
 /// ここに先輩の発話をそのまま流すと、板書に追い出したはずの説明が
 /// 文字で戻ってきて、**画面の主役が二重になる**(実機で、図と式が出ている下に
 /// 4段落の文字起こしが乗った)。ここが持つのは状態だけ。
+///
+/// ## 印で「誰の番か」を出す
+///
+/// 8/25 のドッグフーディングで出た「自分のターンなのかAIのターンなのか
+/// ちょっと分かりにくい」は、ここが**どの状態でも青い点しか出していなかった**こと
+/// そのもの。文言(「先輩が説明中」)は読まないと分からないので、
+/// **目の端で分かる印**を3つに割る:
+///
+///   - 先輩が喋っている … 青い点(いままでと同じ)
+///   - 先輩が考えている … **円のローダー**。回っているあいだは待つ番
+///   - こちらの番     … **3本の波**([SpeakingWave])。聞いている印は
+///                        アプリの中でここだけの意味を持たない共通の絵にする
+///
+/// 大きさは文字1行ぶん。ここは板書の下の1行で、**主役は板書のまま**なので、
+/// 印が行の高さを超えると状態表示のほうが目立ってしまう。
 class _LessonStatus extends StatelessWidget {
   const _LessonStatus({
+    required this.turn,
     required this.wrappingUp,
     required this.awaitingSolving,
     required this.isUnderstood,
   });
 
+  /// いまは誰の番か。**印と文言はここから決まる。**
+  final SessionTurn turn;
+
   final bool wrappingUp;
   final bool awaitingSolving;
   final bool isUnderstood;
+
+  /// 波の高さ。**文字1行ぶん**(`bodySmall` の行送り)に収める。
+  static const double _waveHeight = 18;
 
   @override
   Widget build(BuildContext context) {
@@ -830,17 +728,25 @@ class _LessonStatus extends StatelessWidget {
       mark = const Icon(Icons.check_rounded, size: 18, color: AppColors.blue);
       text = strings.sessionVoiceStopped;
     } else if (wrappingUp) {
-      mark = const SizedBox.square(
-        dimension: 16,
-        child: CircularProgressIndicator(strokeWidth: 2),
-      );
+      mark = _spinner(context);
       text = strings.sessionSummarizing;
     } else {
-      mark = const DecoratedBox(
-        decoration: BoxDecoration(color: AppColors.blue, shape: BoxShape.circle),
-        child: SizedBox.square(dimension: 8),
-      );
-      text = awaitingSolving ? strings.sessionSolving : strings.sessionTeachingStatus;
+      switch (turn) {
+        case SessionTurn.student:
+          // **本番のマイクの値には繋がない**([SpeakingWave] の説明)。
+          // 出しているのは声の大きさではなく「いま聞いている」という状態。
+          mark = const SpeakingWave(active: true, bars: 3, height: _waveHeight);
+          text = awaitingSolving ? strings.sessionSolving : strings.sessionYourTurn;
+        case SessionTurn.senpaiThinking:
+          mark = _spinner(context);
+          text = strings.sessionSenpaiThinking;
+        case SessionTurn.senpai:
+          mark = const DecoratedBox(
+            decoration: BoxDecoration(color: AppColors.blue, shape: BoxShape.circle),
+            child: SizedBox.square(dimension: 8),
+          );
+          text = strings.sessionTeachingStatus;
+      }
     }
 
     return Row(
@@ -852,6 +758,16 @@ class _LessonStatus extends StatelessWidget {
       ],
     );
   }
+
+  /// 円のローダー。**動かさない設定では回さない**(`_StatusIndicator` と同じ扱い)。
+  /// 止めるときも「進んでいる途中」に見える円弧を残す — 0で止めると壊れて見える。
+  Widget _spinner(BuildContext context) => SizedBox.square(
+    dimension: 16,
+    child: CircularProgressIndicator(
+      strokeWidth: 2,
+      value: AppMotion.isReduced(context) ? 0.25 : null,
+    ),
+  );
 }
 
 /// 画面の左右の余白。**板書も含めて、どの子も同じ値**
