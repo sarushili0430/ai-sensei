@@ -239,6 +239,23 @@ void main() {
       });
     });
 
+    test('途中で切れた会話は、理由(enum名)と残り時間しか持たない', () {
+      final DegradationEvent event = DegradationEvent.sessionDropped(
+        sessionId: 'ses_1',
+        reason: 'signalingConnectionFailure',
+        remainingSeconds: 660,
+        phase: 'explainBack',
+      );
+
+      expect(event.data, <String, Object?>{
+        'session_id': 'ses_1',
+        'reason': 'signalingConnectionFailure',
+        'remaining_seconds': 660,
+        'phase': 'explainBack',
+      });
+      expect(event.data.values, isNot(contains(poison)));
+    });
+
     test('板書の幅は数値しか持たない', () {
       final DegradationEvent event =
           DegradationEvent.boardTooNarrow(availableWidth: 198, assumedWidth: 340);
@@ -363,6 +380,13 @@ void main() {
     test('「わかった」が送れなかったことを記録する種類がある', () {
       expect(Degradation.values, contains(Degradation.understoodNotSent));
       expect(Degradation.understoodNotSent.id, 'understood_not_sent');
+    });
+
+    /// 授業が丸ごと途切れたのに、画面は祝福へ進む。**記録が無ければ、
+    /// こちらから見えるのは「なぜか短いセッションがある」だけになる。**
+    test('会話が途中で切れたことを記録する種類がある', () {
+      expect(Degradation.values, contains(Degradation.sessionDropped));
+      expect(Degradation.sessionDropped.id, 'session_dropped');
     });
   });
 }

@@ -94,6 +94,14 @@ export const agentDegradations = [
   "problem_readout_unexpected",
   /** 読み上げに失敗した。板書は出ているのに音声だけ落ちている。 */
   "say_failed",
+  /**
+   * 声のパイプライン(STT / LLM / TTS)が立て直せなかった。**1ターンが生徒に届いていない。**
+   *
+   * **再試行中(`recoverable: true`)はここへ来ない**(`session-end.ts` は `info` で出す)。
+   * 遅れただけの回まで縮退にすると、Anthropicの429が1回混ざるたびに立ち、
+   * 本当に落ちた回が埋もれる。
+   */
+  "voice_pipeline_error",
   /** 自動割り当てが作れず定型テンプレへ落ちた。計画は届くが自動化の品質は失われている。 */
   "plan_template_fallback",
 ] as const;
@@ -128,6 +136,8 @@ export const degradationStringFields = [
   "kind",
   "locale",
   "error_name",
+  /** どのベンダーの部品か(`google.beta.TTS` など)。SDKが付ける固定の名前で、本文ではない。 */
+  "label",
 ] as const;
 
 const allowedStrings = new Set<string>(degradationStringFields);

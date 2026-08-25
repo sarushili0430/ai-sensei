@@ -87,7 +87,19 @@ enum Degradation {
   /// 「わかった」を押したのに、先輩へ制御通知を届けられなかった。
   /// 画面は宣言を受け取って先にボタンを塞ぐため、記録しないと
   /// 「押したのに声が止まらない」という壊れ方がこちらから見えない。
-  understoodNotSent('understood_not_sent');
+  understoodNotSent('understood_not_sent'),
+
+  /// 会話の途中で部屋が落ちた。**授業が丸ごと途切れる、いちばん重い縮退。**
+  ///
+  /// 先輩は部屋に居たまま、こちらの接続が切れた(= LiveKit の再接続が
+  /// 尽きた)ときにだけ立つ。正常な終わりは先輩の退室が先に届くので
+  /// ここへは来ない([SessionController._onRoomClosed])。
+  ///
+  /// **画面には何も出ない。**残り時間がいくら残っていても、生徒は
+  /// そのまま祝福画面へ送られる。記録しないと、こちらから見えるのは
+  /// 「なぜか短いセッションがある」だけで、原因(端末側の回線か、
+  /// サーバ側の部屋の消滅か)を切り分ける手がかりが1つも残らない。
+  sessionDropped('session_dropped');
 
   const Degradation(this.id);
 
@@ -332,6 +344,31 @@ class DegradationEvent {
         'session_id': sessionId,
         'phase': phase,
         'error': error.toString(),
+      }),
+    );
+  }
+
+  /// 会話の途中で部屋が落ちた。
+  ///
+  /// [reason] は LiveKit の `DisconnectReason`(enum名)。[remainingSeconds] は
+  /// 画面の残り時間で、**どれだけ早く切れたか**がこの2つで分かる。
+  /// 会話の中身は1文字も入らない。
+  factory DegradationEvent.sessionDropped({
+    required String? sessionId,
+    required String reason,
+    required int remainingSeconds,
+    required String phase,
+  }) {
+    return DegradationEvent._(
+      Degradation.sessionDropped,
+      // 1セッションにつき1件。落ちたあとは画面ごと畳まれるので、
+      // 同じセッションで二度立つことは通常ない。
+      dedupeKey: sessionId ?? 'unknown',
+      data: _sanitize(<String, Object?>{
+        'session_id': sessionId,
+        'reason': reason,
+        'remaining_seconds': remainingSeconds,
+        'phase': phase,
       }),
     );
   }

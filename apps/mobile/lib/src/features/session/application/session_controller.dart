@@ -405,7 +405,9 @@ class SessionController extends _$SessionController {
       })
       // 先輩の「聞いている / 考えている / 喋っている」は属性で来る
       ..on<ParticipantAttributesChanged>((_) => _syncSenpaiState())
-      ..on<RoomDisconnectedEvent>((_) => _onRoomClosed());
+      ..on<RoomDisconnectedEvent>(
+        (RoomDisconnectedEvent event) => _onRoomClosed(event.reason),
+      );
   }
 
   void _onSenpaiJoined() {
@@ -428,7 +430,7 @@ class SessionController extends _$SessionController {
     unawaited(finish());
   }
 
-  void _onRoomClosed() {
+  void _onRoomClosed(DisconnectReason? reason) {
     if (_finishing || state.phase == SessionPhase.finished || state.phase == SessionPhase.failed) {
       return;
     }
@@ -441,6 +443,20 @@ class SessionController extends _$SessionController {
       );
       return;
     }
+
+    // **先輩は部屋に居るのに部屋が閉じた = こちらの接続が切れた。**
+    // 正常な終わりは先輩の退室が先に届く(`_onSenpaiLeft`)ので、ここへは来ない。
+    //
+    // 画面はこのあと祝福へ進むだけで、生徒にも**こちらにも何も残らない**。
+    // 「途中でブチッと切れた」を後から追えるように、切れた理由と残り時間だけ記録する。
+    Telemetry.report(
+      DegradationEvent.sessionDropped(
+        sessionId: activeSessionId,
+        reason: reason?.name ?? 'unknown',
+        remainingSeconds: state.remainingSeconds,
+        phase: state.phase.name,
+      ),
+    );
     unawaited(finish());
   }
 
