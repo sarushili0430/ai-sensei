@@ -341,6 +341,30 @@ void main() {
       expect(decoration.boxShadow, isEmpty);
     });
 
+    /// **先輩が部屋を出るのを待たない。**
+    ///
+    /// 待つ作りだったころ、agent は「わかった」を受けてから復習問題(LLM。数十秒)を
+    /// 作り、作り終えても部屋に残っていた(`session.close()` は声を畳むだけ)。
+    /// こちらは先輩の退室を待っていたので、互いに待って画面が止まる。しかも
+    /// 「わかった」の直後は「わかった」も × も OSの戻るも塞いであるので、
+    /// **出口がひとつも無い画面**が残り時間ぶん続いた。
+    testWidgets('「わかった」が届いたら、先輩の退室を待たずに到達として降りる', (
+      WidgetTester tester,
+    ) async {
+      final FakeSessionController controller = await pumpSession(
+        tester,
+        teaching(<String>['D = 9 - 8 = 1']),
+      );
+
+      await tester.tap(find.text(ja.sessionUnderstood));
+      await tester.pump();
+
+      expect(controller.controlCalls, hasLength(1));
+      expect(controller.finishCalls, 1);
+      // 降り方は到達。残り時間で降りた回と、祝福画面の見せるものが違う。
+      expect(controller.lastEnding, SessionEnding.understood);
+    });
+
     /// 送れていないので先輩はまだ喋っている。掛け金を立てたままにすると
     /// 「わかった」も × も無効のまま「声を止めたよ」だけが出て、**時間切れまで
     /// 何も押せない画面**になる。回線が一瞬切れただけでそこへ落ちる。
@@ -362,6 +386,9 @@ void main() {
 
       expect(controller.controlCalls, hasLength(1));
       expect(controller.snapshot.isUnderstood, isFalse);
+      // 届いていないので降りない。降りると、先輩が喋り続けている会話を
+      // 到達として畳んでしまう。
+      expect(controller.finishCalls, 0);
       // 「声を止めたよ」は出さない。止まっていないので。
       expect(find.text(ja.sessionVoiceStopped), findsNothing);
       // もう一度押せる = 出口が残っている。
@@ -1007,6 +1034,7 @@ class FakeSessionController extends SessionController {
   final List<PerformRpcParams> controlCalls = <PerformRpcParams>[];
   int notificationRetries = 0;
   int finishCalls = 0;
+  SessionEnding? lastEnding;
 
   SessionState get snapshot => state;
 
@@ -1056,6 +1084,7 @@ class FakeSessionController extends SessionController {
   @override
   Future<void> finish({SessionEnding? ending}) async {
     finishCalls += 1;
+    lastEnding = ending;
   }
 
   /// 板書が1行増えた、を再現する。

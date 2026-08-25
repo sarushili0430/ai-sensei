@@ -27,6 +27,7 @@ import { boardCloseReasonFor, createAnthropicLessonClient } from "./lesson.ts";
 import { JobLogger } from "./log.ts";
 import { runPlanSession } from "./plan-session.ts";
 import { buildPracticeProblem } from "./practice.ts";
+import { leaveRoom } from "./room-exit.ts";
 import {
   type LessonTurn,
   asksForBoard,
@@ -469,7 +470,7 @@ export default defineAgent({
     unregisterControl();
 
     // 会話はここで終わり。カルテ生成(数秒かかる)を待たせないよう、
-    // 先に部屋を閉じる。開けたままだと上限時間を超えて話し続けられてしまう。
+    // 先に声のパイプラインを閉じる。開けたままだと上限時間を超えて話し続けられてしまう。
     const endedAt = new Date();
     await session.close().catch(() => undefined);
 
@@ -478,6 +479,13 @@ export default defineAgent({
     // セッションを閉じたあとに送るのは、締めの封筒より先に声を止めたいから
     // (`sendText` が詰まっても、生徒には「先輩が喋り続ける」に見えない)。
     await board?.close(boardCloseReasonFor(endedReason));
+
+    // **ここで部屋を出る。**下の復習問題(LLM。数十秒)より先に(`leaveRoom`)。
+    //
+    // 「わかった」の直後は画面の出口を全部塞いである(`session_screen.dart`)ので、
+    // 生成のあいだ部屋に残ると、生徒は**何も押せない画面**を見せられる。
+    // それが実機で出た「わかったを押すと止まる」の正体だった。
+    await leaveRoom(ctx.room, log);
 
     const transcript = collector.all;
     log.info("conversation_ended", {
@@ -494,9 +502,9 @@ export default defineAgent({
      * (#172 の決定13)。`taught.reason` を見ないのは、押されたのが授業ループの中とは
      * 限らないため(縮退して会話へ落ちたあとでも押せる)。合図そのものが唯一の正。
      *
-     * **部屋はもう閉じている。**アプリは祝福画面へ進んでいて、この生成を待っていない
-     * (#172 の決定14)。ここで数十秒かかっても、生徒の画面は止まらない。
-     * 最初の接触は3日後の通知。
+     * **部屋はもう出てある**(上の `leaveRoom`)。アプリは祝福画面へ進んでいて、
+     * この生成を待っていない(#172 の決定14)。ここで数十秒かかっても、
+     * 生徒の画面は止まらない。最初の接触は3日後の通知。
      */
     const practiceStartedAt = Date.now();
     const practiceProblem =

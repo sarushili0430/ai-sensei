@@ -13,6 +13,7 @@ import {
 import type { AgentConfig } from "./config.ts";
 import { type PlanSessionContext, remainingSeconds } from "./context.ts";
 import type { JobLogger } from "./log.ts";
+import { leaveRoom } from "./room-exit.ts";
 import {
   type PlanTurnInspection,
   buildTemplatePlan,
@@ -115,6 +116,14 @@ export async function runPlanSession(input: {
   const endedReason = await ended;
   const endedAt = new Date();
   await session.close().catch(() => undefined);
+
+  // **保存より先に部屋を出る**(`leaveRoom`)。`session.close()` は声を畳むだけで
+  // 参加者としては残るので、残ったまま保存へ進むと、アプリはその間ずっと
+  // 「先輩が出ていくのを待つ」まま止まる(`plan_controller.dart` の `finish`)。
+  // 保存の結果はアプリが計画を読み直して拾う(そのためのポーリング)ので、
+  // ここで待たせる理由が無い。
+  await leaveRoom(ctx.room, log);
+
   const durationSeconds = Math.floor((endedAt.getTime() - startedAt.getTime()) / 1000);
 
   log.info("plan_conversation_ended", {

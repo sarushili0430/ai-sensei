@@ -728,6 +728,18 @@ class SessionController extends _$SessionController {
   }
 
   /// 画面下の「わかった」。本人の発話ではないので、transcript ではなく制御RPCへ送る。
+  ///
+  /// **届いたら、その場で会話を終える。**先輩が部屋を出るのを待たない。
+  /// 待つ作りにしていたころは、押したあと画面が上限時間まで止まっていた:
+  /// agent は「わかった」を受けてから復習問題(LLM。数十秒)を作り、
+  /// **作り終えても部屋を出ない**(部屋が閉じるのを待つ側に回る)。こちらも
+  /// 先輩の退室を待っているので、両方が相手を待つ。しかも「わかった」の直後は
+  /// 「わかった」も × も OSの戻るも塞いである(下の [finish] と `session_screen.dart`)
+  /// ので、生徒は**何も押せない画面に閉じ込められる**。
+  ///
+  /// 待つ理由も無い。この道の agent はもう何も喋らないし(`agent.ts` の
+  /// `lesson_understood`)、復習問題の生成を待たないことは ADR 0009 の決定14
+  /// そのもの(祝福画面の「いま作ってるところ。待たなくて大丈夫。」)。
   Future<void> understood() async {
     if (state.isUnderstood || !_isTalking(state.phase)) return;
 
@@ -767,7 +779,12 @@ class SessionController extends _$SessionController {
           error: error.runtimeType,
         ),
       );
+      return;
     }
+
+    // 届いた。**到達として降りる。**降り方をここで明示するのは、掛け金を戻す
+    // 経路と競っても「わかった」が時間切れに読み替えられないようにするため。
+    await finish(ending: SessionEnding.understood);
   }
 
   /// 類題の「できた / できなかった」。音声と同じ `lk.chat` へ流す。
