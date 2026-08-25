@@ -50,7 +50,7 @@ import {
   problemPhotoFailedBridge,
   registerSessionControl,
 } from "./session-control.ts";
-import { pauseBetweenSteps } from "./speech-pace.ts";
+import { StepPacer } from "./speech-pace.ts";
 import { SpeechPrefetcher } from "./speech-prefetch.ts";
 import { TranscriptCollector } from "./transcript.ts";
 import { observeVoiceMetrics } from "./voice-metrics.ts";
@@ -719,6 +719,11 @@ function lessonRunner(options: TeachOptions, board: BoardDelivery) {
           log,
         });
 
+  // 手順と手順のあいだの間。**足す長さではなく目標**で、実際に黙るのは
+  // そこまでに空いていなかったぶんだけ(`speech-pace.ts`)。授業1回ぶん持つので、
+  // パスをまたいでも起点は引き継がれる。
+  const pacer = new StepPacer({ gapMs: config.LESSON_STEP_PAUSE_MS });
+
   return async (extra: { priorTurns?: readonly LessonTurn[]; maxPasses?: number }) => {
     try {
       return await runLessonLoop({
@@ -755,17 +760,23 @@ function lessonRunner(options: TeachOptions, board: BoardDelivery) {
         // 代償は、作り直し(`defaultMaxRepairAttempts`)の待ちが音声の空白として
         // そのまま出ること。どちらを採るかはW1のドッグフーディングで決める値。
         //
-        // **読み終わったら、ひと呼吸置いてから次へ渡す**(`speech-pace.ts`)。
-        // 再生の終わりで手を離すと、次の行が同じ息で始まって置いていかれる。
+        // **間は、喋り出す前に置く**(`speech-pace.ts`)。板書の行はもう出ている
+        // ので、ここの沈黙はそのまま「いま出た行を目で追う時間」になる。
+        // 読み終わりに置いていたときは、沈黙が終わってから次の行が出ていたので、
+        // 間のあいだ生徒が見ているのは**一つ前の行**だった。
+        //
+        // **音がすぐ出る手順だけ間を置く。**先読みが外れた手順は合成待ち(TTFB)が
+        // そのまま沈黙になるので、そこへ足すと二度目の間になる —— 8/25 の
+        // 「間隔を開けすぎて、文章が途切れになってしまう」はその積み上げ。
+        //
         // 降りたい人は足止めしない — 「わかった」もセッションの終わりも間を切る。
         speak: async (step: BoardStep) => {
-          await sayAndWait(session, step.speech, log, {
-            addToChatCtx: false,
-            // 先読みが間に合っていれば音声を渡す(TTFBの沈黙が消える)。
-            // 間に合っていなければ `null` で、今までどおりここから合成が始まる。
-            audio: prefetcher?.take(step.speech) ?? undefined,
-          });
-          await pauseBetweenSteps(config.LESSON_STEP_PAUSE_MS, [signal, understood]);
+          // 先読みが間に合っていれば音声を渡す(TTFBの沈黙が消える)。
+          // 間に合っていなければ `undefined` で、今までどおりここから合成が始まる。
+          const audio = prefetcher?.take(step.speech) ?? undefined;
+          if (audio !== undefined) await pacer.wait([signal, understood]);
+          await sayAndWait(session, step.speech, log, { addToChatCtx: false, audio });
+          pacer.markSpoken();
         },
         priorTurns: extra.priorTurns,
         maxPasses: extra.maxPasses,

@@ -44,7 +44,7 @@ describe("loadConfig", () => {
   });
 
   // 手順のあいだの間(`speech-pace.ts`)。数字にできない値なので手元で詰められる。
-  it("手順のあいだの間は既定 700ms で、環境変数で詰められる", () => {
+  it("手順のあいだの間は既定値があり、環境変数で詰められる", () => {
     expect(loadConfig(complete).LESSON_STEP_PAUSE_MS).toBe(defaultStepPauseMs);
     expect(loadConfig({ ...complete, LESSON_STEP_PAUSE_MS: "0" }).LESSON_STEP_PAUSE_MS).toBe(0);
     expect(loadConfig({ ...complete, LESSON_STEP_PAUSE_MS: "" }).LESSON_STEP_PAUSE_MS).toBe(

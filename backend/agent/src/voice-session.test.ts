@@ -138,14 +138,22 @@ describe("ttsInstructionsForLocale", () => {
     }
   });
 
-  // 「ちょっと早く喋りすぎ。文章と文章の間が早すぎる」(8/25 のドッグフーディング)。
-  // 手順のあいだの間は `speech-pace.ts` が実時間で持つが、**1手順の中の文と文**は
-  // ここでしか効かない。どちらのロケールでも落とさない。
-  it("文と文のあいだを空けるよう、どのロケールでも指示する", () => {
+  // 「ちょっと早く喋りすぎ」(8/25 のドッグフーディング)。どちらのロケールでも落とさない。
+  it("急かさずに読むよう、どのロケールでも指示する", () => {
     for (const locale of ["ja", "en"] as const) {
       expect(ttsInstructionsForLocale(locale)).toContain(sentencePacingInstruction);
     }
     expect(liveTtsSystemInstruction("ja")).toContain(sentencePacingInstruction);
+  });
+
+  /**
+   * **間の長さはモデルに頼まない。**渡す単位は経路で違う(通常経路は1文=1リクエスト、
+   * 先読みは手順ぜんぶで1リクエスト)ので、「はっきり間を空けろ」と書くと継ぎ目の
+   * 長さが揃わず、途切れて聞こえる —— 8/25 2回目の
+   * 「間隔を開けすぎて、文章が途切れになってしまう」。実時間の間は `speech-pace.ts`。
+   */
+  it("間の長さそのものは指示しない", () => {
+    expect(sentencePacingInstruction).not.toMatch(/clear pause|long enough/i);
   });
 
   it("日本語のときだけ、混ざった英単語の読み方を指示する", () => {
@@ -274,8 +282,8 @@ describe("createVoiceSession", () => {
 /* 先読み合成                                                                  */
 /* -------------------------------------------------------------------------- */
 
-/** 何を渡されたかだけを覚えるTTS。音は作らない。 */
-function recordingTts() {
+/** 何を渡されたかだけを覚えるTTS。[frames] を渡さなければ音は作らない。 */
+function recordingTts(frames: readonly unknown[] = []) {
   const asked: string[] = [];
   const tts = {
     asked,
@@ -284,7 +292,8 @@ function recordingTts() {
       return {
         close: () => undefined,
         async *[Symbol.asyncIterator]() {
-          // 実装は `SynthesizedAudio` を流すが、ここで見たいのは入力の文字列だけ。
+          // 実装は `SynthesizedAudio` を流すが、多くのテストで見たいのは入力の文字列だけ。
+          for (const frame of frames) yield { frame };
         },
       };
     },
@@ -324,5 +333,27 @@ describe("createSpeechSynthesizer", () => {
     pending.cancel();
 
     expect(await pending.frames).toBeNull();
+  });
+
+  /**
+   * **音声ゼロを「成功した先読み」にしない。**空を `say(text, { audio })` へ渡すと
+   * SDKは再生し終えたと見なして即座に返るので、**その手順だけ声が出ないまま板書が
+   * 次の行へ進む** —— 8/25 の「音声が一部再生されずに次へ進んでしまう」はこの形。
+   * 生成モデルのTTSは、落ちずに音声ゼロを返しうる。
+   */
+  it("1フレームも返らなければ、成功として渡さない", async () => {
+    const tts = recordingTts();
+
+    await expect(
+      createSpeechSynthesizer({ tts, locale: "ja" })("ここ、見て。").frames,
+    ).resolves.toBeNull();
+  });
+
+  it("フレームが返れば、そのまま渡す", async () => {
+    const tts = recordingTts(["frame-a", "frame-b"]);
+
+    await expect(
+      createSpeechSynthesizer({ tts, locale: "ja" })("ここ、見て。").frames,
+    ).resolves.toEqual(["frame-a", "frame-b"]);
   });
 });

@@ -2,12 +2,17 @@ import { describe, expect, it, vi } from "vitest";
 import { type PendingSpeech, SpeechPrefetcher } from "./speech-prefetch.ts";
 
 /**
- * 手順ごとの読み上げの**先読み**。見たいのは4つ:
+ * 手順ごとの読み上げの**先読み**。見たいのは5つ:
  *
  *   1. 下流が読み上げで止まっている間も、先読みは先へ進むこと(これが本体)
  *   2. 渡すのは**完成したものだけ**で、間に合わなければ今までどおりの経路に落ちること
  *   3. チャンクは1つも足さず・減らさず・順番どおりに素通しすること
  *   4. 走査が壊れても、配送は止まらないこと
+ *   5. **`take` は配送順に呼ばれる。**パスの最初の手順は先読みしていないので、
+ *      その1回目が後ろの先読みを掴んで道連れにしないこと
+ *
+ * 5 のために、以下のテストは実際の授業と同じ順で `take` を呼ぶ —— 最初の手順
+ * (= 必ず外れる1回)から。ここを飛ばすと、テストだけが通る形になる。
  */
 
 type Frame = { readonly id: string };
@@ -120,6 +125,7 @@ describe("SpeechPrefetcher", () => {
     calls[0]?.finish([frame("a"), frame("b")]);
     await settle();
 
+    expect(prefetcher.take("まず一言。")).toBeNull();
     expect(await readFrames(prefetcher.take("次はここ。"))).toEqual([frame("a"), frame("b")]);
   });
 
@@ -134,6 +140,7 @@ describe("SpeechPrefetcher", () => {
 
     await collect(prefetcher.observe(chunksOf(lessonJson(["まず一言。", "次はここ。"]))));
 
+    prefetcher.take("まず一言。");
     expect(prefetcher.take("次はここ。")).toBeNull();
     expect(calls[0]?.cancelled()).toBe(true);
   });
@@ -146,6 +153,7 @@ describe("SpeechPrefetcher", () => {
     calls[0]?.fail();
     await settle();
 
+    prefetcher.take("まず一言。");
     expect(prefetcher.take("次はここ。")).toBeNull();
   });
 
@@ -158,6 +166,7 @@ describe("SpeechPrefetcher", () => {
     calls[0]?.finish([frame("a")]);
     await settle();
 
+    prefetcher.take("まず一言。");
     expect(prefetcher.take("作り直した別の文。")).toBeNull();
   });
 
@@ -227,6 +236,7 @@ describe("SpeechPrefetcher", () => {
     // 取り出すと枠が空き、次の手順が走り出す。
     calls[0]?.finish([frame("a")]);
     await settle();
+    prefetcher.take("1つめ。");
     prefetcher.take("2つめ。");
     expect(calls.map((call) => call.text)).toEqual(["2つめ。", "3つめ。", "4つめ。"]);
   });
@@ -244,6 +254,8 @@ describe("SpeechPrefetcher", () => {
     );
     expect(calls.map((call) => call.text)).toEqual(["2つめ。", "3つめ。"]);
 
+    // 1つめは先読みしていない(必ず外れる1回)。
+    expect(prefetcher.take("1つめ。")).toBeNull();
     // 2つめは作り直されて別の文で配送された(先読みは一致しない)。
     expect(prefetcher.take("作り直した2つめ。")).toBeNull();
     calls[1]?.finish([frame("c")]);
@@ -266,7 +278,53 @@ describe("SpeechPrefetcher", () => {
     await collect(prefetcher.observe(chunksOf(lessonJson(["続き。", "その次。"]))));
 
     expect(calls[0]?.cancelled()).toBe(true);
+    prefetcher.take("続き。");
     expect(prefetcher.take("次はここ。")).toBeNull();
+  });
+
+  /**
+   * **パスの最初の手順で `take` を呼んでも、後ろの先読みを掴ませない。**
+   *
+   * 短い相づちは1つの板書に二度出る(「うん、そうそう。」)。`findIndex` は
+   * 後ろのぶんを掴むので、掴ませると手前の本命が道連れで捨てられ、
+   * **そのパスの残りが全部先読みなしになる** = 手順ごとにTTFBの沈黙が戻る。
+   */
+  it("最初の手順の take は、同じ文が後ろにあっても先読みを掴まない", async () => {
+    const { calls, synthesize } = fakeSynthesizer();
+    const prefetcher = new SpeechPrefetcher({ synthesize, lookahead: 2 });
+
+    // 1つめと3つめが同じ文。
+    await collect(
+      prefetcher.observe(chunksOf(lessonJson(["うん、そうそう。", "2つめ。", "うん、そうそう。"]))),
+    );
+    expect(calls.map((call) => call.text)).toEqual(["2つめ。", "うん、そうそう。"]);
+    for (const call of calls) call.finish([frame(call.text)]);
+    await settle();
+
+    // 最初の手順は先読みしていない。ここで3つめのぶんを掴むと、2つめが捨てられる。
+    expect(prefetcher.take("うん、そうそう。")).toBeNull();
+
+    expect(await readFrames(prefetcher.take("2つめ。"))).toEqual([frame("2つめ。")]);
+    expect(calls[0]?.cancelled()).toBe(false);
+  });
+
+  /**
+   * **フレーム0本を「完成した音声」として渡さない。**空を `say(text, { audio })` へ
+   * 渡すとSDKは再生し終えたと見なして即座に返るので、その手順だけ声が出ないまま
+   * 板書が次へ進む(8/25「音声が一部再生されずに次へ進んでしまう」)。
+   */
+  it("フレームが0本なら渡さない", async () => {
+    const { calls, synthesize } = fakeSynthesizer();
+    const warn = vi.fn();
+    const prefetcher = new SpeechPrefetcher({ synthesize, log: { info: vi.fn(), warn } });
+
+    await collect(prefetcher.observe(chunksOf(lessonJson(["まず一言。", "次はここ。"]))));
+    calls[0]?.finish([]);
+    await settle();
+
+    prefetcher.take("まず一言。");
+    expect(prefetcher.take("次はここ。")).toBeNull();
+    expect(warn).toHaveBeenCalledWith("board_speech_prefetch_empty", expect.anything());
   });
 
   it("cancelAll で抱えているぶんを捨てる", async () => {

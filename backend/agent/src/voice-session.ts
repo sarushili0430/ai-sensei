@@ -220,7 +220,19 @@ export function createSpeechSynthesizer(options: {
       }
       // 中断されたぶんは渡さない。**途中まで**の音声を喋らせるくらいなら、
       // 通常経路で最初から合成し直したほうが授業として正しい。
-      return abort.signal.aborted ? null : collected;
+      if (abort.signal.aborted) return null;
+      // **1フレームも返ってこなかったものを「成功した先読み」にしない。**
+      //
+      // 空の音声を `say(text, { audio })` へ渡すと、SDKはそれを**再生し終えた**と
+      // 見なして即座に返る(1.6.1 `agent_activity.ts` は `audio` があるとTTS推論ごと
+      // 省き、渡されたストリームを流すだけ)。つまり**その手順だけ声が出ないまま
+      // 板書が次の行へ進む** —— 8/25 のドッグフーディングで出た
+      // 「音声が一部再生されずに次へ進んでしまう」はこの形。
+      //
+      // 生成モデルのTTSは、落ちずに音声ゼロを返しうる(安全側の打ち切り・空応答)。
+      // `null` を返せば通常経路が同じ文をもう一度合成するので、最悪でも
+      // 「先読みが外れた手順」と同じ待ちに落ちるだけで、**無音では進まない**。
+      return collected.length === 0 ? null : collected;
     })().catch(() => null);
 
     return { frames, cancel: () => abort.abort() };
