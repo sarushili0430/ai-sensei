@@ -5,7 +5,13 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { type AgentConfig, loadConfig } from "./config.ts";
 import { CachedInstructionsLLM } from "./conversation-llm.ts";
 import { GeminiLiveTTS } from "./gemini-live-tts.ts";
-import { cartesiaTtsModels, geminiTtsModels, ttsInstructionsForLocale } from "./senpai-voice.ts";
+import {
+  cartesiaTtsModels,
+  geminiTtsModels,
+  liveTtsSystemInstruction,
+  sentencePacingInstruction,
+  ttsInstructionsForLocale,
+} from "./senpai-voice.ts";
 import {
   createCartesiaTts,
   createGeminiTts,
@@ -130,6 +136,16 @@ describe("ttsInstructionsForLocale", () => {
         "Do not omit, add, translate, or answer anything",
       );
     }
+  });
+
+  // 「ちょっと早く喋りすぎ。文章と文章の間が早すぎる」(8/25 のドッグフーディング)。
+  // 手順のあいだの間は `speech-pace.ts` が実時間で持つが、**1手順の中の文と文**は
+  // ここでしか効かない。どちらのロケールでも落とさない。
+  it("文と文のあいだを空けるよう、どのロケールでも指示する", () => {
+    for (const locale of ["ja", "en"] as const) {
+      expect(ttsInstructionsForLocale(locale)).toContain(sentencePacingInstruction);
+    }
+    expect(liveTtsSystemInstruction("ja")).toContain(sentencePacingInstruction);
   });
 
   it("日本語のときだけ、混ざった英単語の読み方を指示する", () => {
