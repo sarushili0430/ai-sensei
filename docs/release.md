@@ -131,7 +131,9 @@ pnpm --filter @ai-sensei/api tail:production
       「セッション無制限と穴の復習。…」から `app_store_listing.md` §7 の文へ差し替え(**無制限は嘘になる**)、
       ② 英語(en-US)のローカリゼーションを追加(表示名・説明は同 §7)、
       ③ サブスクリプショングループの表示名 `かたるて Premium` → `カタルテ Premium`(英語 `Katarute Premium`)。
-      価格と審査メモは反映済みなので触らない
+      価格と審査メモは反映済みなので触らない。④ 審査用スクリーンショットを
+      `docs/store/iap-review/paywall-ja.png`(現行UI・確定価格)に差し替える(古い1枚を消してから上げる。
+      API では既存の1枚がある商品に新しい枠を取れなかった)
 - [ ] 3商品の**「販売準備完了」までの残り**は、アプリの最初のバージョンと一緒に審査へ出すこと
       (状態 READY_TO_SUBMIT = 提出待ち)。
       **販売地域が日本と米国だけ**(`available_in_new_territories: false`)。アプリ本体を全地域で出すなら、

@@ -224,7 +224,13 @@ First release.
 | 説明 ja(45) | `毎日つづけて何問も教わる。1週間ごとの自動更新。` | `毎日つづけて何問も教わる。1か月ごとの自動更新。` | `毎日つづけて何問も教わる。1年ごとの自動更新。月あたり最も割安。` |
 | 表示名 en-US(30) | `Katarute Premium Weekly` | `Katarute Premium Monthly` | `Katarute Premium Yearly` |
 | 説明 en-US(45) | `Several lessons a day. Renews every week.` | `Several lessons a day. Renews every month.` | `Several lessons a day. Renews every year.` |
-| 審査用スクリーンショット | ペイウォール画面(3商品とも同じ1枚。登録済み) | 同左 | 同左 |
+| 審査用スクリーンショット | `docs/store/iap-review/paywall-ja.png`(3商品とも同じ1枚) | 同左 | 同左 |
+
+審査用スクリーンショットは現行UIのペイウォールを確定価格で描いたもの
+(`cd apps/mobile && fvm flutter test --dart-define=TERMS_URL=https://ubiqy.jp/terms/ --dart-define=PRIVACY_POLICY_URL=https://ubiqy.jp/privacy/ tool/generate_iap_review_screenshot.dart`
+で再生成。英語版は `paywall-en.png`)。App Store Connect に入っているのは 8月の古い1枚で、
+**API では差し替えられなかった**(既存の1枚がある商品には新しい枠を取れない)ので、
+各商品の「審査に関する情報」で古い画像を消してからこのファイルを上げる。
 
 **「セッション無制限」とは書かない。** `PREMIUM_SECONDS_PER_DAY` のフェアユース上限があるので嘘になる
 (`strings.dart` の `paywallEverydayQuestions` と同じ判断)。旧説明文にはこれが入っていた。
