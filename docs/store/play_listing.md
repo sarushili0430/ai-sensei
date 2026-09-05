@@ -115,7 +115,7 @@ Premium — 毎日、続けて何問も／穴の復習と履歴／先輩のあ�
 ■ 写真と音声の扱い
 ノートの写真と、会話の文字起こしを、カルテを作るために保存します。匿名の端末IDにひもづき、氏名やメールアドレスは取得しません。広告は出しませんし、他社サービスをまたぐ追跡もしません。
 
-あわせて、説明の分かりにくさや誤りを見つけてサービスを改善するためにも使います。無料プランではこの利用が前提ですが、Premium ではアプリの設定からオフにできます。詳しくはプライバシーポリシーをご覧ください。
+あわせて、説明の分かりにくさや誤りを見つけてサービスを改善するためにも使います（無料・Premium 共通）。この利用の停止やデータの削除は、サポート窓口に端末IDを添えて求められます。詳しくはプライバシーポリシーをご覧ください。
 
 ■ 先輩が間違えることもあります
 ありえます。だからこそ「教えて終わり」にしていません。あなたが教え返すときに説明が破綻することで、先輩の誤読が表に出ます。気になった説明・板書・質問は、アプリの設定から報告できます。
@@ -176,7 +176,7 @@ Prices and any free period are as shown on Google Play. Subscriptions renew auto
 ■ Photos and audio
 Photos of your notes and transcripts of your conversations are stored to build your karte. They are tied to an anonymous device ID; we do not collect your name or email address. There are no ads and no cross-service tracking.
 
-They are also used to find unclear or incorrect explanations and improve the service — a condition of the free plan, which Premium can turn off in settings. See the privacy policy for details.
+They are also used to find unclear or incorrect explanations and improve the service, on the free plan and on Premium alike. You can ask us to stop that use or delete your data through the support page, with your device ID. See the privacy policy for details.
 
 ■ Your senpai can be wrong
 It can — which is exactly why we do not stop at teaching. When you explain it back, a misread on the AI's part shows up as an explanation that does not hold together. Anything it says can be reported from settings.
@@ -240,8 +240,8 @@ fvm flutter test tool/generate_app_icon.dart
 | 利用規約 | `https://ubiqy.jp/terms/` |
 
 アプリ側も同じものを `--dart-define`(`PRIVACY_POLICY_URL` / `TERMS_URL`)で受ける。
-`apps/lp/public/{privacy,terms}/` の2ページとの正/副は未決
-([`../ci/store-setup.md`](../ci/store-setup.md) 0-2)。
+`https://ubiqy.jp/` は `apps/lp` をそのまま配信したものなので、
+`apps/lp/public/{privacy,terms}/` が正(英語版は `/en/privacy/` と `/en/terms/`)。
 
 ## まだ埋まっていないもの
 
@@ -249,4 +249,6 @@ fvm flutter test tool/generate_app_icon.dart
   `カタルテ` に直す。端末の表示名(`android:label` / `CFBundleDisplayName`)は
   `カタルテ` に修整済み
 - サポートURL(`SUPPORT_EMAIL` と同じ窓口を指す1枚)
-- 定期購入の価格と期間(`pivot_plan_v1.md` §6-2。原価の実測後)
+- ~~定期購入の価格と期間~~ —— 確定(週 ¥980 / 月 ¥2,980 / 年 ¥29,800。
+  [`../business/pricing_v1.md`](../business/pricing_v1.md))。Play Console の定期購入は
+  この3プランを同額で作る([`../ci/store-setup.md`](../ci/store-setup.md) 2-7)

@@ -12,6 +12,8 @@
 /// 出力(`docs/store/screenshots/`):
 ///   plain/     1179x2556 端末フレームなしの素のまま。Shipaton提出用の指定サイズ
 ///   captioned/ 1290x2796 App Store Connect の 6.9インチ必須サイズ。見出し付き
+///   captioned-65/ 1284x2778 App Store Connect の 6.5インチ。見出し付き(428pt幅で描画)
+///   ipad-13/   2064x2752 App Store Connect の iPad 13インチ必須サイズ。見出し付き(1032pt幅で描画)
 ///   play/      1080x1920 Google Play の「スマートフォン」。見出し付き
 ///   play-tablet-7/  1200x1920 Google Play の「7インチ タブレット」(600dp幅で描画)
 ///   play-tablet-10/ 1600x2560 Google Play の「10インチ タブレット」(800dp幅で描画)
@@ -94,6 +96,27 @@ const List<_Frame> _frames = <_Frame>[
     logical: Size(430, 932),
     pixels: Size(1290, 2796),
     topRatio: 0.185,
+  ),
+  // App Store Connect の 6.5インチ(1284x2778 か 1242x2688)。6.9インチを入れて
+  // いれば任意だが、**6.5インチのタブに 1290x2796 を落とすと寸法エラー**になる
+  // ("Screenshots dimensions should be: 1242 × 2688px, ... 1284 × 2778px")ので、
+  // 専用の枚を持つ。論理 428x926 = iPhone 14 Pro Max の点数。×3 でちょうど。
+  _Frame(
+    dir: 'captioned-65',
+    logical: Size(428, 926),
+    pixels: Size(1284, 2778),
+    topRatio: 0.185,
+  ),
+  // App Store Connect の iPad 13インチ必須サイズ(iPad Pro 13" M4。12.9インチの
+  // 2048x2732 でも通るが、ASC が最初に求めるのはこちら)。アプリは iPad にも
+  // 入る(TARGETED_DEVICE_FAMILY = 1,2)ので、この枠が無いと提出できない。
+  // 論理 1032x1376 = ちょうど @2x。タブレット幅のレイアウトで本当に描く
+  // (play-tablet-10 と同じ理由。iPhone の絵を引き伸ばさない)。
+  _Frame(
+    dir: 'ipad-13',
+    logical: Size(1032, 1376),
+    pixels: Size(2064, 2752),
+    topRatio: 0.135,
   ),
   // Google Play「スマートフォン」。9:16 ちょうど。
   _Frame(

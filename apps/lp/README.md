@@ -12,8 +12,11 @@ apps/lp/
     beta/index.html      クローズドベータの参加手順(日本語)
     en/beta/index.html   同(English)
     support/index.html   サポート窓口(日本語)。両ストアのサポートURLがここを指す
-    terms/index.html     利用規約(雛形)
-    privacy/index.html   プライバシーポリシー(雛形)
+    en/support/index.html 同(English)
+    terms/index.html     利用規約(雛形。運営者名などの `fill` が残っている)
+    en/terms/index.html  同(English。日本語版が正で、食い違えば日本語が優先と明記)
+    privacy/index.html   プライバシーポリシー(雛形。同上)
+    en/privacy/index.html 同(English)
     styles.css           全ページで共有する唯一のスタイルシート
 ```
 
@@ -117,20 +120,26 @@ GitHub App からpushできないため)。
 - [ ] 公開ドメイン → `<link rel="alternate" hreflang>` と `og:url` を絶対URLに直す(いまは相対)
 - [ ] **`public/privacy/` と `public/terms/` は雛形。** 弁護士のレビューを受けて差し替える。
       各ページ冒頭の `.legal-draft` ブロックと、黄色でマークした `<span class="fill">` が
-      未確定の箇所(運営者名・所在地・お問い合わせ先・制定日・保存期間・管轄裁判所)。
+      未確定の箇所。**2026-09-05 に実装へ合わせて書き直した**(サービスの説明を
+      ADR 0009 の一本道に、委託先に Google (Gemini TTS) を足して Deepgram を文字起こしだけに、
+      保存期間・年齢・お問い合わせ先を実値に)。残っている `fill` は
+      **運営者名・所在地・管轄裁判所・制定日・返信の目安**だけ。
       **`fill` が1つでも残っているうちは公開しない**
-- [ ] **公開する正を1つに決める。** アプリとストアの申告は
-      `https://ubiqy.jp/privacy/` / `https://ubiqy.jp/terms/` を指している
-      (`PRIVACY_POLICY_URL` / `TERMS_URL`・[`../../docs/ci/store-setup.md`](../../docs/ci/store-setup.md) 0-2)。
-      この2ページを残すなら**中身を一致させる**か、そちらへのリンクに置き換える。
-      文面が食い違うと、申告と実物のずれとして審査で見られる
+- [x] ~~公開する正を1つに決める~~ —— **`https://ubiqy.jp/` はこの `apps/lp` そのもの**
+      (2026-09-05 に確認)。アプリとストアの申告が指す `https://ubiqy.jp/privacy/` /
+      `https://ubiqy.jp/terms/` は、このリポジトリの `public/privacy/` / `public/terms/` を
+      deploy したもの。つまり**ここを直して deploy すれば申告先も直る**。別の正は無い
 - [ ] **ストアの申告と文面を突き合わせる。** 改善のための利用を書いた以上、
       App Privacy(App Store Connect)とデータセーフティ(Google Play Console)の
       利用目的に「分析」を足す必要がある。いまの申告は「アプリの機能」だけなので、
       文面だけ直すと審査で食い違いを指摘される
-- [ ] **Premium の「改善利用オフ」トグルを実装する。** 規約に書いた以上、
-      アプリに無ければ嘘になる。プライバシーポリシー第4条・利用規約第5条
-- [ ] 規約とポリシーの英語版。米国配信は Shipaton の参加要件なので、日本語だけでは足りない
+- [x] ~~Premium の「改善利用オフ」トグルを実装する~~ —— **約束のほうを外した**
+      (2026-09-05)。改善のための利用は無料・Premium 共通とし、停止と削除は
+      サポート窓口から端末IDで求められる、という書き方に統一(規約第5条・
+      ポリシー第4条・LP日英のFAQ・Play の掲載文)。トグルを作るなら、先にこの4か所を戻すこと
+- [x] ~~規約とポリシーの英語版~~ —— `public/en/terms/` と `public/en/privacy/` を追加
+      (2026-09-05)。**日本語版が正**で、食い違えば日本語が優先すると英語側に明記してある。
+      日本語を直したら英語も直すこと(片方だけ直すと、この但し書きが効いてしまう)
 - [ ] **Googleフォーム側で「端末ID」と「返信先のメールアドレス」の必須を外す。**
       ページ側はこの2つを任意にしているので、**空で送られた回答に Google が 400 を返し、
       no-cors のせいで画面には「送信しました」と出たまま中身だけ捨てられます**
@@ -146,7 +155,10 @@ GitHub App からpushできないため)。
       アプリの「設定 > 気になった内容を報告する」はこの `mailto:` で、
       **空だと行ごと消えます**(`settings_screen.dart` の `SupportLinks.hasSupportEmail`)。
       審査メモはこの導線があることを前提に書いてあるので、空のまま出さないこと
-- [ ] `public/support/` の英語版。規約・ポリシーの英語版と同じ扱い(いまは日本語へ送っている)
+- [x] ~~`public/support/` の英語版~~ —— `public/en/support/` を追加(2026-09-05)。
+      フォームは日本語版と同じ Google フォームへ投げる。**`<option>` の `value` は
+      日本語のまま**(Google フォームは選択肢を文字列一致で見るため)。
+      App Store Connect の英語ロケールのサポートURLには `https://ubiqy.jp/en/support/` を入れる
 - [ ] `public/404.html` → 足したら `wrangler.jsonc` の `not_found_handling` を `"404-page"` に
 - [ ] **クローズドテストのトラックにリリースが載ったら、`public/beta/` と
       `public/en/beta/` のステップ2を押せるようにする。** 具体的には、`<li>` から
