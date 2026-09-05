@@ -44,10 +44,10 @@ import {
   canStartSessionToday,
   hasPremiumAccess,
   limitReachedAllowance,
-  maxSessionStartsPerDay,
   minimumSessionSeconds,
   secondsPerDay,
   sessionMaxSeconds,
+  sessionStartsPerDay,
   startedAllowance,
   tokenGraceSeconds,
 } from "../lib/entitlement.ts";
@@ -168,6 +168,7 @@ sessionsRoute.post("/", async (c) => {
     !canStartSessionToday({
       remainingSecondsToday,
       sessionsToday: usage.sessionsStarted,
+      maxStartsPerDay: sessionStartsPerDay({ user, now: at, limits }),
     })
   ) {
     const limitReached = limitReachedAllowance({ user, now: at, limits });
@@ -787,7 +788,9 @@ sessionsRoute.post("/:sessionId/start", async (c) => {
     secondsPerDay: secondsPerDay({ user, now: at, limits }),
     sessionMaxSeconds: sessionMaxSeconds({ user, now: at, limits }),
     minimumSessionSeconds,
-    maxStartsPerDay: maxSessionStartsPerDay,
+    // 無料の「1日1回」もここで守る。秒数だけでは、途中で降りた人に残った
+    // 残高で2本目が始められてしまう。
+    maxStartsPerDay: sessionStartsPerDay({ user, now: at, limits }),
   });
   if (!started.started) {
     const limitReached = limitReachedAllowance({ user, now: at, limits });
@@ -800,6 +803,7 @@ sessionsRoute.post("/:sessionId/start", async (c) => {
     maxSeconds: started.maxSeconds,
     remainingSecondsToday: started.remainingSecondsToday,
     sessionsToday: started.sessionsToday,
+    maxStartsPerDay: sessionStartsPerDay({ user, now: at, limits }),
   });
 
   const context: SessionContext = session.context ?? {

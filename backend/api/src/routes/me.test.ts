@@ -186,7 +186,7 @@ describe("GET /v1/me/progress", () => {
       last_session_date: null,
     });
     expect(body.limits.lesson_allowed_today).toBe(true);
-    expect(body.limits.remaining_seconds_today).toBe(1200);
+    expect(body.limits.remaining_seconds_today).toBe(600);
   });
 
   /**
@@ -209,14 +209,21 @@ describe("GET /v1/me/progress", () => {
     });
   });
 
-  it("無料ユーザーが今日の1200秒を仮押さえしたあとは授業不可を返す", async () => {
+  it("無料ユーザーが今日の1回を仮押さえしたあとは授業不可を返す", async () => {
     await startedSession("ses_today", { status: "open" });
 
     const body = (await (await get("/v1/me/progress")).json()) as ProgressResponse;
     expect(body.limits.lesson_allowed_today).toBe(false);
   });
 
+  /**
+   * 数え方は「完了は実績・進行中は仮押さえ」。**Premiumで見る**のは、
+   * 無料が1日1回になり、2本目が並ぶ日が存在しなくなったため
+   * (無料でこの状況を作ると、残高ではなく回数で止まってしまい、
+   *  ここで確かめたい足し算が見えない)。
+   */
   it("完了実績と進行中の仮押さえを両方引いて残り時間を返す", async () => {
+    await makePremium();
     await startedSession("ses_completed", {
       status: "completed",
       started_at: "2026-08-03T13:00:00.000Z",
@@ -231,20 +238,22 @@ describe("GET /v1/me/progress", () => {
     });
 
     const body = (await (await get("/v1/me/progress")).json()) as ProgressResponse;
-    expect(body.limits.remaining_seconds_today).toBe(300);
+    // 3600 −(実績300 + 仮押さえ600)
+    expect(body.limits.remaining_seconds_today).toBe(2700);
     expect(body.limits.lesson_allowed_today).toBe(true);
   });
 
   it("未完了のまま寿命を過ぎた回は、仮押さえ額を実績として自動精算する", async () => {
     await startedSession("ses_expired", {
       started_at: "2026-08-03T13:00:00.000Z",
-      max_seconds: 600,
+      max_seconds: 300,
     });
 
     const body = (await (await get("/v1/me/progress")).json()) as ProgressResponse;
-    expect(body.limits.remaining_seconds_today).toBe(600);
+    // 600 − 仮押さえ300。**引かれること**が要点なので、日次枠より小さい額で見る。
+    expect(body.limits.remaining_seconds_today).toBe(300);
     expect(await services.repository.getSession("ses_expired")).toMatchObject({
-      duration_seconds: 600,
+      duration_seconds: 300,
       quota_settled_at: "2026-08-03T13:24:07.000Z",
     });
   });
@@ -260,7 +269,7 @@ describe("GET /v1/me/progress", () => {
     });
 
     const body = (await (await get("/v1/me/progress")).json()) as ProgressResponse;
-    expect(body.limits.remaining_seconds_today).toBe(1200);
+    expect(body.limits.remaining_seconds_today).toBe(600);
     expect(body.limits.lesson_allowed_today).toBe(true);
   });
 

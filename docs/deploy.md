@@ -279,7 +279,7 @@ Deployments から前のバージョンに戻すのが速い
 | 変数 | 意味 |
 | --- | --- |
 | `BETA_OPEN_ACCESS_UNTIL` | 開放の期限(ISO8601)。**この時刻まで全員がPremium相当**。無いか読めない値なら通常営業 |
-| `BETA_SECONDS_PER_DAY` | 開放中の1日の持ち時間(既定12000秒)。1回の長さは通常と同じ最長20分 |
+| `BETA_SECONDS_PER_DAY` | 開放中の1日の持ち時間(既定12000秒)。1回の長さは Premium と同じ最長20分 |
 
 ```bash
 cd backend/api

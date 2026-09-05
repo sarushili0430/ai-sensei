@@ -18,11 +18,52 @@ import '../../monetization/presentation/purchase_messages.dart';
 ///
 /// 「わかった」だけを祝福し、残り時間による終了は通常の地とふつうの顔にする。
 /// 文字を読まなくても両者を取り違えないことが、途中終了を成果判定に見せない境界。
-class CelebrationScreen extends ConsumerWidget {
+///
+/// **無料で今日の1回を使い切った回は、ここからペイウォールを開く。**
+/// 判断はサーバが持つ(`show_paywall`)。祝福を出したあとに `/complete` が届いて
+/// 立つので、開くのは画面が組み上がってから([_presentPaywall])。
+class CelebrationScreen extends ConsumerStatefulWidget {
   const CelebrationScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CelebrationScreen> createState() => _CelebrationScreenState();
+}
+
+class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
+  /// 一度開いたら、この画面にいるあいだは開き直さない。
+  ///
+  /// 閉じて戻ってきた生徒に同じ画面をもう一度出すのは、断った相手に
+  /// 同じことをもう一度聞くのと同じ(§6 煽らない)。
+  bool _paywallOpened = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // `/complete` が祝福へ来るより先に返っていれば、この時点でもう立っている。
+    _presentPaywall(ref.read(sessionOutcomeControllerProvider));
+  }
+
+  /// ペイウォールを**重ねて**開く。
+  ///
+  /// `push` なので、閉じれば祝福画面に戻る。「無料のまま続ける」を押した人が
+  /// ホームへ飛ばされると、いま終えた授業の締めを読み終える前に画面が変わる。
+  void _presentPaywall(SessionOutcome outcome) {
+    if (_paywallOpened || !outcome.showPaywall) return;
+    _paywallOpened = true;
+    // 組み上がる前に押し込むと、祝福を1フレームも見せずに上へ乗ってしまう。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // ルータの無いところ(画面単体のテスト)では何もしない。
+      GoRouter.maybeOf(context)?.push(AppRoute.paywall.path);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // 祝福が出たあとに `/complete` が届いた回は、ここで立つ。
+    ref.listen(sessionOutcomeControllerProvider, (_, SessionOutcome next) {
+      _presentPaywall(next);
+    });
     final SessionOutcome outcome = ref.watch(sessionOutcomeControllerProvider);
     final bool understood = outcome.ending == SessionEnding.understood;
     final Progress progress =
@@ -102,9 +143,9 @@ class CelebrationScreen extends ConsumerWidget {
                 index: 5,
                 child: _EndingCard(understood: understood),
               ),
-              // 初回の復習問題ができた直後だけ、サーバが「ここで出す」と
+              // 無料で今日の1回を使い切った回だけ、サーバが「ここで出す」と
               // 判断する(`show_paywall`)。**画面遷移キャンバスには無い**が、
-              // あれは2回目以降の普通の祝福で、この行はその1回のためにある。
+              // あれは枠が残っている普通の祝福で、この行はその回のためにある。
               // 生成を待たない(ADR 0009)ので、`/complete` が届いた時点で
               // 立って、この画面のまま差し替わる。
               if (outcome.showPaywall) ...<Widget>[
@@ -112,7 +153,22 @@ class CelebrationScreen extends ConsumerWidget {
                 const _PremiumLine(),
               ],
               const SizedBox(height: AppSpacing.lg),
-              if (understood) ...<Widget>[
+              // **今日の枠が無い人に「もう1問」を出さない。**押した先の撮影で
+              // 写真を撮らせてから、サーバが「今日はここまで」と断ることになる。
+              // 開いたペイウォールを閉じた人がここへ戻るので、
+              // 同じ場所に道の続き(Premiumをみる)を置く。
+              if (outcome.showPaywall) ...<Widget>[
+                ChunkyButton(
+                  key: const Key('celebration-see-premium'),
+                  label: strings.paywallCta,
+                  onPressed: () => context.push(AppRoute.paywall.path),
+                ),
+                GhostButton(
+                  key: const Key('celebration-done'),
+                  label: strings.celebrationDone,
+                  onPressed: () => context.go(AppRoute.home.path),
+                ),
+              ] else if (understood) ...<Widget>[
                 ChunkyButton(
                   key: const Key('celebration-another-lesson'),
                   label: strings.celebrationAnotherLesson,

@@ -62,6 +62,13 @@ void main() {
     ];
   }
 
+  /// 祝福画面の結果を差し替える。無料で今日の1回を使い切った回を作る。
+  List<Object?> outcomeOverrides(SessionOutcome outcome) => <Object?>[
+    sessionOutcomeControllerProvider.overrideWith(
+      () => FakeSessionOutcomeController(outcome),
+    ),
+  ];
+
   Future<GoRouter> pumpRouter(
     WidgetTester tester, {
     List<Object?> overrides = const <Object?>[],
@@ -419,6 +426,69 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(PaywallScreen), findsOneWidget);
     expect(router.canPop(), isTrue);
+  });
+
+  /// 無料は1日1回になったので、締めの画面がそのまま「今日の授業が終わった」場所。
+  /// **ここで道の続きを出さないと、生徒は次にできることが分からないまま閉じる。**
+  testWidgets('無料で使い切った回は、祝福に重ねてペイウォールを出す', (WidgetTester tester) async {
+    final GoRouter router = await pumpRouter(
+      tester,
+      overrides: <Object?>[
+        ...bootOverrides(),
+        ...outcomeOverrides(const SessionOutcome(showPaywall: true)),
+      ],
+    );
+
+    router.go(AppRoute.celebration.path);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PaywallScreen), findsOneWidget);
+    // `push` なので、閉じれば祝福に戻る(ホームへ飛ばさない)。
+    expect(router.canPop(), isTrue);
+
+    final AppStrings strings = AppStrings.of(
+      tester.element(find.byType(PaywallScreen)),
+    );
+    await tester.tap(find.text(strings.paywallDismiss));
+    await tester.pumpAndSettle();
+    expect(find.byType(CelebrationScreen), findsOneWidget);
+
+    // 閉じたあとも、同じ場所から開き直せる。
+    await tester.tap(find.byKey(const Key('celebration-see-premium')));
+    await tester.pumpAndSettle();
+    expect(find.byType(PaywallScreen), findsOneWidget);
+  });
+
+  // 断った相手に、同じ画面をもう一度出さない(§6 煽らない)。
+  testWidgets('閉じたペイウォールは、祝福に戻っても勝手に開き直さない', (WidgetTester tester) async {
+    final GoRouter router = await pumpRouter(
+      tester,
+      overrides: <Object?>[
+        ...bootOverrides(),
+        ...outcomeOverrides(const SessionOutcome(showPaywall: true)),
+      ],
+    );
+
+    router.go(AppRoute.celebration.path);
+    await tester.pumpAndSettle();
+    final AppStrings strings = AppStrings.of(
+      tester.element(find.byType(PaywallScreen)),
+    );
+    await tester.tap(find.text(strings.paywallDismiss));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PaywallScreen), findsNothing);
+    expect(find.byType(CelebrationScreen), findsOneWidget);
+  });
+
+  testWidgets('枠が残っている回は、祝福にペイウォールを重ねない', (WidgetTester tester) async {
+    final GoRouter router = await pumpRouter(tester, overrides: bootOverrides());
+
+    router.go(AppRoute.celebration.path);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PaywallScreen), findsNothing);
+    expect(find.byType(CelebrationScreen), findsOneWidget);
   });
 
   testWidgets('旧カルテリンクは、履歴が空でも復習画面へ寄せる', (WidgetTester tester) async {

@@ -148,7 +148,8 @@ class SessionState {
   final SessionFailure? failure;
   final Object? error;
 
-  /// サーバが「ここで出す」と判断したときだけ true(初回の復習問題ができた直後)。
+  /// サーバが「ここで出す」と判断したときだけ true
+  /// (無料で今日の1回を使い切った直後)。
   ///
   /// **この画面では使わない。**判断は `/complete` の応答に乗って
   /// `SessionOutcome` へ流れ、祝福画面が読む。ここに残しているのは

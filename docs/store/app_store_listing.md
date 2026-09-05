@@ -86,8 +86,8 @@ Photograph a problem. Your senpai teaches it on a board. Tap "Got it" and a revi
 ・アカウント作成は不要です。サインインもメールアドレスの登録もなく、匿名の端末IDだけではじめられます
 
 ■ 料金
-無料 — 毎日1問、先輩に教わる／その板書からの復習問題（3日後・7日後）
-Premium — 毎日、続けて何問も／復習問題の履歴／穴を先輩に声で聞き直す／先輩との学習計画
+無料 — 1日1回・10分、先輩に教わる／その板書からの復習問題（3日後・7日後）
+Premium — 1回20分・毎日何問も／復習問題の履歴／穴を先輩に声で聞き直す／先輩との学習計画
 
 ■ 写真と音声の扱い
 ノートの写真と、会話の文字起こしを、授業と復習問題を作るために保存します。匿名の端末IDにひもづき、氏名やメールアドレスは取得しません。広告は出しませんし、他社サービスをまたぐ追跡もしません。説明の分かりにくさや誤りを見つけてサービスを改善するためにも使い、停止や削除はサポート窓口から求められます。
@@ -140,8 +140,8 @@ Spaced repetition — remembering something just as you start to forget it — w
 - No account, no sign-in, no email address — just an anonymous device ID
 
 ■ Pricing
-Free — one lesson a day from your senpai, plus the review questions made from it (3 and 7 days later)
-Premium — several lessons a day, your review history, calling your senpai back by voice on a gap, and a study plan with your senpai
+Free — one 10-minute lesson a day from your senpai, plus the review questions made from it (3 and 7 days later)
+Premium — 20 minutes a lesson, several a day, your review history, calling your senpai back by voice on a gap, and a study plan with your senpai
 
 ■ Photos and audio
 Photos of your notes and transcripts of your conversations are stored to run the lesson and build your review questions. They are tied to an anonymous device ID; we never collect your name or email. No ads, no cross-service tracking. They are also used to find unclear or wrong explanations and improve the service; you can ask us to stop or delete through the support page.
@@ -248,11 +248,11 @@ First release.
 週・月・年の3プランは同一サブスクリプショングループにあり、解放される機能はすべて同じです（期間と価格のみが異なります）。
 
 ■ 解放される機能
-無料版は1日1回の授業（先輩AIの板書つき解説）と、そこから作られる復習問題。Premium で、1日に続けて何問も教わる（フェアユース上限あり）、復習問題の履歴、穴を先輩に声で聞き直す授業、先輩との学習計画が使えます。
+無料版は1日1回・最長10分の授業（先輩AIの板書つき解説）と、そこから作られる復習問題。Premium で、1回最長20分の授業を1日に続けて何問も教わる（フェアユース上限あり）、復習問題の履歴、穴を先輩に声で聞き直す授業、先輩との学習計画が使えます。
 
 ■ ペイウォールへの到達手順（写真撮影は不要です）
 1. アプリを起動（サインイン・アカウント作成はありません。匿名の端末IDのみ）
-2. 下部タブの「計画」を開き「先輩と計画をつくる」をタップ → 無料版ではペイウォールが開きます（ほかに、初回の授業を「わかった」で終えた直後の画面、ホームで当日の持ち時間を使い切ったときの「もっと教わる」、復習画面の「先輩に聞く」からも開きます）
+2. 下部タブの「設定」を開き「契約 ＞ Premium にする」をタップ → ペイウォールが開きます（ほかに、下部タブ「計画」→「先輩と計画をつくる」、ホーム下部の「もっと教わる」、無料の1回を使い終えた直後の画面、復習画面の「先輩に聞く」からも開きます）
 3. 週・月・年の3プランが並びます。「1週間」を選んで「このプランではじめる」
 
 ■ 表示していること
@@ -267,8 +267,8 @@ Sandbox アカウントでそのまま購入できます。アカウント登録
 
 --- English ---
 Katarute Premium (weekly, auto-renewing): JPY 980 / USD 6.99 per week. The weekly, monthly and yearly plans are in one subscription group and unlock identical features; only the period and price differ.
-Free tier: one lesson a day (the senpai AI teaching on a board) plus the review questions made from it. Premium: several lessons a day (fair-use cap), review history, calling your senpai back by voice on a gap, and a study plan with your senpai.
-To reach the paywall (no photo needed): launch the app (no sign-in), open the "Plan" tab and tap "Make a plan with senpai" — on the free tier the paywall opens. It also opens right after the first lesson ends with "Got it", from "Get more lessons" on Home once the day's time is used up, and from "Ask senpai" on the review screen. Pick "Weekly", then "Start with this plan".
+Free tier: one 10-minute lesson a day (the senpai AI teaching on a board) plus the review questions made from it. Premium: 20-minute lessons, several a day (fair-use cap), review history, calling your senpai back by voice on a gap, and a study plan with your senpai.
+To reach the paywall (no photo needed): launch the app (no sign-in), open the "Settings" tab and tap "Subscription > Get Premium". It also opens from the "Plan" tab ("Make a plan with senpai"), from "Get more lessons" at the bottom of Home, right after the day's free lesson ends, and from "Ask senpai" on the review screen. Pick "Weekly", then "Start with this plan".
 The paywall always states that the subscription auto-renews and can be cancelled at any time, and links to the Terms and Privacy Policy. "Keep using the free version" dismisses it without purchase. No countdowns or pressure. Prices are the strings returned by the store.
 Restore: "Restore purchases" on the paywall. Cancel / change plan / refund: "Manage subscription" on Home, shown to subscribers only.
 Purchasable with a Sandbox account; no account registration needed. The free tier's daily lesson time resets at midnight.
@@ -282,11 +282,11 @@ Purchasable with a Sandbox account; no account registration needed. The free tie
 週・月・年の3プランは同一サブスクリプショングループにあり、解放される機能はすべて同じです（期間と価格のみが異なります）。
 
 ■ 解放される機能
-無料版は1日1回の授業（先輩AIの板書つき解説）と、そこから作られる復習問題。Premium で、1日に続けて何問も教わる（フェアユース上限あり）、復習問題の履歴、穴を先輩に声で聞き直す授業、先輩との学習計画が使えます。
+無料版は1日1回・最長10分の授業（先輩AIの板書つき解説）と、そこから作られる復習問題。Premium で、1回最長20分の授業を1日に続けて何問も教わる（フェアユース上限あり）、復習問題の履歴、穴を先輩に声で聞き直す授業、先輩との学習計画が使えます。
 
 ■ ペイウォールへの到達手順（写真撮影は不要です）
 1. アプリを起動（サインイン・アカウント作成はありません。匿名の端末IDのみ）
-2. 下部タブの「計画」を開き「先輩と計画をつくる」をタップ → 無料版ではペイウォールが開きます（ほかに、初回の授業を「わかった」で終えた直後の画面、ホームで当日の持ち時間を使い切ったときの「もっと教わる」、復習画面の「先輩に聞く」からも開きます）
+2. 下部タブの「設定」を開き「契約 ＞ Premium にする」をタップ → ペイウォールが開きます（ほかに、下部タブ「計画」→「先輩と計画をつくる」、ホーム下部の「もっと教わる」、無料の1回を使い終えた直後の画面、復習画面の「先輩に聞く」からも開きます）
 3. 週・月・年の3プランが並びます。「1か月」を選んで「このプランではじめる」
 
 ■ 表示していること
@@ -301,8 +301,8 @@ Sandbox アカウントでそのまま購入できます。アカウント登録
 
 --- English ---
 Katarute Premium (monthly, auto-renewing): JPY 2,980 / USD 19.99 per month. The weekly, monthly and yearly plans are in one subscription group and unlock identical features; only the period and price differ.
-Free tier: one lesson a day (the senpai AI teaching on a board) plus the review questions made from it. Premium: several lessons a day (fair-use cap), review history, calling your senpai back by voice on a gap, and a study plan with your senpai.
-To reach the paywall (no photo needed): launch the app (no sign-in), open the "Plan" tab and tap "Make a plan with senpai" — on the free tier the paywall opens. It also opens right after the first lesson ends with "Got it", from "Get more lessons" on Home once the day's time is used up, and from "Ask senpai" on the review screen. Pick "Monthly", then "Start with this plan".
+Free tier: one 10-minute lesson a day (the senpai AI teaching on a board) plus the review questions made from it. Premium: 20-minute lessons, several a day (fair-use cap), review history, calling your senpai back by voice on a gap, and a study plan with your senpai.
+To reach the paywall (no photo needed): launch the app (no sign-in), open the "Settings" tab and tap "Subscription > Get Premium". It also opens from the "Plan" tab ("Make a plan with senpai"), from "Get more lessons" at the bottom of Home, right after the day's free lesson ends, and from "Ask senpai" on the review screen. Pick "Monthly", then "Start with this plan".
 The paywall always states that the subscription auto-renews and can be cancelled at any time, and links to the Terms and Privacy Policy. "Keep using the free version" dismisses it without purchase. No countdowns or pressure. Prices are the strings returned by the store.
 Restore: "Restore purchases" on the paywall. Cancel / change plan / refund: "Manage subscription" on Home, shown to subscribers only.
 Purchasable with a Sandbox account; no account registration needed. The free tier's daily lesson time resets at midnight.
@@ -317,11 +317,11 @@ Purchasable with a Sandbox account; no account registration needed. The free tie
 月額プラン（¥2,980×12=¥35,760）に対して約17%割安で、ペイウォールでは「月あたり約¥2,483」としてストアの計算値を表示しています。
 
 ■ 解放される機能
-無料版は1日1回の授業（先輩AIの板書つき解説）と、そこから作られる復習問題。Premium で、1日に続けて何問も教わる（フェアユース上限あり）、復習問題の履歴、穴を先輩に声で聞き直す授業、先輩との学習計画が使えます。
+無料版は1日1回・最長10分の授業（先輩AIの板書つき解説）と、そこから作られる復習問題。Premium で、1回最長20分の授業を1日に続けて何問も教わる（フェアユース上限あり）、復習問題の履歴、穴を先輩に声で聞き直す授業、先輩との学習計画が使えます。
 
 ■ ペイウォールへの到達手順（写真撮影は不要です）
 1. アプリを起動（サインイン・アカウント作成はありません。匿名の端末IDのみ）
-2. 下部タブの「計画」を開き「先輩と計画をつくる」をタップ → 無料版ではペイウォールが開きます（ほかに、初回の授業を「わかった」で終えた直後の画面、ホームで当日の持ち時間を使い切ったときの「もっと教わる」、復習画面の「先輩に聞く」からも開きます）
+2. 下部タブの「設定」を開き「契約 ＞ Premium にする」をタップ → ペイウォールが開きます（ほかに、下部タブ「計画」→「先輩と計画をつくる」、ホーム下部の「もっと教わる」、無料の1回を使い終えた直後の画面、復習画面の「先輩に聞く」からも開きます）
 3. 週・月・年の3プランが並びます。「1年」を選んで「このプランではじめる」
 
 ■ 表示していること
@@ -336,8 +336,8 @@ Sandbox アカウントでそのまま購入できます。アカウント登録
 
 --- English ---
 Katarute Premium (yearly, auto-renewing): JPY 29,800 / USD 199.99 per year. About 17% less than 12 monthly renewals (JPY 35,760); the paywall shows the store-calculated per-month equivalent (about JPY 2,483). The weekly, monthly and yearly plans are in one subscription group and unlock identical features; only the period and price differ.
-Free tier: one lesson a day (the senpai AI teaching on a board) plus the review questions made from it. Premium: several lessons a day (fair-use cap), review history, calling your senpai back by voice on a gap, and a study plan with your senpai.
-To reach the paywall (no photo needed): launch the app (no sign-in), open the "Plan" tab and tap "Make a plan with senpai" — on the free tier the paywall opens. It also opens right after the first lesson ends with "Got it", from "Get more lessons" on Home once the day's time is used up, and from "Ask senpai" on the review screen. Pick "Yearly", then "Start with this plan".
+Free tier: one 10-minute lesson a day (the senpai AI teaching on a board) plus the review questions made from it. Premium: 20-minute lessons, several a day (fair-use cap), review history, calling your senpai back by voice on a gap, and a study plan with your senpai.
+To reach the paywall (no photo needed): launch the app (no sign-in), open the "Settings" tab and tap "Subscription > Get Premium". It also opens from the "Plan" tab ("Make a plan with senpai"), from "Get more lessons" at the bottom of Home, right after the day's free lesson ends, and from "Ask senpai" on the review screen. Pick "Yearly", then "Start with this plan".
 The paywall always states that the subscription auto-renews and can be cancelled at any time, and links to the Terms and Privacy Policy. "Keep using the free version" dismisses it without purchase. No countdowns or pressure. Prices are the strings returned by the store.
 Restore: "Restore purchases" on the paywall. Cancel / change plan / refund: "Manage subscription" on Home, shown to subscribers only.
 Purchasable with a Sandbox account; no account registration needed. The free tier's daily lesson time resets at midnight.
@@ -381,7 +381,7 @@ Purchasable with a Sandbox account; no account registration needed. The free tie
 ■ App内課金の確認
 Premium（週 ¥980 ／ 月 ¥2,980 ／ 年 ¥29,800、自動更新）。Sandbox アカウントで購入できます。
 ペイウォールへは、写真を撮らなくても 下部タブ「計画」→「先輩と計画をつくる」から到達できます。
-無料版は1日1回の授業（最長20分）で、上限は日付が変わると戻ります。
+無料版は1日1回の授業（最長10分）で、上限は日付が変わると戻ります。
 
 ■ 通知
 復習のリマインダー（3日後・7日後。不正解なら翌日も）。初回の祝福画面で許可を求めます。
@@ -417,7 +417,7 @@ Notifications: on the first celebration screen. Never all at launch.
 ■ In-app purchase
 Premium (weekly $6.99 / monthly $19.99 / yearly $199.99, auto-renewing). Purchasable with a
 Sandbox account. The paywall is reachable without a photo: "Plan" tab > "Make a plan with senpai".
-The free tier allows one lesson per day (up to 20 minutes); the limit resets daily.
+The free tier allows one lesson per day (up to 10 minutes); the limit resets daily.
 
 ■ Notifications
 Review reminders 3 and 7 days after a lesson (and the next day after a wrong answer),

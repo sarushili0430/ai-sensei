@@ -34,6 +34,7 @@ import {
   hasPremiumAccess,
   secondsPerDay,
   sessionMaxSeconds,
+  sessionStartsPerDay,
   tokenGraceSeconds,
 } from "../lib/entitlement.ts";
 import { apiError } from "../lib/errors.ts";
@@ -93,6 +94,7 @@ meRoute.get("/progress", async (c) => {
       lesson_allowed_today: canStartSessionToday({
         remainingSecondsToday,
         sessionsToday: usage.sessionsStarted,
+        maxStartsPerDay: sessionStartsPerDay({ user, now: at, limits }),
       }),
     },
   };

@@ -126,7 +126,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               FadeSlideIn.staggered(
                 index: 4,
                 child: _EnoughForTodayLine(
-                  show: enoughForToday,
+                  enoughForToday: enoughForToday,
+                  // 契約への道は**締めた日だけのものにしない**。無料は1日1回に
+                  // なったので、使い切る前に「もっと教わる」を探す人のほうが多い。
                   showUpgrade: !data.isPremium,
                 ),
               ),
@@ -331,17 +333,24 @@ class _OpenProblemsCard extends ConsumerWidget {
 
 }
 
-/// 今日はここまで、という**先輩の判断**。
-/// 残り時間の数字は画面上部の状態表示に限り、先輩の発話には混ぜない。
-/// 無料なら契約への道も置くが、Premium のフェアユース上限では、
-/// すでに契約している人へ課金導線を重ねない。
+/// 今日はここまで、という**先輩の判断**と、契約への道。
 ///
+/// 残り時間の数字は画面上部の状態表示に限り、先輩の発話には混ぜない。
 /// 締めた日はあいさつも [AppStrings.homeGreetingDone] に変わっているので、
-/// ここは**同じことを繰り返さない**説明に徹する(「今日はここまで」の理由)。
+/// 説明の一行は**同じことを繰り返さない**(「今日はここまで」の理由)。
+///
+/// **契約への道は、締めた日だけのものにしない。** 無料が1日1回になったので、
+/// 使い切る前に「もっと教わりたい」と思う人のほうが多い。ただし主役にはしない —
+/// 出すのは薄いテキストボタン1つで、下の厚いボタン([_PrimaryAction])の
+/// 重さは越えさせない。Premium のフェアユース上限では、
+/// すでに契約している人へ課金導線を重ねない(置く側が [showUpgrade] で決める)。
 class _EnoughForTodayLine extends StatelessWidget {
-  const _EnoughForTodayLine({required this.show, required this.showUpgrade});
+  const _EnoughForTodayLine({
+    required this.enoughForToday,
+    required this.showUpgrade,
+  });
 
-  final bool show;
+  final bool enoughForToday;
   final bool showUpgrade;
 
   @override
@@ -349,18 +358,20 @@ class _EnoughForTodayLine extends StatelessWidget {
     final AppStrings strings = AppStrings.of(context);
 
     // 高さは空でも確保する。締められた瞬間にボタンが跳ね上がらないように。
-    if (!show) return const SizedBox(height: AppSpacing.md);
+    if (!enoughForToday && !showUpgrade) return const SizedBox(height: AppSpacing.md);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        Text(
-          strings.lessonEnoughForToday,
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
+        if (enoughForToday)
+          Text(
+            strings.lessonEnoughForToday,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
         if (showUpgrade)
           TextButton(
+            key: const ValueKey<String>('home-unlock'),
             onPressed: () => context.push(AppRoute.paywall.path),
             style: TextButton.styleFrom(
               foregroundColor: AppColors.blue,

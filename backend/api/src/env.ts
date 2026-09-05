@@ -47,9 +47,12 @@ export type Bindings = {
   /** `"error"` にすると全リクエストの1行を落として失敗だけ残す。既定は info。 */
   LOG_LEVEL?: string;
 
+  /** 無料の1日の持ち時間(既定600 = 10分)。回数の上限は定数側。 */
   FREE_SECONDS_PER_DAY?: string;
   PREMIUM_SECONDS_PER_DAY?: string;
+  /** 無料の1回の上限(既定600 = 10分)。 */
   FREE_SESSION_MAX_SECONDS?: string;
+  /** Premiumの1回の上限(既定1200 = 20分)。日次残高が残っていてもここで締まる。 */
   PREMIUM_SESSION_MAX_SECONDS?: string;
 
   /**
@@ -106,12 +109,15 @@ export type Limits = {
 
 export function readLimits(env: Bindings): Limits {
   return {
-    // 従来の1本×20分をそのまま秒に写し、短い授業の未使用分を次へ返す。
-    freeSecondsPerDay: toInt(env.FREE_SECONDS_PER_DAY, 1200),
+    // 無料は1日1回・10分。回数の上限は `freeSessionStartsPerDay` が持ち、
+    // ここは「その1回を何分にするか」だけを決める(同じ値を2つ置くのは、
+    // 途中で降りた人に残高を残さないため — 10分の枠がそのまま1日の枠)。
+    freeSecondsPerDay: toInt(env.FREE_SECONDS_PER_DAY, 600),
     // 従来の3本×20分と同じ実効上限。回数ではなく会話時間で原価を押さえる。
     premiumSecondsPerDay: toInt(env.PREMIUM_SECONDS_PER_DAY, 3600),
-    // 無料のお試しも品質を落とさず、設計の15〜20分を完走できる上端を既定値にする。
-    freeSessionMaxSeconds: toInt(env.FREE_SESSION_MAX_SECONDS, 1200),
+    freeSessionMaxSeconds: toInt(env.FREE_SESSION_MAX_SECONDS, 600),
+    // 設計の15〜20分を完走できる上端。**1回はここで必ず締まる**ので、
+    // 日次残高が残っていても1本が20分を超えることはない。
     premiumSessionMaxSeconds: toInt(env.PREMIUM_SESSION_MAX_SECONDS, 1200),
     betaOpenAccessUntil: toDate(env.BETA_OPEN_ACCESS_UNTIL),
     // 従来の10本×20分と同じ開放幅。テスターでも従量原価は同じだけ動く。

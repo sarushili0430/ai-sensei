@@ -28,10 +28,11 @@ compatibility_flags = ["nodejs_compat"]
 [vars]
 ENVIRONMENT = "local"
 # 日次の持ち時間と1回の会話上限はサーバ側で強制する(クライアント改竄対策)。
-# 従来の実効上限(無料1×20分 / Premium 3×20分)を秒に写し、1回の質は変えない。
-FREE_SECONDS_PER_DAY = "1200"
+# 無料は**1日1回・10分**(回数の上限は `freeSessionStartsPerDay` が持つ)、
+# Premium は**1回20分**を上限に1日60分。1回の授業の中身はプランで変えない。
+FREE_SECONDS_PER_DAY = "600"
 PREMIUM_SECONDS_PER_DAY = "3600"
-FREE_SESSION_MAX_SECONDS = "1200"
+FREE_SESSION_MAX_SECONDS = "600"
 PREMIUM_SESSION_MAX_SECONDS = "1200"
 # ローカルは通常営業のまま。クローズドβの開放を手元で試すときだけ、下2行を外す
 # (意味と外しかたは docs/deploy.md の「クローズドβのあいだ無料で開放する」)。
@@ -70,9 +71,10 @@ workers_dev = true             # https://ai-sensei-api-develop.<subdomain>.worke
 [env.develop.vars]
 ENVIRONMENT = "develop"
 # varsは環境間で継承されないため、本番と同じ授業品質・フェアユース条件を明示する。
-FREE_SECONDS_PER_DAY = "1200"
+# 無料は1日1回・10分 / Premium は1回20分・1日60分。
+FREE_SECONDS_PER_DAY = "600"
 PREMIUM_SECONDS_PER_DAY = "3600"
-FREE_SESSION_MAX_SECONDS = "1200"
+FREE_SESSION_MAX_SECONDS = "600"
 PREMIUM_SESSION_MAX_SECONDS = "1200"
 # クローズドβ: 期限までは**全員がPremium相当**(課金導線が出ない)。
 # 配れるのが限定公開テストの名簿に載っている人だけ、という前提の設定なので、
@@ -114,9 +116,10 @@ workers_dev = true
 [env.production.vars]
 ENVIRONMENT = "production"
 # varsは環境間で継承されないため、開発環境と同じ授業品質・フェアユース条件を明示する。
-FREE_SECONDS_PER_DAY = "1200"
+# 無料は1日1回・10分 / Premium は1回20分・1日60分。
+FREE_SECONDS_PER_DAY = "600"
 PREMIUM_SECONDS_PER_DAY = "3600"
-FREE_SESSION_MAX_SECONDS = "1200"
+FREE_SESSION_MAX_SECONDS = "600"
 PREMIUM_SESSION_MAX_SECONDS = "1200"
 # クローズドβの開放(`BETA_OPEN_ACCESS_UNTIL` / `BETA_SECONDS_PER_DAY`)は
 # **production には置かない**。main へのpushがそのまま一般公開のデプロイなので、

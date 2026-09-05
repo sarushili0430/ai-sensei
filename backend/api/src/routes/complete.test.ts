@@ -109,9 +109,11 @@ describe("POST /v1/sessions/{id}/complete", () => {
 
     const body = (await (await complete(sessionId)).json()) as CompleteSessionResponse;
     expect(body.limits).toEqual({
-      max_seconds: 1200,
-      remaining_seconds_today: 932,
-      lesson_allowed_today: true,
+      max_seconds: 600,
+      // 600秒を仮押さえして268秒で降りたので、未使用の332秒は残高へ返る。
+      remaining_seconds_today: 332,
+      // **返ってきても、今日はもう始められない。**無料は1日1回。
+      lesson_allowed_today: false,
     });
   });
 
@@ -206,21 +208,27 @@ describe("POST /v1/sessions/{id}/complete", () => {
       expiresAt: null,
       rcAppUserId: null,
     });
-    const sessionId = await startSession();
+    const sessionId = await startConversation();
     const body = (await (await complete(sessionId)).json()) as CompleteSessionResponse;
 
     expect(body.practice_problem).not.toHaveProperty("answer");
     expect(body.show_paywall).toBe(false);
   });
 
-  it("初回の復習問題ができたときだけペイウォールを出す", async () => {
-    const first = await startSession();
-    const firstBody = (await (await complete(first)).json()) as CompleteSessionResponse;
-    expect(firstBody.show_paywall).toBe(true);
+  it("無料で今日の1回を使い切ったら、締めの画面にペイウォールを出す", async () => {
+    const sessionId = await startConversation();
+    const body = (await (await complete(sessionId)).json()) as CompleteSessionResponse;
+    expect(body.limits.lesson_allowed_today).toBe(false);
+    expect(body.show_paywall).toBe(true);
   });
 
-  it("問題を作れなかった初回ではペイウォールを出さない", async () => {
-    const sessionId = await startSession();
+  /**
+   * 時間切れ・離脱で復習問題ができなかった回にも出す。
+   * **今日の授業が終わったこと**が条件で、成果物の有無ではない
+   * (成果物が無い回こそ「続きは明日、それが待てないならPremium」が要る)。
+   */
+  it("問題を作れなかった回でも、使い切っていれば出す", async () => {
+    const sessionId = await startConversation();
     const body = (await (
       await complete(sessionId, {
         ended_reason: "timeout",
@@ -228,6 +236,18 @@ describe("POST /v1/sessions/{id}/complete", () => {
         board_id: undefined,
       })
     ).json()) as CompleteSessionResponse;
+    expect(body.practice_problem).toBeNull();
+    expect(body.show_paywall).toBe(true);
+  });
+
+  /**
+   * `/start` を通っていない回は枠を1つも使っていない(会話が始まっていない)。
+   * ここで出すと、**まだ今日の授業ができる人**に購入画面を見せることになる。
+   */
+  it("枠を使っていない回にはペイウォールを出さない", async () => {
+    const sessionId = await startSession();
+    const body = (await (await complete(sessionId)).json()) as CompleteSessionResponse;
+    expect(body.limits.lesson_allowed_today).toBe(true);
     expect(body.show_paywall).toBe(false);
   });
 

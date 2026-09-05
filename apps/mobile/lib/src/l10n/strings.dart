@@ -895,6 +895,14 @@ class AppStrings {
   // [navigationSettings] が出している。AppBar にも同じ「設定」を置くと、
   // ひとつの画面に同じ語が2回出る。
   String get settingsSectionAccount => _pick('契約', 'Subscription');
+
+  /// 設定からペイウォールを開く行。**契約していない人にだけ出す。**
+  String get settingsUpgrade => _pick('Premium にする', 'Get Premium');
+
+  /// その一行の説明。無料との差(1回の長さと、1日に何回話せるか)だけを言う。
+  /// 金額は書かない — 正本は Offering で、ダッシュボードで変えた瞬間に嘘になる。
+  String get settingsUpgradeBody =>
+      _pick('1回20分の授業を、毎日つづけて', '20-minute lessons, several a day');
   String get settingsSectionNotifications => _pick('通知', 'Notifications');
   String get settingsSectionAbout => _pick('このアプリについて', 'About');
 
@@ -957,8 +965,8 @@ class AppStrings {
   /// 据え置きの「¥580/月」を出すと、ダッシュボードで値段を変えた瞬間に、
   /// この行と次に出るストアの決済画面が食い違ったまま購入を決めさせることになる。
   /// 比較表の Premium 欄([paywallEverydayQuestions])と同じことだけを言う。
-  String get paywallPricePending => _pick('Premium なら、毎日つづけて何問も聞けます',
-      'With Premium you can ask several questions a day');
+  String get paywallPricePending => _pick('Premium なら、1回20分で毎日つづけて聞けます',
+      'With Premium you get 20-minute lessons, several a day');
 
   /// 自前ペイウォールで Offering が取れなかったとき。
   ///
@@ -992,7 +1000,9 @@ class AppStrings {
   String get paywallRowSessions => _pick('セッション', 'Sessions');
   String get paywallRowKarte => _pick('カルテ', 'Karte');
   String get paywallRowFollowup => _pick('先輩のあと追い質問', 'Follow-up questions');
-  String get paywallEverydayOne => _pick('毎日1問', 'One question every day');
+  /// 無料のセッション枠。**いまの実装(1日1回・最長10分)をそのまま書く。**
+  /// 「毎日1問」と書いていた頃は、10分という長さが購入判断の前に出なかった。
+  String get paywallEverydayOne => _pick('1日1回・10分', 'One 10-min lesson a day');
 
   /// Premium のセッション枠。
   ///
@@ -1001,7 +1011,8 @@ class AppStrings {
   /// ホームでは残り時間を見せるが、購入画面でも「無制限」と誤認させない。
   /// (HAMM の「誠実なペイウォール」に正面から反する)。
   /// 通常利用では一度も当たらない上限なので、**当たらないことを言う**。
-  String get paywallEverydayQuestions => _pick('毎日、続けて何問も', 'Several questions a day');
+  String get paywallEverydayQuestions =>
+      _pick('1回20分・毎日何問も', '20 min each, several a day');
   String get paywallTodayOnly => _pick('当日のみ', 'Today only');
   String get paywallHistory => _pick('穴の復習と履歴', 'Review and history');
 

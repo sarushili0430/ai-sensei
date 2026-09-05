@@ -545,22 +545,23 @@ describe("POST /v1/sessions/{id}/start", () => {
     expect(startSessionResponseSchema.safeParse(body).success).toBe(true);
     expect(body.session_id).toBe(session.session_id);
     expect(body.livekit.room).toBe(session.session_id);
-    expect(body.limits.max_seconds).toBe(1200);
+    // 無料は1日1回・10分。1本押さえた時点で今日の残高も回数も尽きる。
+    expect(body.limits.max_seconds).toBe(600);
     expect(body.limits.remaining_seconds_today).toBe(0);
     expect(body.limits.lesson_allowed_today).toBe(false);
   });
 
-  it("残高600秒なら、その回の max_seconds も600秒にする", async () => {
-    const shortBudget = testBindings({ FREE_SECONDS_PER_DAY: "600" });
+  it("残高300秒なら、その回の max_seconds も300秒にする", async () => {
+    const shortBudget = testBindings({ FREE_SECONDS_PER_DAY: "300" });
     const body = await analyzeThenStart(createSessionForm(), shortBudget);
 
     expect(body.limits).toEqual({
-      max_seconds: 600,
+      max_seconds: 300,
       remaining_seconds_today: 0,
       lesson_allowed_today: false,
     });
     const metadata = await metadataOf<{ max_seconds: number }>(body, shortBudget);
-    expect(metadata.max_seconds).toBe(600);
+    expect(metadata.max_seconds).toBe(300);
   });
 
   it("LiveKitトークンに会話の文脈(許可トピック)を載せる", async () => {
@@ -572,7 +573,7 @@ describe("POST /v1/sessions/{id}/start", () => {
     expect(metadata.allowed_topic_ids).toContain("M2-ZUKEI-ENCHOKU");
     // 前提トピックまで深掘りを許す
     expect(metadata.allowed_topic_ids).toContain("M1-NIJI-HANBETSU");
-    expect(metadata.max_seconds).toBe(1200);
+    expect(metadata.max_seconds).toBe(600);
   });
 
   // 名前つきワーカーのときは、トークンでディスパッチしないと部屋に誰も来ない
@@ -749,7 +750,7 @@ describe("POST /v1/sessions/{id}/start", () => {
     const session = await analyze();
     expect((await startSession(session.session_id)).status).toBe(200);
 
-    // 会話の上限(20分)+ 余白(2分)を越えたところで、もう一度押す
+    // 会話の上限(無料は10分)+ 余白(2分)を越えたところで、もう一度押す
     services.now = () => new Date("2026-08-03T13:50:07.000Z");
 
     const response = await startSession(session.session_id);
@@ -763,8 +764,8 @@ describe("POST /v1/sessions/{id}/start", () => {
     const session = await analyze();
     expect((await startSession(session.session_id)).status).toBe(200);
 
-    // 16分後。まだ同じ会話の途中なので、鍵は出し直せて枠も増えない。
-    services.now = () => new Date("2026-08-03T13:40:07.000Z");
+    // 8分後。まだ同じ会話の途中なので、鍵は出し直せて枠も増えない。
+    services.now = () => new Date("2026-08-03T13:32:07.000Z");
 
     expect((await startSession(session.session_id)).status).toBe(200);
     expect(

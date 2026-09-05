@@ -60,7 +60,25 @@ void main() {
     expect(find.text(ja.homeGreeting), findsOneWidget);
     // 締めていない日に「今日はここまで」を先出ししない(残数の匂わせになる)。
     expect(find.text(ja.lessonEnoughForToday), findsNothing);
-    expect(find.text(ja.homeRemainingMinutes(20)), findsOneWidget);
+    expect(find.text(ja.homeRemainingMinutes(10)), findsOneWidget);
+    // 契約への道は、使い切る前からいつも同じ場所にある。
+    expect(find.text(ja.homeUnlock), findsOneWidget);
+  });
+
+  // 主役を入れ替えない。厚いボタン([ChunkyButton])は今日の1手のままで、
+  // 契約への道は薄いテキストボタン1つに留める。
+  testWidgets('契約への道は、今日の1手より重くしない', (WidgetTester tester) async {
+    await pumpHome(tester, sampleSummary);
+
+    expect(find.byKey(const ValueKey<String>('home-unlock')), findsOneWidget);
+    expect(find.widgetWithText(ChunkyButton, ja.homeUnlock), findsNothing);
+  });
+
+  // Premium に売り込まない(§6-3)。まだ枠が残っている日も同じ。
+  testWidgets('契約している人には、枠が残っていても道を出さない', (WidgetTester tester) async {
+    await pumpHome(tester, premiumSummary);
+
+    expect(find.text(ja.homeUnlock), findsNothing);
   });
 
   testWidgets('残り秒数は分未満を切り捨てて、今日の残りとして出す', (WidgetTester tester) async {

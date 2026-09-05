@@ -4,13 +4,17 @@ import type { UserRecord } from "../repository/types.ts";
 /**
  * 授業枠の判定。**サーバ側で枠を確保する**(クライアント改竄対策)。
  *
- * Free    : 1日1200秒 / Premiumと同じ最長20分 / 当日のカルテ閲覧まで
- * Premium : 1日3600秒の非表示フェアユース上限 / 最長20分
+ * Free    : **1日1回・最長10分**(600秒)/ 当日のカルテ閲覧まで
+ * Premium : 1回20分(1200秒)/ 1日3600秒の非表示フェアユース上限
  * βテスト : 期間中は全員がPremium相当。持ち時間は `BETA_SECONDS_PER_DAY`
  *           ({@link isBetaOpenAccess})
  *
  * **数えるのは「先輩と話した合計時間」**。`POST /start` でその回の
  * `max_seconds` を仮押さえし、`POST /complete` で実績秒数へ精算する。
+ *
+ * 無料の「1日1回」は秒数だけでは守れない。5分で切り上げた人には残高が
+ * 5分残るので、秒だけを見ていると2本目が始められてしまう。だから
+ * **回数の上限も plan で分ける**({@link sessionStartsPerDay})。
  */
 
 export function isPremiumNow(user: UserRecord | null, now: Date): boolean {
@@ -68,6 +72,8 @@ export type SessionAllowance =
 type SessionLimitInput = {
   remainingSecondsToday: number;
   sessionsToday: number;
+  /** その日に始めてよい回数({@link sessionStartsPerDay})。 */
+  maxStartsPerDay: number;
 };
 
 /** その日に使える会話時間。無料とPremiumの分岐はここだけ。 */
@@ -91,10 +97,30 @@ export function secondsPerDay(input: {
 export const minimumSessionSeconds = 180;
 
 /**
- * 持ち時間とは別の異常利用ガード。
+ * 持ち時間とは別の異常利用ガード(Premium・β開放)。
  * 20回は3分単位で日次枠を切り分けても通常は届かず、開始連打だけを止められる。
  */
 export const maxSessionStartsPerDay = 20;
+
+/**
+ * 無料の1日の授業本数。**これは隠れたガードではなく、公開している約束**
+ * (「無料は1日1回」)なので、上の異常利用ガードとは別の定数にしてある。
+ *
+ * 秒数(`FREE_SECONDS_PER_DAY`)と二重に効く。秒だけで1回に絞ろうとすると、
+ * 途中で切り上げた人に残高が残り、2本目が始められてしまう
+ * (`/complete` が実績秒数へ精算するので、5分で降りれば5分戻る)。
+ * 逆に回数だけで絞ると、10分の枠を秒で守る側が消える。**両方要る。**
+ */
+export const freeSessionStartsPerDay = 1;
+
+/** その日に始めてよい授業の本数。無料とPremiumの分岐はここだけ。 */
+export function sessionStartsPerDay(input: {
+  user: UserRecord | null;
+  now: Date;
+  limits: Limits;
+}): number {
+  return hasPremiumAccess(input) ? maxSessionStartsPerDay : freeSessionStartsPerDay;
+}
 
 /**
  * 1回の授業に何度まで写真を読み直してよいか。
@@ -115,21 +141,36 @@ export function analysesPerDay(input: {
   now: Date;
   limits: Limits;
 }): number {
-  // 従来の「20分の授業1本につき解析5回」と同じ幅を、日次秒数から導出する。
-  // 1回未満の持ち時間に上書きされても無料の解析5回は減らさない。
-  const sessionSlots = Math.max(1, Math.floor(secondsPerDay(input) / sessionMaxSeconds(input)));
+  // 「授業1本につき解析5回」の幅を、その日に始められる本数から導出する。
+  // 秒数と回数の**小さいほう**が本数なので、両方を見る(無料は回数が先に効く)。
+  // 1回未満の持ち時間に上書きされても、1本ぶんの解析5回は減らさない。
+  const slotsBySeconds = Math.floor(secondsPerDay(input) / sessionMaxSeconds(input));
+  const sessionSlots = Math.max(1, Math.min(slotsBySeconds, sessionStartsPerDay(input)));
   return sessionSlots * analysesPerSessionSlot;
 }
 
-/** 残高と非公開の開始回数ガードから、いま授業を始められるかを判定する。 */
+/**
+ * 残高と開始回数から、いま授業を始められるかを判定する。
+ *
+ * 回数の上限を引数で受けるのは、**無料の「1日1回」とPremiumの連打ガードが
+ * 同じ場所で効く**ようにするため({@link sessionStartsPerDay})。
+ * ここで定数を直に読むと、片方だけ plan を見る道が2本できる。
+ */
 export function canStartSessionToday(input: SessionLimitInput): boolean {
   return (
     input.remainingSecondsToday >= minimumSessionSeconds &&
-    input.sessionsToday < maxSessionStartsPerDay
+    input.sessionsToday < input.maxStartsPerDay
   );
 }
 
-/** 1回の会話の長さ。**プランで品質は変えない**ので、分岐はこの1か所だけ。 */
+/**
+ * 1回の会話の長さ。無料は10分、Premiumは20分。
+ *
+ * **変わるのは長さだけで、授業の中身は変えない。** 無料でも板書は出るし、
+ * 復習問題も作る — 10分で「教える → 教え返す → 締める」が一周するように
+ * 先輩の側が畳む(`minimumSessionSeconds` が3分なのはそのため)。
+ * 分岐はこの1か所だけにして、機能で無料版を薄くする道を作らない。
+ */
 export function sessionMaxSeconds(input: {
   user: UserRecord | null;
   now: Date;
@@ -214,23 +255,31 @@ export function secondsUntilLocalMidnight(now: Date, timezoneOffsetMinutes: numb
 }
 
 /**
- * ペイウォールを出す位置。
- * 初回カルテで穴が見えた直後 = 価値実感の瞬間、の1回だけ。
- * 煽らないので、2回目以降は出さない。
+ * ペイウォールを出す位置。**無料で今日の1回を使い切った直後。**
+ *
+ * 以前は「初回に復習問題ができた回」の1度きりだった。無料が
+ * 1日1回・10分になったことで、その回はそのまま**今日の授業が終わった回**に
+ * なる — 使い切った瞬間に続きの道を出さないと、生徒は次にできることが
+ * 分からないまま画面を閉じることになる。
+ *
+ * **煽らないという方針は変えていない。** 出るのは日に一度だけで、
+ * 会話の途中には割り込まない。締めの画面で「今日はここまで」と言うのと
+ * 同じ位置に、続けたい人のための道を1本置くだけ。
+ *
+ * @see canStartSessionToday — 「今日はもう始められない」の判定はそちら。
  */
 export function shouldShowPaywall(input: {
   isPremium: boolean;
-  completedSessionCount: number;
   /**
-   * この回で復習問題ができたか。
+   * この完了のあと、今日まだ授業を始められるか。
    *
-   * **旧 `holesFound`(穴の件数)から差し替えた**(ADR 0009)。ペイウォールを出す
-   * 条件が「初回に成果物ができた日」であることは変えていない — 成果物の名前が
-   * 穴から復習問題へ移っただけ。作れなかった回に出さないのは、
-   * **見せるものが無いのに課金を頼むことになる**から。
+   * **応答が返す `limits.lesson_allowed_today` と同じ値を渡すこと。**
+   * ここだけ別に数え直すと、画面が「今日はここまで」と言っている横で
+   * ペイウォールだけが違う残高を見ている状態が作れてしまう。
    */
-  practiceProblemCreated: boolean;
+  lessonAllowedToday: boolean;
 }): boolean {
+  // 契約している人に購入画面は出さない。フェアユース上限に当たった日も同じ。
   if (input.isPremium) return false;
-  return input.completedSessionCount === 1 && input.practiceProblemCreated;
+  return !input.lessonAllowedToday;
 }

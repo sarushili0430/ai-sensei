@@ -90,8 +90,9 @@ void main() {
 
       expect(find.text('無料のまま続ける'), findsOneWidget);
       expect(find.text('登録は自動更新されます。いつでも解約できます'), findsOneWidget);
-      expect(find.text('毎日1問'), findsOneWidget);
-      expect(find.text('毎日、続けて何問も'), findsOneWidget);
+      // 買う前に、無料とPremiumの**1回の長さと本数**が両方読める。
+      expect(find.text('1日1回・10分'), findsOneWidget);
+      expect(find.text('1回20分・毎日何問も'), findsOneWidget);
       // 無制限を約束しない。フェアユース上限があるので、買ったあとにAPIが断る。
       expect(find.text('無制限'), findsNothing);
       expect(find.text('毎日、何問でも'), findsNothing);

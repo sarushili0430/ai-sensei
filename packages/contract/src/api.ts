@@ -303,7 +303,10 @@ export const liveKitConnectionSchema = z
 
 export const sessionLimitsSchema = z
   .object({
-    /** サーバが強制する上限。無料・Premiumとも、15〜20分の授業を完走できる最長20分。 */
+    /**
+     * サーバが強制する、この回の上限。**無料は最長10分、Premiumは最長20分。**
+     * 残高のほうが小さい日はそちらが入るので、クライアントはこの値だけを見る。
+     */
     max_seconds: z.number().int().positive(),
     /**
      * 完了実績と進行中の仮押さえを引いた、今日の残り秒数。

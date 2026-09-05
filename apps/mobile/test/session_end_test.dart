@@ -74,18 +74,22 @@ void main() {
   /// 復習問題の生成完了を待たず、降り方だけで終了画面を確定する。
   /// この画面は `go()` で来るので、押せる出口が無い状態を作ると行き止まりになる。
   group('終了画面', () {
-    Future<void> pumpEnding(WidgetTester tester, SessionEnding ending) =>
-        pumpApp(
-          tester,
-          const CelebrationScreen(),
-          overrides: <Object?>[
-            progressControllerProvider.overrideWith(FakeProgressController.new),
-            sessionOutcomeControllerProvider.overrideWith(
-              () =>
-                  FakeSessionOutcomeController(SessionOutcome(ending: ending)),
-            ),
-          ],
-        );
+    Future<void> pumpEnding(
+      WidgetTester tester,
+      SessionEnding ending, {
+      bool showPaywall = false,
+    }) => pumpApp(
+      tester,
+      const CelebrationScreen(),
+      overrides: <Object?>[
+        progressControllerProvider.overrideWith(FakeProgressController.new),
+        sessionOutcomeControllerProvider.overrideWith(
+          () => FakeSessionOutcomeController(
+            SessionOutcome(ending: ending, showPaywall: showPaywall),
+          ),
+        ),
+      ],
+    );
 
     testWidgets('「わかった」は生成を待たず、3日後の問題と2つの出口を出す', (WidgetTester tester) async {
       await pumpEnding(tester, SessionEnding.understood);
@@ -110,6 +114,28 @@ void main() {
       expect(find.text(ja.timeLimitCardBody), findsOneWidget);
       expect(find.text(ja.celebrationPracticeTitle), findsNothing);
       expect(find.byKey(const Key('time-limit-home')), findsOneWidget);
+    });
+
+    /// 今日の枠が無い人に「もう1問」を出すと、押した先の撮影で写真まで
+    /// 撮らせてから、サーバが「今日はここまで」と断ることになる。
+    testWidgets('使い切った回は「もう1問」を Premium への道に差し替える', (
+      WidgetTester tester,
+    ) async {
+      await pumpEnding(tester, SessionEnding.understood, showPaywall: true);
+
+      expect(find.byKey(const Key('celebration-see-premium')), findsOneWidget);
+      expect(find.text(ja.paywallCta), findsOneWidget);
+      expect(find.byKey(const Key('celebration-another-lesson')), findsNothing);
+      // ホームへ降りる出口は残す(行き止まりにしない)。
+      expect(find.byKey(const Key('celebration-done')), findsOneWidget);
+    });
+
+    // 枠が残っている回に売り込まない(§6 煽らない)。
+    testWidgets('枠が残っている回は、いつもの2つの出口のまま', (WidgetTester tester) async {
+      await pumpEnding(tester, SessionEnding.understood);
+
+      expect(find.byKey(const Key('celebration-another-lesson')), findsOneWidget);
+      expect(find.byKey(const Key('celebration-see-premium')), findsNothing);
     });
   });
 

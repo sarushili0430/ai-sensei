@@ -40,6 +40,34 @@ class ManageSubscriptionButton extends ConsumerWidget {
   }
 }
 
+/// Premium にする(設定の「契約」)。
+///
+/// **契約していない人にとって、設定は「復元」しか置いていない画面だった。**
+/// 買う前の人がここを開く理由は復元だけではない — 一度ペイウォールを閉じた人が
+/// あとで買う気になったとき、探しに来るのはこの画面になる。
+/// 祝福画面のペイウォールは日に一度しか出ないので、**いつでも開ける入口**が要る。
+///
+/// **出すかどうかは置く側が決める**([ManageSubscriptionButton] と同じ)。
+/// 契約している人と、β開放で解放されている人には出さない
+/// (どちらも「もう持っている」ので、勧めると誤解になる)。
+class UpgradeToPremiumButton extends StatelessWidget {
+  const UpgradeToPremiumButton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final AppStrings strings = AppStrings.of(context);
+
+    return SettingsTile(
+      title: strings.settingsUpgrade,
+      // 何が変わるかを一行で言う。金額はここに書かない(Offering が正本で、
+      // ダッシュボードで変えた瞬間にこの行が嘘になる)。
+      subtitle: strings.settingsUpgradeBody,
+      trailing: SettingsTile.icon(Icons.chevron_right),
+      onTap: () => context.push(AppRoute.paywall.path),
+    );
+  }
+}
+
 /// 購入の復元。
 ///
 /// ペイウォールにも同じものがあるが、**契約していない人にはペイウォールしか
