@@ -126,6 +126,8 @@ pnpm --filter @ai-sensei/api tail:production
 - [ ] production の webhook を足す: 名前 `cloudflare-production`、URL `https://ai-sensei-api-production.kouyuu6.workers.dev/v1/webhooks/revenuecat`、
       Authorization ヘッダ = §3 の `REVENUECAT_WEBHOOK_AUTH`。develop の `cloudflare-dev` は残してよい(sandbox のイベントは develop の D1 へ)
 - [ ] Restore Behavior が「Transfer to new App User ID」か確認(`revenuecat.md` §5)
+- [ ] RevenueCat のペイウォール `pw9a1e356b9edb4985`(2026-09-05 作成・未公開・Offering `default` に紐づけ済み)を
+      ダッシュボードで確認して **Publish**。公開しなければアプリは自前のペイウォールに落ちるので、どちらでも審査は通る
 - [ ] App Store Connect > 収益化 > サブスクリプション > 各商品で**手で直すもの**(API では Apple が
       「NAME / LOCALE_CODE は変更不可」と返して通らなかった): ① 日本語の説明を
       「セッション無制限と穴の復習。…」から `app_store_listing.md` §7 の文へ差し替え(**無制限は嘘になる**)、
