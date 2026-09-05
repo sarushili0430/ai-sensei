@@ -217,7 +217,8 @@ class SessionOutcome {
     this.ending = SessionEnding.understood,
   });
 
-  /// 初回の復習問題ができた直後だけ true。
+  /// **無料で今日の1回を使い切った回だけ** true(サーバの `show_paywall`)。
+  /// 祝福画面はこれでペイウォールを開き、「もう1問」の出口を差し替える。
   final bool showPaywall;
 
   /// 復習セッションかどうかを、会話画面の寿命を越えて持つ種類。

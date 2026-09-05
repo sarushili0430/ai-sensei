@@ -11,6 +11,8 @@ import '../../../theme/tokens.dart';
 import '../../monetization/application/entitlement_controller.dart'
     show Entitlement, RevenueCatConfig, entitlementControllerProvider;
 import '../../monetization/presentation/manage_subscription_button.dart';
+import '../../karte/application/karte_controllers.dart';
+import '../../karte/domain/karte.dart';
 import '../../notifications/application/push_controller.dart';
 import '../../notifications/data/push_repository.dart';
 import '../../notifications/presentation/push_toggle.dart';
@@ -20,7 +22,7 @@ import '../data/support_links.dart';
 /// 設定。
 ///
 /// 新しい機能は何も足していない。**置き場所が無かったものを集めた画面**:
-///   - 契約の管理と購入の復元(ホームから移した)
+///   - 契約の管理・購入の復元と、契約していない人への入口(ホームから移した)
 ///   - 通知のオン/オフ
 ///   - プライバシーポリシー・利用規約(サブスクを載せる以上、審査で見られる)
 ///   - 不適切な質問の報告(AI生成物を含むアプリの導線)
@@ -76,7 +78,19 @@ class SettingsScreen extends ConsumerWidget {
   }
 }
 
-/// 契約。状態のカードと、その下に管理・復元の2行。
+/// 契約。状態のカードと、その下に管理・復元の行。
+///
+/// **契約していない人には、代わりに「Premium にする」を置く。**
+/// ペイウォールが出るのは祝福画面で日に一度きりなので、そこで閉じた人が
+/// あとから買う気になったときに開ける場所がここしか無い。
+///
+/// 「持っているか」は2つの出どころを**両方**見る:
+///
+///   - [Entitlement.isPremium] … RevenueCat が知っている、払ったという事実
+///   - [ProgressSummary.isPremium] … サーバが返す解放の事実(β開放を含む)
+///
+/// 片方だけを見ると、**β開放中のテスターに購入を勧める**ことになる
+/// (課金しなくてよいと伝えてある相手に、設定を開くたび売り込む画面になる)。
 class _AccountSection extends ConsumerWidget {
   const _AccountSection();
 
@@ -84,14 +98,20 @@ class _AccountSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final AppStrings strings = AppStrings.of(context);
     final Entitlement? entitlement = ref.watch(entitlementControllerProvider).value;
+    final bool purchased = entitlement?.isPremium ?? false;
+    // 進捗はホームと同じ keepAlive の provider。読めていないあいだは
+    // 「まだ持っていない」に倒す(`isPremiumProvider` と同じ倒し方)。
+    final bool unlocked =
+        ref.watch(progressControllerProvider).value?.isPremium ?? false;
 
     return SettingsSection(
       title: strings.settingsSectionAccount,
       // 契約していない人に状態カードは出さない(出すと売り込みに読める)。
       // 出ないものを `leading` に渡すと、その下に空きだけが残る。
-      leading: (entitlement?.isPremium ?? false) ? const SubscriptionStatusCard() : null,
+      leading: purchased ? const SubscriptionStatusCard() : null,
       children: <Widget>[
         if (entitlement?.canManageSubscription ?? false) const ManageSubscriptionButton(),
+        if (!purchased && !unlocked) const UpgradeToPremiumButton(),
         const RestorePurchasesButton(),
       ],
     );

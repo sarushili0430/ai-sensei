@@ -4,21 +4,25 @@ import {
   analysesPerDay,
   canReissueToken,
   canStartSessionToday,
+  freeSessionStartsPerDay,
   hasPremiumAccess,
   isBetaOpenAccess,
   isPremiumNow,
   limitReachedAllowance,
+  maxSessionStartsPerDay,
   secondsPerDay,
   secondsUntilLocalMidnight,
   sessionMaxSeconds,
+  sessionStartsPerDay,
   shouldShowPaywall,
   startedAllowance,
 } from "./entitlement.ts";
 
+/** `wrangler.toml` と同じ値。無料は1日1回・10分、Premiumは1回20分・1日60分。 */
 const limits = {
-  freeSecondsPerDay: 1200,
+  freeSecondsPerDay: 600,
   premiumSecondsPerDay: 3600,
-  freeSessionMaxSeconds: 1200,
+  freeSessionMaxSeconds: 600,
   premiumSessionMaxSeconds: 1200,
   betaOpenAccessUntil: null,
   betaSecondsPerDay: 12000,
@@ -112,25 +116,71 @@ describe("β開放中の使い放題", () => {
       maxSeconds: 1200,
       remainingSecondsToday: 0,
       sessionsToday: 10,
+      maxStartsPerDay: maxSessionStartsPerDay,
     });
     expect(allowance.lessonAllowedToday).toBe(false);
   });
 });
 
 describe("secondsPerDay / startedAllowance / limitReachedAllowance", () => {
-  it("無料と1200秒、Premiumは3600秒を1日の持ち時間にする", () => {
-    expect(secondsPerDay({ user: user(), now, limits })).toBe(1200);
+  it("無料は600秒(10分)、Premiumは3600秒を1日の持ち時間にする", () => {
+    expect(secondsPerDay({ user: user(), now, limits })).toBe(600);
     expect(secondsPerDay({ user: user({ is_premium: true }), now, limits })).toBe(3600);
   });
 
   it("残高が3分未満なら始めず、境界の180秒なら始められる", () => {
-    expect(canStartSessionToday({ remainingSecondsToday: 179, sessionsToday: 0 })).toBe(false);
-    expect(canStartSessionToday({ remainingSecondsToday: 180, sessionsToday: 0 })).toBe(true);
+    expect(
+      canStartSessionToday({
+        remainingSecondsToday: 179,
+        sessionsToday: 0,
+        maxStartsPerDay: maxSessionStartsPerDay,
+      }),
+    ).toBe(false);
+    expect(
+      canStartSessionToday({
+        remainingSecondsToday: 180,
+        sessionsToday: 0,
+        maxStartsPerDay: maxSessionStartsPerDay,
+      }),
+    ).toBe(true);
   });
 
   it("残高があっても1日20回の開始ガードで止める", () => {
-    expect(canStartSessionToday({ remainingSecondsToday: 1200, sessionsToday: 19 })).toBe(true);
-    expect(canStartSessionToday({ remainingSecondsToday: 1200, sessionsToday: 20 })).toBe(false);
+    expect(
+      canStartSessionToday({
+        remainingSecondsToday: 1200,
+        sessionsToday: 19,
+        maxStartsPerDay: maxSessionStartsPerDay,
+      }),
+    ).toBe(true);
+    expect(
+      canStartSessionToday({
+        remainingSecondsToday: 1200,
+        sessionsToday: 20,
+        maxStartsPerDay: maxSessionStartsPerDay,
+      }),
+    ).toBe(false);
+  });
+
+  /**
+   * 無料の「1日1回」は秒数では守れない。5分で切り上げれば残高は5分残るので、
+   * 秒だけを見ている実装ではこの回が通ってしまう。
+   */
+  it("無料は、残高が残っていても2本目を始めさせない", () => {
+    expect(
+      canStartSessionToday({
+        remainingSecondsToday: 300,
+        sessionsToday: 1,
+        maxStartsPerDay: freeSessionStartsPerDay,
+      }),
+    ).toBe(false);
+  });
+
+  it("開始できる本数はプランで分かれる(無料1回 / Premium 20回)", () => {
+    expect(sessionStartsPerDay({ user: user(), now, limits })).toBe(1);
+    expect(sessionStartsPerDay({ user: user({ is_premium: true }), now, limits })).toBe(20);
+    // β開放中のテスターはPremium側(課金しなくてよいと伝えてある相手を止めない)。
+    expect(sessionStartsPerDay({ user: user(), now, limits: betaLimits })).toBe(20);
   });
 
   it("仮押さえ後の残高が最低単位以上なら、今日もう一度始められる", () => {
@@ -139,6 +189,7 @@ describe("secondsPerDay / startedAllowance / limitReachedAllowance", () => {
         maxSeconds: 600,
         remainingSecondsToday: 600,
         sessionsToday: 1,
+        maxStartsPerDay: maxSessionStartsPerDay,
       }),
     ).toEqual({
       allowed: true,
@@ -174,9 +225,19 @@ describe("secondsPerDay / startedAllowance / limitReachedAllowance", () => {
     });
   });
 
-  it("無料とPremiumで1回の上限時間を変えない", () => {
-    expect(sessionMaxSeconds({ user: user(), now, limits })).toBe(1200);
+  it("1回の上限は無料10分・Premium 20分", () => {
+    expect(sessionMaxSeconds({ user: user(), now, limits })).toBe(600);
     expect(sessionMaxSeconds({ user: user({ is_premium: true }), now, limits })).toBe(1200);
+  });
+
+  /**
+   * Premiumの日次残高(3600秒)が残っていても、1本は20分で締まる。
+   * ここが崩れると「60分を1本で使い切る」が通り、締めの設計が効かなくなる。
+   */
+  it("Premiumの1本は日次残高が残っていても20分を超えない", () => {
+    expect(sessionMaxSeconds({ user: user({ is_premium: true }), now, limits })).toBeLessThan(
+      secondsPerDay({ user: user({ is_premium: true }), now, limits }),
+    );
   });
 });
 
@@ -191,8 +252,17 @@ describe("analysesPerDay", () => {
   });
 
   it("持ち時間が1回の上限未満に上書きされても、無料の解析5回は減らない", () => {
-    const short = { ...limits, freeSecondsPerDay: 600 };
+    const short = { ...limits, freeSecondsPerDay: 300 };
     expect(analysesPerDay({ user: user(), now, limits: short })).toBe(5);
+  });
+
+  /**
+   * 秒数だけを緩めても、無料は1日1回のまま。解析枠が回数より増えると、
+   * 「解析はできるのに授業は始められない」写真が積める。
+   */
+  it("無料の持ち時間を広げても、始められる本数を超える解析枠は生えない", () => {
+    const wide = { ...limits, freeSecondsPerDay: 3600 };
+    expect(analysesPerDay({ user: user(), now, limits: wide })).toBe(5);
   });
 });
 
@@ -250,44 +320,18 @@ describe("secondsUntilLocalMidnight", () => {
 });
 
 describe("shouldShowPaywall", () => {
-  // 初回の復習問題ができた直後 = 価値実感の瞬間、の1回だけ。
-  it("初回の復習問題ができたら出す", () => {
-    expect(
-      shouldShowPaywall({
-        isPremium: false,
-        completedSessionCount: 1,
-        practiceProblemCreated: true,
-      }),
-    ).toBe(true);
+  // 無料は1日1回なので、1本終わった時点で今日の枠は無い。
+  it("無料で今日の枠を使い切ったら出す", () => {
+    expect(shouldShowPaywall({ isPremium: false, lessonAllowedToday: false })).toBe(true);
   });
 
-  it("2回目以降は出さない(煽らない)", () => {
-    expect(
-      shouldShowPaywall({
-        isPremium: false,
-        completedSessionCount: 2,
-        practiceProblemCreated: true,
-      }),
-    ).toBe(false);
+  it("まだ今日の枠が残っていれば出さない(煽らない)", () => {
+    expect(shouldShowPaywall({ isPremium: false, lessonAllowedToday: true })).toBe(false);
   });
 
-  it("問題を作れなければ出さない(見せる成果物がない)", () => {
-    expect(
-      shouldShowPaywall({
-        isPremium: false,
-        completedSessionCount: 1,
-        practiceProblemCreated: false,
-      }),
-    ).toBe(false);
-  });
-
+  // フェアユース上限に当たった日も、すでに払っている人に購入画面は出さない。
   it("Premiumには出さない", () => {
-    expect(
-      shouldShowPaywall({
-        isPremium: true,
-        completedSessionCount: 1,
-        practiceProblemCreated: true,
-      }),
-    ).toBe(false);
+    expect(shouldShowPaywall({ isPremium: true, lessonAllowedToday: false })).toBe(false);
+    expect(shouldShowPaywall({ isPremium: true, lessonAllowedToday: true })).toBe(false);
   });
 });

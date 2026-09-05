@@ -324,12 +324,13 @@ const Progress sampleProgress = Progress(
   lastSessionDate: '2026-08-03',
 );
 
+/// 無料のホーム。**1日1回・10分**(サーバの既定値と同じ)。
 const ProgressSummary sampleSummary = ProgressSummary(
   progress: sampleProgress,
   isPremium: false,
   limits: SessionLimits(
-    maxSeconds: 1200,
-    remainingSecondsToday: 1200,
+    maxSeconds: 600,
+    remainingSecondsToday: 600,
     lessonAllowedToday: true,
   ),
 );
@@ -339,8 +340,8 @@ const ProgressSummary firstRunSummary = ProgressSummary(
   progress: Progress.empty,
   isPremium: false,
   limits: SessionLimits(
-    maxSeconds: 1200,
-    remainingSecondsToday: 1200,
+    maxSeconds: 600,
+    remainingSecondsToday: 600,
     lessonAllowedToday: true,
   ),
 );
@@ -354,7 +355,7 @@ const ProgressSummary exhaustedSummary = ProgressSummary(
   progress: sampleProgress,
   isPremium: false,
   limits: SessionLimits(
-    maxSeconds: 1200,
+    maxSeconds: 600,
     remainingSecondsToday: 0,
     lessonAllowedToday: false,
   ),

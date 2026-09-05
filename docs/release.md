@@ -37,9 +37,12 @@
       復習問題の画面(`03-practice.png`)に差し替えた
 - [x] LP の規約・ポリシー・サポートを実装に合わせて修正し、英語版(`/en/terms/` `/en/privacy/` `/en/support/`)を追加
 - [x] 料金メモ(`business/pricing_v1.md`)と、ストア掲載文の正本(`store/app_store_listing.md`)
-- [ ] **`PREMIUM_SESSION_MAX_SECONDS`**: 1回の授業は20分で締まる(`FREE/PREMIUM_SESSION_MAX_SECONDS = 1200`)。
-      「1回の授業に上限は無い」つもりなら、production/develop の両方で `3600` にする(1行)。
-      2026-09-05 の判断は据え置き
+- [x] **無料枠を「1日1回・10分」に、Premium の1回を20分に固定**
+      (`FREE_SECONDS_PER_DAY = FREE_SESSION_MAX_SECONDS = 600` /
+      `PREMIUM_SESSION_MAX_SECONDS = 1200`)。回数の上限は秒数と別に
+      `freeSessionStartsPerDay = 1` が守る(途中で降りた人に残高が残るため、
+      秒だけでは1回に絞れない)。無料は使い切った締めの画面でペイウォールを出し、
+      設定「契約 ＞ Premium にする」とホーム下部の「もっと教わる」からいつでも開ける
 
 ---
 
@@ -207,5 +210,4 @@ pnpm --filter @ai-sensei/api tail:production
 | 運営者名・所在地・管轄裁判所 | 個人名か法人か。所在地は私書箱でも可だが空欄は不可 | LP 6ページの `fill`、App Store の著作権表記 |
 | 審査用サンプルノート画像 | 実物のノート写真を2〜3枚(数学I の判別式・英語の文法で1枚ずつ) | 審査メモの `<SAMPLE_NOTES_URL>` |
 | IAP の販売地域 | 日本+米国のまま / 全地域 | App Store Connect |
-| 1回の授業の上限 | 20分のまま / 日次残高いっぱい(`PREMIUM_SESSION_MAX_SECONDS=3600`) | `wrangler.toml` |
-| 無料の1日の持ち時間 | 20分のまま / 15分 / 10分(`pricing_v1.md` §3) | `wrangler.toml` の `FREE_SECONDS_PER_DAY` |
+| 無料→有料の転換率を見たあとの無料枠 | 10分のまま / 15分に戻す(`pricing_v1.md` §3) | `wrangler.toml` の `FREE_SECONDS_PER_DAY` と `FREE_SESSION_MAX_SECONDS`(**2つとも**動かす) |

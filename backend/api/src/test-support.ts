@@ -184,9 +184,11 @@ export function testBindings(overrides: Partial<Bindings> = {}): Bindings {
     LIVEKIT_API_SECRET: "test-secret-value-for-hmac",
     REVENUECAT_WEBHOOK_AUTH: "test-webhook-auth",
     INTERNAL_API_TOKEN: internalToken,
-    FREE_SECONDS_PER_DAY: "1200",
+    // `wrangler.toml` と同じ値で回す。既定値をテストだけ広げると、
+    // 無料の「1日1回・10分」が本番でしか効かない状態に気づけない。
+    FREE_SECONDS_PER_DAY: "600",
     PREMIUM_SECONDS_PER_DAY: "3600",
-    FREE_SESSION_MAX_SECONDS: "1200",
+    FREE_SESSION_MAX_SECONDS: "600",
     PREMIUM_SESSION_MAX_SECONDS: "1200",
     // テスト出力を1リクエスト1行で埋めない。失敗のログは残す。
     LOG_LEVEL: "error",

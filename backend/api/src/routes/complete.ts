@@ -21,6 +21,7 @@ import {
   hasPremiumAccess,
   secondsPerDay,
   sessionMaxSeconds,
+  sessionStartsPerDay,
   shouldShowPaywall,
 } from "../lib/entitlement.ts";
 import { apiError } from "../lib/errors.ts";
@@ -213,17 +214,18 @@ completeRoute.post("/:sessionId/complete", async (c) => {
     repository.getDailySessionUsage(session.device_id, localDate),
   ]);
 
+  const sessionLimits = sessionLimitsPayload({ user, usage, at, limits: currentLimits });
   const response: CompleteSessionResponse = {
     practice_problem: stored === null ? null : toPracticeProblem(stored),
     practice_schedule: scheduleEntries,
     progress: computeProgress({ sessionDates, problems, attempts, today: localDate }),
-    limits: sessionLimitsPayload({ user, usage, at, limits: currentLimits }),
+    limits: sessionLimits,
+    // 無料で今日の1回を使い切った回に出す。判定に使うのは、いま返した残高と
+    // **同じもの**にする(画面が「今日はここまで」と言っている横で、
+    // ペイウォールだけが別の残高を見ている状態を作らない)。
     show_paywall: shouldShowPaywall({
       isPremium: premium,
-      // セッション回数ではなく「完了した日数」で数えるので、
-      // 同じ日に何度やってもペイウォールは初回の1回だけになる。
-      completedSessionCount: sessionDates.length,
-      practiceProblemCreated: stored !== null,
+      lessonAllowedToday: sessionLimits.lesson_allowed_today,
     }),
   };
 
@@ -347,15 +349,15 @@ export async function buildResponse(input: {
     repository.getDailySessionUsage(session.device_id, localDate),
   ]);
 
+  const sessionLimits = sessionLimitsPayload({ user, usage, at, limits });
   return {
     practice_problem: problem === null ? null : toPracticeProblem(problem),
     practice_schedule: schedule,
     progress: computeProgress({ sessionDates, problems, attempts, today: localDate }),
-    limits: sessionLimitsPayload({ user, usage, at, limits }),
+    limits: sessionLimits,
     show_paywall: shouldShowPaywall({
       isPremium: hasPremiumAccess({ user, now: at, limits }),
-      completedSessionCount: sessionDates.length,
-      practiceProblemCreated: problem !== null,
+      lessonAllowedToday: sessionLimits.lesson_allowed_today,
     }),
   };
 }
@@ -382,6 +384,11 @@ function sessionLimitsPayload(input: {
     lesson_allowed_today: canStartSessionToday({
       remainingSecondsToday,
       sessionsToday: input.usage.sessionsStarted,
+      maxStartsPerDay: sessionStartsPerDay({
+        user: input.user,
+        now: input.at,
+        limits: input.limits,
+      }),
     }),
   };
 }

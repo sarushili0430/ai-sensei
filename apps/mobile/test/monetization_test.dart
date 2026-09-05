@@ -739,4 +739,23 @@ void main() {
       expect(find.text(ja.premiumBadge), findsNothing);
     });
   });
+
+  /// 設定の「Premium にする」。
+  ///
+  /// ペイウォールが自分から出るのは祝福画面で日に一度きり。そこで閉じた人が
+  /// あとから買う気になったとき、探しに来るのは設定なので、**いつでも開ける
+  /// 入口**をここに置く。画面ごと組まないのは、鍵の無いビルドでは
+  /// 「契約」セクションごと出ないため([SubscriptionStatusCard] と同じ理由)。
+  group('設定の Premium への入口', () {
+    const AppStrings ja = AppStrings(Locale('ja'));
+
+    testWidgets('何が変わるかを一行で言い、金額は書かない', (WidgetTester tester) async {
+      await pumpApp(tester, const Scaffold(body: UpgradeToPremiumButton()));
+
+      expect(find.text(ja.settingsUpgrade), findsOneWidget);
+      expect(find.text(ja.settingsUpgradeBody), findsOneWidget);
+      // 据え置きの数字を書くと、ストアの決済画面と食い違ったまま買わせることになる。
+      expect(find.textContaining('¥'), findsNothing);
+    });
+  });
 }
