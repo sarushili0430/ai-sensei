@@ -1,0 +1,673 @@
+# ストア側のセットアップ(Apple / Google)
+
+`codemagic.yaml` がビルドしたものを受け取る側の設定。
+Codemagic 側の設定は [`codemagic.md`](./codemagic.md)。
+
+| | 識別子 |
+| --- | --- |
+| iOS | `jp.co.aiSensei` |
+| Android | `jp.co.aiSensei` |
+
+---
+
+## 0. 先に決めること
+
+順番を間違えるとやり直しになるものだけ、最初に置く。
+
+### 0-1. 対象年齢に13歳未満(米国は13歳、日本の運用上は未成年)を含めるか
+
+**これが一番効く。** 中高生向けとして「13歳以上」に絞るのと、
+小学生を含めるのとで、両ストアの適用ポリシーが変わる。
+
+小学生を含める場合:
+
+- **Apple**: Kids Category 扱い。サードパーティの解析・広告SDKの利用が制限され、
+  外部リンクの前に保護者ゲートが要る。**Sentry と OneSignal の扱いを再検討することになる。**
+- **Google**: 「ファミリー向けプログラム」が適用。SDKごとに
+  ファミリー向け自己申告が要り、広告IDの取得が禁止される。
+
+いまの依存(Sentry / OneSignal)のまま素直に出すなら **13歳以上**。
+先に決めないと、審査中に「SDKを外してください」で作り直しになる。
+
+### 0-2. プライバシーポリシーのURL
+
+**両ストアで必須。** ページが無いと審査に出せない。
+写真・音声・匿名デバイスIDを何のために集めて、どこに置いて、いつ消すかを書く。
+
+**確定済み**(両ストアの申告と `--dart-define` で同じものを使う):
+
+| | URL |
+| --- | --- |
+| プライバシーポリシー | `https://ubiqy.jp/privacy/` |
+| 利用規約 | `https://ubiqy.jp/terms/` |
+
+`apps/lp/public/{privacy,terms}/` にも同じ趣旨のページがある。
+**内容が食い違うと申告と実物のずれになる**ので、公開する正を1つに決めて
+もう一方はそこへ向けること(LP側の扱いは未決)。
+
+### 0-3. 写真と会話の保持期間
+
+申告(1-7 / 2-6)の内容がここで決まるので、先に方針を決める。
+現状のコードを読むと:
+
+- ノート写真は R2 に `photos/{deviceId}/{sessionId}` で**保存されたまま**
+  (`backend/api/src/routes/sessions.ts:105`)。削除処理は見当たらない。
+- 会話の文字起こしはカルテ生成に使われる(`backend/agent/src/transcript.ts`)。
+
+「消さない」なら消さないと申告すればよく、それ自体は違反ではない。
+ただし**申告と実装が食い違うのが一番まずい**(両ストアとも公開停止の理由になる)。
+
+### 0-4. 定期購入の内容
+
+**確定済み(2026-09-05・[`../business/pricing_v1.md`](../business/pricing_v1.md))**:
+
+| プラン | 商品ID(App Store) | 日本 | 米国 | 無料トライアル |
+| --- | --- | --- | --- | --- |
+| 週 | `jp.co.aisensei.premium.weekly` | ¥980 | $6.99 | なし |
+| 月 | `jp.co.aisensei.premium.monthly` | ¥2,980 | $19.99 | なし |
+| 年 | `jp.co.aisensei.premium.yearly` | ¥29,800 | $199.99 | なし |
+
+両ストアとRevenueCatの3か所に同じものを作る。Google Play 側の商品はまだ無い
+(2-7)。掲載文・審査メモ・IAPの表示名と説明は
+[`../store/app_store_listing.md`](../store/app_store_listing.md)(日英)。
+
+---
+
+## 1. Apple
+
+### 1-1. Apple Developer Program
+
+年間 $99(法人は D-U-N-S 番号が要り、発行に数日〜数週かかる)。
+Organization で取るなら**ここが律速**なので最初に着手する。
+
+### 1-2. Certificates, Identifiers & Profiles → Identifiers
+
+**Identifiers > + > App IDs > App** で `jp.co.aiSensei` を **Explicit** で作る。
+
+> **これは 1-4 の「アプリを作成」とは別の作業で、こちらが先。**
+> Identifier が無いと Codemagic の署名が
+> `No matching profiles found for bundle identifier ...` で落ちる。
+> 自動署名はプロファイルと証明書を作れるが、**Identifier の登録はしてくれない**。
+> 大文字小文字も区別されるので、`jp.co.aisensei` ではなく
+> `jp.co.aiSensei` で登録すること。
+
+Capabilities のうち、このアプリで**触るもの**:
+
+| Capability | 設定 | 理由 |
+| --- | --- | --- |
+| In-App Purchase | 有効(既定で有効) | `purchases_flutter` |
+| Push Notifications | **有効にする** | `onesignal_flutter`。既定はオフ |
+| App Groups | **有効にする** | OneSignal の Notification Service Extension と共有する(下の 1-2-1) |
+
+> **In-App Purchase は Xcode 側にも記録を置いてある。**
+> `apps/mobile/ios/Runner.xcodeproj` の Runner ターゲットの `SystemCapabilities` に
+> `com.apple.InAppPurchase` が入っている(Xcode の Signing & Capabilities で
+> **In-App Purchase** を足したのと同じ状態)。この Capability は entitlements に
+> 鍵を増やさない — つまり `Runner.entitlements` を見ても付いているかは分からない
+> ので、確認するときは `project.pbxproj` を見ること。
+> 自動署名はここを見て App ID 側の Capability を揃えるため、
+> ポータル側が既定で有効でも記録は残す。
+
+**触らないもの**(付けると審査で用途を聞かれるだけ損):
+
+Sign in with Apple(アカウントを作らない)、Associated Domains、
+HealthKit、Maps、Wallet、iCloud、Game Center、NFC、
+Apple Pay — いずれも未使用。
+
+> Background Modes は App ID の Capability ではなく Info.plist / Xcode 側の設定。
+> 1-9 を参照。
+
+### 1-2-1. App Group と、拡張ぶんの Identifier
+
+アプリには OneSignal の **Notification Service Extension**(`ios/OneSignalNotificationServiceExtension/`)
+が入っている。これは本体とは**別のバンドルID・別のプロファイルで署名される**ので、
+Identifier も別に要る。さらに両者は App Group 越しに値を受け渡すので、
+**登録するものが3つ**になる。
+
+登録は次の順でやる(順番が逆だと、割り当て先のグループが無い・
+グループを持てないIdentifierになる)。
+
+1. **Identifiers > + > App Groups** で `group.jp.co.aiSensei.onesignal` を作る
+2. **App ID `jp.co.aiSensei`** を開き、Capability の **App Groups** に
+   チェックを入れて `Edit` から 1 のグループを割り当てる
+3. **Identifiers > + > App IDs > App** で
+   `jp.co.aiSensei.OneSignalNotificationServiceExtension` を **Explicit** で作り、
+   同じく **App Groups** に 1 のグループを割り当てる
+   (こちらに Push Notifications / In-App Purchase は要らない)
+
+グループ名はリポジトリ側の2つの entitlements ファイルが正で、
+**3箇所が1文字でも違うと通らない**:
+
+- `apps/mobile/ios/Runner/Runner.entitlements`
+- `apps/mobile/ios/OneSignalNotificationServiceExtension/OneSignalNotificationServiceExtension.entitlements`
+- Developer Portal の App Group
+
+> **Capability を足したら、既存のプロビジョニングプロファイルは消すこと。**
+> プロファイルは作られた時点の Capability を焼き込んでいるので、
+> あとから App ID 側を直しても**既にあるプロファイルは古いまま**で、
+> Codemagic の自動署名はそれを使い回してしまう。結果、Portal は直っているのに
+> ビルドだけが
+> `Provisioning profile "..." doesn't include the App Groups capability`
+> で落ち続ける。**Profiles から消せば**、次のビルドで自動署名が作り直す。
+
+この3点が揃っていないと、`flutter build ipa` が Xcode のアーカイブを
+回しきったあとで落ちる:
+
+| ログに出るもの | 足りていないもの |
+| --- | --- |
+| `doesn't include the App Groups capability` | 2(App ID に App Groups が付いていない / プロファイルが古い) |
+| `doesn't support the group.jp.co.aiSensei.onesignal App Group` | 1(グループ未作成)または 2 の割り当て |
+| `Signing for "OneSignalNotificationServiceExtension" requires a development team` | 3(拡張の Identifier が無く、プロファイルが取れていない) |
+
+`codemagic.yaml` の署名ステップが**アーカイブの前に**同じことを検査して
+落とすようにしてあるので、実際にはこの表より早い段階で、
+上のどれが足りないかがログに出る。
+
+### 1-3. 鍵は3種類ある(まず違いを押さえる)
+
+`.p8` という同じ拡張子のファイルが3つ出てくるうえ、**発行する場所がそれぞれ違う**。
+ここを取り違えるのが一番よくある事故なので、先に整理しておく。
+
+| 鍵 | どこで作る | 用途 | 渡す先 |
+| --- | --- | --- | --- |
+| **App Store Connect API Key** | App Store Connect > ユーザーとアクセス > 統合 | ビルドの署名とアップロード | Codemagic |
+| In-App Purchase Key | 同上(別タブ) | 課金レシートの検証 | RevenueCat(1-10) |
+| APNs Auth Key | **Apple Developer**(別サイト)> Keys | プッシュ通知 | OneSignal |
+
+いま要るのは**一番上の App Store Connect API Key** だけ。
+
+> **よくある間違い**: Apple Developer(developer.apple.com)の
+> 「Certificates, Identifiers & Profiles > Keys」で作れるのは APNs の鍵などで、
+> **App Store Connect API Key はここには無い**。
+> 別サイトの App Store Connect(appstoreconnect.apple.com)で作る。
+
+### 1-3-1. App Store Connect API Key を発行する
+
+#### 手順
+
+1. **[appstoreconnect.apple.com](https://appstoreconnect.apple.com)** にサインインする
+2. 上部の **「ユーザーとアクセス」**(Users and Access)を開く
+3. タブの **「統合」**(Integrations)を選ぶ
+4. 左のリストで **「App Store Connect API」** を選ぶ
+5. **「チームキー」**(Team Keys)タブにいることを確認する
+   - 「個別キー」(Individual Keys)は個人に紐づく鍵。
+     **CIには使わない**(その人がチームを抜けると鍵ごと死ぬ)
+6. **「+」** ボタンを押す
+7. 入力する
+
+   | 項目 | 値 |
+   | --- | --- |
+   | 名前 | `Codemagic` など、後で見て分かるもの(自由) |
+   | アクセス(役割) | **App Manager** |
+
+8. **「生成」**(Generate)を押す
+
+#### 控えるもの(3点セット)
+
+生成後の一覧画面から、以下の3つを取る。**Codemagic にはこの3つを入れる。**
+
+| | どこにあるか | 形 |
+| --- | --- | --- |
+| **Issuer ID** | ページ**上部**に1行で表示(キーの一覧の外) | `6a7b...` のようなUUID |
+| **Key ID** | 作った鍵の行 | 10文字の英数字 |
+| **APIキー(.p8)** | 行の右端「APIキーをダウンロード」 | `AuthKey_XXXXXXXXXX.p8` |
+
+> **`.p8` は一度しかダウンロードできない。**
+> 閉じると二度と取れないので、その場でパスワードマネージャ等に保管する。
+> 無くしたら失効させて作り直す(作り直し自体は何度でもできる)。
+
+> **Issuer ID を取り忘れやすい。** 鍵ごとではなくチームに1つで、
+> 一覧の上に小さく出ているだけなので見落としやすい。
+
+#### 詰まったら
+
+- **「統合」タブが無い / 「+」が押せない**
+  → 権限不足。**Admin または Account Holder** でサインインする必要がある。
+- **初回だけ「アクセスをリクエスト」ボタンしか出ない**
+  → チームキーの利用開始は **Account Holder 本人**が押す必要がある。
+    別の人が Account Holder なら、その人に踏んでもらう。
+- **役割を Developer にしてしまった**
+  → Codemagic のビルドが
+    `Provisioning profile ... doesn't include signing certificate` で落ちる。
+    役割は後から変更できるので、**App Manager** に上げる。
+
+### 1-3-2. Codemagic に登録する
+
+1. Codemagic の **Settings**(または左下の Account settings)>
+   **Integrations** > **Developer Portal** を開く
+2. **Manage keys / Add key** から新規登録
+3. 入力する
+
+   | 項目 | 値 |
+   | --- | --- |
+   | **名前** | **`codemagic`** |
+   | Issuer ID | 1-3-1 で控えたUUID |
+   | Key ID | 1-3-1 で控えた10文字 |
+   | API key | `AuthKey_XXXXXXXXXX.p8` をアップロード |
+
+> **名前は `codemagic` にすること。**
+> `codemagic.yaml` の `integrations.app_store_connect: codemagic` が
+> この名前で参照している。違う名前にするなら yaml 側も直す。
+>
+> **ファイル名と同じ文字列だが別物。** ここで言う `codemagic` は
+> 「このAPIキーに付けた表示名」であって、`codemagic.yaml` のことではない。
+>
+> **Code signing identities の証明書名とも別物。**
+> あちらは手でアップロードした証明書ファイルの名前で、
+> `integrations.app_store_connect` からは参照できない。
+> 証明書名(`aisenseidist` など)を書くと
+> `App Store Connect integration "..." does not exist` で落ちる。
+
+登録できていれば、証明書(Certificates)とプロビジョニングプロファイルを
+**手で作る必要はない**。`codemagic.yaml` の署名ステップが
+このAPIキー経由で `app-store-connect fetch-signing-files` を叩き、
+無ければ作る。
+
+> ただし**配布証明書に埋める秘密鍵だけは自分で用意する**。
+> 変数グループ `ios-code-signing` の `CERTIFICATE_PRIVATE_KEY` がそれで、
+> 渡し忘れると毎ビルド新しい証明書が作られて枚数の上限に当たる。
+> 作り方は [`codemagic.md`](./codemagic.md#certificate_private_key-が要る)。
+
+### 1-3-3. APNs Auth Key(プッシュを配線するときだけ)
+
+アプリ側の OneSignal 初期化は入っている(`lib/src/features/notifications/`)。
+**この鍵を OneSignal に入れるまで、iOSには通知が一通も届かない。**
+
+**[developer.apple.com](https://developer.apple.com) > Certificates, Identifiers &
+Profiles > Keys > +** で、
+「**Apple Push Notifications service (APNs)**」にチェックして作る。
+こちらの `.p8` も再ダウンロード不可。
+
+OneSignal には `.p8` + **Key ID** + **Team ID** + **Bundle ID**(`jp.co.aiSensei`)を入れる。
+Team ID は Apple Developer の右上、またはメンバーシップのページで確認できる。
+
+### 1-4. App Store Connect にアプリを作る
+
+**My Apps > + > New App**
+
+| 項目 | 値 |
+| --- | --- |
+| プラットフォーム | iOS |
+| 名前 | ストア表示名(30字以内、日本語可) |
+| プライマリ言語 | 日本語 |
+| バンドルID | `jp.co.aiSensei`(1-2 で作ったもの) |
+| SKU | 任意の内部ID(例 `ai-sensei-ios`) |
+
+**これを作らないと Codemagic のアップロードが落ちる**
+(ビルド自体は通るので気づきにくい)。
+
+### 1-5. 契約・税務・銀行
+
+**Business(旧 Agreements, Tax, and Banking)**
+
+「有料App契約(Paid Applications Agreement)」を**有効にする**。
+これが未締結だと定期購入の商品が作れず、作れても Sandbox で買えない。
+銀行口座と税務情報の入力が要るので、**法人の場合は経理待ちになりがち**。
+0-1 と並んでリードタイムが長いので早めに着手する。
+
+### 1-6. サブスクリプションを作る
+
+**アプリ > 収益化 > サブスクリプション**
+
+1. サブスクリプショングループを作る(例 `ai-sensei Premium`)
+2. その中に自動更新サブスクリプションを作る
+   - 商品ID(例 `jp.co.aisensei.premium.monthly`)— **後から変更できない**
+   - 期間・価格
+   - 表示名と説明(ローカライズ。日本語は必須)
+3. **審査用スクリーンショット**(ペイウォール画面)を添付 — 無いと審査で弾かれる
+4. 無料トライアルを付けるなら「サブスクリプション特典」から追加
+
+### 1-7. App のプライバシー
+
+**アプリ > App のプライバシー**。コードから見て申告すべきものは以下。
+
+| データ種別 | 収集 | 用途 | 個人と紐づくか | 根拠 |
+| --- | --- | --- | --- | --- |
+| 写真 | する | Appの機能 | **紐づく**(匿名デバイスIDと対) | `api_client.dart` が multipart で送信、R2に保存 |
+| 音声データ | する | Appの機能 | 紐づく | `livekit_client` で会話を送る |
+| ユーザーID | する | Appの機能 | 紐づく | `device_id.dart` の匿名UUID |
+| 購入履歴 | する | Appの機能 | 紐づく | `purchases_flutter` |
+| クラッシュデータ | する | 分析 | 紐づかない設定にできる | `sentry_flutter` |
+| その他の使用状況データ | する | Appの機能 | 紐づく | カルテ(学習の記録) |
+
+**申告しないもの**: 氏名・メールアドレス・電話番号・住所・位置情報・連絡先・
+健康・金融情報。いずれもアプリが取得していない(アカウントを作らないため)。
+
+**「トラッキング」は「なし」**。広告ID(IDFA)を使っておらず、
+データを第三者の広告目的に渡していないため。
+したがって `NSUserTrackingUsageDescription` と ATT ダイアログも不要。
+
+> `device_id.dart` のIDはアプリが自分で作るUUIDで、広告IDではない。
+> それでも Apple の定義では「ユーザーID」に当たるので**申告は要る**。
+
+### 1-8. 年齢制限(Age Rating)
+
+**アプリ > 一般情報 > 年齢制限** のアンケートに答える。
+0-1 で「13歳以上」に決めたなら、Kids Category には**入れない**。
+
+### 1-9. Info.plist(アプリ側・リポジトリで管理)
+
+すでに入っているもの:
+
+| キー | 値の意味 | 由来 |
+| --- | --- | --- |
+| `NSCameraUsageDescription` | ノートの撮影 | `camera` / `image_picker` |
+| `NSMicrophoneUsageDescription` | 声で説明してもらう | `livekit_client` |
+| `NSPhotoLibraryUsageDescription` | 撮影済みの写真を選ぶ | `image_picker` |
+| `ITSAppUsesNonExemptEncryption` = `false` | 輸出コンプライアンスの手入力を省く | HTTPSのみ |
+
+**意図的に置いていないもの**:
+
+| キー | なぜ置かないか |
+| --- | --- |
+| `NSLocationWhenInUseUsageDescription` | 位置情報を使っていない。参照していたのは OneSignal の位置情報モジュールだけで、ビルドから外してある([`codemagic.md` の 8](./codemagic.md)) |
+| `NSUserTrackingUsageDescription` | 「トラッキング」を「なし」で申告しているため(1-7) |
+
+どちらも、足すと 1-7 のプライバシー申告と食い違う。
+`ITMS-90683`(用途文言が無い)がメールで返ってきたときに
+足したくなるキーなので、`Info.plist` 本体にも同じ注意書きを置いてある。
+
+**プッシュを配線するとき**に追加が要るもの(いまは未実装):
+
+- Xcode の Signing & Capabilities で **Push Notifications** を追加
+  → `Runner.entitlements` に `aps-environment` が入る
+- `UIBackgroundModes` に `remote-notification`
+
+**画面ロック中も会話を続けたいなら**さらに:
+
+- `UIBackgroundModes` に `audio`
+- 審査で用途を必ず聞かれる。会話アプリなので説明はつくが、
+  「不要なら付けない」が安全
+
+### 1-10. RevenueCat(Apple側)
+
+1. RevenueCat のプロジェクトに App Store のアプリを追加し、Bundle ID を入れる
+2. **In-App Purchase Key**(App Store Connect > Users and Access > Integrations >
+   In-App Purchase)を作って RevenueCat にアップロード
+3. **App Store Server Notifications V2** の URL に RevenueCat のURLを設定
+   (App Store Connect > アプリ > 一般情報)
+4. Products に 1-6 の商品IDを登録
+5. **Entitlements に `premium` を作る**(identifier のほう。表示名は自由)。
+   アプリ側の既定値は `revenuecat_config.dart` の `entitlementId`。違う名前に
+   したいときは `--dart-define=REVENUECAT_ENTITLEMENT_ID=...` で合わせる。
+   ずれると**課金は成立するのに何も解放されない**
+6. **Offerings で `current` を設定し、パッケージを 週/月/年 の3つ入れる** —
+   識別子は RevenueCat の定型(`$rc_weekly` / `$rc_monthly` / `$rc_annual`)。
+   current が空だとペイウォールに商品が出ない
+7. **Paywalls でペイウォールを作る**(Offering に紐づく)。作らないと
+   アプリは自前のペイウォールに落ちる — 詳細は [`docs/revenuecat.md`](../revenuecat.md)
+8. 公開SDKキー(`appl_...`)を Codemagic の変数グループ `mobile-dart-defines` の
+   `REVENUECAT_IOS_PUBLIC_SDK_KEY` に入れる
+9. Webhook を `https://<api>/v1/webhooks/revenuecat` に向け、
+   Authorization ヘッダに `REVENUECAT_WEBHOOK_AUTH` と同じ値を設定
+   (`backend/api/src/routes/webhooks.ts:41`)
+
+### 1-11. TestFlight
+
+内部テスターは App Store Connect のユーザーを追加するだけで、審査なしで配れる
+(最大100人)。外部テスターは初回にベータ版審査が要る。
+
+`ITSAppUsesNonExemptEncryption` を入れてあるので、
+アップロードのたびに輸出コンプライアンスを聞かれることはない。
+
+---
+
+## 2. Google
+
+### 2-1. Google Play Console
+
+登録料 $25(買い切り)。法人アカウントは D-U-N-S と本人確認が要る。
+個人でも**住所・電話の確認**があり、完了まで数日かかることがある。
+
+### 2-2. アプリを作成
+
+**すべてのアプリ > アプリを作成**
+
+| 項目 | 値 |
+| --- | --- |
+| アプリ名 | ストア表示名 |
+| デフォルトの言語 | 日本語 |
+| アプリ / ゲーム | アプリ |
+| 無料 / 有料 | **無料**(アプリ内購入あり) |
+
+> **有料→無料の変更はできない。** 定期購入は「無料アプリ + アプリ内購入」で作る。
+
+パッケージ名 `jp.co.aiSensei` は**最初のAABをアップロードした時点で確定**し、
+以後変えられない。
+
+### 2-3. 署名(Play App Signing)
+
+**リリース > 設定 > アプリの署名**
+
+初回アップロード時に Play App Signing が自動で有効になる。
+Codemagic に置いた upload keystore は「アップロード鍵」であって、
+配信用の署名鍵はGoogleが持つ。**upload keystore を失くすと再発行申請が要る**ので、
+`.jks` とパスワードは Codemagic 以外にも保管しておく。
+
+### 2-4. 内部テスト
+
+**テスト > 内部テスト > 新しいリリースを作成**
+
+`codemagic.yaml` の `android-internal` が `track: internal` に上げる。
+テスターはメールアドレスのリストで登録(最大100人、審査なし)。
+
+**ただし初回だけは手でAABをアップロードする必要がある。**
+アプリが1度も公開されていない状態だと、APIからのアップロードが弾かれる。
+
+### 2-4-1. クローズドテスト(Google グループでテスターを集める)
+
+内部テストと違い、**クローズドテストは外の人に配れる**。LP から募集して
+テスターを集める導線がこれで、名簿は **Google グループ1つ**に寄せてある。
+
+| もの | 値 |
+| --- | --- |
+| グループのアドレス | `ai-sensei@googlegroups.com` |
+| 参加ページ(LPから貼る) | `https://groups.google.com/g/ai-sensei` |
+| メールで参加 | `ai-sensei+subscribe@googlegroups.com` に空メール |
+| Play の参加用URL | `https://play.google.com/apps/testing/jp.co.aiSensei` |
+
+> **グループのアドレスは変えないこと。** Play Console 側はグループの
+> メールアドレスでテスターを引いているので、アドレスを変えた瞬間に
+> **登録済みのテスターが全員まとめて名簿から外れる**。
+> 12人/14日(下記)のカウントもそこで途切れて、最初からやり直しになる。
+
+#### 手順
+
+1. **グループを作る**(groups.google.com > グループを作成)。
+   アドレスは上の表のとおり。作るのは Play Console のオーナーと同じ
+   Google アカウントでなくてもよい(グループのアドレスを渡すだけなので)。
+2. **グループ設定**(グループ > グループ設定)を次のようにする。
+   ここを既定のままにすると、LP のボタンを押した人が参加できない。
+
+   | 設定 | 値 | 理由 |
+   | --- | --- | --- |
+   | グループへの参加 | **ウェブ上の全ユーザーが参加可能** | 既定は「招待されたユーザーのみ」。ここが承認制だと、こちらが手で承認するまでテスターにならない |
+   | メンバーの表示 | **グループのオーナーと管理者** | テスターのメールアドレスが、ほかのテスターに見えないようにする |
+   | 投稿の権限 | **グループのオーナーと管理者** | 名簿であって掲示板ではない。開けておくとスパムの投函先になる |
+   | 会話の表示 | グループのメンバー | 配信の案内を後から参加した人が読み返せる |
+
+   「ウェブ上の全ユーザーが参加可能」にする以上、**ボットが混ざることがある**。
+   実際に使わないアカウントは 12人のカウントに乗らない(下記)ので、
+   混入が目に見えて増えたら「参加をリクエストできる」(承認制)に落として、
+   LP の文面(「参加するとテスターになります」)もそれに合わせて直すこと。
+3. **Play Console に紐づける。**
+   **テスト > クローズドテスト > トラック > テスター**タブで
+   `ai-sensei@googlegroups.com` を追加する。
+   同じ画面に出る「テスターの参加用URL」が上の表の Play の参加用URLで、
+   **クローズドテストのリリースが1本も承認されていないうちは、
+   このURLは「テスターではありません」の画面にしかならない**。
+4. **トラックにリリースが載ったら、参加ページのステップ2を開通させる。**
+   募集の導線は `apps/lp/public/beta/`(と `en/beta/`)にあり、
+   ①グループに参加 ②Playの参加用URLを押す、の2ステップで書いてある。
+   **②のボタンは、いまは押せない見た目(`.btn-soon`)で置いてある** ——
+   前項の理由で、承認前に押すと全員が外れるため。
+   リリースが載った時点で、リンクに差し替えて、同時にグループへ1通流す
+   (差し替えかたは `apps/lp/README.md`「公開前に埋めるもの」)。
+
+#### 12人 / 14日(個人アカウントのみ)
+
+**2023-11-13 以降に作られた個人開発者アカウント**は、製品版の申請の前に
+**12人以上のテスターが14日間続けてオプトインしている**クローズドテストが要る。
+D-U-N-S で確認済みの法人アカウントはこの要件から外れる。
+どちらのアカウントで登録したかで段取りが変わるので、**Play Console の
+「アカウントの詳細」でアカウントの種類を先に確認すること。**
+
+要件がかかる場合、テスター側で押さえるところは3つ。
+
+- **Google グループに入っただけではカウントされない。**
+  Play の参加用URLを開いてオプトインしたところで、はじめて1人と数えられる。
+  参加ページのステップ2を飛ばした人は、名簿には居るのに0人扱いになる。
+  **募集ページをステップ2まで書いてあるのはこのため**で、
+  「グループに入ってね」だけ伝えると、集めた人数がそのまま消える。
+- **14日のカウントは、リリースの承認と12人到達の両方が揃ってから始まる。**
+  途中で12人を割ると、そこでカウントが戻る。
+- **入れただけで使っていないと落ちる。** 2026年4月以降、利用実態が無い場合は
+  「テストの利用状況が不十分」として製品版の申請が却下される。
+  参加ページと LP に書いた「2日に1回ぐらい開く」は、この却下を避けるためのお願い。
+
+実機の Google アカウントであること(エミュレータ・重複アカウントは数えない)も
+条件なので、**社内の端末で12人ぶん作る、という埋め方はできない。**
+
+### 2-5. アプリのコンテンツ(必須の申告)
+
+**ポリシー > アプリのコンテンツ**。全部埋めないとリリースできない。
+
+| 項目 | このアプリの答え | 理由 |
+| --- | --- | --- |
+| アプリのアクセス権 | 制限なし | アカウントを作らないので全機能が最初から使える |
+| 広告 | 広告なし | 広告SDKを入れていない |
+| コンテンツのレーティング | IARCのアンケートに回答 | 教育アプリ。暴力・性的表現なし |
+| ターゲット層と コンテンツ | **0-1 で決めた年齢層** | 13歳未満を含めるとファミリー向けポリシー適用 |
+| データセーフティ | 2-6 参照 | |
+| ニュースアプリ | いいえ | |
+| 健康 | いいえ | |
+| 金融 | いいえ | |
+| 政府アプリ | いいえ | |
+| プライバシーポリシー | 0-2 のURL | |
+
+**機密性の高い権限の宣言フォーム**が要るのは、バックグラウンド位置情報・
+SMS/通話履歴・全ファイルアクセス・インストール済みアプリ一覧の4系統。
+**どれも使っていないので提出不要。**
+
+ひとつだけ確認が要るのが**「写真と動画の権限」**の宣言。
+`READ_MEDIA_IMAGES` を要求している場合に宣言が要る。
+`image_picker` は Android 13+ では Photo Picker を使うので原則要求しないはずだが、
+**2-8 の方法で最終マニフェストを確認してから**答える。
+
+### 2-6. データセーフティ
+
+1-7 と同じ内容を Google の分類で申告する。
+
+| データ | 収集 | 共有 | 目的 | 必須か |
+| --- | --- | --- | --- | --- |
+| 写真 | する | する(LLMプロバイダ) | アプリの機能 | 必須 |
+| 音声 | する | する(STT / LLM) | アプリの機能 | 必須 |
+| ユーザーID(匿名UUID) | する | しない | アプリの機能 | 必須 |
+| 購入履歴 | する | する(RevenueCat) | アプリの機能 | 必須 |
+| クラッシュログ | する | する(Sentry) | 分析 | 任意にできる |
+| その他(学習の記録) | する | しない | アプリの機能 | 必須 |
+
+- **「共有」の判定に注意。** 写真や会話を LLM API に送っている場合、
+  Googleの定義では「第三者への共有」に当たる。0-3 とあわせて事実を確認する。
+- 「転送中の暗号化」= はい(HTTPS / WSS)
+- 「削除リクエストの手段」= 0-3 の方針しだい。
+  匿名IDのみで本人確認ができないので、**アプリ内に削除導線を置くのが現実的**
+  (いまは未実装)。
+
+### 2-7. 定期購入
+
+**収益化 > 商品 > 定期購入**
+
+1. 商品ID(例 `premium_monthly`)— **後から変更できない**
+2. 基本プラン(期間・価格・自動更新)
+3. 名前と説明
+4. 無料トライアルを付けるなら「特典」から追加
+
+商品IDは iOS と揃えなくてよい(RevenueCat が Entitlement `premium` に束ねる)。
+
+### 2-8. Android の権限
+
+リポジトリのマニフェスト(`android/app/src/main/AndroidManifest.xml`)で
+**明示的に宣言しているもの**:
+
+| 権限 | 何のため |
+| --- | --- |
+| `INTERNET` | backend / LiveKit との通信。**debug/profile用マニフェストにしか無く、releaseで落ちるので手で足した** |
+| `RECORD_AUDIO` | 声で説明してもらう(LiveKit) |
+| `MODIFY_AUDIO_SETTINGS` | スピーカー / イヤホンの切り替え |
+| `CAMERA` | ノートの撮影 |
+
+これに加えて、**依存ライブラリのマニフェストがマージされて入るもの**があります。
+確認できたぶん:
+
+| 権限 | 由来 |
+| --- | --- |
+| `ACCESS_NETWORK_STATE` | `connectivity_plus` |
+| `WRITE_EXTERNAL_STORAGE`(`maxSdkVersion` 付き) | `camera_android_camerax` |
+
+さらに、ネイティブSDK(AAR)側のマニフェストからも入ります。
+`POST_NOTIFICATIONS` / `WAKE_LOCK`(OneSignal)、
+`com.android.vending.BILLING`(Play Billing)などが該当しますが、
+**これらはAARを解決しないと確定しないので、この環境では未確認です。**
+
+申告の前に、必ずビルドして最終形を見てください:
+
+```bash
+cd apps/mobile
+flutter build apk --debug
+# マージ後のマニフェスト
+cat build/app/intermediates/merged_manifests/debug/AndroidManifest.xml | grep uses-permission
+```
+
+Play Console にAABを上げたあとなら
+**リリース > App Bundle エクスプローラ > 権限** でも一覧が見られます。
+2-5 の「写真と動画の権限」の判断はこの一覧を見てから答えてください。
+
+### 2-9. Google Play Developer API(Codemagic用)
+
+`codemagic.yaml` の `publishing.google_play` が使う認証情報。
+
+1. Google Cloud Console でプロジェクトを作る(既存でも可)
+2. **サービスアカウント**を作り、JSON鍵をダウンロード
+3. Play Console > **ユーザーとアクセス権** でそのサービスアカウントを招待
+4. 権限は **「リリース」**(アプリ単位でよい。
+   `リリースの作成・公開` と `テストトラックへの公開` があれば足りる)
+5. JSON を丸ごと Codemagic の変数グループ `google-play` の
+   `GCLOUD_SERVICE_ACCOUNT_CREDENTIALS` に **Secure で** 入れる
+
+### 2-10. RevenueCat(Google側)
+
+1. RevenueCat に Play Store のアプリを追加し、パッケージ名を入れる
+2. **2-9 とは別のサービスアカウント**を用意して JSON を RevenueCat に渡す
+   (権限は「財務データの閲覧」と「注文と定期購入の管理」)
+3. **リアルタイム デベロッパー通知**: Play Console > 収益化 > 収益化のセットアップ で
+   RevenueCat が発行する Pub/Sub トピックを設定
+4. Products に 2-7 の商品IDを登録
+5. **Entitlement は `premium`、Offering は `current`**(1-10 の 5・6 と同じ理由で必須)
+   — Entitlement と Offering は**プロジェクト共通**なので、Apple側で作ってあれば作り直さない
+6. 公開SDKキー(`goog_...`)を `REVENUECAT_ANDROID_PUBLIC_SDK_KEY` へ
+
+---
+
+## 3. 詰まりやすい順序
+
+リードタイムが長いものから着手する。
+
+1. **Apple Developer Program / Play Console の登録**(法人は数週かかる)
+2. **有料App契約(1-5)**(経理・銀行待ち)
+3. **0-1 の年齢層の決定**(あとで変えるとSDKごと作り直し)
+4. ~~**プライバシーポリシーのURL(0-2)**~~ —— 確定済み(0-2 の表)
+5. App ID とアプリレコードの作成(1-2 / **1-2-1** / 1-4 / 2-2)
+   —— 1-2-1(App Group と拡張ぶんの Identifier)を飛ばすと、
+   ここまで揃っていても iOS のビルドだけが署名で落ちる
+6. 鍵まわり(1-3 / 2-9)→ ここまで来ると Codemagic が回る
+7. 定期購入と RevenueCat(1-6 / 1-10 / 2-7 / 2-10)
+8. 申告類(1-7 / 1-8 / 2-5 / 2-6)
+
+6 までで TestFlight / 内部テストには配れます。
+7・8 は公開の直前でも間に合いますが、7 が無いとペイウォールが動きません。
+
+**個人アカウントで登録した場合は、6 の直後にクローズドテスト(2-4-1)を始めること。**
+12人が集まってから14日を数えるので、ここだけは待つ以外に短縮する手がなく、
+7・8 を全部終えても製品版に出られない期間ができます。テスターの募集は
+`apps/lp/public/beta/`(LP の `#beta` から飛ぶ参加ページ)から。

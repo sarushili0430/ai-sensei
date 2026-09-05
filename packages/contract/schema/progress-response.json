@@ -1,0 +1,87 @@
+{
+  "$ref": "#/definitions/progress-response",
+  "definitions": {
+    "progress-response": {
+      "type": "object",
+      "properties": {
+        "progress": {
+          "type": "object",
+          "properties": {
+            "streak_days": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "filled_holes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "open_holes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "solved_problems": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "open_problems": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "last_session_date": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "streak_days",
+            "filled_holes",
+            "open_holes",
+            "solved_problems",
+            "open_problems",
+            "last_session_date"
+          ],
+          "additionalProperties": false
+        },
+        "is_premium": {
+          "type": "boolean"
+        },
+        "limits": {
+          "type": "object",
+          "properties": {
+            "max_seconds": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "remaining_seconds_today": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "lesson_allowed_today": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "max_seconds",
+            "remaining_seconds_today",
+            "lesson_allowed_today"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "progress",
+        "is_premium",
+        "limits"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

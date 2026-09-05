@@ -1,0 +1,142 @@
+name: CI
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # 触っていない側のCIは流さない(Flutterのpub get + build_runnerが特に重い)。
+  #
+  # ワークフロー全体の `on.paths` ではなくジョブ単位で切り分けているのは、
+  # 対象外のジョブを「スキップ」として必ず報告させるため。`on.paths` で弾くと
+  # チェック自体が作られず、required status check にしているとPRが永久に
+  # 待ち状態になる。
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    # PRでは差分をAPIから引く(pushではcheckout済みのgit履歴を使う)
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      typescript: ${{ steps.filter.outputs.typescript }}
+      flutter: ${{ steps.filter.outputs.flutter }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            typescript:
+              - "backend/**"
+              - "packages/**"
+              - "prompts/**"
+              - "scripts/**"
+              - "package.json"
+              - "pnpm-lock.yaml"
+              - "pnpm-workspace.yaml"
+              - "tsconfig*.json"
+              - "biome.json"
+              - "vitest.config.ts"
+              - ".github/workflows/ci.yml"
+            flutter:
+              - "apps/mobile/**"
+              # contract_fixture_test.dart が packages/contract/fixtures を直接読む
+              - "packages/contract/**"
+              - ".github/workflows/ci.yml"
+
+  typescript:
+    name: TypeScript (backend / packages)
+    needs: changes
+    if: ${{ needs.changes.outputs.typescript == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # packageManager フィールド(package.json)のバージョンで入る
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # 失敗しても後続を止めない。lintで落ちたついでにtestの結果も見たいため。
+      - name: Lint (Biome)
+        run: pnpm run lint
+
+      - name: Typecheck
+        if: ${{ !cancelled() }}
+        run: pnpm run typecheck
+
+      - name: Unit tests
+        if: ${{ !cancelled() }}
+        run: pnpm test
+
+      # テストは Vitest/Node で通っても、Workers のバンドラ(esbuild)で落ちることがある。
+      # 実際に JSON の import 属性で本番ビルドだけ壊れていたので、ここで必ず組む。
+      - name: Worker build (dry-run)
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @ai-sensei/api build:check
+
+  flutter:
+    name: Flutter (apps/mobile)
+    needs: changes
+    if: ${{ needs.changes.outputs.flutter == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # バージョンは apps/mobile/.fvmrc(fvmと同じファイル)から読む
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version-file: apps/mobile/.fvmrc
+          cache: true
+
+      - run: flutter pub get
+        working-directory: apps/mobile
+
+      # 生成物(.freezed.dart / .g.dart)はコミットしないのでここで作る
+      - run: dart run build_runner build
+        working-directory: apps/mobile
+
+      - run: flutter analyze
+        working-directory: apps/mobile
+
+      # contract_fixture_test.dart が packages/contract/fixtures を読むので、
+      # TypeScript側と同じ契約で通ることをここで確かめる。
+      # golden test もここが正(Linuxのラスタライズを基準にする)。
+      - run: flutter test
+        working-directory: apps/mobile
+
+      # goldenが落ちたとき、差分画像を見られるようにする
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: golden-failures
+          path: apps/mobile/test/golden/failures/
+          if-no-files-found: ignore
+
+  # 鍵の混入はどのディレクトリからでも起こるので、ここだけは常に流す。
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # publicリポジトリなので、鍵の混入は1コミットでも致命傷になる。
+      # 依存のインストールなしで走らせたいため pnpm install は挟まない。
+      - name: Scan tracked files for secrets
+        run: node --experimental-strip-types scripts/verify-no-secrets.ts

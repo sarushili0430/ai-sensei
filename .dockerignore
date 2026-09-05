@@ -1,0 +1,66 @@
+# backend/agent のイメージを焼くときのビルドコンテキスト(= リポジトリのルート)から
+# 外すもの。Dockerfile はルートにある(理由はそちらの冒頭)。
+#
+# ここで削るのは「イメージには入らないのに、毎回まるごとアップロードされるもの」と
+# 「入ってはいけないもの」。コンテキストの9割は apps/(55MB)なので、
+# 削った量がそのままビルドとデプロイの待ち時間になる。**LiveKit Cloud に載せるときは
+# このコンテキストがそのまま向こうのビルドサービスへ送られる**ので、なおさら効く。
+#
+# **.gitignore と同じ書き方だと思わないこと。** dockerignoreのパターンは
+# コンテキストのルートに固定される。`.env` は**ルートの .env にしか当たらない**ので、
+# 深いところにある実値を落とすには `**/` を付ける必要がある。
+
+# --- 秘密。イメージにもコンテキストにも入れない ------------------------------
+# `COPY backend/agent/` がそのまま backend/agent/.env を拾うため、
+# ここが抜けると**開発者の手元の鍵がイメージに焼き込まれる**。
+**/.env
+**/.env.*
+**/.dev.vars
+**/*.pem
+**/sshkeys
+# `lk agent create` が書き出すLiveKit Cloudの設定(agentのIDが入る)
+**/livekit.toml
+
+# --- 持ち込むと壊れるもの -----------------------------------------------------
+# node_modules はイメージの中で入れ直す。持ち込むとホスト(macOS/arm64)の
+# ネイティブバイナリが linux/amd64 のイメージに混ざる。
+node_modules
+**/node_modules
+
+# --- イメージに入らないもの ---------------------------------------------------
+.git
+.github
+.claude
+
+# Flutterアプリ。agentのイメージには一切入らない(コンテキストの9割がこれ)
+apps
+
+# 企画資料・ワイヤーフレーム・ストア用スクリーンショット
+docs
+
+# Cloudflare Workers 側。**package.json だけは残す**
+# (--frozen-lockfile がワークスペースの全マニフェストを要求するため)
+backend/api/src
+backend/api/migrations
+backend/api/wrangler.toml
+backend/api/README.md
+**/.wrangler
+
+# リポジトリ全体の検証スクリプト(CIで走る。実行時には要らない)
+scripts
+
+# テストと生成物
+**/*.test.ts
+**/dist
+**/build
+**/coverage
+**/*.tsbuildinfo
+**/.vitest-cache
+
+# ツールの設定。イメージの中では誰も読まない
+codemagic.yaml
+renovate.json
+biome.json
+**/lefthook.yml
+vitest.config.ts
+**/.DS_Store

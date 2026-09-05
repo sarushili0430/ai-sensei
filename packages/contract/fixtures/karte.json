@@ -1,0 +1,25 @@
+{
+  "id": "kar_01J8Z9M4RT2A6B7C8D9E0F1G2H",
+  "session_id": "ses_01J8Z9K2QF7X3M4N5P6R7S8T9V",
+  "created_at": "2026-08-03T13:24:07.000Z",
+  "topic_ids": ["M2-ZUKEI-ENCHOKU", "M1-NIJI-HANBETSU"],
+  "said_well": [
+    "中心と直線の距離dと半径rを比べて位置関係を判定する方針を、理由つきで説明できた",
+    "d < r なら2点で交わる、と対応づけて言えた"
+  ],
+  "holes": [
+    {
+      "id": "hol_01J8Z9M4RT9H8I7J6K5L4M3N2P",
+      "topic_id": "M1-NIJI-HANBETSU",
+      "desc": "判別式を「なぜ」使うのか、で説明が止まった",
+      "severity": "medium",
+      "evidence": "そこは……なんとなくです",
+      "quiz": "判別式を使うと解の個数がわかる理由を説明できる?",
+      "status": "open",
+      "created_at": "2026-08-03T13:24:07.000Z",
+      "filled_at": null
+    }
+  ],
+  "term_notes": ["「解の公式」と「判別式」が混ざっていた"],
+  "followup_question": null
+}

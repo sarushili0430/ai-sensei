@@ -1,0 +1,70 @@
+# --- secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+.dev.vars
+sshkeys
+
+# --- node ---
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+.wrangler/
+.vitest-cache/
+
+# --- python (agent fallback) ---
+__pycache__/
+*.py[cod]
+.venv/
+
+# --- flutter / dart ---
+# fvm がSDKを置く場所。バージョンの指定は .fvmrc(コミットする)
+apps/mobile/.fvm/
+apps/mobile/.dart_tool/
+apps/mobile/.flutter-plugins
+apps/mobile/.flutter-plugins-dependencies
+apps/mobile/build/
+apps/mobile/**/*.g.dart
+apps/mobile/**/*.freezed.dart
+apps/mobile/ios/Pods/
+apps/mobile/ios/.symlinks/
+apps/mobile/ios/Flutter/Flutter.podspec
+apps/mobile/ios/Flutter/ephemeral/
+apps/mobile/android/.gradle/
+apps/mobile/android/local.properties
+apps/mobile/test/golden/failures/
+*.iml
+
+# --- git hooks (lefthook) ---
+# 手元だけの上書き設定。共有するものは lefthook.yml 側に書く。
+lefthook-local.yml
+.lefthook/
+.lefthook-local/
+
+# --- editors / os ---
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+
+# --- 環境変数の実値(テンプレートは *.example) ---
+backend/api/.dev.vars
+backend/agent/.env
+# `lk agent create` が書き出すLiveKit Cloudの設定。agentのIDは環境ごとに違うので
+# コミットしない(develop用のIDで本番へdeployするのを防ぐ)。docs/deploy-agent.md
+livekit.toml
+# dart-define の実値。テンプレートは dart_defines/*.example.json だけ追う。
+# (dart_defines.env は旧形式。手元に残っている人がいるので拾い続ける)
+apps/mobile/dart_defines.env
+apps/mobile/dart_defines.json
+apps/mobile/dart_defines/*.json
+apps/mobile/dart_defines/*.env
+!apps/mobile/dart_defines/*.example.json
+backend/api/.wrangler/
+
+# LaTeX の使い捨てスパイク。matchesGoldenFile を使うのに golden タグが無く、
+# 素の flutter test で走って落ちる。焼き直しは --tags golden なのでPNGも焼かれない。
+apps/mobile/test/spike/

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- tool/generate_app_icon.dart が生成する。手で編集しない。 -->
+<resources>
+    <string name="onesignal_notification_accent_color">FF0EA5E9</string>
+</resources>

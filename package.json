@@ -1,0 +1,32 @@
+{
+  "name": "ai-sensei",
+  "private": true,
+  "version": "0.0.0",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22.6",
+    "pnpm": ">=10"
+  },
+  "scripts": {
+    "prepare": "lefthook install || echo 'lefthook が無いので git hooks の設定を飛ばしました(--prod インストール)' >&2",
+    "lint": "biome ci .",
+    "format": "biome check --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json",
+    "verify:secrets": "node --experimental-strip-types scripts/verify-no-secrets.ts",
+    "verify:bindings": "node --experimental-strip-types scripts/verify-wrangler-bindings.ts",
+    "verify:curriculum": "node --experimental-strip-types scripts/verify-curriculum-prerequisites.ts",
+    "verify:strip-types": "node --experimental-strip-types scripts/verify-strip-types.ts",
+    "verify": "pnpm run lint && pnpm run typecheck && pnpm run verify:curriculum && pnpm run verify:secrets && pnpm run verify:strip-types && pnpm test"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/node": "^22.10.2",
+    "lefthook": "^2.1.10",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

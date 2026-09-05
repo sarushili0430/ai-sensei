@@ -1,0 +1,111 @@
+# backend/agent(LiveKit Agents)のデプロイ。
+#
+#   develop ブランチ → develop 環境
+#   main    ブランチ → production 環境
+#
+# ソースを LiveKit Cloud へ送り、**ビルドは向こうで走る**。焼いたイメージを渡す道
+# (`lk agent deploy --image`)は Enterprise プラン限定なので使えない。
+# 手順とsecretの一覧は docs/deploy-agent.md。
+name: Deploy (backend/agent)
+
+on:
+  push:
+    branches: [develop, main]
+    paths:
+      - "backend/agent/**"
+      - "packages/**"
+      - "prompts/**"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "pnpm-lock.yaml"
+      - "package.json"
+      - ".github/workflows/deploy-agent.yml"
+  # 手で流し直す用(コード変更なしの再デプロイ・secret入れ替え後など)
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "デプロイ先"
+        type: choice
+        options: [develop, production]
+        default: develop
+
+# 同じブランチのデプロイは直列にする。走っているデプロイは**止めない**
+# (会話中のワーカーをdrainの途中で捨てないため)。
+concurrency:
+  group: deploy-agent-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: ${{ inputs.environment || (github.ref_name == 'main' && 'production' || 'develop') }}
+    runs-on: ubuntu-latest
+
+    environment:
+      name: ${{ inputs.environment || (github.ref_name == 'main' && 'production' || 'develop') }}
+
+    env:
+      TARGET: ${{ inputs.environment || (github.ref_name == 'main' && 'production' || 'develop') }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # CIワークフローと重複するが、デプロイは単体で完結させる。
+      # 「CIは緑だったが、その後のpushで壊れたものが出ていった」を防ぐため。
+      - name: Verify (lint / typecheck / secret scan / test)
+        run: pnpm run verify
+
+      # LiveKit側のビルドは数分かかるうえ、失敗しても向こうのログを読みに行くことになる。
+      # 手前で焼いておくと、Dockerfileが壊れているだけのときにここで分かる。
+      # イメージは使わない(pushする先が無い)ので、キャッシュだけ効かせる。
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image (fail fast)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Install LiveKit CLI
+        run: curl -sSL https://get.livekit.io/cli | bash
+
+      # `lk` はまだ動きの変わりやすいCLI。フラグ名が合わなくなったら
+      # `lk agent deploy --help` を見て直す(docs/deploy-agent.md にも同じ注意がある)。
+      #
+      # 作業ディレクトリ(= リポジトリのルート)がそのままビルドコンテキストになり、
+      # 直下の Dockerfile が読まれる。何を送らないかは .dockerignore が決める。
+      - name: Deploy to LiveKit Cloud
+        env:
+          LIVEKIT_URL: ${{ secrets.LIVEKIT_URL }}
+          LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
+          LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
+          AGENT_ID: ${{ vars.LIVEKIT_AGENT_ID }}
+        shell: bash
+        run: |
+          if [ -z "$AGENT_ID" ]; then
+            echo "::error::LIVEKIT_AGENT_ID (Variables) が未設定です。初回は手元で lk agent create を流してください(docs/deploy-agent.md §2-2)"
+            exit 1
+          fi
+          lk agent deploy --id "$AGENT_ID"
+
+      # ワーカーがLiveKitに登録し直すまで少し待つ。status が拾えなくても
+      # デプロイ自体は成功しているので、ここでは落とさない。
+      - name: Status
+        continue-on-error: true
+        env:
+          LIVEKIT_URL: ${{ secrets.LIVEKIT_URL }}
+          LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
+          LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
+          AGENT_ID: ${{ vars.LIVEKIT_AGENT_ID }}
+        run: |
+          sleep 30
+          lk agent status --id "$AGENT_ID"

@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>カタルテ — 答えを教える。そのあと、あなたに教え返してもらう。</title>
+<meta name="description" content="わからない問題を撮ると、先輩AIが板書つきで教えてくれる。そのあと「じゃあ今の、説明してみて」。説明が止まった場所が理解の穴としてカルテに残り、あした・3日後・7日後にもう一度たずねます。高校数学(数I・A・II・B・III・C)。">
+
+<!-- 日英2枚で1組。片方だけ更新しないこと(docs/adr.md#adr-0005 と同じ理由で、
+     言語だけでなく載せているカリキュラムの分類も違う)。
+     公開ドメインが決まったら、この2行と og:url を絶対URLに直す。 -->
+<link rel="alternate" hreflang="ja" href="./">
+<link rel="alternate" hreflang="en" href="./en/">
+<link rel="alternate" hreflang="x-default" href="./">
+
+<meta property="og:type" content="website">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:title" content="カタルテ — 答えを教える。そのあと、あなたに教え返してもらう。">
+<meta property="og:description" content="先輩AIが板書つきで教えて、その場で教え返してもらう高校数学アプリ。説明が止まった場所が「理解の穴」としてカルテに残ります。">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#FBFAF7">
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230EA5E9'/%3E%3Cpath d='M40.3 77.5L25.5 83.5L20.7 59.1Z' fill='%23FBFAF7'/%3E%3Ccircle cx='50' cy='47.5' r='31.5' fill='%23FBFAF7'/%3E%3Cg fill='none' stroke='%2333323D' stroke-width='5.2' stroke-linecap='round'%3E%3Cpath d='M30 46Q37.5 37 45 46'/%3E%3Cpath d='M55 46Q62.5 37 70 46'/%3E%3Cpath d='M58.4 57.3A8.5 5 0 0 1 41.6 57.2'/%3E%3C/g%3E%3C/svg%3E">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+
+<a class="skip" href="#main">本文へ</a>
+
+<header class="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="./">
+      <svg viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+        <rect width="100" height="100" rx="22" fill="#0EA5E9"/>
+        <path d="M40.3 77.5 L25.5 83.5 L20.7 59.1 Z" fill="#FBFAF7"/>
+        <circle cx="50" cy="47.5" r="31.5" fill="#FBFAF7"/>
+        <circle cx="29.5" cy="53.5" r="4.2" fill="#FFC0D4"/>
+        <circle cx="70.5" cy="53.5" r="4.2" fill="#FFC0D4"/>
+        <g fill="none" stroke="#33323D" stroke-width="5.2" stroke-linecap="round">
+          <path d="M30 46 Q37.5 37 45 46"/>
+          <path d="M55 46 Q62.5 37 70 46"/>
+          <path d="M58.4 57.3 A8.5 5 0 0 1 41.6 57.2"/>
+        </g>
+      </svg>
+      カタルテ
+    </a>
+    <nav class="nav-links" aria-label="ページ内">
+      <a href="#how">しくみ</a>
+      <a href="#karte">カルテ</a>
+      <a href="#review">復習</a>
+      <a href="#beta">ベータ</a>
+      <a href="#plans">料金</a>
+      <a href="#faq">よくある質問</a>
+    </nav>
+    <a class="lang" href="./en/" hreflang="en" lang="en">English</a>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- ================= ヒーロー ================= -->
+<section class="hero">
+  <div class="wrap hero-in">
+    <div>
+      <div class="badge-row">
+        <span class="badge">高校数学 数I・A・II・B・III・C</span>
+        <span class="badge badge-warm">iOS / Android・開発中</span>
+      </div>
+      <h1>
+        <span class="l">答えを教える。</span>
+        <span class="l"><span class="mk">そのあと、あなたに教え返してもらう。</span></span>
+      </h1>
+      <p class="lede">
+        わからない問題を撮ると、先輩AIが<strong>板書つきで教えて</strong>くれます。そのあとすぐ、「じゃあ今の、説明してみて」。説明が止まった場所が、自分でも気づいていなかった<strong>理解の穴</strong>としてカルテに残ります。
+      </p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#beta">クローズドベータに参加する</a>
+        <a class="btn btn-ghost" href="https://github.com/sarushili0430/ai-sensei">開発の途中を見る（GitHub）</a>
+      </div>
+      <p class="tiny">
+        いまは Android の配信前テストだけを配っています（App Store / Google Play での配信は準備中）。<br>
+        アカウント作成なし。匿名の端末IDだけではじめられます。
+      </p>
+    </div>
+
+    <!-- 授業モード。中身はオンボーディングのリハーサル(strings.dart)と同じ1問 -->
+    <div class="phone" role="img" aria-label="授業モードの画面。先輩の板書に「解が2つ ⇔ D > 0」「D = (−4)² − 4k > 0」と積まれ、先輩が「じゃあ、いまの説明してみて。なんで D を見るんだっけ?」と聞いている。">
+      <div class="phone-bar">
+        <span>いま教わっている</span>
+        <span>のこり 12:40</span>
+      </div>
+      <p class="phone-label">撮った問題</p>
+      <div class="board">
+        <p class="board-step">x² − 4x + k = 0 が異なる2つの実数解をもつ</p>
+      </div>
+      <p class="phone-label">先輩の板書</p>
+      <div class="board">
+        <p class="board-step">解が2つ ⇔ D &gt; 0</p>
+        <p class="board-step board-math">D = (−4)² − 4k &gt; 0</p>
+      </div>
+      <div class="bubble-row">
+        <svg viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+          <rect width="100" height="100" rx="22" fill="#0EA5E9"/>
+          <path d="M40.3 77.5 L25.5 83.5 L20.7 59.1 Z" fill="#FBFAF7"/>
+          <circle cx="50" cy="47.5" r="31.5" fill="#FBFAF7"/>
+          <circle cx="29.5" cy="53.5" r="4.2" fill="#FFC0D4"/>
+          <circle cx="70.5" cy="53.5" r="4.2" fill="#FFC0D4"/>
+          <g fill="none" stroke="#33323D" stroke-width="5.2" stroke-linecap="round">
+            <path d="M30 46 Q37.5 37 45 46"/>
+            <path d="M55 46 Q62.5 37 70 46"/>
+            <path d="M58.4 57.3 A8.5 5 0 0 1 41.6 57.2"/>
+          </g>
+        </svg>
+        <p class="bubble">じゃあ、いまの説明してみて。なんで D を見るんだっけ?</p>
+      </div>
+      <div class="mic">長押しして<br>教え返す</div>
+      <p class="fake-btn fake-ghost">うまく言えない</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 問題提起 ================= -->
+<section id="why">
+  <div class="wrap">
+    <p class="eyebrow">なぜ作っているか</p>
+    <h2 class="sec-title">「答え」は、もういくらでも手に入る。<br>それでも模試で解けない。</h2>
+    <p class="lede">
+      写真を撮れば答えが出るアプリは、もう高校生の手元にあります。答えの入手コストはゼロになりました。それなのに解けないのは、<strong>解答を読んで「わかった」と感じた状態</strong>と、
+      <strong>自分の言葉で手順と理由を説明できる状態</strong>が別物だからです。しかもこの2つは、本人には区別がつきません。
+    </p>
+    <div class="grid grid-3">
+      <div class="card">
+        <h3 class="step-h">読めば、わかる</h3>
+        <p class="tiny">解答を読むと理解した感じがする。ここで先へ進んでしまう。</p>
+      </div>
+      <div class="card">
+        <h3 class="step-h">でも、話せない</h3>
+        <p class="tiny">「なんでここで判別式?」と聞かれた瞬間、言葉が出てこない。</p>
+      </div>
+      <div class="card" style="border-color:var(--blue)">
+        <h3 class="step-h">その差が、穴</h3>
+        <p class="tiny">カタルテは答えを配る側ではなく、<strong>穴を見つける側</strong>を作っています。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= しくみ ================= -->
+<section id="how">
+  <div class="wrap">
+    <p class="eyebrow">やることは、これだけ</p>
+    <h2 class="sec-title">撮る → 教わる → 教え返す → 穴が残る</h2>
+    <p class="lede">1周まわすのに必要なのは、わからない問題1つと、数分の時間だけです。</p>
+
+    <div class="grid grid-4">
+      <div class="card step">
+        <span class="num">1</span>
+        <h3>撮る</h3>
+        <p>わからない問題を撮ります。ノートもあれば一緒に — あなたがどこまで書けたのかを先輩が見るためです。<strong>手も付けられなかった問題なら、問題だけで大丈夫。</strong></p>
+      </div>
+      <div class="card step">
+        <span class="num">2</span>
+        <h3>教わる</h3>
+        <p>先輩が板書つきで教えます。数式・計算・図は板書に書き、声は「ここ、Dを見てほしいんだけど — プラスだよね。だから?」と問いかけるだけ。</p>
+      </div>
+      <div class="card step">
+        <span class="num">3</span>
+        <h3>教え返す</h3>
+        <p>「じゃあ今の、説明してみて」。答えはもう板書に出ています。それでも説明できるとは限らない、というのがこのアプリの主張です。</p>
+      </div>
+      <div class="card step">
+        <span class="num">4</span>
+        <h3>穴が残る</h3>
+        <p>説明が止まった場所が「理解の穴」としてカルテに残ります。言えたことは黄色、詰まったところはピンク。</p>
+      </div>
+    </div>
+
+    <p class="tiny" style="margin-top:20px">
+      数式を音声で読み上げません（「エックスのにじょうマイナス3エックス…」は聞いても頭に入らないため）。書いている間は喋らない、というのは本物の家庭教師と同じやり方です。
+    </p>
+  </div>
+</section>
+
+<!-- ================= カルテ ================= -->
+<section id="karte">
+  <div class="wrap split">
+    <div>
+      <p class="eyebrow">カルテ</p>
+      <h2 class="sec-title">点数ではなく、穴が残る。</h2>
+      <p class="lede">
+        正答率も偏差値も出しません。1回の授業のあとに残るのは、次の3つだけです。
+      </p>
+      <ul>
+        <li><span class="swatch swatch-said"></span><span><strong>言えたこと</strong> — 教え返せたところに、黄色のマーカーが引かれます。</span></li>
+        <li><span class="swatch swatch-hole"></span><span><strong>穴</strong> — 説明が止まったところ。失点ではなく「これから埋まる場所」です。</span></li>
+        <li><span class="swatch swatch-ink"></span><span><strong>用語メモ</strong> — 混ざっていた言葉。「解の公式」と「判別式」など。</span></li>
+      </ul>
+      <p class="tiny" style="margin-top:20px">
+        数えるのは、続けた日数と、埋めた穴の数だけ。ランキングも、他人との比較もありません。
+      </p>
+    </div>
+
+    <div class="phone phone-quiet" role="img" aria-label="カルテの画面。言えたこととして「D の符号で実数解の個数が決まる」に黄色のマーカー、穴として「判別式を『なぜ』見るのかで、説明が止まった」にピンクのマーカーが引かれている。">
+      <p class="phone-title">今日のカルテ</p>
+      <p class="k-head">言えたこと</p>
+      <p class="k-line"><span class="mk">D の符号で実数解の個数が決まる</span></p>
+      <p class="k-head">穴 — 1つ</p>
+      <p class="k-line"><span class="mk-hole">判別式を「なぜ」見るのかで、説明が止まった</span></p>
+      <p class="k-head">用語メモ</p>
+      <p class="k-line">「解の公式」と「判別式」が混ざっていた</p>
+      <div class="board" style="margin-top:auto">
+        <p class="tiny" style="margin:0">あしたの夜、先輩がもう一度きいてきます</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 復習 ================= -->
+<section id="review">
+  <div class="wrap split split-flip">
+    <div class="phone" role="img" aria-label="復習の画面。「なんで判別式 D を見るんだっけ?」という1問に対して、「言えた」「まだ言えない」の2つのボタンが出ている。">
+      <p class="phone-title">埋めにいく穴</p>
+      <div class="qz">
+        <p class="qz-q">なんで判別式 D を見るんだっけ?</p>
+        <p class="tiny" style="margin-top:6px">1問だけ・10秒。声は出さなくていい</p>
+      </div>
+      <p class="fake-btn fake-primary">言えた</p>
+      <p class="fake-btn fake-ghost">まだ言えない</p>
+      <span class="pill">採点はしません</span>
+      <p class="tiny" style="text-align:center">「まだ言えない」を選ぶと、<br>その場で先輩を呼び直せます</p>
+    </div>
+
+    <div>
+      <p class="eyebrow">復習</p>
+      <h2 class="sec-title">埋まるまで、もう一度たずねます。</h2>
+      <p class="lede">
+        見つかった穴は、忘れかけた頃にもう一度きかれます。間隔をあけて思い出すほど記憶に残る、という間隔反復を「先輩からのおさらい」の形にしました。急かす通知は送りません。
+      </p>
+      <div class="days">
+        <span class="day">あした</span>
+        <span class="day">3日後</span>
+        <span class="day">7日後</span>
+      </div>
+      <ul>
+        <li><span class="swatch swatch-said"></span><span><strong>入口は10秒の小テスト。</strong>電車でもリビングでも深夜でも、テキストで完結します。</span></li>
+        <li><span class="swatch swatch-hole"></span><span><strong>採点するのはAIではなく、あなた。</strong>「言えた / まだ言えない」は自己申告です。</span></li>
+        <li><span class="swatch swatch-ink"></span><span><strong>出題元は、あなたが説明した内容。</strong>AIが教えた内容からは作りません（誤読を繰り返し強化しないため）。</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 4つの約束 ================= -->
+<section id="promises">
+  <div class="wrap">
+    <p class="eyebrow">4つの約束</p>
+    <h2 class="sec-title">どれか1つでも破ったら、それは別のアプリです。</h2>
+    <div class="grid grid-2">
+      <div class="card promise">
+        <span class="mark">1</span>
+        <div>
+          <h3>教える。そのあと教え返させる。</h3>
+          <p>先輩が板書つきで教え、その場で「説明してみて」と聞き返します。教えて終わりにはしません。</p>
+        </div>
+      </div>
+      <div class="card promise">
+        <span class="mark">2</span>
+        <div>
+          <h3>点数を出さない。</h3>
+          <p>数えるのは「連続日数」と「埋めた穴の数」だけ。正誤スコアもXPもリーグもありません。</p>
+        </div>
+      </div>
+      <div class="card promise">
+        <span class="mark">3</span>
+        <div>
+          <h3>パスを恥にしない。</h3>
+          <p>「うまく言えない」は、いつでも押せます。説明できなかったことは、そのまま穴として価値になります。</p>
+        </div>
+      </div>
+      <div class="card promise">
+        <span class="mark">4</span>
+        <div>
+          <h3>煽らない。</h3>
+          <p>通知も課金の案内も、先輩の判断として書きます。数字は見せず、命令や催促にもしません。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:26px">
+      <p class="eyebrow" style="margin-bottom:6px">背景にある考え方</p>
+      <p style="font-size:14.5px">
+        人は、誰かに教えようとした瞬間にはじめて、自分の理解の穴に気づきます—— 学習科学でいう<strong>自己説明効果（self-explanation effect）</strong>と、教えることで学びが深まる<strong>プロテジェ効果（teachable agent）</strong>です。カタルテは、この2つを1周のなかに畳み込んでいます。
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 対応範囲 ================= -->
+<section id="spec">
+  <div class="wrap">
+    <p class="eyebrow">対応範囲</p>
+    <h2 class="sec-title">いま、何ができるか。</h2>
+    <table class="spec">
+      <tbody>
+        <tr>
+          <th scope="row">科目</th>
+          <td>高校数学（数I・A・II・B・III・C／新課程）。数学以外の教科は入れていません。</td>
+        </tr>
+        <tr>
+          <th scope="row">言語</th>
+          <td>日本語 / English。海外の学習者には海外の課程（Algebra 1 / Geometry / Algebra 2 / Precalculus / Calculus / Statistics）で単元を出します。</td>
+        </tr>
+        <tr>
+          <th scope="row">端末</th>
+          <td>iOS と Android。iOS を先に出して、Android があとから追いかけます。</td>
+        </tr>
+        <tr>
+          <th scope="row">アカウント</th>
+          <td>不要。匿名の端末IDだけで使えます。サインインもメールアドレスの登録もありません。</td>
+        </tr>
+        <tr>
+          <th scope="row">必要なもの</th>
+          <td>カメラ（問題とノートの撮影）とマイク（教え返し）。許可を求めるのは、使う直前だけです。</td>
+        </tr>
+        <tr>
+          <th scope="row">扱う質問の範囲</th>
+          <td>写真に写っている内容と、カリキュラムの許可リストが重なる範囲だけ。範囲を外れた出題はサーバ側で弾いています。</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ================= クローズドベータ =================
+     入口は Google グループ1つだけ。このグループが Play の**テスター名簿そのもの**で、
+     Play Console > テスト > クローズドテスト > テスター に
+     ai-sensei@googlegroups.com を登録してある(docs/ci/store-setup.md 2-4-1)。
+     **グループのアドレスを変えると、テスターが全員まとめて外れる。**
+
+     **手順そのものは ./beta/ に置く。ここには書かない。** この節は
+     「参加するかどうかを決める材料」までで、①グループに参加 ②Playの参加用URLを押す
+     の順番と、詰まったときの直しかたは参加ページの担当。
+     SNS・学校・知人に投げるURLも ./beta/ のほう。 -->
+<section id="beta">
+  <div class="wrap">
+    <p class="eyebrow">クローズドベータ</p>
+    <h2 class="sec-title">ストアに出す前に、<span class="mk">本当に使う人</span>を探しています。</h2>
+    <p class="lede">
+      配信前のテスト版を Google グループ経由で配っています。グループに参加すると、そのまま
+      Google Play のテスター名簿に入ります。テスト版の準備ができ次第、インストールの案内が
+      グループ宛に届きます。参加も利用も無料で、テスト中に課金は発生しません。
+    </p>
+
+    <div class="cta-row">
+      <a class="btn btn-primary" href="./beta/">参加のしかたを見る</a>
+      <a class="btn btn-ghost" href="https://groups.google.com/g/ai-sensei">グループに直接参加する</a>
+    </div>
+    <p class="tiny">
+      やることは2つ ——
+      <strong>Google グループ（<code class="atom">ai-sensei@googlegroups.com</code>）に参加して、
+      Google Play の参加用URLを押す</strong>だけです。所要3分。
+      手順と、詰まったときの直しかたは<a href="./beta/">参加ページ</a>にまとめてあります。
+    </p>
+
+    <table class="spec">
+      <tbody>
+        <tr>
+          <th scope="row">対象の端末</th>
+          <td>いまは <strong>Android のみ</strong>（Google Play のクローズドテスト）。iPhone は TestFlight で別に配るので、このグループでは配れません。</td>
+        </tr>
+        <tr>
+          <th scope="row">費用</th>
+          <td>かかりません。テスト中は Premium の機能も含めて無料で、決済画面が出ることもありません。</td>
+        </tr>
+        <tr>
+          <th scope="row">お願いすること</th>
+          <td>2週間ほど、2日に1回くらい開いて1問通してみること。うまく動かない・説明がおかしいと思ったところの報告。</td>
+        </tr>
+        <tr>
+          <th scope="row">お願いしないこと</th>
+          <td>レビューの星をつけること、SNSでの拡散、知り合いの勧誘。どれも参加の条件ではありません。</td>
+        </tr>
+        <tr>
+          <th scope="row">やめるとき</th>
+          <td>グループから脱退すれば終わりです。理由を聞いたり、引き止めたりしません。アプリを消すだけでも構いません。</td>
+        </tr>
+        <tr>
+          <th scope="row">見えるもの</th>
+          <td><strong>参加すると、あなたのメールアドレスと表示名が開発者に見えます</strong>（Google グループと Play Console の仕様）。ほかのテスターからは見えない設定にしてあります。アプリ本体は匿名の端末IDのままで、メールアドレスとは結びつきません。</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ================= 料金 ================= -->
+<section id="plans">
+  <div class="wrap">
+    <p class="eyebrow">料金</p>
+    <h2 class="sec-title">無料ではじめられます。</h2>
+    <p class="lede">毎日1問なら、無料のままずっと使えます。</p>
+    <div class="grid grid-2">
+      <div class="card plan">
+        <h3>無料</h3>
+        <ul>
+          <li>毎日1問、先輩に教わる</li>
+          <li>その日のカルテ</li>
+          <li>穴の復習（10秒の小テスト）</li>
+        </ul>
+      </div>
+      <div class="card plan plan-premium">
+        <h3>Premium</h3>
+        <ul>
+          <li>毎日、続けて何問も</li>
+          <li>穴の復習と履歴</li>
+          <li>先輩のあと追い質問</li>
+        </ul>
+      </div>
+    </div>
+    <p class="tiny" style="margin-top:18px">
+      価格と無料期間は、お使いのストア（App Store / Google Play）の表示のとおりです（このページには書きません。ストアの表示と食い違わせないため）。登録は自動更新されます。いつでも解約できます。
+    </p>
+  </div>
+</section>
+
+<!-- ================= FAQ ================= -->
+<section id="faq">
+  <div class="wrap">
+    <p class="eyebrow">よくある質問</p>
+    <h2 class="sec-title">気になるところ</h2>
+    <div class="faq">
+      <details>
+        <summary>iPhone でもクローズドベータに参加できますか?</summary>
+        <p>いまは参加できません。<a href="#beta">クローズドベータ</a>は Google Play のしくみに乗っているので、配れるのは Android だけです。iPhone 向けは TestFlight で別に配る予定で、そちらの案内も同じグループに流します。<strong>いま参加しておけば、iOS のテスト版が出たときにも届きます。</strong></p>
+      </details>
+      <details>
+        <summary>ベータに参加すると、グループにメールがたくさん届きますか?</summary>
+        <p>届きません。投稿できるのは運営だけにしてあり、送るのはテスト版の配信と、大きな変更のお知らせだけです。テスター同士のやりとりの場ではないので、あなたのメールアドレスがほかの参加者に見えることもありません。</p>
+      </details>
+      <details>
+        <summary>声を出せない場所でも使えますか?</summary>
+        <p>復習は使えます。入口は1問10秒のテキストの小テストなので、電車でもリビングでも深夜でも回せます。ただし授業モード（板書つきで教わって、その場で教え返す）は声が前提です。教え返すこと自体がこのアプリの中身なので、ここはテキストに置き換えていません。</p>
+      </details>
+      <details>
+        <summary>答えは教えてくれますか?</summary>
+        <p>教えます。板書つきで、最後まで。そのうえで「じゃあ今の、説明してみて」と聞き返します。答えを渡さないアプリではなく、<strong>答えを渡したあとに確かめるアプリ</strong>です。</p>
+      </details>
+      <details>
+        <summary>点数やランキングはつきますか?</summary>
+        <p>つきません。正答率も偏差値も出しませんし、他人と比べる画面もありません。数えるのは、続けた日数と、埋めた穴の数だけです。</p>
+      </details>
+      <details>
+        <summary>説明できなかったら、どうなりますか?</summary>
+        <p>「うまく言えない」を押してください。それは失敗ではなく、穴が1つ見つかったということです。その穴は、あした・3日後・7日後にもう一度たずねられます。責める通知は送りません。</p>
+      </details>
+      <details>
+        <summary>先輩が間違ったことを教えることはありますか?</summary>
+        <p>ありえます。だからこそ「教えて終わり」にしていません。あなたが教え返すときに説明が破綻することで、先輩の誤読が表に出ます。気になった説明・板書・質問は、アプリの設定から報告できます。</p>
+      </details>
+      <details>
+        <summary>写真や声はどう扱われますか?</summary>
+        <p>ノートの写真と、会話の文字起こしをカルテを作るために保存します。匿名の端末IDにひもづき、氏名やメールアドレスは取得しません。広告は出しませんし、他社サービスをまたぐ追跡もしません。</p>
+        <p>あわせて、説明の分かりにくさや誤りを見つけてサービスを改善するためにも使います（無料・Premium 共通）。この利用の停止やデータの削除は、<a href="./support/">サポート窓口</a>に端末IDを添えて求められます。詳しくは<a href="./privacy/">プライバシーポリシー</a>をご覧ください。</p>
+      </details>
+      <details>
+        <summary>数学以外の教科は?</summary>
+        <p>いまは高校数学だけです。教科を増やす前に、1教科で「教え返す」が本当に効くことを確かめています。</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 締め ================= -->
+<section class="closing">
+  <div class="wrap">
+    <h2>わかったつもりは、<span class="mk">説明してみるまで気づけない。</span></h2>
+    <p class="lede">だから、教わったその場で教え返します。</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="#beta">クローズドベータに参加する</a>
+      <a class="btn btn-ghost" href="https://github.com/sarushili0430/ai-sensei">開発の途中を見る（GitHub）</a>
+    </div>
+    <p class="tiny">いまは Android のテスト版のみ。ソースコードは MIT ライセンスで公開しています。</p>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap foot-in">
+    <div>
+      <p class="foot-brand">カタルテ（ai-sensei）</p>
+      <p class="tiny">答えを教える。そのあと、あなたに教え返してもらう。</p>
+    </div>
+    <div>
+      <p class="foot-brand" style="font-size:13px">プロダクト</p>
+      <ul>
+        <li><a href="#how">しくみ</a></li>
+        <li><a href="#beta">クローズドベータ</a></li>
+        <li><a href="#plans">料金</a></li>
+        <li><a href="#faq">よくある質問</a></li>
+        <li><a href="./en/" hreflang="en" lang="en">English</a></li>
+      </ul>
+    </div>
+    <div>
+      <p class="foot-brand" style="font-size:13px">開発</p>
+      <ul>
+        <li><a href="https://github.com/sarushili0430/ai-sensei">GitHub（MIT）</a></li>
+        <li><a href="./beta/">ベータに参加する</a></li>
+        <li><a href="https://github.com/sarushili0430/ai-sensei/issues">GitHub Issues（開発者向け）</a></li>
+        <li><a href="https://shipaton.revenuecat.com/">RevenueCat Shipaton 2026</a></li>
+      </ul>
+    </div>
+    <div>
+      <p class="foot-brand" style="font-size:13px">きまり</p>
+      <ul>
+        <li><a href="./support/">サポート・お問い合わせ</a></li>
+        <li><a href="./terms/">利用規約</a></li>
+        <li><a href="./privacy/">プライバシーポリシー</a></li>
+      </ul>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,27 @@
+{
+  "session_id": "ses_01J8Z9K2QF7X3M4N5P6R7S8T9W",
+  "kind": "new",
+  "detected_topics": [
+    {
+      "topic_id": "A2-COORD-CIRCLE",
+      "course": "Algebra 2",
+      "unit": "Coordinate Geometry",
+      "topic": "Lines and circles",
+      "label": "Algebra 2",
+      "confidence": 0.92
+    },
+    {
+      "topic_id": "A1-QUAD-SOLVE",
+      "course": "Algebra 1",
+      "unit": "Quadratic Functions",
+      "topic": "The quadratic formula and the discriminant",
+      "label": "Algebra 1",
+      "confidence": 0.41
+    }
+  ],
+  "problem": {
+    "text": "For the circle x^2 + y^2 = 5 and the line y = x + k: (1) find the number of intersection points. (2) find the value of k that makes them tangent.",
+    "source": "notes_photo"
+  },
+  "problem_outcome": "read"
+}

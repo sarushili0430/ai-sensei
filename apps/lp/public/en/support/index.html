@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Support — Katarute</title>
+<meta name="description" content="Support for Katarute (ai-sensei): contact form, common questions, how to cancel or get a refund, and how to request deletion of your data.">
+<!-- Kept out of search until the draft markers are gone, same as privacy/terms. -->
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#FBFAF7">
+<link rel="alternate" hreflang="ja" href="../../support/">
+<link rel="alternate" hreflang="en" href="./">
+<link rel="alternate" hreflang="x-default" href="../../support/">
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230EA5E9'/%3E%3Cpath d='M40.3 77.5L25.5 83.5L20.7 59.1Z' fill='%23FBFAF7'/%3E%3Ccircle cx='50' cy='47.5' r='31.5' fill='%23FBFAF7'/%3E%3Cg fill='none' stroke='%2333323D' stroke-width='5.2' stroke-linecap='round'%3E%3Cpath d='M30 46Q37.5 37 45 46'/%3E%3Cpath d='M55 46Q62.5 37 70 46'/%3E%3Cpath d='M58.4 57.3A8.5 5 0 0 1 41.6 57.2'/%3E%3C/g%3E%3C/svg%3E">
+
+<!-- Submit handling. Must come BEFORE the stylesheet (see ../../support/index.html for why:
+     a parser-inserted script after a slow Google Fonts stylesheet would not run until the
+     font arrives, and a submit in that gap falls through to Google's own confirmation page). -->
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    var form = document.getElementById('ask');
+    var done = document.getElementById('ask-done');
+    var error = document.getElementById('ask-error');
+
+    function fail(message) {
+      error.textContent = message;
+      error.hidden = false;
+    }
+
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      error.hidden = true;
+
+      var action = form.getAttribute('action') || '';
+      var unfilled = action.indexOf('〔') !== -1 ||
+        Array.prototype.some.call(form.elements, function (el) {
+          return el.name && el.name.indexOf('〔') !== -1;
+        });
+      if (unfilled) {
+        fail('The form is not connected yet. Please email us at the address below instead.');
+        return;
+      }
+
+      // Optional fields left empty get a marker so a "required" setting on the Google Form
+      // side cannot silently drop the response (the same guard as the Japanese page).
+      var body = new FormData(form);
+      Array.prototype.forEach.call(form.elements, function (el) {
+        if (!el.name || el.required || String(el.value).trim()) return;
+        body.set(el.name, el.type === 'email' ? 'not-provided@example.invalid' : '（未記入）');
+      });
+
+      fetch(form.action, {
+        method: 'POST',
+        mode: 'no-cors',
+        body: body
+      }).then(function () {
+        form.hidden = true;
+        done.hidden = false;
+        done.scrollIntoView({ block: 'center' });
+      }).catch(function () {
+        fail('Could not send. Check your connection, or email us at the address below.');
+      });
+    });
+  });
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../styles.css">
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="../">
+      <svg viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+        <rect width="100" height="100" rx="22" fill="#0EA5E9"/>
+        <path d="M40.3 77.5 L25.5 83.5 L20.7 59.1 Z" fill="#FBFAF7"/>
+        <circle cx="50" cy="47.5" r="31.5" fill="#FBFAF7"/>
+        <circle cx="29.5" cy="53.5" r="4.2" fill="#FFC0D4"/>
+        <circle cx="70.5" cy="53.5" r="4.2" fill="#FFC0D4"/>
+        <g fill="none" stroke="#33323D" stroke-width="5.2" stroke-linecap="round">
+          <path d="M30 46 Q37.5 37 45 46"/>
+          <path d="M55 46 Q62.5 37 70 46"/>
+          <path d="M58.4 57.3 A8.5 5 0 0 1 41.6 57.2"/>
+        </g>
+      </svg>
+      Katarute
+    </a>
+    <a class="lang" href="../../support/" hreflang="ja" lang="ja">日本語</a>
+  </div>
+</header>
+
+<main class="legal">
+
+  <h1>Support</h1>
+  <p class="updated">Last updated: <span class="fill">[date]</span></p>
+
+  <!-- Remove this whole block when the page goes live. -->
+  <div class="legal-draft">
+    <b>This is a draft. Replace it before publishing.</b>
+    <p>
+      This page is the <strong>Support URL</strong> for App Store Connect and Google Play Console (required on both).
+      The form is connected to Google Forms and submissions go through. What is still open is the
+      <span class="fill">[highlighted]</span> text: <strong>operator name, address, and the usual time to reply</strong>.
+      App Review opens this page to confirm that support information exists.
+    </p>
+  </div>
+
+  <h2 id="contact">Contact</h2>
+  <p>
+    Questions, bug reports and anything your senpai said, wrote or asked that seemed wrong: send them through the form.
+    The app works without an account, so <strong>no email address is required</strong>.
+    Only enter a contact address if you want a reply.
+  </p>
+
+  <!-- Posts straight to the same Google Form as the Japanese page. The option VALUES stay in
+       Japanese because Google Forms matches choices by their exact text; only the labels are English. -->
+  <form class="support-form" id="ask" method="post"
+        action="https://docs.google.com/forms/d/e/1FAIpQLSeVTEUo3JuHO9NdQMVBCDOOpWYholL9yr51BrGt3OxneGpi-w/formResponse">
+
+    <div class="field">
+      <label for="ask-kind">What is it about?</label>
+      <select id="ask-kind" name="entry.1443754578" required>
+        <option value="" selected disabled>Choose one</option>
+        <option value="不具合・うまく動かない">Something isn't working</option>
+        <option value="先輩の説明や板書、質問がおかしい">The explanation, board or question was wrong</option>
+        <option value="課金・解約について">Billing or cancellation</option>
+        <option value="データの削除・利用停止">Delete my data / stop using it</option>
+        <option value="その他">Other</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="ask-body">Your message</label>
+      <textarea id="ask-body" name="entry.43879837" rows="6" required
+                placeholder="Which screen, what you did, and what happened — that helps us a lot."></textarea>
+    </div>
+
+    <div class="field">
+      <label for="ask-device">Device ID <span class="field-opt">(optional)</span></label>
+      <input id="ask-device" type="text" name="entry.2107337437" autocomplete="off"
+             placeholder="Copy it from Settings &gt; Device ID (for support)">
+      <p class="field-note">
+        Only needed for bug reports. Since there is no account, this ID is the only way we can trace what happened.
+      </p>
+    </div>
+
+    <div class="field">
+      <label for="ask-mail">Email for a reply <span class="field-opt">(optional)</span></label>
+      <input id="ask-mail" type="email" name="entry.326801306" autocomplete="email"
+             placeholder="e.g. you@example.com">
+      <p class="field-note">Only if you want a reply. Nothing is registered.</p>
+    </div>
+
+    <label class="consent">
+      <input type="checkbox" required>
+      <span>I agree to the <a href="../privacy/">privacy policy</a></span>
+    </label>
+
+    <div class="cta-row">
+      <button class="btn btn-primary" type="submit">Send</button>
+    </div>
+  </form>
+
+  <p class="form-msg" id="ask-done" hidden>
+    Sent. Thank you.<br>
+    If you left an email address, we usually reply within <span class="fill">[reply time]</span>.
+  </p>
+  <p class="form-error" id="ask-error" hidden></p>
+
+  <p class="tiny">
+    If the form does not work, email <code>kfukejob@gmail.com</code>.
+    Katarute is developed by one person, so replies can take a little while.
+  </p>
+  <noscript>
+    <p class="tiny">
+      With JavaScript off, sending takes you to Google Forms' confirmation page. The message is recorded just the same.
+    </p>
+  </noscript>
+
+  <p>
+    From the app, <strong>Settings &gt; "Report something that felt wrong"</strong> opens an email draft
+    with your device ID and app version already filled in — faster than copying them here.
+  </p>
+
+  <h2 id="faq">Try this first</h2>
+
+  <div class="faq">
+    <details>
+      <summary>I denied the camera or microphone permission by mistake</summary>
+      <p>
+        You can allow it later in your device settings: on iPhone, Settings &gt; Katarute; on Android,
+        Settings &gt; Apps &gt; Katarute &gt; Permissions. The camera is requested right before you take a photo
+        and the microphone right before the conversation, so the rest of the app keeps working after a denial.
+      </p>
+    </details>
+
+    <details>
+      <summary>I took a photo but no topic shows up</summary>
+      <p>
+        Try again in good light with the whole problem in the frame. You can also pick a photo you already have.
+        Only topics from the school stage you chose in Settings are offered
+        (mathematics and English, at junior-high or high-school level in Japan, or the equivalent high-school courses elsewhere).
+        Other subjects and levels cannot be read yet.
+      </p>
+    </details>
+
+    <details>
+      <summary>My senpai doesn't read the equations out loud</summary>
+      <p>
+        That is by design. Equations, calculations and figures go on the board; the voice only asks questions
+        like "Look at D here". A formula read aloud does not stay in your head, so this is not a bug.
+      </p>
+    </details>
+
+    <details>
+      <summary>My voice isn't getting through / the conversation doesn't move on</summary>
+      <p>
+        Check the microphone permission and try a quieter place. If the words won't come,
+        tap "I can't explain this yet" to move on — it is recorded, but never held against you.
+        Tap "Got it" when you have it, or "That's it for today" to stop.
+      </p>
+    </details>
+
+    <details>
+      <summary>I can't start a new problem today</summary>
+      <p>
+        On the free plan you get one lesson from your senpai per day; the next one opens when the date changes.
+        If you want several lessons a day, have a look at Premium.
+      </p>
+    </details>
+
+    <details>
+      <summary>I'm not getting the review notifications</summary>
+      <p>
+        Check that notifications are allowed. Settings &gt; "Check-backs from your senpai" in the app opens the
+        device notification settings. Reviews arrive <strong>3 and 7 days</strong> after a lesson (and the next day
+        after a wrong answer). We never send nagging notifications.
+      </p>
+    </details>
+
+    <details>
+      <summary>I bought Premium but nothing is unlocked</summary>
+      <p>
+        Try "Restore purchases" on the purchase screen. After changing phones or reinstalling, purchases come back
+        as long as you use the <strong>same Apple ID / Google account</strong> you bought with.
+        If that doesn't fix it, tell us through the form.
+      </p>
+    </details>
+
+    <details>
+      <summary>I think my senpai taught me something wrong</summary>
+      <p>
+        It can happen. The board stays on screen, so compare it with your textbook before tapping "Got it".
+        The grading of the review question that arrives 3 days later can also be wrong.
+        Report anything that felt off from Settings &gt; "Report something that felt wrong", or through the form on this page.
+      </p>
+    </details>
+  </div>
+
+  <h2 id="subscription">Cancelling and refunds</h2>
+  <p>
+    Premium is an auto-renewing subscription. <strong>Cancellations and refunds are handled by the store you bought from.</strong>
+    Deleting the app does not stop the subscription — cancel it in the store.
+  </p>
+  <table>
+    <tr>
+      <th>iPhone / iPad</th>
+      <td>
+        Settings &gt; your name at the top &gt; Subscriptions &gt; Katarute &gt; Cancel.<br>
+        Refunds: ask Apple at <code>reportaproblem.apple.com</code>.
+      </td>
+    </tr>
+    <tr>
+      <th>Android</th>
+      <td>
+        Google Play Store &gt; your profile icon &gt; Payments &amp; subscriptions &gt; Subscriptions &gt; Katarute &gt; Cancel.<br>
+        Refunds: through Google Play Help.
+      </td>
+    </tr>
+  </table>
+  <p class="tiny">
+    We never handle the payment ourselves, so we cannot issue refunds directly.
+    If you cancel mid-period, Premium stays on until the end of that period.
+  </p>
+
+  <h2 id="data">Deleting your data / stopping its use</h2>
+  <p>
+    You can ask us to delete, or stop using, your stored photos, transcripts, boards and review-question records
+    (including their use for improving the service). There is no account, so please include the ID shown at
+    <strong>Settings &gt; Device ID (for support)</strong> in the app when you send the form.
+    Without it we may be unable to identify your data.
+  </p>
+  <p>
+    What we collect and where it is stored is described in the <a href="../privacy/">privacy policy</a>.
+  </p>
+
+  <h2 id="requirements">Requirements</h2>
+  <ul>
+    <li>iOS 15 or later / Android 7.0 or later</li>
+    <li>A camera (photos of the problem and your notes) and a microphone (talking with your senpai)</li>
+    <li>A stable internet connection — the conversation runs online</li>
+  </ul>
+
+  <a class="legal-back" href="../">← Back to Katarute</a>
+
+</main>
+
+</body>
+</html>

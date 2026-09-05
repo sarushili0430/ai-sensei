@@ -1,0 +1,112 @@
+{
+  "$ref": "#/definitions/parent-report",
+  "definitions": {
+    "parent-report": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "requires_premium": {
+              "type": "boolean",
+              "const": true
+            },
+            "report": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "requires_premium",
+            "report"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "requires_premium": {
+              "type": "boolean",
+              "const": false
+            },
+            "report": {
+              "type": "object",
+              "properties": {
+                "period": {
+                  "type": "object",
+                  "properties": {
+                    "start_date": {
+                      "type": "string",
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                    },
+                    "end_date": {
+                      "type": "string",
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                    }
+                  },
+                  "required": [
+                    "start_date",
+                    "end_date"
+                  ],
+                  "additionalProperties": false
+                },
+                "filled_holes": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "streak_days": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "explained_topics": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "topic_id": {
+                        "type": "string",
+                        "pattern": "^(M1|MA|M2|MB|M3|MC|A1|GE|A2|PC|CL|ST|J1|J2|J3|JE|E1|E2|L1)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+                      },
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100
+                      }
+                    },
+                    "required": [
+                      "topic_id",
+                      "name"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "maxItems": 12
+                },
+                "quotes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "maxItems": 3
+                }
+              },
+              "required": [
+                "period",
+                "filled_holes",
+                "streak_days",
+                "explained_topics",
+                "quotes"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "requires_premium",
+            "report"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

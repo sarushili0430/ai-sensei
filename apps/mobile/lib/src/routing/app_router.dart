@@ -1,0 +1,125 @@
+import 'package:go_router/go_router.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+
+import '../api/device_id.dart';
+
+import '../features/capture/presentation/capture_screen.dart';
+import '../features/karte/presentation/home_screen.dart';
+import '../features/karte/presentation/review_screen.dart';
+import '../features/monetization/application/entitlement_controller.dart';
+import '../features/monetization/presentation/paywall_screen.dart';
+import '../features/monetization/presentation/thanks_screen.dart';
+import '../features/onboarding/presentation/onboarding_screen.dart';
+import '../features/parent_report/presentation/parent_report_screen.dart';
+import '../features/session/presentation/celebration_screen.dart';
+import '../features/session/presentation/session_screen.dart';
+import '../features/settings/presentation/settings_screen.dart';
+import '../features/plan/presentation/plan_screen.dart';
+import 'main_navigation_shell.dart';
+import 'routes.dart';
+
+part 'app_router.g.dart';
+
+/// 画面遷移。「常設の場所」と「授業の線」を混ぜない。
+/// 混ぜると行き止まりか、授業中の抜け道ができる。
+///
+/// - **常設** ホーム / 計画 / 設定。枝ごとの履歴を `indexedStack` で保つ
+/// - カルテは授業直後だけの画面なのでタブにせず、ホーム枝の子に置く
+/// - **寄り道(push)** 復習・カルテ・親レポート。ホーム枝の子にすると、
+///   通知着地でもホームが下に入り戻れる
+/// - **買う画面** ペイウォールとお礼はシェルの外。購入を決めている場所に
+///   常設ナビを重ねない(下の `GoRoute` のコメント参照)
+/// - **授業の線** 撮影 → 会話 → 祝福。シェルの外でタブから抜けられない
+/// - 撮影だけ `push`。会話以降は `go` で置き換え、引き返せなくする
+@Riverpod(keepAlive: true)
+GoRouter appRouter(Ref ref) {
+  // 初回起動はオンボーディングから。約束を先に伝えたい。
+  final bool onboarded = ref.watch(onboardedProvider);
+
+  return GoRouter(
+    initialLocation: onboarded ? AppRoute.home.path : AppRoute.onboarding.path,
+    routes: <RouteBase>[
+      GoRoute(
+        path: AppRoute.onboarding.path,
+        builder: (_, _) => const OnboardingScreen(),
+      ),
+      StatefulShellRoute.indexedStack(
+        builder: (_, _, StatefulNavigationShell navigationShell) =>
+            MainNavigationShell(navigationShell: navigationShell),
+        branches: <StatefulShellBranch>[
+          StatefulShellBranch(
+            routes: <RouteBase>[
+              GoRoute(
+                path: AppRoute.home.path,
+                builder: (_, _) => const HomeScreen(),
+                routes: <RouteBase>[
+                  // `/karte` はここにあった。**カルテ画面ごと畳んだ**(ADR 0009)。
+                  // 復習問題の履歴が「今日の記録」を引き継いだので、
+                  // 別の画面として残す理由が無くなっている。
+                  // 旧アプリのディープリンクは `/review` へ寄せる(下の redirect)。
+                  GoRoute(
+                    path: AppRoute.karte.segment,
+                    redirect: (_, _) => AppRoute.review.path,
+                  ),
+                  GoRoute(
+                    path: AppRoute.review.segment,
+                    // `?problem=prb_...` は通知の名指し。無ければ先頭の問題を開く。
+                    builder: (_, GoRouterState state) => ReviewScreen(
+                      problemId: state.uri.queryParameters['problem'],
+                    ),
+                  ),
+                  GoRoute(
+                    path: AppRoute.parentReport.segment,
+                    builder: (_, _) => const ParentReportScreen(),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: <RouteBase>[
+              GoRoute(
+                path: AppRoute.plan.path,
+                builder: (_, _) => const PlanScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: <RouteBase>[
+              GoRoute(
+                path: AppRoute.settings.path,
+                builder: (_, _) => const SettingsScreen(),
+              ),
+            ],
+          ),
+        ],
+      ),
+      // 撮影は戻れるが、タブは見せない。push した元の枝は下に残るので、
+      // 撮るのをやめても来た場所を失わない。
+      GoRoute(path: AppRoute.capture.path, builder: (_, _) => const CaptureScreen()),
+      // 会話中とその直後。戻る先もタブも持たせない。
+      GoRoute(path: AppRoute.session.path, builder: (_, _) => const SessionScreen()),
+      GoRoute(
+        path: AppRoute.celebration.path,
+        builder: (_, _) => const CelebrationScreen(),
+      ),
+      // 買うかどうかを決めている画面。**全画面で、タブは出さない。**
+      //
+      // 常設ナビを重ねると、購入判断のあいだじゅう別モードへの入口が並ぶ。
+      // 画面内のボタンは購入処理中(`_busy`)に全部無効化しているのに、
+      // タブだけ生きていて処理中に離脱できる、というガードの穴にもなる。
+      // `push` で来ていれば元の画面(ホーム・カルテ・復習・設定)に戻るので、
+      // シェルの外でも行き止まりにはならない。
+      GoRoute(path: AppRoute.paywall.path, builder: (_, _) => const PaywallScreen()),
+      GoRoute(
+        path: AppRoute.thanks.path,
+        builder: (_, GoRouterState state) =>
+            ThanksScreen(restored: state.uri.queryParameters['restored'] == '1'),
+        // 契約が無いのに祝わない。決済は通ったが entitlement が付いて
+        // いない場合(ダッシュボードの設定漏れ)がここに来る。紙吹雪を
+        // 見せてから使えないのが、いちばん落差が大きい。
+        redirect: (_, _) => ref.read(isPremiumProvider) ? null : AppRoute.home.path,
+      ),
+    ],
+  );
+}

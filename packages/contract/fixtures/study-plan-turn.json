@@ -1,0 +1,77 @@
+{
+  "speech": "9月10日か、あと16日だね。じゃあ、こんな感じでどう?",
+  "plan": {
+    "intake": {
+      "exam_name": "2学期の中間",
+      "exam_date": "2026-09-10",
+      "scope": {
+        "topic_ids": ["M2-SANKAKU-KAHO", "M2-SANKAKU-HOTEISHIKI"],
+        "said": "数IIの三角関数、教科書120〜150ページ"
+      },
+      "materials": ["4STEP", "青チャート"]
+    },
+    "days": [
+      {
+        "date": "2026-09-01",
+        "items": [
+          {
+            "topic_id": "M2-SANKAKU-KAHO",
+            "what": "加法定理を、導出しながらノートに書き出す",
+            "material": null,
+            "minutes": 30
+          },
+          {
+            "topic_id": "M2-SANKAKU-KAHO",
+            "what": "4STEPの加法定理の例題を一周",
+            "material": 0,
+            "minutes": 40
+          }
+        ]
+      },
+      {
+        "date": "2026-09-03",
+        "items": [
+          {
+            "topic_id": "M2-SANKAKU-KAHO",
+            "what": "合成の式を、なぜその形になるか言いながら解く",
+            "material": 0,
+            "minutes": 40
+          }
+        ]
+      },
+      {
+        "date": "2026-09-05",
+        "items": []
+      },
+      {
+        "date": "2026-09-07",
+        "items": [
+          {
+            "topic_id": "M2-SANKAKU-HOTEISHIKI",
+            "what": "三角方程式を、単位円を描いてから解く",
+            "material": 0,
+            "minutes": 40
+          },
+          {
+            "topic_id": "M2-SANKAKU-HOTEISHIKI",
+            "what": "青チャートの三角不等式の例題を、解ける形まで",
+            "material": 1,
+            "minutes": 45
+          }
+        ]
+      },
+      {
+        "date": "2026-09-09",
+        "items": [
+          {
+            "topic_id": "M2-SANKAKU-HOTEISHIKI",
+            "what": "間違えたところだけノートで見直す",
+            "material": null,
+            "minutes": 30
+          }
+        ]
+      }
+    ],
+    "revision": null
+  }
+}

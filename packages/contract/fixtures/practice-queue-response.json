@@ -1,0 +1,44 @@
+{
+  "items": [
+    {
+      "problem": {
+        "id": "prb_01J8Z9K2QF7X3M4N5P6R7S8T9V",
+        "session_id": "ses_01J8Z9K2QF7X3M4N5P6R7S8T9V",
+        "board_id": "brd_01J8Z9K2QF7X3M4N5P6R7S8T9V",
+        "topic_id": "M1-NIJI-HANBETSU",
+        "question": "x² − 6x + 5 = 0 の解の個数は?",
+        "created_at": "2026-08-03T11:40:12.000Z"
+      },
+      "days_since": 3,
+      "topic_label": "判別式と解の個数",
+      "last_verdict": null
+    },
+    {
+      "problem": {
+        "id": "prb_01J8Z9K2QF7X3M4N5P6R7S8TA0",
+        "session_id": "ses_01J8Z9K2QF7X3M4N5P6R7S8TA0",
+        "board_id": "brd_01J8Z9K2QF7X3M4N5P6R7S8TA0",
+        "topic_id": "M2-ZUKEI-ENCHOKU",
+        "question": "中心が原点で半径3の円と、直線 y = x + 1 は何点で交わる?",
+        "created_at": "2026-08-01T12:02:44.000Z"
+      },
+      "days_since": 5,
+      "topic_label": "円と直線の位置関係",
+      "last_verdict": "unclear"
+    }
+  ],
+  "solved": [
+    {
+      "problem": {
+        "id": "prb_01J8Z9K2QF7X3M4N5P6R7S8TB1",
+        "session_id": "ses_01J8Z9K2QF7X3M4N5P6R7S8TB1",
+        "board_id": "brd_01J8Z9K2QF7X3M4N5P6R7S8TB1",
+        "topic_id": "M1-NIJI-GURAFU",
+        "question": "y = x² + 4x + 1 の頂点の座標は?",
+        "created_at": "2026-07-29T11:15:03.000Z"
+      },
+      "topic_label": "2次関数のグラフ",
+      "days_since_solved": 1
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+name: Update goldens
+
+# **手動起動のみ。**
+#
+# pushのたびに焼き直すと、golden test は**壊れを検知する能力を失う**。
+# 常に現状追認になり、意図しない見た目の変化がそのまま「正」として上書きされる。
+# 焼き直すのは、変更が意図したものだと人が確認したときだけ。
+#
+# 走らせるブランチは起動時に選ぶ(workflow_dispatch は選んだrefでチェックアウトする)。
+on:
+  workflow_dispatch:
+
+jobs:
+  goldens:
+    name: Regenerate goldens (Linux)
+    # `ci.yml` の flutter ジョブと**同じランナー**。golden はフォントのラスタライズを
+    # 見るので、ここがずれると焼いた瞬間から差分が出るPNGができあがる。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # **バージョンの取り方まで `ci.yml` と同じにする。**
+      # 「同じ 3.44.8 を書く」ではなく「同じファイルから読む」形にしてあるのは、
+      # `.fvmrc` を上げたときに片方だけ古いまま残るのを防ぐため。
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version-file: apps/mobile/.fvmrc
+          cache: true
+
+      - run: flutter pub get
+        working-directory: apps/mobile
+
+      # 生成物(.freezed.dart / .g.dart)はコミットしないのでここで作る
+      - run: dart run build_runner build
+        working-directory: apps/mobile
+
+      # `--tags golden` で golden test だけを走らせる(タグは `dart_test.yaml` の宣言)。
+      # 全部走らせると、**無関係なテストの失敗でジョブが赤くなる**だけで、
+      # PNGの焼き直し自体は済んでいるという分かりにくい状態になる。
+      - name: Regenerate goldens
+        working-directory: apps/mobile
+        run: flutter test --update-goldens --tags golden
+
+      # **`--update-goldens` は差分があっても成功する。**
+      # 「ジョブが緑だった」は「変わらなかった」の意味ではないので、
+      # 何が書き換わったかをログに出す(artifactを落とす前に見当がつく)。
+      - name: Show which goldens changed
+        run: git status --porcelain apps/mobile/test/golden/goldens/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: goldens
+          path: apps/mobile/test/golden/goldens/
+          # 1枚も無いのは「焼けなかった」ということ。空のartifactを黙って上げない。
+          if-no-files-found: error

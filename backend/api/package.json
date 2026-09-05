@@ -1,0 +1,35 @@
+{
+  "name": "@ai-sensei/api",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Cloudflare Workers + Hono のAPI(セッション作成・カルテ保存・課金webhook)",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "build:check": "wrangler deploy --dry-run --outdir .wrangler/dry-run --env develop",
+    "deploy": "echo 'deploy には環境の指定が要ります: deploy:develop / deploy:production (docs/deploy.md)' >&2 && exit 1",
+    "deploy:develop": "wrangler deploy --env develop",
+    "deploy:production": "wrangler deploy --env production",
+    "migrate:local": "wrangler d1 migrations apply ai-sensei-local --local",
+    "migrate:develop": "wrangler d1 migrations apply ai-sensei-develop --remote --env develop",
+    "migrate:production": "wrangler d1 migrations apply ai-sensei-production --remote --env production",
+    "secret:develop": "wrangler secret put --env develop",
+    "secret:production": "wrangler secret put --env production",
+    "tail:develop": "wrangler tail --env develop",
+    "tail:production": "wrangler tail --env production"
+  },
+  "dependencies": {
+    "@ai-sensei/contract": "workspace:*",
+    "@ai-sensei/curriculum": "workspace:*",
+    "@ai-sensei/guardrail": "workspace:*",
+    "@ai-sensei/prompts": "workspace:*",
+    "@sentry/cloudflare": "^10.69.0",
+    "hono": "^4.6.14",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "wrangler": "^4.118.0"
+  }
+}

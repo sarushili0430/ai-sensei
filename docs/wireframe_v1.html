@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>カタルテ — Wireframe v1.0(導線の作り直し)</title>
+<style>
+  :root{
+    --ink:#1f2126; --paper:#ffffff; --canvas:#e9eaed;
+    --fill:#eff0f3; --wire:#c6c8d0; --mut:#7a7d87;
+    --ux:#c2402a; --biz:#5747b8; --new:#1c7a4a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--canvas);color:var(--ink);
+    font-family:"Hiragino Sans","Yu Gothic UI","Yu Gothic",system-ui,sans-serif;
+    line-height:1.55;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1300px;margin:0 auto;padding:36px 20px 72px}
+
+  /* ---------- header ---------- */
+  .eyebrow{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:11px;letter-spacing:.14em;color:var(--mut)}
+  h1{font-size:26px;margin:6px 0 4px;font-weight:700}
+  .lede{font-size:14px;color:var(--mut);max-width:720px;margin:0}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin:18px 0 30px;
+    font-size:12px;align-items:center}
+  .lg{display:flex;align-items:center;gap:6px}
+  .sw-dash{width:26px;height:14px;border:1.5px dashed var(--wire);border-radius:3px}
+  .tag{font-family:ui-monospace,Menlo,monospace;font-size:10px;
+    border:1px solid;border-radius:3px;padding:0 5px;line-height:1.6;flex:none;height:fit-content}
+  .tag.ux{color:var(--ux);border-color:var(--ux)}
+  .tag.biz{color:var(--biz);border-color:var(--biz)}
+  .tag.new{color:var(--new);border-color:var(--new)}
+
+  /* ---------- what changed ---------- */
+  .changed{background:var(--paper);border:1.5px solid var(--ink);border-radius:12px;
+    padding:16px 20px;margin-bottom:34px}
+  .changed h2{font-size:15px;margin:0 0 10px}
+  .changed ol{margin:0;padding-left:1.3em;font-size:13px}
+  .changed li{margin-bottom:6px}
+  .changed b{font-weight:700}
+
+  /* ---------- flow grid ---------- */
+  .flow{display:flex;flex-wrap:wrap;gap:30px}
+  .step{width:282px}
+  .stephead{display:flex;align-items:baseline;gap:8px;margin-bottom:8px}
+  .num{font-family:ui-monospace,Menlo,monospace;font-size:12px;
+    background:var(--ink);color:#fff;border-radius:4px;padding:1px 7px}
+  .sname{font-size:14px;font-weight:700}
+  .sway{font-size:11px;color:var(--mut)}
+
+  /* ---------- phone frame ---------- */
+  .phone{background:var(--paper);border:2px solid var(--ink);border-radius:26px;
+    height:566px;padding:12px 11px;display:flex;flex-direction:column;gap:9px;overflow:hidden}
+  .bar{height:5px;width:44%;background:var(--fill);border-radius:3px;margin:0 auto;flex:none}
+  .nav{display:flex;align-items:center;gap:7px;flex:none;font-size:12px;font-weight:700}
+  .nav .back{font-size:14px;line-height:1}
+  .h{font-size:15px;font-weight:700}
+  .p{font-size:12px;color:var(--ink)}
+  .small{font-size:10.5px;color:var(--mut)}
+  .box{background:var(--fill);border-radius:8px;padding:9px 10px}
+  .dash{border:1.5px dashed var(--wire);border-radius:8px;padding:9px 10px;background:#fff}
+  .btn{background:var(--ink);color:#fff;border-radius:9px;text-align:center;
+    padding:11px 8px;font-size:13px;font-weight:700}
+  .ghost{border:1.5px solid var(--ink);border-radius:9px;text-align:center;
+    padding:9px 8px;font-size:12px;font-weight:600}
+  .link{font-size:10.5px;text-decoration:underline;color:var(--ink)}
+  .chip{display:inline-block;border:1.5px solid var(--ink);border-radius:99px;
+    padding:1px 9px;font-size:10.5px;margin:0 4px 4px 0}
+  .chip.mut{border-color:var(--wire);color:var(--mut)}
+  .spacer{flex:1}
+  .row{display:flex;align-items:center;gap:8px}
+  .between{justify-content:space-between}
+
+  /* character + speech */
+  .ava{width:34px;height:34px;border:1.5px dashed var(--wire);border-radius:50%;
+    flex:none;display:flex;align-items:center;justify-content:center;
+    font-size:8.5px;color:var(--mut);text-align:center;line-height:1.15}
+  .ava.big{width:74px;height:74px;font-size:10px;margin:6px auto 0}
+  .bubble{border:1.5px solid var(--ink);border-radius:12px;border-top-left-radius:3px;
+    padding:9px 11px;font-size:12.5px;background:#fff}
+
+  /* mic + wave */
+  .mic{width:104px;height:104px;border-radius:50%;background:var(--ink);color:#fff;
+    margin:0 auto;display:flex;align-items:center;justify-content:center;
+    text-align:center;font-size:12px;font-weight:700;line-height:1.3;padding:10px}
+  .wave{display:flex;align-items:center;justify-content:center;gap:3px;height:44px}
+  .wave i{display:block;width:4px;background:var(--wire);border-radius:2px}
+  .wave i:nth-child(odd){height:60%}.wave i:nth-child(even){height:100%}
+  .wave i:nth-child(3n){height:34%;background:var(--ink)}
+
+  /* onboarding dots */
+  .dots{display:flex;justify-content:center;gap:5px;flex:none}
+  .dots i{width:7px;height:7px;border-radius:99px;background:var(--wire);display:block}
+  .dots i.on{width:17px;background:var(--ink)}
+
+  /* steps list */
+  .steps{display:flex;flex-direction:column;gap:9px}
+  .steps div{display:flex;gap:9px;align-items:center;font-size:12px}
+  .steps b{width:22px;height:22px;border:1.5px solid var(--ink);border-radius:6px;
+    display:flex;align-items:center;justify-content:center;font-size:11px;flex:none}
+
+  /* feedback sections */
+  .sec{border-left:3px solid var(--ink);padding:2px 0 2px 9px}
+  .sec .k{font-size:11px;font-weight:700}
+  .sec .v{font-size:11.5px;color:var(--mut)}
+  .sec.hole{border-color:var(--ux)}
+  .sec.hole .k{color:var(--ux)}
+  .toggle{width:34px;height:19px;border-radius:99px;background:var(--ink);
+    position:relative;flex:none}
+  .toggle::after{content:"";position:absolute;right:2.5px;top:2.5px;
+    width:14px;height:14px;border-radius:50%;background:#fff}
+  .toggle.off{background:var(--wire)}
+  .toggle.off::after{right:auto;left:2.5px}
+
+  /* settings list */
+  .list{display:flex;flex-direction:column}
+  .list .grp{font-size:10.5px;color:var(--mut);margin:9px 0 3px}
+  .list .it{display:flex;justify-content:space-between;align-items:center;
+    padding:8px 0;border-bottom:1px solid var(--fill);font-size:12px;gap:8px}
+  .list .it span{color:var(--mut);font-size:10.5px;flex:none}
+
+  /* compare table (paywall) */
+  .cmp{font-size:10.5px;width:100%;border-collapse:collapse}
+  .cmp td,.cmp th{border-top:1px solid var(--fill);padding:6px 3px;text-align:left}
+  .cmp th{font-size:10px;color:var(--mut);border-top:none}
+  .cmp td:nth-child(2){color:var(--mut)}
+  .cmp td:nth-child(3){font-weight:700}
+
+  /* notes under frames */
+  .notes{margin-top:11px}
+  .note{display:flex;gap:7px;margin-top:7px;font-size:11.5px;line-height:1.5}
+
+  /* ---------- map ---------- */
+  .mapwrap{margin-top:52px;background:var(--paper);border:1.5px solid var(--ink);
+    border-radius:12px;padding:20px 22px}
+  .mapwrap h2{font-size:16px;margin:0 0 4px}
+  .mapwrap .lede{margin-bottom:14px}
+  .maplegend{display:flex;flex-wrap:wrap;gap:18px;font-size:11.5px;margin-bottom:8px;color:var(--mut)}
+  .maplegend span{display:flex;align-items:center;gap:6px}
+  .maplegend svg{flex:none}
+  .diagram{width:100%;height:auto;overflow-x:auto;display:block}
+
+  /* footer sections */
+  .foot{margin-top:34px;display:flex;flex-wrap:wrap;gap:34px}
+  .foot section{flex:1;min-width:300px}
+  .foot h2{font-size:15px;margin:0 0 10px}
+  .q{font-size:13px;margin:0;padding-left:1.2em}
+  .q li{margin-bottom:7px}
+  .foot table{width:100%;border-collapse:collapse;font-size:12.5px}
+  .foot td,.foot th{border-bottom:1px solid var(--wire);padding:6px 4px;text-align:left;vertical-align:top}
+  .foot th{color:var(--mut);font-size:11px;font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">SHIPATON 2026 / MVP CORE LOOP / WIREFRAME v1.0</div>
+  <h1>説明する数学アプリ(仮称: カタルテ)</h1>
+  <p class="lede">
+    写真を撮る → 後輩AIが質問する → 声に出して説明する → 理解の穴が「カルテ」になる。
+    v0.1 から画面を1枚だけ足し(設定)、<b>行き止まりを全部つぶした</b>版。
+    MVPのスコープは広げていない。
+  </p>
+  <div class="legend">
+    <span class="lg"><span class="sw-dash"></span>動的コンテンツ(AI生成・ユーザーデータ)</span>
+    <span class="lg"><span class="tag ux">UX</span>体験設計の意図</span>
+    <span class="lg"><span class="tag biz">賞</span>審査カテゴリ・収益のフック</span>
+    <span class="lg"><span class="tag new">v1</span>v0.1 からの変更点</span>
+  </div>
+</header>
+
+<div class="changed">
+  <h2>v0.1 から変えたこと(と、変えなかったこと)</h2>
+  <ol>
+    <li><b>遷移を2種類に分けた。</b> v0.1 の実装はすべての遷移がスタックの置き換え(<code>go</code>)で、
+      どの画面もスタックの深さが常に1だった。結果、戻るボタンが一度も出ず、
+      復習画面が行き止まりになっていた。
+      いまは<b>一方通行</b>(撮影→会話→祝福→カルテ)と<b>寄り道</b>(ホーム⇄復習/設定、⇄ペイウォール)に分け、
+      寄り道は必ず戻れる。</li>
+    <li><b>ホームをハブに戻した。</b> v0.1 で描いていた「きのうの穴カード」と「今日の無料セッション残り」が
+      実装で落ちていた。両方戻した(残り回数はサーバが既に返している)。
+      <b>タブバーは入れない</b> — 常設タブに値するのはホームだけで、カルテはセッション直後にしか
+      意味を持たない一過性の画面だから。設定は右上に逃がす。</li>
+    <li><b>画面を1枚だけ足した(08 設定)。</b> 新機能ではなく、置き場所の無かったものの集積:
+      契約の管理・購入の復元・通知・プライバシーポリシー/利用規約・AI出力の報告導線。
+      後ろ2つは審査で見られる項目。</li>
+    <li><b>オンボーディングを2ページに。</b> 1枚目は約束(答えは教えません)のまま、2枚目でやることの全体像。
+      <b>権限は全部「使う直前」に聞く</b>: カメラ=撮る直前 / マイク=会話の直前 /
+      <b>通知=初回カルテのトグル</b>。v0.1 の 05 に描いてあったトグルは実装では静的テキストだったので、
+      ここを本物にして、価値を実感した直後に後輩からのお願いとして許可を取る。</li>
+    <li><b>Premium の「履歴」を復習画面で果たす。</b> ペイウォールは「穴の復習と履歴」と謳っているのに
+      履歴を見る画面が無かった。別画面は作らず、復習画面を
+      「埋めにいく穴」＋「埋めた穴」の2セクションにした。</li>
+    <li><b>変えていないもの:</b> コアループそのもの、点数を出さない原則、数えるのは連続日数と埋めた穴だけ、
+      ペイウォールを出す位置(初回カルテ直後・サーバが判断)、無料枠(1日1セッション・最長5分)。</li>
+  </ol>
+</div>
+
+<div class="flow">
+
+  <!-- 00 onboarding -->
+  <div class="step">
+    <div class="stephead"><span class="num">00</span><span class="sname">オンボーディング</span><span class="sway">初回のみ・2ページ</span></div>
+    <div class="phone">
+      <div class="bar"></div>
+      <div class="ava big">後輩AI<br>(キャラ)</div>
+      <div style="text-align:center;margin-top:6px">
+        <div class="h" style="font-size:19px">答えは教えません。</div>
+      </div>
+      <p class="p" style="text-align:center">ノートを撮ると、後輩が質問します。説明しているうちに、自分でも気づいていなかった穴が見つかります。</p>
+      <div class="spacer"></div>
+      <div class="small" style="text-align:center;border-top:1px dashed var(--wire);padding-top:9px">2ページ目</div>
+      <div class="p" style="font-weight:700">やることは、これだけ。</div>
+      <div class="steps">
+        <div><b>1</b>今日やったノートを撮る</div>
+        <div><b>2</b>後輩が2〜3問きいてくる</div>
+        <div><b>3</b>声に出して説明する(5分)</div>
+        <div><b>4</b>言えたことと穴が、カルテに残る</div>
+      </div>
+      <div class="small" style="text-align:center">カメラ・マイク・通知の許可は、使う直前にお願いします</div>
+      <div class="dots"><i class="on"></i><i></i></div>
+      <div class="btn">つぎへ / はじめる</div>
+    </div>
+    <div class="notes">
+      <div class="note"><span class="tag ux">UX</span><span>1枚目は機能ではなく<b>約束</b>。既存の写真×数学アプリとの違いをここで立てる。</span></div>
+      <div class="note"><span class="tag new">v1</span><span>2枚目を追加。4分間なにをするのか分からないままカメラを開かせない。</span></div>
+      <div class="note"><span class="tag ux">UX</span><span>権限要求は文脈内。初回離脱の最大要因を、まとめて先頭に置かない。</span></div>
+    </div>
+  </div>
+
+  <!-- 01 home -->
+  <div class="step">
+    <div class="stephead"><span class="num">01</span><span class="sname">ホーム</span><span class="sway">ハブ</span></div>
+    <div class="phone">
+      <div class="bar"></div>
+      <div class="row between">
+        <div class="row">
+          <span class="p" style="font-weight:700">3</span><span class="small">日つづけて説明中</span>
+          <span class="p" style="font-weight:700">4</span><span class="small">埋めた穴</span>
+        </div>
+        <span class="small">⚙</span>
+      </div>
+      <div class="spacer"></div>
+      <div class="ava big">後輩AI</div>
+      <div class="h" style="text-align:center">今日のノート、見せてください</div>
+      <div class="spacer"></div>
+      <div class="dash row between">
+        <div>
+          <div class="p" style="font-weight:700">● 埋めにいく穴</div>
+          <div class="small">残っている穴 1</div>
+        </div>
+        <span class="small">›</span>
+      </div>
+      <div class="btn" style="padding:18px 8px;font-size:15px">ノートを撮る</div>
+      <div class="row between">
+        <span class="small">今日の無料セッション: 残り1回</span>
+        <span class="link">無制限にする</span>
+      </div>
+    </div>
+    <div class="notes">
+      <div class="note"><span class="tag ux">UX</span><span>起動3秒で「撮る」に届く。迷う要素はホームに置かない。</span></div>
+      <div class="note"><span class="tag new">v1</span><span>穴カードと残り回数を復活。設定は右上のアイコンへ。<b>タブバーは入れない</b>。</span></div>
+      <div class="note"><span class="tag ux">UX</span><span>穴が0のときはカードの代わりに「まだ穴はありません。最初の1枚から始まります。」。初回のホームを空白にしない。</span></div>
+      <div class="note"><span class="tag biz">賞</span><span>残り回数は事実だけ淡々と。煽り文言は使わない(誠実さ=HAMM審査点)。</span></div>
+    </div>
+  </div>
+
+  <!-- 02 capture -->
+  <div class="step">
+    <div class="stephead"><span class="num">02</span><span class="sname">撮影確認</span><span class="sway">寄り道(戻れる)</span></div>
+    <div class="phone">
+      <div class="bar"></div>
+      <div class="nav"><span class="back">‹</span>この単元で合っていますか?</div>
+      <div class="dash" style="flex:1;display:flex;align-items:center;justify-content:center">
+        <span class="small">ノートの写真<br>(今日やったページ)</span>
+      </div>
+      <div>
+        <div class="small" style="margin-bottom:4px">読み取った範囲 — ちがっていたらタップして外せます</div>
+        <span class="chip">数II</span><span class="chip">図形と方程式</span><span class="chip">円と直線</span><span class="chip mut">確信度低</span>
+      </div>
+      <p class="p">この範囲から、後輩が2〜3問きいてきます。</p>
+      <div class="btn">説明をはじめる</div>
+      <div class="small" style="text-align:center;border-top:1px dashed var(--wire);padding-top:8px">
+        カメラを断られた場合 →「設定をひらく」＋「今日はここまで」
+      </div>
+    </div>
+    <div class="notes">
+      <div class="note"><span class="tag ux">UX</span><span>検出単元はチップで即修正できる。誤検出の逃げ道を先に用意する。</span></div>
+      <div class="note"><span class="tag new">v1</span><span>カメラ拒否で無言でホームに戻していたのをやめ、設定への行き方を出す。撮るのをやめただけなら、そのままホームへ戻す。</span></div>
+      <div class="note"><span class="tag biz">賞</span><span>「検出単元 ∩ カリキュラムマップ」が質問の許可範囲。ガードレールの入口。</span></div>
+    </div>
+  </div>
+
+  <!-- 03 session -->
+  <div class="step">
+    <div class="stephead"><span class="num">03</span><span class="sname">会話</span><span class="sway">一方通行・戻れない</span></div>
+    <div class="phone">
+      <div class="bar"></div>
+      <div class="row between">
+        <span class="small">円と直線</span>
+        <span class="small">のこり 3:41</span>
+      </div>
+      <div class="spacer"></div>
+      <div class="ava big">後輩AI<br>(聞いている)</div>
+      <div class="bubble" style="margin-top:10px">先輩、(2)でいきなり判別式を使ったのは、なんでですか?</div>
+      <div class="wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="small" style="text-align:center">聞いています</div>
+      <div class="spacer"></div>
+      <div class="ghost" style="border-color:var(--wire);color:var(--mut)">うまく言えない</div>
+      <div class="ghost">今日はここまで</div>
+    </div>
+    <div class="notes">
+      <div class="note"><span class="tag ux">UX</span><span>v0.1 の 03/04(質問・録音)を1枚に統合済み。LiveKitの常時会話なので押しっぱなしのマイクは無い。</span></div>
+      <div class="note"><span class="tag ux">UX</span><span>パスは失敗ではなく穴の記録。押しても恥ずかしくないトーンと位置に。</span></div>
+      <div class="note"><span class="tag new">v1</span><span><b>戻るボタンを出さない</b>。会話から引き返す動作に意味がないので、抜けるのは「今日はここまで」だけ。</span></div>
+      <div class="note"><span class="tag biz">賞</span><span>後輩の声はElevenLabs(スポンサー)。字幕は声を聞けない場所のために出す。</span></div>
+    </div>
+  </div>
+
+  <!-- 04 celebration -->
+  <div class="step">
+    <div class="stephead"><span class="num">04</span><span class="sname">祝福</span><span class="sway">にぎやかな画面</span></div>
+    <div class="phone">
+      <div class="bar"></div>
+      <div class="spacer"></div>
+      <div class="ava big">後輩AI<br>(よろこぶ)</div>
+      <div class="h" style="text-align:center;font-size:19px;margin-top:10px">穴が1つ、埋まりました</div>
+      <div class="p" style="text-align:center">3日つづけて説明中</div>
+      <div class="spacer"></div>
+      <div class="btn">今日のカルテ</div>
+    </div>
+    <div class="notes">
+      <div class="note"><span class="tag ux">UX</span><span>にぎやかな画面。ただし数えるのは連続日数と「埋めた穴」だけで、点数・正誤・XPは出さない。</span></div>
+      <div class="note"><span class="tag biz">賞</span><span>「埋めた穴」カウンターは本アプリ固有のスコア。共有スクショ映えも狙う。</span></div>
+      <div class="note"><span class="tag new">v1</span><span>ここも戻れない。カルテへ進むと、カルテの下にはホームが積まれる(祝福には戻らない)。</span></div>
+    </div>
+  </div>
+
+  <!-- 05 karte -->
+  <div class="step">
+    <div class="stephead"><span class="num">05</span><span class="sname">カルテ</span><span class="sway">静かな画面</span></div>
+    <div class="phone">
+      <div class="bar"></div>
+      <div class="nav"><span class="back">‹</span>今日のカルテ</div>
+      <div class="sec">
+        <div class="k">言えたこと</div>
+        <div class="v">・中心と直線の距離dと半径rの比較<br>・d&lt;r ⇔ 2点で交わる</div>
+      </div>
+      <div class="sec hole">
+        <div class="k">穴 — 1つ</div>
+        <div class="v">判別式を「なぜ」使うか、で説明が止まった</div>
+      </div>
+      <div class="sec">
+        <div class="k">用語メモ</div>
+        <div class="v">「解の公式」と「判別式」が混ざっていた</div>
+      </div>
+      <div class="spacer"></div>
+      <div class="row between box">
+        <span class="p">あしたの夜、もう一度きいてもいいですか?</span>
+        <div class="toggle off"></div>
+      </div>
+      <div class="btn">言い直してみる</div>
+      <div class="ghost">今日はここまで</div>
+    </div>
+    <div class="notes">
+      <div class="note"><span class="tag ux">UX</span><span>点数は出さない。穴=これから埋まる場所、として提示する。</span></div>
+      <div class="note"><span class="tag new">v1</span><span><b>このトグルが通知許可の唯一の要求箇所。</b> v0.1 の実装では静的テキストだった。
+        穴が見えた直後に、後輩からのお願いとして聞く。断られたら設定への行き方を出す(iOSは二度目のダイアログを出せない)。</span></div>
+      <div class="note"><span class="tag biz">賞</span><span>復習トグルがOneSignal賞の中核。間隔反復は1日→3日→7日。</span></div>
+      <div class="note"><span class="tag biz">賞</span><span>初回はこの画面の直後にペイウォール(価値を体感した瞬間)。出す/出さないはサーバが決める。</span></div>
+    </div>
+  </div>
+
+  <!-- 06 review -->
+  <div class="step">
+    <div class="stephead"><span class="num">06</span><span class="sname">復習</span><span class="sway">ホーム or プッシュが起点</span></div>
+    <div class="phone">
+      <div class="bar"></div>
+      <div class="nav"><span class="back">‹</span>埋めにいく穴</div>
+      <div class="box">
+        <div class="p">3日前の「平方完成のなぜ」、いまなら説明できますか?</div>
+        <div class="small">平方完成を「なぜ」使うか ・ 数I 二次関数</div>
+        <div class="btn" style="margin-top:7px;padding:9px 8px">30秒で説明する</div>
+      </div>
+      <div class="box">
+        <div class="p">きのうの「判別式の意味」、もう一度きいてもいいですか?</div>
+        <div class="small">判別式の意味 ・ 数II 円と直線</div>
+        <div class="btn" style="margin-top:7px;padding:9px 8px">30秒で説明する</div>
+      </div>
+      <div class="h" style="margin-top:6px">埋めた穴 — 4つ</div>
+      <div class="dash">
+        <div class="p">中心と直線の距離で判定する理由で説明が止まった</div>
+        <div class="small">きのう 埋めた</div>
+      </div>
+      <div class="spacer"></div>
+      <div class="small" style="text-align:center">無料のとき: 「穴の復習はPremiumの機能です」＋ Premiumをみる ＋ ホームにもどる</div>
+    </div>
+    <div class="notes">
+      <div class="note"><span class="tag new">v1</span><span><b>下半分に「埋めた穴」を追加。</b> ペイウォールが謳う Premium の「履歴」はここで果たし、別画面は作らない。</span></div>
+      <div class="note"><span class="tag new">v1</span><span>読み込み中・エラー・空・Premium必要の<b>4状態すべてに出口</b>を置く。通知から直接着地しうる画面なので、ここが行き止まりだと本当に戻れない。</span></div>
+      <div class="note"><span class="tag biz">賞</span><span>通知文もキャラの声で。リマインダーではなく「後輩からのお願い」。</span></div>
+      <div class="note"><span class="tag biz">賞</span><span>復習はPremium。無料は当日のフィードバックまで。</span></div>
+    </div>
+  </div>
+
+  <!-- 07 paywall -->
+  <div class="step">
+    <div class="stephead"><span class="num">07</span><span class="sname">ペイウォール</span><span class="sway">初回カルテ直後 / 寄り道</span></div>
+    <div class="phone">
+      <div class="bar"></div>
+      <div class="h" style="font-size:19px;margin-top:6px">穴を、埋めきる。</div>
+      <p class="p">Premium ¥580/月 ・ はじめの7日間は無料</p>
+      <table class="cmp">
+        <tr><th></th><th>無料</th><th>Premium</th></tr>
+        <tr><td>セッション</td><td>1日1回</td><td>無制限</td></tr>
+        <tr><td>カルテ</td><td>当日のみ</td><td>穴の復習と履歴</td></tr>
+        <tr><td>後輩のあと追い質問</td><td>—</td><td>○</td></tr>
+      </table>
+      <div class="spacer"></div>
+      <div class="btn">このプランではじめる</div>
+      <div class="ghost">無料のまま続ける</div>
+      <div class="small" style="text-align:center">いつでも解約できます</div>
+      <div class="small" style="text-align:center"><u>購入を復元する</u></div>
+    </div>
+    <div class="notes">
+      <div class="note"><span class="tag biz">賞</span><span>HAMMの審査点=誠実な設計。無料継続の導線と解約可能を明記する。</span></div>
+      <div class="note"><span class="tag new">v1</span><span>閉じたときの戻り先を<b>来た場所</b>にした。ホームの「無制限にする」から来ればホーム、復習から来れば復習。</span></div>
+      <div class="note"><span class="tag biz">賞</span><span>審査員にはプロモコードで全機能を開放(提出ルールの必須要件)。</span></div>
+    </div>
+  </div>
+
+  <!-- 08 settings -->
+  <div class="step">
+    <div class="stephead"><span class="num">08</span><span class="sname">設定</span><span class="sway">v1で追加・寄り道</span></div>
+    <div class="phone">
+      <div class="bar"></div>
+      <div class="nav"><span class="back">‹</span>設定</div>
+      <div class="list">
+        <div class="grp">契約</div>
+        <div class="it">契約の管理<span>›</span></div>
+        <div class="it">購入を復元する<span>↻</span></div>
+        <div class="grp">通知</div>
+        <div class="it">後輩からの再説明のお願い<span>届きます ›</span></div>
+        <div class="grp">このアプリについて</div>
+        <div class="it">気になる質問を報告する<span>✉</span></div>
+        <div class="it">プライバシーポリシー<span>↗</span></div>
+        <div class="it">利用規約<span>↗</span></div>
+        <div class="it">バージョン<span>0.1.0 (1)</span></div>
+        <div class="it">端末ID(問い合わせ用)<span>⧉</span></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="small" style="text-align:center">新しい機能は無い。置き場所の無かったものを集めただけの画面</div>
+    </div>
+    <div class="notes">
+      <div class="note"><span class="tag new">v1</span><span>唯一の追加画面。契約の管理と復元をホームからここへ移した。</span></div>
+      <div class="note"><span class="tag biz">賞</span><span>サブスクを載せる以上、プライバシーポリシーと利用規約は審査で見られる。</span></div>
+      <div class="note"><span class="tag biz">賞</span><span>AI生成コンテンツの報告導線(App Review の注意点)。範囲外の質問が出たときの逃げ道でもある。</span></div>
+      <div class="note"><span class="tag ux">UX</span><span>通知のスイッチはアプリに持たず、OSの許可をそのまま状態にする。二重に持つと「アプリではオンなのに届かない」が生まれる。</span></div>
+    </div>
+  </div>
+
+</div><!-- /flow -->
+
+<div class="mapwrap">
+  <h2>画面遷移</h2>
+  <p class="lede">
+    線の種類が、そのまま実装の <code>go</code> / <code>push</code> の使い分けになっている。
+    実線＝スタックを置き換える一方通行、破線＝スタックに積む寄り道(必ず戻れる)。
+  </p>
+  <div class="maplegend">
+    <span><svg width="42" height="10"><line x1="0" y1="5" x2="34" y2="5" stroke="#1f2126" stroke-width="1.8"/><path d="M34 1.5 L41 5 L34 8.5 Z" fill="#1f2126"/></svg>一方通行(go・戻れない)</span>
+    <span><svg width="42" height="10"><line x1="4" y1="5" x2="38" y2="5" stroke="#5747b8" stroke-width="1.8" stroke-dasharray="5 4"/><path d="M38 1.5 L42 5 L38 8.5 Z" fill="#5747b8"/><path d="M4 1.5 L0 5 L4 8.5 Z" fill="#5747b8"/></svg>寄り道(push・戻れる)</span>
+    <span><svg width="42" height="10"><line x1="0" y1="5" x2="34" y2="5" stroke="#c2402a" stroke-width="1.8" stroke-dasharray="2 3"/><path d="M34 1.5 L41 5 L34 8.5 Z" fill="#c2402a"/></svg>プッシュ通知が起点</span>
+  </div>
+
+  <svg class="diagram" viewBox="0 0 1140 540" role="img"
+       aria-label="画面遷移図。一方通行のコアループと、戻れる寄り道と、プッシュ通知起点の3系統。">
+    <defs>
+      <marker id="a-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#1f2126"/>
+      </marker>
+      <marker id="a-biz" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#5747b8"/>
+      </marker>
+      <marker id="a-ux" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#c2402a"/>
+      </marker>
+      <style>
+        .n rect{fill:#fff;stroke:#1f2126;stroke-width:1.8}
+        .n text{font-family:"Hiragino Sans",system-ui,sans-serif;font-size:12.5px;font-weight:700;fill:#1f2126}
+        .n .id{font-family:ui-monospace,Menlo,monospace;font-size:10px;font-weight:400;fill:#7a7d87}
+        .band{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;letter-spacing:.1em;fill:#7a7d87}
+        .lbl{font-family:"Hiragino Sans",system-ui,sans-serif;font-size:10.5px;fill:#7a7d87}
+        .e-go{stroke:#1f2126;stroke-width:1.8;fill:none;marker-end:url(#a-ink)}
+        .e-side{stroke:#5747b8;stroke-width:1.8;fill:none;stroke-dasharray:5 4;
+                marker-end:url(#a-biz);marker-start:url(#a-biz)}
+        .e-push{stroke:#c2402a;stroke-width:1.8;fill:none;stroke-dasharray:2 3;marker-end:url(#a-ux)}
+      </style>
+    </defs>
+
+    <!-- band labels -->
+    <text class="band" x="4" y="26">CORE LOOP — 一方通行</text>
+    <text class="band" x="4" y="256">SIDE TRIPS — 戻れる寄り道</text>
+    <text class="band" x="4" y="446">PUSH — 通知が起点(コールドスタート)</text>
+
+    <!-- core loop nodes (y = 52..104) -->
+    <g class="n">
+      <rect x="8"    y="52" width="140" height="52" rx="10"/>
+      <text x="20" y="74" class="id">00</text><text x="20" y="92">オンボーディング</text>
+
+      <rect x="196"  y="52" width="140" height="52" rx="10"/>
+      <text x="208" y="74" class="id">01</text><text x="208" y="92">ホーム</text>
+
+      <rect x="384"  y="52" width="140" height="52" rx="10"/>
+      <text x="396" y="74" class="id">02</text><text x="396" y="92">撮影確認</text>
+
+      <rect x="572"  y="52" width="140" height="52" rx="10"/>
+      <text x="584" y="74" class="id">03</text><text x="584" y="92">会話</text>
+
+      <rect x="760"  y="52" width="140" height="52" rx="10"/>
+      <text x="772" y="74" class="id">04</text><text x="772" y="92">祝福</text>
+
+      <rect x="948"  y="52" width="140" height="52" rx="10"/>
+      <text x="960" y="74" class="id">05</text><text x="960" y="92">カルテ</text>
+    </g>
+
+    <!-- core loop edges -->
+    <line class="e-go" x1="148" y1="78" x2="192" y2="78"/>
+    <text class="lbl" x="150" y="46">初回のみ</text>
+    <line class="e-go" x1="524" y1="78" x2="568" y2="78"/>
+    <line class="e-go" x1="712" y1="78" x2="756" y2="78"/>
+    <line class="e-go" x1="900" y1="78" x2="944" y2="78"/>
+
+    <!-- karte -> home (今日はここまで) : long return along the top -->
+    <path class="e-go" d="M1018 52 L1018 22 L266 22 L266 48"/>
+    <text class="lbl" x="600" y="18">今日はここまで(初回だけ 07 を挟む)</text>
+
+    <!-- side trip nodes (y = 282..334) -->
+    <g class="n">
+      <rect x="102" y="282" width="140" height="52" rx="10"/>
+      <text x="114" y="304" class="id">08</text><text x="114" y="322">設定</text>
+
+      <rect x="290" y="282" width="140" height="52" rx="10"/>
+      <text x="302" y="304" class="id">06</text><text x="302" y="322">復習</text>
+
+      <rect x="948" y="282" width="140" height="52" rx="10"/>
+      <text x="960" y="304" class="id">07</text><text x="960" y="322">ペイウォール</text>
+    </g>
+
+    <!-- home <-> settings / review -->
+    <path class="e-side" d="M240 110 L182 278"/>
+    <path class="e-side" d="M292 110 L350 278"/>
+    <!-- karte <-> paywall -->
+    <path class="e-side" d="M1018 110 L1018 278"/>
+    <!-- review <-> paywall (bottom route) -->
+    <path class="e-side" d="M372 338 L372 372 L1018 372 L1018 338"/>
+    <text class="lbl" x="640" y="366">無料ユーザーの復習画面から</text>
+    <!-- home -> capture (寄り道: 撮るのをやめたら戻れる) -->
+    <path class="e-side" d="M340 78 L376 78"/>
+
+    <!-- review -> session (穴の再説明。ここから先は一方通行) -->
+    <path class="e-go" d="M430 300 Q520 300 546 108"/>
+    <text class="lbl" x="384" y="180">穴の再説明</text>
+    <text class="lbl" x="384" y="196">(ここから先は一方通行)</text>
+
+    <!-- push band (y = 470..522) -->
+    <g class="n">
+      <rect x="8"   y="470" width="150" height="52" rx="10"/>
+      <text x="20" y="492" class="id">PUSH</text><text x="20" y="510">後輩からの通知</text>
+
+      <rect x="206" y="470" width="150" height="52" rx="10"/>
+      <text x="218" y="492" class="id">01</text><text x="218" y="510">ホームを下に積む</text>
+
+      <rect x="404" y="470" width="150" height="52" rx="10"/>
+      <text x="416" y="492" class="id">06</text><text x="416" y="510">復習</text>
+
+      <rect x="602" y="470" width="150" height="52" rx="10"/>
+      <text x="614" y="492" class="id">03</text><text x="614" y="510">会話</text>
+    </g>
+    <line class="e-push" x1="158" y1="496" x2="202" y2="496"/>
+    <line class="e-push" x1="356" y1="496" x2="400" y2="496"/>
+    <line class="e-push" x1="554" y1="496" x2="598" y2="496"/>
+    <text class="lbl" x="790" y="484">通知で開いても、復習の下に</text>
+    <text class="lbl" x="790" y="500">ホームが積まれている。</text>
+    <text class="lbl" x="790" y="516">ここが「どこにも行けない」の直し方。</text>
+  </svg>
+</div>
+
+<div class="foot">
+  <section>
+    <h2>画面ごとの遷移の型</h2>
+    <table>
+      <tr><th>画面</th><th>入り方</th><th>出口</th></tr>
+      <tr><td>00 オンボーディング</td><td>初回起動</td><td>はじめる → 01(置き換え)</td></tr>
+      <tr><td>01 ホーム</td><td>起点</td><td>撮る / 復習 / 設定 / ペイウォール</td></tr>
+      <tr><td>02 撮影確認</td><td>01 から push</td><td>戻る・説明をはじめる → 03(置き換え)</td></tr>
+      <tr><td>03 会話</td><td>02・06 から置き換え</td><td>今日はここまで → 04。<b>戻るは出さない</b></td></tr>
+      <tr><td>04 祝福</td><td>03 から置き換え</td><td>カルテ → 05(下にホームが積まれる)</td></tr>
+      <tr><td>05 カルテ</td><td>04 から</td><td>言い直す → 06(push) / 今日はここまで → 01 or 07</td></tr>
+      <tr><td>06 復習</td><td>01 から push / 通知から</td><td>戻る・説明する → 03 / Premiumをみる → 07</td></tr>
+      <tr><td>07 ペイウォール</td><td>05・06・01 から</td><td>閉じる → <b>来た場所</b></td></tr>
+      <tr><td>08 設定</td><td>01 から push</td><td>戻る → 01</td></tr>
+    </table>
+  </section>
+  <section>
+    <h2>まだ決めていないこと</h2>
+    <ol class="q">
+      <li>声を出せない場所(電車・自習室)向けに、テキスト入力フォールバックを積むか。</li>
+      <li>キャラ設計: 名前・一人称・敬語レベル・見た目のトーン。</li>
+      <li>「穴」という言葉の強度。刺さるが強すぎる可能性(代案: モヤ、ハテナ)。</li>
+      <li>効果音・ハプティクスの方針(Design Award を狙うなら要検討)。</li>
+      <li>プライバシーポリシー・利用規約・報告先メールの実体(<code>dart_defines.env</code> が空のあいだ、設定画面に行ごと出ない)。<b>提出前に必須</b>。</li>
+      <li>英語ロケールの切替。いまは端末のロケール任せで、アプリ内に言語スイッチが無い(日本語端末の審査員に英語を見せる手段が無い)。</li>
+    </ol>
+  </section>
+</div>
+
+</div>
+</body>
+</html>

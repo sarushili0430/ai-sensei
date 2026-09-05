@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>サポート — カタルテ</title>
+<meta name="description" content="カタルテ(ai-sensei)のサポート窓口。お問い合わせフォーム、よくある質問、解約と返金の手順、データの削除の求め方。">
+<!-- 雛形のあいだは検索に載せない。privacy/terms と同じ扱い。
+     フォームのURLを埋めて、公開する正を1つに決めたら(apps/lp/README.md)この行を消す。 -->
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#FBFAF7">
+<link rel="alternate" hreflang="ja" href="./">
+<link rel="alternate" hreflang="en" href="../en/support/">
+<link rel="alternate" hreflang="x-default" href="./">
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230EA5E9'/%3E%3Cpath d='M40.3 77.5L25.5 83.5L20.7 59.1Z' fill='%23FBFAF7'/%3E%3Ccircle cx='50' cy='47.5' r='31.5' fill='%23FBFAF7'/%3E%3Cg fill='none' stroke='%2333323D' stroke-width='5.2' stroke-linecap='round'%3E%3Cpath d='M30 46Q37.5 37 45 46'/%3E%3Cpath d='M55 46Q62.5 37 70 46'/%3E%3Cpath d='M58.4 57.3A8.5 5 0 0 1 41.6 57.2'/%3E%3C/g%3E%3C/svg%3E">
+
+<!-- 送信のふるまい。**スタイルシートより前に置くこと。**
+     パーサが差し込むscriptは「先行するスタイルシートが解決するまで実行されない」ので、
+     </body>の直前に置くと、Google Fonts が遅い回線では
+     **フォントが降ってくるまでこのJSが動かない**。その隙に送信されると、
+     素のPOSTがそのまま飛んでGoogleの確認画面へ移る(記録はされるが画面が変わる)。
+     先に置いて DOMContentLoaded を待つ形なら、その隙が無い。 -->
+<script>
+  // Googleフォームへ投げて、このページに留まる。
+  // no-cors なので返事は読めない —— 「送信しました」は
+  // 通信が最後まで行ったことしか意味していない(上のコメント)。
+  document.addEventListener('DOMContentLoaded', function () {
+    var form = document.getElementById('ask');
+    var done = document.getElementById('ask-done');
+    var error = document.getElementById('ask-error');
+
+    function fail(message) {
+      error.textContent = message;
+      error.hidden = false;
+    }
+
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      error.hidden = true;
+
+      // 〔…〕が残っている = まだGoogleフォームに繋がっていない。
+      // 押した人を黙って落とさないよう、ここで止めて理由を出す。
+      //
+      // **form.action ではなく getAttribute('action')** を見ること。
+      // 前者は解決済みのURLを返すので、〔 が %E3%80%94 に化けて一致しない。
+      // 項目の name 側も見る —— action だけ差し替えて entry を忘れると、
+      // Googleは黙って受け取って必須項目が空の回答になる(こちらからは気づけない)。
+      var action = form.getAttribute('action') || '';
+      var unfilled = action.indexOf('〔') !== -1 ||
+        Array.prototype.some.call(form.elements, function (el) {
+          return el.name && el.name.indexOf('〔') !== -1;
+        });
+      if (unfilled) {
+        fail('フォームの接続がまだです。お手数ですが、下のメールあてにお送りください。');
+        return;
+      }
+
+      // **任意の欄が空のときは、印を入れて送る。**
+      // フォーム側でその項目が「必須」のままだと、空で送られた回答に
+      // Googleは400を返す。no-cors ではそれが読めないので、画面には
+      // 「送信しました」と出たまま中身だけ捨てられる —— *壊れても
+      // 気づけない*種類の事故なので、ページ側にも受け皿を置く。
+      // フォーム側を任意に直したあとも、これは残しておくこと
+      // (どちらの設定でも通る形にしておくのが目的)。
+      //
+      // 見ているのは「name があって required でない欄」なので、
+      // 項目を足しても勝手に効く。同意のチェックは name が無いので対象外。
+      var body = new FormData(form);
+      Array.prototype.forEach.call(form.elements, function (el) {
+        if (!el.name || el.required || String(el.value).trim()) return;
+        // フォーム側に「回答の検証」が付いている欄は、印も**その形式を
+        // 満たしていないと弾かれる**(実測: 返信先に「（未記入）」を入れると
+        // 400、正しい形の住所なら 200)。example.invalid は RFC 2606 の
+        // 予約ドメインで、実在しえないし誰にも届かない。
+        body.set(el.name, el.type === 'email' ? 'not-provided@example.invalid' : '（未記入）');
+      });
+
+      fetch(form.action, {
+        method: 'POST',
+        mode: 'no-cors',
+        body: body
+      }).then(function () {
+        form.hidden = true;
+        done.hidden = false;
+        done.scrollIntoView({ block: 'center' });
+      }).catch(function () {
+        fail('送信できませんでした。通信を確かめるか、下のメールあてにお送りください。');
+      });
+    });
+  });
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="../">
+      <svg viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+        <rect width="100" height="100" rx="22" fill="#0EA5E9"/>
+        <path d="M40.3 77.5 L25.5 83.5 L20.7 59.1 Z" fill="#FBFAF7"/>
+        <circle cx="50" cy="47.5" r="31.5" fill="#FBFAF7"/>
+        <circle cx="29.5" cy="53.5" r="4.2" fill="#FFC0D4"/>
+        <circle cx="70.5" cy="53.5" r="4.2" fill="#FFC0D4"/>
+        <g fill="none" stroke="#33323D" stroke-width="5.2" stroke-linecap="round">
+          <path d="M30 46 Q37.5 37 45 46"/>
+          <path d="M55 46 Q62.5 37 70 46"/>
+          <path d="M58.4 57.3 A8.5 5 0 0 1 41.6 57.2"/>
+        </g>
+      </svg>
+      カタルテ
+    </a>
+    <a class="lang" href="../en/support/" hreflang="en" lang="en">English</a>
+  </div>
+</header>
+
+<main class="legal">
+
+  <h1>サポート</h1>
+  <p class="updated">最終更新: <span class="fill">〔更新日〕</span></p>
+
+  <!-- 本番の内容に差し替えるときは、このブロックごと消すこと。 -->
+  <div class="legal-draft">
+    <b>これは雛形です。公開前に差し替えてください。</b>
+    <p>
+      このページは App Store Connect と Google Play Console の
+      <strong>サポートURL</strong>（どちらも必須）に入れるためのものです。
+      フォームはGoogleフォームに繋いであり、送信は通ります。
+      残っているのは<span class="fill">〔黄色の箇所〕</span>の書きもので、
+      とくに<strong>運営者名・所在地・返信までの目安</strong>は空のままでは出せません。
+      <strong>審査担当者がここを開いて「サポート情報がある」ことを確かめます。</strong>
+    </p>
+  </div>
+
+  <h2 id="contact">お問い合わせ</h2>
+  <p>
+    ご質問・不具合の報告・先輩の説明や板書についてのご指摘は、フォームからお送りください。
+    アカウントを作らずに使えるアプリなので、<strong>メールアドレスの登録は要りません</strong>。
+    返信が要るときだけ、フォームの中で連絡先をご記入ください。
+  </p>
+
+  <!-- Googleフォームに「自前のフォーム」から投げている。iframe は使わない。
+       ============================================================
+       Googleフォームは、回答の受け口
+         https://docs.google.com/forms/d/e/<FORM_ID>/formResponse
+       に `entry.<ID>=値` を POST すれば記録される。埋め込み(iframe)は
+       見た目がGoogle側のままになるので、フォームの体だけこちらで持つ。
+
+       ■ 項目を足す・入れ替えるときの entry.<ID> の取り方
+         フォームの編集画面 > 右上の ⋮ > 「事前入力したURLを取得」
+           → 各項目に見本の値を入れて「リンクを取得」
+           → https://docs.google.com/forms/d/e/<FORM_ID>/viewform?usp=pp_url
+                &entry.111111=見本&entry.222222=見本 ...
+         ここに出てくる <FORM_ID> を action に、`entry.<ID>` を下の name に写す。
+         **viewform を formResponse に変えること**(viewform のままだと記録されない)。
+         並び順は質問の順とは限らないので、番号ではなく**入れた値で見分ける**。
+
+       ■ フォーム側の設定(ここを間違えると問い合わせが黙って消える)
+         「回答を受け付ける」がオンで、**ログイン必須・メールアドレスの収集がオフ**
+         であること。オンだと未ログインのPOSTが捨てられる。
+
+         **フォーム側で「必須」にしてよいのは、下で required を付けている
+         「種類」と「内容」だけ。** 端末IDと返信先は任意なので、フォーム側も
+         任意にしておくこと。ここを必須にすると、空のまま送られた回答に
+         Googleが 400 を返す —— そして下の no-cors ではそれが見えないので、
+         そのままだと**画面には「送信しました」と出たまま中身だけ捨てられる**。
+         (実測: 必須のまま空で送ると 400 "This is a required question"、
+          4項目埋めると 200。urlencoded でも multipart でも同じ。)
+
+         **取りこぼしそのものは、下の送信処理が空欄に印を入れて防いでいる。**
+         それでもフォーム側は任意にしておくこと。理由は3つ:
+           - 回答が「（未記入）」だらけになる
+           - JSを切っている人の素のPOSTはこの受け皿を通らない
+             (そちらはGoogleのエラー画面が出るので、黙って消えることはない)
+           - **受け皿は「回答の検証」までは越えられない。** いま越えられて
+             いるのはメールアドレスの形式だけで、桁数や正規表現の検証を
+             足されると、また黙って捨てられる状態に戻る
+
+         同じ理由で「回答の検証」も付けないこと。弾かれても気づけない。
+
+       ■ JavaScriptを1つだけ置いている
+         LPは「JSなし」で通してきた(README「作りの前提」)。ここだけ例外で、
+         理由は**送ったあとにこのページへ留まりたい**から。素のPOSTでも送信自体は
+         できるが、Googleの「回答を記録しました」の画面へ飛ばされる。
+         iframe を隠して受け止める昔ながらの手も要らない —— fetch の no-cors で足りる。
+         **JSを切っている人向けに、素のPOSTがそのまま働く形は残してある**
+         (その場合だけGoogleの画面に移る)。
+
+       ■ no-cors の限界
+         返ってくるのは opaque なレスポンスで、**中身も状態コードも読めない**。
+         つまり「Googleが受け付けたか」はこちらから確かめられない。
+         下の「送信しました」は、通信が最後まで行ったことしか意味していない。
+         必須項目の取りこぼしなどはここでは捕まらないので、フォーム側の必須設定は
+         **こちらの required と食い違わせないこと**(上の「フォーム側の設定」)。
+         捕まえられるのは通信そのものが落ちたときだけで、そちらは
+         「送信できませんでした」を出してページに留まる(実測で確認済み)。
+       ============================================================ -->
+  <form class="support-form" id="ask" method="post"
+        action="https://docs.google.com/forms/d/e/1FAIpQLSeVTEUo3JuHO9NdQMVBCDOOpWYholL9yr51BrGt3OxneGpi-w/formResponse">
+
+    <div class="field">
+      <label for="ask-kind">お問い合わせの種類</label>
+      <select id="ask-kind" name="entry.1443754578" required>
+        <option value="" selected disabled>選んでください</option>
+        <option>不具合・うまく動かない</option>
+        <option>先輩の説明や板書、質問がおかしい</option>
+        <option>課金・解約について</option>
+        <option>データの削除・利用停止</option>
+        <option>その他</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="ask-body">お問い合わせ内容</label>
+      <textarea id="ask-body" name="entry.43879837" rows="6" required
+                placeholder="どの画面で、何をしたときに、どうなったかを書いていただけると助かります。"></textarea>
+    </div>
+
+    <div class="field">
+      <label for="ask-device">端末ID <span class="field-opt">(任意)</span></label>
+      <input id="ask-device" type="text" name="entry.2107337437" autocomplete="off"
+             placeholder="設定 &gt; 端末ID(問い合わせ用) からコピーできます">
+      <p class="field-note">
+        不具合の報告のときだけで大丈夫です。アカウントが無いぶん、
+        こちらで状況を辿れる手がかりがこのIDだけになります。
+      </p>
+    </div>
+
+    <div class="field">
+      <label for="ask-mail">返信先のメールアドレス <span class="field-opt">(任意)</span></label>
+      <input id="ask-mail" type="email" name="entry.326801306" autocomplete="email"
+             placeholder="例: you@example.com">
+      <p class="field-note">返信が要るときだけご記入ください。登録は要りません。</p>
+    </div>
+
+    <!-- 同意は送信の関所としてだけ置いている(name が無いので送られない)。
+         同意した記録も残したいときは、フォーム側に項目を1つ足して
+         name="entry.〔同意のID〕" value="同意する" を持たせること。 -->
+    <label class="consent">
+      <input type="checkbox" required>
+      <span><a href="../privacy/">プライバシーポリシー</a>に同意します</span>
+    </label>
+
+    <div class="cta-row">
+      <button class="btn btn-primary" type="submit">送信する</button>
+    </div>
+  </form>
+
+  <p class="form-msg" id="ask-done" hidden>
+    送信しました。ありがとうございます。<br>
+    返信先をご記入いただいた場合は、<span class="fill">〔返信までの目安〕</span>を目安にお返事します。
+  </p>
+  <p class="form-error" id="ask-error" hidden></p>
+
+  <p class="tiny">
+    フォームがうまく動かないときは、<code>kfukejob@gmail.com</code> あてのメールでも受け付けています。
+    個人で開発しているため、お返事にお時間をいただくことがあります。
+  </p>
+  <noscript>
+    <p class="tiny">
+      JavaScript を切ってお使いの場合、送信するとGoogleフォームの確認画面に移ります。
+      送信そのものは同じように記録されます。
+    </p>
+  </noscript>
+
+  <p>
+    アプリの<strong>「設定 &gt; 気になった内容を報告する」</strong>からだと、
+    端末IDとアプリのバージョンが本文に入った状態でメールの下書きがひらきます。
+    書き写す手間がないので、アプリを開ける状況ならそちらが早いです。
+  </p>
+
+  <h2 id="faq">まず試してみてください</h2>
+
+  <div class="faq">
+    <details>
+      <summary>カメラやマイクの許可を、まちがえて断ってしまった</summary>
+      <p>
+        端末の設定からあとで許可できます。
+        iPhone は「設定 &gt; カタルテ」、Android は「設定 &gt; アプリ &gt; カタルテ &gt; 権限」です。
+        カメラは撮る直前、マイクは会話の直前にしかお聞きしないので、
+        断ったあとでも他の画面はそのまま使えます。
+      </p>
+    </details>
+
+    <details>
+      <summary>写真を撮ったのに、単元が出てこない</summary>
+      <p>
+        明るいところで、問題の全体が入るように撮ってみてください。
+        すでに撮ってある写真をアルバムから選ぶこともできます。
+        中学数学・高校数学・中学英語・高校英語のうち、
+        設定で選んだ学年（中学生／高校生）の単元だけが候補に出ます。
+        別の科目や学年の問題は、いまのところ読み取れません。
+      </p>
+    </details>
+
+    <details>
+      <summary>先輩が数式を読み上げてくれない</summary>
+      <p>
+        そういう作りにしています。数式・計算・図は板書に書き、
+        声は「ここ、Dを見てほしいんだけど」と問いかけるだけにしています。
+        式を耳で聞いても頭に入らないためで、不具合ではありません。
+      </p>
+    </details>
+
+    <details>
+      <summary>声が届かない／会話が進まない</summary>
+      <p>
+        マイクの許可と、静かな場所かどうかを確かめてみてください。
+        うまく言葉が出てこないときは「うまく言えない」を押して先に進めます。
+        押しても記録は残りますし、そこが「穴」になるだけです。
+        途中でやめたいときは「今日はここまで」で終われます。
+      </p>
+    </details>
+
+    <details>
+      <summary>今日はもう、新しい問題をはじめられない</summary>
+      <p>
+        無料でお使いの場合、先輩に教わるのは1日1問です。
+        日付が変わると、また1問はじめられます。
+        毎日つづけて何問も聞きたいときは Premium をご検討ください。
+      </p>
+    </details>
+
+    <details>
+      <summary>復習のお知らせが届かない</summary>
+      <p>
+        通知の許可を確かめてみてください。
+        アプリの「設定 &gt; 先輩からのおさらい」から、端末の通知設定をひらけます。
+        おさらいは、穴が見つかった<strong>翌日・3日後・7日後</strong>に届きます。
+        急かす通知はお送りしません。
+      </p>
+    </details>
+
+    <details>
+      <summary>Premium にしたのに、機能が解放されない</summary>
+      <p>
+        購入画面の「購入を復元する」をお試しください。
+        機種を変えた場合や、いったんアプリを消した場合も、
+        購入したときと<strong>同じ Apple ID / Google アカウント</strong>であれば戻せます。
+        それでも戻らないときは、フォームからお知らせください。
+      </p>
+    </details>
+
+    <details>
+      <summary>先輩が、間違ったことを教えている気がする</summary>
+      <p>
+        ありえます。板書は残るので、「わかった」を押す前に教科書と見比べてみてください。
+        3日後に届く復習問題の判定にも誤りが含まれることがあります。
+        気になった説明・板書・問題は、アプリの
+        「設定 &gt; 気になった内容を報告する」か、このページのフォームからお知らせください。
+      </p>
+    </details>
+  </div>
+
+  <h2 id="subscription">契約の解約と返金</h2>
+  <p>
+    Premium は自動更新の定期購入です。<strong>解約と返金の窓口は、購入したストアです。</strong>
+    アプリを消しても契約は止まらないので、解約はストア側で行ってください。
+  </p>
+  <table>
+    <tr>
+      <th>iPhone / iPad</th>
+      <td>
+        「設定」＞ 一番上のご自身の名前 ＞「サブスクリプション」から、
+        カタルテを選んで解約できます。<br>
+        返金は Apple の窓口（<code>reportaproblem.apple.com</code>）へお申し出ください。
+      </td>
+    </tr>
+    <tr>
+      <th>Android</th>
+      <td>
+        Google Play ストア ＞ 右上のアイコン ＞「お支払いと定期購入」＞「定期購入」から
+        カタルテを選んで解約できます。<br>
+        返金は Google Play のヘルプからお申し出ください。
+      </td>
+    </tr>
+  </table>
+  <p class="tiny">
+    当方はお支払いを直接お預かりしていないため、こちらから返金の手続きはできません。
+    期間の途中で解約された場合も、その期間の終わりまではお使いいただけます。
+  </p>
+
+  <h2 id="data">データの削除・利用停止</h2>
+  <p>
+    保存しているノートの写真・会話の文字起こし・板書・復習問題の記録について、削除や利用停止
+    （サービス改善のための利用の停止を含みます）を求められます。
+    本サービスはアカウントを持たないため、
+    <strong>アプリの「設定 &gt; 端末ID(問い合わせ用)」のID</strong>をそえてフォームからお知らせください。
+    IDのご提示がない場合、対象を特定できないためお応えできないことがあります。
+  </p>
+  <p>
+    何を取得しているか、どこに保存しているかは
+    <a href="../privacy/">プライバシーポリシー</a>に書いています。
+  </p>
+
+  <h2 id="requirements">動作環境</h2>
+  <ul>
+    <li>iOS 15 以上 / Android 7.0 以上</li>
+    <li>カメラ（問題とノートの撮影）とマイク（先輩との会話）</li>
+    <li>会話は通信をしながら行うため、安定した通信環境</li>
+  </ul>
+
+  <h2 id="operator">運営者</h2>
+  <p>
+    <span class="fill">〔運営者名〕</span><br>
+    <span class="fill">〔所在地〕</span>
+  </p>
+  <p>
+    <a href="../terms/">利用規約</a> ／ <a href="../privacy/">プライバシーポリシー</a>
+  </p>
+  <p class="tiny">
+    ソースコードは MIT ライセンスで公開しています。
+    <a href="https://github.com/sarushili0430/ai-sensei">github.com/sarushili0430/ai-sensei</a>
+  </p>
+
+  <a class="legal-back" href="../">← カタルテのトップへ</a>
+
+</main>
+
+
+</body>
+</html>

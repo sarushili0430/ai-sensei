@@ -1,0 +1,13 @@
+targets:
+  $default:
+    builders:
+      # **使用統計の送信を止める。**
+      #
+      # widgetbook_generator は生成のたびに `git config user.email` の
+      # SHA-1 と `remote.origin.url` を Mixpanel へ送る
+      # (widgetbook_generator/lib/src/telemetry/telemetry_reporter.dart)。
+      # CI環境変数があるときは自分で黙るが、**手元では毎回飛ぶ。**
+      # カタログを組むのに要らない通信なので、ここで無効にする。
+      # https://docs.widgetbook.io/telemetry
+      widgetbook_generator:telemetry:
+        enabled: false

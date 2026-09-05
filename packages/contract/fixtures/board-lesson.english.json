@@ -1,0 +1,59 @@
+{
+  "title": "現在完了が「今とつながる過去」になる理由",
+  "topic_ids": ["JE-JISEI-KANRYO"],
+  "steps": [
+    {
+      "index": 0,
+      "speech": "まずこの文、意味とれる?",
+      "board": {
+        "kind": "sentence",
+        "text": "I have lived here for ten years.",
+        "gloss": "10年間ここに住んでいる(今も)",
+        "focus": "have lived"
+      }
+    },
+    {
+      "index": 1,
+      "speech": "じゃあ、こっちとの違いは?",
+      "board": {
+        "kind": "sentence",
+        "text": "I lived here for ten years.",
+        "gloss": "10年間ここに住んでいた(今は不明)",
+        "focus": "lived"
+      }
+    },
+    {
+      "index": 2,
+      "speech": "並べるとはっきりする。どっちが「今も」?",
+      "board": {
+        "kind": "compare",
+        "title": "現在完了 と 過去形",
+        "columns": ["現在完了", "過去形"],
+        "rows": [
+          ["have + 過去分詞", "過去形"],
+          ["今とつながっている", "今のことは言っていない"],
+          ["for / since と相性がいい", "yesterday / last year と使う"]
+        ]
+      }
+    },
+    {
+      "index": 3,
+      "speech": "だから yesterday とは一緒に使えない。ここまでの流れね。",
+      "board": {
+        "kind": "text",
+        "body": "現在完了 × yesterday — 「今」と「終わった過去」がぶつかる"
+      }
+    },
+    {
+      "index": 4,
+      "speech": "じゃあ、同じ考え方でこの文はどう直す? できたら教えて。",
+      "board": {
+        "kind": "sentence",
+        "text": "I have visited Kyoto yesterday.",
+        "gloss": "私は昨日京都を訪れた",
+        "focus": "have visited"
+      },
+      "awaits_solving": true
+    }
+  ]
+}

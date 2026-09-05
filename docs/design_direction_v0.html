@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>デザイン方向 v0.1 — 蛍光マーカー × Duolingoの文法</title>
+<title>デザイン方向 v0.1 — 蛍光マーカー × Duolingoの文法 / アイコン・ストア素材</title>
 <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
 <style>
   :root{
@@ -255,6 +255,462 @@
   <b>実装メモ(ソロ前提)</b><br>
   キャラは表情差分3〜5枚(通常・聞いてる・なるほど・うーん・祝福)+Flutterの暗黙アニメーションから始めて、v1.1でRiveのステートマシンに移行。効果音は「送信ポン」「祝福ファンファーレ」「穴が埋まる音」の3つまで。フォントはZen Maru Gothic(丸ゴ)で友好さを、数字だけ太めに。
 </div>
+
+<!-- ==================================================================
+     2026-08-05 追記 — アイコン確定 / ストア掲載素材 / 提出メタデータ
+     W4(〜8/末)の「磨き込み・アイコン/スクショ」に対応する。
+     ================================================================== -->
+<style>
+  .sec{margin-top:56px;border-top:3px solid var(--ink);padding-top:22px}
+  .sec h2{font-size:21px;font-weight:900;margin:6px 0 4px}
+  .sec .lede2{font-size:13px;color:var(--mut);max-width:720px;margin:0 0 20px}
+  .sec h3{font-size:14px;font-weight:900;margin:26px 0 10px}
+  .card{background:var(--card);border:2px solid var(--line);border-radius:16px;padding:14px 16px}
+
+  /* アイコン */
+  .icons{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start}
+  .icard{width:186px;background:var(--card);border:2px solid var(--line);border-radius:16px;
+    padding:12px;text-align:center}
+  .icard img{width:160px;height:160px;border-radius:36px;display:block;margin:0 auto 8px}
+  .icard.onDark{background:#22242B;border-color:#3A3D46}
+  .icard.onDark b,.icard.onDark span{color:#EDEFF3}
+  .icard.tint img{background:linear-gradient(160deg,#2B3550,#141821)}
+  .icard.blue img{background:var(--blue)}
+  .icard.mono img{background:#43474F}
+  .icard b{display:block;font-size:12.5px;font-weight:900}
+  .icard span{display:block;font-size:11px;color:var(--mut);line-height:1.5;margin-top:2px}
+  .sizes{display:flex;align-items:flex-end;gap:14px;margin-top:6px}
+  .sizes figure{margin:0;text-align:center}
+  .sizes img{display:block;border-radius:22.37%}
+  .sizes figcaption{font-family:ui-monospace,Menlo,monospace;font-size:10px;color:var(--mut);margin-top:5px}
+
+  /* スクショ */
+  .shots{display:flex;flex-wrap:wrap;gap:16px}
+  .shot{width:196px}
+  .shot img{width:100%;border:2px solid var(--line);border-radius:12px;display:block;background:#fff}
+  .shot p{font-size:11.5px;line-height:1.5;margin:7px 0 0;color:var(--mut)}
+  .shot p b{color:var(--ink);font-size:12px;display:block}
+
+  /* メタデータ */
+  table.meta{width:100%;border-collapse:collapse;font-size:12.5px;background:var(--card);
+    border:2px solid var(--line);border-radius:16px;overflow:hidden}
+  table.meta th,table.meta td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);
+    vertical-align:top}
+  table.meta th{width:210px;font-weight:900;background:#F6F8FB;white-space:nowrap}
+  table.meta tr:last-child th,table.meta tr:last-child td{border-bottom:none}
+  table.meta code{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--pink-d)}
+  .copy{background:var(--card);border:2px solid var(--line);border-radius:16px;padding:14px 16px;
+    font-size:12.5px;line-height:1.85;white-space:pre-wrap}
+  .count{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:var(--mut);
+    display:block;margin-bottom:6px;letter-spacing:.04em}
+  .two{display:flex;flex-wrap:wrap;gap:14px}
+  .two>div{flex:1;min-width:330px}
+  .warn{background:#FFF4F7;border:2px solid var(--pink);border-radius:16px;padding:13px 16px;
+    font-size:12.5px;line-height:1.7}
+  .warn b{color:var(--pink-d)}
+  .todo{background:var(--card);border:2px solid var(--orange);border-radius:16px;padding:13px 16px;
+    font-size:12.5px;line-height:1.8}
+  .todo b{color:var(--orange-d)}
+  .todo ul{margin:6px 0 0;padding-left:1.25em}
+  .cmd{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;background:#22242B;color:#EDEFF3;
+    border-radius:10px;padding:10px 13px;overflow-x:auto;white-space:pre}
+</style>
+
+<section class="sec" id="icon">
+  <div class="eyebrow">APP ICON / 確定 2026-08-05</div>
+  <h2>アプリマーク — 後輩の顔そのものが吹き出し</h2>
+  <p class="lede2">
+    青い丸に笑顔、では世の中のアイコンと見分けがつかない。輪郭に吹き出しのしっぽを足して、
+    <b>「きいてくる」というプロダクトの一行をシルエットに入れた</b>。表情は <code>delighted</code>(^ ^)——
+    説明が伝わった顔がこのアプリの報酬なので、看板と報酬を一致させる。文字は入れない(48pxで読めない)。
+  </p>
+
+  <div class="icons">
+    <div class="icard">
+      <img src="../apps/mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-1024x1024@1x.png" alt="通常のアプリアイコン">
+      <b>通常</b><span>青ベタ + クリームの吹き出し。<br>アルファ無しPNG(ITMS-90717対策)</span>
+    </div>
+    <div class="icard onDark">
+      <img src="../apps/mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-1024x1024@1x-dark.png" alt="iOSダーク用アイコン">
+      <b>iOS ダーク</b><span>背景は透過。下地はシステムが敷く。<br>ほおのピンクは濁るので落とす</span>
+    </div>
+    <div class="icard onDark tint">
+      <img src="../apps/mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-1024x1024@1x-tinted.png" alt="iOSティント用アイコン">
+      <b>iOS ティント</b><span>グレースケール+透過。表情は塗りでなく<br><b>くり抜き</b>で出す(単色レイヤのため)</span>
+    </div>
+    <div class="icard blue">
+      <img src="../apps/mobile/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png" alt="Androidアダプティブアイコンの前景">
+      <b>Android アダプティブ</b><span>前景=顔 / 背景=#0EA5E9。<br>108dpの中央72dpに収めて0.80倍</span>
+    </div>
+    <div class="icard mono">
+      <img src="../apps/mobile/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_monochrome.png" alt="Androidテーマアイコン">
+      <b>Android テーマ</b><span>Android 13+ のモノクロレイヤ。<br>アルファだけが使われる</span>
+    </div>
+  </div>
+
+  <h3>ホーム画面の実寸で見る</h3>
+  <div class="sizes">
+    <figure><img src="../apps/mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-1024x1024@1x.png" width="120" height="120" alt=""><figcaption>120px</figcaption></figure>
+    <figure><img src="../apps/mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-1024x1024@1x.png" width="80" height="80" alt=""><figcaption>80px</figcaption></figure>
+    <figure><img src="../apps/mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-1024x1024@1x.png" width="48" height="48" alt=""><figcaption>48px 設定・検索</figcaption></figure>
+    <figure><img src="../apps/mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-1024x1024@1x.png" width="29" height="29" alt=""><figcaption>29px 通知</figcaption></figure>
+  </div>
+
+  <h3>絵の正はコード。画像を直接描き直さない</h3>
+  <div class="card" style="font-size:12.5px;line-height:1.8">
+    マークは <code>apps/mobile/lib/src/brand/app_mark.dart</code> の1枚が正で、
+    iOS/Androidのpngはそこから書き出す。アプリ内の後輩の顔(<code>kohai_face.dart</code>)と
+    同じ色トークンを使っているので、パレットを動かせば両方が一度に動く。
+    <div class="cmd" style="margin-top:10px">cd apps/mobile
+fvm flutter test tool/generate_app_icon.dart   # アイコン一式
+fvm flutter test tool/generate_store_screenshots.dart   # スクショ一式</div>
+  </div>
+
+  <h3>配り先</h3>
+  <table class="meta">
+    <tr><th>iOS</th><td><code>ios/Runner/Assets.xcassets/AppIcon.appiconset/</code><br>
+      Xcode 14以降の<b>単一サイズ形式</b>。1024を1枚置けば残りはビルド時に生成される。
+      ダーク/ティントはこの形式でしか指定できないので、旧サイズ別pngは削除した。</td></tr>
+    <tr><th>Android</th><td><code>mipmap-anydpi-v26/ic_launcher.xml</code>(background / foreground / monochrome)<br>
+      <code>mipmap-{m,h,x,xx,xxx}hdpi/</code> に legacy・round・前景・モノクロ。
+      背景色は <code>values/ic_launcher_background.xml</code>。
+      マニフェストに <code>android:roundIcon</code> を追加済み。</td></tr>
+    <tr><th>ストア</th><td>1024×1024 は上の「通常」をそのまま提出できる(アルファ無し)。</td></tr>
+  </table>
+</section>
+
+<section class="sec" id="shots">
+  <div class="eyebrow">STORE SCREENSHOTS / 5枚 × 日英 × 2サイズ</div>
+  <h2>ストア掲載スクリーンショット</h2>
+  <p class="lede2">
+    <b>すべて実画面のレンダリング</b>。golden test と同じ仕組みで本物のWidgetツリーを描いている
+    (手描きのモックはApp Reviewが実物との一致を求めるため出さない — Guideline 2.3.3)。
+    並び順は inception-deck §3。見出しの強調はboldではなく<span class="mk">蛍光マーカー</span>で引く。
+  </p>
+
+  <div class="shots">
+    <div class="shot"><img src="store/screenshots/ja/captioned/01-lesson.png" alt="授業画面">
+      <p><b>① 授業</b>先輩が板書つきで教える。数式は板書、声は問いかけ。</p></div>
+    <div class="shot"><img src="store/screenshots/ja/captioned/02-celebration.png" alt="祝福画面">
+      <p><b>② 祝福</b>教え返せると顔が輝く。正解率は出さない。</p></div>
+    <div class="shot"><img src="store/screenshots/ja/captioned/03-practice.png" alt="復習問題の画面">
+      <p><b>③ 復習問題</b>先輩の板書から1問。3日後・7日後にテキストで答える(ADR 0009)。</p></div>
+    <div class="shot"><img src="store/screenshots/ja/captioned/04-progress.png" alt="ホーム画面">
+      <p><b>④ 連続日数と埋めた穴</b>数えるのは努力だけ。</p></div>
+    <div class="shot"><img src="store/screenshots/ja/captioned/05-review.png" alt="復習画面">
+      <p><b>⑤ 復習</b>翌日・3日後・7日後の再訪。OneSignal賞の根拠。</p></div>
+  </div>
+
+  <h3>4種類ある(+ Play 用の3枠)</h3>
+  <table class="meta">
+    <tr><th>captioned / 1290×2796</th>
+      <td><code>docs/store/screenshots/{ja,en}/captioned/</code><br>
+        App Store Connect の<b>6.9インチ必須サイズ</b>。見出しつき。ここに貼ってあるのがこれ。</td></tr>
+    <tr><th>captioned-65 / 1284×2778</th>
+      <td><code>docs/store/screenshots/{ja,en}/captioned-65/</code><br>
+        App Store Connect の<b>6.5インチ</b>(任意)。6.5インチのタブに 1290×2796 を落とすと寸法エラーになるので、
+        タブごとに対応する枚を使う。428pt 幅で描いて ×3。</td></tr>
+    <tr><th>ipad-13 / 2064×2752</th>
+      <td><code>docs/store/screenshots/{ja,en}/ipad-13/</code><br>
+        App Store Connect の<b>iPad 13インチ必須サイズ</b>。アプリは iPad にも入る
+        (<code>TARGETED_DEVICE_FAMILY = 1,2</code>)ので、この枠が無いと提出できない。
+        1032pt 幅のタブレットレイアウトで本当に描いている(iPhone の絵の引き伸ばしではない)。</td></tr>
+    <tr><th>plain / 1179×2556</th>
+      <td><code>docs/store/screenshots/{ja,en}/plain/</code><br>
+        <b>端末フレームなしの素のまま</b>。Shipaton提出要件の指定サイズ。</td></tr>
+    <tr><th>ロケール</th>
+      <td>日本語・英語の2組。英語版は米国配信とNext Gen審査のために要る。
+        画面内の文言もアプリのロケールを切り替えて描いているので、翻訳漏れがあればここに出る。</td></tr>
+  </table>
+</section>
+
+<section class="sec" id="store">
+  <div class="eyebrow">APP STORE CONNECT / 提出メタデータ</div>
+  <p style="border:2px solid #F59E0B;background:#FFF7E6;padding:12px 16px;border-radius:12px">
+    <b>2026-09-05: この節の本文は ADR 0009 より前の言い方(教え返し・カルテ・「言えた / まだ言えない」)のまま。
+    コピペする正は <code>docs/store/app_store_listing.md</code>(日英)</b>に移した。
+    ここは経緯(何を書かないか・審査メモの狙い・App Privacy の根拠)を読む場所として残す。
+  </p>
+  <h2>ストアに並んだときに何と書いてあるか</h2>
+  <p class="lede2">
+    inception-deck §3「パッケージデザイン」をApp Store Connectのフィールドに落としたもの。
+    <b>絶対に書かない言葉</b>: 「答えを教えない」(2026-08-09の憲法改正で反転した・
+    <a href="pivot_plan_v1.md">pivot_plan_v1.md</a>)「正答率」「偏差値」「サボると losing streak」。
+  </p>
+
+  <h3>基本情報</h3>
+  <table class="meta">
+    <tr><th>アプリ名(30字)</th><td><b>カタルテ</b> — 語る × カルテ。
+      ASOで枠を使い切るなら <code>カタルテ｜教わって、教え返す</code>(13字)も可。
+      <b>表示名(CFBundleDisplayName / android:label)が <code>ai-sensei</code> のままなので要変更。</b>
+      Play Console 側が <code>かたるて</code>(ひらがな)で登録されている点も揃えること
+      (<a href="store/play_listing.md">play_listing.md</a>)。</td></tr>
+    <tr><th>サブタイトル(30字)</th><td>板書つきで教わって、その場で教え返す<span class="count">18字</span></td></tr>
+    <tr><th>カテゴリ</th><td>教育 / セカンダリ: 参考書</td></tr>
+    <tr><th>価格</th><td>無料(App内課金あり)</td></tr>
+    <tr><th>App内課金</th><td>カタルテ Premium — 自動更新サブスクリプション。
+      <b>価格と期間は未確定</b>(週/月/年の枠組みと候補価格は
+      <a href="pivot_plan_v1.md">pivot_plan_v1.md</a> §6-2。原価の実測後に確定する)。
+      説明文の <code>&lt;PRICE&gt;</code> はここが決まってから埋める</td></tr>
+    <tr><th>年齢レーティング</th><td><b>4+ で申告</b>。対話AIを理由に上げるよう言われる可能性があるので、
+      許可リスト方式と報告導線を審査メモで先に説明する(下記)。押し戻されたら12+へ。</td></tr>
+    <tr><th>配信地域</th><td>全地域(<b>米国を必ず含める</b> — Shipatonの参加要件)</td></tr>
+    <tr><th>言語</th><td>日本語(主) / 英語</td></tr>
+    <tr><th>著作権</th><td><code>2026 &lt;権利者名&gt;</code> — 未確定</td></tr>
+    <tr><th>サポートURL</th><td>LPの <code>apps/lp/public/support/</code>。Googleフォームに投げる問い合わせ欄と、解約・返金・データ削除の案内を1枚に置いた。フォームは接続済み。<b>フォーム側で「端末ID」「返信先」の必須を外すこと</b> —— ページはこの2つを任意にしているので、必須のままだとGoogleが400を返し、no-corsのせいで画面には「送信しました」と出たまま中身が捨てられる</td></tr>
+    <tr><th>マーケティングURL</th><td>任意。無ければ空でよい</td></tr>
+    <tr><th>プライバシーポリシーURL</th><td><code>https://ubiqy.jp/privacy/</code>
+      — <code>PRIVACY_POLICY_URL</code>(dart_define)と両ストアの申告で同じものを使う。
+      利用規約は <code>https://ubiqy.jp/terms/</code></td></tr>
+    <tr><th>輸出コンプライアンス</th><td>済 — <code>ITSAppUsesNonExemptEncryption = false</code>(Info.plist)。HTTPSのみ</td></tr>
+  </table>
+
+  <h3>プロモーションテキスト(170字・審査なしで差し替えられる枠)</h3>
+  <div class="two">
+    <div><span class="count">JA / 103字</span><div class="copy">わからない問題を1枚撮ると、先輩AIが板書つきで教えてくれます。そのあとすぐ「じゃあ今の、説明してみて」。説明が止まった場所が「理解の穴」としてカルテに残り、あした・3日後・7日後にもう一度たずねてきます。</div></div>
+    <div><span class="count">EN / 170 chars</span><div class="copy">Photograph a problem you're stuck on. Your senpai teaches it on the board, then asks you to teach it back. Where you stall becomes a gap — asked again in 1, 3 and 7 days.</div></div>
+  </div>
+
+  <h3>説明(4000字)</h3>
+  <div class="two">
+    <div><span class="count">JA / 1988字</span><div class="copy">答えを教える。そのあと、あなたに教え返してもらう。
+
+わからない問題を撮ると、先輩AIが板書つきで教えてくれます。そのあとすぐ、「じゃあ今の、説明してみて」。説明が止まった場所が、自分でも気づいていなかった「理解の穴」としてカルテに残ります。
+
+■「読めばわかる」と「説明できる」は、別物です
+写真を撮れば答えが出るアプリは、もう手元にあります。答えの入手コストはゼロになりました。それなのにテストで解けないのは、解答を読んで「わかった」と感じた状態と、自分の言葉で手順と理由を説明できる状態が別物だからです。しかもこの2つは、本人には区別がつきません。カタルテは答えを配る側ではなく、穴を見つける側のアプリです。
+
+■ やることは、4つ
+1. わからない問題を撮る。ノートもあれば一緒に撮ってください（どこまで書けたのかを先輩が見ます）
+2. 先輩が板書つきで教えます。数式・計算・図は板書に書き、声は「ここ、Dを見てほしいんだけど — プラスだよね。だから?」と問いかけるだけ
+3. 「じゃあ今の、説明してみて」。答えはもう板書に出ています。それでも説明できるとは限らない、というのがこのアプリの主張です
+4. 説明が止まった場所が「理解の穴」としてカルテに残ります
+
+数式を音声で読み上げません（「エックスのにじょうマイナス3エックス…」は聞いても頭に入らないため）。書いている間は喋らない、というのは本物の家庭教師と同じやり方です。
+
+■ カルテ — 点数ではなく、穴が残る
+1回の授業のあとに残るのは、次の3つだけです。
+・言えたこと — 教え返せたところに、黄色のマーカーが引かれます
+・穴 — 説明が止まったところ。失点ではなく「これから埋まる場所」です
+・用語メモ — 混ざっていた言葉。「解の公式」と「判別式」など
+
+正答率も偏差値も出しません。ランキングも、他人と比べる画面もありません。数えるのは、続けた日数と、埋めた穴の数だけです。
+
+■ 埋まるまで、先輩がもう一度たずねます
+見つかった穴は、あした・3日後・7日後にもう一度きかれます。忘れかけた頃にもう一度思い出すほど記憶に残る、という間隔反復を「先輩からのおさらい」の形にしました。急かす通知は送りません。
+
+入口は1問10秒のテキストの小テストなので、電車でもリビングでも深夜でも回せます。採点するのはAIではなく、あなた自身です（「言えた / まだ言えない」の自己申告）。
+
+■ 4つの約束
+1. 教える。そのあと教え返させる。教えて終わりにはしません
+2. 点数を出さない。数えるのは、続けた日数と、埋めた穴の数だけ
+3. パスを恥にしない。「うまく言えない」は、いつでも押せます
+4. 煽らない。通知も有料プランの案内も、命令や催促にはしません
+
+■ 背景にある考え方
+人は、誰かに教えようとした瞬間にはじめて、自分の理解の穴に気づきます。学習科学でいう自己説明効果（self-explanation effect）と、教えることで学びが深まるプロテジェ効果（teachable agent）です。カタルテは、この2つを1周のなかに畳み込んでいます。
+
+■ 対応科目
+・中学数学（中1・中2・中3）
+・高校数学（数I・A・II・B・III・C）
+・中学英語（文法事項・文構造）
+・高校英語（英語コミュニケーションI・II、論理表現I）
+中学生か高校生かを設定で選ぶと、その段階の単元だけが候補に出ます。
+
+■ そのほか
+・アカウント作成は不要です。サインインもメールアドレスの登録もなく、匿名の端末IDだけではじめられます
+・必要なもの: カメラ（問題とノートの撮影）とマイク（教え返し）。許可を求めるのは、使う直前だけです
+・ノートの写真と会話の文字起こしは、カルテを作るために保存します。広告は出しませんし、他社サービスをまたぐ追跡もしません
+
+■ 料金
+無料 — 毎日1問、先輩に教わる／その日のカルテ／穴の復習（10秒の小テスト）
+Premium — 毎日、続けて何問も／穴の復習と履歴／先輩のあと追い質問
+
+■ サブスクリプションについて
+・名称: カタルテ Premium
+・期間と価格: &lt;PRICE&gt;（自動更新）
+・お支払いは、購入確定時にApple IDアカウントに請求されます。
+・期間終了の24時間以上前に自動更新をオフにしない限り、自動的に更新されます。
+・購読の管理と自動更新の解除は、購入後に端末の「設定」&gt;「Apple ID」&gt;「サブスクリプション」から行えます。
+・無料トライアル期間が残っている状態で購読を開始した場合、残りの無料期間は失効します。
+・利用規約: https://ubiqy.jp/terms/
+・プライバシーポリシー: https://ubiqy.jp/privacy/</div></div>
+    <div><span class="count">EN / 3614 chars</span><div class="copy">The AI tutor that teaches you — then asks you to teach it back.
+
+Photograph a problem you are stuck on and a senpai — an older student — teaches it, writing on a board as they go. Then, right away: "Now explain it back to me." Wherever your explanation stalls becomes a gap you did not know you had, and it stays in your karte.
+
+■ "I understood it" and "I can explain it" are not the same thing
+Answers cost nothing now — a photo gets you one instantly. If you still cannot solve the problem on the exam, it is because reading a worked solution and saying the steps and the reasons in your own words are two different states, and you cannot tell them apart from the inside. This app is not on the side that hands out answers; it is on the side that finds the gaps.
+
+■ Four steps
+1. Photograph the problem, with your notes if you have them, so your senpai can see how far you got
+2. Your senpai teaches it on the board. Equations, calculations and figures are written, not spoken — the voice only asks: "Look at D here. It's positive, right? So?"
+3. "Now explain it back to me." The answer is already on the board — being able to explain it anyway is a different matter
+4. Wherever you stall is recorded as a gap in your karte
+
+Equations are never read aloud: a spoken formula does not stay in your head. Staying quiet while writing is how a real tutor works.
+
+■ Karte — no score, just gaps
+After a lesson, only three things remain:
+- What you explained — marked in yellow
+- Gaps — where your explanation stalled. Not points lost; places about to be filled
+- Terms you were mixing up, such as "quadratic formula" and "discriminant"
+
+No accuracy rate, no ranking, no screen that compares you to anyone else. We count days in a row and gaps filled.
+
+■ Your senpai asks again until the gap is filled
+Every gap comes back tomorrow, in 3 days and in 7 days — spaced repetition, written as a follow-up from your senpai rather than a nag. A review takes 10 seconds and is text only, so it works on the train or late at night. You do the grading, not the AI ("I could say it" / "not yet").
+
+■ Four promises
+1. We teach you — then have you teach it back. We never stop at teaching
+2. No scores. We count days in a row and gaps filled, nothing else
+3. Passing is never shameful. "I can't say it" is always one tap away
+4. No pressure. Notifications and upgrade prompts are never commands or nagging
+
+People notice the holes in their own understanding only when they try to explain — the self-explanation and protégé effects, folded into a single loop.
+
+■ Scope
+- Subjects: high school mathematics (Algebra 1 / Geometry / Algebra 2 / Precalculus / Calculus / Statistics)
+- What you need: a camera and a microphone, requested only right before use
+- No account, no sign-in, no email address — just an anonymous device ID
+- Photos of your notes and transcripts are stored to build your karte. No ads, no cross-service tracking
+
+■ Pricing
+Free — one lesson a day, today's karte, and 10-second gap reviews
+Premium — as many lessons a day as you like, gap review and history, follow-up questions
+
+■ About the subscription
+- Title: Katarute Premium
+- Length and price: &lt;PRICE&gt; (auto-renewing)
+- Payment is charged to your Apple ID account at confirmation of purchase.
+- The subscription renews automatically unless auto-renew is turned off at least 24 hours before the end of the current period.
+- You can manage and cancel your subscription in Settings &gt; Apple ID &gt; Subscriptions.
+- Any unused portion of a free trial is forfeited when you purchase a subscription.
+- Terms of Use: https://ubiqy.jp/terms/
+- Privacy Policy: https://ubiqy.jp/privacy/</div></div>
+  </div>
+
+  <h3>キーワード(100字)</h3>
+  <div class="two">
+    <div><span class="count">JA / 80字</span><div class="copy">数学,中学数学,高校数学,英語,中学英語,高校英語,勉強,学習,説明,音読,復習,間隔反復,定期テスト,受験,苦手克服,自習,ノート,家庭教師,共通テスト,独学</div></div>
+    <div><span class="count">EN / 94 chars</span><div class="copy">math,high school math,study,explain,recall,spaced repetition,exam,tutor,AI,homework,self study</div></div>
+  </div>
+
+  <h3>審査メモ(App Review Information → Notes)</h3>
+  <div class="warn" style="margin-bottom:12px">
+    <b>ここが一番の関門。</b>審査担当者は<b>数学のノートを持っていない</b>。
+    撮影から先に進めずリジェクト、が現実的に一番ありうる詰まり方なので、
+    サンプル画像のURLを審査メモに必ず書く(アプリは <code>image_picker</code> で
+    カメラロールからも選べる)。あわせて、日本語を話せない担当者でも
+    <b>「うまく言えない」→「今日はここまで」で会話を終えてカルテまで到達できる</b>ことを明記する。
+  </div>
+  <div class="two">
+    <div><span class="count">JA</span><div class="copy">■ アカウント不要
+サインイン/アカウント作成はありません。匿名の端末IDだけで利用できます。
+
+■ 動作確認の手順
+1. ホーム「ノートを撮る」でカメラ、またはカメラロールから写真を選択
+   → 審査用のサンプルノート画像はこちら: &lt;SAMPLE_NOTES_URL&gt;
+2. 読み取った単元のチップを確認して「説明をはじめる」
+3. 先輩AIが板書つきで教え、そのあと「今の、説明してみて」と聞き返します。
+   声に出して答えると会話が進みます。
+   日本語を話さずに進める場合は「うまく言えない」を数回タップし、
+   「今日はここまで」で終了してください。カルテまで到達できます。
+4. カルテに「言えたこと」「穴」が出れば1周です。
+
+■ 権限の求めどころ
+カメラ=撮影の直前 / マイク=会話の直前 / 通知=初回カルテのトグル。
+起動時にまとめて求めることはしません。
+
+■ AIが生成する内容の安全対策
+・授業と質問は、カリキュラム許可リスト(リポジトリ同梱の curriculum JSON)に
+  載っている単元からのみ生成します。対象は中学数学・高校数学・中学英語・高校英語で、
+  写真の内容と許可リストが重なる範囲を外れた出題はサーバ側で弾いています。
+・板書に出せる数式コマンドと図形も許可リスト方式で照合しています
+  (`packages/guardrail`)。
+・不適切な質問の報告導線を「設定 > 気になる質問を報告する」に用意しています。
+
+■ App内課金の確認
+Premium(価格は&lt;PRICE&gt;)。Sandboxアカウントで購入できます。
+全機能を開放したプロモコードが必要でしたらお知らせください。
+無料版は1日1回のセッション上限があり、上限は日付が変わると戻ります。
+
+■ 通知
+復習リマインダー(翌日・3日後・7日後)。初回カルテで許可を求めます。</div></div>
+    <div><span class="count">EN</span><div class="copy">■ No account required
+There is no sign-in or account creation. The app works with an anonymous device ID.
+
+■ How to walk through the app
+1. Tap "Take a photo" on Home — use the camera, or pick from the photo library.
+   Sample notebook images for review: &lt;SAMPLE_NOTES_URL&gt;
+2. Confirm the detected topic chips and tap "Start explaining".
+3. The senpai AI teaches on the board, then asks you to explain it back.
+   Answer out loud to continue.
+   To proceed without speaking, tap "I can't explain this yet" a few times, then
+   "That's it for today". You will still reach the karte screen.
+4. The karte shows "what you explained" and the "gaps". That is one full loop.
+
+■ When permissions are requested
+Camera: right before taking a photo. Microphone: right before the conversation.
+Notifications: on the first karte screen. Never all at launch.
+
+■ Safety of AI-generated content
+- Lessons and questions are generated only from topics on an allowlist (the
+  curriculum JSON included in the public repository), and anything outside the
+  overlap of the photo and that allowlist is rejected server-side.
+- The board's LaTeX commands and figure primitives are allowlisted as well
+  (`packages/guardrail`).
+- A report path is provided at Settings > "Report a question that felt wrong".
+
+■ In-app purchase
+Premium (price: &lt;PRICE&gt;). Purchasable with a Sandbox account.
+We can provide a promo code that unlocks all features on request.
+The free tier allows one session per day; the limit resets daily.
+
+■ Notifications
+Review reminders after 1, 3 and 7 days, requested on the first karte screen.</div></div>
+  </div>
+
+  <h3>App Privacy(データ収集の申告)</h3>
+  <table class="meta">
+    <tr><th>ユーザーコンテンツ — 写真</th><td>ノートの画像。R2に <code>photos/{deviceId}/{sessionId}</code> で保存。
+      用途=アプリの機能 / <b>ユーザーにリンクする</b> / トラッキングしない</td></tr>
+    <tr><th>ユーザーコンテンツ — 音声</th><td>会話の<b>文字起こし</b>をカルテ生成のために保存。
+      音声そのものは保存しない(最終実装で要確認)。用途=アプリの機能 / リンクする / トラッキングしない</td></tr>
+    <tr><th>識別子</th><td>匿名の端末ID(UUID)。アカウントの代わり。用途=アプリの機能 / リンクする / トラッキングしない</td></tr>
+    <tr><th>購入</th><td>RevenueCat 経由の課金状態。用途=アプリの機能 / リンクする / トラッキングしない</td></tr>
+    <tr><th>診断</th><td>Sentry のクラッシュ・パフォーマンス。用途=アプリの機能 / <b>リンクしない</b> / トラッキングしない</td></tr>
+    <tr><th>ATT(トラッキング許可)</th><td><b>不要</b>。広告SDKを入れておらず、他社アプリ/サイトを横断する追跡をしない</td></tr>
+  </table>
+
+  <h3>サブスクリプションの必須表記(Guideline 3.1.2)</h3>
+  <div class="card" style="font-size:12.5px;line-height:1.8">
+    購入画面(ペイウォール)に、名称・期間・価格・<b>規約とプライバシーポリシーへの動くリンク</b>が
+    揃っている必要がある。定番のリジェクト理由。<br>
+    <b>2026-08-05 に実装を追補した</b>: ペイウォールに <code>LegalLinks</code>(規約/プライバシー)を追加し、
+    「いつでも解約できます」を<b>「登録は自動更新されます。いつでも解約できます」</b>に改めた。
+    リンクのURLは <code>--dart-define</code>(<code>TERMS_URL</code> / <code>PRIVACY_POLICY_URL</code>)から入るので、
+    <b>空のビルドではリンクごと消える</b>。提出ビルドでは必ず埋めること。
+  </div>
+
+  <div class="todo" style="margin-top:22px">
+    <b>提出前に埋めるもの(素材ではなく、実体が要るもの)</b>
+    <ul>
+      <li>表示名を <code>カタルテ</code> に(<code>ios/Runner/Info.plist</code> の <code>CFBundleDisplayName</code> と
+        <code>android/app/src/main/AndroidManifest.xml</code> の <code>android:label</code>。いまは <code>ai-sensei</code>)</li>
+      <li><code>SUPPORT_EMAIL</code> = <code>kfukejob@gmail.com</code> —— 値は決まった。
+        <b>Codemagic の変数グループ <code>mobile-dart-defines</code> に入れること</b>
+        (空だと「設定 &gt; 気になった内容を報告する」の行ごと消える)。
+        <code>PRIVACY_POLICY_URL</code> = <code>https://ubiqy.jp/privacy/</code> /
+        <code>TERMS_URL</code> = <code>https://ubiqy.jp/terms/</code> も確定)</li>
+      <li>審査用サンプルノート画像の公開URL(<code>&lt;SAMPLE_NOTES_URL&gt;</code>)</li>
+      <li>サポートページの運営者名・所在地・返信の目安(<code>apps/lp/public/support/</code> の <code>fill</code>)。Googleフォームへの接続は済んでいる</li>
+      <li>著作権表記の権利者名</li>
+      <li>App内課金の表示名・説明・審査用スクリーンショット</li>
+      <li>審査員 / Shipaton 審査用のプロモコード</li>
+    </ul>
+  </div>
+</section>
 
 </div>
 </body>

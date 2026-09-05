@@ -1,0 +1,48 @@
+{
+  "title": "判別式で解の個数を見る",
+  "topic_ids": ["M1-NIJI-HANBETSU"],
+  "steps": [
+    {
+      "index": 0,
+      "speech": "まず、式をそのまま書くね。",
+      "board": { "kind": "latex", "tex": "x^2 - 3x + 2 = 0" }
+    },
+    {
+      "index": 1,
+      "speech": "a、b、c がどれか、言える?",
+      "board": { "kind": "text", "body": "a = 1, b = -3, c = 2" }
+    },
+    {
+      "index": 2,
+      "speech": "うん、そこまで合ってる。",
+      "board": null
+    },
+    {
+      "index": 3,
+      "speech": "判別式は、この形だったよね。",
+      "board": { "kind": "latex", "tex": "D = b^2 - 4ac" }
+    },
+    {
+      "index": 4,
+      "speech": "入れてみると、こうなる。",
+      "board": { "kind": "latex", "tex": "D = (-3)^2 - 4 \\cdot 1 \\cdot 2 = 9 - 8 = 1" }
+    },
+    {
+      "index": 5,
+      "speech": "ここ、D を見てほしいんだけど — プラスだよね。だから?",
+      "board": { "kind": "latex", "tex": "D = 1 > 0" },
+      "awaits_student": false
+    },
+    {
+      "index": 6,
+      "speech": "流れは、この3つだけ。",
+      "board": { "kind": "text", "body": "係数を読む → Dを計算 → 符号で判断" }
+    },
+    {
+      "index": 7,
+      "speech": "じゃあ、この数だけ替えた問題だとどうなる? 解けたら教えて。",
+      "board": { "kind": "latex", "tex": "x^2 - 5x + 6 = 0" },
+      "awaits_solving": true
+    }
+  ]
+}

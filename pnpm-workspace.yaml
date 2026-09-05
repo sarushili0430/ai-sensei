@@ -1,0 +1,18 @@
+packages:
+  - "packages/*"
+  - "backend/*"
+  - "apps/lp" # 紹介ページ。wrangler で配信するので、ここから deploy を叩けるようにする
+
+# apps/* をまとめて入れないのは、apps/mobile が Flutter だから。
+# JSのワークスペースに入れてよいのは apps/lp だけなので、名指しで足している。
+
+# ビルドスクリプトの実行を許可する依存(pnpm 10 は既定でブロックする)。
+# 追加するときは、なぜ必要かを1行添えること。
+onlyBuiltDependencies:
+  - "@biomejs/biome" # lint/format のネイティブバイナリを取得する
+  - lefthook # git hooks のネイティブバイナリを配置する
+  - esbuild # wrangler が同梱するバンドラ
+  - workerd # wrangler dev のランタイム
+  - "@livekit/local-inference" # turn detection のネイティブ推論
+  - onnxruntime-node # Silero VAD のONNXランタイム
+  - sharp # LiveKit Agents が画像処理に使う

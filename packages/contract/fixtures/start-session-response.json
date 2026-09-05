@@ -1,0 +1,14 @@
+{
+  "session_id": "ses_01J8Z9K2QF7X3M4N5P6R7S8T9V",
+  "kind": "new",
+  "livekit": {
+    "url": "wss://example-project.livekit.cloud",
+    "token": "<livekit-access-token-placeholder>",
+    "room": "ses_01J8Z9K2QF7X3M4N5P6R7S8T9V"
+  },
+  "limits": {
+    "max_seconds": 1200,
+    "remaining_seconds_today": 0,
+    "lesson_allowed_today": false
+  }
+}

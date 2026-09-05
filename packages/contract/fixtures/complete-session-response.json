@@ -1,0 +1,38 @@
+{
+  "practice_problem": {
+    "id": "prb_01J8Z9M4RT9H8I7J6K5L4M3N2P",
+    "session_id": "ses_01J8Z9K2QF7X3M4N5P6R7S8T9V",
+    "board_id": "brd_01J8Z9K2QF7X3M4N5P6R7S8T9V",
+    "topic_id": "M1-NIJI-HANBETSU",
+    "question": "x² − 6x + 5 = 0 の解の個数は?",
+    "created_at": "2026-08-03T13:24:07.000Z"
+  },
+  "practice_schedule": [
+    {
+      "problem_id": "prb_01J8Z9M4RT9H8I7J6K5L4M3N2P",
+      "step": 2,
+      "days": 3,
+      "scheduled_at": "2026-08-06T11:00:00.000Z"
+    },
+    {
+      "problem_id": "prb_01J8Z9M4RT9H8I7J6K5L4M3N2P",
+      "step": 3,
+      "days": 7,
+      "scheduled_at": "2026-08-10T11:00:00.000Z"
+    }
+  ],
+  "progress": {
+    "streak_days": 3,
+    "filled_holes": 4,
+    "open_holes": 1,
+    "solved_problems": 12,
+    "open_problems": 2,
+    "last_session_date": "2026-08-03"
+  },
+  "limits": {
+    "max_seconds": 1200,
+    "remaining_seconds_today": 932,
+    "lesson_allowed_today": true
+  },
+  "show_paywall": true
+}

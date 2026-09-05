@@ -1,0 +1,188 @@
+{
+  "$ref": "#/definitions/complete-session-request",
+  "definitions": {
+    "complete-session-request": {
+      "type": "object",
+      "properties": {
+        "transcript": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "enum": [
+                  "assistant",
+                  "user"
+                ]
+              },
+              "text": {
+                "type": "string"
+              },
+              "at_ms": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "topic_id": {
+                "type": "string",
+                "pattern": "^(M1|MA|M2|MB|M3|MC|A1|GE|A2|PC|CL|ST|J1|J2|J3|JE|E1|E2|L1)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+              }
+            },
+            "required": [
+              "role",
+              "text",
+              "at_ms"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "karte": {
+          "type": "object",
+          "properties": {
+            "said_well": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "maxItems": 10
+            },
+            "holes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "topic_id": {
+                    "type": "string",
+                    "pattern": "^(M1|MA|M2|MB|M3|MC|A1|GE|A2|PC|CL|ST|J1|J2|J3|JE|E1|E2|L1)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+                  },
+                  "desc": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "severity": {
+                    "type": "string",
+                    "enum": [
+                      "low",
+                      "medium",
+                      "high"
+                    ]
+                  },
+                  "evidence": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "quiz": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "topic_id",
+                  "desc",
+                  "severity"
+                ],
+                "additionalProperties": false
+              },
+              "maxItems": 5
+            },
+            "term_notes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "maxItems": 5
+            },
+            "followup_question": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "said_well",
+            "holes",
+            "term_notes"
+          ],
+          "additionalProperties": false
+        },
+        "practice_problem": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "topic_id": {
+                  "type": "string",
+                  "pattern": "^(M1|MA|M2|MB|M3|MC|A1|GE|A2|PC|CL|ST|J1|J2|J3|JE|E1|E2|L1)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+                },
+                "question": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "answer": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              },
+              "required": [
+                "topic_id",
+                "question",
+                "answer"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "board_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "duration_seconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ended_reason": {
+          "type": "string",
+          "enum": [
+            "understood",
+            "completed",
+            "timeout",
+            "user_left",
+            "error"
+          ]
+        },
+        "review_outcome": {
+          "type": "string",
+          "enum": [
+            "said_it",
+            "not_yet"
+          ]
+        }
+      },
+      "required": [
+        "transcript",
+        "duration_seconds",
+        "ended_reason"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

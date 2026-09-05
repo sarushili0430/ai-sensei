@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kataru-te — The AI tutor that teaches you, then asks you to teach it back.</title>
+<meta name="description" content="Photograph the problem and your senpai AI teaches you on the board. Then: &quot;Now explain that back to me.&quot; Wherever you stall becomes a gap in your karte, and it asks you again after 1, 3 and 7 days. High school math.">
+
+<!-- 日本語版と1組。片方だけ更新しないこと。載せているカリキュラムの分類も違う
+     (docs/adr.md#adr-0005)。ドメインが決まったら絶対URLに直す。 -->
+<link rel="alternate" hreflang="ja" href="../">
+<link rel="alternate" hreflang="en" href="./">
+<link rel="alternate" hreflang="x-default" href="../">
+
+<meta property="og:type" content="website">
+<meta property="og:locale" content="en_US">
+<meta property="og:title" content="Kataru-te — The AI tutor that teaches you, then asks you to teach it back.">
+<meta property="og:description" content="A senpai AI teaches you on a shared board, then has you teach it back on the spot. Wherever you stall becomes a gap on your karte.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#FBFAF7">
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230EA5E9'/%3E%3Cpath d='M40.3 77.5L25.5 83.5L20.7 59.1Z' fill='%23FBFAF7'/%3E%3Ccircle cx='50' cy='47.5' r='31.5' fill='%23FBFAF7'/%3E%3Cg fill='none' stroke='%2333323D' stroke-width='5.2' stroke-linecap='round'%3E%3Cpath d='M30 46Q37.5 37 45 46'/%3E%3Cpath d='M55 46Q62.5 37 70 46'/%3E%3Cpath d='M58.4 57.3A8.5 5 0 0 1 41.6 57.2'/%3E%3C/g%3E%3C/svg%3E">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="./">
+      <svg viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+        <rect width="100" height="100" rx="22" fill="#0EA5E9"/>
+        <path d="M40.3 77.5 L25.5 83.5 L20.7 59.1 Z" fill="#FBFAF7"/>
+        <circle cx="50" cy="47.5" r="31.5" fill="#FBFAF7"/>
+        <circle cx="29.5" cy="53.5" r="4.2" fill="#FFC0D4"/>
+        <circle cx="70.5" cy="53.5" r="4.2" fill="#FFC0D4"/>
+        <g fill="none" stroke="#33323D" stroke-width="5.2" stroke-linecap="round">
+          <path d="M30 46 Q37.5 37 45 46"/>
+          <path d="M55 46 Q62.5 37 70 46"/>
+          <path d="M58.4 57.3 A8.5 5 0 0 1 41.6 57.2"/>
+        </g>
+      </svg>
+      Kataru-te
+    </a>
+    <nav class="nav-links" aria-label="On this page">
+      <a href="#how">How it works</a>
+      <a href="#karte">Karte</a>
+      <a href="#review">Review</a>
+      <a href="#beta">Beta</a>
+      <a href="#plans">Pricing</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <a class="lang" href="../" hreflang="ja" lang="ja">日本語</a>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- ================= Hero ================= -->
+<section class="hero">
+  <div class="wrap hero-in">
+    <div>
+      <div class="badge-row">
+        <span class="badge">High school math</span>
+        <span class="badge badge-warm">iOS / Android · in development</span>
+      </div>
+      <h1>
+        <span class="l">The AI tutor that teaches you —</span>
+        <span class="l"><span class="mk">then asks you to teach it back.</span></span>
+      </h1>
+      <p class="lede">
+        Photograph the problem you are stuck on and your <em>senpai</em> — the older student
+        who already gets it — <strong>teaches you, working it out on the board</strong>.
+        Then, right away: “Now explain that back to me.”
+        Wherever you stall becomes a <strong>gap</strong> you did not know you had.
+      </p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#beta">Join the closed beta</a>
+        <a class="btn btn-ghost" href="https://github.com/sarushili0430/ai-sensei">Follow the build (GitHub)</a>
+      </div>
+      <p class="tiny">
+        Right now the only build we hand out is the Android pre-release test
+        (the App Store and Google Play listings are still in the works).<br>
+        No account. No email in the app itself. Just an anonymous device ID.
+      </p>
+    </div>
+
+    <div class="phone" role="img" aria-label="The lesson screen. The senpai's board reads “Two roots ⇔ D &gt; 0” and “D = (−4)² − 4k &gt; 0”, and the senpai asks “Now explain it back — why do we look at D?”">
+      <div class="phone-bar">
+        <span>In a lesson</span>
+        <span>12:40 left</span>
+      </div>
+      <p class="phone-label">The problem you photographed</p>
+      <div class="board">
+        <p class="board-step">x² − 4x + k = 0 has two distinct real roots</p>
+      </div>
+      <p class="phone-label">Your senpai’s board</p>
+      <div class="board">
+        <p class="board-step">Two roots ⇔ D &gt; 0</p>
+        <p class="board-step board-math">D = (−4)² − 4k &gt; 0</p>
+      </div>
+      <div class="bubble-row">
+        <svg viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+          <rect width="100" height="100" rx="22" fill="#0EA5E9"/>
+          <path d="M40.3 77.5 L25.5 83.5 L20.7 59.1 Z" fill="#FBFAF7"/>
+          <circle cx="50" cy="47.5" r="31.5" fill="#FBFAF7"/>
+          <circle cx="29.5" cy="53.5" r="4.2" fill="#FFC0D4"/>
+          <circle cx="70.5" cy="53.5" r="4.2" fill="#FFC0D4"/>
+          <g fill="none" stroke="#33323D" stroke-width="5.2" stroke-linecap="round">
+            <path d="M30 46 Q37.5 37 45 46"/>
+            <path d="M55 46 Q62.5 37 70 46"/>
+            <path d="M58.4 57.3 A8.5 5 0 0 1 41.6 57.2"/>
+          </g>
+        </svg>
+        <p class="bubble">Now explain it back — why do we look at D?</p>
+      </div>
+      <div class="mic">Hold to<br>teach it back</div>
+      <p class="fake-btn fake-ghost">I can’t explain this yet</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= Why ================= -->
+<section id="why">
+  <div class="wrap">
+    <p class="eyebrow">Why we are building this</p>
+    <h2 class="sec-title">Answers are free now.<br>Students still fail the exam.</h2>
+    <p class="lede">
+      Photo-search math apps are already in every student’s pocket. The cost of getting an answer
+      has gone to zero — and yet the exam still goes badly. The reason is simple:
+      <strong>reading a solution and feeling “I understand”</strong> is not the same state as
+      <strong>being able to say the steps and the reasons in your own words</strong>.
+      From the inside, those two feel identical.
+    </p>
+    <div class="grid grid-3">
+      <div class="card">
+        <h3 class="step-h">You read it. It makes sense.</h3>
+        <p class="tiny">The solution is clear on the page, so you move on to the next problem.</p>
+      </div>
+      <div class="card">
+        <h3 class="step-h">Then you try to say it.</h3>
+        <p class="tiny">“Why the discriminant here?” — and nothing comes out.</p>
+      </div>
+      <div class="card" style="border-color:var(--blue)">
+        <h3 class="step-h">That distance is the gap.</h3>
+        <p class="tiny">Handing out answers is a solved problem. We build the side that <strong>finds the gaps</strong>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= How ================= -->
+<section id="how">
+  <div class="wrap">
+    <p class="eyebrow">This is all you do</p>
+    <h2 class="sec-title">Photograph → get taught → teach it back → a gap remains</h2>
+    <p class="lede">One loop needs one problem you are stuck on, and a few minutes.</p>
+
+    <div class="grid grid-4">
+      <div class="card step">
+        <span class="num">1</span>
+        <h3>Photograph</h3>
+        <p>Take a picture of the problem, together with your notes if you have them — they show your senpai how far you already got. <strong>If you could not even start, the problem on its own is fine.</strong></p>
+      </div>
+      <div class="card step">
+        <span class="num">2</span>
+        <h3>Get taught</h3>
+        <p>Your senpai works it out on the board. Equations, arithmetic and figures go on the board; the voice only asks: “Look at D here — it’s positive, right? So?”</p>
+      </div>
+      <div class="card step">
+        <span class="num">3</span>
+        <h3>Teach it back</h3>
+        <p>“Now explain that back to me.” The answer is already on the board — and you still may not be able to say it. That is the whole point.</p>
+      </div>
+      <div class="card step">
+        <span class="num">4</span>
+        <h3>A gap remains</h3>
+        <p>Wherever you stalled becomes a gap on your karte. What you taught back is yellow; where you stalled is pink.</p>
+      </div>
+    </div>
+
+    <p class="tiny" style="margin-top:20px">
+      Math is never read aloud as speech. A real tutor stops talking while they write, and so does this one —
+      which is also why the lessons stay cheap enough to give away one a day.
+    </p>
+  </div>
+</section>
+
+<!-- ================= Karte ================= -->
+<section id="karte">
+  <div class="wrap split">
+    <div>
+      <p class="eyebrow">The karte</p>
+      <h2 class="sec-title">No score. Just the gaps.</h2>
+      <p class="lede">
+        There is no accuracy rate and no percentile. After a lesson, exactly three things remain.
+      </p>
+      <ul>
+        <li><span class="swatch swatch-said"></span><span><strong>What you explained</strong> — highlighted in yellow, in your own words.</span></li>
+        <li><span class="swatch swatch-hole"></span><span><strong>The gaps</strong> — where you stalled. Not points lost: places about to be filled.</span></li>
+        <li><span class="swatch swatch-ink"></span><span><strong>Terminology</strong> — words you mixed up, like “quadratic formula” and “discriminant”.</span></li>
+      </ul>
+      <p class="tiny" style="margin-top:20px">
+        The only two numbers in the app are the days you kept going and the gaps you filled.
+        No leaderboards, no comparison with anyone else.
+      </p>
+    </div>
+
+    <div class="phone phone-quiet" role="img" aria-label="The karte screen. “The sign of D decides how many real roots there are” is highlighted in yellow, and “You stalled on why we look at the discriminant” is highlighted in pink.">
+      <p class="phone-title">Today’s karte</p>
+      <p class="k-head">What you explained</p>
+      <p class="k-line"><span class="mk">The sign of D decides how many real roots there are</span></p>
+      <p class="k-head">Gaps — 1</p>
+      <p class="k-line"><span class="mk-hole">You stalled on why we look at the discriminant</span></p>
+      <p class="k-head">Terminology</p>
+      <p class="k-line">“Quadratic formula” and “discriminant” got mixed up</p>
+      <div class="board" style="margin-top:auto">
+        <p class="tiny" style="margin:0">Your senpai will ask again tomorrow night</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= Review ================= -->
+<section id="review">
+  <div class="wrap split split-flip">
+    <div class="phone" role="img" aria-label="The review screen. One question — “Why do we look at the discriminant D?” — with two buttons: “I could explain it” and “Not yet”.">
+      <p class="phone-title">Gaps to fill</p>
+      <div class="qz">
+        <p class="qz-q">Why do we look at the discriminant D?</p>
+        <p class="tiny" style="margin-top:6px">One question · 10 seconds · no need to speak</p>
+      </div>
+      <p class="fake-btn fake-primary">I could explain it</p>
+      <p class="fake-btn fake-ghost">Not yet</p>
+      <span class="pill">Nothing is graded</span>
+      <p class="tiny" style="text-align:center">Choose “Not yet” and your senpai<br>comes back for another lesson</p>
+    </div>
+
+    <div>
+      <p class="eyebrow">Review</p>
+      <h2 class="sec-title">We keep asking until the gap is filled.</h2>
+      <p class="lede">
+        Each gap comes back around the time you are starting to forget it. Spaced repetition,
+        written as a check-back from your senpai rather than a reminder. Nothing nags you.
+      </p>
+      <div class="days">
+        <span class="day">Tomorrow</span>
+        <span class="day">In 3 days</span>
+        <span class="day">In 7 days</span>
+      </div>
+      <ul>
+        <li><span class="swatch swatch-said"></span><span><strong>The door is a 10-second quiz.</strong> Text only, so it works on a train, in a shared room, or at midnight.</span></li>
+        <li><span class="swatch swatch-hole"></span><span><strong>You grade it, not the AI.</strong> “I could explain it” / “Not yet” is entirely self-reported.</span></li>
+        <li><span class="swatch swatch-ink"></span><span><strong>Questions come from what you said</strong> — never from what the AI taught, so a misreading can’t be drilled into you three times.</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ================= Promises ================= -->
+<section id="promises">
+  <div class="wrap">
+    <p class="eyebrow">Four promises</p>
+    <h2 class="sec-title">Break any one of them and it is a different product.</h2>
+    <div class="grid grid-2">
+      <div class="card promise">
+        <span class="mark">1</span>
+        <div>
+          <h3>Teach — then make them teach it back.</h3>
+          <p>The senpai teaches on the board and asks for it back on the spot. Never teach-and-done.</p>
+        </div>
+      </div>
+      <div class="card promise">
+        <span class="mark">2</span>
+        <div>
+          <h3>Never show a score.</h3>
+          <p>We count the days you kept going and the gaps you filled. No XP, no leagues, no accuracy rate.</p>
+        </div>
+      </div>
+      <div class="card promise">
+        <span class="mark">3</span>
+        <div>
+          <h3>Passing is never shameful.</h3>
+          <p>“I can’t explain this yet” is always one tap away, and what you couldn’t say becomes something worth having: a gap.</p>
+        </div>
+      </div>
+      <div class="card promise">
+        <span class="mark">4</span>
+        <div>
+          <h3>Never nag.</h3>
+          <p>Notifications and the paywall are written as your senpai’s judgement — no numbers, no orders, no guilt.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:26px">
+      <p class="eyebrow" style="margin-bottom:6px">The idea underneath</p>
+      <p style="font-size:14.5px">
+        People notice the holes in their own understanding at the moment they try to teach someone else —
+        the <strong>self-explanation effect</strong>, and the <strong>protégé effect</strong> found in
+        teachable-agent research. Kataru-te folds both into a single loop.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= Scope ================= -->
+<section id="spec">
+  <div class="wrap">
+    <p class="eyebrow">Scope</p>
+    <h2 class="sec-title">What it does today.</h2>
+    <table class="spec">
+      <tbody>
+        <tr>
+          <th scope="row">Subject</th>
+          <td>High school math — Algebra 1, Geometry, Algebra 2, Precalculus, Calculus and Statistics. Nothing outside math.</td>
+        </tr>
+        <tr>
+          <th scope="row">Languages</th>
+          <td>English and Japanese. Japanese learners get the Japanese national curriculum (数I・A・II・B・III・C) instead, because a gap tagged with a topic you can’t find in your own textbook is not a useful gap.</td>
+        </tr>
+        <tr>
+          <th scope="row">Platform</th>
+          <td>iOS and Android. iOS ships first; Android follows.</td>
+        </tr>
+        <tr>
+          <th scope="row">Account</th>
+          <td>None. An anonymous device ID is all there is — no sign-in, no email address.</td>
+        </tr>
+        <tr>
+          <th scope="row">What it needs</th>
+          <td>Camera (for the problem and your notes) and microphone (to teach it back). Permission is requested right before each is used, never at launch.</td>
+        </tr>
+        <tr>
+          <th scope="row">Question range</th>
+          <td>Only where the photo and the curriculum allowlist overlap. Anything outside that range is rejected server-side and regenerated.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ================= Closed beta =================
+     一枚しか入口を作らない。この Google グループが Play の**テスター名簿そのもの**で、
+     Play Console > テスト > クローズドテスト > テスター に
+     ai-sensei@googlegroups.com を登録してある(docs/ci/store-setup.md 2-4-1)。
+     **グループのアドレスを変えると、テスターが全員まとめて外れる。**
+     **手順そのものは ./beta/ に置く。ここには書かない。**
+     日本語版(../index.html #beta)と対の内容。片方だけ直さないこと。 -->
+<section id="beta">
+  <div class="wrap">
+    <p class="eyebrow">Closed beta</p>
+    <h2 class="sec-title">Before the store listing, we need <span class="mk">people who actually use it.</span></h2>
+    <p class="lede">
+      The pre-release build goes out through a Google Group. Joining the group puts you on the
+      Google Play tester roster, and the install instructions arrive in the group as soon as the
+      build is up. Joining is free, and nothing is charged during the test.
+    </p>
+
+    <div class="cta-row">
+      <a class="btn btn-primary" href="./beta/">See how to join</a>
+      <a class="btn btn-ghost" href="https://groups.google.com/g/ai-sensei">Join the group directly</a>
+    </div>
+    <p class="tiny">
+      Two things to do —
+      <strong>join the Google Group (<code class="atom">ai-sensei@googlegroups.com</code>), then open the
+      Google Play opt-in link</strong>. About three minutes.
+      The steps, and what to do when one of them stalls, are on the
+      <a href="./beta/">join page</a>.
+    </p>
+
+    <table class="spec">
+      <tbody>
+        <tr>
+          <th scope="row">Device</th>
+          <td><strong>Android only</strong> for now (Google Play closed testing). iPhone builds go out through TestFlight, which this group cannot distribute.</td>
+        </tr>
+        <tr>
+          <th scope="row">Cost</th>
+          <td>None. Premium features are open during the test and no checkout screen appears.</td>
+        </tr>
+        <tr>
+          <th scope="row">What we ask</th>
+          <td>Roughly two weeks, opening it every other day for one problem. And a note whenever something breaks or an explanation looks wrong.</td>
+        </tr>
+        <tr>
+          <th scope="row">What we do not ask</th>
+          <td>Star ratings, posts about it, or bringing friends in. None of that is a condition of taking part.</td>
+        </tr>
+        <tr>
+          <th scope="row">Leaving</th>
+          <td>Leave the group and you are done. Nobody asks why and nobody tries to talk you out of it — deleting the app is enough on its own.</td>
+        </tr>
+        <tr>
+          <th scope="row">What becomes visible</th>
+          <td><strong>Joining shows your email address and display name to the developer</strong> — that is how Google Groups and the Play Console work. Other testers cannot see them; the group is configured that way. The app itself still runs on an anonymous device ID that is never tied to your address.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ================= Pricing ================= -->
+<section id="plans">
+  <div class="wrap">
+    <p class="eyebrow">Pricing</p>
+    <h2 class="sec-title">Free to start.</h2>
+    <p class="lede">One question a day stays free, for as long as you like.</p>
+    <div class="grid grid-2">
+      <div class="card plan">
+        <h3>Free</h3>
+        <ul>
+          <li>One question every day</li>
+          <li>Today’s karte</li>
+          <li>Review quizzes for your gaps</li>
+        </ul>
+      </div>
+      <div class="card plan plan-premium">
+        <h3>Premium</h3>
+        <ul>
+          <li>Several questions a day</li>
+          <li>Review and history</li>
+          <li>Follow-up questions from your senpai</li>
+        </ul>
+      </div>
+    </div>
+    <p class="tiny" style="margin-top:18px">
+      The price and any free trial are whatever your store shows (App Store or Google Play) —
+      we don’t restate them here, so this page can never contradict the checkout screen.
+      Subscriptions renew automatically. Cancel anytime.
+    </p>
+  </div>
+</section>
+
+<!-- ================= FAQ ================= -->
+<section id="faq">
+  <div class="wrap">
+    <p class="eyebrow">FAQ</p>
+    <h2 class="sec-title">The usual questions</h2>
+    <div class="faq">
+      <details>
+        <summary>Can I join the closed beta on an iPhone?</summary>
+        <p>Not yet. The <a href="#beta">closed beta</a> runs on Google Play’s machinery, so the only builds it can hand out are Android ones. The iPhone build will go out through TestFlight, and that announcement goes to the same group — <strong>join now and the iOS invite reaches you too.</strong></p>
+      </details>
+      <details>
+        <summary>Does joining the group mean a lot of email?</summary>
+        <p>No. Only we can post to it, and we post two things: that a build is out, and that something significant changed. It is not a place where testers talk to each other, which is also why your address stays invisible to the rest of them.</p>
+      </details>
+      <details>
+        <summary>Can I use it somewhere I can’t speak?</summary>
+        <p>The review side, yes — it’s one text question that takes about ten seconds, so a train or a
+          shared living room is fine. The lesson itself (being taught on the board, then teaching it back)
+          needs your voice. Teaching it back <em>is</em> the product, so we did not swap it for typing.</p>
+      </details>
+      <details>
+        <summary>Does it actually give you the answer?</summary>
+        <p>Yes — fully, on the board. Then it asks you to explain it back. This is not an app that
+          withholds the answer; it is an app that <strong>checks what happened after you got it</strong>.</p>
+      </details>
+      <details>
+        <summary>Are there scores or leaderboards?</summary>
+        <p>No. No accuracy rate, no percentile, no comparison with other people. Only the days you
+          kept going and the gaps you filled.</p>
+      </details>
+      <details>
+        <summary>What if I can’t explain it?</summary>
+        <p>Tap “I can’t explain this yet”. That is not a failure — it is one gap found. It comes back
+          tomorrow, in 3 days and in 7 days, and nothing scolds you in between.</p>
+      </details>
+      <details>
+        <summary>Can the senpai teach something wrong?</summary>
+        <p>It can. That is exactly why the loop does not end at teaching: when you teach it back, a
+          misreading shows up as an explanation that does not hold together. Anything that felt wrong —
+          an explanation, the board, a question — can be reported from Settings.</p>
+      </details>
+      <details>
+        <summary>What happens to my photos and my voice?</summary>
+        <p>The notebook photo and a transcript of the conversation are stored to build your karte,
+          linked to an anonymous device ID — no name, no email address. There are no ads, and
+          nothing is tracked across other apps or sites.</p>
+        <p>They are also used to improve the service: finding explanations that were unclear or wrong
+          (on the free plan and on Premium alike). You can ask us to stop that use, or to delete your
+          data, through the <a href="./support/">support page</a> with your device ID.
+          The full details are in the <a href="./privacy/">privacy policy</a>.</p>
+      </details>
+      <details>
+        <summary>Any subject other than math?</summary>
+        <p>Not yet. Before adding subjects we want one of them to prove that teaching it back really works.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ================= Closing ================= -->
+<section class="closing">
+  <div class="wrap">
+    <h2>You cannot feel the gap <span class="mk">until you try to say it out loud.</span></h2>
+    <p class="lede">So you say it out loud, the moment after you are taught.</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="#beta">Join the closed beta</a>
+      <a class="btn btn-ghost" href="https://github.com/sarushili0430/ai-sensei">Follow the build (GitHub)</a>
+    </div>
+    <p class="tiny">Android test build only, for now. Built in public — the source is MIT-licensed.</p>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap foot-in">
+    <div>
+      <p class="foot-brand">Kataru-te (ai-sensei)</p>
+      <p class="tiny">The AI tutor that teaches you — then asks you to teach it back.</p>
+    </div>
+    <div>
+      <p class="foot-brand" style="font-size:13px">Product</p>
+      <ul>
+        <li><a href="#how">How it works</a></li>
+        <li><a href="#beta">Closed beta</a></li>
+        <li><a href="#plans">Pricing</a></li>
+        <li><a href="#faq">FAQ</a></li>
+        <li><a href="../" hreflang="ja" lang="ja">日本語</a></li>
+      </ul>
+    </div>
+    <div>
+      <p class="foot-brand" style="font-size:13px">Development</p>
+      <ul>
+        <li><a href="https://github.com/sarushili0430/ai-sensei">GitHub (MIT)</a></li>
+        <li><a href="./beta/">Join the beta</a></li>
+        <li><a href="https://github.com/sarushili0430/ai-sensei/issues">GitHub Issues</a></li>
+        <li><a href="https://shipaton.revenuecat.com/">RevenueCat Shipaton 2026</a></li>
+      </ul>
+    </div>
+    <div>
+      <p class="foot-brand" style="font-size:13px">Legal</p>
+      <ul>
+        <!-- 英語版はまだ無い。日本語しか無いことを黙ってリンクすると、
+             読めない文書に同意させることになるので、そう書いてから送る。 -->
+        <li><a href="./support/">Support</a></li>
+        <li><a href="./terms/">Terms of use</a></li>
+        <li><a href="./privacy/">Privacy policy</a></li>
+      </ul>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

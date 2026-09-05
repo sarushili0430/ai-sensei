@@ -1,0 +1,71 @@
+{
+  "id": "pln_01J8ZB5Y7VR3N4P5Q6S7T8U9W0",
+  "created_at": "2026-08-24T12:11:48.000Z",
+  "source": "template",
+  "intake": {
+    "exam_name": "the fall midterm",
+    "exam_date": "2026-09-10",
+    "scope": {
+      "topic_ids": ["PC-TRIG-IDENTITY", "PC-TRIG-EQUATION"],
+      "said": "trig functions, pages 120 to 150 of the textbook"
+    },
+    "materials": ["the textbook", "the practice workbook"]
+  },
+  "days": [
+    {
+      "date": "2026-09-01",
+      "items": [
+        {
+          "topic_id": "PC-TRIG-IDENTITY",
+          "what": "Write out the addition formulas, deriving them as you go",
+          "material": 0,
+          "minutes": 30,
+          "status": "done"
+        },
+        {
+          "topic_id": "PC-TRIG-IDENTITY",
+          "what": "One pass through the addition formula exercises",
+          "material": 1,
+          "minutes": 40,
+          "status": "todo"
+        }
+      ]
+    },
+    {
+      "date": "2026-09-03",
+      "items": []
+    },
+    {
+      "date": "2026-09-05",
+      "items": [
+        {
+          "topic_id": "PC-TRIG-EQUATION",
+          "what": "Solve trig equations, drawing the unit circle first",
+          "material": 1,
+          "minutes": 40,
+          "status": "todo"
+        }
+      ]
+    },
+    {
+      "date": "2026-09-08",
+      "items": [
+        {
+          "topic_id": "PC-TRIG-EQUATION",
+          "what": "Redo only the questions that ask for a graph",
+          "material": 1,
+          "minutes": 40,
+          "status": "todo"
+        },
+        {
+          "topic_id": "PC-TRIG-IDENTITY",
+          "what": "Look back over the ones you got wrong, in your notes",
+          "material": null,
+          "minutes": 20,
+          "status": "todo"
+        }
+      ]
+    }
+  ],
+  "revisions": []
+}

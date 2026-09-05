@@ -1,0 +1,164 @@
+# =============================================================================
+# backend/api — Cloudflare Workers
+# =============================================================================
+# 環境は develop / production の2本。手順書は docs/deploy.md。
+#
+#   pnpm --filter @ai-sensei/api deploy:develop      # develop ブランチ相当
+#   pnpm --filter @ai-sensei/api deploy:production   # main ブランチ相当
+#
+# **デプロイは必ず `--env` を付ける。** 付け忘れるとトップレベルの名前
+# (ai-sensei-api)で3本目のワーカーができてしまうので、package.json の
+# `deploy` スクリプトは付け忘れを検出して落とすようにしてある。
+#
+# D1/R2/KV は環境ごとに別リソース。develop の事故が本番のカルテを壊さないように、
+# バインディング名(DB / PHOTOS / METER)だけを揃えて実体を分けている。
+# =============================================================================
+
+name = "ai-sensei-api"
+main = "src/index.ts"
+compatibility_date = "2026-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# -----------------------------------------------------------------------------
+# トップレベル = `wrangler dev`(ローカル)専用。
+#
+# ローカルではD1/R2/KVをminiflareが偽物で用意するので、ここのidは使われない。
+# `wrangler dev --remote` で本物に当てたいときは `--env develop` を付けること。
+# -----------------------------------------------------------------------------
+[vars]
+ENVIRONMENT = "local"
+# 日次の持ち時間と1回の会話上限はサーバ側で強制する(クライアント改竄対策)。
+# 従来の実効上限(無料1×20分 / Premium 3×20分)を秒に写し、1回の質は変えない。
+FREE_SECONDS_PER_DAY = "1200"
+PREMIUM_SECONDS_PER_DAY = "3600"
+FREE_SESSION_MAX_SECONDS = "1200"
+PREMIUM_SESSION_MAX_SECONDS = "1200"
+# ローカルは通常営業のまま。クローズドβの開放を手元で試すときだけ、下2行を外す
+# (意味と外しかたは docs/deploy.md の「クローズドβのあいだ無料で開放する」)。
+# BETA_OPEN_ACCESS_UNTIL = "2026-11-30T15:00:00.000Z"
+# BETA_SECONDS_PER_DAY = "12000"
+LLM_PROVIDER = "anthropic"
+LLM_MODEL_VISION = "claude-sonnet-5"
+# 復習問題を採点するモデル。読み間違いが通知の段に直結するので、視覚と同格に置く。
+LLM_MODEL_GRADING = "claude-sonnet-5"
+REVENUECAT_ENTITLEMENT_ID = "premium"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ai-sensei-local"
+database_id = "local"          # ローカルでは参照されない
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "ai-sensei-photos-local"
+
+[[kv_namespaces]]
+binding = "METER"
+id = "local"                   # ローカルでは参照されない
+
+[observability]
+enabled = true
+
+# =============================================================================
+# develop — develop ブランチへのpushで自動デプロイ
+# =============================================================================
+[env.develop]
+name = "ai-sensei-api-develop"
+workers_dev = true             # https://ai-sensei-api-develop.<subdomain>.workers.dev
+
+[env.develop.vars]
+ENVIRONMENT = "develop"
+# varsは環境間で継承されないため、本番と同じ授業品質・フェアユース条件を明示する。
+FREE_SECONDS_PER_DAY = "1200"
+PREMIUM_SECONDS_PER_DAY = "3600"
+FREE_SESSION_MAX_SECONDS = "1200"
+PREMIUM_SESSION_MAX_SECONDS = "1200"
+# クローズドβ: 期限までは**全員がPremium相当**(課金導線が出ない)。
+# 配れるのが限定公開テストの名簿に載っている人だけ、という前提の設定なので、
+# **一般公開の前に必ず消すこと**。消し忘れても期限で勝手に終わる。
+BETA_OPEN_ACCESS_UNTIL = "2026-11-30T15:00:00.000Z"   # = 2026-12-01 00:00 JST
+BETA_SECONDS_PER_DAY = "12000"
+LLM_PROVIDER = "anthropic"
+LLM_MODEL_VISION = "claude-sonnet-5"
+# 復習問題を採点するモデル。読み間違いが通知の段に直結するので、視覚と同格に置く。
+LLM_MODEL_GRADING = "claude-sonnet-5"
+REVENUECAT_ENTITLEMENT_ID = "premium"
+
+[[env.develop.d1_databases]]
+binding = "DB"
+database_name = "ai-sensei-develop"
+database_id = "905cb605-787f-419a-ae94-d27cef8c6f55"     # `wrangler d1 create` の出力で差し替える(docs/deploy.md)
+migrations_dir = "migrations"
+
+[[env.develop.r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "ai-sensei-photos-develop"
+
+[[env.develop.kv_namespaces]]
+binding = "METER"
+id = "6512564002614694a9b1bca5616c7442"              # `wrangler kv namespace create` の出力で差し替える(docs/deploy.md)
+
+[env.develop.observability]
+enabled = true
+
+# =============================================================================
+# production — main ブランチへのpushで自動デプロイ
+# =============================================================================
+[env.production]
+name = "ai-sensei-api-production"
+# 独自ドメインを当てたら false にして [[env.production.routes]] を足す
+# (workers.dev のURLを残すと、そちらが野良のエンドポイントとして生き続けるため)
+workers_dev = true
+
+[env.production.vars]
+ENVIRONMENT = "production"
+# varsは環境間で継承されないため、開発環境と同じ授業品質・フェアユース条件を明示する。
+FREE_SECONDS_PER_DAY = "1200"
+PREMIUM_SECONDS_PER_DAY = "3600"
+FREE_SESSION_MAX_SECONDS = "1200"
+PREMIUM_SESSION_MAX_SECONDS = "1200"
+# クローズドβの開放(`BETA_OPEN_ACCESS_UNTIL` / `BETA_SECONDS_PER_DAY`)は
+# **production には置かない**。main へのpushがそのまま一般公開のデプロイなので、
+# ここにあると App Store から入れた人が全員 Premium 相当になり、
+# 「課金できるのに誰も課金画面を見ない」という形でしか気づけない
+# (docs/deploy.md「クローズドβのあいだ無料で開放する」/ docs/release.md)。
+# テスターへの無料開放は develop 環境だけで続ける。
+LLM_PROVIDER = "anthropic"
+LLM_MODEL_VISION = "claude-sonnet-5"
+# 復習問題を採点するモデル。読み間違いが通知の段に直結するので、視覚と同格に置く。
+LLM_MODEL_GRADING = "claude-sonnet-5"
+REVENUECAT_ENTITLEMENT_ID = "premium"
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "ai-sensei-production"
+database_id = "932a1d92-2ffa-4d28-aba0-2db4bb9eca22"     # `wrangler d1 create` の出力で差し替える(docs/deploy.md)
+migrations_dir = "migrations"
+
+[[env.production.r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "ai-sensei-photos-production"
+
+[[env.production.kv_namespaces]]
+binding = "METER"
+id = "415965b503fa46778624b51f31d44ef4"              # `wrangler kv namespace create` の出力で差し替える(docs/deploy.md)
+
+[env.production.observability]
+enabled = true
+
+# =============================================================================
+# 秘匿値は [vars] ではなく `wrangler secret put <NAME> --env <develop|production>`。
+# 環境ごとに別々に登録する(develop に本番の鍵を入れない)。
+#
+#   LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET
+#   ANTHROPIC_API_KEY / ONESIGNAL_APP_ID / ONESIGNAL_REST_API_KEY
+#   REVENUECAT_WEBHOOK_AUTH / INTERNAL_API_TOKEN
+#   SENTRY_DSN(任意。入れるとエラーがSentryへ飛ぶ)
+#
+# LIVEKIT_AGENT_NAME は秘匿値ではないが、**agentワーカーの登録の仕方で決まる**ので
+# ここには書かない(名前つきで動かすときだけ secret か vars に入れる)。
+# 詳細は backend/api/README.md「会話の相手(agent)をどう呼ぶか」。
+#
+# ローカルは .dev.vars(gitignore済み)。テンプレートは .dev.vars.example。
+# =============================================================================

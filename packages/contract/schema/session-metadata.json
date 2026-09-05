@@ -1,0 +1,157 @@
+{
+  "$ref": "#/definitions/session-metadata",
+  "definitions": {
+    "session-metadata": {
+      "type": "object",
+      "properties": {
+        "session_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "locale": {
+          "type": "string",
+          "enum": [
+            "ja",
+            "en"
+          ]
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "new",
+            "review"
+          ]
+        },
+        "max_seconds": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "photo_summary": {
+          "type": "string"
+        },
+        "problem_text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "visible_work": {
+          "type": "string",
+          "minLength": 1
+        },
+        "question_seeds": {
+          "type": "string"
+        },
+        "allowed_topics": {
+          "type": "string"
+        },
+        "allowed_topic_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(M1|MA|M2|MB|M3|MC|A1|GE|A2|PC|CL|ST|J1|J2|J3|JE|E1|E2|L1)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+          }
+        },
+        "context_revision": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "is_premium": {
+          "type": "boolean"
+        },
+        "review_problem": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "topic_id": {
+                  "type": "string",
+                  "pattern": "^(M1|MA|M2|MB|M3|MC|A1|GE|A2|PC|CL|ST|J1|J2|J3|JE|E1|E2|L1)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+                },
+                "question": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "response": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "verdict": {
+                  "type": "string",
+                  "enum": [
+                    "correct",
+                    "incorrect",
+                    "unclear"
+                  ]
+                }
+              },
+              "required": [
+                "topic_id",
+                "question",
+                "response",
+                "verdict"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "review_hole": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "topic_id": {
+                  "type": "string",
+                  "pattern": "^(M1|MA|M2|MB|M3|MC|A1|GE|A2|PC|CL|ST|J1|J2|J3|JE|E1|E2|L1)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+                },
+                "desc": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "evidence": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 500
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "topic_id",
+                "desc",
+                "evidence"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "session_id",
+        "locale",
+        "kind",
+        "max_seconds",
+        "photo_summary",
+        "problem_text",
+        "visible_work",
+        "question_seeds",
+        "allowed_topics",
+        "allowed_topic_ids",
+        "is_premium"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

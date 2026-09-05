@@ -1,0 +1,221 @@
+import 'package:ai_sensei/src/api/device_id.dart';
+import 'package:ai_sensei/src/features/karte/application/karte_controllers.dart';
+import 'package:ai_sensei/src/features/karte/domain/karte.dart';
+import 'package:ai_sensei/src/features/karte/presentation/home_screen.dart';
+import 'package:ai_sensei/src/features/karte/presentation/review_screen.dart';
+import 'package:ai_sensei/src/features/monetization/presentation/paywall_screen.dart';
+import 'package:ai_sensei/src/features/monetization/presentation/thanks_screen.dart';
+import 'package:ai_sensei/src/features/onboarding/presentation/onboarding_screen.dart';
+import 'package:ai_sensei/src/features/onboarding/presentation/onboarding_stage.dart';
+import 'package:ai_sensei/src/features/session/presentation/celebration_screen.dart';
+import 'package:ai_sensei/src/features/settings/application/school_stage_controller.dart';
+import 'package:ai_sensei/src/features/settings/presentation/settings_screen.dart';
+import 'package:ai_sensei/src/l10n/strings.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'support/harness.dart';
+
+/// **狭い端末で、画面から中身がこぼれていないか。**
+///
+/// 同じ壊れ方を3回やった: `Column` を `Spacer` で下端に押し付ける形は、
+/// 文言が伸びた瞬間に**中身が切り落とされ、操作が押せなくなる**。
+/// しかも `RenderFlex overflowed` は**縞模様が出るだけで、テストは緑のまま**
+/// (寸法を固定していなければ、そもそも再現しない)。
+///
+///   - オンボーディング1・2枚目 … 英語の見出しが伸びて 375×667 で 145px 溢れた
+///   - リハーサル … 板書を積んで操作が折り返しの下へ
+///   - 撮影の確認画面 … 契約上限(問題文600字)で 557px 溢れた
+///
+/// 起きる条件は決まっている: **いちばん狭い実機 × いちばん長い文言**。
+/// だから全画面をその条件で1回ずつ描いて、例外が出ないことだけを見る。
+/// 見た目は golden の仕事で、ここは**切り落とされていないこと**だけを見る。
+void main() {
+  /// [screen] を狭い端末で描いて、こぼれていないことを確かめる。
+  ///
+  /// `RenderFlex overflowed` は `FlutterError` として上がるので、
+  /// `takeException()` で拾える。
+  Future<void> expectNoOverflow(
+    WidgetTester tester,
+    Widget screen, {
+    required Locale locale,
+    List<Object?> overrides = const <Object?>[],
+  }) async {
+    await pumpApp(
+      tester,
+      screen,
+      overrides: overrides,
+      locale: locale,
+      size: smallPhoneSurface,
+    );
+    expect(
+      tester.takeException(),
+      isNull,
+      reason:
+          '${screen.runtimeType} が ${locale.languageCode} で '
+          '${smallPhoneSurface.width.toInt()}x${smallPhoneSurface.height.toInt()} から溢れています',
+    );
+  }
+
+  // 英語は日本語の1.5〜2倍の長さになる。日本語で組んだ余白は英語で必ず破れるので、
+  // 両方通す(審査員が見るのは英語版)。
+  for (final Locale locale in <Locale>[
+    const Locale('ja'),
+    const Locale('en'),
+  ]) {
+    final String lang = locale.languageCode;
+
+    // 枚数はロケールで変わる(日本語だけ学年を聞く・ADR 0007)。
+    // **通し方も枚ごとに違う**ので、順に踏んでいく。
+    testWidgets('オンボーディングを最後まで ($lang)', (WidgetTester tester) async {
+      final AppStrings strings = AppStrings(locale);
+      final bool asksStage = lang == 'ja';
+
+      Future<void> next(String page) async {
+        await tester.tap(find.text(strings.onboardingNext));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull, reason: page);
+      }
+
+      Future<void> tapKey(Key key) async {
+        await tester.tap(find.byKey(key));
+        await tester.pumpAndSettle();
+      }
+
+      await pumpApp(
+        tester,
+        const OnboardingScreen(),
+        locale: locale,
+        size: smallPhoneSurface,
+      );
+      expect(tester.takeException(), isNull, reason: '約束');
+
+      if (asksStage) {
+        await next('学年');
+        await tapKey(onboardingStageKey(SchoolStage.juniorHigh));
+      }
+      await next('やること');
+      await next('授業のリハーサル');
+
+      // 「わかった」を押すまで先へ進めない。押すと1問できて縦に伸びる。
+      await tapKey(const Key('onboarding-understood'));
+      expect(tester.takeException(), isNull, reason: '授業のリハーサル(押したあと)');
+
+      await next('復習のリハーサル');
+      await tapKey(const Key('onboarding-practice-open'));
+      expect(tester.takeException(), isNull, reason: '復習のリハーサル(開いたあと)');
+      // 解答はタップせずに書かれる(`onboarding_practice.dart` の `_answerSlot`)。
+      await tapKey(const Key('onboarding-practice-submit'));
+      expect(tester.takeException(), isNull, reason: '復習のリハーサル(採点のあと)');
+
+      await next('これから');
+    });
+
+    testWidgets('ホーム ($lang)', (WidgetTester tester) async {
+      await expectNoOverflow(
+        tester,
+        const HomeScreen(),
+        locale: locale,
+        overrides: <Object?>[
+          progressControllerProvider.overrideWith(FakeProgressController.new),
+          reviewControllerProvider.overrideWith(
+            () => FakeReviewController(samplePracticeQueue),
+          ),
+        ],
+      );
+    });
+
+    // 上限に当たった日のホーム。**先輩の判断**の文が長いので、ここが伸びやすい。
+    testWidgets('ホーム(今日はここまで) ($lang)', (WidgetTester tester) async {
+      await expectNoOverflow(
+        tester,
+        const HomeScreen(),
+        locale: locale,
+        overrides: <Object?>[
+          progressControllerProvider.overrideWith(
+            () => FakeProgressController(exhaustedSummary),
+          ),
+          reviewControllerProvider.overrideWith(
+            () => FakeReviewController(samplePracticeQueue),
+          ),
+        ],
+      );
+    });
+
+    testWidgets('祝福 ($lang)', (WidgetTester tester) async {
+      await expectNoOverflow(
+        tester,
+        const CelebrationScreen(),
+        locale: locale,
+        overrides: <Object?>[
+          progressControllerProvider.overrideWith(FakeProgressController.new),
+          sessionOutcomeControllerProvider.overrideWith(
+            () => FakeSessionOutcomeController(const SessionOutcome()),
+          ),
+        ],
+      );
+    });
+
+    // 時間切れは祝福と本文が別になる。長い英語でこの分岐だけ溢れても、
+    // 通常の「わかった」画面では検知できない。
+    testWidgets('祝福(時間切れ) ($lang)', (WidgetTester tester) async {
+      await expectNoOverflow(
+        tester,
+        const CelebrationScreen(),
+        locale: locale,
+        overrides: <Object?>[
+          progressControllerProvider.overrideWith(FakeProgressController.new),
+          sessionOutcomeControllerProvider.overrideWith(
+            () => FakeSessionOutcomeController(
+              const SessionOutcome(ending: SessionEnding.timeLimit),
+            ),
+          ),
+        ],
+      );
+    });
+
+    testWidgets('復習 ($lang)', (WidgetTester tester) async {
+      await expectNoOverflow(
+        tester,
+        const ReviewScreen(),
+        locale: locale,
+        overrides: <Object?>[
+          reviewControllerProvider.overrideWith(
+            () => FakeReviewController(
+              PracticeQueue(
+                items: <PracticeQueueItem>[samplePracticeQueue.items.first],
+                solved: <SolvedPractice>[sampleSolvedPractice],
+              ),
+            ),
+          ),
+        ],
+      );
+    });
+
+    testWidgets('ペイウォール ($lang)', (WidgetTester tester) async {
+      await expectNoOverflow(tester, const PaywallScreen(), locale: locale);
+    });
+
+    testWidgets('購入のお礼 ($lang)', (WidgetTester tester) async {
+      await expectNoOverflow(
+        tester,
+        const ThanksScreen(),
+        locale: locale,
+        overrides: premiumOverrides(),
+      );
+    });
+
+    testWidgets('設定 ($lang)', (WidgetTester tester) async {
+      await expectNoOverflow(
+        tester,
+        const SettingsScreen(),
+        locale: locale,
+        overrides: <Object?>[
+          deviceIdProvider.overrideWithValue(
+            '11111111-2222-3333-4444-555555555555',
+          ),
+        ],
+      );
+    });
+  }
+}

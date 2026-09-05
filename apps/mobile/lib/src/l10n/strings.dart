@@ -1,0 +1,1469 @@
+import 'package:flutter/widgets.dart';
+
+/// 日英2ロケール(審査員対応)。
+///
+/// arb + codegen を使わず手書きにしているのは、`flutter test` を
+/// codegenなしで通せるようにするため(リポジトリ単体で動くことがNext Genの要件)。
+/// 文言が増えて手に負えなくなったら flutter_localizations の gen へ移す。
+@immutable
+class AppStrings {
+  const AppStrings(this.locale);
+
+  final Locale locale;
+
+  static const List<Locale> supportedLocales = <Locale>[
+    Locale('ja'),
+    Locale('en')
+  ];
+
+  /// 端末の言語 → このアプリの言語。
+  ///
+  /// Flutter の既定は「一致しなければ supportedLocales の先頭」なので、
+  /// 何もしないとスペイン語の端末に**日本語**が出る。日本語を望んだ人にだけ
+  /// 日本語を出し、それ以外は英語に寄せる。
+  static Locale resolve(List<Locale>? preferred) {
+    for (final Locale locale in preferred ?? const <Locale>[]) {
+      if (locale.languageCode == 'ja') return const Locale('ja');
+      if (locale.languageCode == 'en') return const Locale('en');
+    }
+    return preferred == null || preferred.isEmpty
+        ? const Locale('ja')
+        : const Locale('en');
+  }
+
+  static AppStrings of(BuildContext context) =>
+      Localizations.of<AppStrings>(context, AppStrings) ??
+      const AppStrings(Locale('ja'));
+
+  /// BuildContext を持たない層(コントローラ)から引くための入口。
+  /// APIに送るのと同じ言語コードを渡す。未対応の言語は日本語に落ちる。
+  static AppStrings forLanguage(String languageCode) =>
+      AppStrings(Locale(languageCode));
+
+  bool get _ja => locale.languageCode == 'ja';
+
+  String _pick(String ja, String en) => _ja ? ja : en;
+
+  // --- オンボーディング ---
+  //
+  // **ADR 0009 でコアループが入れ替わった。**教え返しとカルテは畳まれ、1周は
+  // 「撮る → 板書つきで教わる →『わかった』→ その板書から復習問題が1問 →
+  // 3日後・7日後に通知 → 書いて答える → AIが採点」になった。
+  // 旧文言(「教え返してもらう」「カルテ」「あした」)をここへ戻すと、
+  // **オンボーディングだけが、存在しないアプリの説明を始める。**
+  //
+  // 枚数は5枚(日本語は学年を聞くぶん6枚)。読み物ではなく、
+  // コアループを**前半と後半とも1周やってみる**構成にしてある(ADR 0004)。
+
+  /// 1枚目 — 約束。**機能ではなく約束から始める**(ADR 0004)。
+  ///
+  /// READMEの見出しをそのまま持ってきてある。改行位置は成り行きに任せず、
+  /// **2拍の切れ目で必ず折る**。前半(教える)だけを読むと手元の無料AIと
+  /// 同じものに見えるので、後半(3日後に確かめる)が同じ重みで目に入る必要がある。
+  ///
+  /// **日本語は語の途中でも折り返す。**28pt で 327pt 幅に入るのは12字ほどで、
+  /// 任せておくと「ほんとうにそう / か聞く。」で割れた(実測)。
+  /// だから後半にもう1つ改行を入れて、**4行とも語のかたまりで終わる**ようにしてある。
+  /// 英語は空白で折れるので、文の切れ目だけでよい。
+  String get onboardingTitle => _pick(
+        '「わかった」と言えるまで教える。\n3日後に、\nほんとうにそうか聞く。',
+        'We teach until you can say "I get it".\nThen, three days later, we check.',
+      );
+  String get onboardingBody => _pick(
+        '問題を撮ると、先輩が板書つきで教えてくれます。\n授業を終わらせるのは、きみの「わかった」。',
+        'Photograph the problem and your senpai teaches you on the board.\n'
+            'The lesson ends when you say you have it — not before.',
+      );
+
+  /// 学年の枚(日本語のみ)。**Mobbin の学習アプリが最初に置く「あなたのこと」の枚。**
+  ///
+  /// **英語では出さない。**海外課程は Algebra 1 〜 Statistics の一続きで段階に
+  /// 分かれておらず、`tracksForStage` が `locale == "en"` をどちらの段階でも
+  /// 同じ1本に落とす。答えが何も変えない質問は、聞いてもらえた感ではなく
+  /// **聞かれ損**になる。
+  String get onboardingStageTitle =>
+      _pick('まず、きみのことを教えて。', 'First, tell me about you.');
+
+  /// 先輩のふきだし。**理由を先に言う。**何のために聞かれているのか分からない
+  /// 質問は、初回の離脱をそのまま作る。
+  String get onboardingStageQuestion => _pick(
+        '教える範囲を、きみに合わせておきたいんだ。',
+        'I want to match what I teach to where you are.',
+      );
+
+  /// 選択肢の下の一行。段階は**学習の制限ではなく、写真から単元を探す範囲**
+  /// (`school_stage_controller.dart`)なので、そう読める言い方にする。
+  String get onboardingStageJuniorHighNote =>
+      _pick('中学の数学と英語から探します', 'We look in junior-high math and English');
+  String get onboardingStageHighSchoolNote =>
+      _pick('数学I〜C と 高校英語から探します', 'We look in Math I–C and high-school English');
+
+  /// **選び直せることを、選ばせる前に言う。**
+  String get onboardingStageChangeLater =>
+      _pick('あとから設定でも変えられます', 'You can change this later in Settings');
+
+  /// コアループ(ADR 0009)の全体像。何をする時間なのか分からないまま
+  /// カメラを開かせない。
+  ///
+  /// **4行目が要。**復習問題の出どころは**その日の板書**で、ここが
+  /// 「質問した内容をメモ」に化けると、3/7日の再訪の根拠ごと崩れる。
+  String get onboardingHowTitle => _pick('やることは、これだけ。', 'This is all you do.');
+
+  /// **ノートを条件にしない。** 「問題とノートを撮る」と書くと、解けなくて
+  /// ノートが無い生徒は初回の説明の時点で「自分向けではない」と読む
+  /// (手も付けられないは家庭教師の中心的な用件。`api.ts` の `sessionPhotoParts`)。
+  /// ノートがあるほうが良いことは変わらないので、括弧で残す。
+  String get onboardingStepCapture => _pick('わからない問題を撮る(ノートがあれば一緒に)',
+      "Photograph the problem you are stuck on (with your notes, if you have them)");
+  String get onboardingStepTaught => _pick(
+      '先輩が板書つきで教えてくれる', 'Your senpai teaches you, working it out on the board');
+
+  /// 3行目。**授業を終わらせるのは生徒**(ADR 0009 で回数上限を撤廃した)。
+  /// 「わかるまで聞ける」ではなく「わかったと言えたら終わる」。
+  String get onboardingStepUnderstood =>
+      _pick('わかったら、下の「わかった」を押す', 'When you have it, you press "Got it"');
+
+  /// 4行目。**穴ではなく問題**。ADR 0009 で単位が替わったことが、ここで見える。
+  String get onboardingStepPractice => _pick('その板書から復習問題が1問。3日後と7日後に届く',
+      'One question is made from that board — it arrives in 3 days, then 7');
+
+  /// 授業のリハーサル。読んで分かった気になる説明を、**一度やってみる**に置き換える枚。
+  ///
+  /// 台本は固定で、写真も声も使わない。だから**ここではまだ何の権限も要らない**。
+  String get onboardingTryTitle => _pick('ためしに、1問だけ。', 'Try one, right here.');
+  String get onboardingTryNotebookLabel =>
+      _pick('撮った問題', 'The problem you photographed');
+  String get onboardingTryNotebook => _pick('x² − 4x + k = 0 が異なる2つの実数解をもつ',
+      'x² − 4x + k = 0 has two distinct real roots');
+
+  /// 板書の見出し。**ここから下は先輩が書いたもの**、という札。
+  /// 素材(紙 = 問題 / 黒板 = 板書)の分けを、初回だけは言葉でも添える。
+  String get onboardingTryBoardLabel => _pick('先輩の板書', "Your senpai's board");
+
+  /// 板の中の見出し。本番の `BoardView` と同じ位置(板のいちばん上の行)に出る。
+  String get onboardingTryBoardTitle => _pick('解の個数の調べ方', 'How to count the roots');
+
+  /// 板書の1手順目。**日本語なので `text` 要素として置く**
+  /// (LaTeXの中に日本語を入れると文字化けする・計画書§3-6d)。
+  /// 2手順目は数式なので、ロケールを持たず Dart 側の定数にしてある。
+  String get onboardingTryBoardText =>
+      _pick('解が2つ ⇔ D > 0', 'Two roots ⇔ D > 0');
+
+  /// 先輩のせりふ。**教え返しは求めない**(ADR 0009 で畳んだ)。
+  /// 教えて、押す番をこちらに渡すところまでがこの枚。
+  String get onboardingTryTeachLine => _pick('D がプラスなら、解は2つ。ここだけ持って帰ってくれればいい。',
+      'If D is positive, there are two roots. That is the one thing to take home.');
+
+  /// 「わかった」を押したあと。**褒めない・採点しない**(ADR 0009。到達の宣言は
+  /// 生徒のものなので、押したことを先輩が評価し直さない)。起きた事実だけを言う。
+  String get onboardingTryUnderstoodReaction =>
+      _pick('じゃあ、いまの板書から1問つくるね。', "Then I'll make one question from that board.");
+
+  /// できた復習問題の見出し。**本人が説明した内容ではなく、板書が材料**(ADR 0009)。
+  String get onboardingTryProblemLabel => _pick('できた復習問題', 'The question we made');
+
+  /// 復習のリハーサル。**約束の後半を、ここで一度やってみる。**
+  ///
+  /// 通知 → 解答 → 採点までを1枚で通す。ここを読み物にすると、
+  /// 「3日後に聞く」が**言っただけの約束**になる。
+  ///
+  /// **短く保つ。**この枚だけは中身(通知・問題・解答欄)が縦に長いので、
+  /// 見出しが3行になると解答欄が折り返しの下へ落ちる(375×667の英語で実測)。
+  String get onboardingReviewTitle =>
+      _pick('3日後、こうやって聞きにいきます。', 'Three days later, it comes back.');
+
+  /// 通知の見本。**見本だけ気の利いた文にしない** — 実物と同じ調子で書く。
+  /// **実物の通知と同じ長さにする。**ロック画面は2行までしか出さないので、
+  /// ここで長い文を見せると、届く物と見本が食い違う。
+  String get onboardingPushTitle => _pick('この前の1問、いける?', 'Ready for that one?');
+  String get onboardingPushBody => _pick('30秒で終わるよ。', 'It takes 30 seconds.');
+
+  /// 通知が届いた時刻の見本。**相対で書く**(絶対時刻にすると、
+  /// 端末の時計とずれた瞬間に嘘になる)。
+  String get onboardingPushWhen => _pick('いま', 'now');
+
+  /// 復習問題の本文。板書(判別式)から作られた1問。
+  String get onboardingPracticeQuestion =>
+      _pick('x² − 6x + 5 = 0 の解の個数は?', 'How many roots does x² − 6x + 5 = 0 have?');
+
+  /// 通知を開く。**通知そのものを押せる**ようにもしてあるが、
+  /// 押せると分かるのは押した人だけなので、下にも同じ口を置く。
+  String get onboardingPracticeOpen => _pick('開いてみる', 'Open it');
+  String get onboardingPracticeAnswer => _pick(
+        'D = 36 − 20 = 16 でプラスだから、2個',
+        'D = 36 − 20 = 16, which is positive, so two',
+      );
+
+  /// 採点のあと。**正解でも点数は出さない**(§0 の約束2)。
+  String get onboardingPracticeReaction => _pick(
+        '3日おいても言えたなら、もう身についてる。',
+        'If you can still say it after three days, it has stuck.',
+      );
+
+  /// 最後の枚 — これから起きること。**間隔反復そのものが製品機能**
+  /// (デッキ §9 の OneSignal 賞の根拠)なので、文字で説明せず、
+  /// 線と点で「また来る」ことを見せる。
+  String get onboardingReadyTitle =>
+      _pick('ここから先は、きみの番。', 'From here, it is your turn.');
+
+  String get onboardingTimelineToday => _pick('今日', 'Today');
+  String get onboardingTimelineTodayNote =>
+      _pick('撮って、教わって、「わかった」', 'Photograph it, get taught, say you have it');
+  String get onboardingReviewDay3 => _pick('3日後', 'In 3 days');
+  String get onboardingTimelineDay3Note =>
+      _pick('1問だけ届く。書いて答える', 'One question arrives. You write your answer');
+  String get onboardingReviewDay7 => _pick('7日後', 'In 7 days');
+  String get onboardingTimelineDay7Note =>
+      _pick('もう一度。ここまで来たら忘れにくい', 'Once more — by here, it tends to stay');
+
+  /// **まちがえた問題だけ、翌日からもう一度**(ADR 0009 の段)。
+  String get onboardingTimelineWrongNote => _pick('まちがえた問題は翌日からもう一度たずねます。',
+      'A question you miss comes back from the next day.');
+
+  String get onboardingCta => _pick('はじめる', 'Get started');
+  String get onboardingNext => _pick('つぎへ', 'Next');
+
+  /// 約束(1枚目)は飛ばさせない。デッキが期待値の設計をあの1枚に置いているので、
+  /// 出口を作るのは**やってみる枚から**。
+  String get onboardingSkip => _pick('とばす', 'Skip');
+
+  /// 進み具合の読み上げ。棒そのものは装飾なので、名前はここで渡す。
+  String onboardingProgress(int current, int total) =>
+      _pick('$total枚中 $current枚目', 'Step $current of $total');
+
+  // --- ホーム ---
+  //
+  // ピボット(計画書§2)でコアループが「後輩に説明する」から
+  // 「先輩に教わる → 教え返す」に変わった。あいさつも入口の名前も先輩のものにする。
+  String get homeGreeting =>
+      _pick('今日は、どこでつまずいた?', 'Where did you get stuck today?');
+
+  /// 先輩が今日を締めた日のあいさつ。
+  ///
+  /// 問いかけのまま置くと、「どこでつまずいた?」と聞いておいて撮らせない
+  /// 画面になる。呼びかけと、その下で押せる操作を食い違わせない。
+  String get homeGreetingDone =>
+      _pick('今日はよくがんばったね', 'You put in good work today');
+
+  /// 今日の入口。撮る → 授業モード(§4-1。従量原価が発生する側)。
+  ///
+  /// **「ノートを撮る」とは書かない。** 撮るのは手段で、
+  /// ここでユーザーが選んでいるのは「教わる」こと。
+  String get homeLesson => _pick('先輩に教わる', 'Get taught by your senpai');
+
+  /// 日次の持ち時間。先輩の発話ではなく、ホームの状態表示としてだけ数字を出す。
+  String homeRemainingMinutes(int minutes) =>
+      _pick('今日はあと $minutes分', '$minutes min left today');
+
+  /// 分へ切り捨てると0に見えるが、まだ授業できる1〜59秒。
+  String get homeRemainingLessThanMinute =>
+      _pick('今日はあと 1分未満', 'Less than 1 min left today');
+
+  /// 数字を含む全文。祝福画面のように**文字だけで数を見せる**場所と、
+  /// ホームのカウンターの読み上げ(`Semantics(label:)`)で使う。
+  /// **「説明中」は落とした。**教え返しを畳んだ(ADR 0009)ので、
+  /// 続いているのは説明ではなく「教わりにきた日」のほう。
+  String streakDays(int days) => _pick('$days日つづけて', '$days-day streak');
+  String filledHoles(int count) => _pick('埋めた穴 $count', '$count gaps filled');
+
+  /// ホームのカウンター用。**数字は `CountUpText` が別に描く**ので、ここには
+  /// 含めない。上の全文をそのままラベルに使うと、数え上げる数字の隣に同じ数が
+  /// もう一度出る(「3 3日つづけて説明中」)。
+  ///
+  /// 空白の要不要も文字列側で持つ(ja「3日…」は詰める、「埋めた穴 4」は空ける)。
+  /// 分けるのは**見た目だけ**で、読み上げには上の全文を渡す。
+  String get streakDaysSuffix => _pick('日つづけて', '-day streak');
+  String get filledHolesPrefix => _pick('埋めた穴 ', '');
+  String get filledHolesSuffix => _pick('', ' gaps filled');
+
+  /// 解けた復習問題の数。**穴の数と足さない**(ADR 0009。単位が違う)。
+  String solvedProblems(int count) => _pick('$count問 解けた', '$count solved');
+  String get solvedProblemsPrefix => _pick('', '');
+  String get solvedProblemsSuffix => _pick('問 解けた', ' solved');
+
+  /// ホームの復習カード。再訪の起点で、通知の着地先でもある。
+  ///
+  /// **件数を出す。**穴のときは「未完了の数は、穴を資産ではなく借金に見せる」として
+  /// 隠していたが、復習問題は**解けば減る作業量**で、しかも1問30秒。
+  /// 何問あるかが分かるほうが着手しやすい(ADR 0009 の画面遷移キャンバス)。
+  String homeOpenProblems(int count) =>
+      _pick('解きにいく問題が $count問', '$count question${count == 1 ? '' : 's'} to answer');
+
+  /// 由来がまだ手元に無い短い間の一行。件数だけの画面にしない。
+  String get homeOpenProblemLabel => _pick('この前 教わったところから', 'From what you learned');
+
+  /// 由来。「3日前の『判別式』から」。
+  String homePracticeSource(int daysSince, String topicLabel) => _pick(
+        daysSince <= 0 ? '今日の「$topicLabel」から' : '$daysSince日前の「$topicLabel」から',
+        daysSince <= 0
+            ? 'From today\'s "$topicLabel"'
+            : 'From "$topicLabel", $daysSince day${daysSince == 1 ? '' : 's'} ago',
+      );
+
+  /// 旧・穴のカード。移行前の記録を読む画面にだけ残す。
+  String get homeOpenHoleLabel => _pick('前に見つけた単元', 'A topic you found before');
+
+  /// 今日はもう授業をしない、という**先輩の判断**(§6-3)。
+  ///
+  /// 残り時間はホームに別途出すが、上限への到達は先輩が学習を締める言い方のままにする。
+  String get lessonEnoughForToday => _pick(
+        '今日の持ち時間は使い切ったよ。明日また続きやろう。',
+        "You've used today's lesson time. Let's pick this up again tomorrow.",
+      );
+
+  /// 上の判断の隣に置く、契約への道。
+  /// **「無制限にする」とは書かない**(§6-3 でフェアユース上限が入ったので、嘘になる)。
+  String get homeUnlock => _pick('もっと教わる', 'Get more lessons');
+  String get homeFirstRun => _pick('まだ穴はありません。最初の1問から始まります。',
+      'No gaps yet. It starts with your first question.');
+
+  // --- 撮影確認 ---
+  String get captureConfirmTitle =>
+      _pick('この単元で合っていますか?', 'Is this the right topic?');
+  String get captureConfirmHint =>
+      _pick('ちがっていたらタップして外せます', 'Tap to remove anything that is wrong');
+
+  /// **「説明をはじめる」ではない。** ピボット前はここから生徒が説明していたが、
+  /// いま始まるのは授業(先輩が板書つきで教える・§4-1)。
+  String get captureStart => _pick('授業をはじめる', 'Start the lesson');
+
+  // --- 撮ったものの確認(解析の前) ---
+
+  /// まだ1枚も撮っていないときの見出し。**カメラより先に出る。**
+  ///
+  /// 「ノートを撮ってください」ではなく**手元にあるものを聞く**。ノートが無いのは
+  /// 不足ではなく、そういう状態だという建て付けにするため。以前は画面に入った瞬間に
+  /// ノートのカメラが開いていて、解けなかった生徒は問題の枠を見ないまま
+  /// シャッターの前に立っていた(`capture_screen.dart` のコメント)。
+  String get captureChooseTitle => _pick('何が手元にある?', 'What do you have?');
+
+  /// 解析はVision LLMの原価が発生するので、その前に一度だけ確認を挟む。
+  String get captureReviewTitle => _pick('撮れました', 'Got it');
+
+  /// 1枚も撮っていないときのヒント。**ノートが無いことを、先に許しておく。**
+  ///
+  /// ここで黙っていると、解けなかった生徒には紙面をノート枠に入れる以外の道が
+  /// 見えない(`api.ts` の `sessionPhotoParts` が「残る穴」と書いたもの)。
+  /// **咎めない・理由を聞かない。**「まだ手をつけていないなら」とだけ置いて、
+  /// 当てはまる人が自分で拾えるようにする。
+  String get captureEitherIsFine => _pick(
+        'どちらか1枚で始められます。まだ手をつけていないなら、問題だけで大丈夫。',
+        "Either one is enough to start. If you haven't tried it yet, just the problem is fine.",
+      );
+
+  /// 枠の見出し。**ノートを「任意」に見せ替えない。**
+  ///
+  /// ノートが無くても始められるようにはなったが(手も付けていない問題を
+  /// 持ってきた生徒のため)、**あるほうが良いことは変わっていない** —
+  /// どこで手が止まったかが、先輩の切り分けの出発点になる。
+  /// 「任意」と書くと、撮れる人まで撮らなくなる。
+  ///
+  /// 問題の側からも「(任意)」を外した。**片方にだけ付いていると、
+  /// もう片方が必須に読める。** ノートが無い生徒にとっては、唯一出せるものが
+  /// 「任意」と書かれ、出せないものが必須に見える — 逆さまになる。
+  /// どちらか1枚でよいことは [captureEitherIsFine] が言うので、
+  /// 枠は名前だけにしておく。
+  String get capturePhotoNotes => _pick('ノート', 'Your notes');
+  String get capturePhotoProblem => _pick('問題', 'The problem');
+
+  /// まだ撮っていない枠の操作名。
+  /// **「問題も撮る」とは書かない** — ノートを撮らない人には「も」が合わない。
+  String get captureTakeNotes => _pick('ノートを撮る', 'Take your notes');
+  String get captureAddProblem => _pick('問題を撮る', 'Take the problem');
+  String get captureRetake => _pick('撮り直す', 'Retake');
+
+  /// 写真が入っている枠の操作名。**「撮り直す」ではない。**
+  ///
+  /// タップで開くシートには撮り直す・アルバム・切り抜くが並ぶので、撮ることだけを
+  /// 名指しすると、**切り抜きがどこからも見えなくなる**([captureCropHint] が
+  /// 促している操作なのに、入口の名前が撮影だけを指すことになる)。
+  String get captureChangePhoto => _pick('写真を変える', 'Change photo');
+
+  /// 写真の入れ方を選ぶシートの中身。**枠をタップすると下から出る。**
+  ///
+  /// ## 端末の写真をアプリ内に並べない理由
+  ///
+  /// 「マス目に写真が並んで、1マス目が撮影ボタン」という形にするには、端末の
+  /// 写真ライブラリをアプリ側で読む必要がある。Androidではそれが
+  /// `READ_MEDIA_IMAGES` = 広いアクセス権限で、Google Play の
+  /// Photo & Video Permissions ポリシー(2025-05-28 全面適用)の対象になる。
+  /// 通す条件は「システムのピッカーでは**コア機能が提供できない**」ことで、
+  /// **自前ピッカーを持っていること自体は資格にならないと条文が名指ししている。**
+  /// このアプリがPhoto Pickerでできないのは「見た目」と「1マス目の撮影ボタン」
+  /// だけで、どちらも授業の成立には関わらない — 申告に書ける材料が無い。
+  ///
+  /// なので**マス目はOSのピッカーに任せ、撮影ボタンだけ手前に出す。**
+  /// [capturePickGallery] を押した先はOSのピッカーで、あれ自体が写真のマス目。
+  /// 権限のダイアログも出ない。
+  String get capturePickCamera => _pick('撮る', 'Camera');
+  String get capturePickGallery => _pick('アルバム', 'Photos');
+
+  /// 切り抜き。**解析の前にしか出さない。**
+  /// あとから差し替えても写真は読み直されないので([CaptureController.setPhoto])、
+  /// 出したところで効かない操作になる。
+  String get captureCrop => _pick('切り抜く', 'Crop');
+
+  /// §4-1 の言い回しそのまま。**ヒントであって要求ではない。**
+  /// 1枚に問題とノートの両方が写ることが多いので、2枚必須にすると
+  /// 撮影の摩擦だけが増える。
+  ///
+  /// **ノートを撮った人にだけ出す。** 問題を先に撮った人(= ノートが無い人)に
+  /// 「問題も写っていると」と言うと、もう撮ったものを催促することになる。
+  String get captureProblemHint => _pick(
+        '問題も写っていると、先輩が迷子になりません',
+        "If the problem is in the shot too, your senpai won't get lost",
+      );
+
+  /// 問題の写真が入っている人に出すヒント。[captureProblemHint] と入れ替わる。
+  ///
+  /// **既知の失敗モードに、ここで初めて手が届く。**`contract` の
+  /// `problemTextMaxLength` がこう書いている —「ページ全体を写すと、章末の
+  /// 解答や解説まで問題文として流れ込み、先輩が答えを読み上げるところから
+  /// 授業が始まってしまう」。600字の上限はそのための**安全弁**で、
+  /// 根本の対策ではなかった。切り抜きがその対策になる。
+  ///
+  /// **それでも促しに留める。** 切り抜かなくても授業は始められる
+  /// (この画面の他のヒントと同じ扱い)。要求にすると、1枚に問題が1つしか
+  /// 写っていない人にも操作が増える。
+  String get captureCropHint => _pick(
+        '解く問題だけを切り抜くと、先輩が別の問題を読みません',
+        "Crop to just the problem you're solving so your senpai doesn't read a different one",
+      );
+
+  /// 枠を分けている理由を、そのまま利点として書く。
+  /// 教科書・問題集の紙面は他者の著作物なので、解析後に破棄される(§4-1)。
+  String get captureProblemDiscarded => _pick(
+        '問題の写真は、読み取ったあとに消えます',
+        'The photo of the problem is deleted once it has been read',
+      );
+
+  /// 読み取った問題文の見出し。**誤読がいちばん早く表面化する場所。**
+  ///
+  /// **それでも「合っていますか?」とは聞かない。** 直す口はできたが
+  /// ([captureProblemEdit])、問いかけにすると全員が答えを迫られる。
+  /// 事実として置いておけば、ちがっている人だけが直しにいける。
+  String get captureProblemTitle =>
+      _pick('先輩は、この問題だと思っています', 'This is the problem your senpai sees');
+
+  /// 読み取った問題文を、生徒が自分で直す。
+  ///
+  /// **ここが無かったあいだ、誤読を直す唯一の手段は会話の最初に口で言うことだった。**
+  /// 読み合わせの枠を出しておきながら、そこから直せないのは片手落ちだった。
+  String get captureProblemEdit => _pick('問題文を直す', 'Fix the question');
+
+  /// 問題文が読めなかったときの入口。**[captureProblemEdit] と入れ替わる。**
+  String get captureProblemAdd => _pick('問題文を入力する', 'Type the question');
+
+  /// 読み取れなかったことを、**落ち方ごとに言う**(`api.ts` の `problemOutcomes`)。
+  /// どれを出すかを選ぶのは画面の側。ここは文言だけを持つ。
+  ///
+  /// ## なぜ出すようになったか
+  ///
+  /// ここは長いあいだ**意図して無言**だった。読めなかったと告げると、撮り直さない
+  /// かぎり消えない警告になり、**任意のはずの2枚目が事実上の必須**になるため。
+  /// その結果、失敗が最初に表に出るのは会話の中 —
+  /// 「問題、読んでもらってもいい?」と、**画面に見えている問題を声で入れ直す**
+  /// ところだった(外部テスターが挙げた唯一の不満)。
+  ///
+  /// **直せる口([captureProblemAdd])と同時に出すなら、警告にはならない。**
+  /// その場で終わる話になるので、撮り直しを迫っていない。
+  ///
+  /// ## 落ち方をまとめない
+  ///
+  /// ぜんぶ「読み取れませんでした」に畳むと、生徒からは同じ行き止まりに見える。
+  /// 紙面を丸ごと撮ったのか、解答まで写ったのかで**次の一手が違う**。
+  ///
+  /// これは落ち方が分からないとき/`not_found` のとき。**既定の言い方。**
+  String get captureProblemNotRead =>
+      _pick('問題文は読み取れませんでした', "We couldn't read the question");
+
+  /// `not_found` — 問題の指示まで写真に入っていない/読めない。
+  String get captureProblemNotReadGuidance => _pick(
+        '次に撮るなら、問題文が端まで写るようにすると読み取りやすくなります',
+        'Next time, include the whole question in the shot so it is easier to read',
+      );
+
+  /// `too_long` — 紙面を丸ごと撮っている。
+  String get captureProblemTooLong => _pick(
+        'ページ全体が写っていたようで、問題文を絞り込めませんでした',
+        "That looked like a whole page, so we couldn't pin down the question",
+      );
+
+  String get captureProblemTooLongGuidance => _pick(
+        '次に撮るなら、問題の部分だけを切り抜くと読み取りやすくなります',
+        'Next time, crop to just the question so it is easier to read',
+      );
+
+  /// `solution_included` — 解答・解説まで写っている。
+  /// **咎めない。** 「答えが写っています」ではなく、こちらが使わなかったと言う。
+  String get captureProblemHadSolution => _pick(
+        '答えや解説まで写っていたので、問題文としては使いません',
+        'The answer was in the shot too, so we left it out',
+      );
+
+  String get captureProblemHadSolutionGuidance => _pick(
+        '次に撮るなら、解答が写らないように問題だけを入れると読み取りやすくなります',
+        'Next time, keep the answer out and include only the question so it is easier to read',
+      );
+
+  /// `not_a_problem` — 式だけで、何を問われているかが無い。
+  String get captureProblemNotAQuestion => _pick(
+        '式だけで、何を聞かれているかまでは読み取れませんでした',
+        'We only got the expression, not what it asks you to do',
+      );
+
+  String get captureProblemNotAQuestionGuidance => _pick(
+        '次に撮るなら、「〜を求めよ」まで入れると読み取りやすくなります',
+        'Next time, include the instruction such as “solve” or “find” so it is easier to read',
+      );
+
+  /// 上の行に続けて、**直すと何が変わるか**だけを言う。
+  ///
+  /// 「撮り直してください」とは言わない。撮り直しの導線はこの画面には無く
+  /// (セッションはもう作られている)、言えば行き止まりを増やすだけになる。
+  String get captureProblemFixHint => _pick(
+        '入れておくと、先輩が最初に聞き直しません',
+        'Type it in and your senpai will not have to ask you for it',
+      );
+
+  /// 問題文が空のまま開始できることと、その結果を開始ボタンの直前で明示する。
+  /// **止める文言にはしない。** 2枚目の写真を事実上の必須へ戻さないため。
+  String get captureProblemStartWarning => _pick(
+        'このまま始めると、最初に先輩が問題を聞き直します',
+        'If you start as-is, your senpai will ask you for the question first',
+      );
+
+  /// 打ち込む欄のプレースホルダ。**解答を入れないことだけ先に言う。**
+  /// サーバのガードレールが落とすので、ここで言わないと打ち直しが2往復になる。
+  String get captureProblemFieldHint => _pick(
+        '問題文だけを入れてね(答えは入れない)',
+        'Just the question — leave the answer out',
+      );
+
+  String get captureProblemSave => _pick('これで進む', 'Use this');
+  String get captureProblemCancel => _pick('やめる', 'Cancel');
+
+  /// カメラを断られたとき。黙ってホームに戻さない。
+  ///
+  /// **どちらの枠から来たかを書かない。** ノートが無くて問題を撮ろうとした人に
+  /// 「ノートを撮れます」と返すと、断られた話の上に的外れが重なる。
+  String get captureCameraDenied => _pick(
+        'カメラを使えませんでした。設定アプリから許可すると、撮れるようになります。',
+        "We couldn't use the camera. Allow it in Settings and you'll be able to take the photo.",
+      );
+  String get captureOpenSettings => _pick('設定をひらく', 'Open Settings');
+
+  /// アルバムを断られたとき。**カメラの文言と混ぜない。**
+  ///
+  /// 断られたのは写真へのアクセスなのに「カメラを使えませんでした」と返すと、
+  /// 設定アプリのどこを開けばいいのか分からなくなる。
+  /// (iOSは `requestFullMetadata: false` で許可を要求しない経路に乗せてあるので
+  /// 普段は出ないが、端末やOSの版によっては来る。)
+  String get capturePhotosDenied => _pick(
+        'アルバムを開けませんでした。設定アプリから写真へのアクセスを許可すると、選べるようになります。',
+        "We couldn't open your photos. Allow photo access in Settings and you'll be able to pick one.",
+      );
+
+  /// カメラを開けなかったとき(許可はあるが端末側の理由)。許可の話と混ぜない。
+  String get captureCameraFailed => _pick('カメラを開けませんでした。もう一度おためしください。',
+      "We couldn't open the camera. Please try again.");
+
+  /// アルバムを開けなかったとき(許可はあるが端末側の理由)。
+  String get capturePhotosFailed => _pick('アルバムを開けませんでした。もう一度おためしください。',
+      "We couldn't open your photos. Please try again.");
+
+  /// 切り抜きを開けなかったとき。**撮り直しに引き戻さない** —
+  /// 写真はもう入っているので、失敗したのは切り抜きだけ。
+  String get captureCropFailed => _pick('切り抜けませんでした。もう一度おためしください。',
+      "We couldn't crop the photo. Please try again.");
+
+  // --- 会話 ---
+  String get sessionListening => _pick('聞いています', 'Listening');
+
+  /// 会話が終わって、カルテを書いているあいだ。
+  ///
+  /// **何が起きているかを書く。** 「考えています」のままだと会話が続いて
+  /// いるように見えて、もう一度「今日はここまで」を押させてしまう。
+  String get sessionSummarizing => _pick('カルテを書いています…', 'Writing your karte…');
+
+  /// つないでから先輩が入ってくるまで。無言の数秒を「止まっている」に見せない。
+  String get sessionConnecting => _pick('先輩を呼んでいます…', 'Getting your senpai…');
+
+  /// 授業モード(計画書§4-1)。先輩が板書を書き始めたが、まだ何も喋っていないとき。
+  ///
+  /// **「聞いています」を出さない。**聞いているのはこちらではなく生徒のほうで、
+  /// いま起きているのは説明。字幕の初期値をここで取り違えると、
+  /// 板書が出ているのに「話しかけないと進まない画面」に見える。
+  String get sessionSenpaiTeaching =>
+      _pick('先輩が説明しています', 'Your senpai is explaining');
+
+  /// 授業画面の状態表示。字幕ではなく、印の隣に短く置く。
+  String get sessionTeachingStatus =>
+      _pick('先輩が説明中', 'Your senpai is explaining');
+
+  /// 先輩が黙って次の手順を考えているあいだ。**待つ番**だと分かる言い方にする。
+  ///
+  /// 「聞いています」でも「説明中」でもない3つめの状態。ここを出さずに黙ると、
+  /// 生徒は自分の番だと思って喋りはじめ、先輩の説明に自分の声を重ねる。
+  String get sessionSenpaiThinking =>
+      _pick('先輩が考えています…', 'Your senpai is thinking…');
+
+  /// 先輩が番を渡して、答えを待っているあいだ。波(`SpeakingWave`)の隣に置く。
+  ///
+  /// **「聞いています」と書き分ける。**あちらは板書の無い会話の常態で、
+  /// こちらは**授業の途中でこちらに番が回ってきた**一瞬。同じ言葉にすると、
+  /// いちばん知りたい「いま喋っていいのか」が読み取れない。
+  String get sessionYourTurn => _pick('きみの番。話してみて', 'Your turn — go ahead');
+
+  /// 到達の宣言。押しやすさを損なうので、確認や評価のニュアンスを足さない。
+  String get sessionUnderstood => _pick('わかった', 'Got it');
+
+  /// 「わかった」を受け取った直後。褒めたり採点したりせず、起きた事実だけを伝える。
+  String get sessionVoiceStopped =>
+      _pick('声を止めたよ', 'Your senpai has stopped talking');
+
+  /// 教え返し。板書は残したまま、こちらが喋る番になったとき
+  /// (コアループ §2「じゃあ今の、説明してみて」)。
+  String get sessionExplainBack => _pick('説明してみて', 'Now you explain it');
+
+  /// 類題を解いている間だけ出す本人申告。正誤の採点には使わない。
+  String get sessionSolving => _pick('この問題を解いてみて', 'Try this problem');
+  String get sessionSolved => _pick('できた', 'I did it');
+  String get sessionStuck => _pick('できなかった', "I couldn't do it");
+  String get sessionSolvedMessage => _pick('できた', 'I did it');
+  String get sessionStuckMessage => _pick('できなかった', "I couldn't do it");
+
+  /// 授業中に出す問題文の見出し(ワイヤー v2 の1つ目)。
+  ///
+  /// **撮影画面の `captureProblemTitle` とは別の文言にする。**あちらは
+  /// 「先輩はこの問題だと思っています」= 授業を始める前の**答え合わせ**で、
+  /// こちらは授業中に**いま何を解いているか**を出す札。同じ文を使うと、
+  /// 板書の上に確認の問いかけが常駐することになる。
+  String get sessionProblemTitle => _pick('問題', 'The problem');
+
+  /// 3行で畳んだ問題文を開く。**板書を押し出さないため**に畳んである
+  /// (契約の上限は600字で、全文を出すと板書が画面外へ出る)。
+  String get sessionProblemExpand => _pick('続きを読む', 'Read more');
+  String get sessionProblemCollapse => _pick('畳む', 'Show less');
+
+
+  /// 板書がとぎれたとき(封筒の欠落・順序違反を検知した)。
+  ///
+  /// **黙って虫食いのまま出さない。**抜けたことに気づけないと、
+  /// 抜けたやり方のまま覚えてしまう。落としたのはこちら側なので、
+  /// 生徒のせいに読める言い方にはしない。
+  String get sessionBoardGap => _pick(
+        '板書はここまでしか届きませんでした。続きは先輩に聞いてください。',
+        'The board only came through this far. Ask your senpai for the rest.',
+      );
+  String get sessionPass => _pick('うまく言えない', "I can't explain this yet");
+
+  /// パスは画面だけで完結させず、先輩にも伝える(教え方を変えてもらう)。
+  String get sessionPassMessage => _pick(
+        'うまく言えません。ちがう聞き方をしてもらえますか?',
+        "I can't explain this yet. Could you ask it a different way?",
+      );
+  String get sessionEnd => _pick('今日はここまで', "That's it for today");
+
+  /// 左上の × の読み上げ。見た目に文字は出さないが、操作の行き先は名前で伝える。
+  String get sessionClose => _pick('授業をやめる', 'Leave the lesson');
+
+  String get sessionQuitTitle => _pick('授業をやめる?', 'Leave this lesson?');
+  String get sessionQuitBody => _pick(
+        'ここでやめると、今日の復習問題は作らないよ。つづきは、また今度でも大丈夫。',
+        "If you leave now, we won't make today's review question. "
+            "It's okay to pick this up another time.",
+      );
+  String get sessionContinue => _pick('つづける', 'Keep going');
+  String get sessionQuit => _pick('やめる', 'Leave');
+
+  /// つながらなかったとき。**「聞いています」のまま黙らせない。**
+  String get sessionConnectionFailed => _pick(
+        'つながりませんでした。電波のいいところで、もう一度おためしください。',
+        "We couldn't connect. Try again where the signal is better.",
+      );
+
+  /// ルームには入れたが、先輩が来なかった(エージェント側の問題)。
+  /// ユーザーのせいではないので、そう読める言い方にする。
+  String get sessionSenpaiUnavailable => _pick(
+        '先輩が来られませんでした。少し時間をおいて、もう一度呼んでみてください。',
+        "Your senpai couldn't make it. Give it a moment and try again.",
+      );
+  String get sessionRetry => _pick('もう一度呼ぶ', 'Try again');
+  String get sessionBackHome => _pick('ホームにもどる', 'Back to home');
+  String remaining(int seconds) {
+    final String minutes = (seconds ~/ 60).toString();
+    final String rest = (seconds % 60).toString().padLeft(2, '0');
+    return _pick('のこり $minutes:$rest', '$minutes:$rest left');
+  }
+
+  // --- 祝福(④)と、途中で降りたとき(④') ---
+
+  /// 「わかった」で降りたときの見出し。
+  ///
+  /// **旧「教わりきったね」は使わない。**生徒が自分で「わかった」を押したのに、
+  /// 先輩の側が到達を判定している言い方になる(ADR 0009)。
+  String get celebrationTitle => _pick('お疲れ様', 'Nice work');
+  String get celebrationAnotherLesson => _pick('もう1問 教わる', 'Learn one more');
+  String get celebrationDone => _pick('今日はここまで', "That's it for today");
+
+  /// 祝福のカード。**生成を待たないことを、画面の文言でも守る。**
+  String get celebrationPracticeTitle =>
+      _pick('今日の問題は、3日後に送るね', "I'll send today's question in 3 days");
+  String get celebrationPracticeBody => _pick(
+        'いま作ってるところ。待たなくて大丈夫。',
+        "I'm putting it together now — no need to wait.",
+      );
+
+  /// 残り時間で降りたときの見出し。**祝福していないことが文字でも分かる形に。**
+  String get timeLimitTitle => _pick('今日はここまでにしよっか', "Let's stop here for today");
+  String get timeLimitBody =>
+      _pick('つづきは、また今度いっしょにやろう。', "We'll pick this up next time.");
+
+  /// 途中で降りたときのカード。**責めない**(約束3)。
+  String get timeLimitCardTitle =>
+      _pick('今日は問題を出さないでおくね', "I won't send a question today");
+  String get timeLimitCardBody => _pick(
+        'まだ途中だから、あとで聞かれても答えにくいと思う。',
+        "We didn't finish, so it'd be a rough thing to be asked about later.",
+      );
+
+  // --- 復習問題を解く ---
+
+  /// 解答画面のヘッダ。「3日前の復習」。
+  String practiceHeader(int daysSince) => _pick(
+        daysSince <= 0 ? '今日の復習' : '$daysSince日前の復習',
+        daysSince <= 0
+            ? "Today's review"
+            : 'Review from $daysSince day${daysSince == 1 ? '' : 's'} ago',
+      );
+  String get practiceAnswerHint => _pick('こたえ', 'Your answer');
+
+  /// **完璧を求めない。**書けるところまでで送ってよいことを、入力の下で言う。
+  String get practiceAnswerHelper => _pick(
+        'とちゅうの式だけでも、言葉だけでも大丈夫。',
+        'Just the working, or just words — either is fine.',
+      );
+  String get practiceSubmit => _pick('こたえる', 'Answer');
+
+  /// 採点待ち。**待っている間に何が起きているか**を必ず出す。
+  String get practiceGrading => _pick('読んでるところ', 'Reading it');
+  String get practiceGradingProgress => _pick('採点中', 'Grading');
+  String get practiceGradingCanClose =>
+      _pick('閉じても、あとで結果を見られるよ', 'You can close this — the result will keep');
+
+  String get practiceCorrect => _pick('言えてる', 'You have it');
+
+  /// **責めない。**「まちがい」ではなく「まだ」。
+  String get practiceIncorrect => _pick('ここ、まだだね', 'Not quite there yet');
+
+  /// **こちら側の不首尾として言う。**生徒が詰まったのではない。
+  String get practiceUnclear => _pick('うまく読めなかった', "I couldn't read that");
+  String get practiceRetry => _pick('もう一度こたえる', 'Answer again');
+  String get practiceYourAnswer => _pick('きみのこたえ', 'Your answer');
+
+  /// 次の通知予定。1日後は「明日」と言う。
+  String practiceNextSchedule(List<int> days) {
+    final String when = days
+        .map((int day) => _ja
+            ? (day == 1 ? '明日' : '$day日後')
+            : (day == 1 ? 'tomorrow' : 'in $day days'))
+        .join(_ja ? '・' : ', ');
+    return _pick('つぎは $when にきくね', "I'll ask again $when");
+  }
+
+  /// `unclear` の帯。**間違い扱いにしないことを、その場で言い切る。**
+  String get practiceScheduleUnclear => _pick(
+        'まちがい扱いにはしない。通知も進めない。',
+        "This doesn't count as wrong, and the reminders don't move on.",
+      );
+
+  String practiceSolvedTitle(int count) =>
+      _pick('解けた問題 — $count', 'Solved — $count');
+  String practiceSolvedMeta(String topicLabel, int daysSinceSolved) => _pick(
+        daysSinceSolved <= 0 ? '$topicLabel ・ 今日' : '$topicLabel ・ $daysSinceSolved日前',
+        daysSinceSolved <= 0
+            ? '$topicLabel · today'
+            : '$topicLabel · $daysSinceSolved day${daysSinceSolved == 1 ? '' : 's'} ago',
+      );
+
+  /// @deprecated 旧・穴の祝福。移行前の記録を読む画面にだけ残す。
+  String get celebrationThanks =>
+      _pick('説明、ありがとうございました', 'Thanks for explaining');
+  String celebrationFilled(int count) =>
+      _pick('穴が$count つ、埋まりました', '$count gaps filled');
+
+  // --- カルテ ---
+  String get karteTitle => _pick('今日のカルテ', "Today's karte");
+  String get karteSaidWell => _pick('言えたこと', 'What you explained');
+  String karteHoles(int count) => _pick('穴 — $count つ', 'Gaps — $count');
+  String get karteTermNotes => _pick('用語メモ', 'Terminology');
+  String get karteNoHoles =>
+      _pick('今日は、止まらずに説明できました', 'You explained it all the way through today');
+  String get karteReviewToggle =>
+      _pick('あしたの夜、先輩がもう一度きいてきます', 'Your senpai will ask again tomorrow night');
+
+  /// 通知の許可を求める場所はここだけ。穴が見えた直後に、先輩からのお願いとして聞く。
+  ///
+  /// **疑問符を落とさないこと。** ここを「あしたの夜、もう一度きくね」と
+  /// 言い切りに直すと、許可を求める文が予告に変わる。先輩は言い切れる立場なので、
+  /// 頼む形にしてあること自体が約束4の歯止めになっている。
+  String get karteReviewAsk =>
+      _pick('あしたの夜、もう一度きいてもいい?', 'Mind if I ask you again tomorrow night?');
+  String get karteReviewDenied => _pick(
+        '通知が切れています。設定アプリから戻せます。',
+        'Notifications are off. You can turn them back on in Settings.',
+      );
+
+  /// カルテの生成が会話直後に間に合わなかったとき。作り直しではなく取りに行く。
+  String get karteRetrieve => _pick('カルテを取りに行く', 'Fetch my karte');
+  String get karteRetrieving => _pick('取りに行っています…', 'Fetching…');
+
+  /// 待っているあいだ、押せないボタンの上に置く説明。
+  ///
+  /// ボタンの文言だけだと、**押せないボタンが出ているだけ**にしか見えない。
+  /// 何を待っているのか(と、待てば届くこと)をここで言う。
+  String get karteWriting => _pick(
+        '先輩がカルテを書いています。届いたら、ここに出ます。',
+        'Your senpai is writing your karte. It will appear here when it is ready.',
+      );
+
+  /// 待つと決めた時間ぶん待っても届かなかった。行き止まりにしないための言い方。
+  String get karteTakingLong => _pick(
+        '思ったより時間がかかっています。もう一度取りに行けます。',
+        "It's taking longer than expected. You can try fetching it again.",
+      );
+  String get karteStillCooking => _pick(
+        'まだ書いている途中でした。少しあとで、もう一度おためしください。',
+        "It's still being written. Please try again in a moment.",
+      );
+  String get karteRetry => _pick('言い直してみる', 'Explain it again');
+  String get karteDone => _pick('今日はここまで', "That's it for today");
+
+  /// カルテに残る板書。
+  ///
+  /// 授業中の板書は会話画面と一緒に消えるので、**授業の寿命を超えて読み返せる
+  /// 場所はカルテだけ**。「言えたこと」と「穴」が会話の結果なら、これは
+  /// 会話の途中で先輩が書いたものそのもので、穴の話をしている最中に
+  /// 「どこの話か」を指し直せる。板書が1枚も無い会話では節ごと出さない。
+  String get karteBoardTitle => _pick('先輩が書いたもの', 'What your senpai wrote');
+
+  /// 板書が途中で切れていることの印(配送の欠落)。
+  ///
+  /// **失敗を報告する文にしない。** ユーザーには直せないし、カルテは
+  /// 配送の失敗を蒸し返す場所ではない。それでも黙ってはいけないのは、
+  /// 黙ると計画書§3-6b が横スクロールを却下した理由 —「これで全部だ」と
+  /// 誤読させる — をそのまま再現するから。事実を一行だけ置く。
+  String get karteBoardTruncated =>
+      _pick('ここから先は残っていません', "The rest of this board wasn't saved");
+
+  // --- 復習 ---
+  String get reviewTitle => _pick('埋めにいく穴', 'Gaps to fill');
+  String get reviewSaidIt => _pick('言えた', 'I could explain it');
+  String get reviewNotYet => _pick('まだ言えない', 'Not yet');
+
+  /// 「まだ」は失点ではない。先輩が引き取る言い方にして、選んだ人を咎めない。
+  String get reviewNotYetLead => _pick(
+        'じゃあ、先輩ともう一回見てみよっか',
+        "Let's go through it together, then",
+      );
+  String get reviewAskSenpai => _pick('先輩に聞く', 'Ask senpai');
+  String get reviewLater => _pick('あとにする', 'Later');
+  String get reviewVoicePremium => _pick(
+        '声で先輩に聞き直す授業はPremiumです。小テストは無料のまま使えます。',
+        'Calling your senpai back by voice uses Premium lesson mode. Quick quizzes stay free.',
+      );
+
+  /// 埋めた穴のセクション。ペイウォールが謳う「履歴」はここで果たす。
+  String reviewFilledTitle(int count) =>
+      _pick('埋めた穴 — $count つ', 'Gaps filled — $count');
+  String get reviewFilledEmpty =>
+      _pick('ここに、埋めた穴がたまっていきます', 'The gaps you fill will collect here');
+  String reviewFilledDays(int days) => switch (days) {
+        0 => _pick('今日 埋めた', 'Filled today'),
+        1 => _pick('きのう 埋めた', 'Filled yesterday'),
+        _ => _pick('$days日前に埋めた', 'Filled $days days ago'),
+      };
+
+  /// 穴がひとつも無いとき。「何もない」ではなく「今は無い」として見せる。
+  String get reviewEmpty =>
+      _pick('いまは、埋めにいく穴がありません', 'There are no gaps waiting right now');
+  String get reviewBackHome => _pick('ホームにもどる', 'Back to home');
+
+  // --- 設定 ---
+  // 画面タイトルは持たない。設定は常設タブの根なので、名前は下部ナビの
+  // [navigationSettings] が出している。AppBar にも同じ「設定」を置くと、
+  // ひとつの画面に同じ語が2回出る。
+  String get settingsSectionAccount => _pick('契約', 'Subscription');
+  String get settingsSectionNotifications => _pick('通知', 'Notifications');
+  String get settingsSectionAbout => _pick('このアプリについて', 'About');
+
+  // 学年。**単元を絞るためのもので、学習の制限ではない。**
+  // 中学生を選んでも高校の単元が「禁止」になるわけではなく、
+  // 写真から単元を探すときにどちらの範囲を先に見るかが変わる。
+  String get settingsSectionSchoolStage => _pick('学年', 'School');
+  String get settingsSchoolStageJuniorHigh => _pick('中学生', 'Junior high');
+  String get settingsSchoolStageHighSchool => _pick('高校生', 'High school');
+
+  /// 1/3/7日の再訪のトグル。**ここが約束4のいちばん危ないところ。**
+  ///
+  /// 後輩の「再説明のお願い」は、構造的に煽れなかった —
+  /// 教わる側からの**お願い**なので、断れるし、催促に読みようがない。
+  /// 先輩は「勉強しろ」と言える立場なので、同じ枠に
+  /// 「リマインド」「忘れていませんか」を入れると、その瞬間に催促になる。
+  ///
+  /// なので**届くものの中身**で名づける(誰が命じるか、ではなく)。
+  /// 英語も `Reminders`(=催促の語)を避ける。
+  String get settingsNotifications =>
+      _pick('先輩からのおさらい', 'Check-backs from your senpai');
+  String get settingsNotificationsOpenSettings =>
+      _pick('通知の設定をひらく', 'Open notification settings');
+  String get settingsPrivacy => _pick('プライバシーポリシー', 'Privacy policy');
+  String get settingsTerms => _pick('利用規約', 'Terms of use');
+
+  /// AI生成物の報告導線。App Review で見られる。
+  ///
+  /// **報告してほしい中身が、憲法改正で変わった。** 旧版は
+  /// 「答えを教えてしまっている」を報告理由に挙げていたが、いまは答えを教えるのが
+  /// 約束1(§0)なので、それは不具合ではなく仕様。代わりに、教えるようになったことで
+  /// 初めて危険になったもの —**間違ったことを教える**— を先頭に置く。
+  /// 報告の対象も質問だけでなく板書と説明を含むので、そう書く。
+  String get settingsReport =>
+      _pick('気になった内容を報告する', 'Report something that felt wrong');
+  String get settingsReportBody => _pick(
+        '先輩の説明や板書、質問が、問題と関係ない・間違っている・不快だった場合に送ってください。',
+        "Tell us if your senpai's explanation, board or question was off-topic, "
+            'incorrect, or felt wrong.',
+      );
+  String get settingsVersion => _pick('バージョン', 'Version');
+  String get settingsDeviceId =>
+      _pick('端末ID(問い合わせ用)', 'Device ID (for support)');
+  String get settingsCopied => _pick('コピーしました', 'Copied');
+  String get settingsOpenFailed => _pick('ひらけませんでした。あとで試してみてください。',
+      "We couldn't open that. Please try again later.");
+
+  // --- ペイウォール ---
+  String get paywallTitle => _pick('穴を、埋めきる。', 'Fill every gap.');
+
+  /// Premium の一行紹介。**数字は Offering が返した文字列だけ**を置く。
+  ///
+  /// 期間を「/月」と自前で書かないのは、週額の商品に付けると嘘になるから。
+  /// プラン名([planMonthly] など)をそのまま並べる。
+  /// 日英で語順が同じなので `_pick` しない([premiumBadge] と同じ)。
+  String paywallPriceLine(String plan, String price) => 'Premium $plan $price';
+
+  /// 価格がまだ読めていないとき(祝福画面)。**代わりの数字を書かない。**
+  ///
+  /// 据え置きの「¥580/月」を出すと、ダッシュボードで値段を変えた瞬間に、
+  /// この行と次に出るストアの決済画面が食い違ったまま購入を決めさせることになる。
+  /// 比較表の Premium 欄([paywallEverydayQuestions])と同じことだけを言う。
+  String get paywallPricePending => _pick('Premium なら、毎日つづけて何問も聞けます',
+      'With Premium you can ask several questions a day');
+
+  /// 自前ペイウォールで Offering が取れなかったとき。
+  ///
+  /// 購入ボタンが押せない状態なので、**押せない理由まで言う**。
+  /// ここも数字は出さない。トライアルの有無も Offering が持っているので、
+  /// 「はじめの7日間は無料」も同じく書けない。
+  String get paywallPriceUnavailable => _pick(
+      'いまは金額を読み込めていません。少しあとで、もう一度ひらいてみてください。',
+      "We can't load the price right now. Please try opening this again in a moment.");
+
+  /// 価格を取り直す口。**開き直しをお願いするだけにしない。**
+  ///
+  /// 上の文言だけだと、その場でできることが何も無い画面になる。
+  /// 出すのは鍵のあるビルドだけ(鍵が無いと取り直しても何も変わらない)。
+  String get paywallReload => _pick('もう一度読み込む', 'Try loading again');
+
+  /// ペイウォールを**開く**ボタン(復習画面など)。ここで無料日数を約束しない。
+  /// ストアの商品にトライアルが付いているかは、Offering を読むまで分からない。
+  String get paywallCta => _pick('Premiumをみる', 'See Premium');
+
+  /// 購入ボタン。トライアルがあるときは [planFreeTrial] に差し替わる。
+  String get paywallSubscribe => _pick('このプランではじめる', 'Start with this plan');
+  String get paywallDismiss => _pick('無料のまま続ける', 'Keep using the free version');
+
+  /// 自動更新であることは購入画面に書く義務がある(Guideline 3.1.2)。
+  /// 「解約できます」だけでは、更新されることを伝えたことにならない。
+  String get paywallCancelNote => _pick('登録は自動更新されます。いつでも解約できます',
+      'Your subscription renews automatically. Cancel anytime');
+  String get paywallFree => _pick('無料', 'Free');
+  String get paywallPremium => _pick('Premium', 'Premium');
+  String get paywallRowSessions => _pick('セッション', 'Sessions');
+  String get paywallRowKarte => _pick('カルテ', 'Karte');
+  String get paywallRowFollowup => _pick('先輩のあと追い質問', 'Follow-up questions');
+  String get paywallEverydayOne => _pick('毎日1問', 'One question every day');
+
+  /// Premium のセッション枠。
+  ///
+  /// **「何問でも」と書いてはいけない。** `PREMIUM_SECONDS_PER_DAY` の
+  /// フェアユース上限があるので、無制限を約束すると**買ったあとにAPIが断る**。
+  /// ホームでは残り時間を見せるが、購入画面でも「無制限」と誤認させない。
+  /// (HAMM の「誠実なペイウォール」に正面から反する)。
+  /// 通常利用では一度も当たらない上限なので、**当たらないことを言う**。
+  String get paywallEverydayQuestions => _pick('毎日、続けて何問も', 'Several questions a day');
+  String get paywallTodayOnly => _pick('当日のみ', 'Today only');
+  String get paywallHistory => _pick('穴の復習と履歴', 'Review and history');
+
+  /// 比較表の「あり」。`✓`(U+2713)は ZenMaruGothic に字形が無く、
+  /// golden で空欄に見えていた。フォントが持っている字だけで書く。
+  String get paywallIncluded => _pick('○', 'Yes');
+
+  // --- プラン(RevenueCatのpackageから作る) ---
+  String get planWeekly => _pick('1週間', 'Weekly');
+  String get planMonthly => _pick('1か月', 'Monthly');
+  String get planYearly => _pick('1年', 'Yearly');
+  String planPerMonth(String price) => _pick('月あたり $price', '$price / month');
+
+  /// 「おすすめ」ではなく計算した事実として出す(煽らない)。
+  String get planBestValue => _pick('月あたりがいちばん安い', 'Lowest monthly price');
+  String planFreeTrial(int days) =>
+      _pick('はじめの$days日間は無料', 'First $days days free');
+
+  // --- 購入のお礼 ---
+  //
+  // 「ご購入ありがとうございます」と書けない場合が3つある。
+  // 無料トライアル(まだ1円も払っていない)・復元(買い直していない)・
+  // 決済は通ったが未反映(祝ってはいけない)。見出しを分けているのはそのため。
+
+  /// 買った。素直にお礼を言っていい唯一のケース。
+  String get thanksTitle => _pick('ありがとうございます', 'Thank you');
+  String get thanksBody =>
+      _pick('これから、もっと長く話せます。', 'Now we have more lesson time together.');
+
+  /// 無料トライアルが始まった。**お礼ではなく、事実から書く。**
+  String thanksTrialTitle(int days) =>
+      _pick('$days日間、ぜんぶ使えます', 'Everything is open for $days days');
+
+  /// 期限が読めなかったとき。日数を騙るくらいなら、日数を言わない。
+  /// ここでお礼に落とすと、払っていない人にお礼を言うことになる。
+  String get thanksTrialTitlePlain => _pick('ぜんぶ、使えます', 'Everything is open');
+
+  /// 課金がいつ始まるかを、先に、はっきり言う(§6)。
+  String thanksTrialBody(String date) => _pick('$date までは無料です。その日から請求が始まります。',
+      "It's free until $date. Billing starts that day.");
+
+  /// 機種変更などで戻ってきた人。買い直していないので、お礼は言わない。
+  String get thanksRestoredTitle => _pick('おかえりなさい', 'Welcome back');
+  String thanksRestoredBody(String date) =>
+      _pick('契約は $date まで有効です。', 'Your subscription is active until $date.');
+
+  /// 解放されたもの。ペイウォールの比較表と同じ3つを、同じ順で出す。
+  String get thanksUnlockedSessions =>
+      _pick('今日の持ち時間が増えました', 'More lesson time each day');
+  String get thanksUnlockedHistory =>
+      _pick('埋めた穴が、ぜんぶ残ります', 'Every gap you fill stays on record');
+  String get thanksUnlockedFollowup =>
+      _pick('先輩があと追いで質問します', 'Your senpai follows up with more questions');
+
+  String get thanksStart => _pick('はじめる', 'Get started');
+
+  /// 自動更新であることは、祝っている画面でも省かない(Guideline 3.1.2)。
+  String thanksRenewsOn(String date) =>
+      _pick('$date に更新されます・いつでも解約できます', 'Renews on $date · Cancel anytime');
+  String get thanksCancelAnytime => _pick('いつでも解約できます', 'Cancel anytime');
+
+  // --- 購入の復元・契約の管理 ---
+  String get paywallRestore => _pick('購入を復元する', 'Restore purchases');
+  // 復元できたときの文言はここに無い。SnackBar ではなく、
+  // お礼の画面([ThanksScreen])が「おかえりなさい」を出す。
+  String get paywallRestoredNothing => _pick('このアカウントに、復元できる購入は見つかりませんでした',
+      'No previous purchases were found for this account');
+  String get manageSubscription => _pick('契約の管理', 'Manage subscription');
+  String premiumEndsOn(String date) => _pick('$date に終わります。それまではこのまま使えます',
+      'Ends on $date. Everything stays available until then');
+  String premiumRenewsOn(String date) =>
+      _pick('$date に更新されます', 'Renews on $date');
+  String premiumBillingStarts(String date) =>
+      _pick('$date から請求が始まります', 'Billing starts on $date');
+
+  /// 契約している印。ホーム右上と設定に出す。
+  ///
+  /// **ランクや称号ではない。** 数えるのは連続日数と埋めた穴だけなので、
+  /// ここは「今どっちの状態か」の表示に留める。
+  /// 商品名なので日英で変えない。
+  String get premiumBadge => 'Premium';
+  String get premiumActive => _pick('有効', 'Active');
+  String get premiumTrialBadge => _pick('無料おためし中', 'Free trial');
+
+  /// Test Store で動いているビルドの表示。実売と取り違えないための注記。
+  String get testStoreNotice =>
+      _pick('テストストアです(実際の請求は発生しません)', 'Test Store — you will not be charged');
+
+  // --- エラー ---
+  /// 購入が通ったのに entitlement が付かなかった。ダッシュボードの設定漏れ。
+  String get purchaseErrorNotEntitled => _pick(
+    '購入は完了しましたが、まだ反映されていません。'
+    '少し時間をおいて「購入を復元する」を試してみてください。',
+    'Your purchase went through but has not unlocked yet. '
+        'Please wait a moment and tap "Restore purchases".',
+  );
+  String get purchaseErrorNetwork => _pick(
+    '通信が届きませんでした。電波のいいところで、もう一度試してみてください。',
+    "We couldn't reach the store. Please try again with a better connection.",
+  );
+  String get purchaseErrorStore => _pick(
+    'ストア側で問題が起きています。少し時間をおいて試してみてください。',
+    'The store is having trouble right now. Please try again shortly.',
+  );
+  String get purchaseErrorNotAllowed => _pick('この端末では購入できない設定になっています。',
+      'This device is not allowed to make purchases.');
+  String get purchaseErrorAlreadyOwned => _pick(
+    'すでに契約があります。「購入を復元する」から戻せます。',
+    'You already have a subscription. Tap "Restore purchases" to bring it back.',
+  );
+  String get purchaseErrorPending => _pick(
+    '支払いの確認を待っています。完了すると自動で使えるようになります。',
+    'Waiting for your payment to be confirmed. It will unlock automatically.',
+  );
+  String get purchaseErrorConfiguration => _pick(
+    'いま購入できない状態です。直しますので、少し待ってください。',
+    'Purchases are unavailable right now. We are looking into it.',
+  );
+
+  /// 「◯年◯月◯日」。intl を直接の依存に足さずに済ませるための最小の整形。
+  String date(DateTime value) => _pick(
+    '${value.year}年${value.month}月${value.day}日',
+    '${_monthNames[value.month - 1]} ${value.day}, ${value.year}',
+  );
+
+  static const List<String> _monthNames = <String>[
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
+  String get errorGeneric => _pick('うまくいきませんでした。少し時間をおいて試してみてください。',
+          'Something went wrong. Please try again shortly.');
+
+  /// 圏外・タイムアウトなど、送信そのものが届かなかったとき。
+  /// サーバの文言が返ってこない経路なので、アプリ側で持つ。
+  String get errorNetwork => _pick(
+        'うまく送れませんでした。電波の届くところで、もう一度お願いします。',
+        "We couldn't send that. Please try again where the signal is better.",
+      );
+  String get errorRetry => _pick('もう一度', 'Try again');
+
+  // --- 先輩の表情(読み上げ用のラベル。`senpai_face.dart` の `SenpaiMood` と対応)---
+  String get senpaiWaiting => _pick('先輩が待っています', 'Your senpai is waiting');
+  String get senpaiListening => _pick('先輩が聞いています', 'Your senpai is listening');
+
+  /// **教え返しが伝わった側の顔。** `just got it` のままだと
+  /// 「先輩がいま単元を理解した」と読めてしまうので、納得の向きを変える。
+  String get senpaiDelighted => _pick('先輩が納得しています', 'Your senpai is convinced');
+
+  /// 困っているのは**先輩のほう**(`SenpaiMood.puzzled` の定義)。
+  /// 生徒が詰まったときには出ないので、「考えています」ではなく困り顔として読む。
+  String get senpaiPuzzled =>
+      _pick('先輩が困っています', 'Your senpai is having trouble');
+
+  // --- 板書の読み上げ(`board_speech.dart`)---
+  //
+  // 板書は `Math.tex` と `CustomPaint` で描かれていて、そのままでは
+  // **VoiceOver から完全に不可視**。板書はプロダクトの中心なので、
+  // ここが欠けると目が見えない生徒には授業が存在しないのと同じになる。
+  //
+  // **英字はそのまま残す。** 1文字の英字はスクリーンリーダーがロケールなりに
+  // 読むので、「エックス」と書くと二重に読まれたり英語音声で崩れたりする。
+  // 言葉にするのは**構造と記号**だけ。
+
+  /// 分数。**日本語は「B分のA」で順序が逆になる。**
+  String boardSpeechFraction(String numerator, String denominator) =>
+      _pick('$denominator 分の $numerator', '$numerator over $denominator');
+  String boardSpeechSquareRoot(String body) => _pick('ルート $body', 'square root of $body');
+  String boardSpeechNthRoot(String n, String body) =>
+      _pick('$n 乗根 $body', 'the $n-th root of $body');
+  String boardSpeechPower(String exponent) => _pick('の $exponent 乗', 'to the power of $exponent');
+  String boardSpeechSubscript(String index) => _pick('の 添字 $index', 'sub $index');
+  String boardSpeechVector(String body) => _pick('ベクトル $body', 'vector $body');
+
+  /// 上線(`\overline{AB}` / `\bar{x}`)。線分・共役複素数・平均で使う。
+  /// **何を意味するかは文脈で変わる**ので、読み上げは「線が引いてある」までに留める。
+  String boardSpeechOverline(String body) => _pick('$body の上に線', '$body with a bar');
+
+  /// 図形は「厳密な読み上げ」より「**何が描かれているか**」で足りる。
+  String boardSpeechTriangle(String vertices, String marks) => _pick(
+        '三角形 $vertices。$marks',
+        'Triangle $vertices. $marks',
+      );
+  String boardSpeechRightAngle(String vertex) => _pick('頂点 $vertex は直角', 'a right angle at $vertex');
+  String boardSpeechAngle(String vertex, String label) =>
+      _pick('頂点 $vertex の角は $label', 'the angle at $vertex is $label');
+  /// 英語の例文の読み上げ。**下線は音にならない**ので、focus を言葉にする。
+  String boardSpeechSentence(String text, String gloss, String focus) {
+    final StringBuffer buffer = StringBuffer(text);
+    if (gloss.isNotEmpty) {
+      buffer.write(_pick('。訳は $gloss', '. Meaning: $gloss'));
+    }
+    if (focus.isNotEmpty) {
+      buffer.write(_pick('。注目するのは $focus', '. The focus is $focus'));
+    }
+    return buffer.toString();
+  }
+
+  /// 対比表の読み上げ。列と行を1文に畳む(表として読ませる手段が無いため)。
+  String boardSpeechCompare(String title, String columns, String rows) {
+    final String heading = title.isEmpty ? _pick('対比表', 'A comparison') : title;
+    return _pick('$heading。$columns の順に、$rows', '$heading. Columns: $columns. Rows: $rows');
+  }
+
+  /// 対比表を1文に畳むときの区切り。読み上げでの間になる。
+  String get boardSpeechCompareSeparator => _pick(' と ', ' vs ');
+
+  String boardSpeechCircle(String radius, String labels) =>
+      _pick('円。半径 $radius。$labels', 'A circle with radius $radius. $labels');
+  String boardSpeechPlot(String fn, String min, String max, String marks) => _pick(
+        'グラフ。$fn。x の範囲は $min から $max。$marks',
+        'A graph of $fn for x from $min to $max. $marks',
+      );
+
+  /// 作図の読み上げ。**SVGは読み上げられない**ので、サーバが一緒に送ってくる
+  /// `alt` をそのまま使う(作図の宣言はサーバが持っているので、文言も向こうで書ける)。
+  /// `alt` が無いときだけ、この定型に落ちる。
+  String get boardSpeechFigure => _pick('図', 'A figure');
+
+  /// 記号を言葉にする。**スクリーンリーダーごとの読み方の揺れを消す**ため、
+  /// 記号のまま渡さずにこちらで言葉にしておく。
+  ///
+  /// **順序に意味がある。** `board_speech.dart` は上から順に `replaceAll` するので、
+  /// **長いものを先に置く**(`\cdots` より先に `\cdot` を当てると「かける s」に化ける)。
+  /// 同じ理由で `\infty` は `\in` より先、`\leq` は `\le` より先に並べてある。
+  /// ここに足すときは、その語を接頭辞に持つ語が上にあるかを必ず確かめること。
+  Map<String, String> get boardSpeechSymbols => _ja
+      ? const <String, String>{
+          // 度。`^` ごと畳まないと「90 の 度 乗」に読める(指数の畳みが `\` に当たらない)。
+          r'^\circ': ' 度 ',
+          r'\cdots': ' 以下同様に ', r'\ldots': ' 以下同様に ', r'\dots': ' 以下同様に ',
+          r'\cdot': ' かける ', r'\pm': ' プラスマイナス ', r'\mp': ' マイナスプラス ',
+          r'\times': ' かける ', r'\div': ' わる ',
+          r'\leq': ' 以下 ',
+          r'\geq': ' 以上 ', r'\neq': ' ノットイコール ', r'\to': ' に近づく ',
+          r'\le': ' 以下 ', r'\ge': ' 以上 ', r'\ne': ' ノットイコール ',
+          r'\lt': ' 小なり ', r'\gt': ' 大なり ', r'\approx': ' およそ等しい ',
+          r'\therefore': ' よって ', r'\because': ' なぜならば ',
+          r'\Leftrightarrow': ' 同値 ', r'\Rightarrow': ' ならば ',
+          // 図形
+          r'\angle': ' 角 ', r'\triangle': ' 三角形 ', r'\perp': ' に垂直 ',
+          r'\parallel': ' に平行 ', r'\sim': ' 相似 ', r'\cong': ' 合同 ',
+          r'\equiv': ' 合同 ', r'\circ': ' 度 ',
+          // 集合
+          r'\emptyset': ' 空集合 ', r'\varnothing': ' 空集合 ',
+          r'\infty': ' 無限大 ', r'\notin': ' に属さない ', r'\in': ' に属する ',
+          r'\subset': ' は部分集合 ', r'\supset': ' を含む ',
+          r'\cap': ' かつ ', r'\cup': ' または ',
+          r'\sum': ' 総和 ', r'\int': ' 積分 ', r'\lim': ' 極限 ',
+          r'\sin': ' サイン ', r'\cos': ' コサイン ', r'\tan': ' タンジェント ',
+          r'\log': ' ログ ', r'\ln': ' 自然対数 ', r'\theta': ' シータ ',
+          r'\alpha': ' アルファ ',
+          r'\beta': ' ベータ ', r'\pi': ' パイ ',
+          // 集合の波括弧。構造の `{}` を落とす前に言葉にしないと、
+          // バックスラッシュだけが読み上げに残る。
+          r'\{': ' 集合 かっこ ', r'\}': ' 集合 かっことじ ',
+          '=': ' イコール ', '+': ' プラス ', '-': ' マイナス ',
+          '<': ' 小なり ', '>': ' 大なり ', '(': ' かっこ ', ')': ' かっことじ ',
+        }
+      : const <String, String>{
+          r'^\circ': ' degrees ',
+          r'\cdots': ' and so on ', r'\ldots': ' and so on ', r'\dots': ' and so on ',
+          r'\cdot': ' times ', r'\pm': ' plus or minus ', r'\mp': ' minus or plus ',
+          r'\times': ' times ', r'\div': ' divided by ',
+          r'\leq': ' less than or equal to ',
+          r'\geq': ' greater than or equal to ', r'\neq': ' not equal to ',
+          r'\le': ' less than or equal to ', r'\ge': ' greater than or equal to ',
+          r'\ne': ' not equal to ', r'\lt': ' less than ', r'\gt': ' greater than ',
+          r'\approx': ' approximately equals ',
+          r'\to': ' approaches ', r'\therefore': ' therefore ', r'\because': ' because ',
+          r'\Leftrightarrow': ' if and only if ', r'\Rightarrow': ' implies ',
+          r'\angle': ' angle ', r'\triangle': ' triangle ', r'\perp': ' perpendicular to ',
+          r'\parallel': ' parallel to ', r'\sim': ' is similar to ',
+          r'\cong': ' is congruent to ', r'\equiv': ' is congruent to ', r'\circ': ' degrees ',
+          r'\emptyset': ' the empty set ', r'\varnothing': ' the empty set ',
+          r'\infty': ' infinity ', r'\notin': ' is not in ', r'\in': ' is in ',
+          r'\subset': ' is a subset of ', r'\supset': ' contains ',
+          r'\cap': ' intersect ', r'\cup': ' union ',
+          r'\sum': ' the sum of ', r'\int': ' the integral of ', r'\lim': ' the limit of ',
+          r'\sin': ' sine ', r'\cos': ' cosine ', r'\tan': ' tangent ',
+          r'\log': ' log ', r'\ln': ' natural log ', r'\theta': ' theta ',
+          r'\alpha': ' alpha ',
+          r'\beta': ' beta ', r'\pi': ' pi ',
+          r'\{': ' open brace ', r'\}': ' close brace ',
+          '=': ' equals ', '+': ' plus ', '-': ' minus ',
+          '<': ' less than ', '>': ' greater than ', '(': ' open bracket ',
+          ')': ' close bracket ',
+        };
+
+  // --- 親レポート(§5-1・§5-2)---
+  //
+  // 親へ届く文章なので、アプリ内だけの短いラベルよりも意味を省略しない。
+  // 数字は「埋めた穴」と「連続日数」だけ。正答率・点数・順位に読める語を置かない。
+  String get parentReportTitle => _pick('今月のレポート', 'This month\'s report');
+  String get parentReportOpen =>
+      _pick('今月の親レポートをひらく', 'Open this month\'s parent report');
+  String parentReportPeriod(String start, String end) => _pick('$start〜$end', '$start – $end');
+  String parentReportFilledLine(int count) =>
+      _pick('今月、埋めた穴: $count', 'Gaps filled this month: $count');
+  String parentReportStreakLine(int days) =>
+      _pick('連続日数: $days日', 'Current streak: $days days');
+  String get parentReportTopicsTitle =>
+      _pick('説明できるようになった単元', 'Topics they can now explain');
+  String get parentReportTopicsEmpty =>
+      _pick('今月は、ここに載る単元がまだありません', 'No topics to list here yet this month');
+  String get parentReportQuotesTitle => _pick('本人の言葉', 'In their own words');
+  String get parentReportQuotesEmpty =>
+      _pick('今月は、ここに載る説明がまだありません', 'No explanation to quote here yet this month');
+  String parentReportQuote(String quote) => _pick('「$quote」', '“$quote”');
+
+  /// 親へ渡す料金。**数字は Offering から取れたときだけ**書く。
+  ///
+  /// 据え置き価格を持つと、RevenueCat側の商品を変えた日にメールだけ古い額になる。
+  /// 取れないときは推測せず、ストアの購入画面が正だと伝える。
+  String parentReportPriceNote({String? plan, String? price}) {
+    if (plan == null || price == null) {
+      return _pick(
+        '料金はストアの購入画面で確認できます。',
+        'The current price is shown in the store purchase screen.',
+      );
+    }
+    final String line = paywallPriceLine(plan, price);
+    return _pick(
+      'この先も続ける場合の料金は、$lineです。',
+      'The current price to keep going is $line.',
+    );
+  }
+
+  String get parentReportPreviewNote => _pick(
+        '下に見えている本文が、そのままメールに入ります。引用も含めて、送る前に確認してください。',
+        'The text below goes into the email exactly as shown. Review every quote before sharing.',
+      );
+  String get parentReportSendEmail => _pick('メールで親に送る', 'Email this to a parent');
+  String get parentReportDraftNote => _pick(
+        'メールの下書きを開くだけです。宛先と送信は、メールアプリで決められます。',
+        'This only opens a draft. You choose the recipient and send it from your mail app.',
+      );
+  String get parentReportMailSubject =>
+      _pick('カタルテ 今月のレポート', 'Katarute — this month\'s report');
+  String get parentReportLocked => _pick(
+        '親レポートは、まだ開いていません。Premiumになると、今月の記録を見てから親に送れます。',
+        'The parent report is not open yet. Premium lets you review this month\'s record before emailing it.',
+      );
+
+  // --- 穴の自己申告(計画書§2) ---
+  //
+  // **採点者は本人だけ。**「まだ」を失敗・減点・連続記録の喪失に結びつけず、
+  // 何も変わらない選択肢として同じ場所に置く。残数や達成率も出さない。
+  String get holeSelfReportQuestion =>
+      _pick('これ、言えるようになった?', 'Can you explain this now?');
+  String get holeSelfReportNoPressure => _pick(
+        '決めるのはあなたです。「まだ」を選んでも、穴も記録もそのままです。',
+        'You decide. Choosing “not yet” leaves your gap and record unchanged.',
+      );
+  String get holeSelfReportLater => _pick(
+        '今は決めなくても、あとで復習画面から選べます。',
+        'You can leave this for now and choose later from the review screen.',
+      );
+  String get holeSelfReportFilling =>
+      _pick('カルテに反映しています…', 'Updating your karte…');
+
+  // --- 学習計画(§4-3。有料・音声で作る)---
+  //
+  // 入力欄のラベルは置かない。日付・範囲・教材は先輩が順に口で聞き、
+  // 画面の文言は「話し始める」と、できた計画を読むための見出しだけにする。
+  String get planTitle => _pick('学習計画', 'Study plan');
+  String get planIntroTitle =>
+      _pick('テストまで、一緒に組もっか。', "Let's map out the test.");
+  String get planIntroBody => _pick(
+    'テストの日、範囲、使っている教材を、先輩がひとつずつ聞きます。入力欄はありません。',
+    'Your senpai asks for the date, the range, and what you study from — one at a time, out loud.',
+  );
+  String get planCreate => _pick('先輩と計画をつくる', 'Make a plan with senpai');
+  String get planRebuild => _pick('口で組み直す', 'Rebuild it out loud');
+  String get planConnecting => _pick('先輩を呼んでいます', 'Calling your senpai');
+  String get planListening => _pick('聞いています', 'Listening');
+  String get planSaving => _pick('計画をまとめています', 'Putting your plan together');
+  String get planEndConversation => _pick('今日はここまで', "Let's stop here");
+  String get planLoadFailed => _pick(
+    '計画を読み込めませんでした。電波の届くところでもう一度お願いします。',
+    "We couldn't load your plan. Please try again with a better connection.",
+  );
+  String get planConnectionFailed => _pick(
+    'うまくつながりませんでした。マイクと電波を確かめてみてください。',
+    "We couldn't connect. Check your mic and connection, then try again.",
+  );
+  String get planSenpaiUnavailable => _pick(
+    '先輩を呼べませんでした。少し時間をおいて、もう一度お願いします。',
+    "Your senpai couldn't join. Please try again in a moment.",
+  );
+  String get planResultPending => _pick(
+    '新しい計画をまだ受け取れていません。前の計画はこのまま残しています。',
+    "The new plan hasn't arrived yet. Your previous plan is still here.",
+  );
+  String planRevisionNote(String said) =>
+      _pick('「$said」を受けて組み直しました。', 'Rebuilt after: “$said”');
+  String planExamDate(String date) => _pick('テスト: $date', 'Test: $date');
+  String get planScope => _pick('範囲', 'Range');
+  String get planMaterials => _pick('使う教材', 'Materials');
+  String get planNoMaterials =>
+      _pick('教材なし。ノートで進めます', 'No book needed — use your notes');
+  String get planRestDay => _pick('休む日', 'Day off');
+  String planMinutes(int minutes) => _pick('$minutes分', '$minutes min');
+  String planItemStatus(String status) => switch (status) {
+    'done' => _pick('できた', 'Done'),
+    'moved' => _pick('組み直した', 'Moved'),
+    _ => _pick('これから', 'Up next'),
+  };
+
+  /// topic_id の接頭辞は課程を表す(ADR 0005 / 0006)。
+  /// 割合や理解度を作らず、科目名(中学は学年)だけを出す。
+  ///
+  /// **接頭辞を足したらここも足すこと。** 対応表は
+  /// `packages/curriculum/src/schema.ts` と `packages/contract/src/karte.ts` にも
+  /// あり、ここが3か所目になる(contract が依存を持たない層なので解けない)。
+  /// 忘れると既定の「数学」に落ちて、英語の単元に「数学」と出る —
+  /// `test/curriculum_label_test.dart` が全コースコードで検出する。
+  String planSubject(String topicId) {
+    final String code = topicId.split('-').first;
+    return switch (code) {
+      'M1' => _pick('数学I', 'Mathematics I'),
+      'MA' => _pick('数学A', 'Mathematics A'),
+      'M2' => _pick('数学II', 'Mathematics II'),
+      'MB' => _pick('数学B', 'Mathematics B'),
+      'M3' => _pick('数学III', 'Mathematics III'),
+      'MC' => _pick('数学C', 'Mathematics C'),
+      'J1' => _pick('中1 数学', 'Grade 7 Math'),
+      'J2' => _pick('中2 数学', 'Grade 8 Math'),
+      'J3' => _pick('中3 数学', 'Grade 9 Math'),
+      'JE' => _pick('中学英語', 'Junior high English'),
+      'E1' => _pick('英コミュI', 'English Communication I'),
+      'E2' => _pick('英コミュII', 'English Communication II'),
+      'L1' => _pick('論表I', 'Logic and Expression I'),
+      'A1' => 'Algebra 1',
+      'GE' => 'Geometry',
+      'A2' => 'Algebra 2',
+      'PC' => 'Precalculus',
+      'CL' => 'Calculus',
+      'ST' => 'Statistics',
+      _ => _pick('数学', 'Math'),
+    };
+  }
+
+  // --- 下部ナビゲーション ---
+  //
+  // 機能名とは別に持つ。画面タイトルを短くしたくなったとき、タブの読み上げまで
+  // 意図せず変わると、3つの大域的な行き先が端末や言語によって揺れるため。
+  String get navigationHome => _pick('ホーム', 'Home');
+  String get navigationPlan => _pick('計画', 'Plan');
+  String get navigationSettings => _pick('設定', 'Settings');
+}
+
+class AppStringsDelegate extends LocalizationsDelegate<AppStrings> {
+  const AppStringsDelegate();
+
+  @override
+  bool isSupported(Locale locale) => AppStrings.supportedLocales
+      .any((Locale it) => it.languageCode == locale.languageCode);
+
+  @override
+  Future<AppStrings> load(Locale locale) async => AppStrings(locale);
+
+  @override
+  bool shouldReload(AppStringsDelegate old) => false;
+}

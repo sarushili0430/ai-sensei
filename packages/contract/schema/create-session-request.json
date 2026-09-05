@@ -1,0 +1,52 @@
+{
+  "$ref": "#/definitions/create-session-request",
+  "definitions": {
+    "create-session-request": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "new",
+            "review"
+          ],
+          "default": "new"
+        },
+        "locale": {
+          "type": "string",
+          "enum": [
+            "ja",
+            "en"
+          ],
+          "default": "ja"
+        },
+        "school_stage": {
+          "type": "string",
+          "enum": [
+            "junior_high",
+            "high_school"
+          ],
+          "default": "high_school"
+        },
+        "hole_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "problem_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "topic_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(M1|MA|M2|MB|M3|MC|A1|GE|A2|PC|CL|ST|J1|J2|J3|JE|E1|E2|L1)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+          },
+          "maxItems": 5
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

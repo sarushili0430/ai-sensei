@@ -1,0 +1,37 @@
+{
+  "name": "@ai-sensei/agent",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "LiveKit Agents の会話パイプライン(後輩AI)",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "node --experimental-strip-types --env-file=.env src/index.ts dev",
+    "start": "node --experimental-strip-types src/index.ts start",
+    "download-files": "livekit-agents download-files",
+    "docker:build": "docker build -t ai-sensei-agent:local ../..",
+    "docker:run": "docker run --rm --env-file .env -p 8081:8081 ai-sensei-agent:local"
+  },
+  "dependencies": {
+    "@ai-sensei/contract": "workspace:*",
+    "@ai-sensei/curriculum": "workspace:*",
+    "@ai-sensei/figure": "workspace:*",
+    "@ai-sensei/guardrail": "workspace:*",
+    "@ai-sensei/prompts": "workspace:*",
+    "@google/genai": "^2.17.1",
+    "@livekit/agents": "^1.6.1",
+    "@livekit/agents-plugin-anthropic": "^1.6.1",
+    "@livekit/agents-plugin-cartesia": "1.6.1",
+    "@livekit/agents-plugin-deepgram": "^1.6.1",
+    "@livekit/agents-plugin-elevenlabs": "1.6.1",
+    "@livekit/agents-plugin-google": "^1.6.1",
+    "@livekit/agents-plugin-silero": "^1.6.1",
+    "@sentry/node": "^10.69.0",
+    "katex": "^0.18.3",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/katex": "^0.16.8"
+  }
+}

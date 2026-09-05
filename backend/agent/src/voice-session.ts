@@ -1,0 +1,346 @@
+import type { Locale } from "@ai-sensei/contract";
+import { toSpeakableJa } from "@ai-sensei/guardrail";
+import { type JobContext, inference, tokenize, tts, voice } from "@livekit/agents";
+import * as cartesia from "@livekit/agents-plugin-cartesia";
+import * as deepgram from "@livekit/agents-plugin-deepgram";
+import * as elevenlabs from "@livekit/agents-plugin-elevenlabs";
+import * as google from "@livekit/agents-plugin-google";
+import type { AgentConfig } from "./config.ts";
+import { CachedInstructionsLLM } from "./conversation-llm.ts";
+import { GeminiLiveTTS } from "./gemini-live-tts.ts";
+import { ttsInstructionsForLocale } from "./senpai-voice.ts";
+import { JapaneseSentenceTokenizer } from "./sentence-tokenizer.ja.ts";
+import type { PendingSpeech, SpeechSynthesizer } from "./speech-prefetch.ts";
+
+/** `speech-prefetch.ts` と同じ別名(`@livekit/rtc-node` へ直接依存しない)。 */
+type AudioFrame = tts.SynthesizedAudio["frame"];
+
+/**
+ * 音声パイプラインの組み立てをここだけに置く。
+ *
+ * #99 の `ttsTextTransforms`、#101 の `sentenceTokenizer`、#102 の
+ * `turnHandling`、STT設定は授業・計画で別々に足すと会話の片方だけが古いまま残る。
+ * 効果を比較できるよう、設定を変えるPRはこのファクトリだけを触る。
+ */
+export type VoiceSessionOptions = {
+  ctx: JobContext;
+  config: AgentConfig;
+  locale: Locale;
+  /** 先輩の文体の振れ幅。授業 0.6 / 計画 0.4 — 現状の値をそのまま保つ */
+  llmTemperature: number;
+};
+
+const incompleteMathTokenPattern = /[A-Za-z0-9^²√∠△:/°≦≧≠≤≥→⇒θπ]+$/u;
+
+/**
+ * TTS入力を、数式記号を途中で分断しない単位にしてから日本語の読みへ替える。
+ *
+ * SDKの変換は任意のチャンク境界で呼ばれるため、`∠` と `ABC` が別チャンクでも
+ * 末尾の数式らしい断片を次のチャンクまで保留する。文末まで全量を待つ必要はない。
+ */
+export function jaSpeakable(text: ReadableStream<string>): ReadableStream<string> {
+  let buffer = "";
+  return text.pipeThrough(
+    new TransformStream<string, string>({
+      transform(chunk, controller) {
+        buffer += chunk;
+        const incompleteToken = buffer.match(incompleteMathTokenPattern)?.[0] ?? "";
+        const completeText = buffer.slice(0, buffer.length - incompleteToken.length);
+        if (completeText !== "") controller.enqueue(toSpeakableJa(completeText));
+        buffer = incompleteToken;
+      },
+      flush(controller) {
+        if (buffer !== "") controller.enqueue(toSpeakableJa(buffer));
+      },
+    }),
+  );
+}
+
+const defaultTtsTextTransforms = ["filter_markdown", "filter_emoji"] as const;
+
+export function ttsTextTransformsForLocale(locale: Locale) {
+  return locale === "ja" ? [...defaultTtsTextTransforms, jaSpeakable] : defaultTtsTextTransforms;
+}
+
+/**
+ * 先輩の声(Gemini TTS)。ロケールで変わるのは**読み方の指示だけ**で、声は変えない。
+ *
+ * Deepgram は言語がモデル名に埋まっていて日英で別ボイスだったが、Gemini は
+ * 1つの声が両方を喋る(ADR 0008)。日本語の文に混ざった英単語もこの声のまま読む。
+ */
+export function createGeminiTts(config: AgentConfig, locale: Locale): google.beta.TTS {
+  return new google.beta.TTS({
+    apiKey: config.GOOGLE_API_KEY,
+    model: config.GEMINI_TTS_MODEL,
+    voiceName: config.GEMINI_TTS_VOICE,
+    instructions: ttsInstructionsForLocale(locale),
+  });
+}
+
+/**
+ * 先輩の声(ElevenLabs)。**日英を1モデル・1ボイスで喋る**ので、ロケールで変わるのは
+ * `language` の指定だけ。声IDは環境変数が正で、既定値は置かない(`senpai-voice.ts`)。
+ *
+ * ADR 0003 で外したベンダーへ戻る道。外した理由は日本語が喋れないことではなく
+ * 「1社に寄せる」運用判断だったので、技術的な障害は無い。
+ *
+ * `wordTokenizer` に**文**の分割器を渡している。プラグインは `chunkLengthSchedule`
+ * 未指定なら `autoMode` を立て、そのとき「完全な文が来る」前提でWSへ流す。既定の分割器は
+ * 半角の文末記号しか見ないので、日本語は「。」で切れずに1文も送られないまま溜まる
+ * (Gemini/Deepgramで踏んだのと同じ罠。型は `WordTokenizer | SentenceTokenizer` で両方通る)。
+ */
+export function createElevenLabsTts(
+  config: AgentConfig,
+  locale: Locale,
+  sentenceTokenizer: tokenize.SentenceTokenizer,
+): elevenlabs.TTS {
+  return new elevenlabs.TTS({
+    apiKey: config.ELEVENLABS_API_KEY,
+    voiceId: config.ELEVENLABS_VOICE_ID,
+    model: config.ELEVENLABS_MODEL,
+    // **言語を明示する。**`eleven_flash_v2_5` は32言語を1モデルで喋るので、
+    // 指定しないと日本語の文に混ざった英単語で言語の推定が振れる。
+    // (モデルが言語指定を持たない版なら、プラグイン側で黙って無視されるだけ)
+    language: locale,
+    wordTokenizer: sentenceTokenizer,
+  });
+}
+
+/**
+ * 先輩の声(Cartesia)。ElevenLabsと同じく日英を1モデル・1ボイスで喋るので、ロケールで
+ * 変わるのは `language` だけ(型の `TTSLanguages` unionに 'ja' がある)。声IDは環境変数が
+ * 正で、既定値は置かない(`senpai-voice.ts`)。オプション名は `voiceId` ではなく **`voice`**。
+ *
+ * **鍵は明示的に渡す。**プラグイン(1.6.1)の `defaultTTSOptions` は
+ * `process.env.CARTESIA_API_KEY` を**モジュール読み込み時に1度だけ**captureする —
+ * Deepgramで踏んだのと同一の罠。渡さないと、検証済みの `config.CARTESIA_API_KEY` は
+ * 使われないまま、importより後に環境変数を入れた経路で鍵なしになる。
+ */
+export function createCartesiaTts(config: AgentConfig, locale: Locale): cartesia.TTS {
+  return new cartesia.TTS({
+    apiKey: config.CARTESIA_API_KEY,
+    model: config.CARTESIA_TTS_MODEL,
+    voice: config.CARTESIA_VOICE_ID,
+    language: locale,
+  });
+}
+
+/**
+ * 文分割器。**Gemini TTS はストリーミングを持たないので、ここが実質のTTFB**になる。
+ *
+ * 分割された1文がそのまま1リクエストなので、句点まで溜めてから投げると
+ * その待ちが丸ごと沈黙になる。日本語だけ自前の分割器を当てるのは Deepgram のときと
+ * 同じ理由で、SDK既定(`basic`)は半角の文末記号しか見ず「。」で切れない。
+ */
+export function sentenceTokenizerForLocale(locale: Locale): tokenize.SentenceTokenizer {
+  return locale === "ja" ? new JapaneseSentenceTokenizer() : new tokenize.basic.SentenceTokenizer();
+}
+
+/**
+ * セッションへ渡すTTS。**必ず `StreamAdapter` で包む。**
+ *
+ * `google.beta.TTS` は `capabilities.streaming === false` で、`stream()` は例外を投げる。
+ * 包まずに渡すとSDKが `ttsNode` の中で**既定の `BasicSentenceTokenizer`**で勝手に包む。
+ * それは半角の文末記号しか見ないので、日本語は生成が終わるまで1文も投げられず、
+ * 授業の最初の一言が丸ごと遅れる。分割器をこちらで選ぶために、包む側もこちらが持つ。
+ *
+ * 包むのは `gemini` と `cartesia`。`gemini-live` と `elevenlabs` は最初からWSを張れて
+ * **分割器も差し込める**ので包まない。`cartesia` は `streaming === true` を名乗るのに
+ * 分割器を差し込めないので包む(下のcaseの理由を読むこと)。**どの経路でも同じ分割器を
+ * 通す**ので、日本語の切り方は engine で変わらない。
+ */
+export function createSenpaiTts(config: AgentConfig, locale: Locale): tts.TTS {
+  const sentenceTokenizer = sentenceTokenizerForLocale(locale);
+  switch (config.TTS_ENGINE) {
+    case "gemini-live":
+      // 文の切り方は同じ分割器を内側で使う — 1文=1ターンなのは変わらないため。
+      return new GeminiLiveTTS({
+        apiKey: config.GOOGLE_API_KEY,
+        model: config.GEMINI_LIVE_TTS_MODEL,
+        voiceName: config.GEMINI_TTS_VOICE,
+        locale,
+        sentenceTokenizer,
+      });
+    case "elevenlabs":
+      return createElevenLabsTts(config, locale, sentenceTokenizer);
+    case "cartesia":
+      // `capabilities.streaming === true` だが**あえて包む**。プラグインの `SynthesizeStream`
+      // は文分割器(`tokenize.basic.SentenceTokenizer`)をprivateでハードコードしていて
+      // (1.6.1と1.7.0の両方で確認。ElevenLabsの `wordTokenizer` に相当する差し込み口が無い)、
+      // それは半角の文末記号しか見ない。素の `stream()` だと日本語は「。」で切れず、
+      // LLMが最後まで喋り終わるまで1文も合成されない(Gemini/Deepgram/ElevenLabsで
+      // 3回踏んだのと同じ罠)。
+      //
+      // 代償は1文=1リクエスト。`synthesize()` の実体は `/tts/bytes` への**素のHTTPS**で、
+      // プラグインのWSプール(`/tts/websocket`)は `stream()` 専用 — この経路では使われない。
+      // **だから `prewarm()` は呼ばない**(温まるのは使われないプールで、WSが1本無駄に開くだけ)。
+      // 接続はNodeのグローバルエージェント(Node 19+ はkeep-alive既定)で使い回されるが、
+      // アイドルのソケットは数秒で閉じるので、発話の1文目はTCP+TLSの確立を払いうる。
+      // `wordTimestamps`(既定true)も `stream()` 専用で、この経路のペイロードには乗らない。
+      // 文をまたぐ韻律(continuation)へ移る余地はREADMEに記録してある。
+      return new tts.StreamAdapter(createCartesiaTts(config, locale), sentenceTokenizer);
+    case "gemini":
+      return new tts.StreamAdapter(createGeminiTts(config, locale), sentenceTokenizer);
+  }
+}
+
+/**
+ * 先読み合成の口(`speech-prefetch.ts` が使う)。**セッションと同じTTS・同じ変換を通す。**
+ *
+ * `session.say(text, { audio })` は音声を渡した時点で `ttsNode` を通らないので、
+ * SDKが掛けている `ttsTextTransforms` も一緒に飛ぶ(1.6.1 `agent_activity.ts` の
+ * `ttsTask` は `audio` があるとTTS推論ごと省く)。**ここで自分で掛けないと、
+ * 先読みした手順だけ数式の読み(`toSpeakableJa`)とMarkdown除去が抜ける** —
+ * 「∠ABC」がそのまま読まれる手順と読まれない手順が混ざるという、いちばん気づきにくい壊れ方になる。
+ *
+ * 変換の一覧は {@link ttsTextTransformsForLocale} をそのまま使い、適用もSDKの
+ * `applyTextTransforms` に任せる。組み立てをこのファイルに閉じる約束(冒頭)を、
+ * 先読み経路でも守るため。
+ */
+export function createSpeechSynthesizer(options: {
+  tts: tts.TTS;
+  locale: Locale;
+}): SpeechSynthesizer {
+  const transforms = ttsTextTransformsForLocale(options.locale);
+
+  return (text: string): PendingSpeech => {
+    const abort = new AbortController();
+    const frames = (async (): Promise<readonly AudioFrame[] | null> => {
+      const spoken = await readAllText(
+        voice.textTransforms.applyTextTransforms(streamOfText(text), transforms),
+      );
+      if (abort.signal.aborted || spoken.trim() === "") return null;
+
+      const chunked = options.tts.synthesize(spoken, undefined, abort.signal);
+      const collected: AudioFrame[] = [];
+      try {
+        for await (const audio of chunked) collected.push(audio.frame);
+      } finally {
+        chunked.close();
+      }
+      // 中断されたぶんは渡さない。**途中まで**の音声を喋らせるくらいなら、
+      // 通常経路で最初から合成し直したほうが授業として正しい。
+      if (abort.signal.aborted) return null;
+      // **1フレームも返ってこなかったものを「成功した先読み」にしない。**
+      //
+      // 空の音声を `say(text, { audio })` へ渡すと、SDKはそれを**再生し終えた**と
+      // 見なして即座に返る(1.6.1 `agent_activity.ts` は `audio` があるとTTS推論ごと
+      // 省き、渡されたストリームを流すだけ)。つまり**その手順だけ声が出ないまま
+      // 板書が次の行へ進む** —— 8/25 のドッグフーディングで出た
+      // 「音声が一部再生されずに次へ進んでしまう」はこの形。
+      //
+      // 生成モデルのTTSは、落ちずに音声ゼロを返しうる(安全側の打ち切り・空応答)。
+      // `null` を返せば通常経路が同じ文をもう一度合成するので、最悪でも
+      // 「先読みが外れた手順」と同じ待ちに落ちるだけで、**無音では進まない**。
+      return collected.length === 0 ? null : collected;
+    })().catch(() => null);
+
+    return { frames, cancel: () => abort.abort() };
+  };
+}
+
+function streamOfText(text: string): ReadableStream<string> {
+  return new ReadableStream<string>({
+    start(controller) {
+      controller.enqueue(text);
+      controller.close();
+    },
+  });
+}
+
+async function readAllText(stream: ReadableStream<string>): Promise<string> {
+  const reader = stream.getReader();
+  let text = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += value;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return text;
+}
+
+export function createVoiceSession(options: VoiceSessionOptions): voice.AgentSession {
+  const { ctx, config, locale, llmTemperature } = options;
+  return new voice.AgentSession({
+    vad: ctx.proc.userData["vad"] as never,
+    // localeはAPIが受け付ける値なので、STTの言語もそれに合わせる。
+    // 日本語のモデルのまま英語を流すと、認識が崩れて会話が成立しない。
+    //
+    // モデルは `nova-3`。ドッグフーディングの「中々声を聞き取ってくれない」への対応で、
+    // `nova-2-general` から上げた。Nova-3 は日本語のモノリンガル(`language=ja`)を
+    // ストリーミングで正式にサポートしている(Deepgramのモデル対応表で確認済み)。
+    // **`nova-3-general` と書かないこと。**プラグイン(1.6.1)の `#validateModel` は
+    // `nova-3-general` を英語以外の言語で `nova-2-general` へ黙って戻すが、
+    // `nova-3` はそのままAPIへ通す。同じモデルの別名なのに、名前で挙動が分かれる。
+    stt: new deepgram.STT({
+      // **鍵は明示的に渡す。**プラグイン(1.6.1)の `defaultSTTOptions` は
+      // `process.env.DEEPGRAM_API_KEY` を**モジュール読み込み時に1度だけ**captureする。
+      // 渡さずに済ませると、検証済みの `config.DEEPGRAM_API_KEY` は使われないまま、
+      // importより後に環境変数を入れた経路(テスト・埋め込み利用)で鍵なしになる。
+      apiKey: config.DEEPGRAM_API_KEY,
+      model: "nova-3",
+      language: locale,
+      interimResults: true,
+    }),
+    // 素の `anthropic.LLM` ではなく `CachedInstructionsLLM`。1万トークン級の指示文が
+    // 毎ターン再送されるので、プロンプトキャッシュの印を足した版を使う。理由は
+    // `conversation-llm.ts`。効きは `voice_metrics` の `cached_tokens` で見る。
+    llm: new CachedInstructionsLLM({
+      apiKey: config.ANTHROPIC_API_KEY,
+      model: config.LLM_MODEL_CONVERSATION,
+      // 先輩の文体を安定させたいので、振れ幅は小さめにする
+      temperature: llmTemperature,
+    }),
+    // 声は**日英で同じ1つ**。Gemini のボイスは言語を選ばないので、日本語の文に
+    // 英単語が混ざってもそのまま読む(ADR 0008)。組み立ては `createSenpaiTts`。
+    tts: createSenpaiTts(config, locale),
+    // LiveKit SDK 1.6.1 の `voice/agent_activity.ts` は会話・`session.say()` とも先に `tee()` し、
+    // TTS枝だけへ `performTTSInference` 内でこの変換を適用する。字幕枝は元の文字列のまま流れる。
+    // 既定値も明示しないと自作変換を渡した時点でMarkdown・絵文字の除去が消える。
+    ttsTextTransforms: ttsTextTransformsForLocale(locale),
+    turnHandling: {
+      // `turn-detector-v1-mini` は日本語(ja)対応のローカルEOTモデル。モデル本体は
+      // `@livekit/local-inference` のOS別ネイティブ依存に同梱され、Workerが共有の
+      // inference processへ自動登録して起動時に読む。未指定でもSDKはdetectorを自動生成するが、
+      // hosted/dev環境では`v1`、それ以外では`v1-mini`を選ぶため、版を固定して#103の
+      // `eou_delay_ms`を環境差なく比較する。ネットワーク往復とInference課金も避けられる。
+      // 小さい`v1-mini`は`v1`より精度が落ちうる上に、コンテナのCPUを使う。精度が足りなければ
+      // #103のメトリクスを見てから`v1`へ上げる。
+      turnDetection: new inference.TurnDetector({ version: "v1-mini" }),
+      // `resolveEndpointing`は部分指定を既定へ併合するため、`fixed / minDelay: 300ms`を残して
+      // maxDelayだけを4秒にする。EOTが終わりと判定したときはminDelayだけ待ち、まだ話すと
+      // 判定したときはmaxDelayへ切り替わる（加算ではない）。教え返しで考える時間は3秒超を
+      // 確保しつつ、速く返せる場面まで遅くしない。
+      endpointing: { maxDelay: 4_000 },
+      // **TTSもターン確定前に走らせる。** 既定は `enabled: true` / `preemptiveTts: false` で、
+      // LLMだけが先読みされ、TTSは `_waitForScheduled()` を抜けてから動き出す
+      // (SDK 1.6.1 `voice/agent_activity.ts` の `produceSegments` の起動位置)。
+      //
+      // Deepgramの頃はWSが張りっぱなしでTTFBが小さく、その待ちは見えなかった。
+      // Gemini TTS は1文=1リクエストで最初の音までが重いので、上の endpointing の待ち
+      // (minDelay 300ms、EOTが「まだ話す」と見たら maxDelay 4,000ms)と直列に積み上がる。
+      // 先に走らせれば、その待ちの裏でGeminiが回る。
+      //
+      // 代償は**外したぶんの合成を捨てる**こと。ターンが確定しなければ
+      // `speechHandle._cancel()` で破棄され、Gemini TTSのトークン課金だけが残る。
+      // 教え返しは生徒が長く喋って途中で言い直す場でハズレやすいので、
+      // 入れっぱなしにせず `preemptiveLeadTime`(隠せた時間)と
+      // `preemptive generation enabled but chat context or tools have changed`(ハズレ)の
+      // 比を見ること。既定の歯止め(`maxRetries: 3` / `maxSpeechDuration: 10,000ms`)は残す。
+      preemptiveGeneration: { preemptiveTts: true },
+      interruption: {
+        // adaptiveは重なり音声をクラウドへ送るため、未成年の会話内容を外へ出さない方針から
+        // 今回は指定しない。ローカルのVADベース検出を使う。
+        // 咳や短い生活音で授業を切らず、実際に話し始めた生徒は止められるよう、
+        // 推奨範囲700〜1000msの中間寄りである800msまで確認する。
+        minDuration: 800,
+        // `minWords` は既定の0のままにする。SDKの語数カウントは空白区切りの英語前提で、
+        // 日本語は1発話が常に1語になるため、値を上げると生徒の割り込みを検出できない。
+      },
+    },
+  });
+}

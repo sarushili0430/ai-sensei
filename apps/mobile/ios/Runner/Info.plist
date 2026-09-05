@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>カタルテ</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>ja</string>
+		<string>en</string>
+	</array>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>ai_sensei</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(FLUTTER_BUILD_NAME)</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<!-- 標準的な暗号化(HTTPS)しか使っていない。
+	     これを書いておかないとTestFlightに上げるたびに輸出コンプライアンスの
+	     手入力を求められ、自動配布が人待ちで止まる。 -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<!-- 権限の説明文。空だと審査でリジェクトされ、
+	     キーごと無いと該当APIを呼んだ瞬間にクラッシュする。 -->
+	<key>NSCameraUsageDescription</key>
+	<string>ノートの写真を撮って、どの単元でつまずいているかを読み取るために使います。</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>解いた問題を声に出して説明してもらうために使います。</string>
+	<!-- 撮る以外の入口(撮影画面で枠をタップして出るシートの「アルバム」)。
+	     塾で撮ってきたノートや、送られてきた問題の画像を、その場で撮り直さずに
+	     出せるようにするため。 -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>すでに撮ってあるノートや問題の写真を選ぶために使います。</string>
+	<!-- **NSLocationWhenInUseUsageDescription は、意図的に置いていない。**
+
+	     App Store Connect から
+	       ITMS-90683: Missing purpose string in Info.plist
+	     が返ったときに、ここに用途文言を足したくなる。足さないこと。
+
+	     このアプリは地理での出し分けを一切していない。位置を参照していたのは
+	     OneSignal のネイティブ位置情報モジュール(OneSignalLocation)だけで、
+	     いまは codemagic.yaml の ONESIGNAL_DISABLE_LOCATION でリンクごと
+	     外してある。使っていない以上、用途文言に書ける本当のことが無い。
+
+	     加えて、このキーを置くと permission_handler_apple の Package.swift が
+	     Info.plist を読んで PERMISSION_LOCATION を 1 にするので、
+	     いまはコンパイルから外れている CoreLocation のコードまで復活する。
+	     つまり「警告を消すために足す」と、参照が減るどころか増える。
+
+	     App のプライバシー申告でも位置情報は「収集しない」にしている
+	     (docs/ci/store-setup.md の 1-7)。ここだけ足すと申告と食い違う。
+	     経緯は docs/ci/codemagic.md の「8. 位置情報を持ち込まない」。 -->
+	<!-- 復習プッシュを受け取るのに要る。これが無いと、アプリが起きていない間の
+	     通知の下ごしらえ(Notification Service Extension)が動かない。 -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneClassName</key>
+					<string>UIWindowScene</string>
+					<key>UISceneConfigurationName</key>
+					<string>flutter</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+					<key>UISceneStoryboardFile</key>
+					<string>Main</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+</dict>
+</plist>

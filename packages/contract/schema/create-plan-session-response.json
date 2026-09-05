@@ -1,0 +1,242 @@
+{
+  "$ref": "#/definitions/create-plan-session-response",
+  "definitions": {
+    "create-plan-session-response": {
+      "type": "object",
+      "properties": {
+        "plan_session_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "livekit": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "token": {
+              "type": "string",
+              "minLength": 1
+            },
+            "room": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "url",
+            "token",
+            "room"
+          ],
+          "additionalProperties": false
+        },
+        "current_plan": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "senpai",
+                    "template"
+                  ]
+                },
+                "intake": {
+                  "type": "object",
+                  "properties": {
+                    "exam_name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    },
+                    "exam_date": {
+                      "type": "string",
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                    },
+                    "scope": {
+                      "type": "object",
+                      "properties": {
+                        "topic_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^(M1|MA|M2|MB|M3|MC|A1|GE|A2|PC|CL|ST|J1|J2|J3|JE|E1|E2|L1)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 8
+                        },
+                        "said": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 120
+                        }
+                      },
+                      "required": [
+                        "topic_ids",
+                        "said"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "materials": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "maxItems": 4
+                    }
+                  },
+                  "required": [
+                    "exam_name",
+                    "exam_date",
+                    "scope",
+                    "materials"
+                  ],
+                  "additionalProperties": false
+                },
+                "days": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "date": {
+                        "type": "string",
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                      },
+                      "items": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "topic_id": {
+                              "type": "string",
+                              "pattern": "^(M1|MA|M2|MB|M3|MC|A1|GE|A2|PC|CL|ST|J1|J2|J3|JE|E1|E2|L1)-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+                            },
+                            "what": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 80
+                            },
+                            "material": {
+                              "anyOf": [
+                                {
+                                  "type": "integer",
+                                  "minimum": 0
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "minutes": {
+                              "type": "integer",
+                              "minimum": 10,
+                              "maximum": 60
+                            },
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "todo",
+                                "done",
+                                "moved"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "topic_id",
+                            "what",
+                            "material",
+                            "minutes",
+                            "status"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "maxItems": 3
+                      }
+                    },
+                    "required": [
+                      "date",
+                      "items"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "minItems": 1,
+                  "maxItems": 35
+                },
+                "revisions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "reason": {
+                        "type": "string",
+                        "enum": [
+                          "behind",
+                          "ahead",
+                          "facts_changed"
+                        ]
+                      },
+                      "said": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "at": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    },
+                    "required": [
+                      "reason",
+                      "said",
+                      "at"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "maxItems": 20
+                }
+              },
+              "required": [
+                "id",
+                "created_at",
+                "source",
+                "intake",
+                "days",
+                "revisions"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "plan_session_id",
+        "livekit",
+        "current_plan"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>プライバシーポリシー — カタルテ</title>
+<meta name="description" content="カタルテ(ai-sensei)のプライバシーポリシー。取得する情報、利用目的、外部サービスへの委託、保存期間、開示や利用停止の求め方。">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#FBFAF7">
+<link rel="alternate" hreflang="ja" href="./">
+<link rel="alternate" hreflang="en" href="../en/privacy/">
+<link rel="alternate" hreflang="x-default" href="./">
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230EA5E9'/%3E%3Cpath d='M40.3 77.5L25.5 83.5L20.7 59.1Z' fill='%23FBFAF7'/%3E%3Ccircle cx='50' cy='47.5' r='31.5' fill='%23FBFAF7'/%3E%3Cg fill='none' stroke='%2333323D' stroke-width='5.2' stroke-linecap='round'%3E%3Cpath d='M30 46Q37.5 37 45 46'/%3E%3Cpath d='M55 46Q62.5 37 70 46'/%3E%3Cpath d='M58.4 57.3A8.5 5 0 0 1 41.6 57.2'/%3E%3C/g%3E%3C/svg%3E">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="../">
+      <svg viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+        <rect width="100" height="100" rx="22" fill="#0EA5E9"/>
+        <path d="M40.3 77.5 L25.5 83.5 L20.7 59.1 Z" fill="#FBFAF7"/>
+        <circle cx="50" cy="47.5" r="31.5" fill="#FBFAF7"/>
+        <circle cx="29.5" cy="53.5" r="4.2" fill="#FFC0D4"/>
+        <circle cx="70.5" cy="53.5" r="4.2" fill="#FFC0D4"/>
+        <g fill="none" stroke="#33323D" stroke-width="5.2" stroke-linecap="round">
+          <path d="M30 46 Q37.5 37 45 46"/>
+          <path d="M55 46 Q62.5 37 70 46"/>
+          <path d="M58.4 57.3 A8.5 5 0 0 1 41.6 57.2"/>
+        </g>
+      </svg>
+      カタルテ
+    </a>
+    <a class="lang" href="../en/privacy/" hreflang="en" lang="en">English</a>
+  </div>
+</header>
+
+<main class="legal">
+
+  <h1>プライバシーポリシー</h1>
+  <p class="updated">制定日: <span class="fill">〔制定日〕</span> ／ 最終改定: <span class="fill">〔改定日〕</span></p>
+
+  <!-- 本番の文面に差し替えるときは、このブロックごと消すこと。 -->
+  <div class="legal-draft">
+    <b>これは雛形です。公開前に差し替えてください。</b>
+    <p>
+      一般的な構成にカタルテの実装（取得している情報・委託先）を当てはめた<strong>たたき台</strong>で、
+      弁護士のレビューを受けていません。<span class="fill">〔黄色の箇所〕</span>は未確定の値です。
+      残っているのは<strong>運営者名・所在地・制定日</strong>で、空のままでは公開できません。
+      取得する情報・委託先・保存期間は実装(2026-09-05 時点)に合わせてあります。英語版は <a href="../en/privacy/">/en/privacy/</a>。
+      またこの文面は、ストアに提出する App Privacy（App Store Connect）と
+      データセーフティ（Google Play Console）の申告と<strong>一致している必要があります</strong>。
+      片方だけ直すと審査で食い違いを指摘されます。
+    </p>
+  </div>
+
+  <p>
+    <span class="fill">〔運営者名〕</span>（以下「当方」といいます）は、
+    スマートフォンアプリ「カタルテ」（以下「本サービス」といいます）における
+    利用者の情報の取扱いについて、以下のとおりプライバシーポリシー（以下「本ポリシー」といいます）を定めます。
+  </p>
+
+  <h2 id="a1">第1条（適用範囲）</h2>
+  <p>
+    本ポリシーは、本サービスの提供にあたり当方が取得する情報の取扱いについて適用されます。
+    本サービスからリンクする第三者のサービスにおける情報の取扱いについては、当該第三者の定めによります。
+  </p>
+
+  <h2 id="a2">第2条（取得する情報）</h2>
+  <p>当方は、本サービスの提供にあたり、次の情報を取得します。</p>
+  <table>
+    <thead>
+      <tr><th>情報</th><th>内容</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>写真</td>
+        <td>利用者が撮影・選択した、問題およびノートの画像。</td>
+      </tr>
+      <tr>
+        <td>会話の文字起こし</td>
+        <td>本サービスとの会話の内容をテキストに変換したもの。<strong>音声そのものは保存しません。</strong></td>
+      </tr>
+      <tr>
+        <td>端末ID</td>
+        <td>本サービスが端末ごとに発行する匿名のID。アカウントの代わりに用います。
+          <b>アプリのご利用にあたっては</b>、氏名・メールアドレス・電話番号は取得しません
+          （お問い合わせの際に任意でご記入いただく連絡先を除きます。次の行）。</td>
+      </tr>
+      <tr>
+        <td>お問い合わせの内容</td>
+        <td>サポートページのフォーム、またはメールでお送りいただいた内容。
+          <b>返信をご希望の場合に限り、ご記入いただいたメールアドレスを取得します。</b>
+          端末IDをご記入いただいた場合は、それもあわせて取得します。
+          いずれも記入は任意で、空欄のままお送りいただけます。</td>
+      </tr>
+      <tr>
+        <td>学習の記録</td>
+        <td>先輩が書いた板書の内容、そこから作った復習問題と、その回答および正誤の判定、復習の状況、利用日数。</td>
+      </tr>
+      <tr>
+        <td>購入の状態</td>
+        <td>サブスクリプションの契約状況。決済そのものは App Store / Google Play が行い、
+          当方はクレジットカード番号を取得しません。</td>
+      </tr>
+      <tr>
+        <td>診断情報</td>
+        <td>アプリの不具合・動作状況の記録。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 id="a3">第3条（利用目的）</h2>
+  <p>当方は、取得した情報を次の目的で利用します。</p>
+  <ol>
+    <li>本サービスの提供（教える内容の生成、カルテの作成、復習の出題、通知の送信）</li>
+    <li>本サービスの利用状況の把握、および<strong>品質・機能の改善</strong>（第4条）</li>
+    <li>不具合の調査および対応</li>
+    <li>不正な利用の防止</li>
+    <li>お問い合わせへの対応</li>
+    <li>法令に基づく対応</li>
+  </ol>
+
+  <h2 id="a4">第4条（品質・機能の改善のための利用）</h2>
+  <p>
+    当方は、本サービスの品質および機能を改善する目的で、第2条の情報（写真および会話の文字起こしを含みます）を
+    利用することがあります。具体的には、説明の分かりにくさや誤りの発見、出題の精度の改善、
+    不具合の再現と修正のために用います。
+  </p>
+  <ol>
+    <li>
+      本条の利用は、無料プラン・Premium プランを問わず行います。
+    </li>
+    <li>
+      利用者は、第10条の窓口に端末IDを添えて、本条の利用の停止、または情報の削除を求めることができます。
+      停止された場合でも、第3条第1号（本サービスの提供そのもの）に必要な範囲での利用は継続します。
+    </li>
+    <li>
+      本条に基づく利用にあたっては、氏名・連絡先などの個人を特定する情報を紐づけません。
+    </li>
+  </ol>
+
+  <h2 id="a5">第5条（第三者提供）</h2>
+  <p>
+    当方は、次のいずれかに該当する場合を除き、あらかじめ利用者の同意を得ることなく、
+    取得した情報を第三者に提供しません。
+  </p>
+  <ol>
+    <li>法令に基づく場合</li>
+    <li>人の生命、身体または財産の保護のために必要があり、本人の同意を得ることが困難であるとき</li>
+    <li>第6条に定める委託先に、利用目的の達成に必要な範囲で取り扱わせるとき</li>
+  </ol>
+
+  <h2 id="a6">第6条（外部サービスへの委託）</h2>
+  <p>
+    当方は、本サービスの提供に必要な範囲で、次の外部サービスに情報の取扱いを委託しています。
+    これらの事業者は日本国外に情報を保管する場合があります。
+  </p>
+  <table>
+    <thead>
+      <tr><th>委託先</th><th>委託する処理</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Cloudflare, Inc.</td><td>アプリケーションの実行、データおよび写真の保管</td></tr>
+      <tr><td>Anthropic, PBC</td><td>写真の読み取り、教える内容と復習問題の生成、回答の判定</td></tr>
+      <tr><td>Deepgram, Inc.</td><td>音声の文字起こし</td></tr>
+      <tr><td>Google LLC (Gemini API)</td><td>音声の合成（先輩の声）</td></tr>
+      <tr><td>LiveKit, Inc.</td><td>音声のリアルタイム通信</td></tr>
+      <tr><td>RevenueCat, Inc.</td><td>サブスクリプションの管理</td></tr>
+      <tr><td>OneSignal, Inc.</td><td>復習の通知の配信</td></tr>
+      <tr><td>Functional Software, Inc. (Sentry)</td><td>不具合の記録と通知</td></tr>
+      <tr><td>Google LLC (Google フォーム)</td><td>お問い合わせの受付</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="a7">第7条（保存期間と削除）</h2>
+  <p>
+    写真、会話の文字起こし、学習の記録、購入の状態は、本サービスを提供しているあいだ保存します。
+    利用者から第10条の求めがあったとき、または本サービスの提供を終了したときに削除し、
+    もしくは復元できない形に加工します。診断情報は取得から90日を目安に削除します。
+    利用者は、第10条の窓口に端末IDをお知らせいただくことで、当該端末に紐づく情報の削除をいつでも求めることができます。
+  </p>
+
+  <h2 id="a8">第8条（広告およびトラッキング）</h2>
+  <p>
+    本サービスは広告を掲載しません。また、他社のアプリやウェブサイトを横断して利用者を追跡することはありません。
+    広告目的で情報を第三者に販売または提供することもありません。
+  </p>
+
+  <h2 id="a9">第9条（未成年の方の利用）</h2>
+  <p>
+    本サービスは中学生・高校生の利用を想定しています。13歳未満の方はご利用いただけません。
+    18歳未満の方は、保護者の同意を得たうえでご利用ください。
+    有料のサブスクリプションの購入には、保護者の同意が必要です。
+  </p>
+
+  <h2 id="a10">第10条（開示・訂正・利用停止の求め）</h2>
+  <p>
+    利用者は、当方が保有する自己の情報について、開示・訂正・追加・削除・利用停止を求めることができます。
+    本サービスはアカウントを持たないため、お求めの際は<strong>アプリの「設定 &gt; 端末ID」に表示されるID</strong>を
+    あわせてお知らせください。IDのご提示がない場合、対象の情報を特定できないためお応えできないことがあります。
+  </p>
+
+  <h2 id="a11">第11条（本ポリシーの変更）</h2>
+  <p>
+    当方は、必要に応じて本ポリシーを変更することがあります。
+    重要な変更を行う場合は、本サービス上またはこのページでお知らせします。
+  </p>
+
+  <h2 id="a12">第12条（お問い合わせ）</h2>
+  <p>
+    本ポリシーに関するお問い合わせは、<a href="mailto:kfukejob@gmail.com">kfukejob@gmail.com</a>
+    または<a href="../support/">サポートページ</a>のフォームからご連絡ください。
+  </p>
+  <p>
+    <span class="fill">〔運営者名〕</span><br>
+    <span class="fill">〔所在地〕</span>
+  </p>
+
+  <a class="legal-back" href="../">← カタルテのトップへ</a>
+
+</main>
+
+</body>
+</html>

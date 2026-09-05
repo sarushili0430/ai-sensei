@@ -1,0 +1,37 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    # ビルド生成物。CIでは iOS の署名ステップ(xcode-project use-profiles が
+    # 内部で xcodebuild を叩く)が flutter analyze より前に Swift Package を
+    # build/ios/SourcePackages/ へ展開する。その中には依存パッケージ自身の
+    # example アプリが入っていて、こちらの pubspec に無い依存
+    # (google_fonts / flutter_svg など)を import しているため、
+    # 除外しないと他人のコードで analyze が落ちる。
+    - build/**
+
+    # 部品カタログ(`widgetbook/`)は**別パッケージ**。
+    #
+    # 除外しないと、こちらの `flutter analyze` が widgetbook/lib/ まで読みに行き、
+    # あちらの `pub get` がまだなら「Target of URI doesn't exist」で
+    # 100件以上落ちる。**pre-commit(lefthook)もここを通る**ので、
+    # 「カタログを一度も触っていない人のコミットが、カタログのせいで止まる」
+    # ことになる。
+    #
+    # あちらは `widgetbook/analysis_options.yaml` を持っていて、
+    # CIでも別ステップで analyze している(.github/workflows/ci.yml)。
+    # 見ないのではなく、見る場所が違う。
+    - widgetbook/**
+  language:
+    strict-casts: true
+    strict-raw-types: true
+  errors:
+    invalid_annotation_target: ignore
+
+linter:
+  rules:
+    - prefer_const_constructors
+    - prefer_const_declarations
+    - prefer_final_locals
+    - avoid_print
+    - require_trailing_commas

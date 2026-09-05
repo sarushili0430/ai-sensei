@@ -1,0 +1,45 @@
+{
+  "transcript": [
+    {
+      "role": "assistant",
+      "text": "この問題、解の個数を聞かれてるやつだね。まず、解の個数はグラフが x軸と何回交わるかで決まる。ここまでは大丈夫?",
+      "at_ms": 1200,
+      "topic_id": "M1-NIJI-HANBETSU"
+    },
+    {
+      "role": "user",
+      "text": "はい、だいじょうぶです。",
+      "at_ms": 8600
+    },
+    {
+      "role": "assistant",
+      "text": "じゃあ判別式を書くね。D は b の2乗 引く 4ac。いまの式だと a が 1、b が マイナス4、c が 1 だから……D はいくつになると思う?",
+      "at_ms": 14200,
+      "topic_id": "M1-NIJI-HANBETSU"
+    },
+    {
+      "role": "user",
+      "text": "16 引く 4 で、12 ですか?",
+      "at_ms": 27300
+    },
+    {
+      "role": "assistant",
+      "text": "そう、12。D が 0 より大きいから、x軸と交わるのは……何回だと思う?",
+      "at_ms": 31000,
+      "topic_id": "M1-NIJI-HANBETSU"
+    },
+    {
+      "role": "user",
+      "text": "2回。だから解は2個。",
+      "at_ms": 39400
+    }
+  ],
+  "practice_problem": {
+    "topic_id": "M1-NIJI-HANBETSU",
+    "question": "x² − 6x + 5 = 0 の解の個数は?",
+    "answer": "D = 36 − 20 = 16 で D > 0 なので 2個"
+  },
+  "board_id": "brd_01J8Z9K2QF7X3M4N5P6R7S8T9V",
+  "duration_seconds": 268,
+  "ended_reason": "understood"
+}
