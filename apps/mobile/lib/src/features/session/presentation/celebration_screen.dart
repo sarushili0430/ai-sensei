@@ -49,6 +49,9 @@ class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
   /// ホームへ飛ばされると、いま終えた授業の締めを読み終える前に画面が変わる。
   void _presentPaywall(SessionOutcome outcome) {
     if (_paywallOpened || !outcome.showPaywall) return;
+    // すでに契約している人には開かない。復元でPremiumになった直後や、
+    // 買ったあとにこの画面へ戻ってきた回がここに来る。
+    if (ref.read(isPremiumProvider)) return;
     _paywallOpened = true;
     // 組み上がる前に押し込むと、祝福を1フレームも見せずに上へ乗ってしまう。
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -66,6 +69,16 @@ class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
     });
     final SessionOutcome outcome = ref.watch(sessionOutcomeControllerProvider);
     final bool understood = outcome.ending == SessionEnding.understood;
+    /// この画面で Premium を勧めてよいか。
+    ///
+    /// **`show_paywall` だけでは足りない。** ペイウォールから買うと
+    /// [ThanksScreen] に差し替わり、その「はじめる」は
+    /// [AppNavigation.closeOrGoHome] なので**この祝福画面へ pop して戻る**。
+    /// `SessionOutcome` はサーバが「今日の枠を使い切った」と言った事実なので
+    /// 消さずに残すが、そこへ**いま契約しているか**を重ねて見ないと、
+    /// 買ったばかりの人に「Premiumをみる」をもう一度出し、
+    /// 枠が戻っているのに「もう1問」を隠したままにしてしまう。
+    final bool offerPremium = outcome.showPaywall && !ref.watch(isPremiumProvider);
     final Progress progress =
         (ref.watch(progressControllerProvider).value ?? ProgressSummary.empty)
             .progress;
@@ -148,7 +161,7 @@ class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
               // あれは枠が残っている普通の祝福で、この行はその回のためにある。
               // 生成を待たない(ADR 0009)ので、`/complete` が届いた時点で
               // 立って、この画面のまま差し替わる。
-              if (outcome.showPaywall) ...<Widget>[
+              if (offerPremium) ...<Widget>[
                 const SizedBox(height: AppSpacing.md),
                 const _PremiumLine(),
               ],
@@ -157,7 +170,7 @@ class _CelebrationScreenState extends ConsumerState<CelebrationScreen> {
               // 写真を撮らせてから、サーバが「今日はここまで」と断ることになる。
               // 開いたペイウォールを閉じた人がここへ戻るので、
               // 同じ場所に道の続き(Premiumをみる)を置く。
-              if (outcome.showPaywall) ...<Widget>[
+              if (offerPremium) ...<Widget>[
                 ChunkyButton(
                   key: const Key('celebration-see-premium'),
                   label: strings.paywallCta,

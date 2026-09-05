@@ -78,6 +78,7 @@ void main() {
       WidgetTester tester,
       SessionEnding ending, {
       bool showPaywall = false,
+      bool premium = false,
     }) => pumpApp(
       tester,
       const CelebrationScreen(),
@@ -88,6 +89,7 @@ void main() {
             SessionOutcome(ending: ending, showPaywall: showPaywall),
           ),
         ),
+        if (premium) ...premiumOverrides(),
       ],
     );
 
@@ -136,6 +138,27 @@ void main() {
 
       expect(find.byKey(const Key('celebration-another-lesson')), findsOneWidget);
       expect(find.byKey(const Key('celebration-see-premium')), findsNothing);
+    });
+
+    /// **買った人はここへ戻ってくる。**
+    ///
+    /// ペイウォールで購入すると [ThanksScreen] に差し替わり、その「はじめる」は
+    /// `closeOrGoHome()` なので、下に残っているこの祝福画面へ pop して戻る。
+    /// サーバが立てた `show_paywall` はその回の事実として残るので、
+    /// **いま契約しているか**を重ねて見ないと、払ったばかりの人にもう一度
+    /// 購入画面を勧め、枠が戻っているのに「もう1問」を隠したままになる。
+    testWidgets('買ったあとに戻ってきたら、Premium を勧め直さない', (WidgetTester tester) async {
+      await pumpEnding(
+        tester,
+        SessionEnding.understood,
+        showPaywall: true,
+        premium: true,
+      );
+
+      expect(find.byKey(const Key('celebration-see-premium')), findsNothing);
+      expect(find.text(ja.paywallPricePending), findsNothing);
+      // 枠は戻っているので、いつもの「もう1問」に戻す。
+      expect(find.byKey(const Key('celebration-another-lesson')), findsOneWidget);
     });
   });
 

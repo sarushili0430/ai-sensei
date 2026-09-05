@@ -81,6 +81,52 @@ void main() {
     expect(find.text(ja.homeUnlock), findsNothing);
   });
 
+  /// **プランが分かるまで、契約への道は出さない。**
+  ///
+  /// 読めていないあいだの既定は `ProgressSummary.empty`(= 無料)なので、
+  /// そのまま出すと契約している人にも一瞬だけ課金導線が出る。
+  /// 取得に失敗した端末では**ずっと出たまま**になる。
+  group('プランがまだ分からないとき', () {
+    Future<void> pumpUnresolved(
+      WidgetTester tester,
+      ProgressController Function() controller,
+    ) => pumpApp(
+      tester,
+      const HomeScreen(),
+      overrides: <Object?>[
+        progressControllerProvider.overrideWith(controller),
+        reviewControllerProvider.overrideWith(
+          () => FakeReviewController(samplePracticeQueue),
+        ),
+      ],
+    );
+
+    testWidgets('取得に失敗しているあいだは出さない', (WidgetTester tester) async {
+      await pumpUnresolved(tester, _FailingProgressController.new);
+
+      expect(find.text(ja.homeUnlock), findsNothing);
+      // 入口そのものは止めない(進捗が読めないことを理由に授業を断らない)。
+      expect(find.byKey(lessonKey), findsOneWidget);
+    });
+
+    // 契約していれば、進捗が読めていなくても RevenueCat 側で分かる。
+    testWidgets('契約している人には、取得に失敗しても出さない', (WidgetTester tester) async {
+      await pumpApp(
+        tester,
+        const HomeScreen(),
+        overrides: <Object?>[
+          progressControllerProvider.overrideWith(_FailingProgressController.new),
+          reviewControllerProvider.overrideWith(
+            () => FakeReviewController(samplePracticeQueue),
+          ),
+          ...premiumOverrides(),
+        ],
+      );
+
+      expect(find.text(ja.homeUnlock), findsNothing);
+    });
+  });
+
   testWidgets('残り秒数は分未満を切り捨てて、今日の残りとして出す', (WidgetTester tester) async {
     const ProgressSummary partial = ProgressSummary(
       progress: sampleProgress,
@@ -198,4 +244,13 @@ void main() {
     expect(find.text(ja.lessonEnoughForToday), findsOneWidget);
     expect(find.text(ja.homeUnlock), findsNothing);
   });
+}
+
+/// 進捗をどうしても取れない端末。`state.value` は null のままになる。
+class _FailingProgressController extends ProgressController {
+  @override
+  Future<ProgressSummary> build() async => throw Exception('offline');
+
+  @override
+  Future<void> reloadQuietly() async {}
 }

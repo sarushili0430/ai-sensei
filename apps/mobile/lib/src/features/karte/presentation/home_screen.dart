@@ -11,6 +11,7 @@ import '../../../common_widgets/senpai_face.dart';
 import '../../../l10n/strings.dart';
 import '../../../routing/routes.dart';
 import '../../../theme/tokens.dart';
+import '../../monetization/application/entitlement_controller.dart' show isPremiumProvider;
 import '../../monetization/presentation/manage_subscription_button.dart';
 import '../application/karte_controllers.dart';
 import '../domain/karte.dart';
@@ -129,7 +130,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   enoughForToday: enoughForToday,
                   // 契約への道は**締めた日だけのものにしない**。無料は1日1回に
                   // なったので、使い切る前に「もっと教わる」を探す人のほうが多い。
-                  showUpgrade: !data.isPremium,
+                  //
+                  // ただし**プランが分かるまでは出さない**。読めていないあいだの
+                  // 既定は `ProgressSummary.empty`(= 無料)なので、そのまま出すと
+                  // 契約している人にも課金導線が一瞬出る — 取得に失敗した端末では
+                  // ずっと出たままになる。上の残り時間と同じで、
+                  // **サーバが答えてから**置く。
+                  //
+                  // 契約の判定は2つの出どころを両方見る(設定の「契約」と同じ)。
+                  // サーバの `is_premium` はβ開放を含むが webhook 待ちのあいだ
+                  // 遅れることがあり、RevenueCat 側は買った瞬間に true になる。
+                  showUpgrade: summary.value != null &&
+                      !data.isPremium &&
+                      !ref.watch(isPremiumProvider),
                 ),
               ),
             ],
