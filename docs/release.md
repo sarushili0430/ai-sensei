@@ -164,7 +164,8 @@ pnpm --filter @ai-sensei/api tail:production
 
 - [ ] 名前・サブタイトル・カテゴリ・年齢・著作権(**権利者名が未決**)
 - [ ] プロモーションテキスト / 説明 / キーワード / 新機能(日英)
-- [ ] スクリーンショット: 6.9インチ = `screenshots/{ja,en}/captioned/`、iPad 13インチ = `screenshots/{ja,en}/ipad-13/`(各5枚)
+- [ ] スクリーンショット: 6.9インチ = `screenshots/{ja,en}/captioned/`、6.5インチ = `screenshots/{ja,en}/captioned-65/`、
+      iPad 13インチ = `screenshots/{ja,en}/ipad-13/`(各5枚)。**タブと寸法を取り違えると "Screenshots dimensions should be ..." で弾かれる**
 - [ ] サポートURL: 日本語 `https://ubiqy.jp/support/`、英語 `https://ubiqy.jp/en/support/`。
       マーケティングURL: `https://ubiqy.jp/`(英語 `https://ubiqy.jp/en/`)。プライバシーポリシーURL: `https://ubiqy.jp/privacy/`(英語 `https://ubiqy.jp/en/privacy/`)
 - [ ] App のプライバシー: `store-setup.md` 1-7 の表 + **写真と文字起こしの用途に「分析」を足す**
