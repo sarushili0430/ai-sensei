@@ -59,8 +59,17 @@ Codemagic 側の設定は [`codemagic.md`](./codemagic.md)。
 
 ### 0-4. 定期購入の内容
 
-価格・期間(月額か年額か)・無料トライアルの有無。
-両ストアとRevenueCatの3か所に同じものを作るので、先に紙で決めておく。
+**確定済み(2026-09-05・[`../business/pricing_v1.md`](../business/pricing_v1.md))**:
+
+| プラン | 商品ID(App Store) | 日本 | 米国 | 無料トライアル |
+| --- | --- | --- | --- | --- |
+| 週 | `jp.co.aisensei.premium.weekly` | ¥980 | $6.99 | なし |
+| 月 | `jp.co.aisensei.premium.monthly` | ¥2,980 | $19.99 | なし |
+| 年 | `jp.co.aisensei.premium.yearly` | ¥29,800 | $199.99 | なし |
+
+両ストアとRevenueCatの3か所に同じものを作る。Google Play 側の商品はまだ無い
+(2-7)。掲載文・審査メモ・IAPの表示名と説明は
+[`../store/app_store_listing.md`](../store/app_store_listing.md)(日英)。
 
 ---
 
