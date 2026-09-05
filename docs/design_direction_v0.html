@@ -393,19 +393,24 @@ fvm flutter test tool/generate_store_screenshots.dart   # スクショ一式</di
       <p><b>① 授業</b>先輩が板書つきで教える。数式は板書、声は問いかけ。</p></div>
     <div class="shot"><img src="store/screenshots/ja/captioned/02-celebration.png" alt="祝福画面">
       <p><b>② 祝福</b>教え返せると顔が輝く。正解率は出さない。</p></div>
-    <div class="shot"><img src="store/screenshots/ja/captioned/03-karte.png" alt="カルテ画面">
-      <p><b>③ カルテ</b>黄=言えた / ピンク=穴。このアプリ固有の絵。</p></div>
+    <div class="shot"><img src="store/screenshots/ja/captioned/03-practice.png" alt="復習問題の画面">
+      <p><b>③ 復習問題</b>先輩の板書から1問。3日後・7日後にテキストで答える(ADR 0009)。</p></div>
     <div class="shot"><img src="store/screenshots/ja/captioned/04-progress.png" alt="ホーム画面">
       <p><b>④ 連続日数と埋めた穴</b>数えるのは努力だけ。</p></div>
     <div class="shot"><img src="store/screenshots/ja/captioned/05-review.png" alt="復習画面">
       <p><b>⑤ 復習</b>翌日・3日後・7日後の再訪。OneSignal賞の根拠。</p></div>
   </div>
 
-  <h3>2種類ある</h3>
+  <h3>3種類ある(+ Play 用の3枠)</h3>
   <table class="meta">
     <tr><th>captioned / 1290×2796</th>
       <td><code>docs/store/screenshots/{ja,en}/captioned/</code><br>
         App Store Connect の<b>6.9インチ必須サイズ</b>。見出しつき。ここに貼ってあるのがこれ。</td></tr>
+    <tr><th>ipad-13 / 2064×2752</th>
+      <td><code>docs/store/screenshots/{ja,en}/ipad-13/</code><br>
+        App Store Connect の<b>iPad 13インチ必須サイズ</b>。アプリは iPad にも入る
+        (<code>TARGETED_DEVICE_FAMILY = 1,2</code>)ので、この枠が無いと提出できない。
+        1032pt 幅のタブレットレイアウトで本当に描いている(iPhone の絵の引き伸ばしではない)。</td></tr>
     <tr><th>plain / 1179×2556</th>
       <td><code>docs/store/screenshots/{ja,en}/plain/</code><br>
         <b>端末フレームなしの素のまま</b>。Shipaton提出要件の指定サイズ。</td></tr>
@@ -417,6 +422,11 @@ fvm flutter test tool/generate_store_screenshots.dart   # スクショ一式</di
 
 <section class="sec" id="store">
   <div class="eyebrow">APP STORE CONNECT / 提出メタデータ</div>
+  <p style="border:2px solid #F59E0B;background:#FFF7E6;padding:12px 16px;border-radius:12px">
+    <b>2026-09-05: この節の本文は ADR 0009 より前の言い方(教え返し・カルテ・「言えた / まだ言えない」)のまま。
+    コピペする正は <code>docs/store/app_store_listing.md</code>(日英)</b>に移した。
+    ここは経緯(何を書かないか・審査メモの狙い・App Privacy の根拠)を読む場所として残す。
+  </p>
   <h2>ストアに並んだときに何と書いてあるか</h2>
   <p class="lede2">
     inception-deck §3「パッケージデザイン」をApp Store Connectのフィールドに落としたもの。
