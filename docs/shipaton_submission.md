@@ -15,6 +15,69 @@
 
 ---
 
+## 0. 提出要件(2026-09-11 に一次情報を確認)
+
+出典は [公式ルール](https://revenuecat-shipaton-2026.devpost.com/rules)・
+[FAQ](https://www.shipaton.com/faq)・
+[提出の手引き](https://www.revenuecat.com/blog/engineering/how-to-submit-your-app-for-shipaton)・
+[準備の codelab](https://revenuecat.github.io/codelabs/shipaton-2026-prep.html)。
+**更新されうるので、提出直前にもう一度読むこと。**
+
+### 0-1. 全カテゴリ共通で必ず出すもの
+
+| 要件 | 原文 | いまの状態 |
+| --- | --- | --- |
+| RevenueCat SDK で最低1つの App内課金(または RevenueCat Ads) | "uses the RevenueCat SDK to power at least one in-app or web purchase" | ✅ `purchases_flutter`([`revenuecat.md`](revenuecat.md)) |
+| 機能の説明(テキスト) | "explain the features and functionality of your Project" | ✅ §4 |
+| デモ動画 **2分未満** | "should be less than two (2) minutes" / "footage that shows the Project functioning on the device" | ❌ 未作成。YouTube か Vimeo、**限定公開は可・非公開は不可** |
+| **公開済みの**ストアURL | App Store / Google Play / Mac App Store / Samsung Galaxy Store。**米国から見えること** | ❌ 審査中(§3) |
+| **1024×1024 のアプリアイコン** | "Include a 1024x1024 app icon" | ✅ `apps/mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-1024x1024@1x.png`(不透明・角を丸めていない生の正方形) |
+| **1179×2556 のスクショを1枚以上・端末フレームなし** | "at least one screenshot ... WITHOUT device frames" | ✅ [`store/screenshots/{ja,en}/plain/`](store/screenshots)(まさにこの寸法で描いてある) |
+| 審査員が有料機能を開けること | "the app must either offer a free trial or the Entrant must include a promo code for judges" | ❌ プロモコード未発行。**無料トライアルを付けていないので、コードが要る** |
+| **英語** | "All Submission materials must be in English or ... provide an English translation" | ⚠ Devpost 側は英語で書く(§1〜§4)。**リポジトリの README は日本語**(Next Gen を狙うなら効く。0-3) |
+
+### 0-2. 落ちる条件(ここが今回の勝負どころ)
+
+- **「審査中」は失格。** "Your app must be published on the app stores so judges can download and review it. Apps under review don't qualify."
+- **Shipaton の期間中に初めて公開したアプリであること。** 8/1 より前にどこかのストアで公開していたものは、別ストアに出し直しても不可。
+  → ai-sensei は**一度も公開していない**ので条件を満たす。1.0 (50) のリジェクトは「未公開」のままなので問題にならない。
+- **Web アプリは不可**(iOS / iPadOS / macOS / Android)。
+- 推奨は **9/23 までに公開**(締切の1週間前。codelab の目安)。審査は数日かかる。
+
+### 0-3. 日程(すべて PDT)
+
+| | |
+| --- | --- |
+| 提出期間 | 2026-07-31 08:00 〜 **2026-09-30 23:45** |
+| 審査 | 2026-10-01 〜 10-13 |
+| 発表 | 2026-10-21 |
+
+### 0-4. 併願するカテゴリごとの追加要件
+
+| カテゴリ | 追加で出すもの | いまの状態 |
+| --- | --- | --- |
+| **OneSignal「Keep Them Coming Back」**(1位 $25,000) | ①ライブのアプリ ②**OneSignal の API / MCP / ダッシュボードで campaign を1つ以上作って配信** ③**OneSignal App ID を書く** ④どう使ったかの説明 | ⚠ App ID はある(`47044c5e-15eb-49ec-bdd4-e0ed2219a799`)。**「campaign を作って配信した」と言えるかは要確認** —— いまは `/complete` から REST で個別に予約しているだけ |
+| **#BuildInPublic**(1位 $30,000) | ①**公開の投稿へのリンク**("links to any relevant social accounts and/or links to specific content") ②公開で作ったことがどう効いたかの短い説明 | ❌ **public リポジトリだけでは足りない見込み。** 開発中のSNS投稿が無いなら、ここは取りに行かないほうがいい |
+| **Next Gen**(1位 $20,000・学生) | ①**学籍メール**(高校/大学/ブートキャンプ等の在学者) ②デモ動画 ③**public なリポジトリ + OSSライセンスファイル** ④セットアップ手順。**ストア公開も開発者アカウントも不要** | ⚠ MIT + public は ✅。**README が日本語**なので、英語の手順が要る |
+| **Peace Prize**(1位 $20,000) | 個人・コミュニティ・社会にどう役立つ設計かの説明 | ✅ §5 に根拠(無料のまま毎日1回・点数と順位を持たない) |
+| **HAMM**(1位 $20,000) | ビジネスモデル・価格・ペイウォール・転換の説明 | ✅ [`business/pricing_v1.md`](business/pricing_v1.md) |
+| **Design**(1位 $20,000) | 見どころの説明(craft を見る。事業性は見ない) | ✅ 板書・生成がコード |
+
+Influencer 系は**1つのカテゴリにしか出せない**が、それ以外は併願に制限は書かれていない。
+
+### 0-5. Devpost のどの欄に何を置くか
+
+- **1024×1024 のアイコンと 1179×2556 のスクショは、Project details の画像ギャラリーに上げる。**
+  Additional info の `Did you attach a 1024 x 1024 uncropped image of your app icon?` は、
+  **それを上げたかの確認**で、ここが画像のアップロード欄ではない。
+  *uncropped* = **角を丸めたり切り抜いたりしていない生の正方形**。
+  上の `Icon-App-1024x1024@1x.png` がまさにそれ(Apple も同じ形を要求するので、
+  角丸もアルファも入っていない)。
+- 3:2 のサムネイルは Project overview(§1)。
+- カテゴリごとの説明(0-4 の「追加で出すもの」)は Additional info。
+
+---
+
 ## 1. Project overview
 
 ### Project name(60字)
@@ -306,7 +369,9 @@ curriculum.
 
 ## 5. Additional info / 併願するカテゴリ
 
-[`inception-deck.md` §1](inception-deck.md) で決めた併願先。**応募根拠を1行で言えるものだけ出す。**
+[`inception-deck.md` §1](inception-deck.md) で決めた併願先と、**応募根拠**。
+カテゴリごとに**何を出さないといけないか**は §0-4(一次情報を当たったもの)。
+根拠が1行で言えないカテゴリには出さない。
 
 | カテゴリ | 根拠 |
 | --- | --- |
@@ -328,12 +393,33 @@ curriculum.
 
 ## 6. 提出前チェックリスト
 
-- [ ] App Store で一般公開されている(**必須要件**。51以降のビルドで出し直し → 審査通過 → URL 確定)
-- [ ] `https://ubiqy.jp/en/` の `fill` を埋め、`noindex` を外す
+要件の出どころは §0。**上から順に、下ほど締切に近づいても間に合う。**
+
+### 落ちる条件(これが欠けると提出そのものが無効)
+
+- [ ] **App Store で一般公開されている。**「審査中」は失格。51以降のビルドで出し直し → 審査通過 → URL 確定
+      ([`release.md` §0-1](release.md))。**9/23 までに公開**が目安(締切の1週間前)
+- [ ] **米国から見える**こと(配信地域に米国を含める。[`store/app_store_listing.md`](store/app_store_listing.md) §1)
+- [ ] 審査員が有料機能を開けること — **プロモコードを App Store Connect で発行**して Additional info に書く
+      (無料トライアルを付けていないので、コードが要る)
+- [ ] デモ動画を YouTube か Vimeo に上げる。**2分未満**・実機で動いているところ・**限定公開は可、非公開は不可**
+      (撮る順は §5)
+- [ ] 画像ギャラリーに **1024×1024 のアイコン**(`AppIcon.appiconset/Icon-App-1024x1024@1x.png`)と
+      **1179×2556 のスクショ**([`store/screenshots/en/plain/`](store/screenshots))を上げる。どちらも手元にある
+
+### 文面と素材
+
 - [x] Thumbnail(3:2)を `generate_store_screenshots.dart` から描き出す(`store/devpost/thumbnail-1200x800.png`)
-- [ ] Project name / Elevator pitch / Built with / links を貼る(本書の §1〜§3)
+- [ ] Project name / Elevator pitch / Built with / links を貼る(§1〜§3)
 - [ ] Project details を貼る(§4)。**貼ったあと、禁止語が混ざっていないか読み返す**
-- [ ] デモ動画(2分)を YouTube 等に上げてURLを貼る
-- [ ] プロモコードを審査員向け欄に書く
-- [ ] 併願カテゴリを選ぶ(§5)
-- [ ] 提出(2026-09-30 23:45 PDT)
+- [ ] `https://ubiqy.jp/en/` の `fill` を埋め、`noindex` を外す
+
+### 併願するカテゴリごと(§0-4)
+
+- [ ] **OneSignal**: App ID を書く + 「campaign を1つ作って配信した」と言える状態にする。
+      いまは `/complete` から REST で個別に予約しているだけなので、**要件を満たしているか要確認**
+- [ ] **Peace Prize / HAMM / Design**: 説明を Additional info に書く(§5 の根拠がそのまま使える)
+- [ ] **Next Gen**(出すなら): 学籍メール + **英語のセットアップ手順**(README が日本語)
+- [ ] **#BuildInPublic**(出すなら): 公開の投稿へのリンク。**リポジトリが public なだけでは足りない見込み**
+
+- [ ] 提出(**2026-09-30 23:45 PDT**)
