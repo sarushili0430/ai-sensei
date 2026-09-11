@@ -44,6 +44,16 @@ class AppStrings {
 
   String _pick(String ja, String en) => _ja ? ja : en;
 
+  /// 端末に出るアプリ名。Androidのタスクスイッチャーに並ぶのがこれ
+  /// (ランチャー名は `android:label`、iOSは `CFBundleDisplayName`。どちらも
+  /// 同じ振り分けで日英を出し分けている)。
+  ///
+  /// **英語圏向けはローマ字の `Katarute`。** ここだけカタカナに戻すと、
+  /// 英語の端末でタスクスイッチャーだけ日本語になる。
+  /// ストア側の名前(App Store Connect の en-US・Play の英語の掲載)も
+  /// 揃えること —— 違うと入れたあとに見つけられない。
+  String get appTitle => _pick('カタルテ', 'Katarute');
+
   // --- オンボーディング ---
   //
   // **ADR 0009 でコアループが入れ替わった。**教え返しとカルテは畳まれ、1周は

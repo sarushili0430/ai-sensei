@@ -424,6 +424,73 @@ ONESIGNAL_DISABLE_LOCATION=true flutter build ios
 Xcode を使うなら **File > Packages > Reset Package Caches** でもよい
 (変数を渡した状態で起動していること)。
 
+## 9. 端末に出す文言を言語ごとに出す
+
+### 何が起きたか
+
+1.0 (50) が **Guideline 4 - Design** で返された(2026-09-10)。
+
+> the app includes permissions requests that are not written in the same
+> language as the app's localization.
+
+審査は **英語の iPhone 17 Pro Max と iPad Air 11インチ**で見ている。
+英語で出ているアプリの上に、カメラの許可だけ日本語の説明文が重なっていた
+(添付の1枚が「What do you have?」の画面 + 日本語のダイアログ)。
+
+### 原因
+
+`Runner/Info.plist` に**日本語の本文を直接書いていた**。
+
+Info.plist の本文は言語に関係なく出る。アプリ内の文言は
+`lib/src/l10n/strings.dart` の `AppStrings.resolve` が
+「日本語を望んだ端末だけ日本語、それ以外は英語」に振り分けているので、
+**画面は英語・ダイアログは日本語**という組み合わせが作れてしまう。
+日本語の端末でしか試していないと、最後まで気づかない。
+
+### どう直したか
+
+Apple の作法どおり、本文を `.lproj` に移した。
+
+| 置き場所 | 何が入っているか |
+| --- | --- |
+| `Runner/Info.plist` | 翻訳が見つからなかったときに出る**既定**。開発言語(`developmentRegion = en`)にあわせて英語 |
+| `Runner/en.lproj/InfoPlist.strings` | 英語 |
+| `Runner/ja.lproj/InfoPlist.strings` | 日本語(1.0 (50) までと同じ本文) |
+
+**アプリ名(`CFBundleDisplayName`)も同じ仕組みに載せた。** 許可ダイアログの
+`Allow "..." to access ...` に入るのがこれで、英語の本文に日本語の名前だけが
+残るのを避ける。英語圏は `Katarute`、日本語は `カタルテ`。
+Android も同じで、`android:label` を `@string/app_name` にして
+`res/values/strings.xml`(既定 = `Katarute`)と `res/values-ja/strings.xml`
+(`カタルテ`)に分けてある。アプリ内(Androidのタスクスイッチャー)は
+`main.dart` の `onGenerateTitle`。
+
+**ストア側の名前も揃えること。** ランチャー名とストア名が違うと、入れたあとに
+アプリを見つけられない([`../store/play_listing.md` の「アプリ名の注意」](../store/play_listing.md))。
+
+`.lproj` は Xcode の **Copy Bundle Resources** 経由でしか `.app` に入らないので、
+`Runner.xcodeproj/project.pbxproj` にも足してある
+(`PBXVariantGroup` + `knownRegions` に `ja`)。
+
+落ち方はアプリ内の文言と揃う。日本語を望んだ端末には日本語、
+それ以外(英語・スペイン語…)は開発言語の英語。
+
+**キーを足すときは3か所に足す。** `.lproj` に無いキーは Info.plist の本文が
+そのまま全言語に出るので、1か所で足すと、足したキーだけがまた1言語になる。
+
+### どう気づくか
+
+`ios-testflight` の「端末に出す文言が言語ごとに入っているか (Guideline 4)」で、
+できあがった `.app` の中身を見ている。
+
+- `en.lproj` / `ja.lproj` の `InfoPlist.strings` が入っているか
+- その両方に4つのキー(表示名・カメラ・マイク・写真)が揃っているか
+- `Info.plist` 側の既定が英語(ローマ字)のままか(日本語が戻ると ja 以外の端末でまた日本語が出る)
+
+`project.pbxproj` の登録が外れても**ビルドは緑のまま**説明文が1言語に戻るので、
+Flutter のテンプレートを作り直したときや、Xcode でファイルを動かしたときは、
+ここで止まる。
+
 ## つまずきやすいところ
 
 - **`codemagic.yaml` が無視される** → 手順0のYAML切り替えをしていない。
