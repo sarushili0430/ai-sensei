@@ -61,6 +61,24 @@ An AI tutor that teaches the problem you photographed on a live whiteboard, then
 | 186 | `A senpai AI teaches the problem you photographed on a live whiteboard, then sends one question from that board back in 3 and 7 days. Photo-search apps hand you the answer and stop there.` | senpai を残し、写真検索アプリとの対比を立てる |
 | 185 | `Photograph a problem you're stuck on and a senpai AI teaches it on a live whiteboard, never reading the equations aloud. Tap "Got it" and one question from that board returns in 3 days.` | 板書(数式を読み上げない)を立てる |
 | 166 | `Taught on a board, asked again in 3 days. A senpai AI teaches the problem you photographed, then asks you one question from that board just as you start to forget it.` | ストアのサブタイトルと同じ入り |
+| 181 | `An hour with a human tutor costs more than a month of this. Katarute teaches the problem you photographed on a live whiteboard, then comes back 3 days later to see whether it stuck.` | **値段で殴る**(所得に関係なく届く、を1行目に置く) |
+| 191 | `An AI tutor that writes instead of talking: it fills a live whiteboard as it teaches your problem, never saying an equation out loud — then asks you one question from that board 3 days later.` | **板書の規律**(live whiteboard × AI を1行目に置く) |
+
+下2つは「所得に関係なく持ち歩ける」「live whiteboard × AI が新しい」を主語にした版。
+**どちらも主張としては正しいが、200字の1本目に置くのは勧めない。**
+
+- **板書は、いまの本文にもう入っている**(`on a live whiteboard`)。
+  ただし whiteboard という語だけでは新しさは伝わらない — 新しいのは**規律**のほうで、
+  「**数式は書く。声は言わない。手順が1つ完成するたびに、声より先に板書が届く**」を
+  短く言える場所は200字には無い。ここは How we built it と Accomplishments、
+  そして**デモ動画とサムネイル**が担当する(絵で見せれば1秒で済む)。
+- **値段は「これは何か」ではなく「なぜ効くか」の話**。ギャラリーに並んだ1段落は
+  まず「何であって、他と何が違うか」を answering する欄で、価格から入ると
+  **新しいものではなく安い代替品**に見える(HAMM を併願していることとも相性が悪い)。
+  所得の話は Inspiration と Peace Prize の応募根拠に置いた(§4・§5)。**そこでは数字を添えられる。**
+- ただし `An hour with a human tutor costs more than a month of this.` は、
+  審査員の手が止まる一文ではある。**使うなら出典を1つ持つこと**(家庭教師の時給相場は
+  地域で開くので、言い切るなら根拠が要る)。
 
 **ストア側の文面は動かさない。** サブタイトル(`Taught on a board, asked again`)と説明文は
 Apple に出してあるものが正で、正本は [`store/app_store_listing.md`](store/app_store_listing.md)。
@@ -156,6 +174,12 @@ Tuesday, and never find out whether Friday still had it.
 So we didn't build another app that hands out answers, and we didn't stop at explaining well either.
 We built both halves: a senpai — an older student — who teaches you on a board, and then comes back
 three days later to find out whether it stuck.
+
+And it had to fit in a pocket that doesn't have an hourly rate behind it. The students who would
+gain most from a tutor are the ones least likely to have one, so the free tier is a real product and
+not a teaser: one lesson a day, every day, no account and no email address. A free user who takes
+their full daily limit costs us more to serve than a subscriber pays us. For the first year, we
+think that's the right way round.
 ```
 
 ### What it does
@@ -177,6 +201,9 @@ compares you with anyone. No account, no sign-in, no email: an anonymous device 
 Japanese junior-high and high-school mathematics and English, plus the overseas curriculum
 (Algebra 1 / Geometry / Algebra 2 / Precalculus / Calculus / Statistics) for English-speaking
 learners — the topic tags switch with the language, not just the wording.
+
+Free is one lesson a day, every day, and the review questions it generates. Premium adds several
+lessons a day, your review history, and calling your senpai back by voice on something you missed.
 ```
 
 ### How we built it
@@ -229,8 +256,10 @@ so we added a CI check that inspects the built .app.
 
 ```
 The board. A whiteboard that fills up while someone explains to you, that doesn't erase the previous
-step, and that never reads a formula out loud — it is the part we would have cut first under time
-pressure, and it's the part that makes the app feel like a person rather than a search box.
+step, and that never reads a formula out loud. Each step is sent the moment it is finished, so the
+writing is never behind the voice — that is the whole trick, and it is the part we would have cut
+first under time pressure. It's also the part that makes the app feel like a person rather than a
+search box.
 
 And the things we refused to ship: no score, no accuracy rate, no streak-shaming notification. A
 wrong answer changes nothing except when the question comes back.
@@ -265,7 +294,7 @@ curriculum.
 | --- | --- |
 | Next Gen Award | 初日から public + MIT のモノレポ |
 | OneSignal "Keep Them Coming Back" | `/complete` から3日後・7日後を予約。間隔反復そのものが再訪導線 |
-| Peace Prize | 点数・順位・煽りを持たない設計(4つの約束の2〜4番目) |
+| Peace Prize | 点数・順位・煽りを持たない設計(4つの約束の2〜4番目)。**無料のまま毎日1回**なので、家庭教師の時給が最初の関門になっている側にも同じ授業が届く(上限まで使う無料利用の原価は月 ¥3,800 で、課金1人分の手取りより高い。[`business/pricing_v1.md`](business/pricing_v1.md)) |
 | HAMM | 週980 / 月2,980 / 年29,800([`business/pricing_v1.md`](business/pricing_v1.md))と初回授業直後のペイウォール |
 | #BuildInPublic | 同上(public リポジトリ・ADR を含む設計資料が全部見える) |
 | Design | 板書・スクショ・LP まで**生成がコード**([`design_direction_v0.html`](design_direction_v0.html)) |
