@@ -1,0 +1,268 @@
+# Devpost 提出フォーム — 貼る文面(RevenueCat Shipaton 2026)
+
+[Devpost の提出フォーム](https://devpost.com/submit-to/29969-revenuecat-shipaton-2026)の各欄に
+**そのまま貼るための本文**。正はここ。提出締切は **2026-09-30 23:45 PDT**。
+
+- 製品の言い方は [ADR 0009](adr.md#adr-0009) の一本道に揃える:
+  **撮る → 板書つきで教わる → 「わかった」→ その板書から復習問題1問 → 3日後・7日後に通知 → テキストで答えてAIが採点**。
+  「教え返し」「カルテ」「言えた / まだ言えない」「答えを教えない」「正答率」「偏差値」は**書かない**
+  ([`store/app_store_listing.md`](store/app_store_listing.md) と同じ禁止語)。
+- 名前は英語圏 `Katarute` / 日本語 `カタルテ`。**ストア名・ランチャー名と1文字も違えないこと**
+  (食い違いで Guideline 4 に触れた経緯が [`release.md` §0-1](release.md))。
+- 文字数は各欄の上限に収めてある(プロジェクト名 60・エレベーターピッチ 200・タグ 25個)。
+  **変えたら数え直すこと。** 数え方は `[...s].length`(絵文字を入れないので見た目の字数と一致する)。
+- 審査員は英語で読む。**日本語訳は載せない**(Devpost 側は英語一本。日本語の文面が要るのはストアだけ)。
+
+---
+
+## 1. Project overview
+
+### Project name(60字)
+
+```
+Katarute
+```
+
+ストアの名前(`Katarute` / `カタルテ`)と揃えるので**アプリ名だけ**にする。
+審査員は Devpost を見たあと App Store を引くので、ここで別名を名乗ると探せなくなる。
+タグラインはすぐ下の Elevator pitch が担当する。
+
+> 副題を付けたい場合の候補(51字): `Katarute — taught on a board, asked again in 3 days`
+
+### Elevator pitch(200字)
+
+```
+A senpai AI teaches the problem you photographed on a live whiteboard, then sends one question from that board back in 3 and 7 days. Photo-search apps hand you the answer and stop there.
+```
+
+186字。**「教わる」と「3日後にもう一度」の2つが1文に入っていること**が条件で、
+最後の一文が「答えを配るアプリとの違い」を引き受けている。
+
+差し替え候補(いずれも上限内):
+
+| 字数 | 本文 | 寄せている先 |
+| --- | --- | --- |
+| 185 | `Photograph a problem you're stuck on and a senpai AI teaches it on a live whiteboard, never reading the equations aloud. Tap "Got it" and one question from that board returns in 3 days.` | 板書(数式を読み上げない)を立てる |
+| 166 | `Taught on a board, asked again in 3 days. A senpai AI teaches the problem you photographed, then asks you one question from that board just as you start to forget it.` | ストアのサブタイトルと同じ入り |
+
+### Thumbnail(JPG/PNG/GIF・5MB以下・3:2 推奨)
+
+**手持ちに 3:2 が無い。** フィーチャーグラフィックは 1024×500(≈2:1)、
+ストアのスクショは 1290×2796(縦)なので、どちらもそのままでは枠に合わない。
+
+- **絵の正はコード**なので、画像を手で描き直さず
+  `apps/mobile/tool/generate_store_screenshots.dart` に **1200×800 の枠を1つ足して**描き出す
+  (地とマークはフィーチャーグラフィックと同じ。[`store/play_listing.md`](store/play_listing.md) の「フィーチャーグラフィック」と同じ作り方)。
+- 絵柄は**授業中の板書**(スクショ①と同じ画)にする。ギャラリーに並んだとき、
+  「AIが喋っているアプリ」ではなく「板書が積まれるアプリ」に見える必要があるため。
+
+---
+
+## 2. Built with(25タグまで)
+
+入力欄にカンマで続けて打てる。25個ちょうど。
+
+```
+flutter, dart, riverpod, go-router, livekit, livekit-agents, webrtc, typescript, node.js, hono, cloudflare-workers, cloudflare-d1, cloudflare-r2, cloudflare-kv, revenuecat, onesignal, claude, deepgram, gemini, silero, katex, zod, sentry, codemagic, github-actions
+```
+
+削るときは左から順に落とす(左ほど、無くても構成が伝わる):
+`silero` → `go-router` → `katex` → `zod` → `sentry` → `codemagic` → `github-actions`。
+**`revenuecat` と `onesignal` は絶対に落とさない**(参加要件と応募カテゴリの根拠そのもの)。
+
+タグと実体の対応(聞かれたときのため):
+
+| タグ | どこ |
+| --- | --- |
+| `flutter` / `dart` / `riverpod` / `go-router` | `apps/mobile`(iOS先行。状態は Riverpod 3、画面遷移は go_router) |
+| `livekit` / `livekit-agents` / `webrtc` | 会話は LiveKit Cloud のルーム、パイプラインは `backend/agent`。板書は Text Streams |
+| `typescript` / `node.js` / `hono` | `backend/`・`packages/` を pnpm workspaces で1本に |
+| `cloudflare-workers` / `-d1` / `-r2` / `-kv` | API・復習問題(D1)・写真(R2)・無料枠のメータリング(KV)。develop / production の2環境 |
+| `revenuecat` | `purchases_flutter` + `purchases_ui_flutter`(ペイウォール・Customer Center)、webhook → D1([`revenuecat.md`](revenuecat.md)) |
+| `onesignal` | `/complete` から3日後・7日後を予約。スケジュールは OneSignal 側に持たせ cron を持たない |
+| `claude` | 会話と板書の生成(`backend/agent`)、写真の単元判定(`backend/api` の Vision) |
+| `deepgram` | 日本語・英語のストリーミングSTT |
+| `gemini` | TTS。声は日英で同じ1つ([ADR 0008](adr.md#adr-0008)) |
+| `silero` | VAD |
+| `katex` / `zod` | 板書LaTeXの検証(agent側でパース)と、`packages/contract` のスキーマ |
+| `sentry` / `codemagic` / `github-actions` | 監視と配布(mobile→Codemagic、backend→Actions) |
+
+---
+
+## 3. "Try it out" links
+
+上から順に貼る(**審査員が最初に押すのが App Store** になる並び)。
+
+```
+https://apps.apple.com/app/id〔ASC のアプリID〕        ← 公開後に確定。未公開なら貼らない
+https://ubiqy.jp/en/
+https://github.com/sarushili0430/ai-sensei
+```
+
+- **App Store**: 1.0 (50) が 2026-09-10 にリジェクト、51 以降で出し直す([`release.md` §0-1](release.md))。
+  **ストアで一般公開済みであることが Shipaton の必須要件**なので、この行が埋まるまで提出は完了しない。
+  URL は公開後に App Store Connect の「App Store で表示」から取る。
+- **`https://ubiqy.jp/en/`**: 英語の紹介ページ(`apps/lp`)。いまは `noindex` で、
+  運営者名・所在地・管轄裁判所などが `fill` のまま。**提出前に埋めて `noindex` を外す**。
+- **GitHub**: 初日から public + MIT(Next Gen Award の併願条件)。README が英語でないので、
+  審査員向けに**英語の見出しだけでも足すか、この提出文面から辿れる形にする**か決めること。
+- Google Play は後追い(掲載テキストとスクショは [`store/play_listing.md`](store/play_listing.md) に用意済み、商品はゼロ)。
+  **出せていないうちは貼らない。**
+
+---
+
+## 4. Project details(ストーリー欄・下書き)
+
+Devpost の定型の見出しに合わせた下書き。**事実だけで書く**(数字を盛らない・学習効果を断定しない)。
+ラーニングピラミッドは実証性が弱いので**使わない**([`inception-deck.md` §1](inception-deck.md))。
+
+**Challenges の段だけ、畳んだ機能(教え返し・カルテ)に触れている。**
+機能の説明としてではなく「締切の前に何を捨てたか」の話として出しているので、ここは意図どおり
+(禁止語の趣旨は**いまの製品をそう呼ばないこと**であって、経緯を隠すことではない)。
+他の段に書き足すときは、§冒頭の一本道から言葉を借りること。
+
+### Inspiration
+
+```
+Photographing a problem to get the answer is a solved problem — every high schooler in Japan already
+has an app for it. And yet they still can't solve the same problem on the exam. Reading a worked
+solution and feeling "I got it" is not the same state as being able to do it yourself three days
+later, and from the inside the two feel identical.
+
+So we didn't build another app that hands out answers. We built the part that comes after: a senpai
+— an older student — who teaches you on a board, and then comes back three days later to find out
+whether it stuck.
+```
+
+### What it does
+
+```
+1. Photograph the problem you're stuck on, with your notes if you have them, so your senpai can see
+   how far you got.
+2. Your senpai teaches it out loud while writing on a shared whiteboard. Equations, calculations and
+   figures are written, never spoken — the voice only asks: "Look at D here. It's positive, right?
+   So?" You can interrupt and ask back at any time. The lesson ends when you tap "Got it", never
+   before.
+3. Tapping "Got it" turns that board into exactly one review question. It arrives as a notification
+   3 days later, and again after 7. You answer in text; your senpai marks it correct, incorrect, or
+   couldn't-read, and anything you got wrong comes back tomorrow.
+
+No scores. We count days in a row and problems solved — no accuracy rate, no ranking, no screen that
+compares you with anyone. No account, no sign-in, no email: an anonymous device ID is enough.
+
+Japanese junior-high and high-school mathematics and English, plus the overseas curriculum
+(Algebra 1 / Geometry / Algebra 2 / Precalculus / Calculus / Statistics) for English-speaking
+learners — the topic tags switch with the language, not just the wording.
+```
+
+### How we built it
+
+```
+Flutter (iOS first, Riverpod 3) talks to a Cloudflare Workers + Hono API, which opens a LiveKit room
+and starts an agent. The agent pipeline is Silero VAD → Deepgram streaming STT → Claude → Gemini TTS,
+and it streams a single structured object: {speech, board}. Every time one step of the board is
+finished it goes out over LiveKit Text Streams, and only then is the speech spoken — so the board is
+never behind the voice, and barge-in still works.
+
+Two guardrails keep the senpai inside the syllabus: the generated topic_id is checked against a
+curriculum whitelist server-side and regenerated if it falls outside, and every LaTeX command on the
+board is checked against an allowlist and parsed with KaTeX before it is sent, so the app never
+receives something it cannot draw.
+
+Photos go to R2, review questions and entitlements to D1, the free-tier meter to KV. RevenueCat
+(purchases_flutter + purchases_ui_flutter) runs the paywall and Customer Center, and its webhook
+syncs entitlements into D1 — the server is the source of truth for limits, the client entitlement
+only decides what to show. OneSignal holds the 3-day and 7-day schedules, so there is no cron
+anywhere in the system.
+
+The whole thing is a public pnpm + Flutter monorepo under MIT from day one: schemas and fixtures in
+packages/contract are validated by both the Dart app and the TypeScript server, so the two can't
+drift apart silently.
+```
+
+### Challenges we ran into
+
+```
+Spoken equations don't work. "X squared minus three X plus two" does not survive the trip into
+anyone's head, so the senpai had to be split in two — a voice that only asks, and a board that does
+all the writing. That one decision drove the streaming protocol, the LaTeX guardrail and the layout.
+
+Our first TTS vendor could not read Japanese mathematics aloud at all, which sent us looking for a
+voice that handles both languages; we ended up with one Gemini voice used for Japanese and English
+alike, so the senpai doesn't change character when the language does.
+
+The hardest cut was a feature: the original pitch had the student teach the lesson back and kept a
+chart of where they stumbled. It demoed well and it made the loop too long to finish on a phone
+before bed. We folded it into one review question and wrote down why (ADR 0009), because a hackathon
+deadline makes it very tempting to keep a feature that photographs well.
+
+And Apple rejected 1.0: the permission dialogs were in Japanese inside an English build. The fix was
+small; the lesson was that anything shown by the OS has to be localized where the OS looks for it,
+so we added a CI check that inspects the built .app.
+```
+
+### Accomplishments that we're proud of
+
+```
+The board. A whiteboard that fills up while someone explains to you, that doesn't erase the previous
+step, and that never reads a formula out loud — it is the part we would have cut first under time
+pressure, and it's the part that makes the app feel like a person rather than a search box.
+
+And the things we refused to ship: no score, no accuracy rate, no streak-shaming notification. A
+wrong answer changes nothing except when the question comes back.
+```
+
+### What we learned
+
+```
+Write down what you are not building before you need the discipline. Our "not doing" list is the
+reason we shipped a whole loop instead of most of a bigger one.
+
+Also: build the paywall and the notifications early. Both look like end-of-project work, and both
+turned out to need decisions — what a subscription unlocks, when the senpai is allowed to reach out —
+that belong to the product, not the plumbing.
+```
+
+### What's next for Katarute
+
+```
+Android (the listing is written and the app is the same Flutter codebase), Sign in with Apple so
+progress survives a new phone, a text lane for people who can't speak out loud, and more of the
+curriculum.
+```
+
+---
+
+## 5. Additional info / 併願するカテゴリ
+
+[`inception-deck.md` §1](inception-deck.md) で決めた併願先。**応募根拠を1行で言えるものだけ出す。**
+
+| カテゴリ | 根拠 |
+| --- | --- |
+| Next Gen Award | 初日から public + MIT のモノレポ |
+| OneSignal "Keep Them Coming Back" | `/complete` から3日後・7日後を予約。間隔反復そのものが再訪導線 |
+| Peace Prize | 点数・順位・煽りを持たない設計(4つの約束の2〜4番目) |
+| HAMM | 週980 / 月2,980 / 年29,800([`business/pricing_v1.md`](business/pricing_v1.md))と初回授業直後のペイウォール |
+| #BuildInPublic | 同上(public リポジトリ・ADR を含む設計資料が全部見える) |
+| Design | 板書・スクショ・LP まで**生成がコード**([`design_direction_v0.html`](design_direction_v0.html)) |
+
+そのほか、提出物として先に作っておくもの:
+
+- **デモ動画(2分)** — 撮る順は ①撮影 → ②板書つき授業 → ③「わかった」→ ④3日後の通知 → ⑤採点。
+  ストアのスクショの並びと同じにする。
+- **全機能を開けるプロモコード** — App Store Connect で発行し、Devpost の審査員向け欄に書く。
+  RevenueCat の entitlement ではなく**ストアのコード**で配る(コードで買った扱いになるので導線が本番と同じになる)。
+
+---
+
+## 6. 提出前チェックリスト
+
+- [ ] App Store で一般公開されている(**必須要件**。51以降のビルドで出し直し → 審査通過 → URL 確定)
+- [ ] `https://ubiqy.jp/en/` の `fill` を埋め、`noindex` を外す
+- [ ] Thumbnail(3:2)を `generate_store_screenshots.dart` から描き出す
+- [ ] Project name / Elevator pitch / Built with / links を貼る(本書の §1〜§3)
+- [ ] Project details を貼る(§4)。**貼ったあと、禁止語が混ざっていないか読み返す**
+- [ ] デモ動画(2分)を YouTube 等に上げてURLを貼る
+- [ ] プロモコードを審査員向け欄に書く
+- [ ] 併願カテゴリを選ぶ(§5)
+- [ ] 提出(2026-09-30 23:45 PDT)

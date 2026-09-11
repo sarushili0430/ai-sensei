@@ -261,3 +261,17 @@ pnpm --filter @ai-sensei/api tail:production
 | IAP の販売地域 | 日本+米国のまま / 全地域 | App Store Connect |
 | 1回の授業の上限 | 20分のまま / 日次残高いっぱい(`PREMIUM_SESSION_MAX_SECONDS=3600`) | `wrangler.toml` |
 | 無料の1日の持ち時間 | 20分のまま / 15分 / 10分(`pricing_v1.md` §3) | `wrangler.toml` の `FREE_SECONDS_PER_DAY` |
+
+---
+
+## 11. Shipaton の提出(ストア公開のあと)
+
+**ストアで一般公開されていることが Shipaton の必須要件**なので、この文書が終わるまで提出はできない。
+Devpost の各欄に貼る文面・タグ・リンクと、提出前チェックリストは
+[`shipaton_submission.md`](shipaton_submission.md)(締切 2026-09-30 23:45 PDT)。
+
+公開が確定した時点で先に埋まるのは次の3つ。
+
+- [ ] App Store の URL を `shipaton_submission.md` §3 に入れる
+- [ ] LP(`https://ubiqy.jp/en/`)の `fill` を埋めて `noindex` を外す(§8 と同じ作業)
+- [ ] 全機能を開けるプロモコードを App Store Connect で発行する
