@@ -86,16 +86,34 @@ Apple に出してあるものが正で、正本は [`store/app_store_listing.md
 
 ### Thumbnail(JPG/PNG/GIF・5MB以下・3:2 推奨)
 
-**手持ちに 3:2 が無い。** フィーチャーグラフィックは 1024×500(≈2:1)、
-ストアのスクショは 1290×2796(縦)なので、どちらもそのままでは枠に合わない。
+[`store/devpost/thumbnail-1200x800.png`](store/devpost/thumbnail-1200x800.png)(1200×800 = 3:2・約 260KB)。
 
-- **絵の正はコード**なので、画像を手で描き直さず
-  `apps/mobile/tool/generate_store_screenshots.dart` に **1200×800 の枠を1つ足して**描き出す
-  (地とマークはフィーチャーグラフィックと同じ。[`store/play_listing.md`](store/play_listing.md) の「フィーチャーグラフィック」と同じ作り方)。
-- 絵柄は**授業中の板書**(スクショ①と同じ画)にする。ギャラリーに並んだとき、
-  「AIが喋っているアプリ」ではなく「板書が積まれるアプリ」に見える必要があるため。
+```bash
+cd apps/mobile
+fvm flutter test tool/generate_store_screenshots.dart --plain-name "devpost thumbnail"
+```
 
----
+**画像を手で描き直さないこと。** ストア素材と同じで**絵の正はコード**にしてある
+(`tool/generate_store_screenshots.dart` の `_devpostThumbnail`)。地・マーク・
+黄マーカーの引き方はフィーチャーグラフィックと共通で、ストアから来た審査員が
+同じアプリだと分かるようにしている。
+
+中身と、その理由:
+
+| | |
+| --- | --- |
+| 左 | アプリ名 + `Taught on a board. / Asked again in 3 days.`(ストアのサブタイトルと同じ言葉)+ `Every tutor teaches. Almost none come back.`(ピッチの後半と同じ言葉) |
+| 右 | **本物の授業画面**。板書が積み上がっている途中で下を切ってある |
+| 板書 | **英語で描き直したもの**(`_thumbnailShot()`)。審査員は英語で読む |
+
+- **ギャラリーでは幅 350px 前後まで縮む。** 読ませるのは見出しだけで、板書は
+  「数式が積まれている絵」として効かせている。文字を足すほど、縮んだときに
+  何も読めない板になる。
+- 板書は**手順を8つ**積んだ状態にしてある。3つだと板の下半分が空いたまま写り、
+  縮めると黒い帯にしか見えない。
+- **`docs/store/screenshots/en/` の板書はまだ日本語のまま**(板書の中身は
+  `_Shot` の override が持っていて、ロケールで切り替わらない)。英語の掲載を
+  出すときは、そこも `_thumbnailShot()` と同じ要領で英語にすること。
 
 ## 2. Built with(25タグまで)
 
@@ -312,7 +330,7 @@ curriculum.
 
 - [ ] App Store で一般公開されている(**必須要件**。51以降のビルドで出し直し → 審査通過 → URL 確定)
 - [ ] `https://ubiqy.jp/en/` の `fill` を埋め、`noindex` を外す
-- [ ] Thumbnail(3:2)を `generate_store_screenshots.dart` から描き出す
+- [x] Thumbnail(3:2)を `generate_store_screenshots.dart` から描き出す(`store/devpost/thumbnail-1200x800.png`)
 - [ ] Project name / Elevator pitch / Built with / links を貼る(本書の §1〜§3)
 - [ ] Project details を貼る(§4)。**貼ったあと、禁止語が混ざっていないか読み返す**
 - [ ] デモ動画(2分)を YouTube 等に上げてURLを貼る
