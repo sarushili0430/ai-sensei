@@ -102,8 +102,9 @@ class AiSenseiApp extends ConsumerWidget {
       navigatorKey: router.routerDelegate.navigatorKey,
       child: MaterialApp.router(
         // Androidのタスクスイッチャーに出る名前。ランチャーの `android:label` と
-        // ストアの表示名(カタルテ)に合わせる。
-        title: 'カタルテ',
+        // ストアの表示名に合わせる。**端末の言語で変わる**ので、固定の `title`
+        // ではなく `onGenerateTitle`(Localizations が効く側)で引く。
+        onGenerateTitle: (BuildContext context) => AppStrings.of(context).appTitle,
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light(),
         routerConfig: router,

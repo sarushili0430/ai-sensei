@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 端末に出るアプリ名(ランチャー・設定・許可ダイアログ)。
+
+     ここが**既定**で、日本語以外の端末はすべてこれになる。英語圏向けは
+     ローマ字の `Katarute` に寄せる。日本語の端末には `values-ja/` の
+     `カタルテ` が出る。落とし方はアプリ内の文言(`AppStrings.resolve`)と同じで、
+     「日本語を望んだ端末だけ日本語、それ以外は英語」。
+
+     **ストア側の名前も揃えること。** ランチャー名とストア名が違うと、
+     入れたあとにアプリを見つけられない(`docs/store/play_listing.md`
+     「アプリ名の注意」)。 -->
+<resources>
+    <string name="app_name">Katarute</string>
+</resources>

@@ -424,7 +424,7 @@ ONESIGNAL_DISABLE_LOCATION=true flutter build ios
 Xcode を使うなら **File > Packages > Reset Package Caches** でもよい
 (変数を渡した状態で起動していること)。
 
-## 9. 権限の説明文を言語ごとに出す
+## 9. 端末に出す文言を言語ごとに出す
 
 ### 何が起きたか
 
@@ -457,6 +457,17 @@ Apple の作法どおり、本文を `.lproj` に移した。
 | `Runner/en.lproj/InfoPlist.strings` | 英語 |
 | `Runner/ja.lproj/InfoPlist.strings` | 日本語(1.0 (50) までと同じ本文) |
 
+**アプリ名(`CFBundleDisplayName`)も同じ仕組みに載せた。** 許可ダイアログの
+`Allow "..." to access ...` に入るのがこれで、英語の本文に日本語の名前だけが
+残るのを避ける。英語圏は `Katarute`、日本語は `カタルテ`。
+Android も同じで、`android:label` を `@string/app_name` にして
+`res/values/strings.xml`(既定 = `Katarute`)と `res/values-ja/strings.xml`
+(`カタルテ`)に分けてある。アプリ内(Androidのタスクスイッチャー)は
+`main.dart` の `onGenerateTitle`。
+
+**ストア側の名前も揃えること。** ランチャー名とストア名が違うと、入れたあとに
+アプリを見つけられない([`../store/play_listing.md` の「アプリ名の注意」](../store/play_listing.md))。
+
 `.lproj` は Xcode の **Copy Bundle Resources** 経由でしか `.app` に入らないので、
 `Runner.xcodeproj/project.pbxproj` にも足してある
 (`PBXVariantGroup` + `knownRegions` に `ja`)。
@@ -469,12 +480,12 @@ Apple の作法どおり、本文を `.lproj` に移した。
 
 ### どう気づくか
 
-`ios-testflight` の「権限の説明文が言語ごとに入っているか (Guideline 4)」で、
+`ios-testflight` の「端末に出す文言が言語ごとに入っているか (Guideline 4)」で、
 できあがった `.app` の中身を見ている。
 
 - `en.lproj` / `ja.lproj` の `InfoPlist.strings` が入っているか
-- その両方に3つのキー(カメラ・マイク・写真)が揃っているか
-- `Info.plist` 側の既定が英語のままか(日本語が戻ると ja 以外の端末でまた日本語が出る)
+- その両方に4つのキー(表示名・カメラ・マイク・写真)が揃っているか
+- `Info.plist` 側の既定が英語(ローマ字)のままか(日本語が戻ると ja 以外の端末でまた日本語が出る)
 
 `project.pbxproj` の登録が外れても**ビルドは緑のまま**説明文が1言語に戻るので、
 Flutter のテンプレートを作り直したときや、Xcode でファイルを動かしたときは、

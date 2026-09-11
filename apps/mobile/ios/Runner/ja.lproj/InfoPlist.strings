@@ -6,6 +6,9 @@
 
    **キーを足すときは Info.plist・ja.lproj・en.lproj の3か所に足す。** */
 
+/* 端末に出るアプリ名。日本語の端末はカタカナのまま(ストアの日本語名と同じ)。 */
+"CFBundleDisplayName" = "カタルテ";
+
 "NSCameraUsageDescription" = "ノートの写真を撮って、どの単元でつまずいているかを読み取るために使います。";
 
 "NSMicrophoneUsageDescription" = "解いた問題を声に出して説明してもらうために使います。";

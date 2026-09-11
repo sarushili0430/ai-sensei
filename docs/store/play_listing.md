@@ -27,15 +27,21 @@ LP・アプリ内文言はすべて **`カタルテ`(カタカナ)** で、
 `docs/design_direction_v0.html` の基本情報も「カタルテ(語る × カルテ)」。
 **コンソール側をカタカナに寄せること**(既存資産が全部そちら)。
 
-端末に入る表示名は `カタルテ` に修整済み:
+端末に入る表示名は**端末の言語で分けてある**(日本語 `カタルテ` / それ以外 `Katarute`):
 
-- `apps/mobile/android/app/src/main/AndroidManifest.xml` の `android:label`
-- `apps/mobile/ios/Runner/Info.plist` の `CFBundleDisplayName`
+- Android … `AndroidManifest.xml` の `android:label` は `@string/app_name`。
+  実体は `res/values/strings.xml`(既定 = `Katarute`)と
+  `res/values-ja/strings.xml`(`カタルテ`)
+- iOS … `Runner/{en,ja}.lproj/InfoPlist.strings` の `CFBundleDisplayName`
+  (`Runner/Info.plist` に残っているのは翻訳が無いときの既定 = `Katarute`)
+- アプリ内(Androidのタスクスイッチャー)… `main.dart` の `onGenerateTitle`
 
 ストア名とランチャー名が違うと、インストール後にアプリを見つけられない。
-日英で別の表示名にしたい場合(英語圏に `Katarute` を出す等)は、iOS は
-`InfoPlist.strings` のロケール別、Android は `values-<locale>/strings.xml` を
-足すことになる —— **いまは両ロケール共通で `カタルテ`**。
+**Play Console の英語の掲載も `Katarute` にすること**(日本語の掲載は `カタルテ`)。
+仕組みは iOS が `InfoPlist.strings` のロケール別、Android が
+`values-<locale>/strings.xml`。**日本語を望んだ端末だけ `カタルテ`**で、
+それ以外(英語・スペイン語…)は既定の `Katarute` に落ちる。
+アプリ内の文言(`AppStrings.resolve`)と同じ落とし方にしてある。
 
 ---
 

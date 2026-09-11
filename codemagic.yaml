@@ -467,7 +467,8 @@ workflows:
           echo "経緯は docs/ci/codemagic.md の「8. 位置情報を持ち込まない」。"
           exit 1
 
-      # 権限の説明文が**アプリの言語と同じ言語で出るか**を、できあがった .app で検める。
+      # 端末に出す文言(アプリ名・権限の説明文)が**アプリの言語と同じ言語で出るか**を、
+      # できあがった .app で検める。
       #
       # 1.0(50) はここが日本語のままで、英語の端末に日本語の説明文が出たため
       # **Guideline 4 - Design** で返された(2026-09-10 の審査。審査は英語の
@@ -477,13 +478,13 @@ workflows:
       # .lproj は Xcode の Copy Bundle Resources 経由でしか .app に入らない。
       # `project.pbxproj` の登録(PBXVariantGroup)が外れると**ビルドは緑のまま**
       # 説明文が既定の1言語だけに戻るので、ここで .app の中身を見る。
-      - name: 権限の説明文が言語ごとに入っているか (Guideline 4)
+      - name: 端末に出す文言が言語ごとに入っているか (Guideline 4)
         working_directory: apps/mobile
         script: |
           set -euo pipefail
 
           app="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app"
-          keys="NSCameraUsageDescription NSMicrophoneUsageDescription NSPhotoLibraryUsageDescription"
+          keys="CFBundleDisplayName NSCameraUsageDescription NSMicrophoneUsageDescription NSPhotoLibraryUsageDescription"
           ng=0
 
           # ビルド時に .strings は別の形(binary / UTF-16)へ変換される。
@@ -515,10 +516,10 @@ workflows:
           for key in $keys; do
             value="$(plutil -extract "$key" raw -o - "$app/Info.plist" 2>/dev/null || true)"
             if [ -z "$value" ]; then
-              echo "NG: Info.plist に $key が無い。該当APIを呼んだ瞬間に落ちる。"
+              echo "NG: Info.plist に $key が無い(用途文言なら、該当APIを呼んだ瞬間に落ちる)。"
               ng=1
             elif printf '%s' "$value" | LC_ALL=C grep -q '[^ -~]'; then
-              echo "NG: Info.plist の $key が英語で書かれていない(既定は開発言語=en)。"
+              echo "NG: Info.plist の $key が英語(ローマ字)で書かれていない(既定は開発言語=en)。"
               echo "    $value"
               ng=1
             fi
@@ -529,11 +530,11 @@ workflows:
             echo "このまま出すと Guideline 4 - Design で返る"
             echo "(permissions requests that are not written in the same language"
             echo " as the app's localization)。"
-            echo "経緯は docs/ci/codemagic.md の「9. 権限の説明文を言語ごとに出す」。"
+            echo "経緯は docs/ci/codemagic.md の「9. 端末に出す文言を言語ごとに出す」。"
             exit 1
           fi
 
-          echo "権限の説明文は en/ja とも .app に入っている。既定(Info.plist)も英語。"
+          echo "表示名と権限の説明文は en/ja とも .app に入っている。既定(Info.plist)も英語。"
 
     artifacts:
       - apps/mobile/build/ios/ipa/*.ipa

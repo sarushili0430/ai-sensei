@@ -19,7 +19,7 @@
          足すときは、その申告に何を書くかを先に決めること。 -->
 
     <application
-        android:label="カタルテ"
+        android:label="@string/app_name"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round">

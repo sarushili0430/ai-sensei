@@ -11,6 +11,15 @@
    **キーを足すときは Info.plist・ja.lproj・en.lproj の3か所に足す。**
    ここに無いキーは Info.plist の本文がそのまま出る = 英語の端末に日本語が出る。 */
 
+/* 端末に出るアプリ名。英語圏向けは `Katarute`(ローマ字)に寄せる。
+   許可ダイアログの Allow "..." to access ... にもここが入るので、
+   これが `カタルテ` のままだと、英語の本文に日本語の名前だけが残る。
+
+   **App Store Connect の en-US の「名前」も `Katarute` にすること。**
+   ストア名とランチャー名が違うと、入れたあとに見つけられない
+   (`docs/store/play_listing.md`「アプリ名の注意」)。 */
+"CFBundleDisplayName" = "Katarute";
+
 "NSCameraUsageDescription" = "Used to take photos of your notes, so the app can read which topic you are stuck on.";
 
 "NSMicrophoneUsageDescription" = "Used so you can explain the problem you solved out loud to your senpai.";

@@ -6,8 +6,11 @@
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<!-- 端末に出るアプリ名。**本文の正は `{en,ja}.lproj/InfoPlist.strings`。**
+	     ここに残しているのは翻訳が無いときの既定で、開発言語(en)にあわせて
+	     ローマ字。日本語の端末には ja.lproj の `カタルテ` が出る。 -->
 	<key>CFBundleDisplayName</key>
-	<string>カタルテ</string>
+	<string>Katarute</string>
 	<key>CFBundleLocalizations</key>
 	<array>
 		<string>ja</string>

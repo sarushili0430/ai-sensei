@@ -42,7 +42,11 @@ iPad Air 11インチ(M3)**。指摘は2つで、**別々の直し方**が要る�
 [`ci/codemagic.md` の §9](ci/codemagic.md)。
 
 - [x] `Info.plist` / `en.lproj` / `ja.lproj` / `project.pbxproj`
-- [x] `ios-testflight` に「権限の説明文が言語ごとに入っているか (Guideline 4)」を足した
+- [x] **アプリ名も同じ仕組みに載せた**(英語圏 `Katarute` / 日本語 `カタルテ`)。
+      許可ダイアログの `Allow "..." to access ...` に入るのがこれ。
+      Android は `@string/app_name` + `values/` `values-ja/`、
+      アプリ内は `main.dart` の `onGenerateTitle`
+- [x] `ios-testflight` に「端末に出す文言が言語ごとに入っているか (Guideline 4)」を足した
       (`.app` の中身を見るので、`project.pbxproj` の登録が外れたら止まる)
 - [ ] **新しいビルドを上げ直す**(`develop` へ push → TestFlight)。
       50 は直らないので、**審査に出すのは 51 以降**
@@ -50,6 +54,12 @@ iPad Air 11インチ(M3)**。指摘は2つで、**別々の直し方**が要る�
       カメラ・マイク・アルバムの3つのダイアログが英語で出ることを見る。
       日本語の端末では**日本語のまま**なのが正しい
 - [ ] App Store Connect > 1.0 の「ビルド」で新しいビルドを選び直してから提出
+- [ ] **App Store Connect の en-US の「名前」を `Katarute` にする**
+      (App 情報 > ローカリゼーション > English (U.S.))。
+      端末側が `Katarute` になったので、ここがカタカナのままだと
+      ストア名とランチャー名が食い違う
+- [ ] Play Console の英語の掲載タイトルも `Katarute` に(日本語の掲載は `カタルテ`)。
+      Android は後追いなので、出すときでよい
 
 ### ② Guideline 2.3.2 - Accurate Metadata — App内課金のプロモーション画像(ASC 側・手作業)
 

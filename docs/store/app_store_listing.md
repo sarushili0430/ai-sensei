@@ -18,7 +18,7 @@ Google Play 側は [`play_listing.md`](play_listing.md)。
 
 | フィールド | 日本語 | English(en-US) |
 | --- | --- | --- |
-| 名前(30) | `カタルテ` | `カタルテ`(端末の表示名と揃える。英語圏向けに `Katarute` にするなら `InfoPlist.strings` も足す — `play_listing.md`「アプリ名の注意」) |
+| 名前(30) | `カタルテ` | `Katarute`(端末の表示名と揃える。アプリ側は `Runner/en.lproj/InfoPlist.strings` の `CFBundleDisplayName` で英語圏に `Katarute` を出している。**en-US をカタカナのままにすると、ストア名とランチャー名が食い違う** — `play_listing.md`「アプリ名の注意」) |
 | サブタイトル(30) | `板書つきで教わって、3日後にもう一度` | `Taught on a board, asked again` |
 | プライマリカテゴリ | 教育 | Education |
 | セカンダリカテゴリ | 参考書 | Reference |
