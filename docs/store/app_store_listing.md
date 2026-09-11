@@ -225,7 +225,8 @@ First release.
 | 説明 ja(45) | `毎日つづけて何問も教わる。1週間ごとの自動更新。` | `毎日つづけて何問も教わる。1か月ごとの自動更新。` | `毎日つづけて何問も教わる。1年ごとの自動更新。月あたり最も割安。` |
 | 表示名 en-US(30) | `Katarute Premium Weekly` | `Katarute Premium Monthly` | `Katarute Premium Yearly` |
 | 説明 en-US(45) | `Several lessons a day. Renews every week.` | `Several lessons a day. Renews every month.` | `Several lessons a day. Renews every year.` |
-| 審査用スクリーンショット | `docs/store/iap-review/paywall-ja.png`(3商品とも同じ1枚) | 同左 | 同左 |
+| 審査用スクリーンショット(審査に関する情報) | `docs/store/iap-review/paywall-ja.png`(3商品とも同じ1枚でよい) | 同左 | 同左 |
+| プロモーション画像(App Store でのプロモーション) | **入れない**(下の 7-2)。入れるなら商品ごとに別の1枚 | 同左 | 同左 |
 
 審査用スクリーンショットは現行UIのペイウォールを確定価格で描いたもの
 (`cd apps/mobile && fvm flutter test --dart-define=TERMS_URL=https://ubiqy.jp/terms/ --dart-define=PRIVACY_POLICY_URL=https://ubiqy.jp/privacy/ tool/generate_iap_review_screenshot.dart`
@@ -344,6 +345,41 @@ Purchasable with a Sandbox account; no account registration needed. The free tie
 ```
 
 ---
+
+### 7-2. プロモーション画像は、埋めるなら商品ごとに別の1枚にする
+
+1.0 (50) が **Guideline 2.3.2 - Performance - Accurate Metadata** でも返された(2026-09-10)。
+
+> You submitted duplicate or identical promotional images for different promoted
+> In-App Purchase products and/or win back offers.
+> Your promotional image includes text that is small or otherwise hard to read.
+
+**「審査用スクリーンショット」と「プロモーション画像」は別の欄。** 混ざりやすい。
+
+| | 審査用スクリーンショット | プロモーション画像 |
+| --- | --- | --- |
+| 場所 | 商品 > 審査に関する情報 | 商品 > **App Store でのプロモーション** |
+| 誰が見るか | 審査員だけ | **App Store の閲覧者**(商品ページ・検索・Today に並ぶ) |
+| 要否 | 必須 | 任意 |
+| 寸法 | 640×920 以上 | **1024×1024**(アルファ無し) |
+| 3商品で同じ1枚 | **よい**(同じペイウォールが出るので) | **だめ**(今回の指摘) |
+
+App Store Connect に、3商品とも同じ画像が**プロモーション画像として**入っている。
+週・月・年は同じペイウォールから買うので、審査用としては同じ1枚が正しいが、
+プロモーション画像は商品ごとに App Store へ別々に並ぶものなので、同じだと
+「どれを買うのか分からない」になる。加えて、縦長のペイウォールを 1024×1024 に
+縮めてあるぶん、**文字が読めない**という2つめの指摘も同じ1枚から来ている。
+
+直し方は2つ。**いまは上を採る。**
+
+1. **消す**(App Store Connect > 各商品 > App Store でのプロモーション > 画像を削除)。
+   App Store の商品ページで課金を売り込む予定がいまは無いので、空でよい。
+   欄が空なら 2.3.2 は出ない。
+2. **商品ごとに1枚ずつ作る**。1024×1024 で、**週額 / 月額 / 年額とその価格が
+   1024px の縮小でも読める字の大きさ**で入っていること。ペイウォールの
+   スクリーンショットを縮めたものは使わない(文字が小さいという指摘がこれ)。
+   作るなら `apps/mobile/tool/` に描き出しを足して、`docs/store/iap-promo/` に置く
+   (スクショと同じで、画像を手で描かない — Guideline 2.3.3)。
 
 ## 8. App Review Information(アプリ側の審査メモ)
 
