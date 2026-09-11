@@ -34,7 +34,7 @@
 | **1024×1024 のアプリアイコン** | "Include a 1024x1024 app icon" | ✅ `apps/mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-1024x1024@1x.png`(不透明・角を丸めていない生の正方形) |
 | **1179×2556 のスクショを1枚以上・端末フレームなし** | "at least one screenshot ... WITHOUT device frames" | ✅ [`store/screenshots/{ja,en}/plain/`](store/screenshots)(まさにこの寸法で描いてある) |
 | 審査員が有料機能を開けること | "the app must either offer a free trial or the Entrant must include a promo code for judges" | ❌ プロモコード未発行。**無料トライアルを付けていないので、コードが要る** |
-| **英語** | "All Submission materials must be in English or ... provide an English translation" | ⚠ Devpost 側は英語で書く(§1〜§4)。**リポジトリの README は日本語**(Next Gen を狙うなら効く。0-3) |
+| **英語** | "All Submission materials must be in English or ... provide an English translation" | ⚠ Devpost 側は英語で書く(§1〜§4)。スクショの中身も英語にした(2026-09-11。板書・復習問題がロケールで切り替わるようにした)。**リポジトリの README は日本語のまま**(Next Gen を狙うなら効く。0-4) |
 
 ### 0-2. 落ちる条件(ここが今回の勝負どころ)
 
@@ -174,9 +174,9 @@ fvm flutter test tool/generate_store_screenshots.dart --plain-name "devpost thum
   何も読めない板になる。
 - 板書は**手順を8つ**積んだ状態にしてある。3つだと板の下半分が空いたまま写り、
   縮めると黒い帯にしか見えない。
-- **`docs/store/screenshots/en/` の板書はまだ日本語のまま**(板書の中身は
-  `_Shot` の override が持っていて、ロケールで切り替わらない)。英語の掲載を
-  出すときは、そこも `_thumbnailShot()` と同じ要領で英語にすること。
+- 板書・復習問題の中身は `_lessonState()` / `_practiceQueue()` がロケールから作る。
+  **英語側は日本の課程の翻訳ではなく、`packages/curriculum` の intl の topic_id と
+  ラベルで作る**([ADR 0005](adr.md#adr-0005))。
 
 ## 2. Built with(25タグまで)
 
@@ -406,6 +406,7 @@ curriculum.
       (撮る順は §5)
 - [ ] 画像ギャラリーに **1024×1024 のアイコン**(`AppIcon.appiconset/Icon-App-1024x1024@1x.png`)と
       **1179×2556 のスクショ**([`store/screenshots/en/plain/`](store/screenshots))を上げる。どちらも手元にある
+      (スクショは**中身まで英語**になっていること。2026-09-11 に直した)
 
 ### 文面と素材
 

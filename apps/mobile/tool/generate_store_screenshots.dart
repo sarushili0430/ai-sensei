@@ -247,7 +247,7 @@ Future<GlobalKey> _pump(
         key: key,
         child: wrapApp(
           screen,
-          overrides: shot.overrides,
+          overrides: shot.overrides(locale),
           locale: Locale(locale),
         ),
       ),
@@ -259,7 +259,7 @@ Future<GlobalKey> _pump(
   // 常設タブの下の画面。ルータの redirect と画面が同じコンテナを見るよう、
   // golden の `expectRoutedGolden` と同じ形でコンテナを外から渡す。
   final ProviderContainer container = ProviderContainer(
-    overrides: <Object?>[..._bootOverrides(), ...shot.overrides].cast(),
+    overrides: <Object?>[..._bootOverrides(), ...shot.overrides(locale)].cast(),
   );
   addTearDown(container.dispose);
 
@@ -751,7 +751,7 @@ class _Shot {
     required this.copy,
     this.screen,
     this.location,
-    this.overrides = const <Object?>[],
+    this.overrides = _noOverrides,
   }) : assert(
          (screen == null) != (location == null),
          'screen か location のどちらか一方だけを渡すこと',
@@ -766,8 +766,15 @@ class _Shot {
   final String? location;
 
   final List<_Copy> copy;
-  final List<Object?> overrides;
+
+  /// 差し替えるものは**ロケールで変わる**。板書も復習問題も、言葉だけでなく
+  /// 課程ごと切り替わるため([ADR 0005](../../../docs/adr.md))。日本語の板書に
+  /// 英語の見出しを付けた絵は、英語の掲載でも Shipaton の提出物でも通らない
+  /// (提出物は英語、というのが Shipaton の要件。`docs/shipaton_submission.md` §0-1)。
+  final List<Object?> Function(String locale) overrides;
 }
+
+List<Object?> _noOverrides(String locale) => const <Object?>[];
 
 /// ルータ経由で撮るときの起動時の値。
 /// 渡さないと初回起動と見なされ、オンボーディングが出る。
@@ -809,81 +816,156 @@ const SessionAnalysis _sampleSessionAnalysis = SessionAnalysis(
   ],
 );
 
-/// Devpost のサムネイルに写す授業画面。**板書を英語で描いたもの**。
-///
-/// `_shots` には入れない(ストアの5枚は増やさない)。板書の中身を持っているのは
-/// `_Shot` の override なので、日本語のまま `01-lesson` を使うと、英語で読む
-/// 審査員に日本語の板書が出る。
+// --- ロケールごとの中身 ---
+//
+// **言葉だけでなく課程も切り替わる**(ADR 0005)。英語の板書・復習問題は日本の
+// 課程からの翻訳ではなく、`packages/curriculum` の intl 側の topic_id とラベルで作る。
+// ここを1つにまとめてあるのは、日本語の中身に英語の見出しを付けた絵を
+// 二度と出さないため(en の掲載でも Shipaton の提出物でも、それは英語の素材にならない)。
+
+/// 授業中の板書。[extended] は Devpost のサムネイル用で、手順を最後まで積む
+/// (3つだと板の下半分が空いたまま写り、縮めると黒い帯にしか見えない)。
+SessionState _lessonState(String locale, {bool extended = false}) {
+  final bool en = locale == 'en';
+  return SessionState(
+    phase: SessionPhase.senpaiTeaching,
+    remainingSeconds: 214,
+    // 数式は板書、声は問いかけだけ(計画書§3-1)。
+    // 見出しの言葉と同じものを喋らせない。
+    lastSenpaiText: en
+        ? "Look at D here. It's positive, right? So?"
+        : 'ここ、D を見てほしいんだけど — プラスだよね。だから?',
+    board: BoardSnapshot(
+      title: en
+          ? 'Counting the solutions with the discriminant'
+          : '判別式で解の個数を見る',
+      steps: <BoardStep>[
+        BoardStep(
+          index: 0,
+          speech: en ? 'Let me write it down as it is.' : 'まず、式をそのまま書くね。',
+          board: const BoardElement.latex(tex: 'x^2 - 3x + 2 = 0'),
+        ),
+        BoardStep(
+          index: 1,
+          speech: en ? 'Which one is a, b and c?' : 'a、b、c がどれか、言える?',
+          board: const BoardElement.text(body: 'a = 1, b = -3, c = 2'),
+        ),
+        BoardStep(
+          index: 2,
+          speech: en
+              ? 'The discriminant had this shape, remember?'
+              : '判別式は、この形だったよね。',
+          board: const BoardElement.latex(
+            tex: 'D = (-3)^2 - 4 \\cdot 1 \\cdot 2 = 1',
+          ),
+        ),
+        if (extended) ...<BoardStep>[
+          BoardStep(
+            index: 3,
+            speech: en ? 'So how many solutions does it have?' : 'で、解は何個?',
+            board: BoardElement.text(
+              body: en ? 'D > 0, so there are two.' : 'D > 0 だから、2個。',
+            ),
+          ),
+          BoardStep(
+            index: 4,
+            speech: en
+                ? 'Then the formula gives us both.'
+                : 'あとは解の公式で、両方出る。',
+            board: const BoardElement.latex(tex: 'x = \\frac{3 \\pm 1}{2}'),
+          ),
+          BoardStep(
+            index: 5,
+            speech: en ? 'Which comes out as?' : '計算すると?',
+            board: BoardElement.text(
+              body: en ? 'x = 2, x = 1' : 'x = 2, x = 1',
+            ),
+          ),
+          BoardStep(
+            index: 6,
+            speech: en ? 'This one factors, too.' : 'これ、因数分解でもいける。',
+            board: const BoardElement.latex(tex: '(x - 1)(x - 2) = 0'),
+          ),
+          BoardStep(
+            index: 7,
+            speech: en ? 'Same two answers, faster.' : '同じ答えが、もっと速く出る。',
+            board: BoardElement.text(
+              body: en ? 'Same two answers, faster.' : '同じ答えが、もっと速い。',
+            ),
+          ),
+          BoardStep(
+            index: 8,
+            speech: en ? 'Let me check one of them.' : '片方、代入して確かめよう。',
+            board: const BoardElement.latex(tex: '2^2 - 3 \\cdot 2 + 2 = 0'),
+          ),
+        ],
+      ],
+    ),
+  );
+}
+
+/// ホームと復習に出す復習問題。
+PracticeQueue _practiceQueue(String locale) {
+  if (locale != 'en') return samplePracticeQueue;
+  return PracticeQueue(
+    items: <PracticeQueueItem>[
+      PracticeQueueItem(
+        problem: PracticeProblem(
+          id: 'prb_discriminant',
+          sessionId: 'ses_1',
+          boardId: 'brd_1',
+          topicId: 'A1-QUAD-SOLVE',
+          question: 'How many solutions does x² − 6x + 5 = 0 have?',
+          createdAt: DateTime.utc(2026, 8, 3, 13, 24, 7),
+        ),
+        daysSince: 3,
+        topicLabel: 'The quadratic formula and the discriminant',
+        lastVerdict: null,
+      ),
+      PracticeQueueItem(
+        problem: PracticeProblem(
+          id: 'prb_circle_line',
+          sessionId: 'ses_2',
+          boardId: 'brd_2',
+          topicId: 'A2-COORD-CIRCLE',
+          question: 'In how many points do x² + y² = 9 and y = x + 1 meet?',
+          createdAt: DateTime.utc(2026, 8, 1, 12, 2, 44),
+        ),
+        daysSince: 5,
+        topicLabel: 'Lines and circles',
+        lastVerdict: PracticeVerdict.unclear,
+      ),
+    ],
+    solved: <SolvedPractice>[_solvedPractice(locale)],
+  );
+}
+
+/// 解けた問題(復習の下に積まれるほう)。
+SolvedPractice _solvedPractice(String locale) {
+  if (locale != 'en') return sampleSolvedPractice;
+  return SolvedPractice(
+    problem: PracticeProblem(
+      id: 'prb_vertex',
+      sessionId: 'ses_solved',
+      boardId: 'brd_solved',
+      topicId: 'A1-QUAD-GRAPH',
+      question: 'What is the vertex of y = x² + 4x + 1?',
+      createdAt: DateTime.utc(2026, 7, 29, 11, 15, 3),
+    ),
+    topicLabel: 'Parabolas and completing the square',
+    daysSinceSolved: 1,
+  );
+}
+
+/// Devpost のサムネイルに写す授業画面。`_shots` には入れない
+/// (ストアの5枚は増やさない)。
 _Shot _thumbnailShot() => _Shot(
   slug: 'devpost-thumbnail',
   screen: const SessionScreen(),
-  overrides: <Object?>[
+  overrides: (String locale) => <Object?>[
     captureControllerProvider.overrideWith(_FakeCaptureController.new),
     sessionControllerProvider.overrideWith(
-      () => _FakeSessionController(
-        const SessionState(
-          phase: SessionPhase.senpaiTeaching,
-          remainingSeconds: 214,
-          // 数式は板書、声は問いかけだけ。ストアの英語の説明文と同じ一言。
-          lastSenpaiText: "Look at D here. It's positive, right? So?",
-          board: BoardSnapshot(
-            title: 'Counting the solutions with the discriminant',
-            steps: <BoardStep>[
-              BoardStep(
-                index: 0,
-                speech: "Let me write it down as it is.",
-                board: BoardElement.latex(tex: 'x^2 - 3x + 2 = 0'),
-              ),
-              BoardStep(
-                index: 1,
-                speech: 'Which one is a, b and c?',
-                board: BoardElement.text(body: 'a = 1, b = -3, c = 2'),
-              ),
-              BoardStep(
-                index: 2,
-                speech: 'The discriminant had this shape, remember?',
-                board: BoardElement.latex(
-                  tex: 'D = (-3)^2 - 4 \\cdot 1 \\cdot 2 = 1',
-                ),
-              ),
-              // 授業の終わりがけを見せる。手順が3つだと板が半分空いたまま写り、
-              // 縮めたときに黒い帯にしか見えない。**積み上がっているのが絵の中身**。
-              BoardStep(
-                index: 3,
-                speech: 'So how many solutions does it have?',
-                board: BoardElement.text(body: 'D > 0, so there are two.'),
-              ),
-              BoardStep(
-                index: 4,
-                speech: 'Then the formula gives us both.',
-                board: BoardElement.latex(tex: 'x = \\frac{3 \\pm 1}{2}'),
-              ),
-              BoardStep(
-                index: 5,
-                speech: 'Which comes out as?',
-                board: BoardElement.text(body: 'x = 2, x = 1'),
-              ),
-              BoardStep(
-                index: 6,
-                speech: 'This one factors, too.',
-                board: BoardElement.latex(tex: '(x - 1)(x - 2) = 0'),
-              ),
-              BoardStep(
-                index: 7,
-                speech: 'Same two answers, faster.',
-                board: BoardElement.text(body: 'Same two answers, faster.'),
-              ),
-              BoardStep(
-                index: 8,
-                speech: 'Let me check one of them.',
-                board: BoardElement.latex(
-                  tex: '2^2 - 3 \\cdot 2 + 2 = 0',
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+      () => _FakeSessionController(_lessonState(locale, extended: true)),
     ),
   ],
   copy: const <_Copy>[_Copy(locale: 'en', headline: '')],
@@ -917,40 +999,10 @@ final List<_Shot> _shots = <_Shot>[
   _Shot(
     slug: '01-lesson',
     screen: const SessionScreen(),
-    overrides: <Object?>[
+    overrides: (String locale) => <Object?>[
       captureControllerProvider.overrideWith(_FakeCaptureController.new),
       sessionControllerProvider.overrideWith(
-        () => _FakeSessionController(
-          const SessionState(
-            phase: SessionPhase.senpaiTeaching,
-            remainingSeconds: 214,
-            // 数式は板書、声は問いかけだけ(計画書§3-1)。
-            // 見出しの言葉と同じものを喋らせない。
-            lastSenpaiText: 'ここ、D を見てほしいんだけど — プラスだよね。だから?',
-            board: BoardSnapshot(
-              title: '判別式で解の個数を見る',
-              steps: <BoardStep>[
-                BoardStep(
-                  index: 0,
-                  speech: 'まず、式をそのまま書くね。',
-                  board: BoardElement.latex(tex: 'x^2 - 3x + 2 = 0'),
-                ),
-                BoardStep(
-                  index: 1,
-                  speech: 'a、b、c がどれか、言える?',
-                  board: BoardElement.text(body: 'a = 1, b = -3, c = 2'),
-                ),
-                BoardStep(
-                  index: 2,
-                  speech: '判別式は、この形だったよね。',
-                  board: BoardElement.latex(
-                    tex: 'D = (-3)^2 - 4 \\cdot 1 \\cdot 2 = 1',
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+        () => _FakeSessionController(_lessonState(locale)),
       ),
     ],
     copy: const <_Copy>[
@@ -965,7 +1017,7 @@ final List<_Shot> _shots = <_Shot>[
   _Shot(
     slug: '02-celebration',
     screen: const CelebrationScreen(),
-    overrides: <Object?>[
+    overrides: (String locale) => <Object?>[
       progressControllerProvider.overrideWith(FakeProgressController.new),
       sessionOutcomeControllerProvider.overrideWith(
         () => FakeSessionOutcomeController(const SessionOutcome()),
@@ -984,12 +1036,12 @@ final List<_Shot> _shots = <_Shot>[
   _Shot(
     slug: '03-practice',
     location: AppRoute.review.path,
-    overrides: <Object?>[
+    overrides: (String locale) => <Object?>[
       progressControllerProvider.overrideWith(FakeProgressController.new),
       reviewControllerProvider.overrideWith(
         () => FakeReviewController(
           PracticeQueue(
-            items: <PracticeQueueItem>[samplePracticeQueue.items.first],
+            items: <PracticeQueueItem>[_practiceQueue(locale).items.first],
           ),
         ),
       ),
@@ -1012,11 +1064,11 @@ final List<_Shot> _shots = <_Shot>[
   _Shot(
     slug: '04-progress',
     location: AppRoute.home.path,
-    overrides: <Object?>[
+    overrides: (String locale) => <Object?>[
       progressControllerProvider.overrideWith(FakeProgressController.new),
       // 「きのうの続き」のカードに、件数ではなく単元の中身を出すため。
       reviewControllerProvider.overrideWith(
-        () => FakeReviewController(samplePracticeQueue),
+        () => FakeReviewController(_practiceQueue(locale)),
       ),
     ],
     copy: const <_Copy>[
@@ -1037,13 +1089,13 @@ final List<_Shot> _shots = <_Shot>[
   _Shot(
     slug: '05-review',
     location: AppRoute.review.path,
-    overrides: <Object?>[
+    overrides: (String locale) => <Object?>[
       progressControllerProvider.overrideWith(FakeProgressController.new),
       reviewControllerProvider.overrideWith(
         () => FakeReviewController(
           PracticeQueue(
-            items: <PracticeQueueItem>[samplePracticeQueue.items.first],
-            solved: <SolvedPractice>[sampleSolvedPractice],
+            items: <PracticeQueueItem>[_practiceQueue(locale).items.first],
+            solved: <SolvedPractice>[_solvedPractice(locale)],
           ),
         ),
       ),
