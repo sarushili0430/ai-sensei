@@ -14,7 +14,8 @@
   Algebra 2 / Precalculus / Calculus / Statistics)を出す
   ([ADR 0005](docs/adr.md#adr-0005))
 - 学習科学の背景: 自己説明効果(self-explanation effect)とプロテジェ効果(teachable agent)
-- [RevenueCat Shipaton 2026](https://shipaton.revenuecat.com/) 提出プロジェクト(Next Gen Award 併願のため初日からpublic + MIT)
+- [RevenueCat Shipaton 2026](https://shipaton.revenuecat.com/) 提出プロジェクト(Next Gen Award 併願のため初日からpublic + MIT)。
+  Devpost に貼る文面は [`docs/shipaton_submission.md`](docs/shipaton_submission.md)
 
 何を作っていて何を作らないかの合意は [`docs/inception-deck.md`](docs/inception-deck.md) にまとめてあります
 (エレベーターピッチ・やらないことリスト・トレードオフスライダー)。スプリントの入口で読んでください。
