@@ -32,18 +32,39 @@ Katarute
 ### Elevator pitch(200字)
 
 ```
-A senpai AI teaches the problem you photographed on a live whiteboard, then sends one question from that board back in 3 and 7 days. Photo-search apps hand you the answer and stop there.
+An AI tutor that teaches the problem you photographed on a live whiteboard, then asks you one question from it 3 days later. Every tutor teaches; almost none come back to see whether it stuck.
 ```
 
-186字。**「教わる」と「3日後にもう一度」の2つが1文に入っていること**が条件で、
-最後の一文が「答えを配るアプリとの違い」を引き受けている。
+192字。**立てているのは「家庭教師」ではなく「家庭教師がやらない側」。**
+
+教える主体を家庭教師に寄せるのは、審査員が1語で受け取れるから
+(ストア文面も「書いている間は喋らない、というのは**本物の家庭教師と同じやり方**です」と、
+同じ比喩を1か所だけで使っている。キーワードにも `家庭教師` が入っている)。
+ただし "AI tutor" は Devpost でもっとも飽和した言い方で、それだけでは山に埋もれる。
+**火曜に教えた人は、金曜にそれが残っているかを確かめない** — ユニークなのはそこで、
+後半の一文がその役をしている。
+
+書かなかったものと、その理由:
+
+- **`senpai` はここに入れない。** 英語の審査員には意味の無い音で、説明に字数を食う。
+  人格は Project details の What it does 側で出す(§4 はそう書いてある)。
+- **「ずっと見てくれる関係」を約束しない。** tutor と言った瞬間に進捗管理や学習計画まで
+  期待されるが、いまの実装は **1授業 → 1問 → 3日後・7日後**。デモで足が出る言い方はしない。
+- 3日後だけを書いて7日後を落としたのは字数の都合。**通知が2回あるのは事実**なので、
+  Project details 側では両方書く。
 
 差し替え候補(いずれも上限内):
 
 | 字数 | 本文 | 寄せている先 |
 | --- | --- | --- |
+| 190 | `An AI tutor that teaches the problem you photographed on a live whiteboard, then follows up 3 and 7 days later with one question from it. Other apps hand you the answer and never check back.` | 家庭教師と、答えを配るアプリとの対比を1文ずつ |
+| 186 | `A senpai AI teaches the problem you photographed on a live whiteboard, then sends one question from that board back in 3 and 7 days. Photo-search apps hand you the answer and stop there.` | senpai を残し、写真検索アプリとの対比を立てる |
 | 185 | `Photograph a problem you're stuck on and a senpai AI teaches it on a live whiteboard, never reading the equations aloud. Tap "Got it" and one question from that board returns in 3 days.` | 板書(数式を読み上げない)を立てる |
 | 166 | `Taught on a board, asked again in 3 days. A senpai AI teaches the problem you photographed, then asks you one question from that board just as you start to forget it.` | ストアのサブタイトルと同じ入り |
+
+**ストア側の文面は動かさない。** サブタイトル(`Taught on a board, asked again`)と説明文は
+Apple に出してあるものが正で、正本は [`store/app_store_listing.md`](store/app_store_listing.md)。
+家庭教師の比喩をストアにも広げたくなったら、**審査に出す前に**そちらを直すこと。
 
 ### Thumbnail(JPG/PNG/GIF・5MB以下・3:2 推奨)
 
@@ -129,9 +150,12 @@ has an app for it. And yet they still can't solve the same problem on the exam. 
 solution and feeling "I got it" is not the same state as being able to do it yourself three days
 later, and from the inside the two feel identical.
 
-So we didn't build another app that hands out answers. We built the part that comes after: a senpai
-— an older student — who teaches you on a board, and then comes back three days later to find out
-whether it stuck.
+A private tutor does the first half of this well. Almost none do the second: they teach you on
+Tuesday, and never find out whether Friday still had it.
+
+So we didn't build another app that hands out answers, and we didn't stop at explaining well either.
+We built both halves: a senpai — an older student — who teaches you on a board, and then comes back
+three days later to find out whether it stuck.
 ```
 
 ### What it does
