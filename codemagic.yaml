@@ -467,6 +467,75 @@ workflows:
           echo "経緯は docs/ci/codemagic.md の「8. 位置情報を持ち込まない」。"
           exit 1
 
+      # 端末に出す文言(アプリ名・権限の説明文)が**アプリの言語と同じ言語で出るか**を、
+      # できあがった .app で検める。
+      #
+      # 1.0(50) はここが日本語のままで、英語の端末に日本語の説明文が出たため
+      # **Guideline 4 - Design** で返された(2026-09-10 の審査。審査は英語の
+      # iPhone と iPad で見ている)。いまは Info.plist の本文を開発言語(英語)にして、
+      # 翻訳を `Runner/{en,ja}.lproj/InfoPlist.strings` に置いてある。
+      #
+      # .lproj は Xcode の Copy Bundle Resources 経由でしか .app に入らない。
+      # `project.pbxproj` の登録(PBXVariantGroup)が外れると**ビルドは緑のまま**
+      # 説明文が既定の1言語だけに戻るので、ここで .app の中身を見る。
+      - name: 端末に出す文言が言語ごとに入っているか (Guideline 4)
+        working_directory: apps/mobile
+        script: |
+          set -euo pipefail
+
+          app="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app"
+          keys="CFBundleDisplayName NSCameraUsageDescription NSMicrophoneUsageDescription NSPhotoLibraryUsageDescription"
+          ng=0
+
+          # ビルド時に .strings は別の形(binary / UTF-16)へ変換される。
+          # xml1 に起こし直してから見れば、どの形で入っていても読める。
+          for lang in en ja; do
+            file="$app/$lang.lproj/InfoPlist.strings"
+            if [ ! -f "$file" ]; then
+              echo "NG: $lang.lproj/InfoPlist.strings が .app に入っていない。"
+              echo "    Runner の Copy Bundle Resources から InfoPlist.strings が外れている。"
+              ng=1
+              continue
+            fi
+            xml="$(plutil -convert xml1 -o - "$file" 2>/dev/null || true)"
+            if [ -z "$xml" ]; then
+              echo "NG: $file を plist として読めない。"
+              ng=1
+              continue
+            fi
+            for key in $keys; do
+              if ! printf '%s' "$xml" | grep -q "<key>$key</key>"; then
+                echo "NG: $lang.lproj/InfoPlist.strings に $key が無い。"
+                ng=1
+              fi
+            done
+          done
+
+          # Info.plist に残っているのは、翻訳が見つからなかったときに出る既定。
+          # 開発言語は en なので、ここに日本語が戻ると ja 以外の端末でまた日本語が出る。
+          for key in $keys; do
+            value="$(plutil -extract "$key" raw -o - "$app/Info.plist" 2>/dev/null || true)"
+            if [ -z "$value" ]; then
+              echo "NG: Info.plist に $key が無い(用途文言なら、該当APIを呼んだ瞬間に落ちる)。"
+              ng=1
+            elif printf '%s' "$value" | LC_ALL=C grep -q '[^ -~]'; then
+              echo "NG: Info.plist の $key が英語(ローマ字)で書かれていない(既定は開発言語=en)。"
+              echo "    $value"
+              ng=1
+            fi
+          done
+
+          if [ "$ng" -ne 0 ]; then
+            echo ""
+            echo "このまま出すと Guideline 4 - Design で返る"
+            echo "(permissions requests that are not written in the same language"
+            echo " as the app's localization)。"
+            echo "経緯は docs/ci/codemagic.md の「9. 端末に出す文言を言語ごとに出す」。"
+            exit 1
+          fi
+
+          echo "表示名と権限の説明文は en/ja とも .app に入っている。既定(Info.plist)も英語。"
+
     artifacts:
       - apps/mobile/build/ios/ipa/*.ipa
       # クラッシュのシンボル化(Sentry)に要る。

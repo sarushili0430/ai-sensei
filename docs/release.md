@@ -28,6 +28,58 @@
 
 ---
 
+## 0-1. 1.0 (50) のリジェクト(2026-09-10)と、出し直すまでにやること
+
+提出 ID `bde258f3-ef9a-4861-b1b6-c71bcf6359bd`。審査は **英語の iPhone 17 Pro Max と
+iPad Air 11インチ(M3)**。指摘は2つで、**別々の直し方**が要る。
+
+### ① Guideline 4 - Design — 権限の説明文がアプリの言語と違う(コード側・直した)
+
+英語で出ているアプリに、日本語のカメラ許可ダイアログが重なっていた。
+`Runner/Info.plist` に日本語の本文を直接書いていたのが原因。
+本文を `Runner/{en,ja}.lproj/InfoPlist.strings` に移し、Info.plist 側は
+開発言語(英語)の既定だけを残した。経緯と再発の見つけ方は
+[`ci/codemagic.md` の §9](ci/codemagic.md)。
+
+- [x] `Info.plist` / `en.lproj` / `ja.lproj` / `project.pbxproj`
+- [x] **アプリ名も同じ仕組みに載せた**(英語圏 `Katarute` / 日本語 `カタルテ`)。
+      許可ダイアログの `Allow "..." to access ...` に入るのがこれ。
+      Android は `@string/app_name` + `values/` `values-ja/`、
+      アプリ内は `main.dart` の `onGenerateTitle`
+- [x] `ios-testflight` に「端末に出す文言が言語ごとに入っているか (Guideline 4)」を足した
+      (`.app` の中身を見るので、`project.pbxproj` の登録が外れたら止まる)
+- [ ] **新しいビルドを上げ直す**(`develop` へ push → TestFlight)。
+      50 は直らないので、**審査に出すのは 51 以降**
+- [ ] 上げたビルドを**英語の端末**(または端末の言語を英語にして)で開き、
+      カメラ・マイク・アルバムの3つのダイアログが英語で出ることを見る。
+      日本語の端末では**日本語のまま**なのが正しい
+- [ ] App Store Connect > 1.0 の「ビルド」で新しいビルドを選び直してから提出
+- [ ] **App Store Connect の en-US の「名前」を `Katarute` にする**
+      (App 情報 > ローカリゼーション > English (U.S.))。
+      端末側が `Katarute` になったので、ここがカタカナのままだと
+      ストア名とランチャー名が食い違う
+- [ ] Play Console の英語の掲載タイトルも `Katarute` に(日本語の掲載は `カタルテ`)。
+      Android は後追いなので、出すときでよい
+
+### ② Guideline 2.3.2 - Accurate Metadata — App内課金のプロモーション画像(ASC 側・手作業)
+
+3商品に**同じプロモーション画像**が入っていて、しかも文字が小さい、という2点。
+**「審査用スクリーンショット」ではなく「App Store でのプロモーション」の欄。**
+違いと直し方は [`store/app_store_listing.md` の 7-2](store/app_store_listing.md)。
+
+- [ ] 3商品の「App Store でのプロモーション」の画像を**消す**
+      (App Store の商品ページで課金を売り込む予定がいまは無いので、空でよい。
+      空なら 2.3.2 は出ない)。
+      売り込むなら、消すかわりに**商品ごとに別の 1024×1024 を作る**
+      (週額 / 月額 / 年額と価格が、縮小しても読める大きさで入っていること)
+
+### ③ 返信
+
+App Store Connect の同じメッセージに返信する(「Reply to this message」)。
+①はビルドで直したこと、②は画像を消した(または商品ごとに差し替えた)ことを書く。
+
+---
+
 ## 1. コード側(このブランチで済ませたもの)
 
 - [x] `backend/api/wrangler.toml`: production から β開放の2変数を削除(develop は 2026-12-01 まで残す)

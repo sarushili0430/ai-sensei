@@ -1,0 +1,16 @@
+/* 権限の説明文(日本語)。本文は 1.0(50) までと同じもので、置き場所だけを移した。
+
+   日本語を望んだ端末にだけ日本語を出す。それ以外は en.lproj(既定)。
+   アプリ内の文言の落とし方(`lib/src/l10n/strings.dart` の `AppStrings.resolve`)と
+   同じ規則にしてあるので、**画面が日本語なら説明文も日本語**になる。
+
+   **キーを足すときは Info.plist・ja.lproj・en.lproj の3か所に足す。** */
+
+/* 端末に出るアプリ名。日本語の端末はカタカナのまま(ストアの日本語名と同じ)。 */
+"CFBundleDisplayName" = "カタルテ";
+
+"NSCameraUsageDescription" = "ノートの写真を撮って、どの単元でつまずいているかを読み取るために使います。";
+
+"NSMicrophoneUsageDescription" = "解いた問題を声に出して説明してもらうために使います。";
+
+"NSPhotoLibraryUsageDescription" = "すでに撮ってあるノートや問題の写真を選ぶために使います。";

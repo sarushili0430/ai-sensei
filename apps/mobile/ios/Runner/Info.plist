@@ -6,8 +6,11 @@
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<!-- 端末に出るアプリ名。**本文の正は `{en,ja}.lproj/InfoPlist.strings`。**
+	     ここに残しているのは翻訳が無いときの既定で、開発言語(en)にあわせて
+	     ローマ字。日本語の端末には ja.lproj の `カタルテ` が出る。 -->
 	<key>CFBundleDisplayName</key>
-	<string>カタルテ</string>
+	<string>Katarute</string>
 	<key>CFBundleLocalizations</key>
 	<array>
 		<string>ja</string>
@@ -37,16 +40,28 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<!-- 権限の説明文。空だと審査でリジェクトされ、
-	     キーごと無いと該当APIを呼んだ瞬間にクラッシュする。 -->
+	     キーごと無いと該当APIを呼んだ瞬間にクラッシュする。
+
+	     **本文の正は `Runner/{en,ja}.lproj/InfoPlist.strings` のほう。**
+	     ここに残してあるのは、翻訳が見つからなかったときに出る既定で、
+	     開発言語(developmentRegion = en)にあわせて英語で書いてある。
+
+	     1.0(50) が **Guideline 4 - Design** で返されたのは、ここに日本語しか
+	     無かったからで、英語の端末で「What do you have?」の上に日本語の
+	     説明文が出ていた(審査は英語の iPhone と iPad で見ている)。
+	     **ここへ日本語を書き戻さないこと。**
+
+	     キーを足すときは3か所(ここ・en.lproj・ja.lproj)に足す。
+	     .lproj に無いキーは、この本文がそのまま全言語に出る。 -->
 	<key>NSCameraUsageDescription</key>
-	<string>ノートの写真を撮って、どの単元でつまずいているかを読み取るために使います。</string>
+	<string>Used to take photos of your notes, so the app can read which topic you are stuck on.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>解いた問題を声に出して説明してもらうために使います。</string>
+	<string>Used so you can explain the problem you solved out loud to your senpai.</string>
 	<!-- 撮る以外の入口(撮影画面で枠をタップして出るシートの「アルバム」)。
 	     塾で撮ってきたノートや、送られてきた問題の画像を、その場で撮り直さずに
 	     出せるようにするため。 -->
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>すでに撮ってあるノートや問題の写真を選ぶために使います。</string>
+	<string>Used to pick photos of notes or problems that you have already taken.</string>
 	<!-- **NSLocationWhenInUseUsageDescription は、意図的に置いていない。**
 
 	     App Store Connect から
