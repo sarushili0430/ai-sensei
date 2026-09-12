@@ -1,7 +1,7 @@
 name: ai_sensei
 description: 数学の「わかったつもり」を、声に出して説明させて見つけるアプリ。
 publish_to: "none"
-version: 1.0.0+1
+version: 1.0.1+1
 
 environment:
   # Flutterのバージョンは .fvmrc で固定する(fvm use)。

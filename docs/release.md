@@ -23,7 +23,7 @@
 | App Store Connect | アプリレコード・3商品(READY_TO_SUBMIT)。**2026-09-05 に RevenueCat 経由で反映済み**: 価格(日本 週¥980 / 月¥2,980 / 年¥29,800、米国 $6.99 / $19.99 / $199.99)と、3商品の審査メモ(新しい導線・料金・日英)。**API が拒否して未反映**: 商品の表示名・説明の差し替え(旧説明は「セッション無制限」のまま)、英語(en-US)ロケールの追加、サブスクリプショングループ名の `かたるて` → `カタルテ`(§5 で手作業)。掲載文(説明・キーワード等)は未入力 |
 | Codemagic | `ios-testflight`(develop への push で TestFlight)と `android-internal`(`v*` タグ)が組んである。`submit_to_app_store: false`。変数グループ `mobile-dart-defines` の `API_BASE_URL` が **どちらを向いているかは要確認**(§6) |
 | LP(`https://ubiqy.jp/`) | `apps/lp` をそのまま配信したもの。規約・ポリシー・サポートは日英そろったが、**運営者名・所在地・管轄裁判所・制定日・返信の目安が `fill` のまま**で `noindex` |
-| アプリ | `pubspec.yaml` を `1.0.0+1` に上げた。ビルド番号は Codemagic の連番 |
+| アプリ | `pubspec.yaml` は `1.0.1+1`。ビルド番号は Codemagic の連番。**1.0.0 は App Store Connect 側で閉じた**(アップロードが `90186 Invalid Pre-Release Train. The train version '1.0.0' is closed for new build submissions` で弾かれる)ので、出し直しは 1.0.1 で上げる |
 | β開放 | `wrangler.toml` の **production から `BETA_OPEN_ACCESS_UNTIL` / `BETA_SECONDS_PER_DAY` を外した**(develop には残る)。production を出した瞬間から課金導線が生きる |
 
 ---
@@ -49,11 +49,15 @@ iPad Air 11インチ(M3)**。指摘は2つで、**別々の直し方**が要る�
 - [x] `ios-testflight` に「端末に出す文言が言語ごとに入っているか (Guideline 4)」を足した
       (`.app` の中身を見るので、`project.pbxproj` の登録が外れたら止まる)
 - [ ] **新しいビルドを上げ直す**(`develop` へ push → TestFlight)。
-      50 は直らないので、**審査に出すのは 51 以降**
+      50 は直らないので、**審査に出すのは 51 以降**。
+      ただし **1.0.0 の列(train)は閉じている**ため、そのままでは
+      `90186 Invalid Pre-Release Train` でアップロードが弾かれる。
+      `pubspec.yaml` を **`1.0.1`** に上げてから出す
 - [ ] 上げたビルドを**英語の端末**(または端末の言語を英語にして)で開き、
       カメラ・マイク・アルバムの3つのダイアログが英語で出ることを見る。
       日本語の端末では**日本語のまま**なのが正しい
-- [ ] App Store Connect > 1.0 の「ビルド」で新しいビルドを選び直してから提出
+- [ ] App Store Connect で **1.0.1 のバージョンを作り**、その「ビルド」に
+      新しいビルドを選んでから提出(1.0 は閉じているので選び直せない)
 - [ ] **App Store Connect の en-US の「名前」を `Katarute` にする**
       (App 情報 > ローカリゼーション > English (U.S.))。
       端末側が `Katarute` になったので、ここがカタカナのままだと
@@ -261,3 +265,17 @@ pnpm --filter @ai-sensei/api tail:production
 | IAP の販売地域 | 日本+米国のまま / 全地域 | App Store Connect |
 | 1回の授業の上限 | 20分のまま / 日次残高いっぱい(`PREMIUM_SESSION_MAX_SECONDS=3600`) | `wrangler.toml` |
 | 無料の1日の持ち時間 | 20分のまま / 15分 / 10分(`pricing_v1.md` §3) | `wrangler.toml` の `FREE_SECONDS_PER_DAY` |
+
+---
+
+## 11. Shipaton の提出(ストア公開のあと)
+
+**ストアで一般公開されていることが Shipaton の必須要件**なので、この文書が終わるまで提出はできない。
+Devpost の各欄に貼る文面・タグ・リンクと、提出前チェックリストは
+[`shipaton_submission.md`](shipaton_submission.md)(締切 2026-09-30 23:45 PDT)。
+
+公開が確定した時点で先に埋まるのは次の3つ。
+
+- [ ] App Store の URL を `shipaton_submission.md` §3 に入れる
+- [ ] LP(`https://ubiqy.jp/en/`)の `fill` を埋めて `noindex` を外す(§8 と同じ作業)
+- [ ] 全機能を開けるプロモコードを App Store Connect で発行する
