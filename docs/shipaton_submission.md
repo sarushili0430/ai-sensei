@@ -244,125 +244,43 @@ Devpost の定型の見出しに合わせた下書き。**事実だけで書く*
 ### Inspiration
 
 ```
-Photographing a problem to get the answer is a solved problem — every high schooler in Japan already
-has an app for it. And yet they still can't solve the same problem on the exam. Reading a worked
-solution and feeling "I got it" is not the same state as being able to do it yourself three days
-later, and from the inside the two feel identical.
-
-A private tutor does the first half of this well. Almost none do the second: they teach you on
-Tuesday, and never find out whether Friday still had it.
-
-So we didn't build another app that hands out answers, and we didn't stop at explaining well either.
-We built both halves: a senpai — an older student — who teaches you on a board, and then comes back
-three days later to find out whether it stuck.
-
-And it had to fit in a pocket that doesn't have an hourly rate behind it. The students who would
-gain most from a tutor are the ones least likely to have one, so the free tier is a real product and
-not a teaser: one lesson a day, every day, no account and no email address. A free user who takes
-their full daily limit costs us more to serve than a subscriber pays us. For the first year, we
-think that's the right way round.
+Photographing a math problem to get the answer is a solved problem: every high schooler in Japan already has an app for it, and the answer arrives in seconds. And yet they still can't solve the same problem on the exam three days later. Reading a worked solution and feeling _"I got it"_ is not the same state as being able to do it yourself, and from the inside the two feel identical. That gap is where we wanted to build. A private tutor does the first half of this well: they sit next to you, write on paper while they talk, and stop to ask _"so what's the sign here?"_ instead of reading the whole thing at you. But almost none of them do the second half. **They teach you on Tuesday and never find out whether Friday still had it.** So we didn't build another app that hands out answers, and we didn't stop at explaining well either. We built both halves: a _senpai_, an older student rather than a teacher, who teaches your problem on a shared whiteboard, and then comes back three days later, and again after seven, with one question from that board to find out whether it stuck. The second inspiration was price. A private tutor's hourly rate is the first gate most families hit, and the students who would gain the most from one are exactly the ones least likely to have one. So the free tier had to be a real product and not a teaser: one full lesson a day, every day, with no account, no sign-in and no email address, plus every review question that lesson generates. A free user who takes their full daily allowance costs us more to serve than a subscriber pays us. For the first year we think that is the right way round, and it is why we entered the Peace Prize alongside the main track.
 ```
 
 ### What it does
 
 ```
-1. Photograph the problem you're stuck on, with your notes if you have them, so your senpai can see
-   how far you got.
-2. Your senpai teaches it out loud while writing on a shared whiteboard. Equations, calculations and
-   figures are written, never spoken — the voice only asks: "Look at D here. It's positive, right?
-   So?" You can interrupt and ask back at any time. The lesson ends when you tap "Got it", never
-   before.
-3. Tapping "Got it" turns that board into exactly one review question. It arrives as a notification
-   3 days later, and again after 7. You answer in text; your senpai marks it correct, incorrect, or
-   couldn't-read, and anything you got wrong comes back tomorrow.
-
-No scores. We count days in a row and problems solved — no accuracy rate, no ranking, no screen that
-compares you with anyone. No account, no sign-in, no email: an anonymous device ID is enough.
-
-Japanese junior-high and high-school mathematics and English, plus the overseas curriculum
-(Algebra 1 / Geometry / Algebra 2 / Precalculus / Calculus / Statistics) for English-speaking
-learners — the topic tags switch with the language, not just the wording.
-
-Free is one lesson a day, every day, and the review questions it generates. Premium adds several
-lessons a day, your review history, and calling your senpai back by voice on something you missed.
+**Katarute is a voice tutor that writes instead of talking.** You photograph the problem you're stuck on, with your notebook if you have one, so your senpai can see how far you got. The senpai then teaches it out loud while filling a shared whiteboard on your screen. Equations, calculations and figures are always written, never spoken: the voice only asks, _"Look at D here. It's positive, right? So?"_ You can interrupt and ask back at any moment, exactly as you would with a person, and the lesson never ends on a timer or a step count. It ends when **you** tap "Got it" at the bottom of the screen, and until then the board just keeps growing under the same explanation. Tapping "Got it" turns that board into exactly one review question. It arrives as a push notification three days later and again after seven, worded as a favour from your senpai rather than a reminder. You answer in text, since you may be somewhere you can't speak, and the senpai marks it correct, incorrect or couldn't-read; anything you got wrong comes back tomorrow, then in three days, then in seven. There are no scores. We count days in a row and problems solved, and nothing else: no accuracy rate, no ranking, no screen that compares you with anyone. It covers Japanese junior-high and high-school mathematics and English, plus the overseas curriculum (Algebra 1, Geometry, Algebra 2, Precalculus, Calculus, Statistics) for English-speaking learners, and the topic tags switch with the curriculum rather than just the wording. Free is one lesson a day, every day, and the review questions it generates. Premium (weekly, monthly or yearly through RevenueCat) adds several lessons a day, your review history, calling your senpai back by voice on something you missed, and a study plan you build together.
 ```
 
 ### How we built it
 
 ```
-Flutter (iOS first, Riverpod 3) talks to a Cloudflare Workers + Hono API, which opens a LiveKit room
-and starts an agent. The agent pipeline is Silero VAD → Deepgram streaming STT → Claude → Gemini TTS,
-and it streams a single structured object: {speech, board}. Every time one step of the board is
-finished it goes out over LiveKit Text Streams, and only then is the speech spoken — so the board is
-never behind the voice, and barge-in still works.
-
-Two guardrails keep the senpai inside the syllabus: the generated topic_id is checked against a
-curriculum whitelist server-side and regenerated if it falls outside, and every LaTeX command on the
-board is checked against an allowlist and parsed with KaTeX before it is sent, so the app never
-receives something it cannot draw.
-
-Photos go to R2, review questions and entitlements to D1, the free-tier meter to KV. RevenueCat
-(purchases_flutter + purchases_ui_flutter) runs the paywall and Customer Center, and its webhook
-syncs entitlements into D1 — the server is the source of truth for limits, the client entitlement
-only decides what to show. OneSignal holds the 3-day and 7-day schedules, so there is no cron
-anywhere in the system.
-
-The whole thing is a public pnpm + Flutter monorepo under MIT from day one: schemas and fixtures in
-packages/contract are validated by both the Dart app and the TypeScript server, so the two can't
-drift apart silently.
+The app is **Flutter** (iOS first, Riverpod 3, go_router) talking to a **Cloudflare Workers + Hono** API. When you start a lesson the API stores your photo in R2, has a Claude vision call identify the topic, opens a **LiveKit** room and dispatches a LiveKit Agent into it. The agent pipeline is Silero VAD, Deepgram streaming speech-to-text, Claude, and Gemini TTS, and the model streams a single structured object: `{speech, board}`. Every time one board step is complete it goes out over LiveKit Text Streams, and only then is the speech for that step synthesised and played, so the writing is never behind the voice and barge-in still works mid-sentence. Two guardrails keep the senpai inside the syllabus. The topic ID it picks is checked server-side against a whitelist built from `packages/curriculum`, a set of pure JSON curriculum maps with one file per track, and regenerated if it falls outside. Every LaTeX command on the board is checked against an allowlist and parsed with KaTeX before it leaves the agent, so the phone never receives something it cannot draw. Review questions, attempts and entitlements live in D1; the free-tier meter lives in KV, so the server is the source of truth for limits and the client entitlement only decides what to show. **RevenueCat** (`purchases_flutter` and `purchases_ui_flutter`) runs the paywall and Customer Center, and its webhook syncs entitlements into D1. **OneSignal** holds the three-day and seven-day schedules, which means there is no cron anywhere in the system. Everything is one public pnpm + Flutter monorepo under MIT from day one: `packages/contract` holds the Zod schemas and fixtures, and both the Dart app and the TypeScript server validate against the same fixtures in CI so the two can't drift apart silently. Mobile ships through Codemagic, the backend through GitHub Actions, and Sentry watches both.
 ```
 
 ### Challenges we ran into
 
 ```
-Spoken equations don't work. "X squared minus three X plus two" does not survive the trip into
-anyone's head, so the senpai had to be split in two — a voice that only asks, and a board that does
-all the writing. That one decision drove the streaming protocol, the LaTeX guardrail and the layout.
-
-Our first TTS vendor could not read Japanese mathematics aloud at all, which sent us looking for a
-voice that handles both languages; we ended up with one Gemini voice used for Japanese and English
-alike, so the senpai doesn't change character when the language does.
-
-The hardest cut was a feature: the original pitch had the student teach the lesson back and kept a
-chart of where they stumbled. It demoed well and it made the loop too long to finish on a phone
-before bed. We folded it into one review question and wrote down why (ADR 0009), because a hackathon
-deadline makes it very tempting to keep a feature that photographs well.
-
-And Apple rejected 1.0: the permission dialogs were in Japanese inside an English build. The fix was
-small; the lesson was that anything shown by the OS has to be localized where the OS looks for it,
-so we added a CI check that inspects the built .app.
+**Spoken equations don't work.** _"X squared minus three X plus two"_ does not survive the trip into anyone's head, so the senpai had to be split in two: a voice that only asks, and a board that does all the writing. That single decision drove the streaming protocol, the LaTeX guardrail, the sentence-level pacing and most of the screen layout. Then the voice itself failed us: our first TTS vendor could not read Japanese mathematics aloud at all, and its Japanese voice could not pronounce the English that a Japanese lesson is full of. We ended up with one Gemini voice used for Japanese and English alike, so the senpai doesn't turn into a different person when the language changes. The hardest cut was a feature we liked. The original pitch had the student teach the lesson back to the senpai, and kept a chart of where they stumbled. It demoed beautifully. It also made the loop too long to finish on a phone before bed, and it produced questions from the student's own words that had no answer to grade against. We folded it into one review question generated from the board, gave the senpai a real answer key, and wrote down exactly why in ADR 0009, because a hackathon deadline makes it very tempting to keep whatever photographs well. Apple then rejected 1.0. The build shown to reviewers was in English, but the camera and microphone permission dialogs came up in Japanese, because the text lived directly in Info.plist. The fix was small. The lesson was that anything drawn by the OS has to be localised where the OS looks for it, and we added a CI step that inspects the built `.app` bundle so it cannot regress. Pricing was its own lesson: once we costed a 20-minute streaming voice lesson honestly, our first price list didn't cover a daily user, and we had to raise it before launch.
 ```
 
 ### Accomplishments that we're proud of
 
 ```
-The board. A whiteboard that fills up while someone explains to you, that doesn't erase the previous
-step, and that never reads a formula out loud. Each step is sent the moment it is finished, so the
-writing is never behind the voice — that is the whole trick, and it is the part we would have cut
-first under time pressure. It's also the part that makes the app feel like a person rather than a
-search box.
-
-And the things we refused to ship: no score, no accuracy rate, no streak-shaming notification. A
-wrong answer changes nothing except when the question comes back.
+**The board.** A whiteboard that fills up while someone explains to you, that doesn't erase the previous step, and that never reads a formula out loud. Each step is sent the moment it is finished, so the writing is never behind the voice; that is the whole trick, and it is the part we would have cut first under time pressure. It is also the part that makes the app feel like a person sitting next to you rather than a search box. Under the board there is a one-line indicator of whose turn it is, because on a real device the first problem we hit was not being able to tell whether it was waiting for you. **The loop is finished.** Photograph, lesson, "Got it", one question, a notification three days later, a graded answer, and a second visit after seven. Every screen on that path is shipped, localised in Japanese and English, and covered by golden tests, rather than most of a larger loop being half done. **The things we refused to ship.** No score, no accuracy rate, no ranking, and no notification that shames you for missing a day. A wrong answer changes nothing except when the question comes back. **A free tier that is the actual product.** One real lesson a day, every day, with no account, and the free user costs us more than a subscriber pays. **Craft that lives in code.** The App Store screenshots, the Play Store feature graphic and the Devpost thumbnail are all rendered from the real UI by a Flutter test, so when a screen changes the marketing picture changes with it, and nobody retouches a PNG by hand. And the whole thing has been public, MIT-licensed, with every design decision recorded as an ADR, since the first commit.
 ```
 
 ### What we learned
 
 ```
-Write down what you are not building before you need the discipline. Our "not doing" list is the
-reason we shipped a whole loop instead of most of a bigger one.
-
-Also: build the paywall and the notifications early. Both look like end-of-project work, and both
-turned out to need decisions — what a subscription unlocks, when the senpai is allowed to reach out —
-that belong to the product, not the plumbing.
+**Write down what you are not building before you need the discipline.** Our inception deck has a "not doing" column, and a rule that any PR implementing something in that column is rejected regardless of size. That list is the reason we shipped a whole loop instead of most of a bigger one, and the reason the pivot in ADR 0009 was a decision rather than a crisis. **Build the paywall and the notifications early.** Both look like end-of-project plumbing, and both turned out to hide product decisions: what a subscription actually unlocks, and when the senpai is allowed to reach out and in what tone. Wiring RevenueCat and OneSignal early forced those answers while there was still time to change the product around them. **Cost the product before pricing it.** A streaming voice lesson with STT, an LLM and TTS running for up to twenty minutes has a real per-minute cost, and our first price list, copied from what similar apps charge, would have lost money on every daily user. Working it through line by line produced a higher price we can defend and a fair-use cap we can explain. **Localisation is where the OS looks, not where you wrote it.** One Japanese permission dialog in an English build cost us a review cycle. **Treat the model as a colleague who forgets fields.** The LLM would omit the "your turn" flag on a step, so the agent now infers it from the wording and fills it in, rather than letting the screen spin forever. **Voice needs silence.** Adding a 700-millisecond pause between board steps did more for comprehension than any prompt change. And finally, a two-language product is really two curricula, not one curriculum translated: keeping them as separate files with separate topic IDs was the decision that let English learners get Algebra 1 instead of a translated Japanese syllabus.
 ```
 
 ### What's next for Katarute
 
 ```
-Android (the listing is written and the app is the same Flutter codebase), Sign in with Apple so
-progress survives a new phone, a text lane for people who can't speak out loud, and more of the
-curriculum.
+The nearest step is **Android**. The app is the same Flutter codebase, and the Play Store listing, screenshots and feature graphic are already written and rendered, so it is a matter of the store review rather than new engineering. Next is **Sign in with Apple**, so that a student's review history and study plan survive a new phone; today everything hangs off an anonymous device ID, which was the right call for launch but means a lost phone is a lost history. We want a **text lane for the lesson itself**, for students on a train, in a library, or who simply don't want to speak out loud to a phone; the review question already works by text, and the board protocol doesn't care where the student's words come from. The **curriculum** will keep growing: more of the Japanese syllabus, then more of the overseas track, each as its own JSON file so a new course can never silently widen the prompt for an existing one. On the learning side, we want to look at what the graded answers actually tell us. The review question replaced a feature that could detect _"I think I get it but I don't"_, and whether AI grading can do that job is something only real students can answer, so the first month after launch is for reading the `unclear` rate and the reasons students don't press "Got it". The cost tables will be replaced with measured numbers from the voice metrics we already log, which decides whether the fair-use cap can loosen. And the **parent report**, which exists on the server but has no screen yet, gets one once there are enough graded answers in a student's own words to make it honest.
 ```
 
 ---
