@@ -160,6 +160,14 @@ fvm flutter run --dart-define-from-file=dart_defines.env
 購入フローを最後まで通せる。実際の請求は発生しない。
 ペイウォールにその旨の注記が出る(`AppStrings.testStoreNotice`)。
 
+**ただし debug ビルド専用。** ネイティブSDKが release 構成では
+"Test Store API key used in Release build" で configure を拒否するため、
+**TestFlight / ストア配布のビルドでは使えない**。`apiKeyFor` が
+debug 以外でこの鍵を無視するので、release に渡っても起動時エラーには
+ならず「鍵なし = 課金機能オフ」に落ちる。実機で購入フローを試すのは
+`fvm flutter run`(debug)+ Test Store か、ストアに商品を作ったあとの
+TestFlight + Sandbox のどちらか。
+
 ストア側の商品ができたら `REVENUECAT_IOS_PUBLIC_SDK_KEY` /
 `REVENUECAT_ANDROID_PUBLIC_SDK_KEY` を入れる。そちらが優先されるので
 `REVENUECAT_SDK_KEY` は消さなくてよい。
