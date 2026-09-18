@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "node --experimental-strip-types --env-file=.env src/index.ts dev",
     "start": "node --experimental-strip-types src/index.ts start",
+    "eval": "node --experimental-strip-types --env-file-if-exists=.env src/eval/cli.ts",
     "download-files": "livekit-agents download-files",
     "docker:build": "docker build -t ai-sensei-agent:local ../..",
     "docker:run": "docker run --rm --env-file .env -p 8081:8081 ai-sensei-agent:local"
