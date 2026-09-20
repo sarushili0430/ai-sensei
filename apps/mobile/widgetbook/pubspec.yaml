@@ -40,7 +40,7 @@ dev_dependencies:
   flutter_lints: ^6.0.0
 
   # `main.directories.g.dart` を作る。生成物はコミットしない(本体と同じ方針)。
-  build_runner: ^2.4.13
+  build_runner: ^2.16.1
   widgetbook_generator: ^3.24.0
 
 flutter:
