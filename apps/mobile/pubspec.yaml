@@ -16,8 +16,8 @@ dependencies:
     sdk: flutter
 
   # 状態管理 / DI
-  flutter_riverpod: ^3.0.0
-  riverpod_annotation: ^4.0.0
+  flutter_riverpod: ^3.4.3
+  riverpod_annotation: ^4.0.7
 
   # モデル定義(freezed + json_serializable)
   freezed_annotation: ^3.0.0
@@ -96,11 +96,11 @@ dev_dependencies:
   # 3.2.6 はまだ dev プレリリースしか無い。安定版だけを使いたいので上限を切る。
   freezed: ">=3.0.0 <3.2.6"
   json_serializable: ^6.9.0
-  riverpod_generator: ^4.0.0
+  riverpod_generator: ^4.0.9
 
   # riverpod_lint 3.1 で custom_lint から analysis_server_plugin に移行したので
   # custom_lint は不要。残しておくと analyzer 8 系に固定されて他が上げられない。
-  riverpod_lint: ^3.1.0
+  riverpod_lint: ^3.1.9
 
 flutter:
   uses-material-design: true
