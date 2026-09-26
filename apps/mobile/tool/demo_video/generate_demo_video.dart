@@ -866,7 +866,6 @@ class _Script {
     required this.tagline,
     required this.taglineMarker,
     required this.subjects,
-    required this.footnote,
     required this.captions,
     required this.photoLabel,
     required this.photoInstruction,
@@ -902,8 +901,6 @@ class _Script {
   final String taglineMarker;
   final String subjects;
 
-  /// 何が本物で何が台本かの一言。画面の隅に出し続ける。
-  final String footnote;
   final List<_Caption> captions;
 
   // 撮る問題の紙面
@@ -958,7 +955,6 @@ const _Script _ja = _Script(
   tagline: '「わかった」と言えるまで教える。\n3日後に、ほんとうにそうか聞く。',
   taglineMarker: 'ほんとうにそうか聞く',
   subjects: '中学・高校の数学と英語',
-  footnote: '画面は実際のアプリです。AIの応答(読み取り・板書・採点)はデモ用の台本で再生しています。',
   captions: <_Caption>[
     _Caption(
       step: '1  撮る',
@@ -1062,8 +1058,6 @@ const _Script _en = _Script(
   tagline: 'Taught until you say “Got it.”\nAsked again in 3 days.',
   taglineMarker: 'Asked again in 3 days',
   subjects: 'High school mathematics',
-  footnote:
-      'Real app screens. The AI responses (reading, board, grading) are replayed from a demo script.',
   captions: <_Caption>[
     _Caption(
       step: '1  Snap',
@@ -1324,16 +1318,6 @@ class _StageView extends StatelessWidget {
                                 ? script.studentVoiceLabel
                                 : script.senpaiVoiceLabel,
                           ),
-                  ),
-                ),
-                Positioned(
-                  key: const ValueKey<String>('footnote'),
-                  left: 150,
-                  right: _stageSize.width - _phoneRect.left + 60,
-                  bottom: 40,
-                  child: Text(
-                    script.footnote,
-                    style: const TextStyle(fontSize: 19, height: 1.5, color: AppColors.inkMuted),
                   ),
                 ),
                 if (stage.tapAt != null)
@@ -1735,15 +1719,6 @@ class _CardView extends StatelessWidget {
                 ),
               ),
               if (end) ...<Widget>[
-                const SizedBox(height: 18),
-                const Text(
-                  'github.com/sarushili0430/ai-sensei',
-                  style: TextStyle(
-                    fontSize: 28,
-                    color: AppColors.blue,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
                 if (script.musicCredit != null) ...<Widget>[
                   const SizedBox(height: 56),
                   Text(
