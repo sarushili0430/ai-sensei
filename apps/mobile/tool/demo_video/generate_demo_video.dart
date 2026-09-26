@@ -118,9 +118,7 @@ Future<void> _record(WidgetTester tester, _Script s) async {
     picker,
     (MethodCall call) async => call.method == 'pickImage' ? photo.path : null,
   );
-  addTearDown(
-    () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(picker, null),
-  );
+  addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(picker, null));
   mockPermissionHandler();
 
   final _DemoServer server = _DemoServer(s);
@@ -163,46 +161,43 @@ Future<void> _record(WidgetTester tester, _Script s) async {
     ),
   );
 
-  final _Recorder rec = await _Recorder.start(
-    tester,
-    boundaryKey,
-    '$_outDir/demo-${s.locale}.mp4',
-  );
+  final _Recorder rec = await _Recorder.start(tester, boundaryKey, '$_outDir/demo-${s.locale}.mp4');
   // --- 0. 表紙 ---
   stage.update(card: _Card.title);
   await rec.hold(3400);
   await rec.snapshot('${s.locale}-00-title');
 
   // 日英の文言は非同期に読み込まれるので、表紙のあいだに揃ってから引く。
-  final AppStrings strings = AppStrings.of(
-    tester.element(find.byType(Scaffold).first),
-  );
+  final AppStrings strings = AppStrings.of(tester.element(find.byType(Scaffold).first));
+
+  // 見出しとアプリの文言がかぶる(「撮る」)ので、アプリの要素は端末の中だけで探す。
+  const _InApp inApp = _InApp();
 
   // --- 1. 撮る ---
   stage.update(card: _Card.none, caption: s.captions[0]);
   await rec.hold(1800);
   await rec.snapshot('${s.locale}-01-home');
-  await rec.tap(find.byKey(const ValueKey<String>('home-primary-lesson')));
-  await rec.holdUntil(find.text(strings.captureChooseTitle));
+  await rec.tap(inApp.byKey(const ValueKey<String>('home-primary-lesson')));
+  await rec.holdUntil(inApp.text(strings.captureChooseTitle));
   await rec.hold(1300);
-  await rec.tap(find.text(strings.capturePhotoProblem).first);
-  await rec.holdUntil(find.text(strings.capturePickCamera));
+  await rec.tap(inApp.text(strings.capturePhotoProblem).first);
+  await rec.holdUntil(inApp.text(strings.capturePickCamera));
   await rec.hold(900);
-  await rec.tap(find.text(strings.capturePickCamera));
-  await rec.holdUntil(find.byType(Image));
+  await rec.tap(inApp.text(strings.capturePickCamera));
+  await rec.holdUntil(inApp.byType(Image));
   await rec.hold(1600);
   await rec.snapshot('${s.locale}-02-photo');
-  await rec.tap(find.text(strings.captureStart));
+  await rec.tap(inApp.text(strings.captureStart));
   // 解析(Vision LLM)の待ち。サーバの台本が間を持つ。
-  await rec.holdUntil(find.text(strings.captureConfirmTitle));
-  await rec.holdUntil(find.text(strings.captureStart));
+  await rec.holdUntil(inApp.text(strings.captureConfirmTitle));
+  await rec.holdUntil(inApp.text(strings.captureStart));
   await rec.hold(2600);
   await rec.snapshot('${s.locale}-03-topics');
-  await rec.reveal(find.text(strings.captureStart));
-  await rec.tap(find.text(strings.captureStart));
+  await rec.reveal(inApp.text(strings.captureStart));
+  await rec.tap(inApp.text(strings.captureStart));
 
   // --- 2. 教わる ---
-  await rec.holdUntil(find.text(strings.sessionUnderstood));
+  await rec.holdUntil(inApp.text(strings.sessionUnderstood));
   stage.update(caption: s.captions[1]);
   final _ScriptedSession session =
       container.read(sessionControllerProvider.notifier) as _ScriptedSession;
@@ -210,6 +205,7 @@ Future<void> _record(WidgetTester tester, _Script s) async {
   session.senpaiJoined();
   await rec.hold(500, onSecond: session.tick);
   session.speak(s.openingLine);
+  stage.update(voice: _Voice(s.openingLine));
   await rec.hold(2000, onSecond: session.tick);
 
   final _Lesson lesson = _Lesson.load(s);
@@ -219,18 +215,15 @@ Future<void> _record(WidgetTester tester, _Script s) async {
     final BoardStep step = (message as BoardStepMessage).step;
     session.deliver(message);
     session.speak(step.speech);
-    await rec.hold(
-      1100 + step.speech.length * s.msPerChar,
-      onSecond: session.tick,
-    );
+    stage.update(voice: _Voice(step.speech));
+    await rec.hold(1100 + step.speech.length * s.msPerChar, onSecond: session.tick);
     if (step.index == s.replyAfterStep) {
       await rec.snapshot('${s.locale}-04-board');
       session.studentTurn();
       await rec.hold(600, onSecond: session.tick);
-      stage.update(caption: s.captions[2], bubble: s.studentReply);
+      stage.update(caption: s.captions[2], voice: _Voice(s.studentReply, student: true));
       await rec.hold(2400, onSecond: session.tick);
       session.userTurn();
-      stage.update(bubble: '');
       await rec.hold(900, onSecond: session.tick);
     }
   }
@@ -238,13 +231,13 @@ Future<void> _record(WidgetTester tester, _Script s) async {
   await rec.snapshot('${s.locale}-05-board-full');
 
   // --- 3. わかった ---
-  stage.update(caption: s.captions[3]);
+  stage.update(caption: s.captions[3], clearVoice: true);
   await rec.hold(1800, onSecond: session.tick);
-  await rec.tap(find.text(strings.sessionUnderstood));
-  await rec.holdUntil(find.byKey(const Key('celebration-done')));
+  await rec.tap(inApp.text(strings.sessionUnderstood));
+  await rec.holdUntil(inApp.byKey(const Key('celebration-done')));
   await rec.hold(3600);
   await rec.snapshot('${s.locale}-06-celebration');
-  await rec.tap(find.byKey(const Key('celebration-done')));
+  await rec.tap(inApp.byKey(const Key('celebration-done')));
   await rec.hold(900);
 
   // --- 4. 3日後の通知 ---
@@ -255,36 +248,34 @@ Future<void> _record(WidgetTester tester, _Script s) async {
   await rec.hold(2800);
   await rec.snapshot('${s.locale}-07-notification');
   await rec.tapVisual(find.byKey(const ValueKey<String>('demo-notification')));
-  container
-      .read(appRouterProvider)
-      .go('/review?problem=${Uri.encodeQueryComponent(s.practiceId)}');
+  container.read(appRouterProvider).go('/review?problem=${Uri.encodeQueryComponent(s.practiceId)}');
   await rec.hold(200);
   stage.update(lockScreen: false, notification: false);
 
   // --- 5. 答えて採点 ---
-  await rec.holdUntil(find.byType(TextField));
+  await rec.holdUntil(inApp.byType(TextField));
   stage.update(caption: s.captions[5]);
   await rec.hold(1500);
-  await rec.tapVisual(find.byType(TextField));
-  await tester.showKeyboard(find.byType(TextField));
+  await rec.tapVisual(inApp.byType(TextField));
+  await tester.showKeyboard(inApp.byType(TextField));
   for (int i = 1; i <= s.answer.length; i++) {
-    await tester.enterText(find.byType(TextField), s.answer.substring(0, i));
+    await tester.enterText(inApp.byType(TextField), s.answer.substring(0, i));
     await rec.hold(s.locale == 'ja' ? 90 : 55);
   }
   await rec.hold(900);
   await rec.snapshot('${s.locale}-08-answer');
   FocusManager.instance.primaryFocus?.unfocus();
-  await rec.tap(find.text(strings.practiceSubmit));
-  await rec.holdUntil(find.text(strings.practiceCorrect));
+  await rec.tap(inApp.text(strings.practiceSubmit));
+  await rec.holdUntil(inApp.text(strings.practiceCorrect));
   await rec.hold(4600);
   await rec.snapshot('${s.locale}-09-graded');
 
   // --- 6. 続ける ---
   stage.update(caption: s.captions[6]);
-  await rec.reveal(find.byKey(const Key('practice-home')));
+  await rec.reveal(inApp.byKey(const Key('practice-home')));
   await rec.hold(700);
-  await rec.tap(find.byKey(const Key('practice-home')));
-  await rec.holdUntil(find.byKey(const ValueKey<String>('home-primary-lesson')));
+  await rec.tap(inApp.byKey(const Key('practice-home')));
+  await rec.holdUntil(inApp.byKey(const ValueKey<String>('home-primary-lesson')));
   await rec.hold(3600);
   await rec.snapshot('${s.locale}-10-home-after');
 
@@ -296,6 +287,16 @@ Future<void> _record(WidgetTester tester, _Script s) async {
   await rec.finish();
   // ignore: avoid_print
   print('demo-${s.locale}.mp4: ${rec.frames} frames (${rec.frames / _fps}s)');
+}
+
+/// 端末の中(アプリ)だけを探す finder。
+class _InApp {
+  const _InApp();
+
+  Finder _scope(Finder finder) => find.descendant(of: find.byType(_PhoneApp), matching: finder);
+  Finder text(String text) => _scope(find.text(text));
+  Finder byKey(Key key) => _scope(find.byKey(key));
+  Finder byType(Type type) => _scope(find.byType(type));
 }
 
 /// 1フレームずつ描いて ffmpeg へ流す。
@@ -311,11 +312,7 @@ class _Recorder {
   final Process _ffmpeg;
   int frames = 0;
 
-  static Future<_Recorder> start(
-    WidgetTester tester,
-    GlobalKey key,
-    String path,
-  ) async {
+  static Future<_Recorder> start(WidgetTester tester, GlobalKey key, String path) async {
     File(path).parent.createSync(recursive: true);
     final Process process = (await tester.runAsync(
       () => Process.start(Platform.environment['FFMPEG'] ?? 'ffmpeg', <String>[
@@ -409,8 +406,7 @@ class _Recorder {
     await hold(600);
   }
 
-  _Stage _stageOf() =>
-      (_tester.widget(find.byType(_StageView)) as _StageView).stage;
+  _Stage _stageOf() => (_tester.widget(find.byType(_StageView)) as _StageView).stage;
 
   Future<void> snapshot(String name) async {
     await _tester.runAsync(() async {
@@ -444,8 +440,7 @@ class _ScriptedSession extends SessionController {
   BoardInbox? _inbox;
 
   @override
-  SessionState build() =>
-      const SessionState(phase: SessionPhase.connecting, remainingSeconds: 300);
+  SessionState build() => const SessionState(phase: SessionPhase.connecting, remainingSeconds: 300);
 
   @override
   Future<void> connect(SessionStart session, {required String locale}) async {
@@ -497,9 +492,7 @@ class _ScriptedSession extends SessionController {
     await Future<void>.delayed(const Duration(milliseconds: 500));
     state = state.copyWith(phase: SessionPhase.summarizing);
     await Future<void>.delayed(const Duration(milliseconds: 700));
-    ref
-        .read(sessionOutcomeControllerProvider.notifier)
-        .set(const SessionOutcome(kind: 'new'));
+    ref.read(sessionOutcomeControllerProvider.notifier).set(const SessionOutcome(kind: 'new'));
     state = state.copyWith(phase: SessionPhase.finished);
   }
 }
@@ -561,7 +554,7 @@ class _DemoServer {
 
     if (method == 'POST' && path == '/v1/sessions') {
       // 写真の読み取り(Vision LLM)。実機でもこのくらい待つ。
-      await Future<void>.delayed(const Duration(milliseconds: 2600));
+      await Future<void>.delayed(const Duration(milliseconds: 1800));
       return _json(s.analysis, 201);
     }
     if (path.endsWith('/topics')) return _json(s.analysis, 200);
@@ -620,7 +613,7 @@ class _DemoServer {
         _readFixture('practice-answer-response.json')['progress'] as Map<String, dynamic>;
     // 答えるまでは1日少なく・1問少なく見せる。答えた瞬間に fixture の値(3日・12問)になる。
     return _answered
-        ? base
+        ? <String, dynamic>{...base, 'open_problems': 0}
         : <String, dynamic>{
             ...base,
             'streak_days': (base['streak_days'] as int) - 1,
@@ -671,6 +664,8 @@ class _DemoServer {
         'verdict': 'correct',
         'comment': s.gradingComment,
       },
+      // 採点で1問解けた。ホームの「解きにくい問題」は残らない。
+      'progress': _progressBody(),
       'next_schedule': <dynamic>[
         for (final dynamic entry in json['next_schedule'] as List<dynamic>)
           <String, dynamic>{...(entry as Map<String, dynamic>), 'problem_id': s.practiceId},
@@ -732,7 +727,8 @@ class _Script {
     required this.openingLine,
     required this.replyAfterStep,
     required this.studentReply,
-    required this.studentLabel,
+    required this.senpaiVoiceLabel,
+    required this.studentVoiceLabel,
     required this.practiceProblem,
     required this.topicLabel,
     required this.queueFixture,
@@ -777,7 +773,8 @@ class _Script {
   /// この手順のあとで生徒が声で答える(先輩の「だから?」への返事)。
   final int replyAfterStep;
   final String studentReply;
-  final String studentLabel;
+  final String senpaiVoiceLabel;
+  final String studentVoiceLabel;
 
   final Map<String, dynamic> practiceProblem;
   String get practiceId => practiceProblem['id'] as String;
@@ -812,7 +809,7 @@ const _Script _ja = _Script(
     ),
     _Caption(
       step: '2  教わる',
-      headline: 'AIの先輩が、板書つきで教える。',
+      headline: 'AIの先輩が、\n板書つきで教える。',
       marker: '板書つきで',
       sub: '数式や計算は板書に。\n声は「だから?」と問いかけるだけ。',
     ),
@@ -876,8 +873,9 @@ const _Script _ja = _Script(
   msPerChar: 115,
   openingLine: 'なるほど、じゃあ一緒に見てみようか。',
   replyAfterStep: 5,
-  studentReply: '「2個!」',
-  studentLabel: 'きみ(声で)',
+  studentReply: '2個!',
+  senpaiVoiceLabel: '先輩の声',
+  studentVoiceLabel: 'きみの声',
   practiceProblem: <String, dynamic>{
     'id': 'prb_01J8Z9M4RT9H8I7J6K5L4M3N2P',
     'session_id': 'ses_01J8Z9K2QF7X3M4N5P6R7S8T9V',
@@ -930,7 +928,8 @@ const _Script _en = _Script(
       step: '3  Got it',
       headline: 'The lesson ends when\nyou say “Got it.”',
       marker: '“Got it.”',
-      sub: 'Until then, it keeps building the same board.\nThen one review question is made from it.',
+      sub:
+          'Until then, it keeps building the same board.\nThen one review question is made from it.',
     ),
     _Caption(
       step: '4  3 days later',
@@ -980,8 +979,9 @@ const _Script _en = _Script(
   msPerChar: 55,
   openingLine: "Okay, let's take a look at this together.",
   replyAfterStep: 1,
-  studentReply: '“(x − 1)(x − 2)”',
-  studentLabel: 'You (out loud)',
+  studentReply: '(x − 1)(x − 2)',
+  senpaiVoiceLabel: "Senpai's voice",
+  studentVoiceLabel: 'Your voice',
   practiceProblem: <String, dynamic>{
     'id': 'prb_01J8Z9M4RT9H8I7J6K5L4M3N2Q',
     'session_id': 'ses_01J8Z9K2QF7X3M4N5P6R7S8T9W',
@@ -1009,12 +1009,22 @@ const _Script _en = _Script(
 
 enum _Card { none, title, end }
 
+/// 声の字幕。**アプリは板書が出ているあいだ字幕を出さない**(`session_screen.dart`:
+/// 読むべきものは板書のほう)が、動画には音が無いので、舞台の側に出す。
+@immutable
+class _Voice {
+  const _Voice(this.text, {this.student = false});
+
+  final String text;
+  final bool student;
+}
+
 class _Stage extends ChangeNotifier {
   _Card card = _Card.title;
   _Caption? caption;
   Offset? tapAt;
   int tapId = 0;
-  String bubble = '';
+  _Voice? voice;
   bool lockScreen = false;
   bool notification = false;
 
@@ -1022,7 +1032,8 @@ class _Stage extends ChangeNotifier {
     _Card? card,
     _Caption? caption,
     Offset? tapAt,
-    String? bubble,
+    _Voice? voice,
+    bool clearVoice = false,
     bool? lockScreen,
     bool? notification,
   }) {
@@ -1032,7 +1043,8 @@ class _Stage extends ChangeNotifier {
       this.tapAt = tapAt;
       tapId++;
     }
-    if (bubble != null) this.bubble = bubble;
+    if (voice != null) this.voice = voice;
+    if (clearVoice) this.voice = null;
     if (lockScreen != null) this.lockScreen = lockScreen;
     if (notification != null) this.notification = notification;
     notifyListeners();
@@ -1079,11 +1091,11 @@ class _StageView extends StatelessWidget {
                 Positioned(
                   key: const ValueKey<String>('caption'),
                   left: 150,
-                  top: 0,
+                  top: 190,
                   bottom: 0,
                   width: 900,
                   child: Align(
-                    alignment: Alignment.centerLeft,
+                    alignment: Alignment.topLeft,
                     child: AnimatedSwitcher(
                       duration: const Duration(milliseconds: 450),
                       switchInCurve: Curves.easeOutCubic,
@@ -1131,19 +1143,25 @@ class _StageView extends StatelessWidget {
                   ),
                 ),
                 Positioned(
-                  key: const ValueKey<String>('bubble'),
-                  right: _stageSize.width - _phoneRect.left + 40,
-                  top: 600,
-                  child: AnimatedOpacity(
-                    opacity: stage.bubble.isEmpty ? 0 : 1,
-                    duration: const Duration(milliseconds: 300),
-                    child: AnimatedScale(
-                      scale: stage.bubble.isEmpty ? 0.92 : 1,
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeOutBack,
-                      alignment: Alignment.centerRight,
-                      child: _VoiceBubble(label: script.studentLabel, text: stage.bubble),
+                  key: const ValueKey<String>('voice'),
+                  left: 150,
+                  top: 700,
+                  width: 900,
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 280),
+                    layoutBuilder: (Widget? current, List<Widget> previous) => Stack(
+                      alignment: Alignment.topLeft,
+                      children: <Widget>[...previous, ?current],
                     ),
+                    child: stage.voice == null
+                        ? const SizedBox.shrink()
+                        : _VoiceLine(
+                            key: ValueKey<String>(stage.voice!.text),
+                            voice: stage.voice!,
+                            label: stage.voice!.student
+                                ? script.studentVoiceLabel
+                                : script.senpaiVoiceLabel,
+                          ),
                   ),
                 ),
                 Positioned(
@@ -1153,11 +1171,7 @@ class _StageView extends StatelessWidget {
                   bottom: 40,
                   child: Text(
                     script.footnote,
-                    style: const TextStyle(
-                      fontSize: 19,
-                      height: 1.5,
-                      color: AppColors.inkMuted,
-                    ),
+                    style: const TextStyle(fontSize: 19, height: 1.5, color: AppColors.inkMuted),
                   ),
                 ),
                 if (stage.tapAt != null)
@@ -1397,47 +1411,76 @@ class _MarkerPainter extends CustomPainter {
       old.text != text || old.marker != marker || old.color != color;
 }
 
-/// 生徒の声。アプリは声を文字にして画面に出さないので、舞台の側に出す。
-class _VoiceBubble extends StatelessWidget {
-  const _VoiceBubble({required this.label, required this.text});
+/// 声の字幕の1行。先輩はアプリのマーク(= 先輩の顔)、生徒はマイク。
+class _VoiceLine extends StatelessWidget {
+  const _VoiceLine({super.key, required this.voice, required this.label});
 
+  final _Voice voice;
   final String label;
-  final String text;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        Text(
-          label,
-          style: const TextStyle(fontSize: 22, color: AppColors.inkMuted, fontWeight: FontWeight.w700),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(22, 20, 30, 22),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: voice.student ? AppColors.blue : AppColors.border,
+          width: voice.student ? 3 : 2,
         ),
-        const SizedBox(height: 10),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 20),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: AppColors.border, width: 2),
-            boxShadow: const <BoxShadow>[
-              BoxShadow(color: Color(0x1433323D), blurRadius: 24, offset: Offset(0, 8)),
-            ],
+        boxShadow: const <BoxShadow>[
+          BoxShadow(color: Color(0x1433323D), blurRadius: 24, offset: Offset(0, 8)),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          if (voice.student)
+            Container(
+              width: 60,
+              height: 60,
+              decoration: const BoxDecoration(color: AppColors.blue, shape: BoxShape.circle),
+              child: const Icon(Icons.mic_rounded, color: Colors.white, size: 36),
+            )
+          else
+            const _AppMarkBox(size: 60),
+          const SizedBox(width: 20),
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Icon(
+                      voice.student ? Icons.mic_none_rounded : Icons.volume_up_rounded,
+                      size: 22,
+                      color: AppColors.inkMuted,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 21,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.inkMuted,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  voice.text,
+                  style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w700, height: 1.45),
+                ),
+              ],
+            ),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              const Icon(Icons.mic_rounded, color: AppColors.blue, size: 40),
-              const SizedBox(width: 14),
-              Text(
-                text,
-                style: const TextStyle(fontSize: 42, fontWeight: FontWeight.w700, height: 1.2),
-              ),
-            ],
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -1533,7 +1576,11 @@ class _CardView extends StatelessWidget {
                 const SizedBox(height: 18),
                 const Text(
                   'github.com/sarushili0430/ai-sensei',
-                  style: TextStyle(fontSize: 28, color: AppColors.blue, fontWeight: FontWeight.w700),
+                  style: TextStyle(
+                    fontSize: 28,
+                    color: AppColors.blue,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ],
             ],
@@ -1591,7 +1638,11 @@ class _LockScreen extends StatelessWidget {
             const SizedBox(height: 84),
             Text(
               script.lockDate,
-              style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: Color(0xDDFFFFFF)),
+              style: const TextStyle(
+                fontSize: 19,
+                fontWeight: FontWeight.w700,
+                color: Color(0xDDFFFFFF),
+              ),
             ),
             Text(
               script.lockTime,
@@ -1645,7 +1696,11 @@ class _LockScreen extends StatelessWidget {
                             const SizedBox(height: 3),
                             Text(
                               script.notificationBody,
-                              style: const TextStyle(fontSize: 15, color: AppColors.ink, height: 1.35),
+                              style: const TextStyle(
+                                fontSize: 15,
+                                color: AppColors.ink,
+                                height: 1.35,
+                              ),
                             ),
                           ],
                         ),
@@ -1700,7 +1755,14 @@ Future<File> _writeProblemPhoto(_Script s, Directory dir) async {
   );
   canvas.drawRect(paper, Paint()..color = const Color(0xFFFAF8F1));
 
-  void text(String body, Offset at, double size, {FontWeight weight = FontWeight.w400, String? family, String? package}) {
+  void text(
+    String body,
+    Offset at,
+    double size, {
+    FontWeight weight = FontWeight.w400,
+    String? family,
+    String? package,
+  }) {
     final TextPainter painter = TextPainter(
       text: TextSpan(
         text: body,
@@ -1725,7 +1787,12 @@ Future<File> _writeProblemPhoto(_Script s, Directory dir) async {
   final TextPainter label = TextPainter(
     text: TextSpan(
       text: s.photoLabel,
-      style: const TextStyle(fontFamily: _font, fontSize: 38, fontWeight: FontWeight.w700, color: Colors.white),
+      style: const TextStyle(
+        fontFamily: _font,
+        fontSize: 38,
+        fontWeight: FontWeight.w700,
+        color: Colors.white,
+      ),
     ),
     textDirection: TextDirection.ltr,
   )..layout();
@@ -1763,11 +1830,10 @@ Future<File> _writeProblemPhoto(_Script s, Directory dir) async {
   canvas.drawRect(
     const Rect.fromLTWH(0, 0, w, h),
     Paint()
-      ..shader = ui.Gradient.radial(
-        const Offset(w * 0.4, h * 0.3),
-        w * 0.8,
-        <Color>[const Color(0x22FFFFFF), const Color(0x33000000)],
-      ),
+      ..shader = ui.Gradient.radial(const Offset(w * 0.4, h * 0.3), w * 0.8, <Color>[
+        const Color(0x22FFFFFF),
+        const Color(0x33000000),
+      ]),
   );
 
   final ui.Image image = await recorder.endRecording().toImage(w.toInt(), h.toInt());
