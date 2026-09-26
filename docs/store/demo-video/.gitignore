@@ -1,1 +1,5 @@
 frames/
+# BGM は generate_demo_audio.ts が incompetech から取ってくる(再配布しない)
+audio/*/bgm.mp3
+# 声を重ねる前の映像(書き出しの途中にだけある)
+*.video.mp4

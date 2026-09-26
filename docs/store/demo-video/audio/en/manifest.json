@@ -1,0 +1,114 @@
+{
+  "narr-title": {
+    "speaker": "narrator",
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Charon",
+    "text": "Meet Katarute. It teaches you until you say “got it” — and then checks back three days later.",
+    "ms": 5600
+  },
+  "narr-snap": {
+    "speaker": "narrator",
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Charon",
+    "text": "Stuck on a problem? Just snap a photo. Katarute reads the topic and the question for you.",
+    "ms": 5200
+  },
+  "narr-learn": {
+    "speaker": "narrator",
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Charon",
+    "text": "Then your AI senpai teaches you, right on the board. The math goes on the board. The voice just asks you questions.",
+    "ms": 6410
+  },
+  "narr-gotit": {
+    "speaker": "narrator",
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Charon",
+    "text": "The lesson only ends when you tap “Got it.” Then one review question is made from that board.",
+    "ms": 5200
+  },
+  "narr-later": {
+    "speaker": "narrator",
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Charon",
+    "text": "Three days later, your senpai checks back. Just one question — about thirty seconds.",
+    "ms": 4800
+  },
+  "narr-answer": {
+    "speaker": "narrator",
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Charon",
+    "text": "Type your answer, and the AI grades it. Miss it, and it asks again after one, three, and seven days.",
+    "ms": 6100
+  },
+  "narr-keep": {
+    "speaker": "narrator",
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Charon",
+    "text": "No scores. No rankings. Just the days you kept going, and the problems you solved.",
+    "ms": 6100
+  },
+  "narr-end": {
+    "speaker": "narrator",
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Charon",
+    "text": "Katarute. Taught until you say “got it.” Asked again in three days.",
+    "ms": 4900
+  },
+  "student-reply": {
+    "speaker": "student",
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Puck",
+    "text": "Um… x minus one, times x minus two?",
+    "ms": 4800
+  },
+  "senpai-opening": {
+    "speaker": "senpai",
+    "model": "gemini-3.1-flash-tts-preview",
+    "voice": "Leda",
+    "text": "Okay, let's take a look at this together.",
+    "ms": 2240
+  },
+  "senpai-step-0": {
+    "speaker": "senpai",
+    "model": "gemini-3.1-flash-tts-preview",
+    "voice": "Leda",
+    "text": "Let's start from the inequality itself.",
+    "ms": 2560
+  },
+  "senpai-step-1": {
+    "speaker": "senpai",
+    "model": "gemini-3.1-flash-tts-preview",
+    "voice": "Leda",
+    "text": "Factorise the left side for me. What do you get?",
+    "ms": 3200
+  },
+  "senpai-step-2": {
+    "speaker": "senpai",
+    "model": "gemini-3.1-flash-tts-preview",
+    "voice": "Leda",
+    "text": "Right, so those two numbers are where it touches zero.",
+    "ms": 4010
+  },
+  "senpai-step-3": {
+    "speaker": "senpai",
+    "model": "gemini-3.1-flash-tts-preview",
+    "voice": "Leda",
+    "text": "Now look at the curve. Where does it sit below the axis?",
+    "ms": 4800
+  },
+  "senpai-step-4": {
+    "speaker": "senpai",
+    "model": "gemini-3.1-flash-tts-preview",
+    "voice": "Leda",
+    "text": "Between them. That is the whole answer.",
+    "ms": 3100
+  },
+  "senpai-step-5": {
+    "speaker": "senpai",
+    "model": "gemini-3.1-flash-tts-preview",
+    "voice": "Leda",
+    "text": "The flow is: find the roots, then read where the graph is below zero.",
+    "ms": 6000
+  }
+}

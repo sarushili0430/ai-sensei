@@ -161,11 +161,18 @@ Future<void> _record(WidgetTester tester, _Script s) async {
     ),
   );
 
-  final _Recorder rec = await _Recorder.start(tester, boundaryKey, '$_outDir/demo-${s.locale}.mp4');
+  final _Recorder rec = await _Recorder.start(
+    tester,
+    boundaryKey,
+    '$_outDir/demo-${s.locale}.mp4',
+    voices: s.withAudio ? _Voices.load('$_outDir/audio/${s.locale}') : null,
+  );
   // --- 0. 表紙 ---
   stage.update(card: _Card.title);
+  rec.say('narr-title');
   await rec.hold(3400);
   await rec.snapshot('${s.locale}-00-title');
+  await rec.waitNarration(tailMs: 500);
 
   // 日英の文言は非同期に読み込まれるので、表紙のあいだに揃ってから引く。
   final AppStrings strings = AppStrings.of(tester.element(find.byType(Scaffold).first));
@@ -175,6 +182,7 @@ Future<void> _record(WidgetTester tester, _Script s) async {
 
   // --- 1. 撮る ---
   stage.update(card: _Card.none, caption: s.captions[0]);
+  rec.say('narr-snap');
   await rec.hold(1800);
   await rec.snapshot('${s.locale}-01-home');
   await rec.tap(inApp.byKey(const ValueKey<String>('home-primary-lesson')));
@@ -193,20 +201,24 @@ Future<void> _record(WidgetTester tester, _Script s) async {
   await rec.holdUntil(inApp.text(strings.captureStart));
   await rec.hold(2600);
   await rec.snapshot('${s.locale}-03-topics');
+  await rec.waitNarration();
   await rec.reveal(inApp.text(strings.captureStart));
   await rec.tap(inApp.text(strings.captureStart));
 
   // --- 2. 教わる ---
   await rec.holdUntil(inApp.text(strings.sessionUnderstood));
   stage.update(caption: s.captions[1]);
+  rec.say('narr-learn');
   final _ScriptedSession session =
       container.read(sessionControllerProvider.notifier) as _ScriptedSession;
   await rec.hold(1100, onSecond: session.tick);
   session.senpaiJoined();
   await rec.hold(500, onSecond: session.tick);
+  // 先輩はナレーションに重ねて喋らない。
+  await rec.waitNarration(onSecond: session.tick);
   session.speak(s.openingLine);
   stage.update(voice: _Voice(s.openingLine));
-  await rec.hold(2000, onSecond: session.tick);
+  await rec.speak('senpai-opening', 2000, onSecond: session.tick);
 
   final _Lesson lesson = _Lesson.load(s);
   session.deliver(lesson.open);
@@ -216,13 +228,17 @@ Future<void> _record(WidgetTester tester, _Script s) async {
     session.deliver(message);
     session.speak(step.speech);
     stage.update(voice: _Voice(step.speech));
-    await rec.hold(1100 + step.speech.length * s.msPerChar, onSecond: session.tick);
+    await rec.speak(
+      'senpai-step-${step.index}',
+      1100 + step.speech.length * s.msPerChar,
+      onSecond: session.tick,
+    );
     if (step.index == s.replyAfterStep) {
       await rec.snapshot('${s.locale}-04-board');
       session.studentTurn();
       await rec.hold(600, onSecond: session.tick);
       stage.update(caption: s.captions[2], voice: _Voice(s.studentReply, student: true));
-      await rec.hold(2400, onSecond: session.tick);
+      await rec.speak('student-reply', 2400, onSecond: session.tick);
       session.userTurn();
       await rec.hold(900, onSecond: session.tick);
     }
@@ -232,21 +248,25 @@ Future<void> _record(WidgetTester tester, _Script s) async {
 
   // --- 3. わかった ---
   stage.update(caption: s.captions[3], clearVoice: true);
+  rec.say('narr-gotit');
   await rec.hold(1800, onSecond: session.tick);
   await rec.tap(inApp.text(strings.sessionUnderstood));
   await rec.holdUntil(inApp.byKey(const Key('celebration-done')));
   await rec.hold(3600);
   await rec.snapshot('${s.locale}-06-celebration');
+  await rec.waitNarration();
   await rec.tap(inApp.byKey(const Key('celebration-done')));
   await rec.hold(900);
 
   // --- 4. 3日後の通知 ---
   server.daysLater = 3;
   stage.update(caption: s.captions[4], lockScreen: true);
+  rec.say('narr-later');
   await rec.hold(1100);
   stage.update(notification: true);
   await rec.hold(2800);
   await rec.snapshot('${s.locale}-07-notification');
+  await rec.waitNarration();
   await rec.tapVisual(find.byKey(const ValueKey<String>('demo-notification')));
   container.read(appRouterProvider).go('/review?problem=${Uri.encodeQueryComponent(s.practiceId)}');
   await rec.hold(200);
@@ -255,6 +275,7 @@ Future<void> _record(WidgetTester tester, _Script s) async {
   // --- 5. 答えて採点 ---
   await rec.holdUntil(inApp.byType(TextField));
   stage.update(caption: s.captions[5]);
+  rec.say('narr-answer');
   await rec.hold(1500);
   await rec.tapVisual(inApp.byType(TextField));
   await tester.showKeyboard(inApp.byType(TextField));
@@ -269,19 +290,24 @@ Future<void> _record(WidgetTester tester, _Script s) async {
   await rec.holdUntil(inApp.text(strings.practiceCorrect));
   await rec.hold(4600);
   await rec.snapshot('${s.locale}-09-graded');
+  await rec.waitNarration();
 
   // --- 6. 続ける ---
   stage.update(caption: s.captions[6]);
+  rec.say('narr-keep');
   await rec.reveal(inApp.byKey(const Key('practice-home')));
   await rec.hold(700);
   await rec.tap(inApp.byKey(const Key('practice-home')));
   await rec.holdUntil(inApp.byKey(const ValueKey<String>('home-primary-lesson')));
   await rec.hold(3600);
   await rec.snapshot('${s.locale}-10-home-after');
+  await rec.waitNarration(tailMs: 600);
 
   // --- 7. 締め ---
   stage.update(card: _Card.end);
+  rec.say('narr-end');
   await rec.hold(4800);
+  await rec.waitNarration(tailMs: 2200);
   await rec.snapshot('${s.locale}-11-end');
 
   await rec.finish();
@@ -299,23 +325,64 @@ class _InApp {
   Finder byType(Type type) => _scope(find.byType(type));
 }
 
+/// 声とBGM(`generate_demo_audio.ts` が用意する)。
+class _Voices {
+  _Voices._(this._dir, this._ms);
+
+  factory _Voices.load(String dir) {
+    final File manifest = File('$dir/manifest.json');
+    if (!manifest.existsSync() || !File('$dir/bgm.mp3').existsSync()) {
+      throw StateError('$dir に声とBGMがありません。先に generate_demo_audio.ts を走らせてください');
+    }
+    final Map<String, dynamic> json =
+        jsonDecode(manifest.readAsStringSync()) as Map<String, dynamic>;
+    return _Voices._(dir, <String, int>{
+      for (final MapEntry<String, dynamic> e in json.entries)
+        e.key: (e.value as Map<String, dynamic>)['ms'] as int,
+    });
+  }
+
+  final String _dir;
+  final Map<String, int> _ms;
+
+  int? durationMs(String id) => _ms[id];
+  String file(String id) => '$_dir/$id.m4a';
+  String get bgm => '$_dir/bgm.mp3';
+}
+
 /// 1フレームずつ描いて ffmpeg へ流す。
 ///
 /// `toImage` は本物の非同期を要るので、毎フレーム `runAsync` の中で撮る
 /// (fake_async のゾーンでは完了しない)。副作用として、写真の読み出しや
 /// デコードのような本物の I/O も、このすき間で進む。
 class _Recorder {
-  _Recorder._(this._tester, this._key, this._ffmpeg);
+  _Recorder._(this._tester, this._key, this._ffmpeg, this._path, this._videoPath, this._voices);
 
   final WidgetTester _tester;
   final GlobalKey _key;
   final Process _ffmpeg;
+  final String _path;
+  final String _videoPath;
+  final _Voices? _voices;
   int frames = 0;
 
-  static Future<_Recorder> start(WidgetTester tester, GlobalKey key, String path) async {
+  /// 鳴らした声(何フレーム目に、どの音声を)。最後にまとめてミックスする。
+  final List<(int, String)> _cues = <(int, String)>[];
+  int _narrationEndsAt = 0;
+
+  static String get _ffmpegPath => Platform.environment['FFMPEG'] ?? 'ffmpeg';
+
+  static Future<_Recorder> start(
+    WidgetTester tester,
+    GlobalKey key,
+    String path, {
+    _Voices? voices,
+  }) async {
     File(path).parent.createSync(recursive: true);
+    // 声を入れるときは、いったん映像だけを書き出してから音を重ねる。
+    final String videoPath = voices == null ? path : '$path.video.mp4';
     final Process process = (await tester.runAsync(
-      () => Process.start(Platform.environment['FFMPEG'] ?? 'ffmpeg', <String>[
+      () => Process.start(_ffmpegPath, <String>[
         '-y',
         '-loglevel',
         'error',
@@ -339,11 +406,11 @@ class _Recorder {
         'yuv420p',
         '-movflags',
         '+faststart',
-        path,
+        videoPath,
       ]),
     ))!;
     unawaited(process.stderr.transform(utf8.decoder).forEach(stderr.write));
-    return _Recorder._(tester, key, process);
+    return _Recorder._(tester, key, process, path, videoPath, voices);
   }
 
   RenderRepaintBoundary get _boundary =>
@@ -368,6 +435,33 @@ class _Recorder {
       await frame();
       if (onSecond != null && frames % _fps == 0) onSecond();
     }
+  }
+
+  /// 声を鳴らす(この瞬間に置く)。長さ(ミリ秒)を返す。音声が無ければ 0。
+  ///
+  /// ナレーション(`narr-`)は鳴らしたまま画面の操作を続けられる。
+  /// 次のナレーションや先輩の声の前には [waitNarration] で終わるのを待つ。
+  int say(String id) {
+    final int? ms = _voices?.durationMs(id);
+    if (ms == null) return 0;
+    _cues.add((frames, id));
+    if (id.startsWith('narr-')) {
+      _narrationEndsAt = frames + (ms * _fps / 1000).ceil();
+    }
+    return ms;
+  }
+
+  /// 先輩・生徒の声。**喋り終わるまで**次へ進まない(音声が無ければ [fallbackMs])。
+  Future<void> speak(String id, int fallbackMs, {VoidCallback? onSecond}) async {
+    final int ms = say(id);
+    await hold(ms == 0 ? fallbackMs : ms + 550, onSecond: onSecond);
+  }
+
+  /// 鳴っているナレーションが終わるまで撮り続ける。
+  Future<void> waitNarration({int tailMs = 300, VoidCallback? onSecond}) async {
+    final int end = _narrationEndsAt + (tailMs * _fps / 1000).round();
+    if (_voices == null || frames >= end) return;
+    await hold(((end - frames) * 1000 / _fps).round(), onSecond: onSecond);
   }
 
   /// 現れるまで撮り続ける。待ち時間(通信・アニメーション)もそのまま映す。
@@ -424,7 +518,64 @@ class _Recorder {
       await _ffmpeg.stdin.close();
       final int code = await _ffmpeg.exitCode;
       if (code != 0) throw StateError('ffmpeg が $code で終了しました');
+      final _Voices? voices = _voices;
+      if (voices != null) {
+        await _mix(voices);
+        File(_videoPath).deleteSync();
+      }
     });
+  }
+
+  /// 声を置いた位置に並べ、BGMを**声の下で自動的に絞って**(sidechain)重ねる。
+  Future<void> _mix(_Voices voices) async {
+    final double seconds = frames / _fps;
+    final List<String> inputs = <String>['-i', _videoPath, '-i', voices.bgm];
+    final List<String> filters = <String>[];
+    for (int i = 0; i < _cues.length; i++) {
+      final (int frame, String id) = _cues[i];
+      final int delay = (frame * 1000 / _fps).round();
+      inputs.addAll(<String>['-i', voices.file(id)]);
+      filters.add(
+        '[${i + 2}:a]aformat=sample_rates=48000:channel_layouts=stereo,'
+        'adelay=$delay:all=1[c$i]',
+      );
+    }
+    final String voiceInputs = <String>[for (int i = 0; i < _cues.length; i++) '[c$i]'].join();
+    filters
+      ..add('${voiceInputs}amix=inputs=${_cues.length}:normalize=0:dropout_transition=0[voice]')
+      ..add('[voice]asplit=2[vmain][vkey]')
+      ..add(
+        '[1:a]atrim=0:${seconds.toStringAsFixed(3)},asetpts=PTS-STARTPTS,'
+        'aformat=sample_rates=48000:channel_layouts=stereo,volume=0.5,'
+        'afade=t=in:st=0:d=1.5,afade=t=out:st=${(seconds - 3.5).toStringAsFixed(3)}:d=3.5[bg]',
+      )
+      ..add('[bg][vkey]sidechaincompress=threshold=0.015:ratio=6:attack=40:release=700[bgd]')
+      ..add('[bgd][vmain]amix=inputs=2:normalize=0,alimiter=limit=0.95[a]');
+
+    final ProcessResult result = await Process.run(_ffmpegPath, <String>[
+      '-y',
+      '-loglevel',
+      'error',
+      ...inputs,
+      '-filter_complex',
+      filters.join(';'),
+      '-map',
+      '0:v',
+      '-map',
+      '[a]',
+      '-c:v',
+      'copy',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '192k',
+      '-t',
+      seconds.toStringAsFixed(3),
+      '-movflags',
+      '+faststart',
+      _path,
+    ]);
+    if (result.exitCode != 0) throw StateError('音声のミックスに失敗しました: ${result.stderr}');
   }
 }
 
@@ -740,6 +891,8 @@ class _Script {
     required this.lockDate,
     required this.now,
     required this.endLine,
+    this.withAudio = false,
+    this.musicCredit,
   });
 
   final String locale;
@@ -790,6 +943,12 @@ class _Script {
   final String lockDate;
   final String now;
   final String endLine;
+
+  /// ナレーション・声・BGMを入れるか(`docs/store/demo-video/audio/<locale>/`)。
+  final bool withAudio;
+
+  /// BGMのクレジット(CC BY は表記が利用の条件)。締めのカードに出す。
+  final String? musicCredit;
 }
 
 const _Script _ja = _Script(
@@ -1001,6 +1160,9 @@ const _Script _en = _Script(
   lockDate: 'Thursday, August 6',
   now: 'now',
   endLine: 'iPhone / iPad · Open source (MIT)',
+  withAudio: true,
+  musicCredit:
+      'Music: “Carefree” Kevin MacLeod (incompetech.com) · Licensed under Creative Commons: By Attribution 4.0',
 );
 
 // ---------------------------------------------------------------------------
@@ -1582,6 +1744,13 @@ class _CardView extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
+                if (script.musicCredit != null) ...<Widget>[
+                  const SizedBox(height: 56),
+                  Text(
+                    script.musicCredit!,
+                    style: const TextStyle(fontSize: 20, color: AppColors.inkMuted),
+                  ),
+                ],
               ],
             ],
           ),
