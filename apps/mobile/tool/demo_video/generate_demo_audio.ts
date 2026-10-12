@@ -82,8 +82,6 @@ const scripts: Record<Locale, Script> = {
         "Three days later, your senpai checks back. Just one question — about thirty seconds.",
       "narr-answer":
         "Type your answer, and the AI grades it. Miss it, and it asks again after one, three, and seven days.",
-      "narr-keep":
-        "No scores. No rankings. Just the days you kept going, and the problems you solved.",
       "narr-end": "Katarute. Taught until you say “got it.” Asked again in three days.",
     },
     studentReply: "Um… x minus one, times x minus two?",
@@ -103,7 +101,6 @@ const scripts: Record<Locale, Script> = {
       "narr-later": "3日後、先輩からおさらいが届きます。1問だけ。30秒で終わります。",
       "narr-answer":
         "テキストで答えると、AIが採点。間違えた問題は、翌日、3日後、7日後に、もう一度たずねます。",
-      "narr-keep": "点数も、順位も出しません。数えるのは、続けた日数と、解けた問題だけ。",
       "narr-end": "カタルテ。「わかった」と言えるまで教える。3日後に、ほんとうにそうか聞く。",
     },
     studentReply: "えっと…2個?",

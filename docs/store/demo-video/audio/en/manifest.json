@@ -41,13 +41,6 @@
     "text": "Type your answer, and the AI grades it. Miss it, and it asks again after one, three, and seven days.",
     "ms": 6100
   },
-  "narr-keep": {
-    "speaker": "narrator",
-    "model": "gemini-2.5-flash-preview-tts",
-    "voice": "Charon",
-    "text": "No scores. No rankings. Just the days you kept going, and the problems you solved.",
-    "ms": 6100
-  },
   "narr-end": {
     "speaker": "narrator",
     "model": "gemini-2.5-flash-preview-tts",

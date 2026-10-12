@@ -1,6 +1,6 @@
 # 紹介動画(デモ動画)
 
-`demo-en.mp4`(1分45秒)と `demo-ja.mp4`(1分43秒)。どちらも 1920x1080・30fps・
+`demo-en.mp4`(1分38秒)と `demo-ja.mp4`(1分37秒)。どちらも 1920x1080・30fps・
 **ナレーション・先輩と生徒の声・BGMつき**。
 **絵の正はコード**です。動画を編集ソフトで直さず、
 [`apps/mobile/tool/demo_video/generate_demo_video.dart`](../../../apps/mobile/tool/demo_video/generate_demo_video.dart)
@@ -40,7 +40,7 @@ Licensed under Creative Commons: By Attribution 4.0 License**
 **クレジット表記が利用の条件**です。動画の締めに入れてあります。YouTube などに上げるときは
 説明欄にも同じ一文を書いてください。曲のファイルはコミットせず、スクリプトが取ってきます。
 
-撮影 → 板書つき授業 → 「わかった」→ 3日後の通知 → 採点 → ホーム、の順
+撮影 → 板書つき授業 → 「わかった」→ 3日後の通知 → 採点 → 締め、の順
 ([`shipaton_submission.md`](../../shipaton_submission.md) §5 と同じ)。
 章ごとの静止画が `frames/` に出ます(見直し用。コミットしない)。
 

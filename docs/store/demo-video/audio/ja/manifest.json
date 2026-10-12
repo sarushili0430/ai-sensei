@@ -41,13 +41,6 @@
     "text": "テキストで答えると、AIが採点。間違えた問題は、翌日、3日後、7日後に、もう一度たずねます。",
     "ms": 7500
   },
-  "narr-keep": {
-    "speaker": "narrator",
-    "model": "gemini-2.5-flash-preview-tts",
-    "voice": "Charon",
-    "text": "点数も、順位も出しません。数えるのは、続けた日数と、解けた問題だけ。",
-    "ms": 5500
-  },
   "narr-end": {
     "speaker": "narrator",
     "model": "gemini-2.5-flash-preview-tts",

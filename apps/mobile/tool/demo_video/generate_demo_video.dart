@@ -293,18 +293,7 @@ Future<void> _record(WidgetTester tester, _Script s) async {
   await rec.snapshot('${s.locale}-09-graded');
   await rec.waitNarration();
 
-  // --- 6. 続ける ---
-  stage.update(caption: s.captions[6]);
-  rec.say('narr-keep');
-  await rec.reveal(inApp.byKey(const Key('practice-home')));
-  await rec.hold(700);
-  await rec.tap(inApp.byKey(const Key('practice-home')));
-  await rec.holdUntil(inApp.byKey(const ValueKey<String>('home-primary-lesson')));
-  await rec.hold(3600);
-  await rec.snapshot('${s.locale}-10-home-after');
-  await rec.waitNarration(tailMs: 600);
-
-  // --- 7. 締め ---
+  // --- 6. 締め ---
   stage.update(card: _Card.end);
   rec.say('narr-end');
   await rec.hold(4800);
@@ -995,13 +984,6 @@ const _Script _ja = _Script(
       marker: 'AIが採点する',
       sub: '間違えた問題は、翌日・3日後・7日後に\nもう一度たずねます。',
     ),
-    _Caption(
-      step: '6  続ける',
-      headline: '数えるのは、\n続けた日数と解けた問題。',
-      marker: '続けた日数と解けた問題',
-      markerColor: AppColors.streak,
-      sub: '点数も順位も出しません。',
-    ),
   ],
   photoLabel: '問 3',
   photoInstruction: '次の2次方程式の実数解の個数を求めよ。',
@@ -1051,7 +1033,7 @@ const _Script _ja = _Script(
   lockTime: '7:40',
   lockDate: '8月6日 木曜日',
   now: 'いま',
-  endLine: 'iPhone / iPad ・ オープンソース(MIT)',
+  endLine: 'iPhone / iPad',
   withAudio: true,
   musicCredit:
       'Music: “Carefree” Kevin MacLeod (incompetech.com) · Licensed under Creative Commons: By Attribution 4.0',
@@ -1103,13 +1085,6 @@ const _Script _en = _Script(
       marker: 'AI grades it',
       sub: 'Missed it? It asks again\nafter 1, 3 and 7 days.',
     ),
-    _Caption(
-      step: '6  Keep going',
-      headline: 'We count days\nand solved problems.',
-      marker: 'days\nand solved problems',
-      markerColor: AppColors.streak,
-      sub: 'Never a score. Never a ranking.',
-    ),
   ],
   photoLabel: 'Problem 3',
   photoInstruction: 'Solve the inequality.',
@@ -1159,7 +1134,7 @@ const _Script _en = _Script(
   lockTime: '7:40',
   lockDate: 'Thursday, August 6',
   now: 'now',
-  endLine: 'iPhone / iPad · Open source (MIT)',
+  endLine: 'iPhone / iPad',
   withAudio: true,
   musicCredit:
       'Music: “Carefree” Kevin MacLeod (incompetech.com) · Licensed under Creative Commons: By Attribution 4.0',
