@@ -1,12 +1,12 @@
 /**
- * 紹介動画(英語版)の声とBGMを用意する。**映像より先に一度だけ走らせる。**
+ * 紹介動画の声とBGMを用意する。**映像より先に一度だけ走らせる。**
  *
  * ```bash
  * GOOGLE_API_KEY=... FFMPEG=/path/to/ffmpeg \
- *   node --experimental-strip-types apps/mobile/tool/demo_video/generate_demo_audio.ts
+ *   node --experimental-strip-types apps/mobile/tool/demo_video/generate_demo_audio.ts [en|ja]
  * ```
  *
- * 出力(`docs/store/demo-video/audio/en/`):
+ * 出力(`docs/store/demo-video/audio/<locale>/`):
  *   - `<id>.m4a`      声の1本ずつ(ラウドネスを揃えてある)
  *   - `manifest.json` 各音声の長さ(ミリ秒)。映像側はこれを見て間を決める
  *   - `bgm.mp3`       BGM(コミットしない。無ければ incompetech から取ってくる)
@@ -15,11 +15,11 @@
  *
  * | id の頭 | 誰 | 声 |
  * | --- | --- | --- |
- * | `senpai-` | 先輩 | **agent と同じモデル・声・読み方の指示**(`backend/agent/src/senpai-voice.ts`)。本番の授業と同じ声 |
+ * | `senpai-` | 先輩 | **agent と同じ声・読み方の指示**(`backend/agent/src/senpai-voice.ts`)。本番の授業と同じ声 |
  * | `student-` | 生徒 | `Puck` |
  * | `narr-` | ナレーション | `Charon` |
  *
- * 先輩の台詞は板書の fixture(`board-lesson.en.json` の `speech`)をそのまま読む。
+ * 先輩の台詞は板書の fixture(`board-lesson*.json` の `speech`)をそのまま読む。
  * 板書と声がずれないように、ここで台詞を書き直さない。
  *
  * すでにある音声は作り直さない(無料枠は1日の回数が少ない)。作り直すときは消してから。
@@ -39,13 +39,13 @@ import {
   ttsInstructionsForLocale,
 } from "../../../../backend/agent/src/senpai-voice.ts";
 
-const repoRoot = resolve(import.meta.dirname, "../../../..");
-const outDir = join(repoRoot, "docs/store/demo-video/audio/en");
-const lessonFixture = join(repoRoot, "packages/contract/fixtures/board-lesson.en.json");
-const ffmpeg = process.env.FFMPEG ?? "ffmpeg";
+type Locale = "en" | "ja";
 
-/** 動画で使う板書の手順数(`generate_demo_video.dart` の英語版 `stepCount` と揃える)。 */
-const stepCount = 6;
+const locale: Locale = process.argv[2] === "ja" ? "ja" : "en";
+
+const repoRoot = resolve(import.meta.dirname, "../../../..");
+const outDir = join(repoRoot, `docs/store/demo-video/audio/${locale}`);
+const ffmpeg = process.env.FFMPEG ?? "ffmpeg";
 
 export const bgmUrl = "https://incompetech.com/music/royalty-free/mp3-royaltyfree/Carefree.mp3";
 
@@ -53,54 +53,81 @@ type Speaker = "senpai" | "student" | "narrator";
 
 type Cue = { id: string; speaker: Speaker; text: string };
 
-/** ナレーション。章の頭で話す。**先輩が話しているあいだは話さない**(映像側で待つ)。 */
-const narration: Cue[] = [
-  {
-    id: "narr-title",
-    text: "Meet Katarute. It teaches you until you say “got it” — and then checks back three days later.",
-  },
-  {
-    id: "narr-snap",
-    text: "Stuck on a problem? Just snap a photo. Katarute reads the topic and the question for you.",
-  },
-  {
-    id: "narr-learn",
-    text: "Then your AI senpai teaches you, right on the board. The math goes on the board. The voice just asks you questions.",
-  },
-  {
-    id: "narr-gotit",
-    text: "The lesson only ends when you tap “Got it.” Then one review question is made from that board.",
-  },
-  {
-    id: "narr-later",
-    text: "Three days later, your senpai checks back. Just one question — about thirty seconds.",
-  },
-  {
-    id: "narr-answer",
-    text: "Type your answer, and the AI grades it. Miss it, and it asks again after one, three, and seven days.",
-  },
-  {
-    id: "narr-keep",
-    text: "No scores. No rankings. Just the days you kept going, and the problems you solved.",
-  },
-  {
-    id: "narr-end",
-    text: "Katarute. Taught until you say “got it.” Asked again in three days.",
-  },
-].map((cue) => ({ ...cue, speaker: "narrator" as const }));
+type Script = {
+  lessonFixture: string;
+  /** 動画で使う板書の手順数(`generate_demo_video.dart` の `stepCount` と揃える)。 */
+  stepCount: number;
+  /** 授業冒頭の同梱音声と同じ一言(`scripts/generate-prerendered-audio.ts`)。 */
+  opening: string;
+  /** ナレーション。章の頭で話す。**先輩が話しているあいだは話さない**(映像側で待つ)。 */
+  narration: Record<string, string>;
+  studentReply: string;
+};
 
-const student: Cue[] = [
-  { id: "student-reply", speaker: "student", text: "Um… x minus one, times x minus two?" },
-];
+const scripts: Record<Locale, Script> = {
+  en: {
+    lessonFixture: "board-lesson.en.json",
+    stepCount: 6,
+    opening: "Okay, let's take a look at this together.",
+    narration: {
+      "narr-title":
+        "Meet Katarute. It teaches you until you say “got it” — and then checks back three days later.",
+      "narr-snap":
+        "Stuck on a problem? Just snap a photo. Katarute reads the topic and the question for you.",
+      "narr-learn":
+        "Then your AI senpai teaches you, right on the board. The math goes on the board. The voice just asks you questions.",
+      "narr-gotit":
+        "The lesson only ends when you tap “Got it.” Then one review question is made from that board.",
+      "narr-later":
+        "Three days later, your senpai checks back. Just one question — about thirty seconds.",
+      "narr-answer":
+        "Type your answer, and the AI grades it. Miss it, and it asks again after one, three, and seven days.",
+      "narr-keep":
+        "No scores. No rankings. Just the days you kept going, and the problems you solved.",
+      "narr-end": "Katarute. Taught until you say “got it.” Asked again in three days.",
+    },
+    studentReply: "Um… x minus one, times x minus two?",
+  },
+  ja: {
+    lessonFixture: "board-lesson.json",
+    stepCount: 7,
+    opening: "なるほど、じゃあ一緒に見てみようか。",
+    narration: {
+      "narr-title":
+        "カタルテ。「わかった」と言えるまで教えて、3日後に、ほんとうにそうか聞いてくれる勉強アプリです。",
+      "narr-snap": "わからない問題があったら、写真を撮るだけ。単元と問題文を読み取ります。",
+      "narr-learn":
+        "すると、AIの先輩が、板書つきで教えてくれます。数式は板書に。声は、問いかけるだけ。",
+      "narr-gotit":
+        "授業を終わらせるのは、生徒の「わかった」。押すと、その板書から復習問題が1問できます。",
+      "narr-later": "3日後、先輩からおさらいが届きます。1問だけ。30秒で終わります。",
+      "narr-answer":
+        "テキストで答えると、AIが採点。間違えた問題は、翌日、3日後、7日後に、もう一度たずねます。",
+      "narr-keep": "点数も、順位も出しません。数えるのは、続けた日数と、解けた問題だけ。",
+      "narr-end": "カタルテ。「わかった」と言えるまで教える。3日後に、ほんとうにそうか聞く。",
+    },
+    studentReply: "えっと…2個?",
+  },
+};
+
+const script = scripts[locale];
+
+const narration: Cue[] = Object.entries(script.narration).map(([id, text]) => ({
+  id,
+  speaker: "narrator",
+  text,
+}));
+
+const student: Cue[] = [{ id: "student-reply", speaker: "student", text: script.studentReply }];
 
 async function senpaiCues(): Promise<Cue[]> {
-  const lesson = JSON.parse(await readFile(lessonFixture, "utf8")) as {
+  const fixture = join(repoRoot, "packages/contract/fixtures", script.lessonFixture);
+  const lesson = JSON.parse(await readFile(fixture, "utf8")) as {
     steps: { index: number; speech: string }[];
   };
   return [
-    // 授業冒頭の同梱音声と同じ一言(`scripts/generate-prerendered-audio.ts`)。
-    { id: "senpai-opening", speaker: "senpai", text: "Okay, let's take a look at this together." },
-    ...lesson.steps.slice(0, stepCount).map((step) => ({
+    { id: "senpai-opening", speaker: "senpai", text: script.opening },
+    ...lesson.steps.slice(0, script.stepCount).map((step) => ({
       id: `senpai-step-${step.index}`,
       speaker: "senpai" as const,
       text: step.speech,
@@ -114,19 +141,23 @@ const voices: Record<Speaker, string> = {
   narrator: "Charon",
 };
 
+const language = locale === "ja" ? "Japanese" : "English";
+
 function prompt(cue: Cue): string {
   switch (cue.speaker) {
     case "senpai":
       // agent と同じ包み方(`{instructions}:\n"{text}"`)。ここがずれると別人になる。
-      return `${ttsInstructionsForLocale("en")}:\n"${cue.text}"`;
+      return `${ttsInstructionsForLocale(locale)}:\n"${cue.text}"`;
+    // 指示は本文が何語でも英語で書く(日本語で書くと指示まで読み上げる事故が起きうる。
+    // `senpai-voice.ts` の `ttsInstructionsForLocale` と同じ理由)。
     case "student":
       return (
-        "Read this aloud in English as a high school student answering a tutor out loud, " +
+        `Read this aloud in ${language} as a high school student answering a tutor out loud, ` +
         `a little unsure but getting it right. Do not omit, add, or answer anything:\n"${cue.text}"`
       );
     case "narrator":
       return (
-        "Read this aloud in English as a warm, friendly narrator of a short app demo video. " +
+        `Read this aloud in ${language} as a warm, friendly narrator of a short app demo video. ` +
         "Clear and natural, gently upbeat, never salesy. Do not omit, add, or change anything:\n" +
         `"${cue.text}"`
       );
@@ -134,18 +165,25 @@ function prompt(cue: Cue): string {
 }
 
 /**
- * TTSのモデル。既定は agent と同じ。
+ * TTSのモデル。**話者ごとに固定する。**
  *
- * **無料枠は1日10回**(2026-09 時点)。使い切ったら `GEMINI_TTS_MODEL` で別のモデルに
- * 逃がす(同じ声名なら同じ声になる)。ただし**同じ話者の中でモデルを混ぜない** —
- * 途中の1本だけ声の質が変わる。混ぜそうなら、その話者の音声を消して全部作り直す。
+ * 無料枠は**モデルごとに1日10回**(2026-09 時点)。英語版を作ったとき、agent と同じ
+ * 2.5 Flash を途中で使い切ったので、先輩だけ 3.1 Flash(`senpai-voice.ts` が移行先として
+ * 挙げているモデル)に揃えた。日本語版も同じ割り当てにして、言語で先輩の声質を変えない。
+ *
+ * **同じ話者の中でモデルを混ぜない** — 途中の1本だけ声の質が変わる。
+ * `GEMINI_TTS_MODEL` を渡すと全員そのモデルにする(枠を使い切ったときの逃げ道)。
  */
-const model = process.env.GEMINI_TTS_MODEL?.trim() || defaultGeminiTtsModel;
+const models: Record<Speaker, string> = {
+  senpai: process.env.GEMINI_TTS_MODEL?.trim() || "gemini-3.1-flash-tts-preview",
+  student: process.env.GEMINI_TTS_MODEL?.trim() || defaultGeminiTtsModel,
+  narrator: process.env.GEMINI_TTS_MODEL?.trim() || defaultGeminiTtsModel,
+};
 
 async function synthesize(cue: Cue, apiKey: string): Promise<{ pcm: Buffer; rate: number }> {
   for (let attempt = 1; ; attempt++) {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${models[cue.speaker]}:generateContent`,
       {
         method: "POST",
         headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
@@ -252,7 +290,7 @@ async function main(): Promise<void> {
     // 1回目(flash)で作ったナレーションと生徒の声は manifest が無いので既定のモデルで記録する。
     let usedModel = previous[cue.id]?.model ?? defaultGeminiTtsModel;
     if (!existsSync(file)) {
-      usedModel = model;
+      usedModel = models[cue.speaker];
       if (!apiKey) throw new Error("GOOGLE_API_KEY がありません(未生成の音声があります)");
       console.log(`${cue.id} (${voices[cue.speaker]}): ${cue.text}`);
       const { pcm, rate } = await synthesize(cue, apiKey);
@@ -269,6 +307,7 @@ async function main(): Promise<void> {
     await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
   }
 
+  // BGM はロケールに依らず同じ1曲。
   const bgm = join(outDir, "bgm.mp3");
   if (!existsSync(bgm)) {
     console.log(`BGM: ${bgmUrl}`);

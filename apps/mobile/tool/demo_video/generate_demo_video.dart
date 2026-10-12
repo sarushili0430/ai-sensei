@@ -35,6 +35,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:ai_sensei/src/api/api_client.dart';
@@ -454,7 +455,8 @@ class _Recorder {
   /// 先輩・生徒の声。**喋り終わるまで**次へ進まない(音声が無ければ [fallbackMs])。
   Future<void> speak(String id, int fallbackMs, {VoidCallback? onSecond}) async {
     final int ms = say(id);
-    await hold(ms == 0 ? fallbackMs : ms + 550, onSecond: onSecond);
+    // 短い相槌(「うん、そこまで合ってる。」は1.5秒)だけで次へ進むと、板書を読む間が無い。
+    await hold(ms == 0 ? fallbackMs : math.max(ms + 550, 2200), onSecond: onSecond);
   }
 
   /// 鳴っているナレーションが終わるまで撮り続ける。
@@ -1028,7 +1030,8 @@ const _Script _ja = _Script(
   msPerChar: 115,
   openingLine: 'なるほど、じゃあ一緒に見てみようか。',
   replyAfterStep: 5,
-  studentReply: '2個!',
+  // 字幕は声(`generate_demo_audio.ts` の studentReply)と同じ言葉にする。
+  studentReply: 'えっと…2個?',
   senpaiVoiceLabel: '先輩の声',
   studentVoiceLabel: 'きみの声',
   practiceProblem: <String, dynamic>{
@@ -1049,6 +1052,9 @@ const _Script _ja = _Script(
   lockDate: '8月6日 木曜日',
   now: 'いま',
   endLine: 'iPhone / iPad ・ オープンソース(MIT)',
+  withAudio: true,
+  musicCredit:
+      'Music: “Carefree” Kevin MacLeod (incompetech.com) · Licensed under Creative Commons: By Attribution 4.0',
 );
 
 const _Script _en = _Script(

@@ -1,0 +1,121 @@
+{
+  "narr-title": {
+    "speaker": "narrator",
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Charon",
+    "text": "カタルテ。「わかった」と言えるまで教えて、3日後に、ほんとうにそうか聞いてくれる勉強アプリです。",
+    "ms": 6100
+  },
+  "narr-snap": {
+    "speaker": "narrator",
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Charon",
+    "text": "わからない問題があったら、写真を撮るだけ。単元と問題文を読み取ります。",
+    "ms": 5600
+  },
+  "narr-learn": {
+    "speaker": "narrator",
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Charon",
+    "text": "すると、AIの先輩が、板書つきで教えてくれます。数式は板書に。声は、問いかけるだけ。",
+    "ms": 7110
+  },
+  "narr-gotit": {
+    "speaker": "narrator",
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Charon",
+    "text": "授業を終わらせるのは、生徒の「わかった」。押すと、その板書から復習問題が1問できます。",
+    "ms": 6600
+  },
+  "narr-later": {
+    "speaker": "narrator",
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Charon",
+    "text": "3日後、先輩からおさらいが届きます。1問だけ。30秒で終わります。",
+    "ms": 4400
+  },
+  "narr-answer": {
+    "speaker": "narrator",
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Charon",
+    "text": "テキストで答えると、AIが採点。間違えた問題は、翌日、3日後、7日後に、もう一度たずねます。",
+    "ms": 7500
+  },
+  "narr-keep": {
+    "speaker": "narrator",
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Charon",
+    "text": "点数も、順位も出しません。数えるのは、続けた日数と、解けた問題だけ。",
+    "ms": 5500
+  },
+  "narr-end": {
+    "speaker": "narrator",
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Charon",
+    "text": "カタルテ。「わかった」と言えるまで教える。3日後に、ほんとうにそうか聞く。",
+    "ms": 5910
+  },
+  "student-reply": {
+    "speaker": "student",
+    "model": "gemini-2.5-flash-preview-tts",
+    "voice": "Puck",
+    "text": "えっと…2個?",
+    "ms": 3000
+  },
+  "senpai-opening": {
+    "speaker": "senpai",
+    "model": "gemini-3.1-flash-tts-preview",
+    "voice": "Leda",
+    "text": "なるほど、じゃあ一緒に見てみようか。",
+    "ms": 3210
+  },
+  "senpai-step-0": {
+    "speaker": "senpai",
+    "model": "gemini-3.1-flash-tts-preview",
+    "voice": "Leda",
+    "text": "まず、式をそのまま書くね。",
+    "ms": 2280
+  },
+  "senpai-step-1": {
+    "speaker": "senpai",
+    "model": "gemini-3.1-flash-tts-preview",
+    "voice": "Leda",
+    "text": "a、b、c がどれか、言える?",
+    "ms": 3310
+  },
+  "senpai-step-2": {
+    "speaker": "senpai",
+    "model": "gemini-3.1-flash-tts-preview",
+    "voice": "Leda",
+    "text": "うん、そこまで合ってる。",
+    "ms": 1570
+  },
+  "senpai-step-3": {
+    "speaker": "senpai",
+    "model": "gemini-3.1-flash-tts-preview",
+    "voice": "Leda",
+    "text": "判別式は、この形だったよね。",
+    "ms": 2900
+  },
+  "senpai-step-4": {
+    "speaker": "senpai",
+    "model": "gemini-3.1-flash-tts-preview",
+    "voice": "Leda",
+    "text": "入れてみると、こうなる。",
+    "ms": 1720
+  },
+  "senpai-step-5": {
+    "speaker": "senpai",
+    "model": "gemini-3.1-flash-tts-preview",
+    "voice": "Leda",
+    "text": "ここ、D を見てほしいんだけど — プラスだよね。だから?",
+    "ms": 5700
+  },
+  "senpai-step-6": {
+    "speaker": "senpai",
+    "model": "gemini-3.1-flash-tts-preview",
+    "voice": "Leda",
+    "text": "流れは、この3つだけ。",
+    "ms": 1770
+  }
+}

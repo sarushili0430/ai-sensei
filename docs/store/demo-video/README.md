@@ -1,24 +1,26 @@
 # 紹介動画(デモ動画)
 
-`demo-en.mp4`(1920x1080・30fps・1分45秒・**ナレーション・声・BGMつき**)と
-`demo-ja.mp4`(約80秒・音なし)。
+`demo-en.mp4`(1分45秒)と `demo-ja.mp4`(1分43秒)。どちらも 1920x1080・30fps・
+**ナレーション・先輩と生徒の声・BGMつき**。
 **絵の正はコード**です。動画を編集ソフトで直さず、
 [`apps/mobile/tool/demo_video/generate_demo_video.dart`](../../../apps/mobile/tool/demo_video/generate_demo_video.dart)
 を直して書き出し直してください。
 
 ```bash
-# 1. 声とBGM(英語版だけ。できている音声は作り直さない)
+# 1. 声とBGM(ロケールごと。できている音声は作り直さない)
 GOOGLE_API_KEY=... FFMPEG=/path/to/ffmpeg \
-  node --experimental-strip-types apps/mobile/tool/demo_video/generate_demo_audio.ts
+  node --experimental-strip-types apps/mobile/tool/demo_video/generate_demo_audio.ts en
+GOOGLE_API_KEY=... FFMPEG=/path/to/ffmpeg \
+  node --experimental-strip-types apps/mobile/tool/demo_video/generate_demo_audio.ts ja
 
 # 2. 映像(声の長さに合わせて間を取り、最後にBGMとミックスする)
 cd apps/mobile
 FFMPEG=/path/to/ffmpeg fvm flutter test tool/demo_video/generate_demo_video.dart
 ```
 
-## 声とBGM(英語版)
+## 声とBGM
 
-`audio/en/` に1本ずつ置いてあります(`manifest.json` に話者・モデル・声・長さ)。
+`audio/en/`・`audio/ja/` に1本ずつ置いてあります(`manifest.json` に話者・モデル・声・長さ)。
 声は Gemini TTS で作りました。
 
 | 話者 | 声 | モデル |
@@ -27,9 +29,10 @@ FFMPEG=/path/to/ffmpeg fvm flutter test tool/demo_video/generate_demo_video.dart
 | 生徒 | `Puck` | `gemini-2.5-flash-preview-tts` |
 | ナレーション | `Charon` | `gemini-2.5-flash-preview-tts` |
 
-先輩だけモデルが違うのは、2.5 Flash の無料枠(1日10回)を使い切ったため。
-**同じ話者の中でモデルを混ぜない**(1本だけ声の質が変わる)ので、先輩の台詞は全部 3.1 で揃えてあります。
-先輩の台詞は板書の fixture(`board-lesson.en.json` の `speech`)をそのまま読んでいます。
+先輩だけモデルが違うのは、英語版を作ったときに 2.5 Flash の無料枠(モデルごとに1日10回)を
+使い切ったため。**同じ話者の中でモデルを混ぜない**(1本だけ声の質が変わる)ので、先輩の台詞は
+日英とも全部 3.1 で揃えてあります。先輩の台詞は板書の fixture
+(`board-lesson.json` / `board-lesson.en.json` の `speech`)をそのまま読んでいます。
 
 BGM は **“Carefree” Kevin MacLeod (incompetech.com)
 Licensed under Creative Commons: By Attribution 4.0 License**
