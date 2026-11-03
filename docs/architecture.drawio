@@ -1,0 +1,768 @@
+<mxfile host="app.diagrams.net" agent="claude-code" version="24.7.17" type="device">
+  <diagram id="arch-overview" name="1. 全体構成">
+    <mxGraphModel dx="1600" dy="900" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="p1-0" />
+        <mxCell id="p1-1" parent="p1-0" />
+
+        <mxCell id="p1-title" value="ai-sensei — 全体構成（現状）" style="text;html=1;align=left;verticalAlign=middle;fontSize=20;fontStyle=1;" vertex="1" parent="p1-1">
+          <mxGeometry x="40" y="8" width="640" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-caption" value="&lt;b&gt;①〜⑫ は新規セッション1回分の流れ。&lt;/b&gt;会話だけが WebRTC（LiveKit）で、それ以外は HTTPS。&lt;br&gt;質問の範囲は二重ガード：④で「写真に写っている内容 ∩ カリキュラムマップ」、⑧で穴の topic_id を許可リスト照合。&lt;br&gt;認証は匿名デバイスID（X-Device-Id）だけ。アカウント作成は要求しない。" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=none;strokeColor=#9AA0A6;align=left;verticalAlign=middle;spacingLeft=10;fontSize=11;fontColor=#3C4043;" vertex="1" parent="p1-1">
+          <mxGeometry x="700" y="46" width="520" height="74" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p1-g-app" value="apps/mobile — Flutter 3.44（iOS先行） / Riverpod 3 / go_router" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#6c8ebf;dashed=1;verticalAlign=top;align=left;spacingLeft=8;spacingTop=4;fontSize=11;fontColor=#3C4043;" vertex="1" parent="p1-1">
+          <mxGeometry x="40" y="150" width="280" height="410" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-g-api" value="backend/api — Cloudflare Workers + Hono" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#d79b00;dashed=1;verticalAlign=top;align=left;spacingLeft=8;spacingTop=4;fontSize=11;fontColor=#3C4043;" vertex="1" parent="p1-1">
+          <mxGeometry x="380" y="150" width="320" height="410" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-g-cf" value="Cloudflare リソース（develop / production で別実体・バインディング名だけ揃える）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#82b366;dashed=1;verticalAlign=top;align=left;spacingLeft=8;spacingTop=4;fontSize=11;fontColor=#3C4043;" vertex="1" parent="p1-1">
+          <mxGeometry x="380" y="600" width="320" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-g-pkg" value="packages/ — pnpm workspace（backend/api と backend/agent の両方が参照）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#b85450;dashed=1;verticalAlign=top;align=left;spacingLeft=8;spacingTop=4;fontSize=11;fontColor=#3C4043;" vertex="1" parent="p1-1">
+          <mxGeometry x="40" y="600" width="280" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-g-agent" value="backend/agent — LiveKit Agents（Node）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#9673a6;dashed=1;verticalAlign=top;align=left;spacingLeft=8;spacingTop=4;fontSize=11;fontColor=#3C4043;" vertex="1" parent="p1-1">
+          <mxGeometry x="880" y="300" width="320" height="350" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-g-ext" value="外部サービス" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;dashed=1;verticalAlign=top;align=left;spacingLeft=8;spacingTop=4;fontSize=11;fontColor=#3C4043;" vertex="1" parent="p1-1">
+          <mxGeometry x="1260" y="150" width="280" height="640" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p1-user" value="高校生" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;" vertex="1" parent="p1-1">
+          <mxGeometry x="150" y="58" width="30" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p1-capture" value="撮影 CaptureScreen&lt;br&gt;camera / 単元チップの修正" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="p1-1">
+          <mxGeometry x="60" y="190" width="240" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-session" value="会話 SessionScreen&lt;br&gt;livekit_client（WebRTC・字幕・残り時間）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="p1-1">
+          <mxGeometry x="60" y="244" width="240" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-karte-screen" value="Home / Karte / Review&lt;br&gt;連続日数・埋めた穴・再説明" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="p1-1">
+          <mxGeometry x="60" y="302" width="240" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-paywall" value="Paywall&lt;br&gt;purchases_flutter（RevenueCat）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="p1-1">
+          <mxGeometry x="60" y="356" width="240" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-onboarding" value="Onboarding&lt;br&gt;「答えは教えない」約束を先に伝える" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="p1-1">
+          <mxGeometry x="60" y="410" width="240" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-app-infra" value="匿名デバイスID（shared_preferences）&lt;br&gt;Riverpod 3 で状態 / go_router で遷移&lt;br&gt;秘密鍵は持たない（公開値のみ dart-define）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=10;dashed=1;fillColor=none;strokeColor=#6c8ebf;fontColor=#3C4043;" vertex="1" parent="p1-1">
+          <mxGeometry x="60" y="464" width="240" height="56" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p1-r-sessions" value="POST /v1/sessions" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="p1-1">
+          <mxGeometry x="400" y="195" width="280" height="38" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-r-complete" value="POST /v1/sessions/{id}/complete&lt;br&gt;（agent専用・Bearer 内部トークン）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="p1-1">
+          <mxGeometry x="400" y="239" width="280" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-r-result" value="GET /v1/sessions/{id}/result（生成中は 202）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="p1-1">
+          <mxGeometry x="400" y="289" width="280" height="38" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-r-me" value="GET /v1/me/progress&lt;br&gt;GET /v1/me/reviews（Premium限定）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="p1-1">
+          <mxGeometry x="400" y="333" width="280" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-r-webhook" value="POST /v1/webhooks/revenuecat" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="p1-1">
+          <mxGeometry x="400" y="383" width="280" height="38" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-r-health" value="GET /health（環境名を返す）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="p1-1">
+          <mxGeometry x="400" y="427" width="280" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-r-lib" value="lib: photo-analysis（Vision）/ livekit（JWT）/&lt;br&gt;entitlement（無料枠・ペイウォール判定）/ notifications / errors" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=10;dashed=1;fillColor=none;strokeColor=#d79b00;fontColor=#3C4043;" vertex="1" parent="p1-1">
+          <mxGeometry x="400" y="465" width="280" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-r-repo" value="repository — D1Repository（テストは in-memory 実装に差し替え）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=10;dashed=1;fillColor=none;strokeColor=#d79b00;fontColor=#3C4043;" vertex="1" parent="p1-1">
+          <mxGeometry x="400" y="513" width="280" height="36" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p1-d1" value="D1: DB&lt;br&gt;users / sessions / kartes / holes / review_schedules" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=8;fontSize=11;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="p1-1">
+          <mxGeometry x="400" y="638" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-r2" value="R2: PHOTOS&lt;br&gt;ノート写真" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="p1-1">
+          <mxGeometry x="400" y="712" width="135" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-kv" value="KV: METER&lt;br&gt;メータリング" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="p1-1">
+          <mxGeometry x="545" y="712" width="135" height="48" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p1-pkg-contract" value="@ai-sensei/contract" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=10;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="p1-1">
+          <mxGeometry x="60" y="640" width="115" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-pkg-curriculum" value="@ai-sensei/curriculum" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=10;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="p1-1">
+          <mxGeometry x="185" y="640" width="115" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-pkg-guardrail" value="@ai-sensei/guardrail" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=10;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="p1-1">
+          <mxGeometry x="60" y="688" width="115" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-pkg-prompts" value="@ai-sensei/prompts" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=10;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="p1-1">
+          <mxGeometry x="185" y="688" width="115" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-pkg-note" value="スキーマ+fixture / 52トピックのカリキュラム / topic照合・間隔反復・進捗集計 / システムプロンプト" style="text;html=1;whiteSpace=wrap;fontSize=9;align=left;verticalAlign=top;fontColor=#5F6368;" vertex="1" parent="p1-1">
+          <mxGeometry x="60" y="734" width="240" height="46" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p1-livekit" value="LiveKit Cloud&lt;br&gt;room = session_id / 短命トークン（上限秒＋120s）&lt;br&gt;プロジェクトは環境ごとに分ける" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="p1-1">
+          <mxGeometry x="880" y="170" width="320" height="90" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p1-a-vad" value="VAD（silero・prewarm 済み）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="p1-1">
+          <mxGeometry x="900" y="340" width="280" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-a-stt" value="STT（Deepgram nova-2 / locale に追随）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="p1-1">
+          <mxGeometry x="900" y="378" width="280" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-a-llm" value="会話LLM（Claude・後輩ペルソナ・temp 0.6）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="p1-1">
+          <mxGeometry x="900" y="416" width="280" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-a-tts" value="TTS（ElevenLabs・割り込み対応）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="p1-1">
+          <mxGeometry x="900" y="454" width="280" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-a-ctrl" value="transcript 収集 / 締めの発話を検出 / 上限秒で打ち切り&lt;br&gt;（ended_reason: completed・timeout・user_left・error）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=10;dashed=1;fillColor=none;strokeColor=#9673a6;fontColor=#3C4043;" vertex="1" parent="p1-1">
+          <mxGeometry x="900" y="492" width="280" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-a-karte" value="カルテ生成（Claude）&lt;br&gt;said_well / holes / term_notes / followup_question" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="p1-1">
+          <mxGeometry x="900" y="544" width="280" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-a-leak" value="答えを漏らした疑いのある発話はログに残す（プロンプト調整用）" style="text;html=1;whiteSpace=wrap;fontSize=9;align=left;verticalAlign=top;fontColor=#5F6368;" vertex="1" parent="p1-1">
+          <mxGeometry x="900" y="598" width="280" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p1-x-anthropic" value="Anthropic API&lt;br&gt;Vision解析 / 会話 / カルテ生成" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="p1-1">
+          <mxGeometry x="1280" y="200" width="240" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-x-deepgram" value="Deepgram STT" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="p1-1">
+          <mxGeometry x="1280" y="272" width="240" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-x-eleven" value="ElevenLabs TTS" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="p1-1">
+          <mxGeometry x="1280" y="332" width="240" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-x-onesignal" value="OneSignal&lt;br&gt;復習プッシュの予約 / 取消（cronは持たない）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="p1-1">
+          <mxGeometry x="1280" y="392" width="240" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-x-revenuecat" value="RevenueCat&lt;br&gt;サブスク・entitlement" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="p1-1">
+          <mxGeometry x="1280" y="464" width="240" height="52" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-x-sentry" value="Sentry&lt;br&gt;アプリ / agent のエラー計測" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="p1-1">
+          <mxGeometry x="1280" y="532" width="240" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-x-store" value="App Store / TestFlight（Codemagic で配布）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="p1-1">
+          <mxGeometry x="1280" y="592" width="240" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-x-note" value="鍵は Workers の secret と agent の環境変数にだけ置く。&lt;br&gt;モバイルに渡すのは公開値（APIのURL・RevenueCat公開鍵・&lt;br&gt;OneSignal App ID・Sentry DSN）のみ。" style="text;html=1;whiteSpace=wrap;fontSize=9;align=left;verticalAlign=top;fontColor=#5F6368;" vertex="1" parent="p1-1">
+          <mxGeometry x="1280" y="650" width="240" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p1-e1" value="①ノートを撮る" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="p1-1" source="p1-user" target="p1-capture">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-e2" value="②POST /v1/sessions&lt;br&gt;multipart（photo + meta）" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="p1-1" source="p1-capture" target="p1-r-sessions">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-e3" value="④Vision解析（単元判定・質問の種）" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;exitX=0.75;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="p1-1" source="p1-r-sessions" target="p1-x-anthropic">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="610" y="132" />
+              <mxPoint x="1400" y="132" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p1-e4" value="⑤参加トークン発行（room = session_id）" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="p1-1" source="p1-r-sessions" target="p1-livekit">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-e5" value="⑥WebRTC 音声" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;startArrow=blockThin;startFill=1;endArrow=blockThin;endFill=1;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0.15;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="p1-1" source="p1-session" target="p1-livekit">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="350" y="256" />
+              <mxPoint x="350" y="146" />
+              <mxPoint x="928" y="146" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p1-e6" value="⑦ジョブ割当&lt;br&gt;participant.metadata で文脈を渡す" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="p1-1" source="p1-livekit" target="p1-a-vad">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-e7" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;fontSize=10;endArrow=blockThin;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="p1-1" source="p1-a-stt" target="p1-x-deepgram">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1228" y="395" />
+              <mxPoint x="1228" y="294" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p1-e8" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;fontSize=10;endArrow=blockThin;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.4;entryDx=0;entryDy=0;" edge="1" parent="p1-1" source="p1-a-llm" target="p1-x-anthropic">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1242" y="433" />
+              <mxPoint x="1242" y="222" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p1-e9" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;fontSize=10;endArrow=blockThin;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="p1-1" source="p1-a-tts" target="p1-x-eleven">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1214" y="471" />
+              <mxPoint x="1214" y="354" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p1-e10" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;fontSize=10;endArrow=blockThin;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;" edge="1" parent="p1-1" source="p1-a-karte" target="p1-x-anthropic">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1252" y="568" />
+              <mxPoint x="1252" y="242" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p1-e11" value="⑧POST /complete&lt;br&gt;transcript + カルテ下書き" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.35;entryDx=0;entryDy=0;" edge="1" parent="p1-1" source="p1-a-karte" target="p1-r-complete">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="820" y="568" />
+              <mxPoint x="820" y="254" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p1-e12" value="③写真は R2 へ / ⑨カルテ・穴・予約は D1 へ" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="p1-1" source="p1-g-api" target="p1-g-cf">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-e13" value="⑩翌日 / 3日後 / 7日後を予約&lt;br&gt;（穴が埋まったら取消）" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;exitX=1;exitY=0.75;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="p1-1" source="p1-r-complete" target="p1-x-onesignal">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="800" y="272" />
+              <mxPoint x="800" y="290" />
+              <mxPoint x="1240" y="290" />
+              <mxPoint x="1240" y="420" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p1-e14" value="⑪復習プッシュ「後輩から質問です」" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="p1-1" source="p1-x-onesignal" target="p1-karte-screen">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1250" y="845" />
+              <mxPoint x="332" y="845" />
+              <mxPoint x="332" y="324" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p1-e15" value="⑫GET /result（202 の間はポーリング）" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="p1-1" source="p1-karte-screen" target="p1-r-result">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-e16" value="連続日数・穴・復習キュー" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;exitX=1;exitY=0.85;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="p1-1" source="p1-karte-screen" target="p1-r-me">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-e17" value="購入 / 復元" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.75;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="p1-1" source="p1-paywall" target="p1-x-revenuecat">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="364" y="378" />
+              <mxPoint x="364" y="862" />
+              <mxPoint x="1460" y="862" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p1-e18" value="webhook で entitlement を同期" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="p1-1" source="p1-x-revenuecat" target="p1-r-webhook">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1230" y="490" />
+              <mxPoint x="1230" y="828" />
+              <mxPoint x="724" y="828" />
+              <mxPoint x="724" y="402" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p1-e19" value="契約・カリキュラム・&lt;br&gt;ガードレール・プロンプト" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;fontSize=10;endArrow=open;endFill=0;exitX=1;exitY=0.1;exitDx=0;exitDy=0;entryX=0.15;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="p1-1" source="p1-g-pkg" target="p1-g-api">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="350" y="619" />
+              <mxPoint x="350" y="578" />
+              <mxPoint x="428" y="578" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram id="arch-sequence" name="2. セッションの流れ">
+    <mxGraphModel dx="1600" dy="900" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1250" math="0" shadow="0">
+      <root>
+        <mxCell id="p2-0" />
+        <mxCell id="p2-1" parent="p2-0" />
+
+        <mxCell id="p2-title" value="セッション1回分の流れ（撮影 → 会話 → カルテ → 復習の予約）" style="text;html=1;align=left;verticalAlign=middle;fontSize=20;fontStyle=1;" vertex="1" parent="p2-1">
+          <mxGeometry x="20" y="8" width="900" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p2-h1" value="アプリ&lt;br&gt;apps/mobile" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fontStyle=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="p2-1">
+          <mxGeometry x="20" y="46" width="180" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-h2" value="backend/api&lt;br&gt;Workers + Hono" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fontStyle=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="p2-1">
+          <mxGeometry x="240" y="46" width="180" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-h3" value="D1 / R2&lt;br&gt;ストレージ" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fontStyle=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="p2-1">
+          <mxGeometry x="460" y="46" width="180" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-h4" value="Anthropic API&lt;br&gt;Vision / LLM" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fontStyle=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="p2-1">
+          <mxGeometry x="680" y="46" width="180" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-h5" value="LiveKit Cloud" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fontStyle=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="p2-1">
+          <mxGeometry x="900" y="46" width="180" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-h6" value="backend/agent&lt;br&gt;LiveKit Agents" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fontStyle=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="p2-1">
+          <mxGeometry x="1120" y="46" width="180" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-h7" value="OneSignal" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fontStyle=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="p2-1">
+          <mxGeometry x="1340" y="46" width="180" height="48" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p2-l1" style="endArrow=none;dashed=1;html=1;strokeColor=#9AA0A6;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="110" y="94" as="sourcePoint" /><mxPoint x="110" y="1180" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="p2-l2" style="endArrow=none;dashed=1;html=1;strokeColor=#9AA0A6;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="330" y="94" as="sourcePoint" /><mxPoint x="330" y="1180" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="p2-l3" style="endArrow=none;dashed=1;html=1;strokeColor=#9AA0A6;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="550" y="94" as="sourcePoint" /><mxPoint x="550" y="1180" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="p2-l4" style="endArrow=none;dashed=1;html=1;strokeColor=#9AA0A6;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="770" y="94" as="sourcePoint" /><mxPoint x="770" y="1180" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="p2-l5" style="endArrow=none;dashed=1;html=1;strokeColor=#9AA0A6;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="990" y="94" as="sourcePoint" /><mxPoint x="990" y="1180" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="p2-l6" style="endArrow=none;dashed=1;html=1;strokeColor=#9AA0A6;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="1210" y="94" as="sourcePoint" /><mxPoint x="1210" y="1180" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="p2-l7" style="endArrow=none;dashed=1;html=1;strokeColor=#9AA0A6;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="1430" y="94" as="sourcePoint" /><mxPoint x="1430" y="1180" as="targetPoint" /></mxGeometry>
+        </mxCell>
+
+        <mxCell id="p2-m1" value="1. POST /v1/sessions（multipart: photo + meta、X-Device-Id）" style="html=1;endArrow=blockThin;endFill=1;fontSize=11;verticalAlign=bottom;align=left;spacingLeft=6;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="110" y="130" as="sourcePoint" /><mxPoint x="330" y="130" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="p2-m2" value="2. ensureUser / countSessionsOnDate（当日のセッション数）" style="html=1;endArrow=blockThin;endFill=1;fontSize=11;verticalAlign=bottom;align=left;spacingLeft=6;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="330" y="172" as="sourcePoint" /><mxPoint x="550" y="172" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="p2-m3" value="3. 無料枠（1日1回）と上限秒（無料5分 / Premium15分）を判定。&lt;br&gt;クライアントには決めさせない。" style="html=1;endArrow=blockThin;endFill=1;fontSize=11;verticalAlign=middle;align=left;spacingLeft=10;edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="330" y="206" as="sourcePoint" />
+            <mxPoint x="330" y="242" as="targetPoint" />
+            <Array as="points"><mxPoint x="400" y="206" /><mxPoint x="400" y="242" /></Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p2-m4" value="4. sessions 行を先に作って無料枠を押さえる（同時投稿で二重に通らないように）" style="html=1;endArrow=blockThin;endFill=1;fontSize=11;verticalAlign=bottom;align=left;spacingLeft=6;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="330" y="278" as="sourcePoint" /><mxPoint x="550" y="278" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="p2-m5" value="5. 写真を R2 に保存（photos/{device_id}/{session_id}）" style="html=1;endArrow=blockThin;endFill=1;fontSize=11;verticalAlign=bottom;align=left;spacingLeft=6;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="330" y="320" as="sourcePoint" /><mxPoint x="550" y="320" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="p2-m6" value="6. Vision解析（プロンプトにカリキュラム52トピックを添付）" style="html=1;endArrow=blockThin;endFill=1;fontSize=11;verticalAlign=bottom;align=left;spacingLeft=6;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="330" y="362" as="sourcePoint" /><mxPoint x="770" y="362" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="p2-m7" value="7. is_math_note / topics / visible_work / question_seeds" style="html=1;endArrow=open;endFill=0;dashed=1;fontSize=11;verticalAlign=bottom;align=left;spacingLeft=6;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="770" y="404" as="sourcePoint" /><mxPoint x="330" y="404" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="p2-m8" value="8.【ガード1枚目】topic_id をカリキュラム照合 → allowed_topics（主戦場＋前提1段）。&lt;br&gt;数学ノートでない / 読めない場合は sessions 行を消して無料枠を返す。" style="html=1;endArrow=blockThin;endFill=1;fontSize=11;verticalAlign=middle;align=left;spacingLeft=10;edgeStyle=orthogonalEdgeStyle;rounded=0;strokeColor=#d6b656;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="330" y="438" as="sourcePoint" />
+            <mxPoint x="330" y="474" as="targetPoint" />
+            <Array as="points"><mxPoint x="400" y="438" /><mxPoint x="400" y="474" /></Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p2-m9" value="9. 参加トークン生成（room = session_id、metadata = 会話文脈、TTL = 上限秒 + 120s）" style="html=1;endArrow=blockThin;endFill=1;fontSize=11;verticalAlign=bottom;align=left;spacingLeft=6;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="330" y="510" as="sourcePoint" /><mxPoint x="990" y="510" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="p2-m10" value="10. 201 { session_id, livekit{url,token,room}, detected_topics, limits }" style="html=1;endArrow=open;endFill=0;dashed=1;fontSize=11;verticalAlign=bottom;align=left;spacingLeft=6;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="330" y="552" as="sourcePoint" /><mxPoint x="110" y="552" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="p2-m11" value="11. WebRTC 接続・マイク公開（残り時間はアプリでもカウントダウン表示）" style="html=1;endArrow=blockThin;endFill=1;fontSize=11;verticalAlign=bottom;align=left;spacingLeft=6;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="110" y="594" as="sourcePoint" /><mxPoint x="990" y="594" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="p2-m12" value="12. ジョブ割当（participant.metadata から文脈を読む。読めなければ黙って終了）" style="html=1;endArrow=blockThin;endFill=1;fontSize=11;verticalAlign=bottom;align=left;spacingLeft=6;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="990" y="636" as="sourcePoint" /><mxPoint x="1210" y="636" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="p2-m13" value="13. VAD(silero) → STT(Deepgram) → 会話LLM(Claude・後輩) → TTS(ElevenLabs) の往復。&lt;br&gt;割り込み対応。発話はすべて transcript に貯める。" style="html=1;endArrow=blockThin;endFill=1;fontSize=11;verticalAlign=middle;align=left;spacingLeft=10;edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1210" y="670" as="sourcePoint" />
+            <mxPoint x="1210" y="706" as="targetPoint" />
+            <Array as="points"><mxPoint x="1280" y="670" /><mxPoint x="1280" y="706" /></Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p2-m14" value="14. 上限秒に達する / 後輩が締めの発話をする / 離脱で終了 → 先に部屋を閉じる" style="html=1;endArrow=blockThin;endFill=1;fontSize=11;verticalAlign=middle;align=left;spacingLeft=10;edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1210" y="742" as="sourcePoint" />
+            <mxPoint x="1210" y="778" as="targetPoint" />
+            <Array as="points"><mxPoint x="1280" y="742" /><mxPoint x="1280" y="778" /></Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p2-m15" value="15. transcript からカルテ下書きを生成" style="html=1;endArrow=blockThin;endFill=1;fontSize=11;verticalAlign=bottom;align=right;spacingRight=6;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="1210" y="814" as="sourcePoint" /><mxPoint x="770" y="814" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="p2-m16" value="16. said_well / holes / term_notes / followup_question（失敗しても空カルテで続行）" style="html=1;endArrow=open;endFill=0;dashed=1;fontSize=11;verticalAlign=bottom;align=left;spacingLeft=6;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="770" y="856" as="sourcePoint" /><mxPoint x="1210" y="856" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="p2-m17" value="17. POST /v1/sessions/{id}/complete（Bearer 内部トークン、duration_seconds / ended_reason 付き）" style="html=1;endArrow=blockThin;endFill=1;fontSize=11;verticalAlign=bottom;align=right;spacingRight=6;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="1210" y="898" as="sourcePoint" /><mxPoint x="330" y="898" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="p2-m18" value="18.【ガード2枚目】穴の topic_id をこのセッションの許可リストで照合し、外れたものを落とす。&lt;br&gt;同じセッションのカルテが既にあれば、再送とみなして同じ内容を返す（二重登録を防ぐ）。" style="html=1;endArrow=blockThin;endFill=1;fontSize=11;verticalAlign=middle;align=left;spacingLeft=10;edgeStyle=orthogonalEdgeStyle;rounded=0;strokeColor=#d6b656;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="330" y="932" as="sourcePoint" />
+            <mxPoint x="330" y="968" as="targetPoint" />
+            <Array as="points"><mxPoint x="400" y="932" /><mxPoint x="400" y="968" /></Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p2-m19" value="19. kartes / holes / review_schedules を保存（復習セッションなら対象の穴を filled に）" style="html=1;endArrow=blockThin;endFill=1;fontSize=11;verticalAlign=bottom;align=left;spacingLeft=6;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="330" y="1004" as="sourcePoint" /><mxPoint x="550" y="1004" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="p2-m20" value="20. 翌日 / 3日後 / 7日後（JST 20:00）を予約し、external_id を D1 に残す。&lt;br&gt;予約に失敗してもカルテは返す（プッシュのために体験を止めない）。" style="html=1;endArrow=blockThin;endFill=1;fontSize=11;verticalAlign=bottom;align=left;spacingLeft=6;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="330" y="1046" as="sourcePoint" /><mxPoint x="1430" y="1046" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="p2-m21" value="21. GET /v1/sessions/{id}/result（生成中は 202。2秒間隔で最大15回まで待つ）" style="html=1;endArrow=blockThin;endFill=1;fontSize=11;verticalAlign=bottom;align=left;spacingLeft=6;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="110" y="1088" as="sourcePoint" /><mxPoint x="330" y="1088" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="p2-m22" value="22. 200 カルテ + progress（連続日数・埋めた穴）+ show_paywall" style="html=1;endArrow=open;endFill=0;dashed=1;fontSize=11;verticalAlign=bottom;align=left;spacingLeft=6;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="330" y="1130" as="sourcePoint" /><mxPoint x="110" y="1130" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="p2-m23" value="23.（後日）復習プッシュ → タップで復習画面 → POST /v1/sessions（kind=review, hole_id）※Premium限定" style="html=1;endArrow=blockThin;endFill=1;fontSize=11;verticalAlign=bottom;align=right;spacingRight=6;strokeColor=#d6b656;" edge="1" parent="p2-1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="1430" y="1172" as="sourcePoint" /><mxPoint x="110" y="1172" as="targetPoint" /></mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram id="arch-data" name="3. データモデル (D1)">
+    <mxGraphModel dx="1600" dy="900" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="800" math="0" shadow="0">
+      <root>
+        <mxCell id="p3-0" />
+        <mxCell id="p3-1" parent="p3-0" />
+
+        <mxCell id="p3-title" value="データモデル — Cloudflare D1（backend/api/migrations/0001_init.sql）" style="text;html=1;align=left;verticalAlign=middle;fontSize=20;fontStyle=1;" vertex="1" parent="p3-1">
+          <mxGeometry x="40" y="12" width="900" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="p3-note" value="&lt;b&gt;アカウントを作らせない&lt;/b&gt;ので users のキーは匿名デバイスID。&lt;br&gt;&lt;b&gt;点数・正答率の列は置かない。&lt;/b&gt;数えるのは「連続日数」と「埋めた穴の数」だけ。&lt;br&gt;JSON の配列（topic_ids / said_well / term_notes）は TEXT に入れる。" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=none;strokeColor=#9AA0A6;align=left;verticalAlign=middle;spacingLeft=10;fontSize=11;fontColor=#3C4043;" vertex="1" parent="p3-1">
+          <mxGeometry x="80" y="560" width="420" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p3-users" value="&lt;b&gt;users&lt;/b&gt;&lt;hr size=&quot;1&quot;&gt;device_id  PK（匿名ID）&lt;br&gt;created_at&lt;br&gt;is_premium  INTEGER&lt;br&gt;premium_expires_at（null は無期限）&lt;br&gt;rc_app_user_id（RevenueCat）" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;fontSize=11;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="p3-1">
+          <mxGeometry x="80" y="90" width="260" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="p3-sessions" value="&lt;b&gt;sessions&lt;/b&gt;&lt;hr size=&quot;1&quot;&gt;id  PK&lt;br&gt;device_id  FK → users&lt;br&gt;kind  new | review&lt;br&gt;status  open | completed&lt;br&gt;created_at / completed_at&lt;br&gt;local_date（無料枠と連続日数はローカル日付で数える）&lt;br&gt;photo_key（R2 のキー）&lt;br&gt;topic_ids  TEXT（JSON配列＝許可リストの元）&lt;br&gt;hole_id（復習セッションの対象）&lt;br&gt;duration_seconds" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="p3-1">
+          <mxGeometry x="470" y="70" width="300" height="220" as="geometry" />
+        </mxCell>
+        <mxCell id="p3-kartes" value="&lt;b&gt;kartes&lt;/b&gt;&lt;hr size=&quot;1&quot;&gt;id  PK&lt;br&gt;session_id  FK → sessions&lt;br&gt;device_id  FK → users&lt;br&gt;created_at&lt;br&gt;topic_ids  TEXT（JSON配列）&lt;br&gt;said_well  TEXT（JSON配列）&lt;br&gt;term_notes  TEXT（JSON配列）&lt;br&gt;followup_question（Premiumのみ保存）" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;fontSize=11;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="p3-1">
+          <mxGeometry x="900" y="70" width="300" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="p3-holes" value="&lt;b&gt;holes&lt;/b&gt; — 理解の穴&lt;hr size=&quot;1&quot;&gt;id  PK&lt;br&gt;device_id  FK → users&lt;br&gt;karte_id  FK → kartes&lt;br&gt;topic_id（カリキュラムの許可リストを通過したもの）&lt;br&gt;description（SQL予約語を避けて desc → description）&lt;br&gt;severity  low | medium | high&lt;br&gt;evidence（会話からの引用）&lt;br&gt;status  open | filled&lt;br&gt;created_at / filled_at" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;fontSize=11;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="p3-1">
+          <mxGeometry x="900" y="320" width="300" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="p3-reviews" value="&lt;b&gt;review_schedules&lt;/b&gt;&lt;hr size=&quot;1&quot;&gt;id  PK&lt;br&gt;hole_id  FK → holes&lt;br&gt;step  1 | 2 | 3（翌日 / 3日後 / 7日後）&lt;br&gt;scheduled_at&lt;br&gt;external_id（OneSignal の通知ID＝取消に使う）" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;fontSize=11;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="p3-1">
+          <mxGeometry x="470" y="380" width="300" height="140" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p3-e1" value="1 : N" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;endArrow=ERmany;startArrow=ERone;exitX=1;exitY=0.4;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;" edge="1" parent="p3-1" source="p3-users" target="p3-sessions">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p3-e2" value="1 : 1（完了時に1枚）" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;endArrow=ERone;startArrow=ERone;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=0;entryY=0.35;entryDx=0;entryDy=0;" edge="1" parent="p3-1" source="p3-sessions" target="p3-kartes">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p3-e3" value="1 : N" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;endArrow=ERmany;startArrow=ERone;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="p3-1" source="p3-kartes" target="p3-holes">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p3-e4" value="1 : 3（翌日 / 3日後 / 7日後）" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;endArrow=ERmany;startArrow=ERone;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="p3-1" source="p3-holes" target="p3-reviews">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p3-e5" value="復習セッションは穴が起点&lt;br&gt;（完了時に status を filled へ）" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;dashed=1;endArrow=open;endFill=0;exitX=1;exitY=0.85;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="p3-1" source="p3-sessions" target="p3-holes">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="830" y="257" />
+              <mxPoint x="830" y="560" />
+              <mxPoint x="1050" y="560" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p3-e6" value="1 : N" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;endArrow=ERmany;startArrow=ERone;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="p3-1" source="p3-users" target="p3-holes">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="210" y="420" />
+              <mxPoint x="410" y="420" />
+              <mxPoint x="410" y="700" />
+              <mxPoint x="1400" y="700" />
+              <mxPoint x="1400" y="420" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram id="arch-screens" name="4. 画面遷移">
+    <mxGraphModel dx="1600" dy="900" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="600" math="0" shadow="0">
+      <root>
+        <mxCell id="p4-0" />
+        <mxCell id="p4-1" parent="p4-0" />
+
+        <mxCell id="p4-title" value="画面遷移 — apps/mobile（go_router）" style="text;html=1;align=left;verticalAlign=middle;fontSize=20;fontStyle=1;" vertex="1" parent="p4-1">
+          <mxGeometry x="40" y="12" width="700" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="p4-note" value="点数を出さない。祝福画面で数えるのは「連続日数」と「今日埋めた穴」だけ。&lt;br&gt;ペイウォールはサーバの show_paywall が true のときだけ（＝初回カルテで穴が見えた直後の1回）。&lt;br&gt;復習は Premium 限定。無料ユーザーには空のキューを返し、「使えない」ではなく「まだ開いていない」として見せる。" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=none;strokeColor=#9AA0A6;align=left;verticalAlign=middle;spacingLeft=10;fontSize=11;fontColor=#3C4043;" vertex="1" parent="p4-1">
+          <mxGeometry x="60" y="440" width="700" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p4-onb" value="00 Onboarding&lt;br&gt;「答えは教えない」約束" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="p4-1">
+          <mxGeometry x="60" y="120" width="170" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="p4-home" value="01 Home&lt;br&gt;連続日数・穴の数" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="p4-1">
+          <mxGeometry x="290" y="120" width="170" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="p4-cap" value="02 Capture&lt;br&gt;撮影・単元チップの修正" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="p4-1">
+          <mxGeometry x="520" y="120" width="170" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="p4-ses" value="03 Session&lt;br&gt;会話（LiveKit・字幕・残り時間）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="p4-1">
+          <mxGeometry x="750" y="120" width="170" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="p4-cel" value="04 Celebration&lt;br&gt;祝福（点数は出さない）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="p4-1">
+          <mxGeometry x="980" y="120" width="170" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="p4-kar" value="05 Karte&lt;br&gt;言えたこと / 見つかった穴" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="p4-1">
+          <mxGeometry x="1210" y="120" width="170" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="p4-pay" value="06 Paywall&lt;br&gt;後輩からのお願いとして書く" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="p4-1">
+          <mxGeometry x="1210" y="280" width="170" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="p4-rev" value="07 Review&lt;br&gt;穴の再説明（Premium）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="p4-1">
+          <mxGeometry x="520" y="280" width="170" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="p4-push" value="プッシュ通知&lt;br&gt;翌日 / 3日後 / 7日後" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#f5f5f5;strokeColor=#666666;dashed=1;" vertex="1" parent="p4-1">
+          <mxGeometry x="290" y="280" width="170" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p4-e1" value="初回のみ" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="p4-1" source="p4-onb" target="p4-home">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p4-e2" value="はじめる" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="p4-1" source="p4-home" target="p4-cap">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p4-e3" value="POST /v1/sessions" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="p4-1" source="p4-cap" target="p4-ses">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p4-e4" value="会話終了" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="p4-1" source="p4-ses" target="p4-cel">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p4-e5" value="カルテ到着" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="p4-1" source="p4-cel" target="p4-kar">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p4-e6" value="show_paywall = true" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="p4-1" source="p4-kar" target="p4-pay">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p4-e7" value="購入 / あとで（どちらでも）" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="p4-1" source="p4-pay" target="p4-home">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="375" y="310" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p4-e8" value="タップ" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="p4-1" source="p4-push" target="p4-rev">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p4-e9" value="POST /v1/sessions&lt;br&gt;（kind=review, hole_id）" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="p4-1" source="p4-rev" target="p4-ses">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="835" y="310" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p4-e10" value="穴の一覧から" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;dashed=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="p4-1" source="p4-home" target="p4-rev">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="375" y="230" />
+              <mxPoint x="720" y="230" />
+              <mxPoint x="720" y="310" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram id="arch-billing" name="5. 課金と権限の同期">
+    <mxGraphModel dx="1600" dy="900" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="p5-0" />
+        <mxCell id="p5-1" parent="p5-0" />
+
+        <mxCell id="p5-title" value="課金と entitlement の同期（RevenueCat webhook → D1）" style="text;html=1;align=left;verticalAlign=middle;fontSize=20;fontStyle=1;" vertex="1" parent="p5-1">
+          <mxGeometry x="40" y="12" width="900" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p5-a1" value="アプリ起動&lt;br&gt;Purchases.configure(appUserId = 匿名デバイスID)&lt;br&gt;失敗しても起動は続ける（無料のまま）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="p5-1">
+          <mxGeometry x="60" y="80" width="280" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="p5-a2" value="Paywall で購入 / 復元" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="p5-1">
+          <mxGeometry x="60" y="190" width="280" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="p5-a3" value="RevenueCat&lt;br&gt;（App Store のレシートを裏で検証）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="p5-1">
+          <mxGeometry x="60" y="276" width="280" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="p5-a4" value="POST /v1/webhooks/revenuecat&lt;br&gt;Authorization = 共有シークレット（合わなければ 401）&lt;br&gt;※デバイスID認証の対象外" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="p5-1">
+          <mxGeometry x="60" y="372" width="280" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="p5-d" value="event.type" style="rhombus;whiteSpace=wrap;html=1;fontSize=12;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="p5-1">
+          <mxGeometry x="120" y="482" width="160" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p5-b1" value="&lt;b&gt;付与&lt;/b&gt;&lt;br&gt;INITIAL_PURCHASE / RENEWAL / UNCANCELLATION /&lt;br&gt;SUBSCRIPTION_EXTENDED / PRODUCT_CHANGE /&lt;br&gt;TRIAL_STARTED / TRIAL_CONVERTED&lt;br&gt;→ is_premium = 1、期限 = expiration_at_ms" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;align=left;spacingLeft=10;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="p5-1">
+          <mxGeometry x="480" y="90" width="440" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="p5-b2" value="&lt;b&gt;CANCELLATION（解約予約）&lt;/b&gt;&lt;br&gt;→ is_premium = 1 のまま、期限だけ更新。&lt;br&gt;払ったぶんは最後まで使える、が誠実さの最低線。" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;align=left;spacingLeft=10;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="p5-1">
+          <mxGeometry x="480" y="200" width="440" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="p5-b3" value="&lt;b&gt;剥奪&lt;/b&gt;&lt;br&gt;EXPIRATION / BILLING_ISSUE / REFUND&lt;br&gt;→ is_premium = 0、期限 = null" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;align=left;spacingLeft=10;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="p5-1">
+          <mxGeometry x="480" y="290" width="440" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="p5-b4" value="&lt;b&gt;TRANSFER（機種変更・再インストール後の復元）&lt;/b&gt;&lt;br&gt;このイベントだけ app_user_id を持たない。&lt;br&gt;① 移行元の期限を先に読む → ② 移行元から剥奪 → ③ 引き継いだ期限で移行先に付与。&lt;br&gt;移行元に Premium が無ければ何も付けない（期限なしで付けると復元だけで永久Premiumになる）。" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;align=left;spacingLeft=10;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="p5-1">
+          <mxGeometry x="480" y="380" width="440" height="96" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p5-c1" value="D1 users&lt;br&gt;is_premium / premium_expires_at / rc_app_user_id" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=8;fontSize=11;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="p5-1">
+          <mxGeometry x="1030" y="240" width="300" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="p5-c2" value="&lt;b&gt;サーバ側で効く場所&lt;/b&gt;（isPremiumNow = is_premium かつ 期限内）&lt;hr size=&quot;1&quot;&gt;・無料枠：1日1回 → Premium は無制限&lt;br&gt;・会話の上限：5分 → 15分（トークンのTTLもここで決まる）&lt;br&gt;・復習セッション（kind=review）の実行&lt;br&gt;・GET /v1/me/reviews の中身（無料は空 + requires_premium）&lt;br&gt;・カルテの followup_question の保存&lt;br&gt;・show_paywall の判定（初回カルテで穴が見えた1回だけ）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="p5-1">
+          <mxGeometry x="1030" y="380" width="380" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="p5-c3" value="クライアントの判定は表示のためだけ。&lt;br&gt;無料枠も上限秒もサーバが強制する（改竄で伸ばせない）。" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=none;strokeColor=#9AA0A6;align=left;verticalAlign=middle;spacingLeft=10;fontSize=11;fontColor=#3C4043;" vertex="1" parent="p5-1">
+          <mxGeometry x="1030" y="590" width="380" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p5-e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=blockThin;endFill=1;" edge="1" parent="p5-1" source="p5-a1" target="p5-a2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p5-e2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=blockThin;endFill=1;" edge="1" parent="p5-1" source="p5-a2" target="p5-a3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p5-e3" value="webhook" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="p5-1" source="p5-a3" target="p5-a4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p5-e4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=blockThin;endFill=1;" edge="1" parent="p5-1" source="p5-a4" target="p5-d">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p5-e5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=blockThin;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="p5-1" source="p5-d" target="p5-b1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="400" y="522" /><mxPoint x="400" y="135" /></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="p5-e6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=blockThin;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="p5-1" source="p5-d" target="p5-b2">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="400" y="522" /><mxPoint x="400" y="235" /></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="p5-e7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=blockThin;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="p5-1" source="p5-d" target="p5-b3">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="400" y="522" /><mxPoint x="400" y="325" /></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="p5-e8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=blockThin;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="p5-1" source="p5-d" target="p5-b4">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="400" y="522" /><mxPoint x="400" y="428" /></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="p5-e9" value="setPremium" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="p5-1" source="p5-b1" target="p5-c1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="970" y="135" /><mxPoint x="970" y="280" /></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="p5-e10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=blockThin;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="p5-1" source="p5-b2" target="p5-c1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="970" y="235" /><mxPoint x="970" y="280" /></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="p5-e11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=blockThin;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="p5-1" source="p5-b3" target="p5-c1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="970" y="325" /><mxPoint x="970" y="280" /></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="p5-e12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=blockThin;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="p5-1" source="p5-b4" target="p5-c1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="970" y="428" /><mxPoint x="970" y="280" /></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="p5-e13" value="読む" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;dashed=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="p5-1" source="p5-c1" target="p5-c2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram id="arch-deploy" name="6. 環境とデプロイ">
+    <mxGraphModel dx="1600" dy="900" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="800" math="0" shadow="0">
+      <root>
+        <mxCell id="p6-0" />
+        <mxCell id="p6-1" parent="p6-0" />
+
+        <mxCell id="p6-title" value="環境とデプロイ" style="text;html=1;align=left;verticalAlign=middle;fontSize=20;fontStyle=1;" vertex="1" parent="p6-1">
+          <mxGeometry x="40" y="12" width="700" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p6-repo" value="GitHub&lt;br&gt;sarushili0430/ai-sensei&lt;br&gt;（public / MIT）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="p6-1">
+          <mxGeometry x="60" y="180" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="p6-dev" value="develop ブランチ" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="p6-1">
+          <mxGeometry x="330" y="100" width="180" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="p6-main" value="main ブランチ" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="p6-1">
+          <mxGeometry x="330" y="290" width="180" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="p6-mobilebr" value="apps/mobile の変更" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="p6-1">
+          <mxGeometry x="330" y="470" width="180" height="44" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p6-ga-dev" value="GitHub Actions&lt;br&gt;wrangler d1 migrations apply →&lt;br&gt;wrangler deploy --env develop → /health 確認" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="p6-1">
+          <mxGeometry x="580" y="86" width="300" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="p6-ga-prod" value="GitHub Actions&lt;br&gt;wrangler d1 migrations apply →&lt;br&gt;wrangler deploy --env production → /health 確認" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="p6-1">
+          <mxGeometry x="580" y="276" width="300" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="p6-cm" value="Codemagic（codemagic.yaml）&lt;br&gt;fvm flutter test（契約fixture / ウィジェット / golden）→&lt;br&gt;iOS ビルド → TestFlight" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="p6-1">
+          <mxGeometry x="580" y="456" width="300" height="72" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p6-w-dev" value="&lt;b&gt;develop 環境&lt;/b&gt;&lt;hr size=&quot;1&quot;&gt;Worker: ai-sensei-api-develop&lt;br&gt;D1: ai-sensei-develop&lt;br&gt;R2: ai-sensei-photos-develop&lt;br&gt;KV: METER（develop）&lt;br&gt;LiveKit: develop プロジェクト" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="p6-1">
+          <mxGeometry x="960" y="60" width="280" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="p6-w-prod" value="&lt;b&gt;production 環境&lt;/b&gt;&lt;hr size=&quot;1&quot;&gt;Worker: ai-sensei-api-production&lt;br&gt;D1: ai-sensei-production&lt;br&gt;R2: ai-sensei-photos-production&lt;br&gt;KV: METER（production）&lt;br&gt;LiveKit: production プロジェクト" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="p6-1">
+          <mxGeometry x="960" y="250" width="280" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="p6-tf" value="TestFlight → App Store" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="p6-1">
+          <mxGeometry x="960" y="470" width="280" height="46" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p6-agent" value="&lt;b&gt;backend/agent（LiveKit Agents）&lt;/b&gt;&lt;br&gt;常駐プロセスなので Workers には載らない。稼働先は ADR 0002 で保留中。&lt;br&gt;LiveKit のプロジェクトだけは環境ごとに必ず分ける&lt;br&gt;（共有すると開発用 agent が本番のルームのジョブを拾いうるため）。" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="p6-1">
+          <mxGeometry x="960" y="560" width="440" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p6-secrets" value="&lt;b&gt;秘匿値の置き場&lt;/b&gt;&lt;hr size=&quot;1&quot;&gt;・Workers: wrangler secret put &amp;lt;NAME&amp;gt; --env &amp;lt;develop|production&amp;gt;&lt;br&gt;　LIVEKIT_* / ANTHROPIC_API_KEY / ONESIGNAL_* / REVENUECAT_WEBHOOK_AUTH / INTERNAL_API_TOKEN&lt;br&gt;・agent: 実行環境の環境変数（.env はコミットしない）&lt;br&gt;・モバイル: 公開値のみ（--dart-define はビルド成果物から読める）&lt;br&gt;・pnpm run verify:secrets でコミット前に走査" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="p6-1">
+          <mxGeometry x="60" y="560" width="840" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="p6-verify" value="pnpm run verify&lt;br&gt;lint（Biome）+ typecheck +&lt;br&gt;シークレット走査 + vitest" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fontSize=11;dashed=1;fillColor=none;strokeColor=#9AA0A6;fontColor=#3C4043;" vertex="1" parent="p6-1">
+          <mxGeometry x="60" y="300" width="200" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p6-e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=blockThin;endFill=1;" edge="1" parent="p6-1" source="p6-repo" target="p6-dev">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p6-e2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=blockThin;endFill=1;" edge="1" parent="p6-1" source="p6-repo" target="p6-main">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p6-e3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=blockThin;endFill=1;" edge="1" parent="p6-1" source="p6-repo" target="p6-mobilebr">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p6-e4" value="push" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="p6-1" source="p6-dev" target="p6-ga-dev">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p6-e5" value="push" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="p6-1" source="p6-main" target="p6-ga-prod">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p6-e6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=blockThin;endFill=1;" edge="1" parent="p6-1" source="p6-mobilebr" target="p6-cm">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p6-e7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=blockThin;endFill=1;" edge="1" parent="p6-1" source="p6-ga-dev" target="p6-w-dev">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p6-e8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=blockThin;endFill=1;" edge="1" parent="p6-1" source="p6-ga-prod" target="p6-w-prod">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p6-e9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=blockThin;endFill=1;" edge="1" parent="p6-1" source="p6-cm" target="p6-tf">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p6-e10" value="PR / push で実行" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=open;endFill=0;dashed=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="p6-1" source="p6-repo" target="p6-verify">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
